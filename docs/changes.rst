@@ -9,20 +9,16 @@ Release 0.2.0
 * Added support in :class:`SSHClient` for the following methods related
   to performing standard SSH port forwarding:
 
-    + :meth:`forward_local_port() <SSHClient.forward_local_port>`
-    + :meth:`cancel_local_port_forwarding()
-       <SSHClient.cancel_local_port_forwarding>`
-    + :meth:`forward_remote_port() <SSHClient.forward_remote_port>`
-    + :meth:`cancel_remote_port_forwarding()
-       <SSHClient.cancel_remote_port_forwarding>`
-    + :meth:`handle_remote_port_forwarding()
-       <SSHClient.handle_remote_port_forwarding>`
-    + :meth:`handle_remote_port_forwarding_error()
-       <SSHClient.handle_remote_port_forwarding_error>`
+    * :meth:`forward_local_port() <SSHClient.forward_local_port>`
+    * :meth:`cancel_local_port_forwarding() <SSHClient.cancel_local_port_forwarding>`
+    * :meth:`forward_remote_port() <SSHClient.forward_remote_port>`
+    * :meth:`cancel_remote_port_forwarding() <SSHClient.cancel_remote_port_forwarding>`
+    * :meth:`handle_remote_port_forwarding() <SSHClient.handle_remote_port_forwarding>`
+    * :meth:`handle_remote_port_forwarding_error() <SSHClient.handle_remote_port_forwarding_error>`
 
 * Added support in :class:`SSHServer` for new return values in
-  :meth:`handle_direct_connection <SSHServer.handle_direct_connection>`
-  and :meth:`handle_listen <SSHServer.handle_listen>` to activate
+  :meth:`handle_direct_connection() <SSHServer.handle_direct_connection>`
+  and :meth:`handle_listen() <SSHServer.handle_listen>` to activate
   standard SSH server-side port forwarding
 
 * Added a client_addr argument and member variable to :class:`SSHServer`
