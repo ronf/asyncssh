@@ -1171,7 +1171,8 @@ class SSHServerSession(_SSHChannel):
                are taken from :ref:`POSIX terminal modes <PTYModes>` with
                values defined in section 8 of :rfc:`4254#section-8`.
 
-           :rtype: boolean
+           :returns: A boolean indicating if the request for a
+                     pseudo-terminal was allowed or not
 
         """
 
@@ -1215,7 +1216,8 @@ class SSHServerSession(_SSHChannel):
 
            By default this method returns ``False`` to reject all requests.
 
-           :rtype: boolean
+           :returns: A boolean indicating if the shell request was
+                     allowed or not
 
         """
 
@@ -1238,7 +1240,8 @@ class SSHServerSession(_SSHChannel):
            :param string command:
                The command the client has requested to execute
 
-           :rtype: boolean
+           :returns: A boolean indicating if the exec request was
+                     allowed or not
 
         """
 
@@ -1261,7 +1264,8 @@ class SSHServerSession(_SSHChannel):
            :param string subsystem:
                The subsystem to start
 
-           :rtype: boolean
+           :returns: A boolean indicating if the request to open the
+                     subsystem was allowed or not
 
         """
 
@@ -1270,12 +1274,12 @@ class SSHServerSession(_SSHChannel):
     def get_environment(self):
         """Return the environment for this session
 
-           This method returns a dictionary containing the environment
-           variables set by the client when the session was opened.
-           Calls to this method should only be made after
-           :meth:`handle_open` has been called.
+           This method returns the environment set by the client
+           when the session was opened. Calls to this method should
+           only be made after :meth:`handle_open` has been called.
 
-           :rtype: dictionary
+           :returns: A dictionary containing the environment variables
+                     set by the client
 
         """
 
@@ -1290,7 +1294,8 @@ class SSHServerSession(_SSHChannel):
            to this method should only be made after :meth:`handle_open`
            has been called.
 
-           :rtype: string or ``None``
+           :returns: A string containing the terminal type or ``None`` if
+                     no pseudo-terminal was requested
 
         """
 
@@ -1310,7 +1315,9 @@ class SSHServerSession(_SSHChannel):
                POSIX terminal mode taken from :ref:`POSIX terminal modes
                <PTYModes>` to look up
 
-           :rtype: integer or ``None``
+           :returns: An integer containing the value of the requested
+                     POSIX terminal mode or ``None`` if the requested
+                     mode was not set
 
         """
 
@@ -1321,15 +1328,15 @@ class SSHServerSession(_SSHChannel):
 
            This method returns the latest window size information set
            by the client. If the client didn't set any window size
-           information, all values returned will be zero. The return
-           data is a tuple containing the terminal width in characters,
-           terminal height in characters, terminal width in pixels, and
-           terminal height in pixels. Calls to this method should only
-           be made after :meth:`handle_open` has been called. Also see
-           :meth:`handle_window_change` for how to get notified
-           asynchronously whenever the reported terminal size changes.
+           information, all values returned will be zero. Calls to
+           this method should only be made after :meth:`handle_open`
+           has been called. Also see :meth:`handle_window_change` for
+           how to get notified asynchronously whenever the reported
+           terminal size changes.
 
-           :rtype: tuple of four integers
+           :returns: A tuple of four integers containing the width and
+                     height of the terminal in characters and the width
+                     and height of the terminal in pixels
 
         """
 
@@ -1454,6 +1461,9 @@ class SSHServerSession(_SSHChannel):
            :param integer msec:
                The duration of the break in milliseconds
 
+           :returns: A boolean to indicate if the break operation was
+                     performed or not
+
         """
 
         return False
@@ -1492,7 +1502,7 @@ class SSHTCPConnection(_SSHChannel):
         # Call handle_open when a connection is opened successfully
         self.handle_open()
 
-    def accept(self, dest_host, dest_port, orig_host, orig_port):
+    def accept(self, bind_addr, bind_port, orig_host='', orig_port=0):
         """Report opening of an incoming forwarded TCP/IP connection
 
            This method can be called to open a channel for a new
@@ -1503,24 +1513,24 @@ class SSHTCPConnection(_SSHChannel):
            open fails, :meth:`handle_open_error` will be called with
            information about the failure.
 
-           :param string dest_host:
+           :param string bind_addr:
                The address the connection was destined to
-           :param integer dest_port:
+           :param integer bind_port:
                The port the connection was destined to
-           :param string orig_host:
+           :param string orig_host: (optional)
                The address the connection was originated from
-           :param integer orig_port:
+           :param integer orig_port: (optional)
                The port the connection was originated from
 
         """
 
-        dest_host = dest_host.encode('utf-8')
+        bind_addr = bind_addr.encode('utf-8')
         orig_host = orig_host.encode('utf-8')
 
-        self._open(b'forwarded-tcpip', String(dest_host), UInt32(dest_port),
+        self._open(b'forwarded-tcpip', String(bind_addr), UInt32(bind_port),
                    String(orig_host), UInt32(orig_port))
 
-    def connect(self, dest_host, dest_port, orig_host, orig_port):
+    def connect(self, dest_host, dest_port, orig_host='', orig_port=0):
         """Open an outgoing direct TCP/IP connection
 
            This method can be called by a client to request that the
@@ -1535,9 +1545,9 @@ class SSHTCPConnection(_SSHChannel):
                The address the client wishes to connect to
            :param integer dest_port:
                The port the client wishes to connect to
-           :param string orig_host:
+           :param string orig_host: (optional)
                The address the connection was originated from
-           :param integer orig_port:
+           :param integer orig_port: (optional)
                The port the connection was originated from
 
         """

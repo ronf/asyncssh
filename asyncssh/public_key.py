@@ -522,7 +522,7 @@ def import_private_key(data, passphrase=None):
        :param string passphrase: (optional)
            The passphrase to use to decrypt the key.
 
-       :rtype: :class:`SSHKey` private key
+       :returns: An :class:`SSHKey` private key
 
     """
 
@@ -543,7 +543,7 @@ def import_public_key(data):
        :param bytes data:
            The data to import.
 
-       :rtype: :class:`SSHKey` public key
+       :returns: An :class:`SSHKey` public key
 
     """
 
@@ -570,7 +570,7 @@ def read_private_key(filename, passphrase=None):
        :param string passphrase: (optional)
            The passphrase to use to decrypt the key.
 
-       :rtype: :class:`SSHKey` private key
+       :returns: An :class:`SSHKey` private key
 
     """
 
@@ -586,7 +586,7 @@ def read_public_key(filename):
        :param string filename:
            The file to read the key from.
 
-       :rtype: :class:`SSHKey` public key
+       :returns: An :class:`SSHKey` public key
 
     """
 
@@ -606,7 +606,7 @@ def read_private_key_list(filename, passphrase=None):
        :param string passphrase: (optional)
            The passphrase to use to decrypt the keys.
 
-       :rtype: list of :class:`SSHKey` private keys
+       :returns: A list of :class:`SSHKey` private keys
 
     """
 
@@ -640,7 +640,7 @@ def read_public_key_list(filename):
        :param string filename:
            The file to read the keys from.
 
-       :rtype: list of :class:`SSHKey` public keys
+       :returns: A list of :class:`SSHKey` public keys
 
     """
 

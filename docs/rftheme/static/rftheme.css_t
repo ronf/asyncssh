@@ -1,0 +1,28 @@
+@import url("default.css");
+
+.tight-list * {
+    line-height: 110% !important;
+    margin: 0 0 3px !important;
+}
+
+div.sphinxsidebar {
+    top: 0;
+}
+
+div.sphinxsidebarwrapper {
+    padding-top: 8px;
+}
+
+div.body p, div.body dd, div.body li {
+    text-align: left;
+}
+
+tt, .note tt {
+    font-size: 1.15em;
+    background: none;
+}
+
+div.body p.rubric {
+    font-size: 1.3em;
+    margin: 15px 0 5px;
+}

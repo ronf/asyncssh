@@ -12,6 +12,8 @@
 
 """Miscellaneous utility classes and functions"""
 
+import asyncore, socket
+
 from .constants import *
 
 def all_ints(seq):
@@ -32,6 +34,65 @@ def mod_inverse(x, m):
         return c if c >= 0 else c + m
     else:
         raise ValueError('%d has no inverse mod %d' % (x, m))
+
+
+class Listener(asyncore.dispatcher):
+    """General socket listener
+
+       This is a helper class which listens for incoming connections on
+       the specified address and port and calls the specified callback
+       for each new connection which it accepts. The listen address can
+       be either an address and port tuple or just a port to listen on
+       that port on all interfaces.
+
+       The callback function will be passed the newly opened socket and
+       a tuple of IPv6 client address information, followed by any
+       additional arguments passed to this class when it was created.
+
+       :param listen_addr:
+           The address and port to listen on
+       :param function callback:
+           The function to call when new connections arrive
+       :param \*args,\ \*\*kwargs:
+           Additional arguments to pass to ``callback``
+       :type listen_addr: tuple of string and integer, or just integer
+
+    """
+
+    def __init__(self, listen_addr, callback=None, *args, **kwargs):
+        asyncore.dispatcher.__init__(self)
+
+        if isinstance(listen_addr, int):
+            listen_addr = ('', listen_addr)
+
+        try:
+            self.create_socket(socket.AF_INET6, socket.SOCK_STREAM)
+            self.set_reuse_addr()
+            self.bind(listen_addr)
+            self.addr = self.socket.getsockname()
+            self.listen(5)
+        except socket.error:
+            self.close()
+            raise
+
+        self._callback = callback
+        self._args = args
+        self._kwargs = kwargs
+
+    def set_callback(self, callback, *args, **kwargs):
+        """Reset the callback for incoming connections"""
+
+        self._callback = callback
+        self._args = args
+        self._kwargs = kwargs
+
+    def handle_accepted(self, sock, client_addr):
+        """Handle a new incoming connection"""
+
+        if self._callback:
+            self._callback(sock, client_addr, *self._args, **self._kwargs)
+        else:
+            sock.close()
 
 
 class SSHError(Exception):
@@ -58,6 +119,7 @@ class SSHError(Exception):
 
     def __str__(self):
         return 'SSH Error: %s' % self.reason
+
 
 class ChannelOpenError(SSHError):
     """SSH channel open error

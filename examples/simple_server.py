@@ -34,9 +34,6 @@ class MySSHServerSession(SSHServerSession):
         self.exit(0)
 
 class MySSHServer(SSHServer):
-    def __init__(self, sock, addr):
-        super().__init__(sock, ssh_host_keys)
-
     def begin_auth(self, username):
         # If the user's password is the empty string, no auth is required
         return passwords.get(username) != ''
@@ -51,5 +48,5 @@ class MySSHServer(SSHServer):
     def handle_session(self):
         return MySSHServerSession(self)
 
-listener = SSHListener(8022, MySSHServer)
+listener = SSHListener(8022, MySSHServer, ssh_host_keys)
 asyncore.loop()

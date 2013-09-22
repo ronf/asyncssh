@@ -25,10 +25,10 @@ class MySSHClient(SSHClient):
         self.listen('', 8888)
 
     def handle_listen(self, bind_addr, bind_port):
-        print('Listener opened.')
+        print('Server listening on port %s...' % bind_port)
 
     def handle_listen_error(self, bind_addr, bind_port):
-        print('Listener open failed!', file=sys.stderr)
+        print('Server listen failed.', file=sys.stderr)
         self.disconnect()
 
     def handle_forwarded_connection(self, dest_host, dest_port,

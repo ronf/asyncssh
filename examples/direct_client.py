@@ -35,7 +35,7 @@ class MySSHTCPConnection(SSHTCPConnection):
 class MySSHClient(SSHClient):
     def handle_auth_complete(self):
         connection = MySSHTCPConnection(self)
-        connection.connect('localhost', 80, '', 0)
+        connection.connect('www.google.com', 80)
 
     def handle_disconnect(self, code, reason, lang):
         print('SSH connection error: %s' % reason, file=sys.stderr)
