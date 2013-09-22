@@ -4,9 +4,9 @@
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v1.0 which accompanies this
 # distribution and is available at:
-# 
+#
 #     http://www.eclipse.org/legal/epl-v10.html
-# 
+#
 # Contributors:
 #     Ron Frederick - initial implementation, API, and documentation
 
@@ -118,7 +118,7 @@ class DERTag:
 
 class RawDERObject:
     """A class which can encode a DER object of an arbitrary type
-    
+
        This object is initialized with an ASN.1 class, tag, and a
        byte string representing the already encoded data. Such
        objects will never have the constructed flag set, since
@@ -144,13 +144,13 @@ class RawDERObject:
 
 class TaggedDERObject:
     """An explicitly tagged DER object
-    
+
        This object provides a way to wrap an ASN.1 object with an
        explicit tag. The value (including the tag representing its
        actual type) is then encoded as part of its value. By
        default, the ASN.1 class for these objects is CONTEXT_SPECIFIC,
        and the DER encoding always marks these values as constructed.
-       
+
     """
 
     def __init__(self, tag, value, asn1_class=CONTEXT_SPECIFIC):

@@ -4,9 +4,9 @@
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v1.0 which accompanies this
 # distribution and is available at:
-# 
+#
 #     http://www.eclipse.org/legal/epl-v10.html
-# 
+#
 # Contributors:
 #     Ron Frederick - initial implementation, API, and documentation
 
@@ -357,7 +357,7 @@ class _SSHChannel(SSHPacketHandler):
 
     def send(self, data, datatype=None):
         """Send data on the channel
-        
+
            This method can be called to send data on the channel. If
            an encoding was specified when the channel was created, the
            data should be provided as a string and will be converted
@@ -398,7 +398,7 @@ class _SSHChannel(SSHPacketHandler):
 
     def send_eof(self):
         """Send EOF on the channel
-        
+
            This method sends an end-of-file indication on the
            channel, after which no more data can be sent. The
            channel remains open, though, and data may still be
@@ -416,7 +416,7 @@ class _SSHChannel(SSHPacketHandler):
 
     def block_recv(self):
         """Temporarily suspend delivery of incoming data
-        
+
            This method is used to temporarily suspend delivery of incoming
            channel data. After this call, incoming data will no longer
            trigger calls to :meth:`handle_data` until :meth:`unblock_recv`
@@ -439,7 +439,7 @@ class _SSHChannel(SSHPacketHandler):
 
     def unblock_recv(self):
         """Resume delivery of incoming data
-        
+
            This method can be called to resume deliver of incoming data
            which was suspended by a call to :meth:`block_recv`. As soon
            as this is called, any buffered data will be delivered via the
@@ -455,7 +455,7 @@ class _SSHChannel(SSHPacketHandler):
 
     def close(self):
         """Close the channel
-        
+
            This method can be called to close the channel, after which
            no more data can be sent or received. If the send window is
            full, any unsent buffered data will be discarded. However,
@@ -474,7 +474,7 @@ class _SSHChannel(SSHPacketHandler):
 
     def handle_open(self):
         """Handle when the channel is opened successfully
-        
+
            This method is called when a channel is opened successfully.
            It can be overridden by the application to begin sending
            whatever data it needs to on the channel after it is opened.
@@ -489,7 +489,7 @@ class _SSHChannel(SSHPacketHandler):
 
     def handle_open_error(self, code, reason, lang):
         """Handle an error returned when opening the channel
-        
+
            This method is called when a request to open a channel fails.
            More information about the cause of the failure are provided
            in the code and reason arguments.
@@ -512,7 +512,7 @@ class _SSHChannel(SSHPacketHandler):
 
     def handle_data(self, data, datatype):
         """Handle when data is received on the channel
-        
+
            This method is called when data is received on the channel.
            If an encoding was specified when the channel was created,
            the data will be delivered as a string after decoding with
@@ -564,7 +564,7 @@ class _SSHChannel(SSHPacketHandler):
 
     def handle_send_unblocked(self):
         """Handle when the send window reopens
-        
+
            This method is called when the channel's send window reopens
            and more data can be sent.
 
@@ -576,7 +576,7 @@ class _SSHChannel(SSHPacketHandler):
 
     def handle_close(self):
         """Handle when the channel is closed by the remote system
-        
+
            This method is called when the remote system closes the
            channel, after which no more data can be sent or received.
            Applications should call :meth:`close` from within this
@@ -642,11 +642,11 @@ class SSHClientSession(_SSHChannel):
 
     def _finish_open(self):
         """Process the opening of a client session
-        
+
            After the channel is opened, send requests to set up the
            environment, open a pseudo-terminal  if one is requested, and
            then open a shell or execute a command.
-           
+
         """
 
         for name, value in self._env.items():
@@ -792,7 +792,7 @@ class SSHClientSession(_SSHChannel):
 
     def set_window_size(self, width, height, pixwidth=0, pixheight=0):
         """Set the window size for this session
-        
+
            This method sets the width and height of the terminal
            associated with this session. It should be called before
            :meth:`open_shell`, :meth:`exec`, or :meth:`open_subsystem`
@@ -824,7 +824,7 @@ class SSHClientSession(_SSHChannel):
 
     def open_shell(self):
         """Open a remote shell
-        
+
            This method requests that the server start up a remote shell.
            If the request succeeds, :meth:`handle_open` will be called,
            after which the application can begin sending input. If the
@@ -841,7 +841,7 @@ class SSHClientSession(_SSHChannel):
 
     def exec(self, command):
         """Execute a remote command
-        
+
            This method requests that the server execute a remote command.
            If the request succeeds, :meth:`handle_open` will be called,
            after which the application can begin sending input. If the
@@ -861,7 +861,7 @@ class SSHClientSession(_SSHChannel):
 
     def open_subsystem(self, subsystem):
         """Open a remote subsystem
-        
+
            This method requests that the server start a remote subsystem.
            If the request succeeds, :meth:`handle_open` will be called,
            after which the application can begin sending input. If the
@@ -881,7 +881,7 @@ class SSHClientSession(_SSHChannel):
 
     def send_signal(self, signal):
         """Send a signal to the server
-        
+
            This method can be called to deliver a signal to the remote
            process/service. Signal names should be as described in
            section 6.10 of :rfc:`4254#section-6.10`.
@@ -914,7 +914,7 @@ class SSHClientSession(_SSHChannel):
 
     def handle_xon_xoff(self, client_can_do):
         """Handle whether or not to enable XON/XOFF flow control
-        
+
            This method is called to notify the client whether or not
            to enable XON/XOFF flow control. If client_can_do is
            ``True`` and output is being sent to an interactive
@@ -1179,9 +1179,9 @@ class SSHServerSession(_SSHChannel):
 
     def handle_window_change(self, width, height, pixwidth, pixheight):
         """Handle an update to the window size information
-        
+
            This method is called when a client requests a
-           pseudo-terminal and again whenever the the size of 
+           pseudo-terminal and again whenever the the size of
            he client's terminal window changes.
 
            By default, this information is ignored, but applications
@@ -1203,7 +1203,7 @@ class SSHServerSession(_SSHChannel):
 
     def handle_shell_request(self):
         """Handle a shell request
-        
+
            This method should be overridden by the application to
            perform whatever processing is required when a client makes
            a request to open an interactive shell. It should return
@@ -1269,7 +1269,7 @@ class SSHServerSession(_SSHChannel):
 
     def get_environment(self):
         """Return the environment for this session
-        
+
            This method returns a dictionary containing the environment
            variables set by the client when the session was opened.
            Calls to this method should only be made after
@@ -1283,7 +1283,7 @@ class SSHServerSession(_SSHChannel):
 
     def get_terminal_type(self):
         """Return the terminal type for this session
-        
+
            This method returns the terminal type set by the client
            when the session was opened. If the client didn't request
            a pseudo-terminal, this method will return ``None``. Calls
@@ -1298,7 +1298,7 @@ class SSHServerSession(_SSHChannel):
 
     def get_terminal_mode(self, mode):
         """Return the requested TTY mode for this session
-        
+
            This method looks up the value of a POSIX terminal mode
            set by the client when the session was opened. If the client
            didn't request a pseudo-terminal or didn't set the requested
@@ -1318,7 +1318,7 @@ class SSHServerSession(_SSHChannel):
 
     def get_window_size(self):
         """Return window size information for this session
-        
+
            This method returns the latest window size information set
            by the client. If the client didn't set any window size
            information, all values returned will be zero. The return
@@ -1338,7 +1338,7 @@ class SSHServerSession(_SSHChannel):
 
     def set_xon_xoff(self, client_can_do):
         """Set whether the client should enable XON/XOFF flow control
-        
+
            This method can be called to tell the client whether or not
            to enable XON/XOFF flow control, indicating that it should
            intercept Control-S and Control-Q coming from its local
@@ -1356,7 +1356,7 @@ class SSHServerSession(_SSHChannel):
 
     def send_stderr(self, data):
         """Send output to stderr
-        
+
            This method can be called to send output to the client which
            is intended to be displayed on stderr. If an encoding was
            specified when the channel was created, the data should be
@@ -1430,7 +1430,7 @@ class SSHServerSession(_SSHChannel):
 
     def handle_signal(self, signal):
         """Handle the delivery of a signal
-        
+
            This method is called when the client delivers a signal
            on the channel.
 
@@ -1494,7 +1494,7 @@ class SSHTCPConnection(_SSHChannel):
 
     def accept(self, dest_host, dest_port, orig_host, orig_port):
         """Report opening of an incoming forwarded TCP/IP connection
-        
+
            This method can be called to open a channel for a new
            incoming TCP connection which should be forwarded from the
            server to the client. If the connection is successfully
@@ -1522,7 +1522,7 @@ class SSHTCPConnection(_SSHChannel):
 
     def connect(self, dest_host, dest_port, orig_host, orig_port):
         """Open an outgoing direct TCP/IP connection
-        
+
            This method can be called by a client to request that the
            server open a new outbound TCP connection to the specified
            destination. If the connection is successfully opened,

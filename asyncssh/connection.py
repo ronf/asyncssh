@@ -1,8 +1,8 @@
 # Copyright (c) 2013 by Ron Frederick <ronf@timeheart.net>.
 # All rights reserved.
 #
-# This program and the accompanying materials are made available under 
-# the terms of the Eclipse Public License v1.0 which accompanies this 
+# This program and the accompanying materials are made available under
+# the terms of the Eclipse Public License v1.0 which accompanies this
 # distribution and is available at:
 #
 #     http://www.eclipse.org/legal/epl-v10.html
@@ -921,7 +921,7 @@ class _SSHConnection(asyncore.dispatcher, SSHPacketHandler):
     def disconnect(self, code=DISC_BY_APPLICATION,
                    reason='Disconnected by application', lang=DEFAULT_LANG):
         """Force the connection to close
-        
+
            This method can be called to forcibly close the connection.
 
            :param integer code:
@@ -944,7 +944,7 @@ class _SSHConnection(asyncore.dispatcher, SSHPacketHandler):
 
     def send_debug(self, msg, lang=DEFAULT_LANG, always_display=False):
         """Send a debug message on this connection
-        
+
            This method can be called to send a debug message to the
            other end of the connection.
 
@@ -964,7 +964,7 @@ class _SSHConnection(asyncore.dispatcher, SSHPacketHandler):
 
     def handle_disconnect(self, code, reason, lang):
         """Handle when the connection is closed
-        
+
            This method is called when the connection is closed.
            Applications should implement this method if they want to
            do any processing or cleanup at the time of the close.
@@ -992,7 +992,7 @@ class _SSHConnection(asyncore.dispatcher, SSHPacketHandler):
 
     def handle_debug(self, msg, lang, always_display):
         """Handle a debug message on this connection
-        
+
            This method is called when the other end of the connection sends
            a debug message. Applications should implement this method if
            they wish to process these debug messages.
@@ -1187,9 +1187,9 @@ class SSHClient(_SSHConnection):
 
     def _process_session_open(self, packet):
         """Process an inbound session open request
-        
+
            These requests are disallowed on an SSH client.
-           
+
         """
 
         raise ChannelOpenError(OPEN_ADMINISTRATIVELY_PROHIBITED,
@@ -1197,9 +1197,9 @@ class SSHClient(_SSHConnection):
 
     def _process_direct_tcpip_open(self, packet):
         """Process an inbound direct TCP/IP channel open request
-        
+
            These requests are disallowed on an SSH client.
-           
+
         """
 
         raise ChannelOpenError(OPEN_ADMINISTRATIVELY_PROHIBITED,
@@ -1242,7 +1242,7 @@ class SSHClient(_SSHConnection):
 
     def handle_auth_banner(self, msg, lang):
         """Handle an incoming authentication banner
-        
+
            This method is called when the server sends a banner to display
            during authentication. Applications should implement this method
            if they wish to do something with the banner.
@@ -1616,10 +1616,10 @@ class SSHServer(_SSHConnection):
 
     def _get_server_host_key_algs(self):
         """Return the list of acceptable server host key algorithms
-        
+
            Return the algorithms which correspond to the available server
            host keys.
-           
+
         """
 
         return self._server_host_keys.keys()
@@ -1639,7 +1639,7 @@ class SSHServer(_SSHConnection):
                 return True
 
         return False
-            
+
     def _process_session_open(self, packet):
         packet.check_end()
 
@@ -1759,7 +1759,7 @@ class SSHServer(_SSHConnection):
 
     def public_key_auth_supported(self):
         """Return whether or not public key authentication is supported
-        
+
            This method should return ``True`` if client public key
            authentication is supported. Applications wishing to support
            it must have this method return ``True`` and implement
@@ -1777,7 +1777,7 @@ class SSHServer(_SSHConnection):
 
     def validate_public_key(self, username, key):
         """Return whether key is an authorized client key for this user
-        
+
            This method should return ``True`` if the specified key is a
            valid client key for the user being authenticated. It must
            be overridden by applications wishing to support client public
@@ -1805,7 +1805,7 @@ class SSHServer(_SSHConnection):
 
     def password_auth_supported(self):
         """Return whether or not password authentication is supported
-        
+
            This method should return ``True`` if password authentication
            is supported. Applications wishing to support it must have
            this method return ``True`` and implement :meth:`validate_password`
@@ -1852,7 +1852,7 @@ class SSHServer(_SSHConnection):
     def kbdint_auth_supported(self):
         """Return whether or not keyboard-interactive authentication
            is supported
-           
+
            This method should return ``True`` if keyboard-interactive
            authentication is supported. Applications wishing to support
            it must have this method return ``True`` and implement
@@ -2056,7 +2056,7 @@ class SSHServer(_SSHConnection):
 
 class SSHListener(asyncore.dispatcher):
     """SSH listener
-    
+
        This is a helper class which can be wrapped around subclasses of
        :class:`SSHServer` to listen for incoming connections and
        automatically instantiate a new instance of the server as each

@@ -4,9 +4,9 @@
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v1.0 which accompanies this
 # distribution and is available at:
-# 
+#
 #     http://www.eclipse.org/legal/epl-v10.html
-# 
+#
 # Contributors:
 #     Ron Frederick - initial implementation, API, and documentation
 
@@ -471,13 +471,13 @@ class _ECKey(SSHKey):
 
 def register_prime_domain(id, oid, hash, p, a, b, Gx, Gy, n):
     """Register an elliptic curve prime domain
-    
+
        This function registers an elliptic curve prime domain by
        specifying the SSH identifier for the curve, the OID used to
        identify the curve in PKCS#1 and PKCS#8 private and public keys,
        the hash algorithm used to hash messages, and the set of domain
        parameters describing the curve, generator point, and order.
-    
+
     """
 
     oid = ObjectIdentifier(oid)

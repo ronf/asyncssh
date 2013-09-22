@@ -4,9 +4,9 @@
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v1.0 which accompanies this
 # distribution and is available at:
-# 
+#
 #     http://www.eclipse.org/legal/epl-v10.html
-# 
+#
 # Contributors:
 #     Ron Frederick - initial implementation, API, and documentation
 
@@ -255,5 +255,5 @@ register_kex_algorithm(b'diffie-hellman-group-exchange-sha1',
 
 register_kex_algorithm(b'diffie-hellman-group14-sha1',
                        _KexDH, sha1, (_group14_g, _group14_p))
-register_kex_algorithm(b'diffie-hellman-group1-sha1', 
+register_kex_algorithm(b'diffie-hellman-group1-sha1',
                        _KexDH, sha1, (_group1_g,  _group1_p))

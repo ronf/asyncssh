@@ -4,9 +4,9 @@
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v1.0 which accompanies this
 # distribution and is available at:
-# 
+#
 #     http://www.eclipse.org/legal/epl-v10.html
-# 
+#
 # Contributors:
 #     Ron Frederick - initial implementation, API, and documentation
 
@@ -33,7 +33,7 @@ def _wrap_base64(data):
 
 class KeyImportError(ValueError):
     """Key import error
-    
+
        This exception is raised by key import functions when the
        data provided cannot be imported as a valid key.
 
@@ -43,7 +43,7 @@ class KeyImportError(ValueError):
 
 class KeyExportError(ValueError):
     """Key export error
-    
+
        This exception is raised by key export functions when the
        requested format is unknown or encryption is requested for a
        format which doesn't support it.
@@ -536,13 +536,13 @@ def import_private_key(data, passphrase=None):
 
 def import_public_key(data):
     """Import a public key
-    
+
        This function imports a public key encoded in OpenSSH, RFC4716, or
        PKCS#1 or PKCS#8 DER or PEM format.
 
        :param bytes data:
            The data to import.
-       
+
        :rtype: :class:`SSHKey` public key
 
     """
@@ -585,7 +585,7 @@ def read_public_key(filename):
 
        :param string filename:
            The file to read the key from.
-       
+
        :rtype: :class:`SSHKey` public key
 
     """
@@ -639,7 +639,7 @@ def read_public_key_list(filename):
 
        :param string filename:
            The file to read the keys from.
-       
+
        :rtype: list of :class:`SSHKey` public keys
 
     """

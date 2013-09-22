@@ -4,9 +4,9 @@
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v1.0 which accompanies this
 # distribution and is available at:
-# 
+#
 #     http://www.eclipse.org/legal/epl-v10.html
-# 
+#
 # Contributors:
 #     Ron Frederick - initial implementation, API, and documentation
 
@@ -36,11 +36,11 @@ def mod_inverse(x, m):
 
 class SSHError(Exception):
     """General SSH error
-    
+
        This exception is returned when a general SSH error occurs,
        causing the SSH connection to be disconnected. Exception codes
        should be taken from :ref:`disconnect reason codes <DisconnectReasons>`.
-       
+
        :param integer code:
            Disconnect reason, taken from :ref:`disconnect reason
            codes <DisconnectReasons>`.

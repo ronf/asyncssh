@@ -4,9 +4,9 @@
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v1.0 which accompanies this
 # distribution and is available at:
-# 
+#
 #     http://www.eclipse.org/legal/epl-v10.html
-# 
+#
 # Contributors:
 #     Ron Frederick - initial implementation, API, and documentation
 
@@ -39,7 +39,7 @@ def get_encryption_algs():
 
 def choose_encryption_algorithm(conn, peer_enc_algs):
     """Choose the cipher to use
-    
+
        This function returns the cipher to use and the number of bytes of
        data needed for its key and iv.
 
