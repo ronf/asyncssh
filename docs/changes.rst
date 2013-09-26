@@ -3,8 +3,8 @@
 Change Log
 ==========
 
-Release 0.2.0
--------------
+Release 0.2.0 (September 21, 2013)
+----------------------------------
 
 * Added support in :class:`SSHClient` for the following methods related
   to performing standard SSH port forwarding:
@@ -33,7 +33,7 @@ Release 0.2.0
 * Removed a debug print statement accidentally left in related to
   SSH rekeying
 
-Release 0.1.0
--------------
+Release 0.1.0 (September 14, 2013)
+----------------------------------
 
-* Initial public release
+* Initial release
