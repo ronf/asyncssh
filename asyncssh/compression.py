@@ -14,10 +14,6 @@
 
 import zlib
 
-from .constants import *
-from .misc import *
-from .packet import *
-
 _cmp_algs = []
 _cmp_compressors = {}
 _cmp_decompressors = {}
@@ -29,7 +25,7 @@ def _None():
     return None
 
 class _ZLibCompress:
-    """Wrapper class to force a sync flush when compressing."""
+    """Wrapper class to force a sync flush when compressing"""
 
     def __init__(self):
         self._comp = zlib.compressobj()
@@ -37,7 +33,7 @@ class _ZLibCompress:
     def compress(self, data):
         return self._comp.compress(data) + self._comp.flush(zlib.Z_SYNC_FLUSH)
 
-def register_compression_algorithm(alg, compressor, decompressor, after_auth):
+def register_compression_alg(alg, compressor, decompressor, after_auth):
     """Register a compression algorithm"""
 
     _cmp_algs.append(alg)
@@ -50,25 +46,15 @@ def get_compression_algs():
 
     return _cmp_algs
 
-def choose_compression_algorithm(conn, peer_cmp_algs):
-    """Choose the compression algorithm to use
+def lookup_compression_alg(alg):
+    """Look up a compression algorithm
 
-       This function returns the compression algorithm to use.
+       This function looks up a compression algorithm and returns whether
+       or not compression should be delayed until after authentication.
+
     """
 
-    if conn.is_client():
-        client_algs = _cmp_algs
-        server_algs = peer_cmp_algs
-    else:
-        client_algs = peer_cmp_algs
-        server_algs = _cmp_algs
-
-    for alg in client_algs:
-        if alg in server_algs:
-            return alg, _cmp_after_auth[alg]
-
-    raise SSHError(DISC_KEY_EXCHANGE_FAILED,
-                   b'No matching compression algorithm found')
+    return _cmp_after_auth[alg]
 
 def get_compressor(alg):
     """Return an instance of a compressor
@@ -88,8 +74,9 @@ def get_decompressor(alg):
 
     return _cmp_decompressors[alg]()
 
-register_compression_algorithm(b'zlib@openssh.com',
-                               _ZLibCompress, zlib.decompressobj, True)
-register_compression_algorithm(b'zlib',
-                               _ZLibCompress, zlib.decompressobj, False)
-register_compression_algorithm(b'none', _None,         _None,     False)
+register_compression_alg(b'zlib@openssh.com',
+                         _ZLibCompress, zlib.decompressobj, True)
+register_compression_alg(b'zlib',
+                         _ZLibCompress, zlib.decompressobj, False)
+register_compression_alg(b'none',
+                         _None,         _None,              False)

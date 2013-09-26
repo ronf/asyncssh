@@ -15,9 +15,7 @@
 import hmac
 from hashlib import md5, sha1, sha256, sha512
 
-from .constants import *
-from .misc import *
-from .packet import *
+_ETM = b'-etm@openssh.com'
 
 _mac_algs = []
 _mac_sizes = {}
@@ -42,45 +40,31 @@ class _MAC:
 
         return self.sign(data) == sig
 
-def register_mac_algorithm(alg, hash, key_size, hash_size):
+def register_mac_alg(alg, hash, key_size, hash_size):
     """Register a MAC algorithm"""
 
     _mac_algs.append(alg)
     _mac_sizes[alg] = (key_size, hash_size)
+    _mac_sizes[alg + _ETM] = (key_size, hash_size)
     _mac_handlers[alg] = (hash, hash_size)
+    _mac_handlers[alg + _ETM] = (hash, hash_size)
 
 def get_mac_algs():
     """Return a list of available MAC algorithms"""
 
-    return [alg + b'-etm@openssh.com' for alg in _mac_algs] + _mac_algs
+    return [alg + _ETM for alg in _mac_algs] + _mac_algs
 
-def choose_mac_algorithm(conn, peer_mac_algs):
-    """Choose the MAC algorithm to use
+def lookup_mac_alg(alg):
+    """Look up a MAC algorithm
 
-       This function returns the MAC algorithm to use and the number of
-       bytes of data needed for its key.
+       This function looks up a MAC algorithm and returns its key and hash
+       sizes and whether or not to compute the MAC before or after
+       encryption.
+
     """
 
-    if conn.is_client():
-        client_algs = get_mac_algs()
-        server_algs = peer_mac_algs
-    else:
-        client_algs = peer_mac_algs
-        server_algs = get_mac_algs()
-
-    for alg in client_algs:
-        if alg in server_algs:
-            if alg.endswith(b'-etm@openssh.com'):
-                alg = alg[:-16]
-                etm = True
-            else:
-                etm = False
-
-            key_size, hash_size = _mac_sizes[alg]
-            return alg, key_size, hash_size, etm
-
-    raise SSHError(DISC_KEY_EXCHANGE_FAILED,
-                   'No matching MAC algorithm found')
+    key_size, hash_size = _mac_sizes[alg]
+    return key_size, hash_size, alg.endswith(_ETM)
 
 def get_mac(alg, key):
     """Return an instance of a MAC generator
@@ -93,11 +77,11 @@ def get_mac(alg, key):
     hash, hash_size = _mac_handlers[alg]
     return _MAC(alg, hash, hash_size, key)
 
-register_mac_algorithm(b'hmac-sha2-256',    sha256, 32, 32)
-register_mac_algorithm(b'hmac-sha2-512',    sha512, 64, 64)
-register_mac_algorithm(b'hmac-sha1',        sha1,   20, 20)
-register_mac_algorithm(b'hmac-md5',         md5,    16, 16)
-register_mac_algorithm(b'hmac-sha2-256-96', sha256, 32, 12)
-register_mac_algorithm(b'hmac-sha2-512-96', sha512, 64, 12)
-register_mac_algorithm(b'hmac-sha1-96',     sha1,   20, 12)
-register_mac_algorithm(b'hmac-md5-96',      md5,    16, 12)
+register_mac_alg(b'hmac-sha2-256',    sha256, 32, 32)
+register_mac_alg(b'hmac-sha2-512',    sha512, 64, 64)
+register_mac_alg(b'hmac-sha1',        sha1,   20, 20)
+register_mac_alg(b'hmac-md5',         md5,    16, 16)
+register_mac_alg(b'hmac-sha2-256-96', sha256, 32, 12)
+register_mac_alg(b'hmac-sha2-512-96', sha512, 64, 12)
+register_mac_alg(b'hmac-sha1-96',     sha1,   20, 12)
+register_mac_alg(b'hmac-md5-96',      md5,    16, 12)

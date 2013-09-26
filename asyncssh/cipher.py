@@ -15,49 +15,33 @@
 from Crypto.Cipher import AES, ARC4, Blowfish, CAST, DES3
 from Crypto.Util import Counter
 
-from .constants import *
-from .misc import *
-from .packet import *
-
 _enc_algs = []
 _enc_ciphers = {}
 _enc_sizes = {}
 
 _pem_ciphers = {}
 
-def register_encryption_algorithm(alg, cipher, mode, key_size):
-    """Register a cipher"""
+def register_encryption_alg(alg, cipher, mode, key_size):
+    """Register an encryption algorithm"""
 
     _enc_algs.append(alg)
     _enc_ciphers[alg] = (cipher, mode)
     _enc_sizes[alg] = (key_size, cipher.block_size)
 
 def get_encryption_algs():
-    """Return a list of available ciphers"""
+    """Return a list of available encryption algorithms"""
 
     return _enc_algs
 
-def choose_encryption_algorithm(conn, peer_enc_algs):
-    """Choose the cipher to use
+def lookup_encryption_alg(alg):
+    """Look up an encryption algorithm
 
-       This function returns the cipher to use and the number of bytes of
-       data needed for its key and iv.
+       This function looks up an encryption algorithm and returns its key
+       and block sizes.
 
     """
 
-    if conn.is_client():
-        client_algs = _enc_algs
-        server_algs = peer_enc_algs
-    else:
-        client_algs = peer_enc_algs
-        server_algs = _enc_algs
-
-    for alg in client_algs:
-        if alg in server_algs:
-            key_size, block_size = _enc_sizes[alg]
-            return alg, key_size, block_size
-
-    raise SSHError(DISC_KEY_EXCHANGE_FAILED, 'No matching cipher found')
+    return _enc_sizes[alg]
 
 def get_cipher(alg, key, iv=None):
     """Return an instance of a cipher
@@ -84,15 +68,15 @@ def get_cipher(alg, key, iv=None):
     else:
         return cipher.new(key, mode=mode, IV=iv)
 
-register_encryption_algorithm(b'aes256-ctr',   AES,      AES.MODE_CTR,      32)
-register_encryption_algorithm(b'aes192-ctr',   AES,      AES.MODE_CTR,      24)
-register_encryption_algorithm(b'aes128-ctr',   AES,      AES.MODE_CTR,      16)
-register_encryption_algorithm(b'aes256-cbc',   AES,      AES.MODE_CBC,      32)
-register_encryption_algorithm(b'aes192-cbc',   AES,      AES.MODE_CBC,      24)
-register_encryption_algorithm(b'aes128-cbc',   AES,      AES.MODE_CBC,      16)
-register_encryption_algorithm(b'3des-cbc',     DES3,     DES3.MODE_CBC,     24)
-register_encryption_algorithm(b'blowfish-cbc', Blowfish, Blowfish.MODE_CBC, 16)
-register_encryption_algorithm(b'cast128-cbc',  CAST,     CAST.MODE_CBC,     16)
-register_encryption_algorithm(b'arcfour256',   ARC4,     1536,              32)
-register_encryption_algorithm(b'arcfour128',   ARC4,     1536,              16)
-register_encryption_algorithm(b'arcfour',      ARC4,     0,                 16)
+register_encryption_alg(b'aes256-ctr',   AES,      AES.MODE_CTR,      32)
+register_encryption_alg(b'aes192-ctr',   AES,      AES.MODE_CTR,      24)
+register_encryption_alg(b'aes128-ctr',   AES,      AES.MODE_CTR,      16)
+register_encryption_alg(b'aes256-cbc',   AES,      AES.MODE_CBC,      32)
+register_encryption_alg(b'aes192-cbc',   AES,      AES.MODE_CBC,      24)
+register_encryption_alg(b'aes128-cbc',   AES,      AES.MODE_CBC,      16)
+register_encryption_alg(b'3des-cbc',     DES3,     DES3.MODE_CBC,     24)
+register_encryption_alg(b'blowfish-cbc', Blowfish, Blowfish.MODE_CBC, 16)
+register_encryption_alg(b'cast128-cbc',  CAST,     CAST.MODE_CBC,     16)
+register_encryption_alg(b'arcfour256',   ARC4,     1536,              32)
+register_encryption_alg(b'arcfour128',   ARC4,     1536,              16)
+register_encryption_alg(b'arcfour',      ARC4,     0,                 16)

@@ -504,7 +504,7 @@ def register_prime_domain(id, oid, hash, p, a, b, Gx, Gy, n):
 
     _ECKey.algorithms.append(algorithm)
 
-    register_kex_algorithm(b'ecdh-sha2-' + id, _KexECDH, hash, (G, n))
+    register_kex_alg(b'ecdh-sha2-' + id, _KexECDH, hash, G, n)
 
 register_prime_domain(b'nistp521', '1.3.132.0.35', sha512,
                       6864797660130609714981900799081393217269435300143305409394463459185543183397656052122559640661454554977296311391480858037121987999716643812574028291115057151,
@@ -530,4 +530,4 @@ register_prime_domain(b'nistp256', '1.2.840.10045.3.1.7', sha256,
                       0x4fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5,
                       115792089210356248762697446949407573529996955224135760342422259061068512044369)
 
-register_public_key_algorithm(_ECKey)
+register_public_key_alg(_ECKey)

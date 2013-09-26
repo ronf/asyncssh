@@ -473,7 +473,7 @@ def _decode_rfc4716(lines):
 
     return decode_ssh_public_key(data), end+1
 
-def register_public_key_algorithm(handler):
+def register_public_key_alg(handler):
     """Register a new public key algorithm"""
 
     if hasattr(handler, 'algorithms'):

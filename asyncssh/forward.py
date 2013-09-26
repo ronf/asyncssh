@@ -12,7 +12,7 @@
 
 """SSH port forwarding handlers"""
 
-import asyncore, socket
+import asyncore, socket, sys, traceback
 
 from .connection import *
 from .constants import *
@@ -69,6 +69,10 @@ class _ForwardDispatcher(asyncore.dispatcher):
             self._eof_sent = True
             if self._eof_received:
                 self.handle_close()
+
+    def handle_error(self):
+        traceback.print_exc()
+        sys.exit(1)
 
     def handle_close(self):
         self._forwarder.close()

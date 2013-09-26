@@ -145,4 +145,4 @@ class _DSAKey(SSHKey):
                                  int.from_bytes(sig[20:], 'big')))
 
 
-register_public_key_algorithm(_DSAKey)
+register_public_key_alg(_DSAKey)

@@ -487,13 +487,90 @@ KeyEncryptionError
 .. index:: Constants
 .. _Constants:
 
+Supported Algorithms
+====================
+
+.. index:: Key exchange algorithms
+.. _KexAlgs:
+
+Key exchange algorithms
+-----------------------
+
+The following are the key exchange algorithms currently supported by AsyncSSH:
+
+  | ecdh-sha2-nistp521
+  | ecdh-sha2-nistp384
+  | ecdh-sha2-nistp256
+  | diffie-hellman-group-exchange-sha256
+  | diffie-hellman-group-exchange-sha1
+  | diffie-hellman-group14-sha1
+  | diffie-hellman-group1-sha1
+
+.. index:: Encryption algorithms
+.. _EncryptionAlgs:
+
+Encryption algorithms
+---------------------
+
+The following are the encryption algorithms currently supported by AsyncSSH:
+
+  | aes256-ctr
+  | aes192-ctr
+  | aes128-ctr
+  | aes256-cbc
+  | aes192-cbc
+  | aes128-cbc
+  | 3des-cbc
+  | blowfish-cbc
+  | cast128-cbc
+  | arcfour256
+  | arcfour128
+  | arcfour
+
+.. index:: MAC algorithms
+.. _MACAlgs:
+
+MAC algorithms
+--------------
+
+The following are the MAC algorithms currently supported by AsyncSSH:
+
+  | hmac-sha2-256-etm\@openssh.com
+  | hmac-sha2-512-etm\@openssh.com
+  | hmac-sha1-etm\@openssh.com
+  | hmac-md5-etm\@openssh.com
+  | hmac-sha2-256-96-etm\@openssh.com
+  | hmac-sha2-512-96-etm\@openssh.com
+  | hmac-sha1-96-etm\@openssh.com
+  | hmac-md5-96-etm\@openssh.com
+  | hmac-sha2-256
+  | hmac-sha2-512
+  | hmac-sha1
+  | hmac-md5
+  | hmac-sha2-256-96
+  | hmac-sha2-512-96
+  | hmac-sha1-96
+  | hmac-md5-96
+
+.. index:: Compression algorithms
+.. _CompressionAlgs:
+
+Compression algorithms
+----------------------
+
+The following are the compression algorithms currently supported by AsyncSSH:
+
+  | zlib\@openssh.com
+  | zlib
+  | none
+
 Constants
 =========
 
 .. index:: Disconnect reasons
 .. _DisconnectReasons:
 
-Disconnect Reasons
+Disconnect reasons
 ------------------
 
 The following values specified in section 11.1 of :rfc:`4253#section-11.1`
@@ -518,7 +595,7 @@ can be specified as disconnect reason codes:
 .. index:: Channel open failure reasons
 .. _ChannelOpenFailureReasons:
 
-Channel Open Failure Reasons
+Channel open failure reasons
 ----------------------------
 
 The following values defined in section 5.1 of :rfc:`4254#section-5.1` can
@@ -534,7 +611,7 @@ be specified as channel open failure reason codes:
 .. index:: Extended data types
 .. _ExtendedDataTypes:
 
-Extended Data Types
+Extended data types
 -------------------
 
 The following values defined in section 5.2 of :rfc:`4254#section-5.2` can
@@ -545,7 +622,7 @@ be specified as SSH extended channel data types:
 .. index:: POSIX terminal modes
 .. _PTYModes:
 
-POSIX Terminal Modes
+POSIX terminal modes
 --------------------
 
 The following values defined in section 8 of :rfc:`4254#section-8` can be

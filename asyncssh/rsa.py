@@ -134,4 +134,4 @@ class _RSAKey(SSHKey):
         return PKCS1_v1_5.new(self._key).verify(SHA.new(data), sig)
 
 
-register_public_key_algorithm(_RSAKey)
+register_public_key_alg(_RSAKey)

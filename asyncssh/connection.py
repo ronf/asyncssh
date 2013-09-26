@@ -12,7 +12,7 @@
 
 """SSH connection handlers"""
 
-import asyncore, getpass, os, socket, sys, time
+import asyncore, getpass, os, socket, sys, time, traceback
 from collections import OrderedDict
 from os import urandom
 
@@ -46,10 +46,34 @@ _DEFAULT_REKEY_SECONDS  = 3600          # 1 hour
 # Special remote forwarder for SSHClient.listen()
 _LISTEN = object()
 
+def _select_algs(alg_type, algs, possible_algs, none_value=None):
+    """Select a set of allowed algorithms"""
+
+    if algs == ...:
+        return possible_algs
+    elif algs:
+        result = []
+
+        for alg_str in algs:
+            alg = alg_str.encode('ascii')
+            if alg not in possible_algs:
+                raise ValueError('%s is not a valid %s algorithm' %
+                                     (alg_str, alg_type))
+
+            result.append(alg)
+
+        return result
+    elif none_value:
+        return [none_value]
+    else:
+        raise ValueError('No %s algorithms selected' % alg_type)
+
+
 class _SSHConnection(asyncore.dispatcher, SSHPacketHandler):
     """Parent class for SSH Connection handlers"""
 
-    def __init__(self, sock, rekey_bytes, rekey_seconds, server):
+    def __init__(self, sock, kex_algs, encryption_algs, mac_algs,
+                 compression_algs, rekey_bytes, rekey_seconds, server):
         asyncore.dispatcher.__init__(self, sock)
 
         self.client_version = b''
@@ -139,6 +163,13 @@ class _SSHConnection(asyncore.dispatcher, SSHPacketHandler):
         self._disconnected = False
         self._closing = False
 
+        self._kex_algs = _select_algs('key exchange', kex_algs, get_kex_algs())
+        self._enc_algs = _select_algs('encryption', encryption_algs,
+                                      get_encryption_algs())
+        self._mac_algs = _select_algs('MAC', mac_algs, get_mac_algs())
+        self._cmp_algs = _select_algs('compression', compression_algs,
+                                      get_compression_algs(), b'none')
+
     def _cleanup(self):
         if not self._closing:
             self._closing = True
@@ -198,7 +229,8 @@ class _SSHConnection(asyncore.dispatcher, SSHPacketHandler):
                                    DEFAULT_LANG)
             self.handle_close()
         else:
-            super().handle_error()
+            traceback.print_exc()
+            sys.exit(1)
 
     def handle_close(self):
         if not self._disconnected:
@@ -207,6 +239,19 @@ class _SSHConnection(asyncore.dispatcher, SSHPacketHandler):
                                    DEFAULT_LANG)
 
         self._cleanup()
+
+    def _choose_alg(self, alg_type, local_algs, remote_algs):
+        if self.is_client():
+            client_algs, server_algs = local_algs, remote_algs
+        else:
+            client_algs, server_algs = remote_algs, local_algs
+
+        for alg in client_algs:
+            if alg in server_algs:
+                return alg
+
+        raise SSHError(DISC_KEY_EXCHANGE_FAILED,
+                       'No matching %s algorithm found' % alg_type)
 
     def _get_recv_chan(self):
         while self._next_recv_chan in self._channels:
@@ -430,11 +475,11 @@ class _SSHConnection(asyncore.dispatcher, SSHPacketHandler):
         self._rekey_time = time.time() + self._rekey_seconds
 
         cookie = urandom(16)
-        kex_algs = NameList(get_kex_algs())
+        kex_algs = NameList(self._kex_algs)
         host_key_algs = NameList(self._get_server_host_key_algs())
-        enc_algs = NameList(get_encryption_algs())
-        mac_algs = NameList(get_mac_algs())
-        cmp_algs = NameList(get_compression_algs())
+        enc_algs = NameList(self._enc_algs)
+        mac_algs = NameList(self._mac_algs)
+        cmp_algs = NameList(self._cmp_algs)
         langs = NameList([])
 
         packet = b''.join((Byte(MSG_KEXINIT), cookie, kex_algs, host_key_algs,
@@ -680,24 +725,36 @@ class _SSHConnection(asyncore.dispatcher, SSHPacketHandler):
         else:
             self._send_kexinit()
 
-        self._kex = choose_kex_algorithm(self, kex_algs)
+        kex_alg = self._choose_alg('key exchange', self._kex_algs, kex_algs)
+        self._kex = lookup_kex_alg(self, kex_alg)
         self._ignore_first_kex = (first_kex_follows and
                                   self._kex.algorithm != kex_algs[0])
 
-        self._enc_alg_cs, self._enc_keysize_cs, self._enc_blocksize_cs = \
-            choose_encryption_algorithm(self, enc_algs_cs)
-        self._enc_alg_sc, self._enc_keysize_sc, self._enc_blocksize_sc = \
-            choose_encryption_algorithm(self, enc_algs_sc)
+        self._enc_alg_cs = self._choose_alg('encryption', self._enc_algs,
+                                            enc_algs_cs)
+        self._enc_keysize_cs, self._enc_blocksize_cs = \
+            lookup_encryption_alg(self._enc_alg_cs)
 
-        self._mac_alg_cs, self._mac_keysize_cs, self._mac_hashsize_cs, \
-            self._etm_cs = choose_mac_algorithm(self, mac_algs_cs)
-        self._mac_alg_sc, self._mac_keysize_sc, self._mac_hashsize_sc, \
-            self._etm_sc = choose_mac_algorithm(self, mac_algs_sc)
+        self._enc_alg_sc = self._choose_alg('encryption', self._enc_algs,
+                                            enc_algs_sc)
+        self._enc_keysize_sc, self._enc_blocksize_sc = \
+            lookup_encryption_alg(self._enc_alg_sc)
 
-        self._cmp_alg_cs, self._cmp_after_auth_cs = \
-            choose_compression_algorithm(self, cmp_algs_cs)
-        self._cmp_alg_sc, self._cmp_after_auth_sc = \
-            choose_compression_algorithm(self, cmp_algs_sc)
+        self._mac_alg_cs = self._choose_alg('MAC', self._mac_algs, mac_algs_cs)
+        self._mac_keysize_cs, self._mac_hashsize_cs, self._etm_cs = \
+            lookup_mac_alg(self._mac_alg_cs)
+
+        self._mac_alg_sc = self._choose_alg('MAC', self._mac_algs, mac_algs_sc)
+        self._mac_keysize_sc, self._mac_hashsize_sc, self._etm_sc = \
+            lookup_mac_alg(self._mac_alg_sc)
+
+        self._cmp_alg_cs = self._choose_alg('compression', self._cmp_algs,
+                                            cmp_algs_cs)
+        self._cmp_after_auth_cs = lookup_compression_alg(self._cmp_alg_cs)
+
+        self._cmp_alg_sc = self._choose_alg('compression', self._cmp_algs,
+                                            cmp_algs_sc)
+        self._cmp_after_auth_sc = lookup_compression_alg(self._cmp_alg_sc)
 
     def _process_newkeys(self, pkttype, packet):
         """Process a new keys message, finishing a key exchange"""
@@ -1080,6 +1137,19 @@ class SSHClient(_SSHConnection):
            keyboard-interactive authentication which prompts for a password.
            If this is not specified, client password authentication will
            not be performed.
+       :param kex_algs: (optional)
+           A list of allowed key exchange algorithms in the SSH handshake,
+           taken from :ref:`key exchange algorithms <KexAlgs>`
+       :param encryption_algs: (optional)
+           A list of encryption algorithms to use during the SSH handshake,
+           taken from :ref:`encryption algorithms <EncryptionAlgs>`
+       :param mac_algs: (optional)
+           A list of MAC algorithms to use during the SSH handshake, taken
+           from :ref:`MAC algorithms <MACAlgs>`
+       :param compression_algs: (optional)
+           A list of compression algorithms to use during the SSH handshake,
+           taken from :ref:`compression algorithms <CompressionAlgs>`, or
+           ``None`` to disable compression
        :param integer rekey_bytes: (optional)
            The number of bytes which can be sent before the SSH session
            key is renegotiated. This defaults to 1 GB.
@@ -1089,18 +1159,25 @@ class SSHClient(_SSHConnection):
        :type addr: tuple of string and integer
        :type server_host_keys: *list of* :class:`SSHKey` *public keys*
        :type client_keys: *list of* :class:`SSHKey` *private keys*
+       :type kex_algs: list of strings
+       :type encryption_algs: list of strings
+       :type mac_algs: list of strings
+       :type compression_algs: list of strings
 
     """
 
     def __init__(self, addr, server_host_keys=(), username=None,
-                 client_keys=(), password=None,
+                 client_keys=(), password=None, kex_algs=...,
+                 encryption_algs=..., mac_algs=..., compression_algs=...,
                  rekey_bytes=_DEFAULT_REKEY_BYTES,
                  rekey_seconds=_DEFAULT_REKEY_SECONDS):
         if isinstance(addr, str):
             addr = (addr, _DEFAULT_PORT)
 
         sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
-        super().__init__(sock, rekey_bytes, rekey_seconds, server=False)
+        super().__init__(sock, kex_algs, encryption_algs, mac_algs,
+                         compression_algs, rekey_bytes, rekey_seconds,
+                         server=False)
 
         try:
             self.connect(addr)
@@ -1800,6 +1877,19 @@ class SSHServer(_SSHConnection):
        :param server_host_keys:
            A list of private keys which can be presented as host keys
            during the SSH handshake
+       :param kex_algs: (optional)
+           A list of allowed key exchange algorithms in the SSH handshake,
+           taken from :ref:`key exchange algorithms <KexAlgs>`
+       :param encryption_algs: (optional)
+           A list of encryption algorithms to use during the SSH handshake,
+           taken from :ref:`encryption algorithms <EncryptionAlgs>`
+       :param mac_algs: (optional)
+           A list of MAC algorithms to use during the SSH handshake, taken
+           from :ref:`MAC algorithms <MACAlgs>`
+       :param compression_algs: (optional)
+           A list of compression algorithms to use during the SSH handshake,
+           taken from :ref:`compression algorithms <CompressionAlgs>`, or
+           ``None`` to disable compression
        :param integer rekey_bytes: (optional)
            The number of bytes which can be sent before the SSH session
            key is renegotiated
@@ -1808,10 +1898,15 @@ class SSHServer(_SSHConnection):
            renegotiated
        :type addr: *tuple of string and three integers or* ``None``
        :type server_host_keys: *list of* :class:`SSHKey` *private keys*
+       :type kex_algs: list of strings
+       :type encryption_algs: list of strings
+       :type mac_algs: list of strings
+       :type compression_algs: list of strings
 
     """
 
-    def __init__(self, sock, client_addr, server_host_keys,
+    def __init__(self, sock, client_addr, server_host_keys, kex_algs=...,
+                 encryption_algs=..., mac_algs=..., compression_algs=...,
                  rekey_bytes=_DEFAULT_REKEY_BYTES,
                  rekey_seconds=_DEFAULT_REKEY_SECONDS):
         self.client_addr = client_addr
@@ -1827,7 +1922,9 @@ class SSHServer(_SSHConnection):
         if not self._server_host_keys:
             raise ValueError('No server host keys provided')
 
-        super().__init__(sock, rekey_bytes, rekey_seconds, server=True)
+        super().__init__(sock, kex_algs, encryption_algs, mac_algs,
+                         compression_algs, rekey_bytes, rekey_seconds,
+                         server=True)
         self._start()
 
     def _get_server_host_key_algs(self):

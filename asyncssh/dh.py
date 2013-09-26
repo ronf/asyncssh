@@ -248,12 +248,9 @@ class _KexDHGex(_KexDH):
     }
 
 
-register_kex_algorithm(b'diffie-hellman-group-exchange-sha256',
-                       _KexDHGex, sha256, ())
-register_kex_algorithm(b'diffie-hellman-group-exchange-sha1',
-                       _KexDHGex, sha1, ())
-
-register_kex_algorithm(b'diffie-hellman-group14-sha1',
-                       _KexDH, sha1, (_group14_g, _group14_p))
-register_kex_algorithm(b'diffie-hellman-group1-sha1',
-                       _KexDH, sha1, (_group1_g,  _group1_p))
+register_kex_alg(b'diffie-hellman-group-exchange-sha256', _KexDHGex, sha256)
+register_kex_alg(b'diffie-hellman-group-exchange-sha1',   _KexDHGex, sha1)
+register_kex_alg(b'diffie-hellman-group14-sha1',          _KexDH,    sha1,
+                 _group14_g, _group14_p)
+register_kex_alg(b'diffie-hellman-group1-sha1',           _KexDH,    sha1,
+                 _group1_g,  _group1_p)

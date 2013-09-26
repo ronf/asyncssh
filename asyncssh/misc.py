@@ -12,7 +12,7 @@
 
 """Miscellaneous utility classes and functions"""
 
-import asyncore, socket
+import asyncore, socket, sys, traceback
 
 from .constants import *
 
@@ -94,6 +94,11 @@ class Listener(asyncore.dispatcher):
         else:
             sock.close()
 
+    def handle_error(self):
+        """Handle an unexpected error while accepting a connection"""
+
+        traceback.print_exc()
+        sys.exit(1)
 
 class SSHError(Exception):
     """General SSH error
