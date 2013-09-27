@@ -3,8 +3,27 @@
 Change Log
 ==========
 
-Release 0.2.0 (September 21, 2013)
-----------------------------------
+Release 0.3.0 (26 Sep 2013)
+---------------------------
+
+* Added support in :class:`SSHClient` and :class:`SSHServer` for setting
+  the key exchange, encryption, MAC, and compression algorithms allowed
+  in the SSH handshake
+
+* Refactored the algorithm selection code to pull a common matching
+  function back into ``_SSHConnection`` and simplify other modules
+
+* Extended the listener class to open multiple listening sockets when
+  necessary, fixing a bug where sockets opened to listen on ``localhost``
+  were not properly accepting both IPv4 and IPv6 connections
+
+  Now, any listen request which resolves to multiple addresses will open
+  listening sockets for each address.
+
+* Fixed a bug related to tracking of listeners opened on dynamic ports
+
+Release 0.2.0 (21 Sep 2013)
+---------------------------
 
 * Added support in :class:`SSHClient` for the following methods related
   to performing standard SSH port forwarding:
@@ -33,7 +52,7 @@ Release 0.2.0 (September 21, 2013)
 * Removed a debug print statement accidentally left in related to
   SSH rekeying
 
-Release 0.1.0 (September 14, 2013)
-----------------------------------
+Release 0.1.0 (14 Sep 2013)
+---------------------------
 
 * Initial release
