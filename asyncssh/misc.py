@@ -84,16 +84,18 @@ class Listener(asyncore.dispatcher):
        that port on all interfaces.
 
        The callback function will be passed the newly opened socket and
-       a tuple of IPv6 client address information, followed by any
-       additional arguments passed to this class when it was created.
+       tuples of the listen address and client address information,
+       followed by any additional arguments passed to this class when
+       it was created.
 
-       :param listen_addr:
-           The address and port to listen on
+       :param string host:
+           The host address to listen on
+       :param integer port:
+           The port to listen on
        :param function callback:
            The function to call when new connections arrive
        :param \*args,\ \*\*kwargs:
            Additional arguments to pass to ``callback``
-       :type listen_addr: tuple of string and integer, or just integer
 
     """
 
