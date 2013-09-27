@@ -36,6 +36,44 @@ def mod_inverse(x, m):
         raise ValueError('%d has no inverse mod %d' % (x, m))
 
 
+class _ListenSock(asyncore.dispatcher):
+    """An asynchronous wrapper around a listening socket"""
+
+    def __init__(self, family, socktype, listen_addr,
+                 callback=None, *args, **kwargs):
+        asyncore.dispatcher.__init__(self)
+
+        self._listen_addr = listen_addr
+
+        try:
+            self.create_socket(family, socktype)
+            self.set_reuse_addr()
+            if family == socket.AF_INET6:
+                self.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
+            self.bind(listen_addr)
+            self.listen_addr = self.socket.getsockname()
+            self.listen(5)
+        except socket.error:
+            self.close()
+            raise
+
+        self._callback = callback
+        self._args = args
+        self._kwargs = kwargs
+
+    def handle_accepted(self, sock, client_addr):
+        """Handle a new incoming connection"""
+
+        self._callback(sock, self._listen_addr, client_addr,
+                       *self._args, **self._kwargs)
+
+    def handle_error(self):
+        """Handle an unexpected error while accepting a connection"""
+
+        traceback.print_exc()
+        sys.exit(1)
+
+
 class Listener(asyncore.dispatcher):
     """General socket listener
 
@@ -59,46 +97,38 @@ class Listener(asyncore.dispatcher):
 
     """
 
-    def __init__(self, listen_addr, callback=None, *args, **kwargs):
+    def __init__(self, host, port, callback=None, *args, **kwargs):
         asyncore.dispatcher.__init__(self)
 
-        if isinstance(listen_addr, int):
-            listen_addr = ('', listen_addr)
+        addrinfo = socket.getaddrinfo(host, port, socket.AF_UNSPEC,
+                                      socket.SOCK_STREAM, 0, socket.AI_PASSIVE)
 
-        try:
-            self.create_socket(socket.AF_INET6, socket.SOCK_STREAM)
-            self.set_reuse_addr()
-            self.bind(listen_addr)
-            self.addr = self.socket.getsockname()
-            self.listen(5)
-        except socket.error:
-            self.close()
-            raise
+        self._listen_socks = []
+        self.listen_addrs = []
+        self.listen_port = port
 
-        self._callback = callback
-        self._args = args
-        self._kwargs = kwargs
+        for family, socktype, proto, canonname, sockaddr in addrinfo:
+            if sockaddr[1] == 0:
+                sockaddr = sockaddr[:1] + (self.listen_port,) + sockaddr[2:]
 
-    def set_callback(self, callback, *args, **kwargs):
-        """Reset the callback for incoming connections"""
+            try:
+                sock = _ListenSock(family, socktype, sockaddr,
+                                   callback, *args, **kwargs)
+            except socket.error:
+                raise
 
-        self._callback = callback
-        self._args = args
-        self._kwargs = kwargs
+            self._listen_socks.append(sock)
+            self.listen_addrs.append(sock.listen_addr[0])
 
-    def handle_accepted(self, sock, client_addr):
-        """Handle a new incoming connection"""
+            if self.listen_port == 0:
+                self.listen_port = sock.listen_addr[1]
 
-        if self._callback:
-            self._callback(sock, client_addr, *self._args, **self._kwargs)
-        else:
+    def close(self):
+        """Close all listening sockets"""
+
+        for sock in self._listen_socks:
             sock.close()
 
-    def handle_error(self):
-        """Handle an unexpected error while accepting a connection"""
-
-        traceback.print_exc()
-        sys.exit(1)
 
 class SSHError(Exception):
     """General SSH error

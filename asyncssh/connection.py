@@ -1322,7 +1322,7 @@ class SSHClient(_SSHConnection):
 
             packet.check_end()
 
-            self._remote_forward_targets[(bind_addr, bind_port)] = dest
+            self._remote_forward_targets[(bind_addr.lower(), bind_port)] = dest
             if dest == _LISTEN:
                 self.handle_listen(bind_addr, bind_port)
             else:
@@ -1350,9 +1350,17 @@ class SSHClient(_SSHConnection):
         except UnicodeDecodeError:
             raise SSHError(DISC_PROTOCOL_ERROR, 'Invalid channel open request')
 
-        # TODO: Support listener matches for 'localhost', '::', and '0.0.0.0'
+        dest = self._remote_forward_targets.get((bind_addr.lower(), bind_port))
 
-        dest = self._remote_forward_targets.get((bind_addr, bind_port))
+        if not dest and bind_addr in ('127.0.0.1', '::1'):
+            dest = self._remote_forward_targets.get(('localhost', bind_port))
+
+        if not dest:
+            dest = self._remote_forward_targets.get(('0.0.0.0', bind_port))
+
+        if not dest:
+            dest = self._remote_forward_targets.get(('::', bind_port))
+
         if not dest:
             dest = self._remote_forward_targets.get(('', bind_port))
 
@@ -1364,11 +1372,11 @@ class SSHClient(_SSHConnection):
         else:
             raise ChannelOpenError(OPEN_CONNECT_FAILED, 'No such listener')
 
-    def _accept_direct_connection(self, sock, client_addr,
+    def _accept_direct_connection(self, sock, listen_addr, client_addr,
                                   dest_host, dest_port):
         """Accept a connection on a forwarded port"""
 
-        orig_host, orig_port, flowinfo, scopeid = client_addr
+        orig_host, orig_port = client_addr[:2]
 
         forwarder = SSHForwarder(self, sock)
         forwarder.connect(dest_host, dest_port, orig_host, orig_port)
@@ -1624,7 +1632,7 @@ class SSHClient(_SSHConnection):
 
         """
 
-        del self._remote_forward_targets[(bind_addr, bind_port)]
+        del self._remote_forward_targets[(bind_addr.lower(), bind_port)]
 
         self._send_cancel_tcpip_forward_request(bind_addr, bind_port)
 
@@ -1660,12 +1668,12 @@ class SSHClient(_SSHConnection):
 
         """
 
-        listener = Listener((bind_addr, bind_port),
+        listener = Listener(bind_addr, bind_port,
                             self._accept_direct_connection,
                             dest_host, dest_port)
 
-        self._local_listeners[(bind_addr, bind_port)] = listener
-        return listener.addr[1]
+        self._local_listeners[(bind_addr, listener.listen_port)] = listener
+        return listener.listen_port
 
     def cancel_local_port_forwarding(self, bind_addr, bind_port):
         """Stop forwarding from a local TCP/IP address and port
@@ -1953,11 +1961,11 @@ class SSHServer(_SSHConnection):
 
         return False
 
-    def _accept_forwarded_connection(self, sock, client_addr,
-                                     bind_addr, bind_port):
+    def _accept_forwarded_connection(self, sock, listen_addr, client_addr):
         """Accept a connection on a forwarded port"""
 
-        orig_host, orig_port, flowinfo, scopeid = client_addr
+        bind_addr, bind_port = listen_addr[:2]
+        orig_host, orig_port = client_addr[:2]
 
         forwarder = SSHForwarder(self, sock)
         forwarder.accept(bind_addr, bind_port, orig_host, orig_port)
@@ -2011,12 +2019,12 @@ class SSHServer(_SSHConnection):
 
         if result == True:
             # When result is True, set up standard port forwarding
-            listener = Listener((bind_addr, bind_port))
-
-            listener.set_callback(self._accept_forwarded_connection,
-                                  listener.addr[0], listener.addr[1])
-
-            result = listener.addr[1]
+            try:
+                listener = Listener(bind_addr, bind_port,
+                                    self._accept_forwarded_connection)
+                result = listener.listen_port
+            except socket.error:
+                return False
         else:
             # Otherwise, this is a custom listener
             listener = _LISTEN
@@ -2445,7 +2453,16 @@ class SSHListener(Listener):
 
     """
 
-    # This uses the internal Listener class, simply replacing the callback
-    # argument with the server_class to instantiate
     def __init__(self, listen_addr, server_class, *args, **kwargs):
-        super().__init__(listen_addr, server_class, *args, **kwargs)
+        if isinstance(listen_addr, tuple):
+            host, port = listen_addr
+        else:
+            host = ''
+            port = listen_addr
+
+        self._server_class = server_class
+
+        super().__init__(host, port, self.handle_accepted, *args, **kwargs)
+
+    def handle_accepted(self, sock, listen_addr, client_addr, *args, **kwargs):
+        self._server_class(sock, client_addr, *args, **kwargs)
