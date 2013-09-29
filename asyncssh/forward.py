@@ -19,9 +19,10 @@ from .constants import *
 from .misc import *
 
 class _ForwardDispatcher(asyncore.dispatcher):
-    def __init__(self, forwarder, sock):
+    def __init__(self, forwarder, sock=None, dest=None):
         super().__init__(sock)
 
+        self._addrinfo = ()
         self._forwarder = forwarder
         self._outbuf = b''
         self._send_blocked = False
@@ -29,33 +30,49 @@ class _ForwardDispatcher(asyncore.dispatcher):
         self._eof_sent = False
         self._eof_received = False
 
+        if dest:
+            host, port = dest
+            try:
+                # TODO: Add support for some form of async getaddrinfo
+                self._addrinfo = socket.getaddrinfo(host, port,
+                                                    socket.AF_UNSPEC,
+                                                    socket.SOCK_STREAM)
+                self._try_connect()
+            except socket.gaierror as exc:
+                self._forwarder.report_open_error(OPEN_CONNECT_FAILED,
+                                                  exc.args[1])
+
+    def _try_connect(self):
+        family, socktype, proto, canonname, sockaddr = self._addrinfo.pop(0)
+        print('Trying to connect to', sockaddr)
+        self.create_socket(family, socktype)
+        self.connect(sockaddr)
+
+    def handle_connect(self):
+        self._forwarder.report_open()
+
     def readable(self):
-        return not (self._forwarder._send_blocked or self._eof_received)
+        return self.connected and not (self._forwarder._send_blocked or
+                                       self._eof_received)
 
     def handle_read(self):
-        try:
-            data = self.socket.recv(self._forwarder._send_pktsize)
-            if data:
-                self._forwarder.send(data)
-            else:
-                self._eof_received = True
-                self._forwarder.send_eof()
-                if self._eof_sent:
-                    self.handle_close()
-        except socket.error:
-            self.handle_close()
+        data = self.socket.recv(self._forwarder._send_pktsize)
+        if data:
+            self._forwarder.send(data)
+        else:
+            self._eof_received = True
+            self._forwarder.send_eof()
+            if self._eof_sent:
+                self.handle_close()
 
     def writable(self):
-        return self._outbuf or self._send_blocked or self._eof_pending
+        return not self.connected or self._outbuf or \
+               self._send_blocked or self._eof_pending
 
     def handle_write(self):
         if self._outbuf:
-            try:
-                sent = self.socket.send(self._outbuf)
-                self._outbuf = self._outbuf[sent:]
-            except socket.error:
-                self.handle_close()
-                return
+            sent = self.socket.send(self._outbuf)
+            self._outbuf = self._outbuf[sent:]
 
         if self._outbuf:
             self._send_blocked = True
@@ -71,8 +88,20 @@ class _ForwardDispatcher(asyncore.dispatcher):
                 self.handle_close()
 
     def handle_error(self):
-        traceback.print_exc()
-        sys.exit(1)
+        exc = sys.exc_info()[1]
+        if isinstance(exc, socket.error):
+            self.close()
+
+            if self.connected:
+                self._forwarder.close()
+            elif self._addrinfo:
+                self._try_connect()
+            else:
+                self._forwarder.report_open_error(OPEN_CONNECT_FAILED,
+                                                  exc.args[1])
+        else:
+            traceback.print_exc()
+            sys.exit(1)
 
     def handle_close(self):
         self._forwarder.close()
@@ -85,39 +114,35 @@ class _ForwardDispatcher(asyncore.dispatcher):
         self._eof_pending = True
 
 class SSHForwarder(SSHTCPConnection):
-    @classmethod
-    def create_outbound(cls, conn, address):
-        """Create a port forwarder to the specified destination address"""
-
-        try:
-            # TODO: Switch this over to non-blocking connect. The
-            #       problem is how we return channel open errors if
-            #       we do this -- it would have to be a callback
-            #       instead of a return value.
-            sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
-            sock.connect(address)
-        except socket.error as exc:
-            raise ChannelOpenError(OPEN_CONNECT_FAILED, exc.args[1])
-
-        return cls(conn, sock)
-
-    def __init__(self, conn, sock):
+    def __init__(self, conn, sock=None, dest=None):
         super().__init__(conn)
 
         self._sock = sock
+        self._dest = dest
+        self._dispatcher = None
+
+    def handle_open_request(self):
+        self._dispatcher = _ForwardDispatcher(self, dest=self._dest)
 
     def handle_open(self):
-        self._sock = _ForwardDispatcher(self, self._sock)
+        if not self._dispatcher:
+            self._dispatcher = _ForwardDispatcher(self, sock=self._sock)
+            self._sock = None
 
     def handle_open_error(self, code, reason, lang):
         self.handle_close()
 
     def handle_data(self, data, datatype):
-        self._sock.send(data)
+        self._dispatcher.send(data)
 
     def handle_eof(self):
-        self._sock.send_eof()
+        self._dispatcher.send_eof()
 
     def handle_close(self):
-        self._sock.close()
+        if self._dispatcher:
+            self._dispatcher.close()
+
+        if self._sock:
+            self._sock.close()
+
         self.close()

@@ -291,7 +291,7 @@ class _SSHConnection(asyncore.dispatcher, SSHPacketHandler):
         if version.endswith(b'\r'):
             version = version[:-1]
 
-        self._inpbuf =  self._inpbuf[idx+1:]
+        self._inpbuf = self._inpbuf[idx+1:]
 
         if (version.startswith(b'SSH-2.0-') or
             (self.is_client() and version.startswith(b'SSH-1.99-'))):
@@ -581,6 +581,20 @@ class _SSHConnection(asyncore.dispatcher, SSHPacketHandler):
         self._auth = None
         self._auth_in_progress = False
         self._auth_complete = True
+
+    def _send_channel_open_confirmation(self, send_chan, recv_chan, recv_window,
+                                        recv_pktsize, *result_args):
+        self._send_packet(Byte(MSG_CHANNEL_OPEN_CONFIRMATION),
+                          UInt32(send_chan), UInt32(recv_chan),
+                          UInt32(recv_window), UInt32(recv_pktsize),
+                          *result_args)
+
+    def _send_channel_open_failure(self, send_chan, code, reason, lang):
+        reason = reason.encode('utf-8')
+        lang = lang.encode('ascii')
+
+        self._send_packet(Byte(MSG_CHANNEL_OPEN_FAILURE), UInt32(send_chan),
+                          UInt32(code), String(reason), String(lang))
 
     def _send_global_request(self, request, *args, callback=None):
         """Send a global request"""
@@ -914,10 +928,8 @@ class _SSHConnection(asyncore.dispatcher, SSHPacketHandler):
                 raise ChannelOpenError(OPEN_UNKNOWN_CHANNEL_TYPE,
                                        'Unknown channel type')
         except ChannelOpenError as err:
-            reason = err.reason.encode('utf-8')
-            lang = err.lang.encode('ascii')
-            self._send_packet(Byte(MSG_CHANNEL_OPEN_FAILURE), UInt32(send_chan),
-                              UInt32(err.code), String(reason), String(lang))
+            self._send_channel_open_failure(send_chan, err.code,
+                                            err.reason, err.lang)
 
     def _process_channel_open_confirmation(self, pkttype, packet):
         """Process a channel open confirmation response"""
@@ -1120,7 +1132,7 @@ class SSHClient(_SSHConnection):
            A list of public keys which will be accepted as a host key
            from the server. If this parameter is not provided, host
            keys for the server will be looked up in
-           :file:`.ssh/known_hosts`.  If this is explicitly set to
+           :file:`.ssh/known_hosts`. If this is explicitly set to
            ``None``, server host key validation will be disabled.
        :param string username: (optional)
            Username to authenticate as on the server. If not specified,
@@ -1368,7 +1380,7 @@ class SSHClient(_SSHConnection):
             return self.handle_forwarded_connection(bind_addr, bind_port,
                                                     orig_host, orig_port)
         elif dest:
-            return SSHForwarder.create_outbound(self, dest)
+            return SSHForwarder(self, dest=dest)
         else:
             raise ChannelOpenError(OPEN_CONNECT_FAILED, 'No such listener')
 
@@ -1378,7 +1390,7 @@ class SSHClient(_SSHConnection):
 
         orig_host, orig_port = client_addr[:2]
 
-        forwarder = SSHForwarder(self, sock)
+        forwarder = SSHForwarder(self, sock=sock)
         forwarder.connect(dest_host, dest_port, orig_host, orig_port)
 
     def handle_auth_banner(self, msg, lang):
@@ -1577,7 +1589,7 @@ class SSHClient(_SSHConnection):
                not the responses should be echoed when they are entered
            :type prompts: list of tuples of string and boolean
 
-           :returns: List of string responses to the challenge  or ``None``
+           :returns: List of string responses to the challenge or ``None``
                      to move on to another authentication method
 
         """
@@ -1967,7 +1979,7 @@ class SSHServer(_SSHConnection):
         bind_addr, bind_port = listen_addr[:2]
         orig_host, orig_port = client_addr[:2]
 
-        forwarder = SSHForwarder(self, sock)
+        forwarder = SSHForwarder(self, sock=sock)
         forwarder.accept(bind_addr, bind_port, orig_host, orig_port)
 
     def _process_session_open(self, packet):
@@ -1996,7 +2008,7 @@ class SSHServer(_SSHConnection):
         channel = self.handle_direct_connection(dest_host, dest_port,
                                                 orig_host, orig_port)
         if channel == True:
-            return SSHForwarder.create_outbound(self, (dest_host, dest_port))
+            return SSHForwarder(self, dest=(dest_host, dest_port))
         elif isinstance(channel, SSHTCPConnection):
             return channel
         else:

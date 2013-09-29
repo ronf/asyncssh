@@ -102,6 +102,7 @@ class Listener(asyncore.dispatcher):
     def __init__(self, host, port, callback=None, *args, **kwargs):
         asyncore.dispatcher.__init__(self)
 
+        # TODO: Add support for some form of async getaddrinfo
         addrinfo = socket.getaddrinfo(host, port, socket.AF_UNSPEC,
                                       socket.SOCK_STREAM, 0, socket.AI_PASSIVE)
 

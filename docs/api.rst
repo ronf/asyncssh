@@ -363,12 +363,14 @@ SSHTCPConnection
 
    .. rubric:: Methods provided by this class:
 
-   +---------------------------------+
-   | SSH TCP connection open methods |
-   +=================================+
-   | .. automethod:: connect         |
-   | .. automethod:: accept          |
-   +---------------------------------+
+   +-----------------------------------+
+   | SSH TCP connection open methods   |
+   +===================================+
+   | .. automethod:: connect           |
+   | .. automethod:: accept            |
+   | .. automethod:: report_open       |
+   | .. automethod:: report_open_error |
+   +-----------------------------------+
 
    +---------------------------------+
    | SSH TCP connection send methods |
@@ -392,12 +394,13 @@ SSHTCPConnection
 
    .. rubric:: Methods which can be provided by a subclass:
 
-   +-----------------------------------+
-   | SSH TCP connection open handlers  |
-   +===================================+
-   | .. automethod:: handle_open       |
-   | .. automethod:: handle_open_error |
-   +-----------------------------------+
+   +-------------------------------------+
+   | SSH TCP connection open handlers    |
+   +=====================================+
+   | .. automethod:: handle_open_request |
+   | .. automethod:: handle_open         |
+   | .. automethod:: handle_open_error   |
+   +-------------------------------------+
 
    +-------------------------------------+
    | SSH TCP connection receive handlers |

@@ -156,20 +156,12 @@ class _SSHChannel(SSHPacketHandler):
         if self._recv_state != 'closed':
             raise SSHError(DISC_PROTOCOL_ERROR, 'Channel already open')
 
-        self._send_state = 'open'
+        self._send_state = 'open_received'
         self._send_chan = send_chan
         self._send_window = send_window
         self._send_pktsize = send_pktsize
 
-        self._recv_state = 'open'
-
-        self._send_packet(MSG_CHANNEL_OPEN_CONFIRMATION,
-                          UInt32(self._recv_chan),
-                          UInt32(self._recv_window),
-                          UInt32(self._recv_pktsize),
-                          self._get_open_result())
-
-        self._finish_open()
+        self._finish_open_request(packet)
 
     def _process_open_confirmation(self, send_chan, send_window, send_pktsize,
                                    packet):
@@ -178,8 +170,6 @@ class _SSHChannel(SSHPacketHandler):
         if self._send_state != 'open_sent':
             raise SSHError(DISC_PROTOCOL_ERROR, 'Channel not being opened')
 
-        self._parse_open_result(packet)
-
         self._send_state = 'open'
         self._send_chan = send_chan
         self._send_window = send_window
@@ -187,7 +177,7 @@ class _SSHChannel(SSHPacketHandler):
 
         self._recv_state = 'open'
 
-        self._finish_open()
+        self._finish_open(packet)
 
     def _process_open_failure(self, code, reason, lang):
         """Process a channel open failure"""
@@ -312,19 +302,6 @@ class _SSHChannel(SSHPacketHandler):
         MSG_CHANNEL_FAILURE:            _process_response
     }
 
-    def _get_open_result(self):
-        """Return additional data to send in open confirmation"""
-
-        # By default, return no additional data in an open confirmation
-        return b''
-
-    def _parse_open_result(self, packet):
-        """Parse additional data in an open confirmation"""
-
-        # By default, expect no additional data in an open confirmation
-        packet.check_end()
-        return True
-
     def _open(self, chantype, *args):
         """Send a request to open the channel"""
 
@@ -354,6 +331,61 @@ class _SSHChannel(SSHPacketHandler):
 
         self._send_packet(MSG_CHANNEL_REQUEST, String(request),
                           Boolean(callback != None), *args)
+
+    def report_open(self, *result_args):
+        """Report that the channel has been opened successfully
+
+           This method can be called on inbound channels to report that
+           the channel has been opened successfully. It should be called
+           when the channel is fully connected, before sending any data.
+           By default, the :meth:`handle_open_request` method calls this
+           automatically, so calls to this method are only needed for
+           channels which override :meth:`handle_open_request` to
+           perform some kind of asynchronous connect.
+
+           :param \*result_args: (optional)
+               Results to include in the open confirmation response
+               (not used in any of the currently supported channel types)
+
+        """
+
+        if self._send_state != 'open_received':
+            raise IOError('Channel already opened')
+
+        self._send_state = 'open'
+        self._recv_state = 'open'
+
+        self.conn._send_channel_open_confirmation(self._send_chan,
+                                                  self._recv_chan,
+                                                  self._recv_window,
+                                                  self._recv_pktsize,
+                                                  *result_args)
+
+        self._finish_report_open()
+
+    def report_open_error(self, code, reason, lang=DEFAULT_LANG):
+        """Report that an error occurred when opening the channel
+
+           This method can be called on inbound channels when an error
+           occurs opening them. The code and reason arguments provide
+           more information about the cause of the failure.
+
+           :param integer code:
+               The reason for the open failure, from :ref:`channel open
+               failure reasons <ChannelOpenFailureReasons>`.
+           :param string reason:
+               A human readable reason for the open failure
+           :param string lang:
+               The language the reason is in
+
+        """
+
+        if self._send_state != 'open_received':
+            raise IOError('Channel already opened')
+
+        self.conn._send_channel_open_failure(self._send_chan, code,
+                                             reason, lang)
+        self._cleanup()
 
     def send(self, data, datatype=None):
         """Send data on the channel
@@ -640,14 +672,15 @@ class SSHClientSession(_SSHChannel):
         self._pty_pixheight = 0
         self._pty_modes = {}
 
-    def _finish_open(self):
-        """Process the opening of a client session
+    def _finish_open(self, packet):
+        """Process the opening of a client session"""
 
-           After the channel is opened, send requests to set up the
-           environment, open a pseudo-terminal  if one is requested, and
-           then open a shell or execute a command.
+        # Client sessions should have no extra data in the open confirmation
+        packet.check_end()
 
-        """
+        # After the channel is opened, send requests to set up the
+        # environment, open a pseudo-terminal if one is requested, and
+        # then open a shell or execute a command.
 
         for name, value in self._env.items():
             name = str(name).encode('utf-8')
@@ -1015,11 +1048,20 @@ class SSHServerSession(_SSHChannel):
         self._pty_pixheight = 0
         self._pty_modes = {}
 
-    def _finish_open(self):
-        """Process the opening of a server session"""
+    def _finish_open_request(self, packet):
+        """Process a request to open a server session"""
+
+        # Server sessions should have no extra data in the open request
+        packet.check_end()
+
+        # Send the open confirmation immediately for server sessions
+        self.report_open()
+
+    def _finish_report_open(self):
+        """Finish the opening of a server session"""
 
         # On the server side, we wait for requests to set up the environment
-        # and/or a psuedo terminal and to start # a shell/command/subsystem
+        # and/or a psuedo terminal and to start a shell/command/subsystem
         # before calling handle_open().
         pass
 
@@ -1496,10 +1538,29 @@ class SSHTCPConnection(_SSHChannel):
                  max_pktsize=_DEFAULT_MAX_PKTSIZE):
         super().__init__(conn, encoding, window, max_pktsize)
 
-    def _finish_open(self):
-        """Process the opening of a TCP connection"""
+    def _finish_open_request(self, packet):
+        """Finishing processing a request to open an inbound TCP connection"""
 
-        # Call handle_open when a connection is opened successfully
+        # TCP connections should have no extra data in the open request
+        packet.check_end()
+
+        # For inbound TCP connections, call handle_open_request() to
+        # finish opening the connection
+        self.handle_open_request()
+
+    def _finish_open(self, packet):
+        """Finish the opening of an outbound TCP connection"""
+
+        # TCP connections should have no extra data in the open confirmation
+        packet.check_end()
+
+        # Call handle_open() once the connection is opened successfully
+        self.handle_open()
+
+    def _finish_report_open(self):
+        """Finish the opening of an inbound TCP connection"""
+
+        # Call handle_open() once the connection is opened successfully
         self.handle_open()
 
     def accept(self, bind_addr, bind_port, orig_host='', orig_port=0):
@@ -1557,3 +1618,24 @@ class SSHTCPConnection(_SSHChannel):
 
         self._open(b'direct-tcpip', String(dest_host), UInt32(dest_port),
                    String(orig_host), UInt32(orig_port))
+
+    def handle_open_request(self):
+        """Handle when a request is made to open the channel
+
+           This method is called when a request is made to open a
+           TCP connection. It should initiate whatever processing
+           is needed to open the requested connection. When this
+           processing is complete, a call must be made to
+           :meth:`report_open` to indicate that the connection
+           was opened successfully. If an error occurs while trying
+           to open the connection, a call must be made to
+           :meth:`report_open_error` with information about the
+           cause of the failure.
+
+           By default, this immediately calls :meth:`report_open`
+           without doing any other processing, moving the channel
+           into the open state.
+
+        """
+
+        self.report_open()
