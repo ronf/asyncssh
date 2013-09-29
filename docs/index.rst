@@ -66,11 +66,11 @@ Installation
     #. Install PyCrypto 2.6 or later from http://www.pycrypto.org or your
        favorite packaging system.
 
-    #. Download, unpack, and install `asyncssh-0.2.0.tar.gz
-       <asyncssh-0.3.0.tar.gz>`_ by running the following commands::
+    #. Download, unpack, and install `asyncssh-0.4.0.tar.gz
+       <asyncssh-0.4.0.tar.gz>`_ by running the following commands::
 
-       % tar zxf asyncssh-0.2.0.tar.gz
-       % cd asyncssh-0.2.0
+       % tar zxf asyncssh-0.4.0.tar.gz
+       % cd asyncssh-0.4.0
        % python setup.py install
 
     #. Check out the examples below to get started!
