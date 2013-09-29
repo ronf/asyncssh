@@ -3,6 +3,24 @@
 Change Log
 ==========
 
+Release 0.4.0 (28 Sep 2013)
+---------------------------
+
+* Added support in :class:`SSHTCPConnection` for the following methods
+  related to supporting asynchronous operations while accepting
+  inbound connection requests:
+
+    * :meth:`handle_open_request() <SSHTCPConnection.handle_open_request>`
+    * :meth:`report_open() <SSHTCPConnection.report_open>`
+    * :meth:`report_open_error() <SSHTCPConnection.report_open_error>`
+
+  These new methods are used to implement asynchronous connect
+  support for local and remote port forwarding, and to support
+  connecting to more than one destination when hosts resolve to
+  multiple addresses and connection failures occur.
+
+* Cleaned up a few minor documentation errors.
+
 Release 0.3.0 (26 Sep 2013)
 ---------------------------
 
