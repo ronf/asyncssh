@@ -7,8 +7,8 @@ Release 0.4.0 (28 Sep 2013)
 ---------------------------
 
 * Added support in :class:`SSHTCPConnection` for the following methods
-  related to supporting asynchronous operations while accepting
-  inbound connection requests:
+  to allow asynchronous operations to be used when accepting inbound
+  connection requests:
 
     * :meth:`handle_open_request() <SSHTCPConnection.handle_open_request>`
     * :meth:`report_open() <SSHTCPConnection.report_open>`
@@ -19,7 +19,7 @@ Release 0.4.0 (28 Sep 2013)
   connecting to more than one destination when hosts resolve to
   multiple addresses and connection failures occur.
 
-* Cleaned up a few minor documentation errors.
+* Cleaned up a few minor documentation errors
 
 Release 0.3.0 (26 Sep 2013)
 ---------------------------
