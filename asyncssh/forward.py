@@ -44,7 +44,6 @@ class _ForwardDispatcher(asyncore.dispatcher):
 
     def _try_connect(self):
         family, socktype, proto, canonname, sockaddr = self._addrinfo.pop(0)
-        print('Trying to connect to', sockaddr)
         self.create_socket(family, socktype)
         self.connect(sockaddr)
 
