@@ -18,13 +18,18 @@ __author_email__ = '<ronf@timeheart.net>'
 
 __url__ = 'http://www.timeheart.net/asyncssh/'
 
-__version__ = '0.4.0'
+__version__ = '0.5.0'
 
 from .constants import *
 
 from .channel import SSHClientSession, SSHServerSession, SSHTCPConnection
 
 from .connection import SSHClient, SSHServer, SSHListener
+
+from .forward import SSHClientLocalPortForwarder, SSHClientRemotePortForwarder
+from .forward import SSHServerPortForwarder
+
+from .listen import SSHClientListener, SSHServerListener
 
 from .misc import ChannelOpenError
 

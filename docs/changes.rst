@@ -3,6 +3,29 @@
 Change Log
 ==========
 
+Release 0.5.0 (11 Oct 2013)
+---------------------------
+
+* Added the following new classes to support fully asynchronous
+  connection forwarding, replacing the methods previously added in
+  release 0.2.0:
+
+    * :class:`SSHClientListener`
+    * :class:`SSHServerListener`
+    * :class:`SSHClientLocalPortForwarder`
+    * :class:`SSHClientRemotePortForwarder`
+    * :class:`SSHServerPortForwarder`
+
+  These new classes allow for DNS lookups and other operations to be
+  performed fully asynchronously when new listeners are set up. As with
+  the asynchronous connect changes below, methods are now available
+  to report when the listener is opened or when an error occurs during
+  the open rather than requiring the listener to be fully set up in a
+  single call.
+
+* Updated examples in :ref:`ClientExamples` and :ref:`ServerExamples`
+  to reflect the above changes
+
 Release 0.4.0 (28 Sep 2013)
 ---------------------------
 
@@ -16,8 +39,8 @@ Release 0.4.0 (28 Sep 2013)
 
   These new methods are used to implement asynchronous connect
   support for local and remote port forwarding, and to support
-  connecting to more than one destination when hosts resolve to
-  multiple addresses and connection failures occur.
+  trying multiple destination addresses when connection failures
+  occur.
 
 * Cleaned up a few minor documentation errors
 
@@ -61,7 +84,7 @@ Release 0.2.0 (21 Sep 2013)
 * Added a client_addr argument and member variable to :class:`SSHServer`
   to hold the client's address information
 
-* Added and updates examples related to port forwarding and using
+* Added and updated examples related to port forwarding and using
   :class:`SSHTCPConnection` to open direct and forwarded TCP
   connections in :ref:`ClientExamples` and :ref:`ServerExamples`
 

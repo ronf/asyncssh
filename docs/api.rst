@@ -19,14 +19,29 @@ opened on it.  This is accomplished by deriving from three other classes,
 :class:`SSHClientSession`, :class:`SSHServerSession`, and
 :class:`SSHTCPConnection`.
 
-The :class:`SSHClientSession` class can be associated with an instance
-of :class:`SSHClient` to request access to a shell, execute a remote
-command, or connect to a remote subsystem. The :class:`SSHServerSession`
-class can be associated with an instance of :class:`SSHServer` to accept
-incoming requests of this sort. Finally, the :class:`SSHTCPConnection`
-class can be created for clients to open outbound direct TCP/IP
-connections or for servers to report incoming forwarded TCP/IP
-connections that a client has asked them to listen for.
+A subclass of :class:`SSHClientSession` class can be associated with an
+instance of :class:`SSHClient` to request access to a shell, execute a
+remote command, or connect to a remote subsystem. A subclass of
+:class:`SSHServerSession` class can be associated with an instance of
+:class:`SSHServer` to accept incoming requests of this sort. Finally,
+a subclass of :class:`SSHTCPConnection` class can be created for clients
+to open outbound direct TCP/IP connections or for servers to report
+incoming forwarded TCP/IP connections that a client has asked them to
+listen for.
+
+Clients can request that the server listen for TCP/IP connections and
+forward them over SSH by deriving from :class:`SSHClientListener` and
+having it return objects derived from :class:`SSHTCPConnection` to
+process each forwarded connection. Servers wishing to accept requests to
+forward connections can do so by deriving from :class:`SSHServerListener`
+and having it create objects derived from :class:`SSHTCPConnection` for
+each forwarded connection.
+
+To set up standard SSH port forwarding, clients can derive from
+:class:`SSHClientLocalPortForwarder` or :class:`SSHClientRemotePortForwarder`,
+optionally implementing access control via the ``accept_connection`` method
+in these classes. Servers can implement standard SSH port forwarding in
+a similar manner by deriving from :class:`SSHServerPortForwarder`.
 
 In addition to the above classes, some helper functions for importing
 public and private keys can be found below under :ref:`PublicKeyFunctions`,
@@ -49,17 +64,6 @@ SSHClient
    | .. automethod:: disconnect     |
    | .. automethod:: send_debug     |
    +--------------------------------+
-
-   +-----------------------------------------------+
-   | Connection forwarding methods                 |
-   +===============================================+
-   | .. automethod:: listen                        |
-   | .. automethod:: cancel_listen                 |
-   | .. automethod:: forward_local_port            |
-   | .. automethod:: cancel_local_port_forwarding  |
-   | .. automethod:: forward_remote_port           |
-   | .. automethod:: cancel_remote_port_forwarding |
-   +-----------------------------------------------+
 
    .. rubric:: Methods which can be provided by a subclass:
 
@@ -98,16 +102,6 @@ SSHClient
    | .. automethod:: handle_kbdint_auth           |
    | .. automethod:: handle_kbdint_challenge      |
    +----------------------------------------------+
-
-   +-----------------------------------------------------+
-   | Connection forwarding handlers                      |
-   +=====================================================+
-   | .. automethod:: handle_listen                       |
-   | .. automethod:: handle_listen_error                 |
-   | .. automethod:: handle_forwarded_connection         |
-   | .. automethod:: handle_remote_port_forwarding       |
-   | .. automethod:: handle_remote_port_forwarding_error |
-   +-----------------------------------------------------+
 
 SSHServer
 ---------
@@ -178,7 +172,6 @@ SSHServer
    | Connection forwarding handlers       |
    +======================================+
    | .. automethod:: handle_listen        |
-   | .. automethod:: handle_cancel_listen |
    +--------------------------------------+
 
 SSHListener
@@ -417,6 +410,117 @@ SSHTCPConnection
 
 .. index:: Public key support
 .. _PublicKeyFunctions:
+
+Connection Listener Classes
+===========================
+
+SSHClientListener
+-----------------
+
+.. autoclass:: SSHClientListener
+
+   .. rubric:: Methods provided by this class:
+
+   +-----------------------------+
+   | SSH client listener methods |
+   +=============================+
+   | .. automethod:: close       |
+   +-----------------------------+
+
+   .. rubric:: Methods which can be provided by a subclass:
+
+   +-----------------------------------+
+   | SSH client listener handlers      |
+   +===================================+
+   | .. automethod:: handle_open       |
+   | .. automethod:: handle_open_error |
+   | .. automethod:: handle_connection |
+   +-----------------------------------+
+
+SSHServerListener
+-----------------
+
+.. autoclass:: SSHServerListener
+
+   .. rubric:: Methods provided by this class:
+
+   +-----------------------------------+
+   | SSH server listener methods       |
+   +===================================+
+   | .. automethod:: report_open       |
+   | .. automethod:: report_open_error |
+   +-----------------------------------+
+
+   .. rubric:: Methods which can be provided by a subclass:
+
+   +-------------------------------------+
+   | SSH server listener handlers        |
+   +=====================================+
+   | .. automethod:: handle_open_request |
+   | .. automethod:: handle_close        |
+   +-------------------------------------+
+
+Port Forwarder Classes
+======================
+
+SSHClientLocalPortForwarder
+---------------------------
+
+.. autoclass:: SSHClientLocalPortForwarder
+
+   .. rubric:: Methods provided by this class:
+
+   +-----------------------------------------+
+   | SSH client local port forwarder methods |
+   +=========================================+
+   | .. automethod:: close                   |
+   +-----------------------------------------+
+
+   .. rubric:: Methods which can be provided by a subclass:
+
+   +------------------------------------------+
+   | SSH client local port forwarder handlers |
+   +==========================================+
+   | .. automethod:: handle_open              |
+   | .. automethod:: handle_open_error        |
+   | .. automethod:: accept_connection        |
+   +------------------------------------------+
+
+SSHClientRemotePortForwarder
+----------------------------
+
+.. autoclass:: SSHClientRemotePortForwarder
+
+   .. rubric:: Methods provided by this class:
+
+   +------------------------------------------+
+   | SSH client remote port forwarder methods |
+   +==========================================+
+   | .. automethod:: close                    |
+   +------------------------------------------+
+
+   .. rubric:: Methods which can be provided by a subclass:
+
+   +-------------------------------------------+
+   | SSH client remote port forwarder handlers |
+   +===========================================+
+   | .. automethod:: handle_open               |
+   | .. automethod:: handle_open_error         |
+   | .. automethod:: accept_connection         |
+   +-------------------------------------------+
+
+SSHServerPortForwarder
+----------------------
+
+.. autoclass:: SSHServerPortForwarder
+
+   .. rubric:: Methods which can be provided by a subclass:
+
+   +------------------------------------+
+   | SSH server port forwarder handlers |
+   +====================================+
+   | .. automethod:: accept_connection  |
+   +------------------------------------+
 
 Public Key Support
 ==================

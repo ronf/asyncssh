@@ -43,9 +43,6 @@ _DEFAULT_KEY_FILES = ('id_ecdsa', 'id_rsa', 'id_dsa')
 _DEFAULT_REKEY_BYTES    = 1 << 30       # 1 GB
 _DEFAULT_REKEY_SECONDS  = 3600          # 1 hour
 
-# Special remote forwarder for SSHClient.listen()
-_LISTEN = object()
-
 def _select_algs(alg_type, algs, possible_algs, none_value=None):
     """Select a set of allowed algorithms"""
 
@@ -156,7 +153,8 @@ class _SSHConnection(asyncore.dispatcher, SSHPacketHandler):
         self._channels = {}
         self._next_recv_chan = 0
 
-        self._pending_callbacks = []
+        self._global_request_queue = []
+        self._global_request_callbacks = []
 
         self._local_listeners = {}
 
@@ -178,8 +176,7 @@ class _SSHConnection(asyncore.dispatcher, SSHPacketHandler):
                 channel._process_connection_close()
 
             for listener in self._local_listeners.values():
-                if listener != _LISTEN:
-                    listener.close()
+                listener.close()
 
             self._inpbuf = None
             self._recv_handler = None
@@ -596,29 +593,37 @@ class _SSHConnection(asyncore.dispatcher, SSHPacketHandler):
         self._send_packet(Byte(MSG_CHANNEL_OPEN_FAILURE), UInt32(send_chan),
                           UInt32(code), String(reason), String(lang))
 
-    def _send_global_request(self, request, *args, callback=None):
+    def _send_global_request(self, request, *args, callback=None,
+                             callback_args=()):
         """Send a global request"""
 
         if callback:
-            self._pending_callbacks.append(callback)
+            self._global_request_callbacks.append((callback, callback_args))
 
         self._send_packet(Byte(MSG_GLOBAL_REQUEST), String(request),
                           Boolean(callback != None), *args)
 
-    def _send_tcpip_forward_request(self, bind_addr, bind_port, dest):
-        self._pending_forward_requests.append((bind_addr, bind_port, dest))
+    def _report_global_response(self, result):
+        handler, packet, want_reply = self._global_request_queue.pop(0)
 
-        bind_addr = bind_addr.encode('utf-8')
+        if want_reply:
+            if result:
+                response = b'' if result == True else result
+                self._send_packet(Byte(MSG_REQUEST_SUCCESS), response)
+            else:
+                self._send_packet(Byte(MSG_REQUEST_FAILURE))
 
-        self._send_global_request(b'tcpip-forward',
-                                  String(bind_addr), UInt32(bind_port),
-                                  callback=self._process_tcpip_forward_response)
+        if self._global_request_queue:
+            self._process_global_request_queue()
 
-    def _send_cancel_tcpip_forward_request(self, bind_addr, bind_port):
-        bind_addr = bind_addr.encode('utf-8')
+    def _process_global_request_queue(self):
+        """Process next item on global request queue"""
 
-        self._send_global_request(b'cancel-tcpip-forward',
-                                  String(bind_addr), UInt32(bind_port))
+        handler, packet, want_reply = self._global_request_queue[0]
+        if callable(handler):
+            handler(packet)
+        else:
+            self._report_global_response(False)
 
     def _process_disconnect(self, pkttype, packet):
         """Process a disconnect message"""
@@ -884,23 +889,19 @@ class _SSHConnection(asyncore.dispatcher, SSHPacketHandler):
         except UnicodeDecodeError:
             raise SSHError(DISC_PROTOCOL_ERROR, 'Invalid global request')
 
-        name = '_process_' + request.replace('-', '_') + '_request'
+        name = '_process_' + request.replace('-', '_') + '_global_request'
         handler = getattr(self, name, None)
-        result = handler(packet) if callable(handler) else None
 
-        if want_reply:
-            if result:
-                response = b'' if result == True else result
-                self._send_packet(Byte(MSG_REQUEST_SUCCESS), response)
-            else:
-                self._send_packet(Byte(MSG_REQUEST_FAILURE))
+        self._global_request_queue.append((handler, packet, want_reply))
+        if len(self._global_request_queue) == 1:
+            self._process_global_request_queue()
 
     def _process_global_response(self, pkttype, packet):
         """Process a global response"""
 
-        if self._pending_callbacks:
-            callback = self._pending_callbacks.pop(0)
-            callback(pkttype, packet)
+        if self._global_request_callbacks:
+            callback, callback_args = self._global_request_callbacks.pop(0)
+            callback(pkttype, packet, *callback_args)
         else:
             raise SSHError(DISC_PROTOCOL_ERROR, 'Unexpected global response')
 
@@ -1109,20 +1110,25 @@ class SSHClient(_SSHConnection):
        Applications should subclass this when implementing an SSH client.
        The *handle* functions listed below should be overridden to define
        application-specific behavior. In particular, the method
-       :meth:`handle_auth_complete` should be defined to create the
-       desired SSH client sessions for this connection once authentication
-       is complete.
+       :meth:`handle_auth_complete` should be defined to open the desired
+       SSH channels on this connection once authentication is complete.
 
        For simple password or public key based authentication, the default
        implementation of the auth handlers here will probably suffice, as
-       long as the password or client keys to use can be passed in when
-       the object is created.
+       long as the password or client keys to use are passed in when the
+       object is created.
 
-       If TCP connection forwarding is needed, calls should be made to the
-       :meth:`listen` method to set up the listeners, and the
-       :meth:`handle_listen`, :meth:`handle_listen_error`, and
-       :meth:`handle_forwarded_connection` methods should be defined
-       to process the results.
+       After authentication is complete, new client sessions can be opened
+       by instantiating subclasses of :class:`SSHClientSession`. Direct
+       TCP connections can be opened by instantiating subclasses of
+       :class:`SSHTCPConnection' and calling :meth:`connect()
+       <SSHTCPConnection.connect>` on them. Remote listeners for forwarded
+       TCP connections can be set up by instantiating subclasses of
+       :class:`SSHClientListener`.
+
+       TCP port forwarding can be set up by instantiating subclasses of
+       :class:`SSHClientLocalPortForwarder` or
+       :class:`SSHClientRemotePortForwarder`.
 
        :param addr:
            The server hostname/address and port to connect to. For
@@ -1234,8 +1240,14 @@ class SSHClient(_SSHConnection):
                         pass
 
         self._password = password
-        self._pending_forward_requests = []
-        self._remote_forward_targets = {}
+
+        self._remote_listeners = {}
+        self._dynamic_remote_listeners = {}
+
+    def _cleanup(self):
+        super()._cleanup()
+        self._remote_listeners = {}
+        self._dynamic_remote_listeners = {}
 
     def _parse_known_hosts(self, addr):
         server_host_keys = []
@@ -1319,79 +1331,61 @@ class SSHClient(_SSHConnection):
         raise ChannelOpenError(OPEN_ADMINISTRATIVELY_PROHIBITED,
                                'Direct TCP/IP open forbidden on client')
 
-    def _process_tcpip_forward_response(self, pkttype, packet):
-        """Process a response to a global TCP/IP forward request"""
+    def _open_remote_listener(self, listener):
+        """Listen on a remote TCP/IP address and port"""
 
-        if not self._pending_forward_requests:
-            raise SSHError(DISC_PROTOCOL_ERROR,
-                           'No outstanding forward requests')
+        listen_host = listener.listen_host.encode('utf-8')
 
-        bind_addr, bind_port, dest = self._pending_forward_requests.pop(0)
+        self._send_global_request(b'tcpip-forward', String(listen_host),
+                                  UInt32(listener.listen_port),
+                                  callback=self._process_remote_listen_response,
+                                  callback_args=(listener,))
+
+    def _process_remote_listen_response(self, pkttype, packet, listener):
+        """Process a response to a remote listen request"""
 
         if pkttype == MSG_REQUEST_SUCCESS:
-            if not bind_port:
-                bind_port = packet.get_uint32()
-
-            packet.check_end()
-
-            self._remote_forward_targets[(bind_addr.lower(), bind_port)] = dest
-            if dest == _LISTEN:
-                self.handle_listen(bind_addr, bind_port)
-            else:
-                self.handle_remote_port_forwarding(bind_addr, bind_port)
+            listener._process_listen_confirmation(packet)
         else:
             packet.check_end()
+            listener._process_listen_failure()
 
-            if dest == _LISTEN:
-                self.handle_listen_error(bind_addr, bind_port)
-            else:
-                self.handle_remote_port_forwarding_error(bind_addr, bind_port)
+    def _close_remote_listener(self, listener):
+        """Stop listening on a remote TCP/IP address and port"""
+
+        listen_host = listener.listen_host.encode('utf-8')
+
+        self._send_global_request(b'cancel-tcpip-forward', String(listen_host),
+                                  UInt32(listener.listen_port),
+                                  callback=self._process_remote_listen_close,
+                                  callback_args=(listener,))
+
+    def _process_remote_listen_close(self, pkttype, packet, listener):
+        """Process a response to a remote listener close"""
+
+        self._process_close(listener)
 
     def _process_forwarded_tcpip_open(self, packet):
         """Process an inbound forwarded TCP/IP channel open request"""
 
-        bind_addr = packet.get_string()
-        bind_port = packet.get_uint32()
+        listen_host = packet.get_string()
+        listen_port = packet.get_uint32()
         orig_host = packet.get_string()
         orig_port = packet.get_uint32()
         packet.check_end()
 
         try:
-            bind_addr = bind_addr.decode('utf-8')
+            listen_host = listen_host.decode('utf-8')
             orig_host = orig_host.decode('utf-8')
         except UnicodeDecodeError:
             raise SSHError(DISC_PROTOCOL_ERROR, 'Invalid channel open request')
 
-        dest = self._remote_forward_targets.get((bind_addr.lower(), bind_port))
+        listener = SSHClientListener._find(self, listen_host, listen_port)
 
-        if not dest and bind_addr in ('127.0.0.1', '::1'):
-            dest = self._remote_forward_targets.get(('localhost', bind_port))
-
-        if not dest:
-            dest = self._remote_forward_targets.get(('0.0.0.0', bind_port))
-
-        if not dest:
-            dest = self._remote_forward_targets.get(('::', bind_port))
-
-        if not dest:
-            dest = self._remote_forward_targets.get(('', bind_port))
-
-        if dest == _LISTEN:
-            return self.handle_forwarded_connection(bind_addr, bind_port,
-                                                    orig_host, orig_port)
-        elif dest:
-            return SSHForwarder(self, dest=dest)
+        if listener:
+            return listener._process_connection(orig_host, orig_port)
         else:
             raise ChannelOpenError(OPEN_CONNECT_FAILED, 'No such listener')
-
-    def _accept_direct_connection(self, sock, listen_addr, client_addr,
-                                  dest_host, dest_port):
-        """Accept a connection on a forwarded port"""
-
-        orig_host, orig_port = client_addr[:2]
-
-        forwarder = SSHForwarder(self, sock=sock)
-        forwarder.connect(dest_host, dest_port, orig_host, orig_port)
 
     def handle_auth_banner(self, msg, lang):
         """Handle an incoming authentication banner
@@ -1603,278 +1597,6 @@ class SSHClient(_SSHConnection):
         else:
             return None
 
-    def listen(self, bind_addr, bind_port):
-        """Listen on a remote TCP/IP address and port
-
-           This method can be called to request that the server listen
-           on the specified remote address and port for incoming TCP
-           connections. Once set up, connections received by the server
-           will result in a call to the :meth:`handle_forwarded_connection`
-           method to decide whether or not to accept them.
-
-           If the listen request is successful, :meth:`handle_listen`
-           will be called with the address and port the listener was
-           opened on. If it fails, :meth:`handle_listen_error` will be
-           called.
-
-           :param string bind_addr:
-               The address the server should listen on
-           :param integer bind_port:
-               The port the server should listen on, or the value ``0``
-               to request that the server dynamically select a port
-
-        """
-
-        self._send_tcpip_forward_request(bind_addr, bind_port, _LISTEN)
-
-    def cancel_listen(self, bind_addr, bind_port):
-        """Stop listening on a remote TCP/IP address and port
-
-           This method can be called to request that the server shut down
-           a listener previously set up on the specified remote address
-           and port.
-
-           :param string bind_addr:
-               The address the server should stop listening on
-           :param integer bind_port:
-               The port the server should stop listening on
-
-           :raises: :exc:`KeyError` if a remote listener doesn't exist for
-                    the requested address and port
-
-        """
-
-        del self._remote_forward_targets[(bind_addr.lower(), bind_port)]
-
-        self._send_cancel_tcpip_forward_request(bind_addr, bind_port)
-
-    def forward_local_port(self, bind_addr, bind_port, dest_host, dest_port):
-        """Request forwarding of a local TCP/IP address and port
-
-           This method can be called to request that local port forwarding
-           be set up. The address and port to listen locally on is
-           specified by bind_addr and bind_port and the destination
-           address and port to ask the server to connect to is specified
-           by dest_host and dest_port.
-
-           If forwarding is set up successfully, this method returns the
-           local port number being listened on. Otherwise, it raises
-           :exc:`socket.error`.
-
-           :param string bind_addr:
-               The local address to listen on
-           :param integer bind_port:
-               The local port to listen on, or the value ``0`` to request
-               that a port be dynamically selected
-           :param string dest_host:
-               The destination host to ask the server to connect to when
-               connections are received
-           :param integer dest_port:
-               The destination port to ask the server to connect to when
-               connections are received
-
-           :returns: The local port being listened on
-
-           :raises: :exc:`socket.error` if the requested address and port
-                    can't be listened on
-
-        """
-
-        listener = Listener(bind_addr, bind_port,
-                            self._accept_direct_connection,
-                            dest_host, dest_port)
-
-        self._local_listeners[(bind_addr, listener.listen_port)] = listener
-        return listener.listen_port
-
-    def cancel_local_port_forwarding(self, bind_addr, bind_port):
-        """Stop forwarding from a local TCP/IP address and port
-
-           This method can be called to shut down port forwarding
-           previously set up on the specified local address and port.
-
-           :param string bind_addr:
-               The address to stop listening on
-           :param integer bind_port:
-               The port to stop listening on
-
-           :raises: :exc:`KeyError` if a local listener doesn't exist for
-                    the requested address and port
-
-        """
-
-        listener = self._local_listeners.pop((bind_addr, bind_port))
-        listener.close()
-
-    def forward_remote_port(self, bind_addr, bind_port, dest_host, dest_port):
-        """Request forwarding of a remote TCP/IP address and port
-
-           This method can be called to request that remote port forwarding
-           be set up. The address and port to request that the server listen
-           is on specified by bind_addr and bind_port and the destination
-           address and port to to connect to locally when connections are
-           forwarded is specified by dest_host and dest_port.
-
-           If forwarding is set up successfully, this method returns the
-           local port number being listened on. Otherwise, it raises
-           :exc:`socket.error`.
-
-           :param string bind_addr:
-               The address to ask the server to listen on
-           :param integer bind_port:
-               The port to ask the server to listen on, or the value ``0``
-               to request that a port be dynamically selected
-           :param string dest_host:
-               The destination host to connect locally to when connections
-               are received
-           :param integer dest_port:
-               The destination port to connect locally to when connections
-               are received
-
-           :returns: The local port being listened on
-
-           :raises: :exc:`socket.error` if the requested address and port
-                    can't be listened on
-
-        """
-
-        self._send_tcpip_forward_request(bind_addr, bind_port,
-                                         (dest_host, dest_port))
-
-    def cancel_remote_port_forwarding(self, bind_addr, bind_port):
-        """Stop forwarding from a remote TCP/IP address and port
-
-           This method can be called to request that the server shut down
-           port forwarding previously set up on the specified remote
-           address and port.
-
-           :param string bind_addr:
-               The address the server should stop listening on
-           :param integer bind_port:
-               The port the server should stop listening on
-
-           :raises: :exc:`KeyError` if a remote listener doesn't exist for
-                    the requested address and port
-
-        """
-
-        # This is the same internally as a cancel_listen request
-        self.cancel_listen(bind_addr, bind_port)
-
-    def handle_listen(self, bind_addr, bind_port):
-        """Handle a successfully opened remote listener
-
-           This method is called when a remote listener is successfully
-           opened, reporting the address and port the remote listener
-           was opened on.
-
-           By default, this method does nothing.
-
-           :param string bind_addr:
-               The address the server is now listening on
-           :param integer bind_port:
-               The port the server is now listening on. If a ``0`` was
-               passed in the :meth:`listen` call, the dynamically
-               selected port will be provided here
-
-        """
-
-        pass
-
-    def handle_listen_error(self, bind_addr, bind_port):
-        """Handle a failure opening a remote listener
-
-           This method is called when an attempt to open a remote
-           listener fails, reporting back the requested address and
-           port of the listener which couldn't be opened.
-
-           By default, this method does nothing.
-
-           :param string bind_addr:
-               The address the server was unable to listen on
-           :param integer bind_port:
-               The port the server was unable to listen on
-
-        """
-
-        pass
-
-    def handle_forwarded_connection(self, bind_addr, bind_port,
-                                    orig_host, orig_port):
-        """Handle a forwarded TCP/IP connection request
-
-           This method is called when a forwarded TCP/IP connection
-           request is received by the client. Applications wishing
-           to accept such connections must override this method and have
-           it return a class derived from :class:`SSHTCPConnection`
-           which can process the data received on the channel.
-           Otherwise, they should raise :exc:`ChannelOpenError` with
-           the reason they are rejecting the connection. Connections
-           can be selectively rejected based on the host and port
-           information provided here.
-
-           By default, all connections are rejected with an error code
-           of ``OPEN_CONNECT_FAILED`` and a reason of "Connection
-           refused".
-
-           :param string bind_addr:
-               The address the connection was destined to
-           :param integer bind_port:
-               The port the connection was destined to
-           :param string orig_host:
-               The address the connection was originated from
-           :param integer orig_port:
-               The port the connection was originated from
-
-           :returns: A subclass of :class:`SSHTCPConnection` which
-                     should be used to process the data on the
-                     forwarded connection
-
-           :raises: :exc:`ChannelOpenError` if the connection shouldn't
-                    be accepted
-
-        """
-
-        raise ChannelOpenError(OPEN_CONNECT_FAILED, 'Connection refused')
-
-    def handle_remote_port_forwarding(self, bind_addr, bind_port):
-        """Handle successfully started remote port forwarding
-
-           This method is called when remote port forwarding is
-           successfully started, reporting the address and port the
-           remote listener was opened on.
-
-           By default, this method does nothing.
-
-           :param string bind_addr:
-               The address the server is now listening on
-           :param integer bind_port:
-               The port the server is now listening on. If a ``0`` was
-               passed in the :meth:`forward_remote_port` call, the
-               dynamically selected port will be provided here
-
-        """
-
-        pass
-
-    def handle_remote_port_forwarding_error(self, bind_addr, bind_port):
-        """Handle a failure starting remote port forwarding
-
-           This method is called when an attempt to start remote port
-           forwarding fails, reporting back the requested address and
-           port of the listener which couldn't be opened.
-
-           By default, this method does nothing.
-
-           :param string bind_addr:
-               The address the server was unable to listen on
-           :param integer bind_port:
-               The port the server was unable to listen on
-
-        """
-
-        pass
-
 
 class SSHServer(_SSHConnection):
     """SSH server connection handler
@@ -1885,15 +1607,14 @@ class SSHServer(_SSHConnection):
        should be overridden to return ``False`` to indicate that no
        authentication is required. In addition, one or more of the
        :meth:`handle_session`, :meth:`handle_direct_connection`, or
-       :meth:`handle_listen` and :meth:`handle_cancel_listen`
-       methods will need to be overridden to handle requests to open
-       sessions or direct TCP/IP connections or set up listeners for
-       forwarded TCP/IP connections.
+       :meth:`handle_listen` methods will need to be overridden to handle
+       requests to open sessions or direct TCP/IP connections or set up
+       listeners for forwarded TCP/IP connections.
 
        :param socket sock:
            An established TCP connection to begin an SSH server handshake on
        :param client_addr:
-           A tuple containing IPv6 client address information, if available
+           A tuple containing client address information, if available
        :param server_host_keys:
            A list of private keys which can be presented as host keys
            during the SSH handshake
@@ -1973,15 +1694,6 @@ class SSHServer(_SSHConnection):
 
         return False
 
-    def _accept_forwarded_connection(self, sock, listen_addr, client_addr):
-        """Accept a connection on a forwarded port"""
-
-        bind_addr, bind_port = listen_addr[:2]
-        orig_host, orig_port = client_addr[:2]
-
-        forwarder = SSHForwarder(self, sock=sock)
-        forwarder.accept(bind_addr, bind_port, orig_host, orig_port)
-
     def _process_session_open(self, packet):
         packet.check_end()
 
@@ -2008,67 +1720,50 @@ class SSHServer(_SSHConnection):
         channel = self.handle_direct_connection(dest_host, dest_port,
                                                 orig_host, orig_port)
         if channel == True:
-            return SSHForwarder(self, dest=(dest_host, dest_port))
+            return SSHForwardedConnection(self, dest=(dest_host, dest_port))
         elif isinstance(channel, SSHTCPConnection):
             return channel
         else:
             raise ValueError('Channel must be subclass of SSHTCPConnection')
 
-    def _process_tcpip_forward_request(self, packet):
-        bind_addr = packet.get_string()
-        bind_port = packet.get_uint32()
+    def _process_tcpip_forward_global_request(self, packet):
+        listen_host = packet.get_string()
+        listen_port = packet.get_uint32()
         packet.check_end()
 
         try:
-            bind_addr = bind_addr.decode('utf-8')
+            listen_host = listen_host.decode('utf-8')
         except UnicodeDecodeError:
             raise SSHError(DISC_PROTOCOL_ERROR, 'Invalid TCP forward request')
 
-        result = self.handle_listen(bind_addr, bind_port)
+        result = self.handle_listen(listen_host, listen_port)
         if result == False:
-            # When result is False, reject the listen request
-            return result
-
-        if result == True:
+            self._report_global_response(False)
+            return
+        elif result == True:
             # When result is True, set up standard port forwarding
-            try:
-                listener = Listener(bind_addr, bind_port,
-                                    self._accept_forwarded_connection)
-                result = listener.listen_port
-            except socket.error:
-                return False
+            result = SSHServerPortForwarder(self, listen_host, listen_port)
+
+        if isinstance(result, SSHServerListener):
+            self._local_listeners[(listen_host, listen_port)] = result
         else:
-            # Otherwise, this is a custom listener
-            listener = _LISTEN
+            raise ValueError('Result must be subclass of SSHServerListener')
 
-        if bind_port == 0:
-            # If bind_port was 0, return the actual listening port
-            bind_port = result
-            result = UInt32(result)
-        else:
-            result = True
-
-        self._local_listeners[(bind_addr, bind_port)] = listener
-        return result
-
-    def _process_cancel_tcpip_forward_request(self, packet):
-        bind_addr = packet.get_string()
-        bind_port = packet.get_uint32()
+    def _process_cancel_tcpip_forward_global_request(self, packet):
+        listen_host = packet.get_string()
+        listen_port = packet.get_uint32()
         packet.check_end()
 
         try:
-            bind_addr = bind_addr.decode('utf-8')
+            listen_host = listen_host.decode('utf-8')
         except UnicodeDecodeError:
             raise SSHError(DISC_PROTOCOL_ERROR, 'Invalid TCP forward request')
 
-        listener = self._local_listeners.pop((bind_addr, bind_port))
+        listener = self._local_listeners.pop((listen_host, listen_port))
         if not listener:
             raise SSHError(DISC_PROTOCOL_ERROR, 'No such listener')
 
-        if listener != _LISTEN:
-            listener.close()
-
-        return self.handle_cancel_listen(bind_addr, bind_port)
+        listener.close()
 
     def get_username(self):
         """Return the authenticated username, if any
@@ -2390,7 +2085,7 @@ class SSHServer(_SSHConnection):
 
         raise ChannelOpenError(OPEN_CONNECT_FAILED, 'Connection refused')
 
-    def handle_listen(self, bind_addr, bind_port):
+    def handle_listen(self, listen_host, listen_port):
         """Handle a request to listen on a TCP/IP address and port
 
            This method is called when a client makes a request to
@@ -2414,35 +2109,14 @@ class SSHServer(_SSHConnection):
 
            By default, this method rejects all listen requests.
 
-           :param string bind_addr:
+           :param string listen_host:
                The address the server should listen on
-           :param integer bind_port:
+           :param integer listen_port:
                The port the server should listen on, or the value ``0``
                to request that the server dynamically select a port
 
            :returns: The port number being listened on or ``False`` to
                      reject the listen request
-
-        """
-
-        return False
-
-    def handle_cancel_listen(self, bind_addr, bind_port):
-        """Handle a request to stop listening on a TCP/IP address and port
-
-           This method is called when a client makes a request to stop
-           listening on an address and port for incoming TCP connections.
-           Applications wishing to allow TCP/IP forwarding must
-           override this method and return ``True`` to acknowledge
-           the request to stop listening or ``False`` to indicate that
-           there was no listener to stop.
-
-           By default, this method rejects all requests to stop listening.
-
-           :param string bind_addr:
-               The address the application should stop listening on
-           :param integer bind_port:
-               The port the application should stop listening on
 
         """
 
@@ -2473,8 +2147,13 @@ class SSHListener(Listener):
             port = listen_addr
 
         self._server_class = server_class
+        self._args = args
+        self._kwargs = kwargs
 
-        super().__init__(host, port, self.handle_accepted, *args, **kwargs)
+        super().__init__(host, port)
 
-    def handle_accepted(self, sock, listen_addr, client_addr, *args, **kwargs):
-        self._server_class(sock, client_addr, *args, **kwargs)
+    def handle_open_error(self, exc):
+        print('Unable to open listener: %s' % exc.args[1], file=sys.stderr)
+
+    def handle_accepted(self, sock, client_addr):
+        self._server_class(sock, client_addr, *self._args, **self._kwargs)

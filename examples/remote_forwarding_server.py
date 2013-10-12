@@ -25,9 +25,9 @@ class MySSHServer(SSHServer):
         # No auth in this example
         return False
 
-    def handle_listen(self, bind_addr, bind_port):
+    def handle_listen(self, listen_host, listen_port):
         # Allow remote port forwarding, but only on port 8080
-        return bind_port == 8080
+        return listen_port == 8080
 
 listener = SSHListener(8022, MySSHServer, ssh_host_keys)
 asyncore.loop()

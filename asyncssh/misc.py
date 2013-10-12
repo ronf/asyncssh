@@ -12,8 +12,9 @@
 
 """Miscellaneous utility classes and functions"""
 
-import asyncore, socket, sys, traceback
+import asyncore, socket
 
+from .asyncfunc import *
 from .constants import *
 
 def all_ints(seq):
@@ -39,11 +40,10 @@ def mod_inverse(x, m):
 class _ListenSock(asyncore.dispatcher):
     """An asynchronous wrapper around a listening socket"""
 
-    def __init__(self, family, socktype, listen_addr,
-                 callback=None, *args, **kwargs):
+    def __init__(self, listener, family, socktype, listen_addr):
         asyncore.dispatcher.__init__(self)
 
-        self._listen_addr = listen_addr
+        self._listener = listener
 
         try:
             self.create_socket(family, socktype)
@@ -57,68 +57,62 @@ class _ListenSock(asyncore.dispatcher):
             self.close()
             raise
 
-        self._callback = callback
-        self._args = args
-        self._kwargs = kwargs
-
     def handle_accepted(self, sock, client_addr):
         """Handle a new incoming connection"""
 
-        self._callback(sock, self._listen_addr, client_addr,
-                       *self._args, **self._kwargs)
-
-    def handle_error(self):
-        """Handle an unexpected error while accepting a connection"""
-
-        traceback.print_exc()
-        sys.exit(1)
+        self._listener.handle_accepted(sock, client_addr)
 
 
-class Listener(asyncore.dispatcher):
-    """General socket listener
+class Listener:
+    """General socket listener parent class
 
-       This is a helper class which listens for incoming connections on
-       the specified address and port and calls the specified callback
-       for each new connection which it accepts. The listen address can
-       be either an address and port tuple or just a port to listen on
-       that port on all interfaces.
+       This class is a helper class which listens for incoming connections
+       on the specified host address and port. It is fully asynchronous,
+       supports IPv4 and IPv6, and will open multiple listening sockets
+       if necessary depending on what the specified host resolves to.
 
-       The callback function will be passed the newly opened socket and
-       tuples of the listen address and client address information,
-       followed by any additional arguments passed to this class when
-       it was created.
+       If the listener is opened successfully, the method :meth:`handle_open`
+       will be called. If an error occurs, the method :meth:`handle_open_error`
+       is called with exception information.
+
+       When new connections arrive, the method :meth:`handle_accepted` is
+       called with the newly open socket, listen address, and client
+       address.
 
        :param string host:
            The host address to listen on
        :param integer port:
            The port to listen on
-       :param function callback:
-           The function to call when new connections arrive
-       :param \*args,\ \*\*kwargs:
-           Additional arguments to pass to ``callback``
 
     """
 
-    def __init__(self, host, port, callback=None, *args, **kwargs):
-        asyncore.dispatcher.__init__(self)
-
-        # TODO: Add support for some form of async getaddrinfo
-        addrinfo = socket.getaddrinfo(host, port, socket.AF_UNSPEC,
-                                      socket.SOCK_STREAM, 0, socket.AI_PASSIVE)
-
+    def __init__(self, host, port):
         self._listen_socks = []
         self.listen_addrs = []
+        self.listen_host = host
         self.listen_port = port
 
-        for family, socktype, proto, canonname, sockaddr in addrinfo:
+        addrinfo = getaddrinfo(host, port, socket.AF_UNSPEC,
+                               socket.SOCK_STREAM, 0, socket.AI_PASSIVE,
+                               callback=self._listen)
+
+    def _listen(self, rtype, result):
+        """Set up listening sockets"""
+
+        if rtype == 'exception':
+            self.handle_open_error(result)
+            return
+
+        for family, socktype, proto, canonname, sockaddr in result:
             if sockaddr[1] == 0:
                 sockaddr = sockaddr[:1] + (self.listen_port,) + sockaddr[2:]
 
             try:
-                sock = _ListenSock(family, socktype, sockaddr,
-                                   callback, *args, **kwargs)
-            except socket.error:
-                raise
+                sock = _ListenSock(self, family, socktype, sockaddr)
+            except socket.error as exc:
+                self.close()
+                self.handle_open_error(exc)
+                return
 
             self._listen_socks.append(sock)
             self.listen_addrs.append(sock.listen_addr[0])
@@ -126,11 +120,63 @@ class Listener(asyncore.dispatcher):
             if self.listen_port == 0:
                 self.listen_port = sock.listen_addr[1]
 
+        self.handle_open()
+
     def close(self):
         """Close all listening sockets"""
 
         for sock in self._listen_socks:
             sock.close()
+
+    def handle_open(self):
+        """Handle when the listener is opened successfully
+
+           This method is called when a listener is opened successfully.
+           Applications wishing to get details about what addresses
+           and port the listener was bound to can check the members
+           ``listen_addrs``, ``listen_host``, and ``listen_port`` after
+           this method is called.
+
+           By default, nothing is done here.
+
+        """
+
+        pass
+
+    def handle_open_error(self, exc):
+        """Handle an error returned when opening the listener
+
+           This method is called when a request to open a listener fails.
+           If some listening sockets were successfully opened before this
+           error, they are closed before this method is called.
+
+           By default, nothing is done here.
+
+           :param exc:
+               The exception raised when opening the listener
+           :type exception: :class:`Exception`
+
+        """
+
+        pass
+
+    def handle_accepted(self, sock, client_addr):
+        """Handle a new connection to this listener
+
+           This method is called when a new connection arrives on this
+           listener. It should be overridden to process new connections
+           as they arrive.
+
+           By default, this method immediate closes the new connection.
+
+           :param socket sock:
+               The socket for the newly accepted connection
+           :param client_addr:
+               A tuple containing client address information
+
+        """
+
+        sock.close()
 
 
 class SSHError(Exception):

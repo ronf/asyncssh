@@ -13,17 +13,16 @@
 #     Ron Frederick - initial implementation, API, and documentation
 
 import asyncore, sys
-from asyncssh import SSHClient
+from asyncssh import SSHClient, SSHClientRemotePortForwarder
+
+class MyPortForwarder(SSHClientRemotePortForwarder):
+    def handle_open_error(self):
+        print('Remote listen failed.', file=sys.stderr)
+        self.conn.disconnect()
 
 class MySSHClient(SSHClient):
     def handle_auth_complete(self):
-        self.forward_remote_port('', 8080, 'localhost', 80)
-
-    def handle_remote_port_forwarding(self, bind_addr, bind_port):
-        print('Server listening on port %s...' % bind_port)
-
-    def handle_remote_port_forwarding_error(self, bind_addr, bind_port):
-        print('Server listen failed.')
+        forwarder = MyPortForwarder(self, '', 8080, 'localhost', 80)
 
     def handle_disconnect(self, code, reason, lang):
         print('SSH connection error: %s' % reason, file=sys.stderr)

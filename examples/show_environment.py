@@ -37,9 +37,6 @@ class MySSHServerSession(SSHServerSession):
             self.exit(1)
 
 class MySSHServer(SSHServer):
-    def __init__(self, sock, addr):
-        super().__init__(sock, ssh_host_keys)
-
     def begin_auth(self, username):
         # No auth in this example
         return False
@@ -47,5 +44,5 @@ class MySSHServer(SSHServer):
     def handle_session(self):
         return MySSHServerSession(self)
 
-listener = SSHListener(8022, MySSHServer)
+listener = SSHListener(8022, MySSHServer, ssh_host_keys)
 asyncore.loop()

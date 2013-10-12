@@ -66,11 +66,11 @@ Installation
     #. Install PyCrypto 2.6 or later from http://www.pycrypto.org or your
        favorite packaging system.
 
-    #. Download, unpack, and install `asyncssh-0.4.0.tar.gz
-       <asyncssh-0.4.0.tar.gz>`_ by running the following commands::
+    #. Download, unpack, and install `asyncssh-0.5.0.tar.gz
+       <asyncssh-0.5.0.tar.gz>`_ by running the following commands::
 
-       % tar zxf asyncssh-0.4.0.tar.gz
-       % cd asyncssh-0.4.0
+       % tar zxf asyncssh-0.5.0.tar.gz
+       % cd asyncssh-0.5.0
        % python setup.py install
 
     #. Check out the examples below to get started!
@@ -229,25 +229,45 @@ that port be forwarded across SSH to the server and on to port 80 on
       :start-line: 15
 
 To listen on a dynamically assigned port, the client can pass in ``0``
-as the bind port and the port the system selects to listen on will be
-returned by the :meth:`forward_local_port() <SSHClient.forward_local_port>`
-call if the listener is successfully opened. If not, a :exc:`socket.error`
-is raised.
+as the bind port. If the listener is successfully opened, the selected
+port will be available in the ``listen_port`` member variable when the
+:meth:`handle_open() <SSHClientLocalPortForwarder.handle_open>` method
+is called. If the listen fails, the :meth:`handle_open_error()
+<SSHClientLocalPortForwarder.handle_open_error>` method is called
+with the exception that was raised.
+
+The client can limit which connections are forwarded by overriding the
+:meth:`accept_connection() <SSHClientLocalPortForwarder.accept_connection>`
+method. It is passed the address and port of the client attempting the
+connection and can return ``True`` or ``False`` to accept or reject the
+connection. The following example listens on a random port and rejects
+connections from ``localhost``:
+
+   .. include:: ../examples/local_forwarding_client2.py
+      :literal:
+      :start-line: 15
 
 The client can also request remote port forwarding from the server. The
 following example shows the client requesting that the server listen on
 port 8080 and that connections arriving there be forwarded across SSH
-and on to port 80 on localhost:
+and on to port 80 on ``localhost``:
 
    .. include:: ../examples/remote_forwarding_client.py
       :literal:
       :start-line: 15
 
-In this case, the port the server selects to listen on is returned via
-a call to :meth:`handle_remote_port_forwarding()
-<SSHClient.handle_remote_port_forwarding>`, and errors are
-returned via a call to :meth:`handle_remote_port_forwarding_error()
-<SSHClient.handle_remote_port_forwarding_error>`.
+The client can request that the server listen on a dynamic port by passing
+in a listen port value of ``0``, getting back the selected port via the
+``listen_port`` member variable when the :meth:`handle_open()
+<SSHClientRemotePortForwarder.handle_open>` method is called. If the
+listen request to the server fails, the :meth:`handle_open_error()
+<SSHClientRemotePortForwarder.handle_open_error>` method is called.
+
+The client can limit which incoming connections are accepted by overriding
+:meth:`accept_connection() <SSHClientRemotePortForwarder.accept_connection>`,
+return ``True`` to accept connections, ``False`` to reject them with a
+"Connection refused" error, or raising a :exc:`ChannelOpenError` exception
+to return some other error.
 
 Direct TCP connections
 ----------------------

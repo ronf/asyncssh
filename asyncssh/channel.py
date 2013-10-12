@@ -1520,9 +1520,10 @@ class SSHTCPConnection(_SSHChannel):
        call :meth:`connect`. SSH server applications wishing to support
        forwarded connections should implement :meth:`handle_listen()
        <SSHServer.handle_listen>` in a subclass of :class:`SSHServer`
-       to be notified about what ports to listen on and then create this
-       object and call :meth:`accept` to forward incoming connections
-       when they arrive.
+       and return a subclass of :class:`SSHServerListener` to handle
+       requests from the client about what ports to listen on and then
+       create this object and call :meth:`accept` to forward incoming
+       connections when they arrive.
 
        If a connection is successfully opened, :meth:`handle_open` will
        be called, after with the application can begin sending data.
@@ -1539,7 +1540,7 @@ class SSHTCPConnection(_SSHChannel):
         super().__init__(conn, encoding, window, max_pktsize)
 
     def _finish_open_request(self, packet):
-        """Finishing processing a request to open an inbound TCP connection"""
+        """Finish processing a request to open an inbound TCP connection"""
 
         # TCP connections should have no extra data in the open request
         packet.check_end()
@@ -1563,7 +1564,7 @@ class SSHTCPConnection(_SSHChannel):
         # Call handle_open() once the connection is opened successfully
         self.handle_open()
 
-    def accept(self, bind_addr, bind_port, orig_host='', orig_port=0):
+    def accept(self, listen_host, listen_port, orig_host='', orig_port=0):
         """Report opening of an incoming forwarded TCP/IP connection
 
            This method can be called to open a channel for a new
@@ -1574,9 +1575,9 @@ class SSHTCPConnection(_SSHChannel):
            open fails, :meth:`handle_open_error` will be called with
            information about the failure.
 
-           :param string bind_addr:
+           :param string listen_host:
                The address the connection was destined to
-           :param integer bind_port:
+           :param integer listen_port:
                The port the connection was destined to
            :param string orig_host: (optional)
                The address the connection was originated from
@@ -1585,10 +1586,10 @@ class SSHTCPConnection(_SSHChannel):
 
         """
 
-        bind_addr = bind_addr.encode('utf-8')
+        listen_host = listen_host.encode('utf-8')
         orig_host = orig_host.encode('utf-8')
 
-        self._open(b'forwarded-tcpip', String(bind_addr), UInt32(bind_port),
+        self._open(b'forwarded-tcpip', String(listen_host), UInt32(listen_port),
                    String(orig_host), UInt32(orig_port))
 
     def connect(self, dest_host, dest_port, orig_host='', orig_port=0):

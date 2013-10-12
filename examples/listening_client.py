@@ -13,29 +13,25 @@
 #     Ron Frederick - initial implementation, API, and documentation
 
 import asyncore, sys
-from asyncssh import SSHClient, SSHTCPConnection
+from asyncssh import SSHClient, SSHClientListener, SSHTCPConnection
 
 class MySSHTCPConnection(SSHTCPConnection):
     def handle_open(self):
         self.send('Connection successful!\r\n')
         self.close()
 
+class MySSHClientListener(SSHClientListener):
+    def handle_open_error(self):
+        print('Server listen failed.', file=sys.stderr)
+        self.conn.disconnect()
+
+    def handle_connection(self, orig_host, orig_port):
+        print('Connection received from %s, port %s' % (orig_host, orig_port))
+        return MySSHTCPConnection(self.conn, encoding='utf-8')
+
 class MySSHClient(SSHClient):
     def handle_auth_complete(self):
-        self.listen('', 8888)
-
-    def handle_listen(self, bind_addr, bind_port):
-        print('Server listening on port %s...' % bind_port)
-
-    def handle_listen_error(self, bind_addr, bind_port):
-        print('Server listen failed.', file=sys.stderr)
-        self.disconnect()
-
-    def handle_forwarded_connection(self, dest_host, dest_port,
-                                    orig_host, orig_port):
-        print('Connection received from %s, port %s' % (orig_host, orig_port))
-
-        return MySSHTCPConnection(self, encoding='utf-8')
+        listener = MySSHClientListener(self, '', 8888)
 
     def handle_disconnect(self, code, reason, lang):
         print('SSH connection error: %s' % reason, file=sys.stderr)

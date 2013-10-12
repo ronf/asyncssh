@@ -16,13 +16,24 @@ import asyncore, sys
 from asyncssh import SSHClient, SSHClientLocalPortForwarder
 
 class MyPortForwarder(SSHClientLocalPortForwarder):
+    def handle_open(self):
+        print('Listening on port %s...' % self.listen_port)
+
     def handle_open_error(self, exc):
         print('Local listen failed: %s' % exc.args[1], file=sys.stderr)
         self.conn.disconnect()
 
+    def accept_connection(self, orig_host, orig_port):
+        if orig_host not in ('127.0.0.1', '::1'):
+            print('Accepting connection from %s...' % orig_host)
+            return True
+        else:
+            print('Rejecting connection from %s...' % orig_host)
+            return False
+
 class MySSHClient(SSHClient):
     def handle_auth_complete(self):
-        forwarder = MyPortForwarder(self, '', 8080, 'www.google.com', 80)
+        forwarder = MyPortForwarder(self, '', 0, 'www.google.com', 80)
 
     def handle_disconnect(self, code, reason, lang):
         print('SSH connection error: %s' % reason, file=sys.stderr)
