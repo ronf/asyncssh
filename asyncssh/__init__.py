@@ -16,7 +16,7 @@ __author__ = 'Ron Frederick'
 
 __author_email__ = '<ronf@timeheart.net>'
 
-__url__ = 'http://www.timeheart.net/asyncssh/'
+__url__ = 'http://asyncssh.timeheart.net/'
 
 __version__ = '0.5.0'
 
