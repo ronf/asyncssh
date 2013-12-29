@@ -101,7 +101,7 @@ instance is created:
 
    .. code::
 
-      from asyncssh import read_private_key
+      from asyncssh import read_public_key_list
       host_keys = read_public_key_list('ssh_host_keys.pub')
 
       client = MySSHClient('localhost', server_host_keys=host_keys)
