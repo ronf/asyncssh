@@ -222,6 +222,7 @@ class _SSHConnection(asyncore.dispatcher, SSHPacketHandler):
         exc = sys.exc_info()[1]
         if isinstance(exc, socket.error):
             self._disconnected = True
+            self._outbuf = b''
             self.handle_disconnect(DISC_CONNECTION_LOST, exc.args[1],
                                    DEFAULT_LANG)
             self.handle_close()
