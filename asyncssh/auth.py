@@ -1,4 +1,4 @@
-# Copyright (c) 2013 by Ron Frederick <ronf@timeheart.net>.
+# Copyright (c) 2013-2014 by Ron Frederick <ronf@timeheart.net>.
 # All rights reserved.
 #
 # This program and the accompanying materials are made available under

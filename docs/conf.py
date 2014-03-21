@@ -44,7 +44,7 @@ master_doc = 'index'
 
 # General information about the project.
 project = 'AsyncSSH'
-copyright = '2013, ' + asyncssh.__author__
+copyright = '2013-2014, ' + asyncssh.__author__
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
