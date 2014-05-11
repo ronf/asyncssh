@@ -1121,7 +1121,7 @@ class SSHConnection(SSHPacketHandler):
 
     def abort(self):
         """Forcibly close the SSH connection
-        
+
            This method closes the SSH connection immediately, without
            waiting for pending operations to complete and wihtout sending
            an explicit SSH disconnect message. Buffered data waiting to be
@@ -1429,7 +1429,7 @@ class SSHClientConnection(SSHConnection):
 
     def _kbdint_auth_requested(self):
         """Return the list of supported keyboard-interactive auth methods
-        
+
            If keyboard-interactive auth is not supported in the client but
            a password was provided when the connection was opened, this
            will allow sending the password via keyboard-interactive auth.
@@ -1768,7 +1768,7 @@ class SSHClientConnection(SSHConnection):
 
 class SSHServerConnection(SSHConnection):
     """SSH server connection
-    
+
        This class represents an SSH server connection.
 
        During authentication, :meth:`send_auth_banner` can be called to
@@ -2375,7 +2375,7 @@ class SSHServer:
        to be overridden to perform authentication, or :meth:`begin_auth`
        should be overridden to return ``False`` to indicate that no
        authentication is required.
-       
+
        In addition, one or more of the :meth:`session_requested`,
        :meth:`connection_requested`, or :meth:`server_requested` methods
        will need to be overridden to handle requests to open sessions or
