@@ -55,6 +55,7 @@ def NameList(value):
 
     return String(b','.join(value))
 
+
 class SSHPacket:
     """Decoder class for SSH packets"""
 
@@ -77,7 +78,7 @@ class SSHPacket:
         """Extract the requested number of bytes from the packet"""
 
         if self._idx + size > self._len:
-            raise SSHError(DISC_PROTOCOL_ERROR, 'Incomplete packet')
+            raise DisconnectError(DISC_PROTOCOL_ERROR, 'Incomplete packet')
 
         value = self._packet[self._idx:self._idx+size]
         self._idx += size
@@ -123,8 +124,9 @@ class SSHPacket:
         """Confirm that all of the data in the packet has been consumed"""
 
         if self._idx != self._len:
-            raise SSHError(DISC_PROTOCOL_ERROR,
-                           'Unexpected data at end of packet')
+            raise DisconnectError(DISC_PROTOCOL_ERROR,
+                                  'Unexpected data at end of packet')
+
 
 class SSHPacketHandler:
     """Parent class for SSH packet handlers

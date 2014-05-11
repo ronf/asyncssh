@@ -14,24 +14,27 @@
 
 import asyncio, asyncssh, sys
 
-class MySSHClientSession(asyncssh.SSHClientSession):
-    def data_received(self, data, datatype):
-        print(data, end='')
+def connection_requested(orig_host, orig_port):
+    global conn
 
-    def connection_lost(self, exc):
-        if exc:
-            print('SSH session error: ' + str(exc), file=sys.stderr)
+    if orig_host in ('127.0.0.1', '::1'):
+        return conn.forward_connection('localhost', 80)
+    else:
+        raise asyncssh.ChannelOpenError(
+            asyncssh.OPEN_ADMINISTRATIVELY_PROHIBITED,
+            'Connections only allowed from localhost')
 
 @asyncio.coroutine
 def start_client():
+    global conn
+
     conn, _ = yield from asyncssh.create_connection(None, 'localhost')
-    chan, _ = yield from conn.create_session(MySSHClientSession, 'env',
-                                             env={ 'LANG': 'en_GB',
-                                                   'LC_COLLATE': 'C'})
-    yield from chan.wait_closed()
-    conn.close()
+    listener = yield from conn.create_server(connection_requested, '', 8080)
+    yield from listener.wait_closed()
+
+loop = asyncio.get_event_loop()
 
 try:
-    asyncio.get_event_loop().run_until_complete(start_client())
+    loop.run_until_complete(start_client())
 except (OSError, asyncssh.Error) as exc:
     sys.exit('SSH connection failed: ' + str(exc))

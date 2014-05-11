@@ -12,7 +12,7 @@
 
 """SSH connection handlers"""
 
-import asyncore, getpass, os, socket, sys, time, traceback
+import asyncio, getpass, os, socket, time, traceback
 from collections import OrderedDict
 from os import urandom
 
@@ -23,6 +23,7 @@ from .cipher import *
 from .compression import *
 from .forward import *
 from .kex import *
+from .listen import *
 from .mac import *
 from .misc import *
 from .packet import *
@@ -40,13 +41,17 @@ _CONNECTION_SERVICE = b'ssh-connection'
 _DEFAULT_KEY_FILES = ('id_ecdsa', 'id_rsa', 'id_dsa')
 
 # Default rekey parameters
-_DEFAULT_REKEY_BYTES    = 1 << 30       # 1 GB
+_DEFAULT_REKEY_BYTES    = 1 << 30       # 1 GiB
 _DEFAULT_REKEY_SECONDS  = 3600          # 1 hour
+
+# Default channel parameters
+_DEFAULT_WINDOW = 2*1024*1024
+_DEFAULT_MAX_PKTSIZE = 32768
 
 def _select_algs(alg_type, algs, possible_algs, none_value=None):
     """Select a set of allowed algorithms"""
 
-    if algs == ...:
+    if algs == ():
         return possible_algs
     elif algs:
         result = []
@@ -66,23 +71,25 @@ def _select_algs(alg_type, algs, possible_algs, none_value=None):
         raise ValueError('No %s algorithms selected' % alg_type)
 
 
-class _SSHConnection(asyncore.dispatcher, SSHPacketHandler):
-    """Parent class for SSH Connection handlers"""
+class SSHConnection(SSHPacketHandler):
+    """Parent class for SSH connections"""
 
-    def __init__(self, sock, kex_algs, encryption_algs, mac_algs,
-                 compression_algs, rekey_bytes, rekey_seconds, server):
-        asyncore.dispatcher.__init__(self, sock)
-
-        self.client_version = b''
-        self.server_version = b''
-        self.client_kexinit = b''
-        self.server_kexinit = b''
-        self.server_host_key = None
-        self.session_id = None
-
+    def __init__(self, protocol_factory, loop, kex_algs, encryption_algs,
+                 mac_algs, compression_algs, rekey_bytes, rekey_seconds,
+                 server):
+        self._protocol_factory = protocol_factory
+        self._loop = loop
+        self._transport = None
+        self._extra = {}
         self._server = server
         self._inpbuf = b''
-        self._outbuf = b''
+
+        self._client_version = b''
+        self._server_version = b''
+        self._client_kexinit = b''
+        self._server_kexinit = b''
+        self._server_host_key = None
+        self._session_id = None
 
         self._send_seq = 0
         self._send_cipher = None
@@ -154,12 +161,11 @@ class _SSHConnection(asyncore.dispatcher, SSHPacketHandler):
         self._next_recv_chan = 0
 
         self._global_request_queue = []
-        self._global_request_callbacks = []
+        self._global_request_waiters = []
 
         self._local_listeners = {}
 
         self._disconnected = False
-        self._closing = False
 
         self._kex_algs = _select_algs('key exchange', kex_algs, get_kex_algs())
         self._enc_algs = _select_algs('encryption', encryption_algs,
@@ -168,21 +174,32 @@ class _SSHConnection(asyncore.dispatcher, SSHPacketHandler):
         self._cmp_algs = _select_algs('compression', compression_algs,
                                       get_compression_algs(), b'none')
 
-    def _cleanup(self):
-        if not self._closing:
-            self._closing = True
+    def _cleanup(self, exc=None):
+        if self._channels:
+            for chan in list(self._channels.values()):
+                chan._process_connection_close(exc)
+            self._channels = {}
 
-            for channel in list(self._channels.values()):
-                channel._process_connection_close()
-
+        if self._local_listeners:
             for listener in self._local_listeners.values():
                 listener.close()
+            self._local_listeners = {}
 
-            self._inpbuf = None
-            self._recv_handler = None
+        if self._owner:
+            self._owner.connection_lost(exc)
+            self._owner = None
 
-            if not self._outbuf:
-                self.close()
+        self._inpbuf = b''
+        self._recv_handler = None
+
+    def _force_close(self, exc):
+        if not self._transport:
+            return
+
+        self._transport.abort()
+        self._transport = None
+
+        self._loop.call_soon(self._cleanup, exc)
 
     def is_client(self):
         return not self._server
@@ -190,53 +207,41 @@ class _SSHConnection(asyncore.dispatcher, SSHPacketHandler):
     def is_server(self):
         return self._server
 
-    def readable(self):
-        return True
+    def connection_made(self, transport):
+        self._transport = transport
 
-    def handle_connect(self):
-        self._start()
+        self._owner = self._protocol_factory()
+        self._protocol_factory = None
 
-    def handle_read(self):
-        data = self.recv(65536)
-        if data and not self._closing:
+        self._owner.connection_made(self)
+        self._send_version()
+
+    def connection_lost(self, exc=None):
+        if exc is None and self._transport:
+            exc = DisconnectError(DISC_CONNECTION_LOST, 'Connection lost')
+
+        self._force_close(exc)
+
+    def data_received(self, data):
+        if data:
             self._inpbuf += data
+
             try:
                 while self._inpbuf and self._recv_handler():
                     pass
-            except SSHError as err:
-                self._disconnected = True
-                self.handle_disconnect(err.code, err.reason, err.lang)
-                self.disconnect(err.code, err.reason, err.lang)
+            except DisconnectError as exc:
+                self._force_close(exc)
 
-    def writable(self):
-        return self._outbuf
+    def eof_received(self):
+        self.connection_lost(None)
 
-    def handle_write(self):
-        sent = self.send(self._outbuf)
-        self._outbuf = self._outbuf[sent:]
+    def pause_writing(self):
+        # Do nothing with this for now
+        pass
 
-        if self._closing and not self._outbuf:
-            self.close()
-
-    def handle_error(self):
-        exc = sys.exc_info()[1]
-        if isinstance(exc, socket.error):
-            self._disconnected = True
-            self._outbuf = b''
-            self.handle_disconnect(DISC_CONNECTION_LOST, exc.args[1],
-                                   DEFAULT_LANG)
-            self.handle_close()
-        else:
-            traceback.print_exc()
-            sys.exit(1)
-
-    def handle_close(self):
-        if not self._disconnected:
-            self._disconnected = True
-            self.handle_disconnect(DISC_CONNECTION_LOST, 'Connection lost',
-                                   DEFAULT_LANG)
-
-        self._cleanup()
+    def resume_writing(self):
+        # Do nothing with this for now
+        pass
 
     def _choose_alg(self, alg_type, local_algs, remote_algs):
         if self.is_client():
@@ -248,8 +253,8 @@ class _SSHConnection(asyncore.dispatcher, SSHPacketHandler):
             if alg in server_algs:
                 return alg
 
-        raise SSHError(DISC_KEY_EXCHANGE_FAILED,
-                       'No matching %s algorithm found' % alg_type)
+        raise DisconnectError(DISC_KEY_EXCHANGE_FAILED,
+                              'No matching %s algorithm found' % alg_type)
 
     def _get_recv_chan(self):
         while self._next_recv_chan in self._channels:
@@ -263,10 +268,10 @@ class _SSHConnection(asyncore.dispatcher, SSHPacketHandler):
     def _send(self, data):
         """Send data to the SSH connection"""
 
-        if not self._disconnected:
-            self._outbuf += data
+        if self._transport:
+            self._transport.write(data)
 
-    def _start(self):
+    def _send_version(self):
         """Start the SSH handshake"""
 
         from asyncssh import __version__
@@ -274,9 +279,11 @@ class _SSHConnection(asyncore.dispatcher, SSHPacketHandler):
         version = b'SSH-2.0-AsyncSSH_' + __version__.encode('ascii')
 
         if self.is_client():
-            self.client_version = version
+            self._client_version = version
+            self._extra.update(client_version=version.decode('ascii'))
         else:
-            self.server_version = version
+            self._server_version = version
+            self._extra.update(server_version=version.decode('ascii'))
 
         self._send(version + b'\r\n')
 
@@ -295,9 +302,11 @@ class _SSHConnection(asyncore.dispatcher, SSHPacketHandler):
             (self.is_client() and version.startswith(b'SSH-1.99-'))):
             # Accept version 2.0, or 1.99 if we're a client
             if self.is_server():
-                self.client_version = version
+                self._client_version = version
+                self._extra.update(client_version=version.decode('ascii'))
             else:
-                self.server_version = version
+                self._server_version = version
+                self._extra.update(server_version=version.decode('ascii'))
 
             self._send_kexinit()
             self._kexinit_sent = True
@@ -307,10 +316,8 @@ class _SSHConnection(asyncore.dispatcher, SSHPacketHandler):
             pass
         else:
             # Otherwise, reject the unknown version
-            self._disconnected = True
-            self.handle_disconnect(DISC_PROTOCOL_ERROR, 'Unknown SSH version',
-                                   DEFAULT_LANG)
-            self._cleanup()
+            self._force_close(SSH_Error(DISC_PROTOCOL_ERROR,
+                                        'Unknown SSH version'))
             return False
 
         return True
@@ -343,7 +350,8 @@ class _SSHConnection(asyncore.dispatcher, SSHPacketHandler):
             if self._recv_mac:
                 if not self._recv_mac.verify(UInt32(self._recv_seq) +
                                              self._packet, mac):
-                    raise SSHError(DISC_MAC_ERROR, 'MAC verification failed')
+                    raise DisconnectError(DISC_MAC_ERROR,
+                                          'MAC verification failed')
 
             self._packet = self._packet[4:]
 
@@ -361,7 +369,8 @@ class _SSHConnection(asyncore.dispatcher, SSHPacketHandler):
             if self._recv_mac:
                 if not self._recv_mac.verify(UInt32(self._recv_seq) +
                                              self._packet, mac):
-                    raise SSHError(DISC_MAC_ERROR, 'MAC verification failed')
+                    raise DisconnectError(DISC_MAC_ERROR,
+                                          'MAC verification failed')
 
             payload = self._packet[5:-self._packet[4]]
 
@@ -388,7 +397,7 @@ class _SSHConnection(asyncore.dispatcher, SSHPacketHandler):
         if not processed:
             self._send_packet(Byte(MSG_UNIMPLEMENTED), UInt32(self._recv_seq))
 
-        if not self._closing:
+        if self._transport:
             self._recv_seq = (self._recv_seq + 1) & 0xffffffff
             self._recv_handler = self._recv_pkthdr
 
@@ -400,7 +409,7 @@ class _SSHConnection(asyncore.dispatcher, SSHPacketHandler):
 
         if (self._auth_complete and self._kex_complete and
             (self._rekey_bytes_sent >= self._rekey_bytes or
-             time.time() >= self._rekey_time)):
+             time.monotonic() >= self._rekey_time)):
             self._send_kexinit()
             self._kexinit_sent = True
 
@@ -413,7 +422,7 @@ class _SSHConnection(asyncore.dispatcher, SSHPacketHandler):
 
         # If we're encrypting and we have no data outstanding, insert an
         # ignore packet into the stream
-        if self._send_cipher and not self._outbuf and payload[0] != MSG_IGNORE:
+        if self._send_cipher and payload[0] != MSG_IGNORE:
             self._send_packet(Byte(MSG_IGNORE), String(b''))
 
         if self._compressor and (self._auth_complete or
@@ -470,7 +479,7 @@ class _SSHConnection(asyncore.dispatcher, SSHPacketHandler):
 
         self._kex_complete = False
         self._rekey_bytes_sent = 0
-        self._rekey_time = time.time() + self._rekey_seconds
+        self._rekey_time = time.monotonic() + self._rekey_seconds
 
         cookie = urandom(16)
         kex_algs = NameList(self._kex_algs)
@@ -485,29 +494,29 @@ class _SSHConnection(asyncore.dispatcher, SSHPacketHandler):
                            cmp_algs, langs, langs, Boolean(False), UInt32(0)))
 
         if self.is_server():
-            self.server_kexinit = packet
+            self._server_kexinit = packet
         else:
-            self.client_kexinit = packet
+            self._client_kexinit = packet
 
         self._send_packet(packet)
 
     def _send_newkeys(self, k, h):
         """Finish a key exchange and send a new keys message"""
 
-        if not self.session_id:
-            self.session_id = h
+        if not self._session_id:
+            self._session_id = h
 
-        iv_cs = self._kex.compute_key(k, h, b'A', self.session_id,
+        iv_cs = self._kex.compute_key(k, h, b'A', self._session_id,
                                       self._enc_blocksize_cs)
-        iv_sc = self._kex.compute_key(k, h, b'B', self.session_id,
+        iv_sc = self._kex.compute_key(k, h, b'B', self._session_id,
                                       self._enc_blocksize_sc)
-        enc_key_cs = self._kex.compute_key(k, h, b'C', self.session_id,
+        enc_key_cs = self._kex.compute_key(k, h, b'C', self._session_id,
                                            self._enc_keysize_cs)
-        enc_key_sc = self._kex.compute_key(k, h, b'D', self.session_id,
+        enc_key_sc = self._kex.compute_key(k, h, b'D', self._session_id,
                                            self._enc_keysize_sc)
-        mac_key_cs = self._kex.compute_key(k, h, b'E', self.session_id,
+        mac_key_cs = self._kex.compute_key(k, h, b'E', self._session_id,
                                            self._mac_keysize_cs)
-        mac_key_sc = self._kex.compute_key(k, h, b'F', self.session_id,
+        mac_key_sc = self._kex.compute_key(k, h, b'F', self._session_id,
                                            self._mac_keysize_sc)
         self._kex = None
 
@@ -534,6 +543,14 @@ class _SSHConnection(asyncore.dispatcher, SSHPacketHandler):
             self._next_recv_etm = self._etm_sc
             self._next_decompressor = get_decompressor(self._cmp_alg_sc)
             self._next_decompress_after_auth = self._cmp_after_auth_sc
+
+            self._extra.update(
+                    send_cipher=self._enc_alg_cs.decode('ascii'),
+                    send_mac=self._mac_alg_cs.decode('ascii'),
+                    send_compression=self._cmp_alg_cs.decode('ascii'),
+                    recv_cipher=self._enc_alg_sc.decode('ascii'),
+                    recv_mac=self._mac_alg_sc.decode('ascii'),
+                    recv_compression=self._cmp_alg_sc.decode('ascii'))
         else:
             self._send_cipher = next_cipher_sc
             self._send_blocksize = max(8, self._enc_blocksize_sc)
@@ -550,6 +567,14 @@ class _SSHConnection(asyncore.dispatcher, SSHPacketHandler):
             self._next_decompressor = get_decompressor(self._cmp_alg_cs)
             self._next_decompress_after_auth = self._cmp_after_auth_cs
 
+            self._extra.update(
+                    send_cipher=self._enc_alg_sc.decode('ascii'),
+                    send_mac=self._mac_alg_sc.decode('ascii'),
+                    send_compression=self._cmp_alg_sc.decode('ascii'),
+                    recv_cipher=self._enc_alg_cs.decode('ascii'),
+                    recv_mac=self._mac_alg_cs.decode('ascii'),
+                    recv_compression=self._cmp_alg_cs.decode('ascii'))
+
             self._next_service = _USERAUTH_SERVICE
 
         self._kex_complete = True
@@ -564,7 +589,7 @@ class _SSHConnection(asyncore.dispatcher, SSHPacketHandler):
                            String(_CONNECTION_SERVICE), String(method)) + args)
 
         if key:
-            packet += String(key.sign(String(self.session_id) + packet))
+            packet += String(key.sign(String(self._session_id) + packet))
 
         self._send_packet(packet)
 
@@ -579,6 +604,7 @@ class _SSHConnection(asyncore.dispatcher, SSHPacketHandler):
         self._auth = None
         self._auth_in_progress = False
         self._auth_complete = True
+        self._extra.update(username=self._username)
 
     def _send_channel_open_confirmation(self, send_chan, recv_chan, recv_window,
                                         recv_pktsize, *result_args):
@@ -594,15 +620,17 @@ class _SSHConnection(asyncore.dispatcher, SSHPacketHandler):
         self._send_packet(Byte(MSG_CHANNEL_OPEN_FAILURE), UInt32(send_chan),
                           UInt32(code), String(reason), String(lang))
 
-    def _send_global_request(self, request, *args, callback=None,
-                             callback_args=()):
-        """Send a global request"""
+    @asyncio.coroutine
+    def _make_global_request(self, request, *args):
+        """Send a global request and wait for the response"""
 
-        if callback:
-            self._global_request_callbacks.append((callback, callback_args))
+        waiter = asyncio.Future(loop=self._loop)
+        self._global_request_waiters.append(waiter)
 
         self._send_packet(Byte(MSG_GLOBAL_REQUEST), String(request),
-                          Boolean(callback != None), *args)
+                          Boolean(True), *args)
+
+        return (yield from waiter)
 
     def _report_global_response(self, result):
         handler, packet, want_reply = self._global_request_queue.pop(0)
@@ -615,9 +643,9 @@ class _SSHConnection(asyncore.dispatcher, SSHPacketHandler):
                 self._send_packet(Byte(MSG_REQUEST_FAILURE))
 
         if self._global_request_queue:
-            self._process_global_request_queue()
+            self._service_next_global_request()
 
-    def _process_global_request_queue(self):
+    def _service_next_global_request(self):
         """Process next item on global request queue"""
 
         handler, packet, want_reply = self._global_request_queue[0]
@@ -625,6 +653,63 @@ class _SSHConnection(asyncore.dispatcher, SSHPacketHandler):
             handler(packet)
         else:
             self._report_global_response(False)
+
+    @asyncio.coroutine
+    def _create_tcp_listener(self, listen_host, listen_port):
+        if listen_host == '':
+            listen_host = None
+
+        addrinfo = yield from self._loop.getaddrinfo(listen_host, listen_port,
+                                                     family=socket.AF_UNSPEC,
+                                                     type=socket.SOCK_STREAM,
+                                                     flags=socket.AI_PASSIVE)
+
+        if not addrinfo:
+            raise OSError('getaddrinfo() returned empty list')
+
+        sockets = []
+
+        for family, socktype, proto, _, sa in addrinfo:
+            try:
+                sock = socket.socket(family, socktype, proto)
+            except OSError:
+                continue
+
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, True)
+
+            if family == socket.AF_INET6:
+                sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, True)
+
+            if sa[1] == 0:
+                sa = sa[:1] + (listen_port,) + sa[2:]
+
+            try:
+                sock.bind(sa)
+            except OSError as exc:
+                for sock in sockets:
+                    sock.close()
+
+                raise OSError(exc.errno, 'error while attempting to bind '
+                              'on address %r: %s' % (sa, exc.strerror.lower()))
+
+            if listen_port == 0:
+                listen_port = sock.getsockname()[1]
+
+            sockets.append(sock)
+
+        return listen_port, sockets
+
+    @asyncio.coroutine
+    def _create_forward_listener(self, listen_port, sockets, factory):
+        """Create an SSHForwardListener for a set of listening sockets"""
+
+        servers = []
+
+        for sock in sockets:
+            server = yield from self._loop.create_server(factory, sock=sock)
+            servers.append(server)
+
+        return SSHForwardListener(listen_port, servers)
 
     def _process_disconnect(self, pkttype, packet):
         """Process a disconnect message"""
@@ -638,11 +723,15 @@ class _SSHConnection(asyncore.dispatcher, SSHPacketHandler):
             reason = reason.decode('utf-8')
             lang = lang.decode('ascii')
         except UnicodeDecodeError:
-            raise SSHError(DISC_PROTOCOL_ERROR, 'Invalid disconnect message')
+            raise DisconnectError(DISC_PROTOCOL_ERROR,
+                                  'Invalid disconnect message')
 
-        self._disconnected = True
-        self.handle_disconnect(code, reason, lang)
-        self._cleanup()
+        if code != DISC_BY_APPLICATION:
+            exc = DisconnectError(code, reason, lang)
+        else:
+            exc = None
+
+        self._force_close(exc)
 
     def _process_ignore(self, pkttype, packet):
         """Process an ignore message"""
@@ -672,9 +761,9 @@ class _SSHConnection(asyncore.dispatcher, SSHPacketHandler):
             msg = msg.decode('utf-8')
             lang = lang.decode('ascii')
         except UnicodeDecodeError:
-            raise SSHError(DISC_PROTOCOL_ERROR, 'Invalid debug message')
+            raise DisconnectError(DISC_PROTOCOL_ERROR, 'Invalid debug message')
 
-        self.handle_debug(msg, lang, always_display)
+        self._owner.debug_msg_received(msg, lang, always_display)
 
     def _process_service_request(self, pkttype, packet):
         """Process a service request"""
@@ -690,8 +779,8 @@ class _SSHConnection(asyncore.dispatcher, SSHPacketHandler):
                 self._auth_in_progress = True
                 self._send_deferred_packets()
         else:
-            raise SSHError(DISC_SERVICE_NOT_AVAILABLE,
-                           'Unexpected service request received')
+            raise DisconnectError(DISC_SERVICE_NOT_AVAILABLE,
+                                  'Unexpected service request received')
 
     def _process_service_accept(self, pkttype, packet):
         """Process a service accept response"""
@@ -706,15 +795,15 @@ class _SSHConnection(asyncore.dispatcher, SSHPacketHandler):
                 self._auth_in_progress = True
                 self._try_next_auth()
         else:
-            raise SSHError(DISC_SERVICE_NOT_AVAILABLE,
-                           'Unexpected service accept received')
+            raise DisconnectError(DISC_SERVICE_NOT_AVAILABLE,
+                                  'Unexpected service accept received')
 
     def _process_kexinit(self, pkttype, packet):
         """Process a key exchange request"""
 
         if self._kex:
-            raise SSHError(DISC_PROTOCOL_ERROR,
-                           'Key exchange already in progress')
+            raise DisconnectError(DISC_PROTOCOL_ERROR,
+                                  'Key exchange already in progress')
 
         cookie = packet.get_bytes(16)
         kex_algs = packet.get_namelist()
@@ -732,13 +821,13 @@ class _SSHConnection(asyncore.dispatcher, SSHPacketHandler):
         packet.check_end()
 
         if self.is_server():
-            self.client_kexinit = packet.get_consumed_payload()
+            self._client_kexinit = packet.get_consumed_payload()
 
             if not self._choose_server_host_key(server_host_key_algs):
-                raise SSHError(DISC_KEY_EXCHANGE_FAILED,
-                               'Unable to find compatible server host key')
+                raise DisconnectError(DISC_KEY_EXCHANGE_FAILED, 'Unable to '
+                                      'find compatible server host key')
         else:
-            self.server_kexinit = packet.get_consumed_payload()
+            self._server_kexinit = packet.get_consumed_payload()
 
         if self._kexinit_sent:
             self._kexinit_sent = False
@@ -792,7 +881,8 @@ class _SSHConnection(asyncore.dispatcher, SSHPacketHandler):
 
             self._next_recv_cipher = None
         else:
-            raise SSHError(DISC_PROTOCOL_ERROR, 'New keys not negotiated')
+            raise DisconnectError(DISC_PROTOCOL_ERROR,
+                                  'New keys not negotiated')
 
         if self.is_client() and not (self._auth_in_progress or
                                      self._auth_complete):
@@ -806,16 +896,18 @@ class _SSHConnection(asyncore.dispatcher, SSHPacketHandler):
         method = packet.get_string()
 
         if service != _CONNECTION_SERVICE:
-            raise SSHError(DISC_SERVICE_NOT_AVAILABLE,
-                           'Unexpected service in auth request')
+            raise DisconnectError(DISC_SERVICE_NOT_AVAILABLE,
+                                  'Unexpected service in auth request')
 
         try:
             username = saslprep(username.decode('utf-8'))
         except (UnicodeDecodeError, SASLPrepError):
-            raise SSHError(DISC_PROTOCOL_ERROR, 'Invalid auth request message')
+            raise DisconnectError(DISC_PROTOCOL_ERROR,
+                                  'Invalid auth request message')
 
         if self.is_client():
-            raise SSHError(DISC_PROTOCOL_ERROR, 'Unexpected userauth request')
+            raise DisconnectError(DISC_PROTOCOL_ERROR,
+                                  'Unexpected userauth request')
         elif self._auth_complete:
             # Silent ignore requests if we're already authenticated
             pass
@@ -823,7 +915,7 @@ class _SSHConnection(asyncore.dispatcher, SSHPacketHandler):
             if username != self._username:
                 self._username = username
 
-                if not self.begin_auth(username):
+                if not self._owner.begin_auth(username):
                     self._send_userauth_success()
                     return
 
@@ -839,13 +931,14 @@ class _SSHConnection(asyncore.dispatcher, SSHPacketHandler):
 
         if self.is_client() and self._auth:
             if partial_success:
-                self._auth.handle_success()
+                self._auth.auth_succeeded()
             else:
-                self._auth.handle_failure()
+                self._auth.auth_failed()
 
             self._try_next_auth()
         else:
-            raise SSHError(DISC_PROTOCOL_ERROR, 'Unexpected userauth response')
+            raise DisconnectError(DISC_PROTOCOL_ERROR,
+                                  'Unexpected userauth response')
 
     def _process_userauth_success(self, pkttype, packet):
         """Process a user authentication success response"""
@@ -856,10 +949,15 @@ class _SSHConnection(asyncore.dispatcher, SSHPacketHandler):
             self._auth = None
             self._auth_in_progress = False
             self._auth_complete = True
+            self._extra.update(username=self._username)
             self._send_deferred_packets()
-            self.handle_auth_complete()
+
+            self._owner.auth_completed()
+            self._auth_waiter.set_result(None)
+            self._auth_waiter = None
         else:
-            raise SSHError(DISC_PROTOCOL_ERROR, 'Unexpected userauth response')
+            raise DisconnectError(DISC_PROTOCOL_ERROR,
+                                  'Unexpected userauth response')
 
     def _process_userauth_banner(self, pkttype, packet):
         """Process a user authentication banner message"""
@@ -872,12 +970,14 @@ class _SSHConnection(asyncore.dispatcher, SSHPacketHandler):
             msg = msg.decode('utf-8')
             lang = lang.decode('ascii')
         except UnicodeDecodeError:
-            raise SSHError(DISC_PROTOCOL_ERROR, 'Invalid userauth banner')
+            raise DisconnectError(DISC_PROTOCOL_ERROR,
+                                  'Invalid userauth banner')
 
         if self.is_client():
-            self.handle_auth_banner(msg, lang)
+            self._owner.auth_banner_received(msg, lang)
         else:
-            raise SSHError(DISC_PROTOCOL_ERROR, 'Unexpected userauth banner')
+            raise DisconnectError(DISC_PROTOCOL_ERROR,
+                                  'Unexpected userauth banner')
 
     def _process_global_request(self, pkttype, packet):
         """Process a global request"""
@@ -888,23 +988,25 @@ class _SSHConnection(asyncore.dispatcher, SSHPacketHandler):
         try:
             request = request.decode('ascii')
         except UnicodeDecodeError:
-            raise SSHError(DISC_PROTOCOL_ERROR, 'Invalid global request')
+            raise DisconnectError(DISC_PROTOCOL_ERROR,
+                                  'Invalid global request')
 
         name = '_process_' + request.replace('-', '_') + '_global_request'
         handler = getattr(self, name, None)
 
         self._global_request_queue.append((handler, packet, want_reply))
         if len(self._global_request_queue) == 1:
-            self._process_global_request_queue()
+            self._service_next_global_request()
 
     def _process_global_response(self, pkttype, packet):
         """Process a global response"""
 
-        if self._global_request_callbacks:
-            callback, callback_args = self._global_request_callbacks.pop(0)
-            callback(pkttype, packet, *callback_args)
+        if self._global_request_waiters:
+            waiter = self._global_request_waiters.pop(0)
+            waiter.set_result((pkttype, packet))
         else:
-            raise SSHError(DISC_PROTOCOL_ERROR, 'Unexpected global response')
+            raise DisconnectError(DISC_PROTOCOL_ERROR,
+                                  'Unexpected global response')
 
     def _process_channel_open(self, pkttype, packet):
         """Process a channel open request"""
@@ -917,15 +1019,15 @@ class _SSHConnection(asyncore.dispatcher, SSHPacketHandler):
         try:
             chantype = chantype.decode('ascii')
         except UnicodeDecodeError:
-            raise SSHError(DISC_PROTOCOL_ERROR, 'Invalid channel open request')
+            raise DisconnectError(DISC_PROTOCOL_ERROR,
+                                  'Invalid channel open request')
 
         try:
             name = '_process_' + chantype.replace('-', '_') + '_open'
             handler = getattr(self, name, None)
             if callable(handler):
-                channel = handler(packet)
-                channel._process_open(send_chan, send_window, send_pktsize,
-                                      packet)
+                chan, coro = handler(packet)
+                chan._process_open(send_chan, send_window, send_pktsize, coro)
             else:
                 raise ChannelOpenError(OPEN_UNKNOWN_CHANNEL_TYPE,
                                        'Unknown channel type')
@@ -941,12 +1043,13 @@ class _SSHConnection(asyncore.dispatcher, SSHPacketHandler):
         send_window = packet.get_uint32()
         send_pktsize = packet.get_uint32()
 
-        channel = self._channels.get(recv_chan)
-        if channel:
-            channel._process_open_confirmation(send_chan, send_window,
-                                               send_pktsize, packet)
+        chan = self._channels.get(recv_chan)
+        if chan:
+            chan._process_open_confirmation(send_chan, send_window,
+                                            send_pktsize, packet)
         else:
-            raise SSHError(DISC_PROTOCOL_ERROR, 'Invalid channel number')
+            raise DisconnectError(DISC_PROTOCOL_ERROR,
+                                  'Invalid channel number')
 
     def _process_channel_open_failure(self, pkttype, packet):
         """Process a channel open failure response"""
@@ -961,24 +1064,27 @@ class _SSHConnection(asyncore.dispatcher, SSHPacketHandler):
             reason = reason.decode('utf-8')
             lang = lang.decode('ascii')
         except UnicodeDecodeError:
-            raise SSHError(DISC_PROTOCOL_ERROR, 'Invalid channel open failure')
+            raise DisconnectError(DISC_PROTOCOL_ERROR,
+                                  'Invalid channel open failure')
 
-        channel = self._channels.get(recv_chan)
-        if channel:
-            channel._process_open_failure(code, reason, lang)
+        chan = self._channels.get(recv_chan)
+        if chan:
+            chan._process_open_failure(code, reason, lang)
         else:
-            raise SSHError(DISC_PROTOCOL_ERROR, 'Invalid channel number')
+            raise DisconnectError(DISC_PROTOCOL_ERROR,
+                                  'Invalid channel number')
 
     def _process_channel_msg(self, pkttype, packet):
         """Process a channel-specific message"""
 
         recv_chan = packet.get_uint32()
 
-        channel = self._channels.get(recv_chan)
-        if channel:
-            channel.process_packet(pkttype, packet)
+        chan = self._channels.get(recv_chan)
+        if chan:
+            chan.process_packet(pkttype, packet)
         else:
-            raise SSHError(DISC_PROTOCOL_ERROR, 'Invalid channel number')
+            raise DisconnectError(DISC_PROTOCOL_ERROR,
+                                  'Invalid channel number')
 
     packet_handlers = {
         MSG_DISCONNECT:                 _process_disconnect,
@@ -1013,17 +1119,45 @@ class _SSHConnection(asyncore.dispatcher, SSHPacketHandler):
         MSG_CHANNEL_FAILURE:            _process_channel_msg
     }
 
-    def disconnect(self, code=DISC_BY_APPLICATION,
-                   reason='Disconnected by application', lang=DEFAULT_LANG):
-        """Force the connection to close
+    def abort(self):
+        """Forcibly close the SSH connection
+        
+           This method closes the SSH connection immediately, without
+           waiting for pending operations to complete and wihtout sending
+           an explicit SSH disconnect message. Buffered data waiting to be
+           sent will be lost and no more data will be received. When the
+           the connection is closed, :meth:`connection_lost()
+           <SSHClient.connection_lost>` on the associated :class:`SSHClient`
+           object will be called with the value ``None``.
 
-           This method can be called to forcibly close the connection.
+        """
+
+        self._force_close(None)
+
+    def close(self):
+        """Cleanly close the SSH connection
+
+           This method calls :meth:`disconnect` with the reason set to
+           indicate that the connection was closed explicitly by the
+           application.
+
+        """
+
+        self.disconnect(DISC_BY_APPLICATION, 'Disconnected by application')
+
+    def disconnect(self, code, reason, lang=DEFAULT_LANG):
+        """Disconnect the SSH connection
+
+           This method sends a disconnect message and closes the SSH
+           connection after buffered data waiting to be written has been
+           sent. No more data will be received. When the connection is
+           fully closed, :meth:`connection_lost() <SSHClient.connection_lost>`
+           on the associated :class:`SSHClient` or :class:`SSHServer` object
+           will be called with the value ``None``.
 
            :param integer code:
                The reason for the disconnect, from
-               :ref:`disconnect reason codes <DisconnectReasons>`,
-               defaulting to ``DISC_BY_APPLICATION``, indicating that it
-               was an explicit disconnect by the application
+               :ref:`disconnect reason codes <DisconnectReasons>`
            :param string reason:
                A human readable reason for the disconnect
            :param string lang:
@@ -1031,11 +1165,41 @@ class _SSHConnection(asyncore.dispatcher, SSHPacketHandler):
 
         """
 
+        if not self._transport:
+            return
+
+        for chan in list(self._channels.values()):
+            chan.close()
+
         reason = reason.encode('utf-8')
         lang = lang.encode('ascii')
-        self._send_packet(Byte(MSG_DISCONNECT), UInt32(code), String(reason),
-                          String(lang))
-        self._cleanup()
+        self._send_packet(Byte(MSG_DISCONNECT), UInt32(code),
+                          String(reason), String(lang))
+
+        self._transport.close()
+        self._transport = None
+
+    def get_extra_info(self, name, default=None):
+        """Get additional information about the connection
+
+           This method returns extra information about the connection once
+           it is established. Supported values include everything supported
+           by a socket transport plus:
+
+             | username
+             | client_version
+             | server_version
+             | send_cipher
+             | send_mac
+             | send_compression
+             | recv_cipher
+             | recv_mac
+             | recv_compression
+
+        """
+
+        return self._extra.get(name,
+                               self._transport.get_extra_info(name, default))
 
     def send_debug(self, msg, lang=DEFAULT_LANG, always_display=False):
         """Send a debug message on this connection
@@ -1057,161 +1221,67 @@ class _SSHConnection(asyncore.dispatcher, SSHPacketHandler):
         self._send_packet(Byte(MSG_DEBUG), _Boolean(always_display),
                           String(msg), String(lang))
 
-    def handle_disconnect(self, code, reason, lang):
-        """Handle when the connection is closed
+    @asyncio.coroutine
+    def forward_connection(self, dest_host, dest_port):
+        """Forward a tunneled SSH connection
 
-           This method is called when the connection is closed.
-           Applications should implement this method if they want to
-           do any processing or cleanup at the time of the close.
-           The reason for the close is provided and can be either
-           triggered by the application at the other end or as a
-           result of some kind of error during SSH packet processing.
+           This method is a coroutine which can be returned by a
+           ``session_factory`` to forward connections tunneled over
+           SSH to the specified destination host and port.
 
-           By default, this method does nothing.
+           :param string dest_host:
+               The hostname or address to forward the connections to
+           :param integer dest_port:
+               The port number to forward the connections to
 
-           :param integer code:
-               The reason for the disconnect, from :ref:`disconnect
-               reason codes <DisconnectReasons>`
-           :param string reason:
-               A human readable reason for the disconnect
-           :param string lang:
-               The language the reason is in
-
-           .. note:: If the local application calls :meth:`disconnect`
-                     explicitly, this method will not be called when the
-                     connection is closed.
+           :returns: coroutine that returns an :class:`SSHTCPSession`
 
         """
 
-        pass
+        try:
+            protocol_factory = lambda: SSHPortForwarder(self, self._loop)
 
-    def handle_debug(self, msg, lang, always_display):
-        """Handle a debug message on this connection
+            transport, protocol = \
+                yield from self._loop.create_connection(protocol_factory,
+                                                        dest_host, dest_port)
 
-           This method is called when the other end of the connection sends
-           a debug message. Applications should implement this method if
-           they wish to process these debug messages.
+            return SSHRemotePortForwarder(self, self._loop, transport, protocol)
+        except OSError as exc:
+            raise ChannelOpenError(OPEN_CONNECT_FAILED, str(exc))
 
-           By default, this method does nothing.
 
-           :param string msg:
-               The debug message sent
-           :param string lang:
-               The language the message is in
-           :param boolean always_display:
-               Whether or not to display the message
+class SSHClientConnection(SSHConnection):
+    """SSH client connection
 
-        """
+       This class represents an SSH client connection.
 
-        pass
+       Once authentication is successful on a connection, new client
+       sessions can be opened by calling :meth:`create_session`.
 
-class SSHClient(_SSHConnection):
-    """SSH client connection handler
+       Direct TCP connections can be opened by calling
+       :meth:`create_connection`.
 
-       Applications should subclass this when implementing an SSH client.
-       The *handle* functions listed below should be overridden to define
-       application-specific behavior. In particular, the method
-       :meth:`handle_auth_complete` should be defined to open the desired
-       SSH channels on this connection once authentication is complete.
+       Remote listeners for forwarded TCP connections can be opened by
+       calling :meth:`create_server`.
 
-       For simple password or public key based authentication, the default
-       implementation of the auth handlers here will probably suffice, as
-       long as the password or client keys to use are passed in when the
-       object is created.
-
-       After authentication is complete, new client sessions can be opened
-       by instantiating subclasses of :class:`SSHClientSession`. Direct
-       TCP connections can be opened by instantiating subclasses of
-       :class:`SSHTCPConnection' and calling :meth:`connect()
-       <SSHTCPConnection.connect>` on them. Remote listeners for forwarded
-       TCP connections can be set up by instantiating subclasses of
-       :class:`SSHClientListener`.
-
-       TCP port forwarding can be set up by instantiating subclasses of
-       :class:`SSHClientLocalPortForwarder` or
-       :class:`SSHClientRemotePortForwarder`.
-
-       :param addr:
-           The server hostname/address and port to connect to. For
-           convenience, this can be just a string containing the
-           hostname or address when connecting to the default SSH port.
-       :param server_host_keys: (optional)
-           A list of public keys which will be accepted as a host key
-           from the server. If this parameter is not provided, host
-           keys for the server will be looked up in
-           :file:`.ssh/known_hosts`. If this is explicitly set to
-           ``None``, server host key validation will be disabled.
-       :param string username: (optional)
-           Username to authenticate as on the server. If not specified,
-           the currently logged in user on the local machine will be used.
-       :param client_keys: (optional)
-           A list of private keys which will be used to authenticate
-           this client. If no client keys are specified, an attempt will
-           be made to load them from the files :file:`.ssh/id_ecdsa`,
-           :file:`.ssh/id_rsa`, and :file:`.ssh/id_dsa`. If this is
-           explicitly set to ``None``, client public key authentication
-           will not be performed.
-       :param string password: (optional)
-           The password to use for client password authentication or
-           keyboard-interactive authentication which prompts for a password.
-           If this is not specified, client password authentication will
-           not be performed.
-       :param kex_algs: (optional)
-           A list of allowed key exchange algorithms in the SSH handshake,
-           taken from :ref:`key exchange algorithms <KexAlgs>`
-       :param encryption_algs: (optional)
-           A list of encryption algorithms to use during the SSH handshake,
-           taken from :ref:`encryption algorithms <EncryptionAlgs>`
-       :param mac_algs: (optional)
-           A list of MAC algorithms to use during the SSH handshake, taken
-           from :ref:`MAC algorithms <MACAlgs>`
-       :param compression_algs: (optional)
-           A list of compression algorithms to use during the SSH handshake,
-           taken from :ref:`compression algorithms <CompressionAlgs>`, or
-           ``None`` to disable compression
-       :param integer rekey_bytes: (optional)
-           The number of bytes which can be sent before the SSH session
-           key is renegotiated. This defaults to 1 GB.
-       :param integer rekey_seconds: (optional)
-           The maximum time in seconds before the SSH session key is
-           renegotiated. This defaults to 1 hour.
-       :type addr: tuple of string and integer
-       :type server_host_keys: *list of* :class:`SSHKey` *public keys*
-       :type client_keys: *list of* :class:`SSHKey` *private keys*
-       :type kex_algs: list of strings
-       :type encryption_algs: list of strings
-       :type mac_algs: list of strings
-       :type compression_algs: list of strings
+       TCP port forwarding can be set up by calling :meth:`forward_local_port`
+       or :meth:`forward_remote_port`.
 
     """
 
-    def __init__(self, addr, server_host_keys=(), username=None,
-                 client_keys=(), password=None, kex_algs=...,
-                 encryption_algs=..., mac_algs=..., compression_algs=...,
-                 rekey_bytes=_DEFAULT_REKEY_BYTES,
-                 rekey_seconds=_DEFAULT_REKEY_SECONDS):
-        if isinstance(addr, str):
-            addr = (addr, _DEFAULT_PORT)
-
-        sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
-        super().__init__(sock, kex_algs, encryption_algs, mac_algs,
-                         compression_algs, rekey_bytes, rekey_seconds,
-                         server=False)
-
-        try:
-            self.connect(addr)
-        except socket.error as exc:
-            self._disconnected = True
-            self.handle_disconnect(DISC_CONNECTION_LOST, exc.args[1],
-                                   DEFAULT_LANG)
-            self.handle_close()
-            return
+    def __init__(self, client_factory, loop, host, port, server_host_keys,
+                 client_keys, username, password, kex_algs, encryption_algs,
+                 mac_algs, compression_algs, rekey_bytes, rekey_seconds,
+                 auth_waiter):
+        super().__init__(client_factory, loop, kex_algs, encryption_algs,
+                         mac_algs, compression_algs, rekey_bytes,
+                         rekey_seconds, server=False)
 
         if server_host_keys is None:
             self._server_host_keys = None
         else:
             if server_host_keys is ():
-                server_host_keys = self._parse_known_hosts(addr)
+                server_host_keys = self._parse_known_hosts(host, port)
 
             self._server_host_keys = set()
             self._server_host_key_algs = []
@@ -1238,19 +1308,31 @@ class SSHClient(_SSHConnection):
                     try:
                         self._client_keys.append(read_private_key(file))
                     except (IOError, KeyImportError):
-                        pass
+                        """Try the next default key"""
 
         self._password = password
+        self._kbdint_password_auth = False
 
         self._remote_listeners = {}
         self._dynamic_remote_listeners = {}
 
-    def _cleanup(self):
-        super()._cleanup()
-        self._remote_listeners = {}
-        self._dynamic_remote_listeners = {}
+        self._auth_waiter = auth_waiter
 
-    def _parse_known_hosts(self, addr):
+    def _cleanup(self, exc):
+        if self._remote_listeners:
+            for listener in self._remote_listeners.values():
+                listener.close()
+
+            self._remote_listeners = {}
+            self._dynamic_remote_listeners = {}
+
+        if self._auth_waiter:
+            self._auth_waiter.set_exception(exc)
+            self._auth_waiter = None
+
+        super()._cleanup(exc)
+
+    def _parse_known_hosts(self, host, port):
         server_host_keys = []
 
         try:
@@ -1259,30 +1341,29 @@ class SSHClient(_SSHConnection):
         except IOError:
             return []
 
-        dest_host, dest_port = addr
-        dest_host = dest_host.encode()
+        host = host.encode().lower()
 
         for line in lines:
-            hosts, key = line.split(None, 1)
-            hosts = hosts.split(b',')
-            for host in hosts:
-                if b':' in host:
-                    host, port = host.rsplit(b':', 1)
+            dest_hosts, key = line.split(None, 1)
+            dest_hosts = dest_hosts.split(b',')
+            for dest_host in dest_hosts:
+                if b':' in dest_host:
+                    dest_host, dest_port = dest_host.rsplit(b':', 1)
                     try:
-                        port = int(port)
+                        dest_port = int(dest_port)
                     except ValueError:
                         continue
                 else:
-                    port = 22
+                    dest_port = 22
 
-                if host.startswith(b'[') and host.endswith(b']'):
-                    host = host[1:-1]
+                if dest_host.startswith(b'[') and dest_host.endswith(b']'):
+                    dest_host = dest_host[1:-1]
 
-                if host.lower() == dest_host.lower() and port == dest_port:
+                if dest_host.lower() == host and dest_port == port:
                     try:
                         server_host_keys.append(import_public_key(key))
                     except KeyImportError:
-                        pass
+                        """Move on to the next key in the file"""
 
                     break
 
@@ -1309,8 +1390,74 @@ class SSHClient(_SSHConnection):
 
         self._auth = choose_client_auth(self)
         if not self._auth:
-            raise SSHError(DISC_NO_MORE_AUTH_METHODS_AVAILABLE,
-                           'Permission denied')
+            raise DisconnectError(DISC_NO_MORE_AUTH_METHODS_AVAILABLE,
+                                  'Permission denied')
+
+    def _public_key_auth_requested(self):
+        """Return a client key to authenticate with"""
+
+        if self._client_keys:
+            return self._client_keys.pop(0)
+        else:
+            return self._owner.public_key_auth_requested()
+
+    def _password_auth_requested(self):
+        """Return a password to authenticate with"""
+
+        if self._password:
+            password = self._password
+            self._password = None
+        else:
+            password = self._owner.password_auth_requested()
+
+        return password
+
+    def _password_change_requested(self):
+        """Return a password to authenticate with and what to change it to"""
+
+        return self._owner.password_change_requested()
+
+    def _password_changed(self):
+        """Report a successful password change"""
+
+        self._owner.password_changed()
+
+    def _password_change_failed(self):
+        """Report a failed password change"""
+
+        self._owner.password_change_failed()
+
+    def _kbdint_auth_requested(self):
+        """Return the list of supported keyboard-interactive auth methods
+        
+           If keyboard-interactive auth is not supported in the client but
+           a password was provided when the connection was opened, this
+           will allow sending the password via keyboard-interactive auth.
+
+        """
+
+        submethods = self._owner.kbdint_auth_requested()
+        if submethods is None and self._password is not None:
+            self._kbdint_password_auth = True
+            submethods = ''
+
+        return submethods
+
+    def _kbdint_challenge_received(self, name, instructions, lang, prompts):
+        """Return responses to a keyboard-interactive auth challenge"""
+
+        if self._kbdint_password_auth:
+            if len(prompts) == 0:
+                # Silently drop any empty challenges used to print messages
+                return []
+            elif len(prompts) == 1 and prompts[0][0] == 'Password:':
+                password = self._get_password()
+                return [password] if password is not None else None
+            else:
+                return None
+        else:
+            return self._owner.kbdint_challenge_received(name, instructions,
+                                                         lang, prompts)
 
     def _process_session_open(self, packet):
         """Process an inbound session open request
@@ -1332,326 +1479,324 @@ class SSHClient(_SSHConnection):
         raise ChannelOpenError(OPEN_ADMINISTRATIVELY_PROHIBITED,
                                'Direct TCP/IP open forbidden on client')
 
-    def _open_remote_listener(self, listener):
-        """Listen on a remote TCP/IP address and port"""
-
-        listen_host = listener.listen_host.encode('utf-8')
-
-        self._send_global_request(b'tcpip-forward', String(listen_host),
-                                  UInt32(listener.listen_port),
-                                  callback=self._process_remote_listen_response,
-                                  callback_args=(listener,))
-
-    def _process_remote_listen_response(self, pkttype, packet, listener):
-        """Process a response to a remote listen request"""
-
-        if pkttype == MSG_REQUEST_SUCCESS:
-            listener._process_listen_confirmation(packet)
-        else:
-            packet.check_end()
-            listener._process_listen_failure()
-
-    def _close_remote_listener(self, listener):
-        """Stop listening on a remote TCP/IP address and port"""
-
-        listen_host = listener.listen_host.encode('utf-8')
-
-        self._send_global_request(b'cancel-tcpip-forward', String(listen_host),
-                                  UInt32(listener.listen_port),
-                                  callback=self._process_remote_listen_close,
-                                  callback_args=(listener,))
-
-    def _process_remote_listen_close(self, pkttype, packet, listener):
-        """Process a response to a remote listener close"""
-
-        self._process_close(listener)
-
     def _process_forwarded_tcpip_open(self, packet):
         """Process an inbound forwarded TCP/IP channel open request"""
 
-        listen_host = packet.get_string()
-        listen_port = packet.get_uint32()
+        dest_host = packet.get_string()
+        dest_port = packet.get_uint32()
         orig_host = packet.get_string()
         orig_port = packet.get_uint32()
         packet.check_end()
 
         try:
-            listen_host = listen_host.decode('utf-8')
+            dest_host = dest_host.decode('utf-8')
             orig_host = orig_host.decode('utf-8')
         except UnicodeDecodeError:
-            raise SSHError(DISC_PROTOCOL_ERROR, 'Invalid channel open request')
+            raise DisconnectError(DISC_PROTOCOL_ERROR,
+                                  'Invalid channel open request')
 
-        listener = SSHClientListener._find(self, listen_host, listen_port)
+        # Some buggy servers send back a port of ``0`` instead of the actual
+        # listening port when reporting connections which arrive on a listener
+        # set up on a dynamic port. This lookup attempts to work around that.
+        listener = self._remote_listeners.get((dest_host, dest_port)) or \
+                   self._remote_dynamic_listeners.get(dest_host)
 
         if listener:
             return listener._process_connection(orig_host, orig_port)
         else:
             raise ChannelOpenError(OPEN_CONNECT_FAILED, 'No such listener')
 
-    def handle_auth_banner(self, msg, lang):
-        """Handle an incoming authentication banner
+    @asyncio.coroutine
+    def _close_client_listener(self, listener, listen_host, listen_port):
+        yield from self._make_global_request(
+                            b'cancel-tcpip-forward',
+                            String(listen_host.encode('utf-8')),
+                            UInt32(listen_port))
 
-           This method is called when the server sends a banner to display
-           during authentication. Applications should implement this method
-           if they wish to do something with the banner.
+        if self._remote_dynamic_listeners[listen_host] == listener:
+            del self._remote_dynamic_listeners[listen_host]
 
-           By default, this function ignores authentication banners.
+        del self._remote_listeners[(listen_host, listen_port)]
 
-           :param string msg:
-               The message the server wanted to display
-           :param string lang:
-               The language the message is in
+    @asyncio.coroutine
+    def create_session(self, session_factory, command=None, *, subsystem=None,
+                       env={}, term_type=None, term_size=None, term_modes={},
+                       encoding='utf-8', window=_DEFAULT_WINDOW,
+                       max_pktsize=_DEFAULT_MAX_PKTSIZE):
+        """Create an SSH client session
+
+           This method is a coroutine which can be called to create an SSH
+           client session used to execute a command, start a subsystem
+           such as sftp, or if no command or subsystem is specific run an
+           interactive shell. Optional arguments allow terminal and
+           environment information to be provided.
+
+           By default, this class expects string data in its send and
+           receive functions, which it encodes on the SSH connection in
+           UTF-8 (ISO 10646) format. An optional encoding argument can
+           be passed in to select a different encoding, or ``None`` can
+           be passed in if the application wishes to send and receive
+           raw bytes.
+
+           Other optional arguments include the SSH receive window size and
+           max packet size which default to 2 MB and 32 KB, respectively.
+
+           :param callable session_factory:
+               A callable which returns an :class:`SSHClientSession` object
+               that will be created to handle activity on this session
+           :param string command: (optional)
+               The remote command to execute. By default, an interactive
+               shell is started if no command or subsystem is provided.
+           :param string subsystem: (optional)
+               The name of a remote subsystem to start up
+           :param dictionary env: (optional)
+               The set of environment variables to set for this session.
+               Keys and values passed in here will be converted to
+               Unicode strings encoded as UTF-8 (ISO 10646) for
+               transmission.
+
+               .. note:: Many SSH servers restrict which environment
+                         variables a client is allowed to set. The
+                         server's configuration may need to be edited
+                         before environment variables can be
+                         successfully set in the remote environment.
+           :param string term_type: (optional)
+               The terminal type to set for this session. If this is not set,
+               a pseudo-terminal will not be requested for this session.
+           :param term_size: (optional)
+               The terminal width and height in characters and optionally
+               the width and height in pixels
+           :param term_modes: (optional)
+               POSIX terminal modes to set for this session, where keys
+               are taken from :ref:`POSIX terminal modes <PTYModes>` with
+               values defined in section 8 of :rfc:`4254#section-8`.
+           :param string encoding: (optional)
+               The Unicode encoding to use for data exchanged on the connection
+           :param integer window: (optional)
+               The receive window size for this session
+           :param integer max_pktsize: (optional)
+               The maximum packet size for this session
+           :type term_size: *tuple of 2 or 4 integers*
 
         """
 
-        pass
+        chan = SSHClientChannel(self, self._loop, encoding, window, max_pktsize)
 
-    def handle_auth_complete(self):
-        """Handle successful completion of authentication
+        return (yield from chan._create(session_factory, command, subsystem,
+                                        env, term_type, term_size, term_modes))
 
-           This method is called when authentication has completed
-           succesfully. Applications should use this method to create
-           whatever client sessions and direct TCP/IP connections are
-           needed, and set up listeners for incoming TCP/IP connections
-           needed from the server.
+    @asyncio.coroutine
+    def create_connection(self, session_factory, dest_host, dest_port,
+                          orig_host='', orig_port=0, *, encoding=None,
+                          window=_DEFAULT_WINDOW,
+                          max_pktsize=_DEFAULT_MAX_PKTSIZE):
+        """Create an SSH TCP direct connection
 
-           By default, this function does nothing.
+           This method is a coroutine which can be called to request that
+           the server open a new outbound TCP connection to the specified
+           destination host and port. If the connection is successfully
+           opened, a new SSH channel will be opened with data being handled
+           by a :class:`SSHTCPSession` object created by ``session_factory``.
+
+           Optional arguments include the host and port of the original
+           client opening the connection when performing TCP port forwarding.
+
+           By default, this class expects data to be sent and received as
+           raw bytes. However, an optional encoding argument can be
+           passed in to select the encoding to use, allowing the
+           application send and receive string data.
+
+           Other optional arguments include the SSH receive window size and
+           max packet size which default to 2 MB and 32 KB, respectively.
+
+           :param callable session_factory:
+               A callable which returns an :class:`SSHClientSession` object
+               that will be created to handle activity on this session
+           :param string dest_host:
+               The hostname or address to connect to
+           :param integer dest_port:
+               The port number to connect to
+           :param string orig_host: (optional)
+               The hostname or address of the client requesting the connection
+           :param integer orig_port: (optional)
+               The port number of the client requesting the connection
+           :param string encoding: (optional)
+               The Unicode encoding to use for data exchanged on the connection
+           :param integer window: (optional)
+               The receive window size for this session
+           :param integer max_pktsize: (optional)
+               The maximum packet size for this session
 
         """
 
-        pass
+        chan = SSHTCPChannel(self, self._loop, encoding, window, max_pktsize)
 
-    def handle_public_key_auth(self):
-        """Handle public key authentication
+        return (yield from chan._connect(session_factory, dest_host, dest_port,
+                                         orig_host, orig_port))
 
-           This method should return a client private key corresponding
-           to the user that authentication is being attempted for. It
-           may be called multiple times and can return a different key
-           to try each time it is called. When there are no client keys
-           left to try, it should return ``None`` to indicate that some
-           other authentication method should be tried.
+    @asyncio.coroutine
+    def create_server(self, session_factory, listen_host, listen_port, *,
+                      encoding=None, window=_DEFAULT_WINDOW,
+                      max_pktsize=_DEFAULT_MAX_PKTSIZE):
+        """Create a remote SSH TCP listener
 
-           By default, this will return each of the keys passed in the
-           ``client_keys`` parameter provided when the :class:`SSHClient`
-           object was created (if any) and return ``None`` when the list
-           is exhausted.
+           This method is a coroutine which can be called to request that
+           the server listen on the specified remote address and port for
+           incoming TCP connections. If the request is successful, the
+           return value is an :class:`SSHListener` object which can be
+           used later to shut down the listener. If the request fails,
+           ``None`` is returned.
 
-           :returns: A :class:`SSHKey` private key to authenticate with
-                     or ``None`` to move on to another authentication
-                     method
+           :param callable session_factory:
+               A callable which takes arguments of the original host and
+               port of the client requesting the connection and returns
+               a coroutine which decides whether to accept the connection
+               or not and either returns an :class:`SSHTCPSession` object
+               used to handle activity on that connection or raises
+               :exc:`ChannelOpenError` to indicate that the connection
+               should not be accepted
+           :param string listen_host:
+               The hostname or address on the remote host to listen on
+           :param integer listen_port:
+               The port number on the remote host to listen on
+           :param string encoding: (optional)
+               The Unicode encoding to use for data exchanged on the connection
+           :param integer window: (optional)
+               The receive window size for this session
+           :param integer max_pktsize: (optional)
+               The maximum packet size for this session
 
         """
 
-        if self._client_keys:
-            return self._client_keys.pop(0)
+        listen_host = listen_host.lower()
+
+        pkttype, packet = \
+            yield from self._make_global_request(
+                                 b'tcpip-forward',
+                                 String(listen_host.encode('utf-8')),
+                                 UInt32(listen_port))
+
+        if pkttype == MSG_REQUEST_SUCCESS:
+            if listen_port == 0:
+                listen_port = packet.get_uint32()
+                dynamic = True
+            else:
+                dynamic = False
+
+            packet.check_end()
+
+            listener = SSHClientListener(self, self._loop, session_factory,
+                                         listen_host, listen_port, encoding,
+                                         window, max_pktsize)
+
+            if dynamic:
+                self._remote_dynamic_listeners[listen_host] = listener
+
+            self._remote_listeners[(listen_host, listen_port)] = listener
+            return listener
         else:
+            packet.check_end()
             return None
 
-    def handle_password_auth(self):
-        """Handle password authentication
+    @asyncio.coroutine
+    def forward_local_port(self, listen_host, listen_port,
+                           dest_host, dest_port):
+        """Set up local port forwarding
 
-           This method should return a string containing the password
-           corresponding to the user that authentication is being
-           attempted for. It may be called multiple times and can
-           return a different password to try each time, but most
-           servers have a limit on the number of attempts allowed.
-           When there's no password left to try, this method should
-           return ``None`` to indicate that some other authentication
-           method should be tried.
+           This method is a coroutine which attempts to set up port
+           forwarding from a local listening port to a remote host and port
+           via the SSH connection. If the request is successful, the
+           return value is an :class:`SSHListener` object which can be used
+           later to shut down the port forwarding.
 
-           By default, this will return the password passed in the
-           ``password`` parameter provided when the :class:`SSHClient`
-           object was created (if any) and then return ``None`` if it
-           is called again.
+           :param string listen_host:
+               The hostname or address on the local host to listen on
+           :param integer listen_port:
+               The port number on the local host to listen on
+           :param string dest_host:
+               The hostname or address to forward the connections to
+           :param integer dest_port:
+               The port number to forward the connections to
 
-           :returns: A string containing the password to authenticate
-                     with or ``None`` to move on to another authentication
-                     method
+           :returns: :class:`SSHListener`
 
-        """
-
-        password = self._password
-        self._password = None
-        return password
-
-    def handle_password_change_request(self, prompt, lang):
-        """Handle a password change request
-
-           This method is called when password authentication was
-           attempted and the user's password was expired on the
-           server. To request a password change, this method should
-           return a tuple or two strings containing the old and new
-           passwords. Otherwise, it should return ``NotImplemented``.
-
-           By default, this method returns ``NotImplemented``.
-
-           :param string prompt:
-               The prompt requesting that the user enter a new password
-           :param string lang:
-               the language that the prompt is in
-
-           :returns: A tuple of two strings containing the old and new
-                     passwords or ``NotImplemented`` if password changes
-                     aren't supported
+           :raises: :exc:`OSError` if the listener can't be opened
 
         """
 
-        return NotImplemented
+        listen_port, sockets = \
+            yield from self._create_tcp_listener(listen_host, listen_port)
 
-    def handle_password_change_successful(self):
-        """Handle a successful password change
+        factory = lambda: SSHLocalPortForwarder(self, self._loop,
+                                                self.create_connection,
+                                                dest_host, dest_port)
 
-           This method is called to indicate that a requested password
-           change was successful. It is generally followed by a call to
-           :meth:`handle_auth_complete` since this means authentication
-           was also successful.
+        return (yield from self._create_forward_listener(listen_port, sockets,
+                                                         factory))
 
-           By default, this method does nothing.
+    @asyncio.coroutine
+    def forward_remote_port(self, listen_host, listen_port,
+                            dest_host, dest_port):
+        """Set up remote port forwarding
 
-        """
+           This method is a coroutine which attempts to set up port
+           forwarding from a remote listening port to a local host and port
+           via the SSH connection. If the request is successful, the
+           return value is an :class:`SSHListener` object which can be
+           used later to shut down the port forwarding. If the request
+           fails, ``None`` is returned.
 
-        pass
+           :param string listen_host:
+               The hostname or address on the remote host to listen on
+           :param integer listen_port:
+               The port number on the remote host to listen on
+           :param string dest_host:
+               The hostname or address to forward connections to
+           :param integer dest_port:
+               The port number to forward connections to
 
-    def handle_password_change_failed(self):
-        """Handle a failed password change
-
-           This method is called to indicate that a requested password
-           change failed, generally because the requested new password
-           doesn't meet the password criteria on the remote system.
-           After this method is called, other forms of authentication
-           will automatically be attempted.
-
-           By default, this method does nothing.
-
-        """
-
-        pass
-
-    def handle_kbdint_auth(self):
-        """Handle keyboard-interactive authentication
-
-           This method should return a string containing a comma-separated
-           list of submethods that the server should use for
-           keyboard-interactive authentication. An empty string can be
-           returned to let the server pick the type of keyboard-interactive
-           authentication. If keyboard-interactive authentication is not
-           supported, ``None`` should be returned.
-
-           By default, keyboard-interactive authentication is supported
-           if a password was provided when the :class:`SSHClient` was
-           created and it hasn't been sent yet. If the challenge is not
-           a password challenge, this authentication will fail. This
-           method and the :meth:`handle_kbdint_challenge` method can be
-           overridden if other forms of challenge should be supported.
-
-           :returns: A string containing the submethods the server should
-                     use for authentication or ``None`` to move on to
-                     another authentication method
+           :returns: :class:`SSHListener` or ``None`` if the listener can't
+                     be opened
 
         """
 
-        if self._password:
-            return ''
-        else:
-            return None
+        coro = lambda orig_host, orig_port: \
+                   self.forward_connection(dest_host, dest_port)
 
-    def handle_kbdint_challenge(self, name, instruction, lang, prompts):
-        """Handle keyboard-interactive auth challenge
-
-           This method is called when the server sends a keyboard-interactive
-           authentication challenge.
-
-           The return value should be a list of strings of the same length
-           as the number of prompts provided if the challenge can be
-           answered, or ``None`` to indicate that some other form of
-           authentication should be attempted.
-
-           By default, this method will look for a challenge consisting
-           of a single 'Password:' prompt, and respond with whatever
-           password was provided when the :class:`SSHClient` was created.
-           It will also ignore challenges with no prompts (generally used
-           to just provide instructions). Any other form of challenge will
-           cause this method to return ``None``.
-
-           :param string name:
-               The name of the challenge
-           :param string instruction:
-               Instructions to the user about how to respond to the challenge
-           :param string lang:
-               The language the challenge is in
-           :param prompts:
-               The challenges the user should respond to and whether or
-               not the responses should be echoed when they are entered
-           :type prompts: list of tuples of string and boolean
-
-           :returns: List of string responses to the challenge or ``None``
-                     to move on to another authentication method
-
-        """
-
-        if len(prompts) == 0:
-            # Silently drop any empty challenges used to print messages
-            return []
-        elif len(prompts) == 1 and prompts[0][0] == 'Password:':
-            password = self.handle_password_auth()
-            return [password] if password is not None else None
-        else:
-            return None
+        return self.create_server(coro, listen_host, listen_port)
 
 
-class SSHServer(_SSHConnection):
-    """SSH server connection handler
+class SSHServerConnection(SSHConnection):
+    """SSH server connection
+    
+       This class represents an SSH server connection.
 
-       Applications should subclass this when implementing an SSH server.
-       At a minimum, one or more of the authentication handlers will need
-       to be overridden to perform authentication, or :meth:`begin_auth`
-       should be overridden to return ``False`` to indicate that no
-       authentication is required. In addition, one or more of the
-       :meth:`handle_session`, :meth:`handle_direct_connection`, or
-       :meth:`handle_listen` methods will need to be overridden to handle
-       requests to open sessions or direct TCP/IP connections or set up
-       listeners for forwarded TCP/IP connections.
+       During authentication, :meth:`send_auth_banner` can be called to
+       send an authentication banner to the client.
 
-       :param socket sock:
-           An established TCP connection to begin an SSH server handshake on
-       :param client_addr:
-           A tuple containing client address information, if available
-       :param server_host_keys:
-           A list of private keys which can be presented as host keys
-           during the SSH handshake
-       :param kex_algs: (optional)
-           A list of allowed key exchange algorithms in the SSH handshake,
-           taken from :ref:`key exchange algorithms <KexAlgs>`
-       :param encryption_algs: (optional)
-           A list of encryption algorithms to use during the SSH handshake,
-           taken from :ref:`encryption algorithms <EncryptionAlgs>`
-       :param mac_algs: (optional)
-           A list of MAC algorithms to use during the SSH handshake, taken
-           from :ref:`MAC algorithms <MACAlgs>`
-       :param compression_algs: (optional)
-           A list of compression algorithms to use during the SSH handshake,
-           taken from :ref:`compression algorithms <CompressionAlgs>`, or
-           ``None`` to disable compression
-       :param integer rekey_bytes: (optional)
-           The number of bytes which can be sent before the SSH session
-           key is renegotiated
-       :param integer rekey_seconds: (optional)
-           The maximum time in seconds before the SSH session key is
-           renegotiated
-       :type addr: *tuple of string and three integers or* ``None``
-       :type server_host_keys: *list of* :class:`SSHKey` *private keys*
-       :type kex_algs: list of strings
-       :type encryption_algs: list of strings
-       :type mac_algs: list of strings
-       :type compression_algs: list of strings
+       Once authenticated, :class:`SSHServer` objects wishing to create
+       session objects with non-default channel properties can call
+       :meth:`create_server_channel` from their :meth:`session_requested()
+       <SSHServer.session_requested>` method and return a tuple of
+       the :class:`SSHServerChannel` object returned from that and a
+       coroutine which creates an :class:`SSHServerSession` object.
+
+       Similarly, :class:`SSHServer` objects wishing to create TCP
+       connection objects with non-default channel properties can call
+       :meth:`create_tcp_channel` from their :meth:`connection_requested()
+       <SSHServer.connection_requested>` method and return a tuple of
+       the :class:`SSHTCPChannel` object returned from that and a
+       coroutine which returns an :class:`SSHTCPSession` object.
 
     """
 
-    def __init__(self, sock, client_addr, server_host_keys, kex_algs=...,
-                 encryption_algs=..., mac_algs=..., compression_algs=...,
+    def __init__(self, server_factory, loop, server_host_keys, kex_algs=(),
+                 encryption_algs=(), mac_algs=(), compression_algs=(),
                  rekey_bytes=_DEFAULT_REKEY_BYTES,
                  rekey_seconds=_DEFAULT_REKEY_SECONDS):
-        self.client_addr = client_addr
+        super().__init__(server_factory, loop, kex_algs, encryption_algs,
+                         mac_algs, compression_algs, rekey_bytes,
+                         rekey_seconds, server=True)
 
         self._server_host_keys = OrderedDict()
         for key in server_host_keys:
@@ -1664,10 +1809,7 @@ class SSHServer(_SSHConnection):
         if not self._server_host_keys:
             raise ValueError('No server host keys provided')
 
-        super().__init__(sock, kex_algs, encryption_algs, mac_algs,
-                         compression_algs, rekey_bytes, rekey_seconds,
-                         server=True)
-        self._start()
+        self._kbdint_password_auth = False
 
     def _get_server_host_key_algs(self):
         """Return the list of acceptable server host key algorithms
@@ -1690,20 +1832,73 @@ class SSHServer(_SSHConnection):
 
         for alg in peer_host_key_algs:
             if alg in self._server_host_keys:
-                self.server_host_key = self._server_host_keys[alg]
+                self._server_host_key = self._server_host_keys[alg]
                 return True
 
         return False
 
+    def _public_key_auth_supported(self):
+        """Return whether or not public key authentication is supported"""
+
+        return self._owner.public_key_auth_supported()
+
+    def _validate_public_key(self, username, key):
+        """Return whether key is an authorized client key for this user"""
+
+        return self._owner.validate_public_key(username, key)
+
+    def _password_auth_supported(self):
+        """Return whether or not password authentication is supported"""
+
+        return self._owner.password_auth_supported()
+
+    def _validate_password(self, username, password):
+        """Return whether password is valid for this user"""
+
+        return self._owner.validate_password(username, password)
+
+    def _kbdint_auth_supported(self):
+        """Return whether or not keyboard-interactive authentication
+           is supported"""
+
+        if self._owner.kbdint_auth_supported():
+            return True
+        elif self._owner.password_auth_supported():
+            self._kbdint_password_auth = True
+            return True
+        else:
+            return False
+
+    def _get_kbdint_challenge(self, username, lang, submethods):
+        """Return a keyboard-interactive auth challenge"""
+
+        if self._kbdint_password_auth:
+            return '', '', DEFAULT_LANG, (('Password:', False),)
+        else:
+            return self._owner.get_kbdint_challenge(username, lang, submethods)
+
+    def _validate_kbdint_response(self, username, responses):
+        """Return whether the keyboard-interactive response is valid
+           for this user"""
+
+        if self._kbdint_password_auth:
+            return (len(responses) == 1 and
+                    self._owner.validate_password(username, responses[0]))
+        else:
+            return self._owner.validate_kbdint_response(username, responses)
+
     def _process_session_open(self, packet):
         packet.check_end()
 
-        channel = self.handle_session()
+        result = self._owner.session_requested()
 
-        if not isinstance(channel, SSHServerSession):
-            raise ValueError('Session must be subclass of SSHServerSession')
+        if not result:
+            raise ChannelOpenError(OPEN_CONNECT_FAILED, 'Session refused')
 
-        return channel
+        if asyncio.iscoroutine(result):
+            return self.create_server_channel(), result
+        else:
+            return result
 
     def _process_direct_tcpip_open(self, packet):
         dest_host = packet.get_string()
@@ -1716,16 +1911,22 @@ class SSHServer(_SSHConnection):
             dest_host = dest_host.decode('utf-8')
             orig_host = orig_host.decode('utf-8')
         except UnicodeDecodeError:
-            raise SSHError(DISC_PROTOCOL_ERROR, 'Invalid channel open request')
+            raise DisconnectError(DISC_PROTOCOL_ERROR,
+                                  'Invalid channel open request')
 
-        channel = self.handle_direct_connection(dest_host, dest_port,
-                                                orig_host, orig_port)
-        if channel == True:
-            return SSHForwardedConnection(self, dest=(dest_host, dest_port))
-        elif isinstance(channel, SSHTCPConnection):
-            return channel
+        result = self._owner.connection_requested(dest_host, dest_port,
+                                                  orig_host, orig_port)
+
+        if not result:
+            raise ChannelOpenError(OPEN_CONNECT_FAILED, 'Connection refused')
+
+        if result == True:
+            result = self.forward_connection(dest_host, dest_port)
+
+        if asyncio.iscoroutine(result):
+            return self.create_tcp_channel(), result
         else:
-            raise ValueError('Channel must be subclass of SSHTCPConnection')
+            return result
 
     def _process_tcpip_forward_global_request(self, packet):
         listen_host = packet.get_string()
@@ -1733,22 +1934,54 @@ class SSHServer(_SSHConnection):
         packet.check_end()
 
         try:
-            listen_host = listen_host.decode('utf-8')
+            listen_host = listen_host.decode('utf-8').lower()
         except UnicodeDecodeError:
-            raise SSHError(DISC_PROTOCOL_ERROR, 'Invalid TCP forward request')
+            raise DisconnectError(DISC_PROTOCOL_ERROR,
+                                  'Invalid TCP forward request')
 
-        result = self.handle_listen(listen_host, listen_port)
-        if result == False:
+        result = self._owner.server_requested(listen_host, listen_port)
+
+        if not result:
             self._report_global_response(False)
             return
-        elif result == True:
-            # When result is True, set up standard port forwarding
-            result = SSHServerPortForwarder(self, listen_host, listen_port)
 
-        if isinstance(result, SSHServerListener):
-            self._local_listeners[(listen_host, listen_port)] = result
+        if result == True:
+            result = self._create_default_forwarder(listen_host, listen_port)
+
+        asyncio.async(self._finish_forward(result, listen_host, listen_port),
+                      loop=self._loop)
+
+    @asyncio.coroutine
+    def _create_default_forwarder(self, listen_host, listen_port):
+        listen_port, sockets = \
+            yield from self._create_tcp_listener(listen_host, listen_port)
+
+        factory = lambda: SSHLocalPortForwarder(self, self._loop,
+                                                self.accept_connection,
+                                                listen_host, listen_port)
+
+        return (yield from self._create_forward_listener(listen_port, sockets,
+                                                         factory))
+
+    @asyncio.coroutine
+    def _finish_forward(self, coro, listen_host, listen_port):
+        try:
+            listener = yield from coro
+        except OSError:
+            listener = None
+
+        if listener:
+            if listen_port == 0:
+                listen_port = listener.get_port()
+                result = UInt32(listen_port)
+            else:
+                result = True
+
+            self._local_listeners[(listen_host, listen_port)] = listener
+
+            self._report_global_response(result)
         else:
-            raise ValueError('Result must be subclass of SSHServerListener')
+            self._report_global_response(False)
 
     def _process_cancel_tcpip_forward_global_request(self, packet):
         listen_host = packet.get_string()
@@ -1756,29 +1989,16 @@ class SSHServer(_SSHConnection):
         packet.check_end()
 
         try:
-            listen_host = listen_host.decode('utf-8')
+            listen_host = listen_host.decode('utf-8').lower()
         except UnicodeDecodeError:
-            raise SSHError(DISC_PROTOCOL_ERROR, 'Invalid TCP forward request')
+            raise DisconnectError(DISC_PROTOCOL_ERROR,
+                                  'Invalid TCP forward request')
 
         listener = self._local_listeners.pop((listen_host, listen_port))
         if not listener:
-            raise SSHError(DISC_PROTOCOL_ERROR, 'No such listener')
+            raise DisconnectError(DISC_PROTOCOL_ERROR, 'No such listener')
 
         listener.close()
-
-    def get_username(self):
-        """Return the authenticated username, if any
-
-           If authentication was performed successfully on this connection,
-           this method returns the authenticated username. Otherwise, it
-           returns ``None``.
-
-           :returns: A string containing the authenticated user name or
-                     ``None`` if authentication is not complete
-
-        """
-
-        return self._username if self._auth_complete else None
 
     def send_auth_banner(self, msg, lang=DEFAULT_LANG):
         """Send an authentication banner to the client
@@ -1804,8 +2024,402 @@ class SSHServer(_SSHConnection):
         lang = lang.encode('ascii')
         self._send_packet(Byte(MSG_USERAUTH_BANNER), String(msg), String(lang))
 
+    def create_server_channel(self, encoding='utf-8', window=_DEFAULT_WINDOW,
+                              max_pktsize=_DEFAULT_MAX_PKTSIZE):
+        """Create an SSH server channel for a new SSH session
+
+           This method can be called by :meth:`session_requested()
+           <SSHServer.session_requested>` to create an
+           :class:`SSHServerChannel` with the desired encoding, window,
+           and max packet size for a newly created SSH server session.
+
+           :param string encoding: (optional)
+               The Unicode encoding to use for data exchanged on the
+               session, defaulting to UTF-8 (ISO 10646) format. If ``None``
+               is passed in, the application can send and receive raw
+               bytes.
+           :param integer window: (optional)
+               The receive window size for this session
+           :param integer max_pktsize: (optional)
+               The maximum packet size for this session
+
+        """
+
+        return SSHServerChannel(self, self._loop, encoding, window, max_pktsize)
+
+    def create_tcp_channel(self, encoding=None, window=_DEFAULT_WINDOW,
+                           max_pktsize=_DEFAULT_MAX_PKTSIZE):
+        """Create an SSH TCP channel for a new direct TCP connection
+
+           This method can be called by :meth:`connection_requested()
+           <SSHServer.connection_requested>` to create an
+           :class:`SSHTCPChannel` with the desired encoding, window, and
+           max packet size for a newly created SSH direct connection.
+
+           :param string encoding: (optional)
+               The Unicode encoding to use for data exchanged on the
+               connection. This defaults to ``None``, allowing the
+               application to send and receive raw bytes.
+           :param integer window: (optional)
+               The receive window size for this session
+           :param integer max_pktsize: (optional)
+               The maximum packet size for this session
+
+        """
+
+        return SSHTCPChannel(self, self._loop, encoding, window, max_pktsize)
+
+    @asyncio.coroutine
+    def accept_connection(self, session_factory, listen_host, listen_port,
+                          orig_host='', orig_port=0, *, encoding=None,
+                          window=_DEFAULT_WINDOW,
+                          max_pktsize=_DEFAULT_MAX_PKTSIZE):
+        """Create an SSH TCP forwarded connection
+
+           This method is a coroutine which can be called to notify the
+           client about a new inbound TCP connection arriving on the
+           specified listening host and port. If the connection is successfully
+           opened, a new SSH channel will be opened with data being handled
+           by a :class:`SSHTCPSession` object created by ``session_factory``.
+
+           Optional arguments include the host and port of the original
+           client opening the connection when performing TCP port forwarding.
+
+           By default, this class expects data to be sent and received as
+           raw bytes. However, an optional encoding argument can be
+           passed in to select the encoding to use, allowing the
+           application send and receive string data.
+
+           Other optional arguments include the SSH receive window size and
+           max packet size which default to 2 MB and 32 KB, respectively.
+
+           :param callable session_factory:
+               A callable which returns an :class:`SSHClientSession` object
+               that will be created to handle activity on this session
+           :param string listen_host:
+               The hostname or address of the listener receiving the connection
+           :param integer listen_port:
+               The port number of the listener receiving the connection
+           :param string orig_host: (optional)
+               The hostname or address of the client requesting the connection
+           :param integer orig_port: (optional)
+               The port number of the client requesting the connection
+           :param string encoding: (optional)
+               The Unicode encoding to use for data exchanged on the connection
+           :param integer window: (optional)
+               The receive window size for this session
+           :param integer max_pktsize: (optional)
+               The maximum packet size for this session
+
+        """
+
+        chan = SSHTCPChannel(self, self._loop, encoding, window, max_pktsize)
+
+        return (yield from chan._accept(session_factory, listen_host,
+                                        listen_port, orig_host, orig_port))
+
+
+class SSHClient:
+    """SSH client protocol handler
+
+       Applications should subclass this when implementing an SSH client.
+       The functions listed below should be overridden to define
+       application-specific behavior. In particular, the method
+       :meth:`auth_completed` should be defined to open the desired
+       SSH channels on this connection once authentication has been
+       completed.
+
+       For simple password or public key based authentication, nothing
+       needs to be defined here if the password or client keys are passed
+       in when the connection is created. However, to prompt interactively
+       or otherwise dynamically select these values, the methods
+       :meth:`password_auth_requested` and/or :meth:`public_key_auth_requested`
+       can be defined. Keyboard-interactive authentication is also supported
+       via :meth:`kbdint_auth_requested` and :meth:`kbdint_challenge_received`.
+
+       If the server sends an authentication banner, the method
+       :meth:`auth_banner_received` will be called.
+
+       If the server requires a password change, the method
+       :meth:`password_change_requested` will be called, followed by either
+       :meth:`password_changed` or :meth:`password_change_failed` depending
+       on whether the password change is successful.
+
+    """
+
+    def connection_made(self, connection):
+        """Called when a connection is made
+
+           This method is called as soon as the TCP connection completes. The
+           connection parameter should be stored if needed for later use.
+
+           :param connection:
+               The connection which was successfully opened
+           :type connection: :class:`SSHClientConnection`
+
+        """
+
+    def connection_lost(self, exc):
+        """Called when a connection is lost or closed
+
+           This method is called when a connection is closed. If the
+           connection is shut down cleanly, *exc* will be ``None``.
+           Otherwise, it will be an exception explaining the reason for
+           the disconnect.
+
+           :param exc:
+               The exception which caused the connection to close, or
+               ``None`` if the connection closed cleanly
+           :type exc: :class:`Exception`
+
+        """
+
+    def debug_msg_received(self, msg, lang, always_display):
+        """A debug message was received on this connection
+
+           This method is called when the other end of the connection sends
+           a debug message. Applications should implement this method if
+           they wish to process these debug messages.
+
+           :param string msg:
+               The debug message sent
+           :param string lang:
+               The language the message is in
+           :param boolean always_display:
+               Whether or not to display the message
+
+        """
+
+    def auth_banner_received(self, msg, lang):
+        """An incoming authentication banner was received
+
+           This method is called when the server sends a banner to display
+           during authentication. Applications should implement this method
+           if they wish to do something with the banner.
+
+           :param string msg:
+               The message the server wanted to display
+           :param string lang:
+               The language the message is in
+
+        """
+
+    def auth_completed(self):
+        """Authentication was completed successfully
+
+           This method is called when authentication has completed
+           succesfully. Applications may use this method to create
+           whatever client sessions and direct TCP/IP connections are
+           needed and/or set up listeners for incoming TCP/IP connections
+           coming from the server.
+
+        """
+
+    def public_key_auth_requested(self):
+        """Public key authentication has been requested
+
+           This method should return a client private key corresponding
+           to the user that authentication is being attempted for. It
+           may be called multiple times and can return a different key
+           to try each time it is called. When there are no client keys
+           left to try, it should return ``None`` to indicate that some
+           other authentication method should be tried.
+
+           If client keys were provided when the connection was opened,
+           they will be tried before this method is called.
+
+           :returns: A :class:`SSHKey` private key to authenticate with
+                     or ``None`` to move on to another authentication
+                     method
+
+        """
+
+        return None
+
+    def password_auth_requested(self):
+        """Password authentication has been requested
+
+           This method should return a string containing the password
+           corresponding to the user that authentication is being
+           attempted for. It may be called multiple times and can
+           return a different password to try each time, but most
+           servers have a limit on the number of attempts allowed.
+           When there's no password left to try, this method should
+           return ``None`` to indicate that some other authentication
+           method should be tried.
+
+           If a password was provided when the connection was opened,
+           it will be tried before this method is called.
+
+           :returns: A string containing the password to authenticate
+                     with or ``None`` to move on to another authentication
+                     method
+
+        """
+
+        return None
+
+    def password_change_requested(self, prompt, lang):
+        """A password change has been requested
+
+           This method is called when password authentication was
+           attempted and the user's password was expired on the
+           server. To request a password change, this method should
+           return a tuple or two strings containing the old and new
+           passwords. Otherwise, it should return ``NotImplemented``.
+
+           By default, this method returns ``NotImplemented``.
+
+           :param string prompt:
+               The prompt requesting that the user enter a new password
+           :param string lang:
+               the language that the prompt is in
+
+           :returns: A tuple of two strings containing the old and new
+                     passwords or ``NotImplemented`` if password changes
+                     aren't supported
+
+        """
+
+        return NotImplemented
+
+    def password_changed(self):
+        """The requested password change was successful
+
+           This method is called to indicate that a requested password
+           change was successful. It is generally followed by a call to
+           :meth:`auth_completed` since this means authentication was
+           also successful.
+
+        """
+
+    def password_change_failed(self):
+        """The requested password change has failed
+
+           This method is called to indicate that a requested password
+           change failed, generally because the requested new password
+           doesn't meet the password criteria on the remote system.
+           After this method is called, other forms of authentication
+           will automatically be attempted.
+
+        """
+
+    def kbdint_auth_requested(self):
+        """Keyboard-interactive authentication has been requested
+
+           This method should return a string containing a comma-separated
+           list of submethods that the server should use for
+           keyboard-interactive authentication. An empty string can be
+           returned to let the server pick the type of keyboard-interactive
+           authentication to perform. If keyboard-interactive authentication
+           is not supported, ``None`` should be returned.
+
+           By default, keyboard-interactive authentication is supported
+           if a password was provided when the :class:`SSHClient` was
+           created and it hasn't been sent yet. If the challenge is not
+           a password challenge, this authentication will fail. This
+           method and the :meth:`kbdint_challenge_received` method can be
+           overridden if other forms of challenge should be supported.
+
+           :returns: A string containing the submethods the server should
+                     use for authentication or ``None`` to move on to
+                     another authentication method
+
+        """
+
+        return None
+
+    def kbdint_challenge_received(self, name, instruction, lang, prompts):
+        """A keyboard-interactive auth challenge has been received
+
+           This method is called when the server sends a keyboard-interactive
+           authentication challenge.
+
+           The return value should be a list of strings of the same length
+           as the number of prompts provided if the challenge can be
+           answered, or ``None`` to indicate that some other form of
+           authentication should be attempted.
+
+           By default, this method will look for a challenge consisting
+           of a single 'Password:' prompt, and call the method
+           :meth:`password_auth_requested` to provide the response.
+           It will also ignore challenges with no prompts (generally used
+           to provide instructions). Any other form of challenge will
+           cause this method to return ``None`` to move on to another
+           authentication method.
+
+           :param string name:
+               The name of the challenge
+           :param string instruction:
+               Instructions to the user about how to respond to the challenge
+           :param string lang:
+               The language the challenge is in
+           :param prompts:
+               The challenges the user should respond to and whether or
+               not the responses should be echoed when they are entered
+           :type prompts: list of tuples of string and boolean
+
+           :returns: List of string responses to the challenge or ``None``
+                     to move on to another authentication method
+
+        """
+
+        return None
+
+
+class SSHServer:
+    """SSH server protocol handler
+
+       Applications should subclass this when implementing an SSH server.
+       At a minimum, one or more of the authentication handlers will need
+       to be overridden to perform authentication, or :meth:`begin_auth`
+       should be overridden to return ``False`` to indicate that no
+       authentication is required.
+       
+       In addition, one or more of the :meth:`session_requested`,
+       :meth:`connection_requested`, or :meth:`server_requested` methods
+       will need to be overridden to handle requests to open sessions or
+       direct TCP/IP connections or set up listeners for forwarded
+       TCP/IP connections.
+
+    """
+
+    def connection_made(self, connection):
+        """Called when a connection is made
+
+           This method is called when a new TCP connection is accepted. The
+           connection parameter should be stored if needed for later use.
+
+        """
+
+    def connection_lost(self, exc):
+        """Called when a connection is lost or closed
+
+           This method is called when a connection is closed. If the
+           connection is shut down cleanly, *exc* will be ``None``.
+           Otherwise, it will be an exception explaining the reason for
+           the disconnect.
+
+        """
+
+    def debug_msg_received(self, msg, lang, always_display):
+        """A debug message was received on this connection
+
+           This method is called when the other end of the connection sends
+           a debug message. Applications should implement this method if
+           they wish to process these debug messages.
+
+           :param string msg:
+               The debug message sent
+           :param string lang:
+               The language the message is in
+           :param boolean always_display:
+               Whether or not to display the message
+
+        """
+
     def begin_auth(self, username):
-        """Begin authentication of a user
+        """Authentication has been requested by the client
 
            This method will be called when authentication is attempted for
            the specified user. Applications should use this method to
@@ -1932,20 +2546,12 @@ class SSHServer(_SSHConnection):
            to generate the apporiate challenges and validate the responses
            for the user being authenticated.
 
-           By default, keyboard-interactive authentication is supported if
-           password authentication is supported, with the default challenge
-           being a single prompt for 'Password:' and the validation based
-           on :meth:`validate_password`. If an application already supports
-           password authentication, they'll automatically support this
-           authentication as well unless they explicitly disable it by
-           overriding this method.
-
            :returns: A boolean indicating if keyboard-interactive
                      authentication is supported or not
 
         """
 
-        return self.password_auth_supported()
+        return False
 
     def get_kbdint_challenge(self, username, lang, submethods):
         """Return a keyboard-interactive auth challenge
@@ -1957,10 +2563,6 @@ class SSHServer(_SSHConnection):
            and a list of tuples containing prompt strings and booleans
            indicating whether input should be echoed when a value is
            entered for that prompt.
-
-           By default, this method will return a single 'Password:'
-           prompt if password authentication is supported. Otherwise, it
-           will return ``False`` causing the authentication to fail.
 
            :param string username:
                The user being authenticated
@@ -1974,10 +2576,7 @@ class SSHServer(_SSHConnection):
 
         """
 
-        if self.password_auth_supported():
-            return '', '', DEFAULT_LANG, (('Password:', False),)
-        else:
-            return False
+        return False
 
     def validate_kbdint_response(self, username, responses):
         """Return whether the keyboard-interactive response is valid
@@ -1994,9 +2593,6 @@ class SSHServer(_SSHConnection):
            acknowledges this message, this function will be called again
            with an empty list of responses to continue the authentication.
 
-           By default, this method will attempt to do password validation
-           on the response returned.
-
            :param string username:
                The user being authenticated
            :param responses:
@@ -2007,43 +2603,48 @@ class SSHServer(_SSHConnection):
 
         """
 
-        return len(responses) == 1 and \
-               self.validate_password(username, responses[0])
+        return False
 
-    def handle_session(self):
+    def session_requested(self):
         """Handle an incoming session request
 
            This method is called when a session open request is received
            from the client, indicating it wishes to open a channel to be
            used for running a shell, executing a command, or connecting
-           to a subsystem. If they wish to accept the session,
-           applications must override this method and return a class
-           derived from :class:`SSHServerSession` which can be used to
-           process the data received on the channel Otherwise, they
-           should raise :exc:`ChannelOpenError` with the reason they
-           are rejecting the session.
+           to a subsystem. If the application wishes to accept the session,
+           it must override this method with either a coroutine that
+           returns an :class:`SSHServerSession` object to use to process
+           the data received on the channel or a function which returns
+           an :class:`SSHServerChannel` object created with
+           :meth:`create_server_channel
+           <SSHServerConnection.create_server_channel>` and a coroutine
+           which returns an :class:`SSHServerSession`, if the application
+           wishes to pass non-default arguments when creating the channel.
 
-           The details of what the client wants to start on the channel
+           To reject this request, this method should return ``False``
+           to send back a "Session refused" response or raise an
+           :exc:`ChannelOpenError` exception with the reason for
+           the failure.
+
+           The details of what type of session the client wants to start
            will be delivered to methods on the :class:`SSHServerSession`
            object which is returned, along with other information such
-           as environment vairables, terminal type, and window size.
+           as environment variables, terminal type, size, and modes.
 
-           By default, all sessions are rejected with an error code
-           of ``OPEN_CONNECT_FAILED`` and a reason of "Connection
-           refused".
+           By default, all session requests are rejected.
 
-           :returns: A subclass of :class:`SSHServerSession` which should
-                     be used to process data on the incoming session
+           :returns: A coroutine which returns an :class:`SSHServerSession`
+                     or a tuple consisting of an :class:`SSHServerChannel`
+                     and a coroutine which returns an :class:`SSHServerSession`
 
            :raises: :exc:`ChannelOpenError` if the session shouldn't
                     be accepted
 
         """
 
-        raise ChannelOpenError(OPEN_CONNECT_FAILED, 'Connection refused')
+        return False
 
-    def handle_direct_connection(self, dest_host, dest_port,
-                                 orig_host, orig_port):
+    def connection_requested(self, dest_host, dest_port, orig_host, orig_port):
         """Handle a direct TCP/IP connection request
 
            This method is called when a direct TCP/IP connection
@@ -2054,18 +2655,22 @@ class SSHServer(_SSHConnection):
            to the requested destination host and port, this method
            should return ``True``.
 
+           To reject this request, this method should return ``False``
+           to send back a "Connection refused" response or raise an
+           :exc:`ChannelOpenError` exception with the reason for
+           the failure.
+
            If the application wishes to process the data on the
-           connection itself, this method should return a subclass
-           of :class:`SSHTCPConnection` with the necessary handlers.
+           connection itself, this method should either be a coroutine
+           which returns an :class:`SSHTCPSession` object which can be
+           used to process the data received on the channel or it should
+           return a tuple consisting of of an :class:`SSHTCPChannel`
+           object created with :meth:`create_tcp_channel()
+           <SSHServerConnection.create_tcp_channel>` and a coroutine which
+           returns an :class:`SSHTCPSession`, if the applications wishes
+           to pass non-default arguments when creating the channel.
 
-           To reject the connection, the application should raise
-           :exc:`ChannelOpenError` with the reason for the rejection.
-           Connections can be selectively rejected based on the host
-           and port information provided here.
-
-           By default, all connections are rejected with an error code
-           of ``OPEN_CONNECT_FAILED`` and a reason of "Connection
-           refused".
+           By default, all connection requests are rejected.
 
            :param string dest_host:
                The address the client wishes to connect to
@@ -2076,85 +2681,268 @@ class SSHServer(_SSHConnection):
            :param integer orig_port:
                The port the connection was originated from
 
-           :returns: A subclass of :class:`SSHTCPConnection` which should
-                     be used to process data on the incoming connection
+           :returns: ``True`` to request standard port forwarding,
+                     ``False`` to refuse the connection, a coroutine
+                     which returns an :class:`SSHTCPSession`,
+                     or a tuple consisting of an :class:`SSHTCPChannel`
+                     and a couroutine which returns a :class:`SSHTCPSession`
 
            :raises: :exc:`ChannelOpenError` if the connection shouldn't
                     be accepted
 
         """
 
-        raise ChannelOpenError(OPEN_CONNECT_FAILED, 'Connection refused')
+        return False
 
-    def handle_listen(self, listen_host, listen_port):
+    def server_requested(self, listen_host, listen_port):
         """Handle a request to listen on a TCP/IP address and port
 
            This method is called when a client makes a request to
            listen on an address and port for incoming TCP connections.
            The port to listen on may be ``0`` to request a dynamically
-           selected port. Applications wishing to allow TCP/IP
+           allocated port. Applications wishing to allow TCP/IP connection
            forwarding must override this method.
 
-           To allow standard port forwarding of connections received
+           To set up standard port forwarding of connections received
            on this address and port, this method should return ``True``.
 
            If the application wishes to manage listening for incoming
-           connections itself, this method should return the port
-           number to report back to the client that it is listening on
-           and then create objects derived from :class:`SSHTCPConnection`
-           and call :meth:`accept() <SSHTCPConnection.accept>` on them
-           to forward these connections back to the client.
+           connections itself, this method should be a coroutine which
+           returns an :class:`SSHListener` object that listens for new
+           connections and calls :meth:`accept_connection
+           <SSHServerConnection.accept_connection>` on each of them to
+           forward them back to the client or returns ``None`` if the
+           listener can't be set up.
 
-           To reject this listen request, the application should return
-           ``False``.
+           To reject this request, this method should return ``False``.
 
-           By default, this method rejects all listen requests.
+           By default, this method rejects all server requests.
 
            :param string listen_host:
                The address the server should listen on
            :param integer listen_port:
                The port the server should listen on, or the value ``0``
-               to request that the server dynamically select a port
+               to request that the server dynamically allocate a port
 
-           :returns: The port number being listened on or ``False`` to
-                     reject the listen request
+           :returns: ``True`` to set up standard port forwarding,
+                     ``False`` to reject the request, or a coroutine
+                     which returns an :class:`SSHListener` object or
+                     ``None``
 
         """
 
         return False
 
 
-class SSHListener(Listener):
-    """This is a helper class which can be passed subclasses of
-       :class:`SSHServer` to listen for incoming connections and
-       automatically instantiate a new instance of the server as each
-       connection arrives. The listen address can be either an address
-       and port tuple or just the port to listen on all interfaces.
+@asyncio.coroutine
+def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
+                      loop=None, family=0, flags=0, local_addr=None,
+                      server_host_keys=(), client_keys=(),
+                      username=None, password=None, kex_algs=(),
+                      encryption_algs=(), mac_algs=(), compression_algs=(),
+                      rekey_bytes=_DEFAULT_REKEY_BYTES,
+                      rekey_seconds=_DEFAULT_REKEY_SECONDS):
+    """Create an SSH client connection
 
-       :param listen_addr:
-           The address and port to listen on
-       :param class server_class:
-           The server class to instantiate when new connections arrive
-       :param \*args,\ \*\*kwargs:
-           Additional arguments to pass to ``server_class``
+       This method is a coroutine which can be run to create an outbound SSH
+       client connection to the specified host and port.
+
+       When successful, the following steps occur:
+
+           1. The connection is established and an :class:`SSHClientConnection`
+              object is created to represent it.
+           2. The ``client_factory`` is called without arguments and should
+              return an :class:`SSHClient` object.
+           3. The client object is tied to the connection and its
+              :meth:`connection_made() <SSHClient.connection_made>` method
+              is called.
+           4. The SSH handshake and authentication process is initiated,
+              calling methods on the client object if needed.
+           5. When authentication completes successfully, he client's
+              :meth:`auth_completed() <SSHClient.auth_completed>` method is
+              called.
+           6. The coroutine returns the ``(connection, client)`` pair. At
+              this point, the connection is ready for sessions to be opened
+              or port forwarding to be set up.
+
+       If an error occurs, it will be raised as an exception and the partially
+       open connection and client objects will be cleaned up.
+
+       :param callable client_factory:
+           A callable which returns an :class:`SSHClient` object that will
+           be tied to the connection
+       :param string host:
+           The hostname or address to connect to
+       :param integer port: (optional)
+           The port number to connect to. If not specified, the default
+           SSH port is used.
+       :param loop: (optional)
+           The event loop to use when creating the connection. If not
+           specified, the default event loop is used.
+       :param family: (optional)
+           The address family to use when creating the socket. By default,
+           the address family is automatically selected based on the host.
+       :param flags: (optional)
+           The flags to pass to getaddrinfo() when looking up the host address
+       :param local_addr: (optional)
+           The host and port to bind the socket to before connecting
+       :param server_host_keys: (optional)
+           A list of public keys which will be accepted as a host key
+           from the server. If this parameter is not provided, host
+           keys for the server will be looked up in
+           :file:`.ssh/known_hosts`. If this is explicitly set to
+           ``None``, server host key validation will be disabled.
+       :param string username: (optional)
+           Username to authenticate as on the server. If not specified,
+           the currently logged in user on the local machine will be used.
+       :param client_keys: (optional)
+           A list of private keys which will be used to authenticate
+           this client. If no client keys are specified, an attempt will
+           be made to load them from the files :file:`.ssh/id_ecdsa`,
+           :file:`.ssh/id_rsa`, and :file:`.ssh/id_dsa`. If this is
+           explicitly set to ``None``, client public key authentication
+           will not be performed.
+       :param string password: (optional)
+           The password to use for client password authentication or
+           keyboard-interactive authentication which prompts for a password.
+           If this is not specified, client password authentication will
+           not be performed.
+       :param kex_algs: (optional)
+           A list of allowed key exchange algorithms in the SSH handshake,
+           taken from :ref:`key exchange algorithms <KexAlgs>`
+       :param encryption_algs: (optional)
+           A list of encryption algorithms to use during the SSH handshake,
+           taken from :ref:`encryption algorithms <EncryptionAlgs>`
+       :param mac_algs: (optional)
+           A list of MAC algorithms to use during the SSH handshake, taken
+           from :ref:`MAC algorithms <MACAlgs>`
+       :param compression_algs: (optional)
+           A list of compression algorithms to use during the SSH handshake,
+           taken from :ref:`compression algorithms <CompressionAlgs>`, or
+           ``None`` to disable compression
+       :param integer rekey_bytes: (optional)
+           The number of bytes which can be sent before the SSH session
+           key is renegotiated. This defaults to 1 GB.
+       :param integer rekey_seconds: (optional)
+           The maximum time in seconds before the SSH session key is
+           renegotiated. This defaults to 1 hour.
+       :type family: ``socket.AF_UNSPEC``, ``socket.AF_INET``, or
+                     ``socket.AF_INET6``
+       :type flags: flags to pass to :meth:`getaddrinfo() <socket.getaddrinfo>`
+       :type local_addr: tuple of string and integer
+       :type server_host_keys: *list of* :class:`SSHKey` *public keys*
+       :type client_keys: *list of* :class:`SSHKey` *private keys*
+       :type kex_algs: list of strings
+       :type encryption_algs: list of strings
+       :type mac_algs: list of strings
+       :type compression_algs: list of strings
 
     """
 
-    def __init__(self, listen_addr, server_class, *args, **kwargs):
-        if isinstance(listen_addr, tuple):
-            host, port = listen_addr
-        else:
-            host = ''
-            port = listen_addr
+    if not client_factory:
+        client_factory = SSHClient
 
-        self._server_class = server_class
-        self._args = args
-        self._kwargs = kwargs
+    if not loop:
+        loop = asyncio.get_event_loop()
 
-        super().__init__(host, port)
+    auth_waiter = asyncio.Future(loop=loop)
 
-    def handle_open_error(self, exc):
-        print('Unable to open listener: %s' % exc.args[1], file=sys.stderr)
+    conn_factory = lambda: SSHClientConnection(client_factory, loop, host,
+                                               port, server_host_keys,
+                                               client_keys, username, password,
+                                               kex_algs, encryption_algs,
+                                               mac_algs, compression_algs,
+                                               rekey_bytes, rekey_seconds,
+                                               auth_waiter)
 
-    def handle_accepted(self, sock, client_addr):
-        self._server_class(sock, client_addr, *self._args, **self._kwargs)
+    _, conn = yield from loop.create_connection(conn_factory, host, port,
+                                                family=family, flags=flags,
+                                                local_addr=local_addr)
+
+    yield from auth_waiter
+
+    return conn, conn._owner
+
+@asyncio.coroutine
+def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
+                  loop=None, family=0, flags=socket.AI_PASSIVE, backlog=100,
+                  reuse_address=None, server_host_keys, kex_algs=(),
+                  encryption_algs=(), mac_algs=(), compression_algs=(),
+                  rekey_bytes=_DEFAULT_REKEY_BYTES,
+                  rekey_seconds=_DEFAULT_REKEY_SECONDS):
+    """Create an SSH server
+
+       This method is a coroutine which can be run to create an SSH server
+       bound to the specified host and port. The return value is an
+       ``AbstractServer`` object which can be used later to shut down the
+       server.
+
+       :param callable server_factory:
+           A callable which returns an :class:`SSHServer` object that will
+           be created for each new inbound connection
+       :param string host: (optional)
+           The hostname or address to listen on. If not specified, listeners
+           are created for all addresses.
+       :param integer port: (optional)
+           The port number to listen on. If not specified, the default
+           SSH port is used.
+       :param loop: (optional)
+           The event loop to use when creating the server. If not
+           specified, the default event loop is used.
+       :param family: (optional)
+           The address family to use when creating the server. By default,
+           the address families are automatically selected based on the host.
+       :param flags: (optional)
+           The flags to pass to getaddrinfo() when looking up the host
+       :param integer backlog: (optional)
+           The maximum number of queued connections allowed on listeners
+       :param boolean reuse_address: (optional)
+           Whether or not to reuse a local socket in the TIME_WAIT state
+           without waiting for its natural timeout to expire. If not
+           specified, this will be automatically set to True on UNIX.
+       :param server_host_keys:
+           A list of public keys which can be presented as host keys
+           during the SSL handshake. This argument must be specified.
+       :param kex_algs: (optional)
+           A list of allowed key exchange algorithms in the SSH handshake,
+           taken from :ref:`key exchange algorithms <KexAlgs>`
+       :param encryption_algs: (optional)
+           A list of encryption algorithms to use during the SSH handshake,
+           taken from :ref:`encryption algorithms <EncryptionAlgs>`
+       :param mac_algs: (optional)
+           A list of MAC algorithms to use during the SSH handshake, taken
+           from :ref:`MAC algorithms <MACAlgs>`
+       :param compression_algs: (optional)
+           A list of compression algorithms to use during the SSH handshake,
+           taken from :ref:`compression algorithms <CompressionAlgs>`, or
+           ``None`` to disable compression
+       :param integer rekey_bytes: (optional)
+           The number of bytes which can be sent before the SSH session
+           key is renegotiated. This defaults to 1 GB.
+       :param integer rekey_seconds: (optional)
+           The maximum time in seconds before the SSH session key is
+           renegotiated. This defaults to 1 hour.
+       :type family: ``socket.AF_UNSPEC``, ``socket.AF_INET``, or
+                     ``socket.AF_INET6``
+       :type flags: flags to pass to :meth:`getaddrinfo() <socket.getaddrinfo>`
+       :type server_host_keys: *list of* :class:`SSHKey` *private keys*
+       :type kex_algs: list of strings
+       :type encryption_algs: list of strings
+       :type mac_algs: list of strings
+       :type compression_algs: list of strings
+
+    """
+
+    if not loop:
+        loop = asyncio.get_event_loop()
+
+    conn_factory = lambda: SSHServerConnection(server_factory, loop,
+                                               server_host_keys, kex_algs,
+                                               encryption_algs, mac_algs,
+                                               compression_algs,
+                                               rekey_bytes, rekey_seconds)
+
+    return (yield from loop.create_server(conn_factory, host, port,
+                                          family=family, flags=flags,
+                                          backlog=backlog,
+                                          reuse_address=reuse_address))

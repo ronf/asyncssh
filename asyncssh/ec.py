@@ -38,6 +38,7 @@ class _PrimeCurve:
         self.b = b
         self.keylen = (p.bit_length() + 7) // 8
 
+
 class _PrimePoint:
     """A point on an elliptic curve over a prime finite field F(p)"""
 
@@ -180,10 +181,10 @@ class _KexECDH(Kex):
 
     def _compute_hash(self, server_host_key, k):
         hash = self._hash()
-        hash.update(String(self._conn.client_version))
-        hash.update(String(self._conn.server_version))
-        hash.update(String(self._conn.client_kexinit))
-        hash.update(String(self._conn.server_kexinit))
+        hash.update(String(self._conn._client_version))
+        hash.update(String(self._conn._server_version))
+        hash.update(String(self._conn._client_kexinit))
+        hash.update(String(self._conn._server_kexinit))
         hash.update(String(server_host_key.encode_ssh_public()))
         hash.update(String(self._Qc))
         hash.update(String(self._Qs))
@@ -192,7 +193,8 @@ class _KexECDH(Kex):
 
     def _process_init(self, pkttype, packet):
         if self._conn.is_client():
-            raise SSHError(DISC_PROTOCOL_ERROR, 'Unexpected kex init msg')
+            raise DisconnectError(DISC_PROTOCOL_ERROR,
+                                  'Unexpected kex init msg')
 
         self._Qc = packet.get_string()
         packet.check_end()
@@ -200,11 +202,13 @@ class _KexECDH(Kex):
         try:
             P = self._d * _PrimePoint.decode(self._Q.curve, self._Qc)
             if not P:
-                raise SSHError(DISC_PROTOCOL_ERROR, 'Invalid kex init msg')
+                raise DisconnectError(DISC_PROTOCOL_ERROR,
+                                      'Invalid kex init msg')
         except ValueError:
-            raise SSHError(DISC_PROTOCOL_ERROR, 'Invalid kex init msg')
+            raise DisconnectError(DISC_PROTOCOL_ERROR,
+                                  'Invalid kex init msg')
 
-        server_host_key = self._conn.server_host_key
+        server_host_key = self._conn._server_host_key
 
         k = P.x
         h = self._compute_hash(server_host_key, k)
@@ -218,7 +222,8 @@ class _KexECDH(Kex):
 
     def _process_reply(self, pkttype, packet):
         if self._conn.is_server():
-            raise SSHError(DISC_PROTOCOL_ERROR, 'Unexpected kex reply msg')
+            raise DisconnectError(DISC_PROTOCOL_ERROR,
+                                  'Unexpected kex reply msg')
 
         server_host_key = packet.get_string()
         self._Qs = packet.get_string()
@@ -228,21 +233,23 @@ class _KexECDH(Kex):
         server_host_key = decode_ssh_public_key(server_host_key)
 
         if not self._conn._verify_server_host_key(server_host_key):
-            raise SSHError(DISC_HOST_KEY_NOT_VERIFYABLE,
-                           'Host key verification failed')
+            raise DisconnectError(DISC_HOST_KEY_NOT_VERIFYABLE,
+                                  'Host key verification failed')
 
         try:
             P = self._d * _PrimePoint.decode(self._Q.curve, self._Qs)
             if not P:
-                raise SSHError(DISC_PROTOCOL_ERROR, 'Invalid kex reply msg')
+                raise DisconnectError(DISC_PROTOCOL_ERROR,
+                                      'Invalid kex reply msg')
         except ValueError:
-            raise SSHError(DISC_PROTOCOL_ERROR, 'Invalid kex reply msg')
+            raise DisconnectError(DISC_PROTOCOL_ERROR,
+                                  'Invalid kex reply msg')
 
         k = P.x
         h = self._compute_hash(server_host_key, k)
         if not server_host_key.verify(h, sig):
-            raise SSHError(DISC_KEY_EXCHANGE_FAILED,
-                           'Key exchange hash mismatch')
+            raise DisconnectError(DISC_KEY_EXCHANGE_FAILED,
+                                  'Key exchange hash mismatch')
 
         self._conn._send_newkeys(k, h)
 
@@ -388,7 +395,8 @@ class _ECKey(SSHKey):
                 raise KeyImportError('Unknown curve name: %s' % id.decode())
 
             return cls(domain, None, public_key)
-        except SSHError:
+        except DisconnectError:
+            # Fall through and return a key import error
             pass
 
         raise KeyImportError('Invalid EC public key')
@@ -441,6 +449,7 @@ class _ECKey(SSHKey):
                 if s:
                     break
             except ValueError:
+                # If k has no inverse, try again with a different k
                 pass
 
         sig = MPInt(r) + MPInt(s)

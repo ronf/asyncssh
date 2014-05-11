@@ -15,8 +15,8 @@
 """AsyncSSH: Asynchronous SSHv2 client and server library
 
 This package provides an asynchronous client and server implementation of
-the SSHv2 protocol, based on the Python asyncore framework. It depends on
-Python 3.2 or later and the PyCrypto library for some cryptographic functions.
+the SSHv2 protocol, based on the Python asyncio framework. It depends on
+Python 3.4 or later and the PyCrypto library for some cryptographic functions.
 
 """
 
@@ -46,7 +46,7 @@ setup(name = 'asyncssh',
           'License :: OSI Approved',
           'Operating System :: MacOS :: MacOS X',
           'Operating System :: POSIX',
-          'Programming Language :: Python :: 3.2',
+          'Programming Language :: Python :: 3.4',
           'Topic :: Internet',
           'Topic :: Security :: Cryptography',
           'Topic :: Software Development :: Libraries :: Python Modules',

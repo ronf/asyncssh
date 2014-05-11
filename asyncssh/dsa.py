@@ -95,7 +95,8 @@ class _DSAKey(SSHKey):
             packet.check_end()
 
             return cls(DSA.construct((y, g, p, q)))
-        except SSHError:
+        except DisconnectError:
+            # Fall through and return a key import error
             pass
 
         raise KeyImportError('Invalid DSA public key')

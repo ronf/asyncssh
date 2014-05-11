@@ -12,31 +12,18 @@
 # Contributors:
 #     Ron Frederick - initial implementation, API, and documentation
 
-import asyncore, sys
-from asyncssh import SSHClient, SSHClientLocalPortForwarder
+import asyncio, asyncssh, sys
 
-class MyPortForwarder(SSHClientLocalPortForwarder):
-    def handle_open(self):
-        print('Listening on port %s...' % self.listen_port)
+@asyncio.coroutine
+def start_client():
+    conn, _ = yield from asyncssh.create_connection(None, 'localhost')
+    listener = yield from conn.forward_local_port('', 0, 'www.google.com', 80)
+    print('Listening on port %s...' % listener.get_port())
+    yield from listener.wait_closed()
 
-    def handle_open_error(self, exc):
-        print('Local listen failed: %s' % exc.args[1], file=sys.stderr)
-        self.conn.disconnect()
+loop = asyncio.get_event_loop()
 
-    def accept_connection(self, orig_host, orig_port):
-        if orig_host not in ('127.0.0.1', '::1'):
-            print('Accepting connection from %s...' % orig_host)
-            return True
-        else:
-            print('Rejecting connection from %s...' % orig_host)
-            return False
-
-class MySSHClient(SSHClient):
-    def handle_auth_complete(self):
-        forwarder = MyPortForwarder(self, '', 0, 'www.google.com', 80)
-
-    def handle_disconnect(self, code, reason, lang):
-        print('SSH connection error: %s' % reason, file=sys.stderr)
-
-client = MySSHClient('localhost')
-asyncore.loop()
+try:
+    loop.run_until_complete(start_client())
+except (OSError, asyncssh.Error) as exc:
+    sys.exit('SSH connection failed: ' + str(exc))

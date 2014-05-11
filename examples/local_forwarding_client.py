@@ -12,20 +12,18 @@
 # Contributors:
 #     Ron Frederick - initial implementation, API, and documentation
 
-import asyncore, sys
-from asyncssh import SSHClient, SSHClientLocalPortForwarder
+import asyncio, asyncssh, sys
 
-class MyPortForwarder(SSHClientLocalPortForwarder):
-    def handle_open_error(self, exc):
-        print('Local listen failed: %s' % exc.args[1], file=sys.stderr)
-        self.conn.disconnect()
+@asyncio.coroutine
+def start_client():
+    conn, _ = yield from asyncssh.create_connection(None, 'localhost')
+    listener = yield from conn.forward_local_port('', 8080,
+                                                  'www.google.com', 80)
+    yield from listener.wait_closed()
 
-class MySSHClient(SSHClient):
-    def handle_auth_complete(self):
-        forwarder = MyPortForwarder(self, '', 8080, 'www.google.com', 80)
+loop = asyncio.get_event_loop()
 
-    def handle_disconnect(self, code, reason, lang):
-        print('SSH connection error: %s' % reason, file=sys.stderr)
-
-client = MySSHClient('localhost')
-asyncore.loop()
+try:
+    loop.run_until_complete(start_client())
+except (OSError, asyncssh.Error) as exc:
+    sys.exit('SSH connection failed: ' + str(exc))

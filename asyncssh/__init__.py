@@ -18,20 +18,20 @@ __author_email__ = '<ronf@timeheart.net>'
 
 __url__ = 'http://asyncssh.timeheart.net/'
 
-__version__ = '0.5.0'
+__version__ = '0.6.0'
 
 from .constants import *
 
-from .channel import SSHClientSession, SSHServerSession, SSHTCPConnection
+from .channel import SSHClientChannel, SSHServerChannel, SSHTCPChannel
+from .channel import SSHClientSession, SSHServerSession, SSHTCPSession
 
-from .connection import SSHClient, SSHServer, SSHListener
+from .connection import SSHClient, SSHServer
+from .connection import SSHClientConnection, SSHServerConnection
+from .connection import create_connection, create_server
 
-from .forward import SSHClientLocalPortForwarder, SSHClientRemotePortForwarder
-from .forward import SSHServerPortForwarder
+from .listen import SSHListener
 
-from .listen import SSHClientListener, SSHServerListener
-
-from .misc import ChannelOpenError
+from .misc import Error, DisconnectError, ChannelOpenError
 
 from .pbe import KeyEncryptionError
 

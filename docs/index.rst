@@ -10,8 +10,8 @@ AsyncSSH Overview
 =================
 
 AsyncSSH is a Python package which provides an asynchronous client and
-server implementation of the SSHv2 protocol on top of the Python asyncore
-framework. It requires Python 3.2 or later and the PyCrypto library for some
+server implementation of the SSHv2 protocol on top of the Python asyncio
+framework. It requires Python 3.4 or later and the PyCrypto library for some
 cryptographic functions.
 
 This package is released under the following terms:
@@ -54,23 +54,23 @@ Prerequisites
 
 To use ``asyncssh``, you need the following:
 
-    * Python 3.2 or later
+    * Python 3.4 or later
     * PyCrypto 2.6 or later
 
 Installation
 ============
 
-    #. Install Python 3.2 or later from http://www.python.org or your
+    #. Install Python 3.4 or later from http://www.python.org or your
        favorite packaging system.
 
     #. Install PyCrypto 2.6 or later from http://www.pycrypto.org or your
        favorite packaging system.
 
-    #. Download, unpack, and install `asyncssh-0.5.0.tar.gz
-       <asyncssh-0.5.0.tar.gz>`_ by running the following commands::
+    #. Download, unpack, and install `asyncssh-0.6.0.tar.gz
+       <asyncssh-0.6.0.tar.gz>`_ by running the following commands::
 
-       % tar zxf asyncssh-0.5.0.tar.gz
-       % cd asyncssh-0.5.0
+       % tar zxf asyncssh-0.6.0.tar.gz
+       % cd asyncssh-0.6.0
        % python setup.py install
 
     #. Check out the examples below to get started!
@@ -167,10 +167,10 @@ When run, this program should produce the following output:
       1*2*3*4 = 24
       2^32 = 4294967296
 
-Note that input is not provided until the :meth:`handle_open()
-<SSHClientSession.handle_open>` method is called, and :meth:`send_eof()
-<SSHClientSession.send_eof>` is used to signal the end of input,
-causing the 'bc' program to exit.
+Note that input is not sent on the channel  until the :meth:`session_started()
+<SSHClientSession.session_started>` method is called, and :meth:`write_eof()
+<SSHClientChannel.write_eof>` is used to signal the end of input, causing the
+'bc' program to exit.
 
 Checking exit status
 --------------------
@@ -194,7 +194,7 @@ command.
       :start-line: 15
 
 Any number of environment variables can be passed in the dictionary
-given to :meth:`set_environment() <SSHClientSession.set_environment>`.
+given to :meth:`create_session() <SSHClientConnection.create_session>`.
 Note that SSH servers may restrict which environment variables (if any)
 are accepted, so this feature may require setting options on the SSH
 server before it will work.
@@ -202,19 +202,12 @@ server before it will work.
 Setting terminal information
 ----------------------------
 
-The following example demonstrates setting the terminal type and
-window size passed to the remote session.
+The following example demonstrates setting the terminal type and size
+passed to the remote session.
 
    .. include:: ../examples/set_terminal.py
       :literal:
       :start-line: 15
-
-The :meth:`set_terminal() <SSHClientSession.set_terminal>` method also
-takes an optional dictionary for setting :ref:`POSIX terminal modes
-<PTYModes>` defined in section 8 of :rfc:`4254#section-8`, and the
-:meth:`set_window_size() <SSHClientSession.set_window_size>` method
-takes optional arguments for setting the terminal's width and height
-in pixels in addition to the width and height in characters.
 
 Port forwarding
 ---------------
@@ -229,19 +222,9 @@ that port be forwarded across SSH to the server and on to port 80 on
       :start-line: 15
 
 To listen on a dynamically assigned port, the client can pass in ``0``
-as the bind port. If the listener is successfully opened, the selected
-port will be available in the ``listen_port`` member variable when the
-:meth:`handle_open() <SSHClientLocalPortForwarder.handle_open>` method
-is called. If the listen fails, the :meth:`handle_open_error()
-<SSHClientLocalPortForwarder.handle_open_error>` method is called
-with the exception that was raised.
-
-The client can limit which connections are forwarded by overriding the
-:meth:`accept_connection() <SSHClientLocalPortForwarder.accept_connection>`
-method. It is passed the address and port of the client attempting the
-connection and can return ``True`` or ``False`` to accept or reject the
-connection. The following example listens on a random port and rejects
-connections from ``localhost``:
+as the listening port. If the listener is successfully opened, the selected
+port will be available via the :meth:`get_port() <SSHListener.get_port>`
+method on the returned listener object:
 
    .. include:: ../examples/local_forwarding_client2.py
       :literal:
@@ -256,31 +239,36 @@ and on to port 80 on ``localhost``:
       :literal:
       :start-line: 15
 
-The client can request that the server listen on a dynamic port by passing
-in a listen port value of ``0``, getting back the selected port via the
-``listen_port`` member variable when the :meth:`handle_open()
-<SSHClientRemotePortForwarder.handle_open>` method is called. If the
-listen request to the server fails, the :meth:`handle_open_error()
-<SSHClientRemotePortForwarder.handle_open_error>` method is called.
+To limit which connections are accepted or dynamically select where to
+forward traffic to, the client can implement their own session factory and
+call :meth:`forward_connection() <SSHClientConnection.forward_connection>`
+on the connections they wish to forward and raise an error on those they
+wish to reject:
 
-The client can limit which incoming connections are accepted by overriding
-:meth:`accept_connection() <SSHClientRemotePortForwarder.accept_connection>`,
-return ``True`` to accept connections, ``False`` to reject them with a
-"Connection refused" error, or raising a :exc:`ChannelOpenError` exception
-to return some other error.
+   .. include:: ../examples/remote_forwarding_client2.py
+      :literal:
+      :start-line: 15
+
+Just as with local listeners, the client can request remote port forwarding
+from a dynamic port by passing in ``0`` as the listening port and then call
+:meth:`get_port() <SSHListener.get_port>` on the returned listener to
+determine which port was selected.
 
 Direct TCP connections
 ----------------------
 
 The client can also ask the server to open a TCP connection and directly
-send and receive data on it. In this example, a connection is attempted
-to port 80 on ``www.google.com`` and an HTTP HEAD request is sent for
-the document root.
+send and receive data on it by using the :meth:`create_connection()
+<SSHClientConnection.create_connection>` method on the
+:class:`SSHClientConnection` object. In this example, a connection is
+attempted to port 80 on ``www.google.com`` and an HTTP HEAD request is
+sent for the document root.
 
-Note that unlike :class:`SSHClientSession`, all the I/O on
-:class:`SSHTCPConnection` defaults to sending and receiving bytes rather
-than strings to allow arbitrary binary data to be exchanged. However,
-this can be changed by setting encoding when the connection is created.
+Note that unlike sessions created with :meth:`create_session()
+<SSHClientConnection.create_session>`, the I/O on these connections defaults
+to sending and receiving bytes rather than strings, allowing arbitrary
+binary data to be exchanged. However, this can be changed by setting
+the encoding to use when the connection is created.
 
    .. include:: ../examples/direct_client.py
       :literal:
@@ -297,8 +285,7 @@ prints a message and closes the connection.
 
 As in the direct TCP connection example above, the default would be to
 send and receive bytes on this connection rather than strings, but
-here we set the encoding to UTF-8 to be able to directly send and
-receive strings:
+here we set the encoding explicitly to be able to send and receive strings:
 
    .. include:: ../examples/listening_client.py
       :literal:
@@ -334,8 +321,9 @@ Simple server with input
 The following example demonstrates reading input in a server session.
 It will sum a column of numbers, displaying the total and closing the
 connection when it receives EOF. Note that this is not an interactive
-application -- you'll need to have the SSH client read from a file or
-pipe rather than the terminal for this to work right.
+application, so no echoing of user input is provided. You'll need to
+have the SSH client read from a file or pipe rather than the terminal
+for this to work right.
 
    .. include:: ../examples/math_server.py
       :literal:
@@ -346,9 +334,9 @@ Getting environment variables
 
 The following example demonstrates reading environment variables set
 by the client. It will show all of the variables set by the client,
-or return an error if none are set. Note that SSH clients may not
-restrict which environment variables (if any) are sent by default,
-so you may need to set options in the client to get it to do so.
+or return an error if none are set. Note that SSH clients may restrict
+which environment variables (if any) are sent by default, so you may
+need to set options in the client to get it to do so.
 
    .. include:: ../examples/show_environment.py
       :literal:

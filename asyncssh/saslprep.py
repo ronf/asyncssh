@@ -25,7 +25,6 @@ import unicodedata
 
 class SASLPrepError(ValueError):
     """Invalid data provided to saslprep"""
-    pass
 
 
 def _check_bidi(s):

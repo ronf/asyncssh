@@ -12,34 +12,46 @@
 # Contributors:
 #     Ron Frederick - initial implementation, API, and documentation
 
-import asyncore
-from asyncssh import SSHListener, SSHServer, SSHTCPConnection
-from asyncssh import ChannelOpenError, OPEN_ADMINISTRATIVELY_PROHIBITED
-from asyncssh import read_private_key_list
+import asyncio, asyncssh, sys
 
 # To run this program, the file ssh_host_keys must exist with at least
 # one SSH private key to use as a server host key in it
-ssh_host_keys = read_private_key_list('ssh_host_keys')
+host_keys = asyncssh.read_private_key_list('ssh_host_keys')
 
-class MySSHServerConnection(SSHTCPConnection):
-    def handle_data(self, data, datatype):
-        self.send(data)
+class MySSHTCPSession(asyncssh.SSHTCPSession):
+    def connection_made(self, chan):
+        self._chan = chan
 
-    def handle_eof(self):
-        self.close()
+    def data_received(self, data, datatype):
+        self._chan.write(data)
 
-class MySSHServer(SSHServer):
+    def eof_received(self):
+        self._chan.close()
+
+class MySSHServer(asyncssh.SSHServer):
     def begin_auth(self, username):
         # No auth in this example
         return False
 
-    def handle_direct_connection(self, dest_host, dest_port,
-                                 orig_host, orig_port):
+    @asyncio.coroutine
+    def connection_requested(self, dest_host, dest_port, orig_host, orig_port):
         if dest_port == 7:
-            return MySSHServerConnection(self)
+            return MySSHTCPSession()
         else:
-            raise ChannelOpenError(OPEN_ADMINISTRATIVELY_PROHIBITED,
-                                   'Only echo connections allowed')
+            raise asyncssh.ChannelOpenError(
+                      asyncssh.OPEN_ADMINISTRATIVELY_PROHIBITED,
+                      'Only echo connections allowed')
 
-listener = SSHListener(8022, MySSHServer, ssh_host_keys)
-asyncore.loop()
+@asyncio.coroutine
+def start_server():
+    yield from asyncssh.create_server(MySSHServer, '', 8022,
+                                      server_host_keys=host_keys)
+
+loop = asyncio.get_event_loop()
+
+try:
+    loop.run_until_complete(start_server())
+except (OSError, asyncssh.Error) as exc:
+    sys.exit('SSH server failed: ' + str(exc))
+
+loop.run_forever()

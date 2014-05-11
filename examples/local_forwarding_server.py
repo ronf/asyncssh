@@ -12,28 +12,35 @@
 # Contributors:
 #     Ron Frederick - initial implementation, API, and documentation
 
-import asyncore
-from asyncssh import SSHListener, SSHServer
-from asyncssh import ChannelOpenError, OPEN_ADMINISTRATIVELY_PROHIBITED
-from asyncssh import read_private_key_list
+import asyncio, asyncssh, sys
 
 # To run this program, the file ssh_host_keys must exist with at least
 # one SSH private key to use as a server host key in it
-ssh_host_keys = read_private_key_list('ssh_host_keys')
+host_keys = asyncssh.read_private_key_list('ssh_host_keys')
 
-class MySSHServer(SSHServer):
+class MySSHServer(asyncssh.SSHServer):
     def begin_auth(self, username):
         # No auth in this example
         return False
 
-    def handle_direct_connection(self, dest_host, dest_port,
-                                 orig_host, orig_port):
-        # Allow port forwarding, but only to port 80
+    def connection_requested(self, dest_host, dest_port, orig_host, orig_port):
         if dest_port == 80:
             return True
         else:
-            raise ChannelOpenError(OPEN_ADMINISTRATIVELY_PROHIBITED,
-                                   'Only port 80 is allowed')
+            raise asyncssh.ChannelOpenError(
+                      asyncssh.OPEN_ADMINISTRATIVELY_PROHIBITED,
+                      'Only connections to port 80 are allowed')
 
-listener = SSHListener(8022, MySSHServer, ssh_host_keys)
-asyncore.loop()
+@asyncio.coroutine
+def start_server():
+    yield from asyncssh.create_server(MySSHServer, '', 8022,
+                                      server_host_keys=host_keys)
+
+loop = asyncio.get_event_loop()
+
+try:
+    loop.run_until_complete(start_server())
+except (OSError, asyncssh.Error) as exc:
+    sys.exit('SSH server failed: ' + str(exc))
+
+loop.run_forever()

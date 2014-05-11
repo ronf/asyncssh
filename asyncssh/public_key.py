@@ -38,7 +38,6 @@ class KeyImportError(ValueError):
        data provided cannot be imported as a valid key.
 
     """
-    pass
 
 
 class KeyExportError(ValueError):
@@ -49,7 +48,6 @@ class KeyExportError(ValueError):
        format which doesn't support it.
 
     """
-    pass
 
 
 class SSHKey:
@@ -270,12 +268,14 @@ def _decode_der_private(data, passphrase):
         try:
             key_data = pkcs8_decrypt(key_data, passphrase)
         except KeyEncryptionError:
+            # Decryption failed - try decoding it as unencrypted
             pass
 
     # Then, try to decode PKCS#8
     try:
         return _decode_pkcs8_private(key_data), end
     except KeyImportError:
+        # PKCS#8 failed - try PKCS#1 instead
         pass
 
     # If that fails, try each of the possible PKCS#1 encodings
@@ -283,6 +283,7 @@ def _decode_der_private(data, passphrase):
         try:
             return _pem_map[pem_name].decode_pkcs1_private(key_data), end
         except KeyImportError:
+            # Try the next PKCS#1 encoding
             pass
 
     raise KeyImportError('Invalid DER private key')
@@ -299,6 +300,7 @@ def _decode_der_public(data):
     try:
         return _decode_pkcs8_public(key_data), end
     except KeyImportError:
+        # PKCS#8 failed - try PKCS#1 instead
         pass
 
     # If that fails, try each of the possible PKCS#1 encodings
@@ -306,6 +308,7 @@ def _decode_der_public(data):
         try:
             return _pem_map[pem_name].decode_pkcs1_public(key_data), end
         except KeyImportError:
+            # Try the next PKCS#1 encoding
             pass
 
     raise KeyImportError('Invalid DER public key')
@@ -505,7 +508,8 @@ def decode_ssh_public_key(data):
             raise KeyImportError('Unknown SSH key algorithm: %s' % alg.decode())
 
         return _alg_map[alg].decode_ssh_public(packet)
-    except SSHError:
+    except DisconnectError:
+        # Fall through and return a key import error
         pass
 
     raise KeyImportError('Invalid SSH public key')

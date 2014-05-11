@@ -12,28 +12,41 @@
 # Contributors:
 #     Ron Frederick - initial implementation, API, and documentation
 
-import asyncore, crypt, sys
-from asyncssh import SSHListener, SSHServer, SSHServerSession
-from asyncssh import read_private_key_list
+import asyncio, asyncssh, crypt, sys
 
 # To run this program, the file ssh_host_keys must exist with at least
 # one SSH private key to use as a server host key in it
-ssh_host_keys = read_private_key_list('ssh_host_keys')
+ssh_host_keys = asyncssh.read_private_key_list('ssh_host_keys')
 
 passwords = {'guest': '',                 # guest account with no password
              'user123': 'qV2iEadIGV2rw'   # password of 'secretpw'
             }
 
-class MySSHServerSession(SSHServerSession):
-    def handle_shell_request(self):
+class MySSHServerSession(asyncssh.SSHServerSession):
+    def shell_requested(self):
         return True
 
-    def handle_open(self):
-        self.send('Welcome to my SSH server, %s!\r\n' %
-                      self.conn.get_username())
-        self.exit(0)
+    def connection_made(self, chan):
+        self._chan = chan
 
-class MySSHServer(SSHServer):
+    def session_started(self):
+        self._chan.write('Welcome to my SSH server, %s!\r\n' %
+                             self._chan.get_extra_info('username'))
+        self._chan.exit(0)
+
+class MySSHServer(asyncssh.SSHServer):
+    def connection_made(self, conn):
+        self._conn = conn
+
+        print('SSH connection received from %s.' %
+                  conn.get_extra_info('peername')[0])
+
+    def connection_lost(self, exc):
+        if exc:
+            print('SSH connection error: ' + str(exc), file=sys.stderr)
+        else:
+            print('SSH connection closed.')
+
     def begin_auth(self, username):
         # If the user's password is the empty string, no auth is required
         return passwords.get(username) != ''
@@ -45,8 +58,20 @@ class MySSHServer(SSHServer):
         pw = passwords.get(username, '*')
         return crypt.crypt(password, pw) == pw
 
-    def handle_session(self):
-        return MySSHServerSession(self)
+    @asyncio.coroutine
+    def session_requested(self):
+        return MySSHServerSession()
 
-listener = SSHListener(8022, MySSHServer, ssh_host_keys)
-asyncore.loop()
+@asyncio.coroutine
+def start_server():
+    yield from asyncssh.create_server(MySSHServer, 'localhost', 8022,
+                                      server_host_keys=ssh_host_keys)
+
+loop = asyncio.get_event_loop()
+
+try:
+    loop.run_until_complete(start_server())
+except (OSError, asyncssh.Error) as exc:
+    sys.exit('Error starting server: ' + str(exc))
+
+loop.run_forever()

@@ -89,7 +89,8 @@ class _RSAKey(SSHKey):
             packet.check_end()
 
             return cls(RSA.construct((n, e)))
-        except SSHError:
+        except DisconnectError:
+            # Fall through and return a key import error
             pass
 
         raise KeyImportError('Invalid RSA public key')

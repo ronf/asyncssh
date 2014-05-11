@@ -12,25 +12,27 @@
 # Contributors:
 #     Ron Frederick - initial implementation, API, and documentation
 
-import asyncore, sys
-from asyncssh import SSHClient, SSHClientSession
+import asyncio, asyncssh, sys
 
-class MySSHClientSession(SSHClientSession):
-    def handle_data(self, data, datatype):
+class MySSHClientSession(asyncssh.SSHClientSession):
+    def data_received(self, data, datatype):
         print(data, end='')
 
-    def handle_close(self):
-        self.conn.disconnect()
+    def connection_lost(self, exc):
+        if exc:
+            print('SSH session error: ' + str(exc), file=sys.stderr)
 
-class MySSHClient(SSHClient):
-    def handle_auth_complete(self):
-        session = MySSHClientSession(self)
-        session.set_terminal('xterm-color')
-        session.set_window_size(80, 24)
-        session.exec('echo $TERM; stty size')
+@asyncio.coroutine
+def start_client():
+    conn, _ = yield from asyncssh.create_connection(None, 'localhost')
+    chan, _ = yield from conn.create_session(MySSHClientSession,
+                                            'echo $TERM; stty size',
+                                            term_type='xterm-color',
+                                            term_size=(80, 24))
+    yield from chan.wait_closed()
+    conn.close()
 
-    def handle_disconnect(self, code, reason, lang):
-        print('SSH connection error: %s' % reason, file=sys.stderr)
-
-client = MySSHClient('localhost')
-asyncore.loop()
+try:
+    asyncio.get_event_loop().run_until_complete(start_client())
+except (OSError, asyncssh.Error) as exc:
+    sys.exit('SSH connection failed: ' + str(exc))

@@ -74,7 +74,7 @@ class KeyEncryptionError(ValueError):
        provided is not a valid encrypted private key.
 
     """
-    pass
+
 
 class _RFC1423Pad:
     """RFC 1423 padding functions

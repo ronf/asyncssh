@@ -12,40 +12,60 @@
 # Contributors:
 #     Ron Frederick - initial implementation, API, and documentation
 
-import asyncore, sys
-from asyncssh import SSHListener, SSHServer, SSHServerSession
-from asyncssh import read_private_key_list
+import asyncio, asyncssh, crypt, sys
 
 # To run this program, the file ssh_host_keys must exist with at least
 # one SSH private key to use as a server host key in it
-ssh_host_keys = read_private_key_list('ssh_host_keys')
+ssh_host_keys = asyncssh.read_private_key_list('ssh_host_keys')
 
-class MySSHServerSession(SSHServerSession):
-    def handle_pty_request(self, term, modes):
-        self.send('Terminal type: %s\r\n' % term)
+class MySSHServerSession(asyncssh.SSHServerSession):
+    def connection_made(self, chan):
+        self._chan = chan
+
+    def shell_requested(self):
         return True
 
-    def handle_window_change(self, width, height, pixwidth, pixheight):
-        self.send('Window size: %sx%s' % (width, height))
+    def session_started(self):
+        term_type = self._chan.get_terminal_type()
+        term_size = self._chan.get_terminal_size()
+        self._chan.write('Terminal type: %s, size: %sx%s\r\n' %
+                             (term_type, term_size[0], term_size[1]))
+        self._chan.write('Try resizing your window!\r\n')
+
+    def terminal_size_changed(self, width, height, pixwidth, pixheight):
+        self._chan.write('New window size: %sx%s' % (width, height))
 
         if pixwidth and pixheight:
-            self.send(' (%sx%s pixels)' % (pixwidth, pixheight))
+            self._chan.write(' (%sx%s pixels)' % (pixwidth, pixheight))
 
-        self.send('\r\n')
+        self._chan.write('\r\n')
 
-    def handle_shell_request(self):
-        return True
+class MySSHServer(asyncssh.SSHServer):
+    def connection_made(self, conn):
+        self._conn = conn
 
-    def handle_open(self):
-        self.send('Try resizing your window!\r\n')
+    def connection_lost(self, exc):
+        if exc:
+            print('SSH connection error: ' + str(exc), file=sys.stderr)
 
-class MySSHServer(SSHServer):
     def begin_auth(self, username):
         # No auth in this example
         return False
 
-    def handle_session(self):
-        return MySSHServerSession(self)
+    @asyncio.coroutine
+    def session_requested(self):
+        return MySSHServerSession()
 
-listener = SSHListener(8022, MySSHServer, ssh_host_keys)
-asyncore.loop()
+@asyncio.coroutine
+def start_server():
+    yield from asyncssh.create_server(MySSHServer, 'localhost', 8022,
+                                      server_host_keys=ssh_host_keys)
+
+loop = asyncio.get_event_loop()
+
+try:
+    loop.run_until_complete(start_server())
+except (OSError, asyncssh.Error) as exc:
+    sys.exit('Error starting server: ' + str(exc))
+
+loop.run_forever()

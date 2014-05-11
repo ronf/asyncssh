@@ -3,6 +3,22 @@
 Change Log
 ==========
 
+Release 0.6.0 (11 May 2014)
+---------------------------
+
+* This version is a major revamp of the code to migrate from the
+  ``asyncore`` framework to the new ``asyncio`` framework in Python
+  3.4. All the APIs have been adapted to fit the new ``asyncio``
+  paradigm, using coroutines wherever possible to avoid the need
+  for callbacks when performing asynchronous operations.
+
+  This is expected to be the last significant redesign of the API before
+  release 1.0.
+
+* The :ref:`API`, :ref:`ClientExamples`, and :ref:`ServerExamples` have
+  all been updated to reflect these changes.
+
+
 Release 0.5.0 (11 Oct 2013)
 ---------------------------
 

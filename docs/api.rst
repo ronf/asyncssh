@@ -1,52 +1,90 @@
 .. module:: asyncssh
 
+.. _API:
+
 API Documentation
 *****************
 
 Overview
 ========
 
-The AsyncSSH API consists of two main classes for applications to derive
-from, :class:`SSHClient` and :class:`SSHServer`, and a helper class
-:class:`SSHListener` which can be passed a subclass of :class:`SSHServer`
-to set up a listening socket and create new SSH server instances as
-connections come in.
+The AsyncSSH API is modeled after the new Python ``asyncio`` framework, with
+a :func:`create_connection` coroutine to create an SSH client and a
+:func:`create_server` coroutine to create an SSH server. Like the
+``asyncio`` framework, these calls take a parameter of a factory which
+creates protocol objects to manage the connections once they are open.
+For AsyncSSH, :func:`create_connection` should be passed a ``client_factory``
+which returns objects derived from :class:`SSHClient` and :func:`create_server`
+should be passed a ``server_factory`` which returns objects derived from
+:class:`SSHServer`. In addition, each connection will have an associated
+:class:`SSHClientConnection` or :class:`SSHServerConnection` object passed
+to the protocol objects which can be used to perform actions on the connection.
 
-Each instance of :class:`SSHClient` and :class:`SSHServer` corresponds
-to a single SSH connection. Once an SSH connection is established and
-authentication is successful, multiple simultaneous channels can be
-opened on it.  This is accomplished by deriving from three other classes,
-:class:`SSHClientSession`, :class:`SSHServerSession`, and
-:class:`SSHTCPConnection`.
+For client connections, authentication can be performed by passing in a
+username and password or SSH keys as arguments to :func:`create_connection`
+or by implementing handler methods on the :class:`SSHClient` object which
+return credentials when the server requests them. If no credentials are
+provided, AsyncSSH automatically attempts to send the username of the
+local user and the keys found in their :file:`.ssh` subdirectory. A list of
+expected server host keys can also be specified, with AsyncSSH defaulting
+to looking for matching lines in the user's :file:`.ssh/known_hosts` file.
 
-A subclass of :class:`SSHClientSession` class can be associated with an
-instance of :class:`SSHClient` to request access to a shell, execute a
-remote command, or connect to a remote subsystem. A subclass of
-:class:`SSHServerSession` class can be associated with an instance of
-:class:`SSHServer` to accept incoming requests of this sort. Finally,
-a subclass of :class:`SSHTCPConnection` class can be created for clients
-to open outbound direct TCP/IP connections or for servers to report
-incoming forwarded TCP/IP connections that a client has asked them to
-listen for.
+For server connections, handlers can be implemented on the :class:`SSHServer`
+object to return which authentication methods are supported and to validate
+credentials provided by clients.
 
-Clients can request that the server listen for TCP/IP connections and
-forward them over SSH by deriving from :class:`SSHClientListener` and
-having it return objects derived from :class:`SSHTCPConnection` to
-process each forwarded connection. Servers wishing to accept requests to
-forward connections can do so by deriving from :class:`SSHServerListener`
-and having it create objects derived from :class:`SSHTCPConnection` for
-each forwarded connection.
+Once an SSH client connection is established and authentication is successful,
+multiple simultaneous channels can be opened on it.  This is accomplished
+calling methods such as :meth:`create_session()
+<SSHClientConnection.create_session>` and :meth:`create_connection()
+<SSHClientConnection.create_connection>` on the :class:`SSHClientConnection`
+object. The client can also set up listeners on remote TCP ports by calling
+:meth:`create_server() <SSHClientConnection.create_server>`. All of these
+methods take ``session_factory`` arguments that return
+:class:`SSHClientSession` or :class:`SSHTCPSession` objects used to manage
+the channels once they are open.
 
-To set up standard SSH port forwarding, clients can derive from
-:class:`SSHClientLocalPortForwarder` or :class:`SSHClientRemotePortForwarder`,
-optionally implementing access control via the ``accept_connection`` method
-in these classes. Servers can implement standard SSH port forwarding in
-a similar manner by deriving from :class:`SSHServerPortForwarder`.
+The client can also set up TCP port forwarding by calling
+:meth:`forward_local_port() <SSHClientConnection.forward_local_port>` or
+:meth:`forward_remote_port() <SSHClientConnection.forward_remote_port>`. In
+these cases, data transfer on the channels is managed automatically by
+AsyncSSH whenever new connections are opened and custom session objects are
+not required.
 
-In addition to the above classes, some helper functions for importing
+When an SSH server receives a new connection and authentication is successful,
+handlers such as :meth:`session_requested() <SSHServer.session_requested>`,
+:meth:`connection_requested() <SSHServer.connection_requested>`, and
+:meth:`server_requested() <SSHServer.server_requested>` on the associated
+:class:`SSHServer` object will be called when clients attempt to open
+channels or set up listeners. These methods return coroutines which can
+set up the requested sessions or connections, returning
+:class:`SSHServerSession` or :class:`SSHTCPSession` objects which manage
+the channels once they are open.
+
+Each session object also has an associated :class:`SSHClientChannel`,
+:class:`SSHServerChannel`, or :class:`SSHTCPChannel` object passed to it
+which can be used to perform actions on the channel. These channel objects
+provide a superset of the functionality found in ``asyncio`` transport
+objects.
+
+In addition to the above functions and classes, helper functions for importing
 public and private keys can be found below under :ref:`PublicKeyFunctions`,
-exceptions can be found under :ref:`Exceptions`, and some useful
-constants can be found under :ref:`Constants`.
+exceptions can be found under :ref:`Exceptions`, supported algorithms can
+be found under :ref:`SupportedAlgorithms`, and some useful constants can be
+found under :ref:`Constants`.
+
+Main Functions
+==============
+
+create_connection
+-----------------
+
+.. autofunction:: create_connection
+
+create_server
+-------------
+
+.. autofunction:: create_server
 
 Main Classes
 ============
@@ -56,51 +94,41 @@ SSHClient
 
 .. autoclass:: SSHClient
 
-   .. rubric:: Methods provided by this class:
-
-   +--------------------------------+
-   | General SSH connection methods |
-   +================================+
-   | .. automethod:: disconnect     |
-   | .. automethod:: send_debug     |
-   +--------------------------------+
-
-   .. rubric:: Methods which can be provided by a subclass:
-
-   +-----------------------------------+
-   | General SSH connection handlers   |
-   +===================================+
-   | .. automethod:: handle_disconnect |
-   | .. automethod:: handle_debug      |
-   +-----------------------------------+
+   +------------------------------------+
+   | General connection handlers        |
+   +====================================+
+   | .. automethod:: connection_made    |
+   | .. automethod:: connection_lost    |
+   | .. automethod:: debug_msg_received |
+   +------------------------------------+
 
    +--------------------------------------+
    | General authentication handlers      |
    +======================================+
-   | .. automethod:: handle_auth_banner   |
-   | .. automethod:: handle_auth_complete |
+   | .. automethod:: auth_banner_received |
+   | .. automethod:: auth_completed       |
    +--------------------------------------+
 
-   +----------------------------------------+
-   | Public key authentication handlers     |
-   +========================================+
-   | .. automethod:: handle_public_key_auth |
-   +----------------------------------------+
+   +-------------------------------------------+
+   | Public key authentication handlers        |
+   +===========================================+
+   | .. automethod:: public_key_auth_requested |
+   +-------------------------------------------+
 
-   +---------------------------------------------------+
-   | Password authentication handlers                  |
-   +===================================================+
-   | .. automethod:: handle_password_auth              |
-   | .. automethod:: handle_password_change_request    |
-   | .. automethod:: handle_password_change_successful |
-   | .. automethod:: handle_password_change_failed     |
-   +---------------------------------------------------+
+   +-------------------------------------------+
+   | Password authentication handlers          |
+   +===========================================+
+   | .. automethod:: password_auth_requested   |
+   | .. automethod:: password_change_requested |
+   | .. automethod:: password_changed          |
+   | .. automethod:: password_change_failed    |
+   +-------------------------------------------+
 
    +----------------------------------------------+
    | Keyboard-interactive authentication handlers |
    +==============================================+
-   | .. automethod:: handle_kbdint_auth           |
-   | .. automethod:: handle_kbdint_challenge      |
+   | .. automethod:: kbdint_auth_requested        |
+   | .. automethod:: kbdint_challenge_received    |
    +----------------------------------------------+
 
 SSHServer
@@ -108,30 +136,13 @@ SSHServer
 
 .. autoclass:: SSHServer
 
-   .. rubric:: Methods provided by this class:
-
-   +--------------------------------+
-   | General SSH connection methods |
-   +================================+
-   | .. automethod:: disconnect     |
-   | .. automethod:: send_debug     |
-   +--------------------------------+
-
-   +----------------------------------+
-   | General authentication methods   |
-   +==================================+
-   | .. automethod:: get_username     |
-   | .. automethod:: send_auth_banner |
-   +----------------------------------+
-
-   .. rubric:: Methods which can be provided by a subclass:
-
-   +-----------------------------------+
-   | General SSH connection handlers   |
-   +===================================+
-   | .. automethod:: handle_disconnect |
-   | .. automethod:: handle_debug      |
-   +-----------------------------------+
+   +------------------------------------+
+   | General connection handlers        |
+   +====================================+
+   | .. automethod:: connection_made    |
+   | .. automethod:: connection_lost    |
+   | .. automethod:: debug_msg_received |
+   +------------------------------------+
 
    +---------------------------------+
    | General authentication handlers |
@@ -161,25 +172,94 @@ SSHServer
    | .. automethod:: validate_kbdint_response     |
    +----------------------------------------------+
 
-   +------------------------------------------+
-   | Channel open handlers                    |
-   +==========================================+
-   | .. automethod:: handle_session           |
-   | .. automethod:: handle_direct_connection |
-   +------------------------------------------+
-
    +--------------------------------------+
-   | Connection forwarding handlers       |
+   | Channel session open handlers        |
    +======================================+
-   | .. automethod:: handle_listen        |
+   | .. automethod:: session_requested    |
+   | .. automethod:: connection_requested |
+   | .. automethod:: server_requested     |
    +--------------------------------------+
 
-SSHListener
------------
+Connection Classes
+==================
 
-.. autoclass:: SSHListener
+SSHClientConnection
+-------------------
 
-Channel Classes
+.. autoclass:: SSHClientConnection()
+
+   +--------------------------------+
+   | General connection methods     |
+   +================================+
+   | .. automethod:: get_extra_info |
+   | .. automethod:: send_debug     |
+   +--------------------------------+
+
+   +-------------------------------------+
+   | Client session open methods         |
+   +=====================================+
+   | .. automethod:: create_session      |
+   | .. automethod:: create_connection   |
+   | .. automethod:: create_server       |
+   +-------------------------------------+
+
+   +-------------------------------------+
+   | Client forwarding methods           |
+   +=====================================+
+   | .. automethod:: forward_connection  |
+   | .. automethod:: forward_local_port  |
+   | .. automethod:: forward_remote_port |
+   +-------------------------------------+
+
+   +----------------------------+
+   | Connection close methods   |
+   +============================+
+   | .. automethod:: abort      |
+   | .. automethod:: close      |
+   | .. automethod:: disconnect |
+   +----------------------------+
+
+SSHServerConnection
+-------------------
+
+.. autoclass:: SSHServerConnection()
+
+   +--------------------------------+
+   | General connection methods     |
+   +================================+
+   | .. automethod:: get_extra_info |
+   | .. automethod:: send_debug     |
+   +--------------------------------+
+
+   +----------------------------------+
+   | Server authentication methods    |
+   +==================================+
+   | .. automethod:: send_auth_banner |
+   +----------------------------------+
+
+   +---------------------------------------+
+   | Server channel creation methods       |
+   +=======================================+
+   | .. automethod:: create_server_channel |
+   | .. automethod:: create_tcp_channel    |
+   +---------------------------------------+
+
+   +------------------------------------+
+   | Server forwarding methods          |
+   +====================================+
+   | .. automethod:: accept_connection  |
+   | .. automethod:: forward_connection |
+   +------------------------------------+
+
+   +----------------------------+
+   | Connection close methods   |
+   +============================+
+   | .. automethod:: abort      |
+   | .. automethod:: close      |
+   | .. automethod:: disconnect |
+   +----------------------------+
+
+Session Classes
 ===============
 
 SSHClientSession
@@ -187,340 +267,262 @@ SSHClientSession
 
 .. autoclass:: SSHClientSession
 
-   .. rubric:: Methods provided by this class:
-
-   +----------------------------------+
-   | SSH client session setup methods |
-   +==================================+
-   | .. automethod:: set_environment  |
-   | .. automethod:: set_terminal     |
-   | .. automethod:: set_window_size  |
-   +----------------------------------+
-
    +---------------------------------+
-   | SSH client session open methods |
+   | General session handlers        |
    +=================================+
-   | .. automethod:: open_shell      |
-   | .. automethod:: exec            |
-   | .. automethod:: open_subsystem  |
+   | .. automethod:: connection_made |
+   | .. automethod:: connection_lost |
+   | .. automethod:: session_started |
    +---------------------------------+
 
-   +-----------------------------+
-   | SSH client send methods     |
-   +=============================+
-   | .. automethod:: send        |
-   | .. automethod:: send_eof    |
-   | .. automethod:: send_signal |
-   | .. automethod:: send_break  |
-   +-----------------------------+
+   +-------------------------------+
+   | General session read handlers |
+   +===============================+
+   | .. automethod:: data_received |
+   | .. automethod:: eof_received  |
+   +-------------------------------+
 
-   +------------------------------+
-   | SSH client receive methods   |
-   +==============================+
-   | .. automethod:: block_recv   |
-   | .. automethod:: unblock_recv |
-   +------------------------------+
+   +--------------------------------+
+   | General session write handlers |
+   +================================+
+   | .. automethod:: pause_writing  |
+   | .. automethod:: resume_writing |
+   +--------------------------------+
 
-   +----------------------------------+
-   | SSH client session close methods |
-   +==================================+
-   | .. automethod:: close            |
-   +----------------------------------+
-
-   .. rubric:: Methods which can be provided by a subclass:
-
-   +-----------------------------------+
-   | SSH client session open handlers  |
-   +===================================+
-   | .. automethod:: handle_open       |
-   | .. automethod:: handle_open_error |
-   +-----------------------------------+
-
-   +----------------------------------+
-   | SSH client flow control handlers |
-   +==================================+
-   | .. automethod:: handle_xon_xoff  |
-   +----------------------------------+
-
-   +---------------------------------------+
-   | SSH client send handlers              |
-   +=======================================+
-   | .. automethod:: handle_send_blocked   |
-   | .. automethod:: handle_send_unblocked |
-   +---------------------------------------+
-
-   +---------------------------------+
-   | SSH client receive handlers     |
-   +=================================+
-   | .. automethod:: handle_data     |
-   | .. automethod:: handle_eof      |
-   +---------------------------------+
-
-   +------------------------------------+
-   | SSH client session close handlers  |
-   +====================================+
-   | .. automethod:: handle_exit        |
-   | .. automethod:: handle_exit_signal |
-   | .. automethod:: handle_close       |
-   +------------------------------------+
+   +--------------------------------------+
+   | Other client session handlers        |
+   +======================================+
+   | .. automethod:: xon_xoff_requested   |
+   | .. automethod:: exit_status_received |
+   | .. automethod:: exit_signal_received |
+   +--------------------------------------+
 
 SSHServerSession
 ----------------
 
 .. autoclass:: SSHServerSession
 
-   .. rubric:: Methods provided by this class:
+   +---------------------------------+
+   | General session handlers        |
+   +=================================+
+   | .. automethod:: connection_made |
+   | .. automethod:: connection_lost |
+   | .. automethod:: session_started |
+   +---------------------------------+
+
+   +-------------------------------------+
+   | Server session open handlers        |
+   +=====================================+
+   | .. automethod:: pty_requested       |
+   | .. automethod:: shell_requested     |
+   | .. automethod:: exec_requested      |
+   | .. automethod:: subsystem_requested |
+   +-------------------------------------+
+
+   +-------------------------------+
+   | General session read handlers |
+   +===============================+
+   | .. automethod:: data_received |
+   | .. automethod:: eof_received  |
+   +-------------------------------+
+
+   +--------------------------------+
+   | General session write handlers |
+   +================================+
+   | .. automethod:: pause_writing  |
+   | .. automethod:: resume_writing |
+   +--------------------------------+
+
+   +---------------------------------------+
+   | Other server session handlers         |
+   +=======================================+
+   | .. automethod:: terminal_size_changed |
+   | .. automethod:: signal_received       |
+   | .. automethod:: break_received        |
+   +---------------------------------------+
+
+SSHTCPSession
+-------------
+
+.. autoclass:: SSHTCPSession
+
+   +---------------------------------+
+   | General session handlers        |
+   +=================================+
+   | .. automethod:: connection_made |
+   | .. automethod:: connection_lost |
+   | .. automethod:: session_started |
+   +---------------------------------+
+
+   +-------------------------------+
+   | General session read handlers |
+   +===============================+
+   | .. automethod:: data_received |
+   | .. automethod:: eof_received  |
+   +-------------------------------+
+
+   +--------------------------------+
+   | General session write handlers |
+   +================================+
+   | .. automethod:: pause_writing  |
+   | .. automethod:: resume_writing |
+   +--------------------------------+
+
+Channel Classes
+===============
+
+SSHClientChannel
+----------------
+
+.. autoclass:: SSHClientChannel()
+
+   +--------------------------------+
+   | General channel methods        |
+   +================================+
+   | .. automethod:: get_extra_info |
+   +--------------------------------+
+
+   +--------------------------------+
+   | General channel read methods   |
+   +================================+
+   | .. automethod:: pause_reading  |
+   | .. automethod:: resume_reading |
+   +--------------------------------+
+
+   +-----------------------------------------+
+   | General channel write methods           |
+   +=========================================+
+   | .. automethod:: can_write_eof           |
+   | .. automethod:: get_write_buffer_size   |
+   | .. automethod:: set_write_buffer_limits |
+   | .. automethod:: write                   |
+   | .. automethod:: writelines              |
+   | .. automethod:: write_eof               |
+   +-----------------------------------------+
+
+   +---------------------------------------+
+   | Other client channel methods          |
+   +=======================================+
+   | .. automethod:: change_terminal_size  |
+   | .. automethod:: send_break            |
+   | .. automethod:: send_signal           |
+   | .. automethod:: kill                  |
+   | .. automethod:: terminate             |
+   +---------------------------------------+
+
+   +-------------------------------+
+   | General channel close methods |
+   +===============================+
+   | .. automethod:: abort         |
+   | .. automethod:: close         |
+   | .. automethod:: wait_closed   |
+   +-------------------------------+
+
+SSHServerChannel
+----------------
+
+.. autoclass:: SSHServerChannel()
+
+   +--------------------------------+
+   | General channel methods        |
+   +================================+
+   | .. automethod:: get_extra_info |
+   +--------------------------------+
 
    +-----------------------------------+
-   | SSH server session query methods  |
+   | Server channel info methods       |
    +===================================+
    | .. automethod:: get_environment   |
    | .. automethod:: get_terminal_type |
    | .. automethod:: get_terminal_mode |
-   | .. automethod:: get_window_size   |
+   | .. automethod:: get_terminal_size |
    +-----------------------------------+
 
+   +--------------------------------+
+   | General channel read methods   |
+   +================================+
+   | .. automethod:: pause_reading  |
+   | .. automethod:: resume_reading |
+   +--------------------------------+
+
    +-----------------------------------------+
-   | SSH server session flow control methods |
+   | General channel write methods           |
    +=========================================+
-   | .. automethod:: set_xon_xoff            |
+   | .. automethod:: can_write_eof           |
+   | .. automethod:: get_write_buffer_size   |
+   | .. automethod:: set_write_buffer_limits |
+   | .. automethod:: write                   |
+   | .. automethod:: writelines              |
+   | .. automethod:: write_eof               |
    +-----------------------------------------+
 
-   +---------------------------------+
-   | SSH server session send methods |
-   +=================================+
-   | .. automethod:: send            |
-   | .. automethod:: send_stderr     |
-   | .. automethod:: send_eof        |
-   +---------------------------------+
-
-   +------------------------------------+
-   | SSH server session receive methods |
-   +====================================+
-   | .. automethod:: block_recv         |
-   | .. automethod:: unblock_recv       |
-   +------------------------------------+
-
-   +----------------------------------+
-   | SSH server session close methods |
-   +==================================+
-   | .. automethod:: exit             |
-   | .. automethod:: exit_with_signal |
-   | .. automethod:: close            |
-   +----------------------------------+
-
-   .. rubric:: Methods which can be provided by a subclass:
-
-   +--------------------------------------+
-   | SSH server session setup handlers    |
-   +======================================+
-   | .. automethod:: handle_pty_request   |
-   | .. automethod:: handle_window_change |
-   +--------------------------------------+
-
-   +------------------------------------------+
-   | SSH server session open handlers         |
-   +==========================================+
-   | .. automethod:: handle_shell_request     |
-   | .. automethod:: handle_exec_request      |
-   | .. automethod:: handle_subsystem_request |
-   | .. automethod:: handle_open              |
-   +------------------------------------------+
-
-   +---------------------------------------+
-   | SSH server session send handlers      |
-   +=======================================+
-   | .. automethod:: handle_send_blocked   |
-   | .. automethod:: handle_send_unblocked |
-   +---------------------------------------+
-
-   +---------------------------------------+
-   | SSH server session receive handlers   |
-   +=======================================+
-   | .. automethod:: handle_data           |
-   | .. automethod:: handle_eof            |
-   | .. automethod:: handle_signal         |
-   | .. automethod:: handle_break          |
-   +---------------------------------------+
-
    +-----------------------------------+
-   | SSH server session close handlers |
+   | Other server channel methods      |
    +===================================+
-   | .. automethod:: handle_close      |
+   | .. automethod:: set_xon_xoff      |
+   | .. automethod:: exit              |
+   | .. automethod:: exit_with_signal  |
    +-----------------------------------+
 
-SSHTCPConnection
-----------------
+   +-------------------------------+
+   | General channel close methods |
+   +===============================+
+   | .. automethod:: abort         |
+   | .. automethod:: close         |
+   | .. automethod:: wait_closed   |
+   +-------------------------------+
 
-.. autoclass:: SSHTCPConnection
+SSHTCPChannel
+-------------
 
-   .. rubric:: Methods provided by this class:
+.. autoclass:: SSHTCPChannel()
 
-   +-----------------------------------+
-   | SSH TCP connection open methods   |
-   +===================================+
-   | .. automethod:: connect           |
-   | .. automethod:: accept            |
-   | .. automethod:: report_open       |
-   | .. automethod:: report_open_error |
-   +-----------------------------------+
+   +--------------------------------+
+   | General channel methods        |
+   +================================+
+   | .. automethod:: get_extra_info |
+   +--------------------------------+
 
-   +---------------------------------+
-   | SSH TCP connection send methods |
-   +=================================+
-   | .. automethod:: send            |
-   | .. automethod:: send_eof        |
-   +---------------------------------+
+   +--------------------------------+
+   | General channel read methods   |
+   +================================+
+   | .. automethod:: pause_reading  |
+   | .. automethod:: resume_reading |
+   +--------------------------------+
 
-   +------------------------------------+
-   | SSH TCP connection receive methods |
-   +====================================+
-   | .. automethod:: block_recv         |
-   | .. automethod:: unblock_recv       |
-   +------------------------------------+
+   +-----------------------------------------+
+   | General channel write methods           |
+   +=========================================+
+   | .. automethod:: can_write_eof           |
+   | .. automethod:: get_write_buffer_size   |
+   | .. automethod:: set_write_buffer_limits |
+   | .. automethod:: write                   |
+   | .. automethod:: writelines              |
+   | .. automethod:: write_eof               |
+   +-----------------------------------------+
 
-   +----------------------------------+
-   | SSH TCP connection close methods |
-   +==================================+
-   | .. automethod:: close            |
-   +----------------------------------+
+   +-------------------------------+
+   | General channel close methods |
+   +===============================+
+   | .. automethod:: abort         |
+   | .. automethod:: close         |
+   | .. automethod:: wait_closed   |
+   +-------------------------------+
 
-   .. rubric:: Methods which can be provided by a subclass:
+Listener Classes
+================
 
-   +-------------------------------------+
-   | SSH TCP connection open handlers    |
-   +=====================================+
-   | .. automethod:: handle_open_request |
-   | .. automethod:: handle_open         |
-   | .. automethod:: handle_open_error   |
-   +-------------------------------------+
+SSHListener
+-----------
 
-   +-------------------------------------+
-   | SSH TCP connection receive handlers |
-   +=====================================+
-   | .. automethod:: handle_data         |
-   | .. automethod:: handle_eof          |
-   +-------------------------------------+
+.. autoclass:: SSHListener
 
-   +-----------------------------------+
-   | SSH TCP connection close handlers |
-   +===================================+
-   | .. automethod:: handle_close      |
-   +-----------------------------------+
+   .. automethod:: get_port
+   .. automethod:: close
+   .. automethod:: wait_closed
 
 .. index:: Public key support
 .. _PublicKeyFunctions:
-
-Connection Listener Classes
-===========================
-
-SSHClientListener
------------------
-
-.. autoclass:: SSHClientListener
-
-   .. rubric:: Methods provided by this class:
-
-   +-----------------------------+
-   | SSH client listener methods |
-   +=============================+
-   | .. automethod:: close       |
-   +-----------------------------+
-
-   .. rubric:: Methods which can be provided by a subclass:
-
-   +-----------------------------------+
-   | SSH client listener handlers      |
-   +===================================+
-   | .. automethod:: handle_open       |
-   | .. automethod:: handle_open_error |
-   | .. automethod:: handle_connection |
-   +-----------------------------------+
-
-SSHServerListener
------------------
-
-.. autoclass:: SSHServerListener
-
-   .. rubric:: Methods provided by this class:
-
-   +-----------------------------------+
-   | SSH server listener methods       |
-   +===================================+
-   | .. automethod:: report_open       |
-   | .. automethod:: report_open_error |
-   +-----------------------------------+
-
-   .. rubric:: Methods which can be provided by a subclass:
-
-   +-------------------------------------+
-   | SSH server listener handlers        |
-   +=====================================+
-   | .. automethod:: handle_open_request |
-   | .. automethod:: handle_close        |
-   +-------------------------------------+
-
-Port Forwarder Classes
-======================
-
-SSHClientLocalPortForwarder
----------------------------
-
-.. autoclass:: SSHClientLocalPortForwarder
-
-   .. rubric:: Methods provided by this class:
-
-   +-----------------------------------------+
-   | SSH client local port forwarder methods |
-   +=========================================+
-   | .. automethod:: close                   |
-   +-----------------------------------------+
-
-   .. rubric:: Methods which can be provided by a subclass:
-
-   +------------------------------------------+
-   | SSH client local port forwarder handlers |
-   +==========================================+
-   | .. automethod:: handle_open              |
-   | .. automethod:: handle_open_error        |
-   | .. automethod:: accept_connection        |
-   +------------------------------------------+
-
-SSHClientRemotePortForwarder
-----------------------------
-
-.. autoclass:: SSHClientRemotePortForwarder
-
-   .. rubric:: Methods provided by this class:
-
-   +------------------------------------------+
-   | SSH client remote port forwarder methods |
-   +==========================================+
-   | .. automethod:: close                    |
-   +------------------------------------------+
-
-   .. rubric:: Methods which can be provided by a subclass:
-
-   +-------------------------------------------+
-   | SSH client remote port forwarder handlers |
-   +===========================================+
-   | .. automethod:: handle_open               |
-   | .. automethod:: handle_open_error         |
-   | .. automethod:: accept_connection         |
-   +-------------------------------------------+
-
-SSHServerPortForwarder
-----------------------
-
-.. autoclass:: SSHServerPortForwarder
-
-   .. rubric:: Methods which can be provided by a subclass:
-
-   +------------------------------------+
-   | SSH server port forwarder handlers |
-   +====================================+
-   | .. automethod:: accept_connection  |
-   +------------------------------------+
 
 Public Key Support
 ==================
@@ -571,6 +573,11 @@ read_public_key_list
 Exceptions
 ==========
 
+DisconnectError
+---------------
+
+.. autoexception:: DisconnectError
+
 ChannelOpenError
 ----------------
 
@@ -591,8 +598,8 @@ KeyEncryptionError
 
 .. autoexception:: KeyEncryptionError
 
-.. index:: Constants
-.. _Constants:
+.. index:: Supported algorithms
+.. _SupportedAlgorithms:
 
 Supported Algorithms
 ====================
@@ -670,6 +677,9 @@ The following are the compression algorithms currently supported by AsyncSSH:
   | zlib\@openssh.com
   | zlib
   | none
+
+.. index:: Constants
+.. _Constants:
 
 Constants
 =========

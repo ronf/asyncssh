@@ -68,17 +68,14 @@ def _encode_identifier(asn1_class, constructed, tag):
 
 class ASN1Error(ValueError):
     """ASN.1 coding error"""
-    pass
 
 
 class ASN1EncodeError(ASN1Error):
     """ASN.1 DER encoding error"""
-    pass
 
 
 class ASN1DecodeError(ASN1Error):
     """ASN.1 DER decoding error"""
-    pass
 
 
 class DERTag:

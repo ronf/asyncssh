@@ -66,7 +66,7 @@ class _KexDH(Kex):
 
     def _send_reply(self, pkttype):
         if not 1 <= self._e < self._p:
-            raise SSHError(DISC_PROTOCOL_ERROR, 'Kex DH e out of range')
+            raise DisconnectError(DISC_PROTOCOL_ERROR, 'Kex DH e out of range')
 
         y = random.randrange(2, self._q)
         self._f = pow(self._g, y, self._p)
@@ -74,9 +74,9 @@ class _KexDH(Kex):
         k = pow(self._e, y, self._p)
 
         if k < 1:
-            raise SSHError(DISC_PROTOCOL_ERROR, 'Kex DH k out of range')
+            raise DisconnectError(DISC_PROTOCOL_ERROR, 'Kex DH k out of range')
 
-        server_host_key = self._conn.server_host_key
+        server_host_key = self._conn._server_host_key
 
         h = self._compute_hash(server_host_key, k)
         sig = server_host_key.sign(h)
@@ -89,32 +89,32 @@ class _KexDH(Kex):
 
     def _verify_reply(self, server_host_key, sig):
         if not 1 <= self._f < self._p:
-            raise SSHError(DISC_PROTOCOL_ERROR, 'Kex DH f out of range')
+            raise DisconnectError(DISC_PROTOCOL_ERROR, 'Kex DH f out of range')
 
         server_host_key = decode_ssh_public_key(server_host_key)
 
         if not self._conn._verify_server_host_key(server_host_key):
-            raise SSHError(DISC_HOST_KEY_NOT_VERIFYABLE,
-                           'Host key verification failed')
+            raise DisconnectError(DISC_HOST_KEY_NOT_VERIFYABLE,
+                                  'Host key verification failed')
 
         k = pow(self._f, self._x, self._p)
 
         if k < 1:
-            raise SSHError(DISC_PROTOCOL_ERROR, 'Kex DH k out of range')
+            raise DisconnectError(DISC_PROTOCOL_ERROR, 'Kex DH k out of range')
 
         h = self._compute_hash(server_host_key, k)
         if not server_host_key.verify(h, sig):
-            raise SSHError(DISC_KEY_EXCHANGE_FAILED,
-                           'Key exchange hash mismatch')
+            raise DisconnectError(DISC_KEY_EXCHANGE_FAILED,
+                                  'Key exchange hash mismatch')
 
         self._conn._send_newkeys(k, h)
 
     def _compute_hash(self, server_host_key, k):
         hash = self._hash()
-        hash.update(String(self._conn.client_version))
-        hash.update(String(self._conn.server_version))
-        hash.update(String(self._conn.client_kexinit))
-        hash.update(String(self._conn.server_kexinit))
+        hash.update(String(self._conn._client_version))
+        hash.update(String(self._conn._server_version))
+        hash.update(String(self._conn._client_kexinit))
+        hash.update(String(self._conn._server_kexinit))
         hash.update(String(server_host_key.encode_ssh_public()))
         hash.update(MPInt(self._e))
         hash.update(MPInt(self._f))
@@ -123,7 +123,8 @@ class _KexDH(Kex):
 
     def _process_init(self, pkttype, packet):
         if self._conn.is_client() or not self._p:
-            raise SSHError(DISC_PROTOCOL_ERROR, 'Unexpected kex init msg')
+            raise DisconnectError(DISC_PROTOCOL_ERROR,
+                                  'Unexpected kex init msg')
 
         self._e = packet.get_mpint()
         packet.check_end()
@@ -132,7 +133,8 @@ class _KexDH(Kex):
 
     def _process_reply(self, pkttype, packet):
         if self._conn.is_server():
-            raise SSHError(DISC_PROTOCOL_ERROR, 'Unexpected kex reply msg')
+            raise DisconnectError(DISC_PROTOCOL_ERROR,
+                                  'Unexpected kex reply msg')
 
         server_host_key = packet.get_string()
         self._f = packet.get_mpint()
@@ -164,10 +166,10 @@ class _KexDHGex(_KexDH):
 
     def _compute_hash(self, server_host_key, k):
         hash = self._hash()
-        hash.update(String(self._conn.client_version))
-        hash.update(String(self._conn.server_version))
-        hash.update(String(self._conn.client_kexinit))
-        hash.update(String(self._conn.server_kexinit))
+        hash.update(String(self._conn._client_version))
+        hash.update(String(self._conn._server_version))
+        hash.update(String(self._conn._client_kexinit))
+        hash.update(String(self._conn._server_kexinit))
         hash.update(String(server_host_key.encode_ssh_public()))
         hash.update(self._request)
         hash.update(MPInt(self._p))
@@ -179,7 +181,8 @@ class _KexDHGex(_KexDH):
 
     def _process_request(self, pkttype, packet):
         if self._conn.is_client():
-            raise SSHError(DISC_PROTOCOL_ERROR, 'Unexpected kex request msg')
+            raise DisconnectError(DISC_PROTOCOL_ERROR,
+                                  'Unexpected kex request msg')
 
         self._request = packet.get_remaining_payload()
 
@@ -209,7 +212,8 @@ class _KexDHGex(_KexDH):
 
     def _process_group(self, pkttype, packet):
         if self._conn.is_server():
-            raise SSHError(DISC_PROTOCOL_ERROR, 'Unexpected kex group msg')
+            raise DisconnectError(DISC_PROTOCOL_ERROR,
+                                  'Unexpected kex group msg')
 
         self._p = packet.get_mpint()
         self._g = packet.get_mpint()
@@ -221,7 +225,8 @@ class _KexDHGex(_KexDH):
 
     def _process_init(self, pkttype, packet):
         if self._conn.is_client() or not self._p:
-            raise SSHError(DISC_PROTOCOL_ERROR, 'Unexpected kex init msg')
+            raise DisconnectError(DISC_PROTOCOL_ERROR,
+                                  'Unexpected kex init msg')
 
         self._e = packet.get_mpint()
         packet.check_end()
@@ -230,7 +235,8 @@ class _KexDHGex(_KexDH):
 
     def _process_reply(self, pkttype, packet):
         if self._conn.is_server() or not self._p:
-            raise SSHError(DISC_PROTOCOL_ERROR, 'Unexpected kex reply msg')
+            raise DisconnectError(DISC_PROTOCOL_ERROR,
+                                  'Unexpected kex reply msg')
 
         server_host_key = packet.get_string()
         self._f = packet.get_mpint()

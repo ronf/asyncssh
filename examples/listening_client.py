@@ -12,29 +12,31 @@
 # Contributors:
 #     Ron Frederick - initial implementation, API, and documentation
 
-import asyncore, sys
-from asyncssh import SSHClient, SSHClientListener, SSHTCPConnection
+import asyncio, asyncssh, sys
 
-class MySSHTCPConnection(SSHTCPConnection):
-    def handle_open(self):
-        self.send('Connection successful!\r\n')
-        self.close()
+class MySSHTCPSession(asyncssh.SSHTCPSession):
+    def connection_made(self, chan):
+        self._chan = chan
 
-class MySSHClientListener(SSHClientListener):
-    def handle_open_error(self):
-        print('Server listen failed.', file=sys.stderr)
-        self.conn.disconnect()
+    def session_started(self):
+        self._chan.write('Connection successful!\r\n')
+        self._chan.close()
 
-    def handle_connection(self, orig_host, orig_port):
-        print('Connection received from %s, port %s' % (orig_host, orig_port))
-        return MySSHTCPConnection(self.conn, encoding='utf-8')
+@asyncio.coroutine
+def connection_requested(orig_host, orig_port):
+    print('Connection received from %s, port %s' % (orig_host, orig_port))
+    return MySSHTCPSession()
 
-class MySSHClient(SSHClient):
-    def handle_auth_complete(self):
-        listener = MySSHClientListener(self, '', 8888)
+@asyncio.coroutine
+def start_client():
+    conn, _ = yield from asyncssh.create_connection(None, 'localhost')
+    server = yield from conn.create_server(connection_requested, '', 8888,
+                                           encoding='utf-8')
+    yield from server.wait_closed()
 
-    def handle_disconnect(self, code, reason, lang):
-        print('SSH connection error: %s' % reason, file=sys.stderr)
+loop = asyncio.get_event_loop()
 
-client = MySSHClient('localhost')
-asyncore.loop()
+try:
+    loop.run_until_complete(start_client())
+except (OSError, asyncssh.Error) as exc:
+    sys.exit('SSH connection failed: ' + str(exc))

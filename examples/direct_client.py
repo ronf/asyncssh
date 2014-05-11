@@ -12,33 +12,31 @@
 # Contributors:
 #     Ron Frederick - initial implementation, API, and documentation
 
-import asyncore, sys
-from asyncssh import SSHClient, SSHTCPConnection
+import asyncio, asyncssh, sys
 
-class MySSHTCPConnection(SSHTCPConnection):
-    def handle_open(self):
-        # By default, TCP connections send/recv bytes, not strings
-        self.send(b'HEAD / HTTP/1.0\r\n\r\n')
-        self.send_eof()
-
-    def handle_open_error(self, code, reason, lang):
-        print('Direct connection failed: %s' % reason, file=sys.stderr)
-        self.conn.disconnect()
-
-    def handle_data(self, data, datatype):
+class MySSHTCPSession(asyncssh.SSHTCPSession):
+    def data_received(self, data, datatype):
         # We use sys.stdout.buffer here because we're writing bytes
         sys.stdout.buffer.write(data)
 
-    def handle_close(self):
-        self.conn.disconnect()
+    def connection_lost(self, exc):
+        if exc:
+            print('Direct connection error:', str(exc), file=sys.stderr)
 
-class MySSHClient(SSHClient):
-    def handle_auth_complete(self):
-        connection = MySSHTCPConnection(self)
-        connection.connect('www.google.com', 80)
+@asyncio.coroutine
+def start_client():
+    conn, _ = yield from asyncssh.create_connection(None, 'localhost')
+    chan, _ = yield from conn.create_connection(MySSHTCPSession,
+                                                'www.google.com', 80)
 
-    def handle_disconnect(self, code, reason, lang):
-        print('SSH connection error: %s' % reason, file=sys.stderr)
+    # By default, TCP connections send and receive bytes
+    chan.write(b'HEAD / HTTP/1.0\r\n\r\n')
+    chan.write_eof()
 
-client = MySSHClient('localhost')
-asyncore.loop()
+    yield from chan.wait_closed()
+    conn.close()
+
+try:
+    asyncio.get_event_loop().run_until_complete(start_client())
+except (OSError, asyncssh.Error) as exc:
+    sys.exit('SSH connection failed: ' + str(exc))

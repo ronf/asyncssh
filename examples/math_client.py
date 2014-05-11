@@ -12,38 +12,42 @@
 # Contributors:
 #     Ron Frederick - initial implementation, API, and documentation
 
-import asyncore, sys
-from asyncssh import SSHClient, SSHClientSession
+import asyncio, asyncssh, sys
 
-class MySSHClientSession(SSHClientSession):
+class MySSHClientSession(asyncssh.SSHClientSession):
     def next_operation(self):
-        if self.operations:
-            operation = self.operations.pop(0)
+        if self._operations:
+            operation = self._operations.pop(0)
             print('%s = ' % operation, end='')
-            self.send(operation + '\n')
+            self._chan.write(operation + '\n')
         else:
-            self.send_eof()
+            self._chan.write_eof()
 
-    def handle_open(self):
-        self.operations = ['2+2', '1*2*3*4', '2^32']
+    def connection_made(self, chan):
+        self._chan = chan
+
+    def session_started(self):
+        self._operations = ['2+2', '1*2*3*4', '2^32']
         self.next_operation()
 
-    def handle_data(self, data, datatype):
+    def data_received(self, data, datatype):
         print(data, end='')
 
         if '\n' in data:
             self.next_operation()
 
-    def handle_close(self):
-        self.conn.disconnect()
+    def connection_lost(self, exc):
+        if exc:
+            print('SSH session error: ' + str(exc), file=sys.stderr)
 
-class MySSHClient(SSHClient):
-    def handle_auth_complete(self):
-        session = MySSHClientSession(self)
-        session.exec('bc')
+@asyncio.coroutine
+def start_client():
+    conn, _ = yield from asyncssh.create_connection(None, 'localhost')
+    chan, _ = yield from conn.create_session(MySSHClientSession, 'bc')
+    yield from chan.wait_closed()
+    conn.close()
 
-    def handle_disconnect(self, code, reason, lang):
-        print('SSH connection error: %s' % reason, file=sys.stderr)
-
-client = MySSHClient('localhost')
-asyncore.loop()
+try:
+    asyncio.get_event_loop().run_until_complete(start_client())
+except (OSError, asyncssh.Error) as exc:
+    sys.exit('SSH connection failed: ' + str(exc))
