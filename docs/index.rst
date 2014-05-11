@@ -101,37 +101,40 @@ instance is created:
 
    .. code::
 
-      from asyncssh import read_public_key_list
-      host_keys = read_public_key_list('ssh_host_keys.pub')
+     host_keys = asyncssh.read_public_key_list('ssh_host_keys.pub')
 
-      client = MySSHClient('localhost', server_host_keys=host_keys)
+     conn, _ = yield from asyncssh.create_connection(None, 'localhost',
+                                                     server_host_keys=host_keys)
+
 
 Server host key checking can be disabled by setting the server_host_keys
 argument to ``None``, but that's not recommended as it makes the
 connection vulnerable to a man-in-the-middle attack.
 
-To log in as a different remote user, thea username argument can be
+To log in as a different remote user, the username argument can be
 provided:
 
    .. code::
 
-      client = MySSHClient('localhost', username='user123')
+     conn, _ = yield from asyncssh.create_connection(None, 'localhost',
+                                                     username='user123')
 
 To use a different set of client keys for authentication, they can be
 read and provided in the client_keys argument:
 
    .. code::
 
-      from asyncssh import read_private_key
-      client_key = read_private_key('my_ssh_key')
+     client_key = asyncssh.read_private_key('my_ssh_key')
 
-      client = MySSHClient('localhost', client_keys=[client_key])
+     conn, _ = yield from asyncssh.create_connection(None, 'localhost',
+                                                     client_keys=[client_key])
 
 Password authentication can be used by providing a password argument:
 
    .. code::
 
-      client = MySSHClient('localhost', password='secretpw')
+     conn, _ = yield from asyncssh.create_connection(None, 'localhost',
+                                                     password='secretpw')
 
 Any of the arguments above can be combined together as needed. If client
 keys and a password are both provided, either may be used depending
