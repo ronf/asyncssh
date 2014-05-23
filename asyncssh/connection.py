@@ -316,8 +316,8 @@ class SSHConnection(SSHPacketHandler):
             pass
         else:
             # Otherwise, reject the unknown version
-            self._force_close(SSH_Error(DISC_PROTOCOL_ERROR,
-                                        'Unknown SSH version'))
+            self._force_close(DisconnectError(DISC_PROTOCOL_ERROR,
+                                              'Unknown SSH version'))
             return False
 
         return True
