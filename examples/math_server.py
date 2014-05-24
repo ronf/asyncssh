@@ -44,7 +44,6 @@ class MySSHServerSession(asyncssh.SSHServerSession):
 
     def eof_received(self):
         self._chan.write('Total = %s\r\n' % self._total)
-        self._chan.close()
 
 class MySSHServer(asyncssh.SSHServer):
     def connection_made(self, conn):

@@ -147,7 +147,8 @@ class SSHChannel(SSHPacketHandler):
 
     def _deliver_data(self, data, datatype):
         if data == _EOF:
-            self._session.eof_received()
+            if not self._session.eof_received():
+                self.close()
         else:
             self._recv_window -= len(data)
 
@@ -1220,8 +1221,10 @@ class SSHSession:
         """Called when EOF is received on the channel
 
            This method is called when an end-of-file indication is received
-           on the channel, after which no more data will be received. The
-           channel remains open, though, and data may still be sent.
+           on the channel, after which no more data will be received. If this
+           method returns ``True``, the channel remains half open and data
+           may still be sent. Otherwise, the channel is automatically closed
+           after this method returns. This is the default behavior.
 
         """
 

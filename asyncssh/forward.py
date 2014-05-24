@@ -21,35 +21,43 @@ from .misc import *
 class SSHPortForwarder(SSHTCPSession):
     """SSH port forwarding connection handler"""
 
-    def __init__(self, conn, loop, remote_transport=None):
+    def __init__(self, conn, loop, peer=None):
         self._conn = conn
         self._loop = loop
-        self._local_transport = None
-        self._remote_transport = remote_transport
+        self._transport = None
+        self._peer = peer
+        self._eof_received = False
 
-    def connection_made(self, local_transport):
-        self._local_transport = local_transport
+        if peer:
+            peer._peer = self
+
+    def connection_made(self, transport):
+        self._transport = transport
 
     def connection_lost(self, exc):
-        if self._local_transport:
-            self._local_transport.close()
-            self._local_transport = None
+        if self._transport:
+            self._transport.close()
+            self._transport = None
 
-        if self._remote_transport:
-            self._remote_transport.close()
-            self._remote_transport = None
+        if self._peer:
+            self._peer._transport.close()
+            self._peer._transport = None
+            self._peer._peer = None
+            self._peer = None
 
     def data_received(self, data, datatype=None):
-        self._remote_transport.write(data)
+        self._peer._transport.write(data)
 
     def eof_received(self):
-        self._remote_transport.write_eof()
+        self._eof_received = True
+        self._peer._transport.write_eof()
+        return not self._peer._eof_received
 
     def pause_writing(self):
-        self._remote_transport.pause_reading()
+        self._peer._transport.pause_reading()
 
     def resume_writing(self):
-        self._remote_transport.resume_reading()
+        self._peer._transport.resume_reading()
 
 
 class SSHLocalPortForwarder(SSHPortForwarder):
@@ -64,34 +72,30 @@ class SSHLocalPortForwarder(SSHPortForwarder):
     @asyncio.coroutine
     def _forward(self):
         session_factory = lambda: SSHPortForwarder(self._conn, self._loop,
-                                                   self._local_transport)
+                                                   self._peer)
 
-        orig_host, orig_port = \
-            self._local_transport.get_extra_info('peername')[:2]
+        orig_host, orig_port = self._transport.get_extra_info('peername')[:2]
 
         try:
-            self._remote_transport, _ = \
+            _, self._peer = \
                 yield from self._coro(session_factory, self._dest_host,
                                       self._dest_port, orig_host, orig_port)
-
-            self._local_transport.resume_reading()
+            self._peer._peer = self
+            self._transport.resume_reading()
         except DisconnectError as exc:
-            self._local_transport.close()
-            self._local_transport = None
+            self._transport.close()
+            self._transport = None
 
-    def connection_made(self, local_transport):
-        super().connection_made(local_transport)
-        local_transport.pause_reading()
+    def connection_made(self, transport):
+        super().connection_made(transport)
+        transport.pause_reading()
         asyncio.async(self._forward(), loop=self._loop)
 
 class SSHRemotePortForwarder(SSHPortForwarder):
-    def __init__(self, conn, loop, remote_transport, remote_protocol):
-        super().__init__(conn, loop, remote_transport)
-        self._peer = remote_protocol
-        remote_transport.pause_reading()
+    def __init__(self, conn, loop, peer):
+        super().__init__(conn, loop, peer)
+        self.pause_writing()
 
-    def connection_made(self, local_transport):
-        super().connection_made(local_transport)
-        self._peer._remote_transport = local_transport
-        self._peer = None
-        self._remote_transport.resume_reading()
+    def connection_made(self, transport):
+        super().connection_made(transport)
+        self.resume_writing()

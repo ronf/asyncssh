@@ -1241,14 +1241,13 @@ class SSHConnection(SSHPacketHandler):
         try:
             protocol_factory = lambda: SSHPortForwarder(self, self._loop)
 
-            transport, protocol = \
-                yield from self._loop.create_connection(protocol_factory,
-                                                        dest_host, dest_port)
-
-            return SSHRemotePortForwarder(self, self._loop, transport, protocol)
+            _, peer = yield from self._loop.create_connection(protocol_factory,
+                                                              dest_host,
+                                                              dest_port)
         except OSError as exc:
             raise ChannelOpenError(OPEN_CONNECT_FAILED, str(exc))
 
+        return SSHRemotePortForwarder(self, self._loop, peer)
 
 class SSHClientConnection(SSHConnection):
     """SSH client connection

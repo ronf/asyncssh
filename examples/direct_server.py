@@ -25,9 +25,6 @@ class MySSHTCPSession(asyncssh.SSHTCPSession):
     def data_received(self, data, datatype):
         self._chan.write(data)
 
-    def eof_received(self):
-        self._chan.close()
-
 class MySSHServer(asyncssh.SSHServer):
     def begin_auth(self, username):
         # No auth in this example
