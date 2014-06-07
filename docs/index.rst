@@ -66,19 +66,19 @@ Installation
     #. Install PyCrypto 2.6 or later from http://www.pycrypto.org or your
        favorite packaging system.
 
-    #. Download, unpack, and install `asyncssh-0.6.0.tar.gz
-       <asyncssh-0.6.0.tar.gz>`_ by running the following commands::
+    #. Download, unpack, and install `asyncssh-0.7.0.tar.gz
+       <asyncssh-0.7.0.tar.gz>`_ by running the following commands::
 
-       % tar zxf asyncssh-0.6.0.tar.gz
-       % cd asyncssh-0.6.0
+       % tar zxf asyncssh-0.7.0.tar.gz
+       % cd asyncssh-0.7.0
        % python setup.py install
 
     #. Check out the examples below to get started!
 
 .. _ClientExamples:
 
-Client Examples
-===============
+Client Examples (session API)
+=============================
 
 Simple client
 -------------
@@ -155,7 +155,7 @@ Simple client with input
 ------------------------
 
 The following example demonstrates sending input to a remote program.
-It executes the calculator program 'bc' and performs some basic math
+It executes the calculator program ``bc`` and performs some basic math
 calculations.
 
    .. include:: ../examples/math_client.py
@@ -284,20 +284,60 @@ The client can also directly process data from incoming TCP connections
 received on the server. The following example demonstrates the client
 requesting that the server listen on port 8888 and forward any received
 connections back to it over SSH. It then has a simple handler which
-prints a message and closes the connection.
+echoes any data it receives back to the sender.
 
 As in the direct TCP connection example above, the default would be to
-send and receive bytes on this connection rather than strings, but
-here we set the encoding explicitly to be able to send and receive strings:
+send and receive bytes on this connection rather than strings, but here
+we set the encoding explicitly so all data is sent and received as strings:
 
    .. include:: ../examples/listening_client.py
       :literal:
       :start-line: 15
 
+Client Examples (streams API)
+=============================
+
+Math client revisited
+---------------------
+
+The following example is a rewrite of the earlier math client using
+:meth:`open_session <SSHClientConnection.open_session>` instead of
+:meth:`create_session <SSHClientConnection.create_session>`. As above,
+it executes the calculator program ``bc`` and performs some basic math
+calculations, but the code is much simpler.
+
+   .. include:: ../examples/stream_math_client.py
+      :literal:
+      :start-line: 15
+
+Direct TCP client revisited
+---------------------------
+
+The following example is a rewrite of the direct TCP client to use
+:meth:`open_connection <SSHClientConnection.open_connection>` instead of
+:meth:`create_connection <SSHClientConnection.create_connection>` to get
+back AsyncSSH streams to use to perform I/O, avoiding the need to
+create an :class:`SSHTCPSession` object.
+
+   .. include:: ../examples/stream_direct_client.py
+      :literal:
+      :start-line: 15
+
+Listening TCP client revisited
+------------------------------
+
+The following example is a rewrite of the listening TCP client to
+use :meth:`start_server <SSHClientConnection.start_server>` instead
+of :meth:`create_server <SSHClientConnection.create_server>`.
+
+   .. include:: ../examples/stream_listening_client.py
+      :literal:
+      :start-line: 15
+
 .. _ServerExamples:
 
-Server Examples
-===============
+Server Examples (session API)
+=============================
 
 Simple server
 -------------
@@ -326,7 +366,7 @@ It will sum a column of numbers, displaying the total and closing the
 connection when it receives EOF. Note that this is not an interactive
 application, so no echoing of user input is provided. You'll need to
 have the SSH client read from a file or pipe rather than the terminal
-for this to work right.
+or tell it not to allocate a pty for this to work right.
 
    .. include:: ../examples/math_server.py
       :literal:
@@ -390,5 +430,41 @@ server which accepts requests to port 7 (the "echo" port) for any host and
 echoes the data itself rather than forwarding the connection:
 
    .. include:: ../examples/direct_server.py
+      :literal:
+      :start-line: 15
+
+Server Examples (streams API)
+=============================
+
+Math server revisited
+---------------------
+
+The following example is a rewrite of the earlier math server where
+:meth:`session_requested() <SSHServer.session_requested>` returns a
+handler coroutine instead of a session object. When a new SSH session is
+requested, the handler coroutine is called with AsyncSSH stream objects
+representing stdin, stdout, and stderr that it can use to perform I/O. As
+above, this sums a column of numbers and prints the total and closes the
+connection when it receives EOF.
+
+This example also shows how to handle break messages, signals, and
+terminal size changes when using the new streams API.
+
+   .. include:: ../examples/stream_math_server.py
+      :literal:
+      :start-line: 15
+
+Direct server revisited
+-----------------------
+
+The following example is a rewrite of the direct TCP server where
+:meth:`connection_requested() <SSHServer.connection_requested>` returns
+a handler coroutine instead of a session object. When a new direct TCP
+connection is opened, the handler coroutine is called with AsyncSSH
+stream objects which can be used to perform I/O on the tunneled
+connection. As above, this simply echoes whatever data it receives
+back to the client and closes the connection when it receives EOF.
+
+   .. include:: ../examples/stream_direct_server.py
       :literal:
       :start-line: 15

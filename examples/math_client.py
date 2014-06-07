@@ -18,7 +18,7 @@ class MySSHClientSession(asyncssh.SSHClientSession):
     def next_operation(self):
         if self._operations:
             operation = self._operations.pop(0)
-            print('%s = ' % operation, end='')
+            print(operation, '= ', end='')
             self._chan.write(operation + '\n')
         else:
             self._chan.write_eof()

@@ -49,7 +49,6 @@ class MySSHServer(asyncssh.SSHServer):
         # No auth in this example
         return False
 
-    @asyncio.coroutine
     def session_requested(self):
         return MySSHServerSession()
 

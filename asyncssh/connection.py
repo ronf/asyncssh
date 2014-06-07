@@ -29,6 +29,7 @@ from .misc import *
 from .packet import *
 from .public_key import *
 from .saslprep import *
+from .stream import *
 
 # SSH default port
 _DEFAULT_PORT = 22
@@ -1026,8 +1027,9 @@ class SSHConnection(SSHPacketHandler):
             name = '_process_' + chantype.replace('-', '_') + '_open'
             handler = getattr(self, name, None)
             if callable(handler):
-                chan, coro = handler(packet)
-                chan._process_open(send_chan, send_window, send_pktsize, coro)
+                chan, session = handler(packet)
+                chan._process_open(send_chan, send_window, send_pktsize,
+                                   session)
             else:
                 raise ChannelOpenError(OPEN_UNKNOWN_CHANNEL_TYPE,
                                        'Unknown channel type')
@@ -1306,7 +1308,7 @@ class SSHClientConnection(SSHConnection):
 
                     try:
                         self._client_keys.append(read_private_key(file))
-                    except (IOError, KeyImportError):
+                    except (OSError, KeyImportError):
                         """Try the next default key"""
 
         self._password = password
@@ -1337,7 +1339,7 @@ class SSHClientConnection(SSHConnection):
         try:
             lines = open(os.path.join(os.environ['HOME'], '.ssh',
                                       'known_hosts'), 'rb').readlines()
-        except IOError:
+        except OSError:
             return []
 
         host = host.encode().lower()
@@ -1577,12 +1579,36 @@ class SSHClientConnection(SSHConnection):
                The maximum packet size for this session
            :type term_size: *tuple of 2 or 4 integers*
 
+           :returns: an :class:`SSHClientChannel` and :class:`SSHClientSession`
+
         """
 
         chan = SSHClientChannel(self, self._loop, encoding, window, max_pktsize)
 
         return (yield from chan._create(session_factory, command, subsystem,
                                         env, term_type, term_size, term_modes))
+
+    @asyncio.coroutine
+    def open_session(self, *args, **kwargs):
+        """Open an SSH client session
+
+           This method is a coroutine wrapper around :meth:`create_session`
+           designed to provide a "high-level" stream interface for creating
+           an SSH client session. Instead of taking a ``session_factory``
+           argument for constructing an object which will handle activity
+           on the session via callbacks, it returns an :class:``SSHWriter``
+           and two :class:``SSHReader`` objects representing stdin, stdout,
+           and stderr which can be used to perform I/O on the session. With
+           the exception of ``session_factory``, all of the arguments to
+           :meth:`create_session` are supported and have the same meaning.
+
+        """
+
+        _, session = yield from self.create_session(SSHClientStreamSession,
+                                                    *args, **kwargs)
+
+        return SSHWriter(session), SSHReader(session), \
+               SSHReader(session, EXTENDED_DATA_STDERR)
 
     @asyncio.coroutine
     def create_connection(self, session_factory, dest_host, dest_port,
@@ -1626,12 +1652,43 @@ class SSHClientConnection(SSHConnection):
            :param integer max_pktsize: (optional)
                The maximum packet size for this session
 
+           :returns: an :class:`SSHTCPChannel` and :class:`SSHTCPSession`
+
+           :raises: :exc:`ChannelOpenError` if the connection can't be opened
+
         """
 
         chan = SSHTCPChannel(self, self._loop, encoding, window, max_pktsize)
 
         return (yield from chan._connect(session_factory, dest_host, dest_port,
                                          orig_host, orig_port))
+
+    @asyncio.coroutine
+    def open_connection(self, *args, **kwargs):
+        """Open an SSH TCP direct connection
+
+           This method is a coroutine wrapper around :meth:`create_connection`
+           designed to provide a "high-level" stream interface for creating
+           an SSH TCP direct connection. Instead of taking a
+           ``session_factory`` argument for constructing an object which will
+           handle activity on the session via callbacks, it returns
+           :class:``SSHReader`` and :class:``SSHWriter`` objects which can be
+           used to perform I/O on the connection.
+
+           With the exception of ``session_factory``, all of the arguments
+           to :meth:`create_connection` are supported and have the same
+           meaning here.
+
+           :returns: an :class:`SSHReader` and :class:`SSHWriter`
+
+           :raises: :exc:`ChannelOpenError` if the connection can't be opened
+
+        """
+
+        _, session = yield from self.create_connection(SSHTCPStreamSession,
+                                                       *args, **kwargs)
+
+        return SSHReader(session), SSHWriter(session)
 
     @asyncio.coroutine
     def create_server(self, session_factory, listen_host, listen_port, *,
@@ -1646,12 +1703,11 @@ class SSHClientConnection(SSHConnection):
            used later to shut down the listener. If the request fails,
            ``None`` is returned.
 
-           :param callable session_factory:
-               A callable which takes arguments of the original host and
-               port of the client requesting the connection and returns
-               a coroutine which decides whether to accept the connection
-               or not and either returns an :class:`SSHTCPSession` object
-               used to handle activity on that connection or raises
+           :param session_factory:
+               A callable or coroutine which takes arguments of the original
+               host and port of the client and decides whether to accept the
+               connection or not, either returning an :class:`SSHTCPSession`
+               object used to handle activity on that connection or raising
                :exc:`ChannelOpenError` to indicate that the connection
                should not be accepted
            :param string listen_host:
@@ -1664,6 +1720,10 @@ class SSHClientConnection(SSHConnection):
                The receive window size for this session
            :param integer max_pktsize: (optional)
                The maximum packet size for this session
+           :type session_factory: callable or coroutine
+
+           :returns: :class:`SSHListener` or ``None`` if the listener can't
+                     be opened
 
         """
 
@@ -1696,6 +1756,46 @@ class SSHClientConnection(SSHConnection):
         else:
             packet.check_end()
             return None
+
+    @asyncio.coroutine
+    def start_server(self, handler_factory, *args, **kwargs):
+        """Start a remote SSH TCP listener
+
+           This method is a coroutine wrapper around :meth:`create_server`
+           designed to provide a "high-level" stream interface for creating
+           remote SSH TCP listeners. Instead of taking a ``session_factory``
+           argument for constructing an object which will handle activity on
+           the session via callbacks, it takes a ``handler_factory`` which
+           returns a callable or coroutine that will be passed
+           :class:``SSHReader`` and :class:``SSHWriter`` objects which can
+           be used to perform I/O on each new connection which arrives. Like
+           :meth:`create_server`, ``handler_factory`` can also raise
+           :exc:`ChannelOpenError` if the connection should not be accepted.
+
+           With the exception of ``handler_factory`` replacing
+           ``session_factory``, all of the arguments to :meth:`create_server`
+           are supported and have the same meaning here.
+
+           :param handler_factory:
+               A callable or coroutine which takes arguments of the original
+               host and port of the client and decides whether to accept the
+               connection or not, either returning a callback or coroutine
+               used to handle activity on that connection or raising
+               :exc:`ChannelOpenError` to indicate that the connection
+               should not be accepted
+           :type handler_factory: callable or coroutine
+
+           :returns: :class:`SSHListener` or ``None`` if the listener can't
+                     be opened
+
+        """
+
+        session_factory = lambda orig_host, orig_port: \
+                              SSHTCPStreamSession(handler_factory(orig_host,
+                                                                  orig_port))
+
+        return (yield from self.create_server(session_factory,
+                                              *args, **kwargs))
 
     @asyncio.coroutine
     def forward_local_port(self, listen_host, listen_port,
@@ -1759,10 +1859,10 @@ class SSHClientConnection(SSHConnection):
 
         """
 
-        coro = lambda orig_host, orig_port: \
-                   self.forward_connection(dest_host, dest_port)
+        session_factory = lambda orig_host, orig_port: \
+                              self.forward_connection(dest_host, dest_port)
 
-        return self.create_server(coro, listen_host, listen_port)
+        return self.create_server(session_factory, listen_host, listen_port)
 
 
 class SSHServerConnection(SSHConnection):
@@ -1894,10 +1994,17 @@ class SSHServerConnection(SSHConnection):
         if not result:
             raise ChannelOpenError(OPEN_CONNECT_FAILED, 'Session refused')
 
-        if asyncio.iscoroutine(result):
-            return self.create_server_channel(), result
+        if isinstance(result, tuple):
+            chan, result = result
         else:
-            return result
+            chan = self.create_server_channel()
+
+        if callable(result):
+            session = SSHServerStreamSession(result)
+        else:
+            session = result
+
+        return chan, session
 
     def _process_direct_tcpip_open(self, packet):
         dest_host = packet.get_string()
@@ -1922,10 +2029,20 @@ class SSHServerConnection(SSHConnection):
         if result == True:
             result = self.forward_connection(dest_host, dest_port)
 
-        if asyncio.iscoroutine(result):
-            return self.create_tcp_channel(), result
+        if isinstance(result, tuple):
+            chan, result = result
         else:
-            return result
+            chan = self.create_tcp_channel()
+
+        if callable(result):
+            session = SSHTCPStreamSession(result)
+        else:
+            session = result
+
+        chan._extra['local_peername'] = (dest_host, dest_port)
+        chan._extra['remote_peername'] = (orig_host, orig_port)
+
+        return chan, session
 
     def _process_tcpip_forward_global_request(self, packet):
         listen_host = packet.get_string()
@@ -1956,18 +2073,19 @@ class SSHServerConnection(SSHConnection):
             yield from self._create_tcp_listener(listen_host, listen_port)
 
         factory = lambda: SSHLocalPortForwarder(self, self._loop,
-                                                self.accept_connection,
+                                                self.create_connection,
                                                 listen_host, listen_port)
 
         return (yield from self._create_forward_listener(listen_port, sockets,
                                                          factory))
 
     @asyncio.coroutine
-    def _finish_forward(self, coro, listen_host, listen_port):
-        try:
-            listener = yield from coro
-        except OSError:
-            listener = None
+    def _finish_forward(self, listener, listen_host, listen_port):
+        if asyncio.iscoroutine(listener):
+            try:
+                listener = yield from listener
+            except OSError:
+                listener = None
 
         if listener:
             if listen_port == 0:
@@ -2012,12 +2130,12 @@ class SSHServerConnection(SSHConnection):
            :param string lang:
                The language the message is in
 
-           :raises: :exc:`IOError` if authentication is already completed
+           :raises: :exc:`OSError` if authentication is already completed
 
         """
 
         if self._auth_complete:
-            raise IOError('Authentication already completed')
+            raise OSError('Authentication already completed')
 
         msg = msg.encode('utf-8')
         lang = lang.encode('ascii')
@@ -2042,6 +2160,8 @@ class SSHServerConnection(SSHConnection):
            :param integer max_pktsize: (optional)
                The maximum packet size for this session
 
+           :returns: :class:`SSHServerChannel`
+
         """
 
         return SSHServerChannel(self, self._loop, encoding, window, max_pktsize)
@@ -2064,12 +2184,14 @@ class SSHServerConnection(SSHConnection):
            :param integer max_pktsize: (optional)
                The maximum packet size for this session
 
+           :returns: :class:`SSHTCPChannel`
+
         """
 
         return SSHTCPChannel(self, self._loop, encoding, window, max_pktsize)
 
     @asyncio.coroutine
-    def accept_connection(self, session_factory, listen_host, listen_port,
+    def create_connection(self, session_factory, listen_host, listen_port,
                           orig_host='', orig_port=0, *, encoding=None,
                           window=_DEFAULT_WINDOW,
                           max_pktsize=_DEFAULT_MAX_PKTSIZE):
@@ -2110,12 +2232,41 @@ class SSHServerConnection(SSHConnection):
            :param integer max_pktsize: (optional)
                The maximum packet size for this session
 
+           :returns: an :class:`SSHTCPChannel` and :class:`SSHTCPSession`
+
         """
 
         chan = SSHTCPChannel(self, self._loop, encoding, window, max_pktsize)
 
         return (yield from chan._accept(session_factory, listen_host,
                                         listen_port, orig_host, orig_port))
+
+    @asyncio.coroutine
+    def open_connection(self, handler_factory, *args, **kwargs):
+        """Open an SSH TCP forwarded connection
+
+           This method is a coroutine wrapper around :meth:`create_connection`
+           designed to provide a "high-level" stream interface for creating
+           an SSH TCP forwarded connection. Instead of taking a
+           ``session_factory`` argument for constructing an object which will
+           handle activity on the session via callbacks, it returns
+           :class:``SSHReader`` and :class:``SSHWriter`` objects which can be
+           used to perform I/O on the connection.
+
+           With the exception of ``session_factory``, all of the arguments
+           to :meth:`create_connection` are supported and have the same
+           meaning here.
+
+           :returns: an :class:`SSHReader` and :class:`SSHWriter`
+
+        """
+
+        session_factory = lambda: SSHTCPStreamSession(handler_factory)
+
+        _, session = yield from self.create_connection(session_factory,
+                                                       *args, **kwargs)
+
+        return SSHReader(session), SSHWriter(session)
 
 
 class SSHClient:
@@ -2611,17 +2762,23 @@ class SSHServer:
            from the client, indicating it wishes to open a channel to be
            used for running a shell, executing a command, or connecting
            to a subsystem. If the application wishes to accept the session,
-           it must override this method with either a coroutine that
-           returns an :class:`SSHServerSession` object to use to process
-           the data received on the channel or a function which returns
-           an :class:`SSHServerChannel` object created with
+           it must override this method to return either an
+           :class:`SSHServerSession` object to use to process
+           the data received on the channel or a tuple consisting of an
+           :class:`SSHServerChannel` object created with
            :meth:`create_server_channel
-           <SSHServerConnection.create_server_channel>` and a coroutine
-           which returns an :class:`SSHServerSession`, if the application
+           <SSHServerConnection.create_server_channel>` and an
+           :class:`SSHServerSession`, if the application
            wishes to pass non-default arguments when creating the channel.
 
+           If blocking operations need to be performed before the session
+           can be created, a coroutine which returns an
+           :class:`SSHServerSession` object can be returned instead of
+           the session iself. This can be either returned directly or as
+           a part of a tuple with an :class:`SSHServerChannel` object.
+
            To reject this request, this method should return ``False``
-           to send back a "Session refused" response or raise an
+           to send back a "Session refused" response or raise a
            :exc:`ChannelOpenError` exception with the reason for
            the failure.
 
@@ -2632,9 +2789,19 @@ class SSHServer:
 
            By default, all session requests are rejected.
 
-           :returns: A coroutine which returns an :class:`SSHServerSession`
-                     or a tuple consisting of an :class:`SSHServerChannel`
-                     and a coroutine which returns an :class:`SSHServerSession`
+           :returns: One of the following:
+
+                       * A callable or coroutine which returns an
+                         :class:`SSHServerSession`
+                       * A tuple consisting of an :class:`SSHServerChannel`
+                         and a callable or coroutine which returns an
+                         :class:`SSHServerSession`
+                       * A callable or coroutine handler function which
+                         takes AsyncSSH stream objects for stdin, stdout,
+                         and stderr as arguments
+                       * A tuple consisting of an :class:`SSHServerChannel`
+                         and a callable or coroutine handler function
+                       * ``False`` to refuse the request
 
            :raises: :exc:`ChannelOpenError` if the session shouldn't
                     be accepted
@@ -2660,14 +2827,20 @@ class SSHServer:
            the failure.
 
            If the application wishes to process the data on the
-           connection itself, this method should either be a coroutine
-           which returns an :class:`SSHTCPSession` object which can be
-           used to process the data received on the channel or it should
-           return a tuple consisting of of an :class:`SSHTCPChannel`
-           object created with :meth:`create_tcp_channel()
-           <SSHServerConnection.create_tcp_channel>` and a coroutine which
-           returns an :class:`SSHTCPSession`, if the applications wishes
+           connection itself, this method should return either an
+           :class:`SSHTCPSession` object which can be used to process the
+           data received on the channel or a tuple consisting of of an
+           :class:`SSHTCPChannel` object created with
+           :meth:`create_tcp_channel()
+           <SSHServerConnection.create_tcp_channel>` and an
+           :class:`SSHTCPSession`, if the application wishes
            to pass non-default arguments when creating the channel.
+
+           If blocking operations need to be performed before the session
+           can be created, a coroutine which returns an
+           :class:`SSHTCPSession` object can be returned instead of
+           the session iself. This can be either returned directly or as
+           a part of a tuple with an :class:`SSHTCPChannel` object.
 
            By default, all connection requests are rejected.
 
@@ -2680,11 +2853,20 @@ class SSHServer:
            :param integer orig_port:
                The port the connection was originated from
 
-           :returns: ``True`` to request standard port forwarding,
-                     ``False`` to refuse the connection, a coroutine
-                     which returns an :class:`SSHTCPSession`,
-                     or a tuple consisting of an :class:`SSHTCPChannel`
-                     and a couroutine which returns a :class:`SSHTCPSession`
+           :returns: One of the following:
+
+                     * A callable or coroutine which returns an
+                       :class:`SSHTCPSession`
+                     * A tuple consisting of an :class:`SSHTCPChannel`
+                       and a callable or couroutine which returns an
+                       :class:`SSHTCPSession`
+                     * A callable or coroutine handler function which
+                       takes AsyncSSH stream objects for reading and
+                       writing to the connection
+                     * A tuple consisting of an :class:`SSHTCPChannel`
+                       and a callable or coroutine handler function
+                     * ``True`` to request standard port forwarding
+                     * ``False`` to refuse the connection
 
            :raises: :exc:`ChannelOpenError` if the connection shouldn't
                     be accepted
@@ -2706,12 +2888,16 @@ class SSHServer:
            on this address and port, this method should return ``True``.
 
            If the application wishes to manage listening for incoming
-           connections itself, this method should be a coroutine which
-           returns an :class:`SSHListener` object that listens for new
-           connections and calls :meth:`accept_connection
-           <SSHServerConnection.accept_connection>` on each of them to
+           connections itself, this method should return an
+           :class:`SSHListener` object that listens for new connections
+           and calls :meth:`create_connection
+           <SSHServerConnection.create_connection>` on each of them to
            forward them back to the client or returns ``None`` if the
            listener can't be set up.
+
+           If blocking operations need to be performed to set up the
+           listener, a coroutine which returns an :class:`SSHListener`
+           can be returned instead of the listener itself.
 
            To reject this request, this method should return ``False``.
 
@@ -2723,10 +2909,13 @@ class SSHServer:
                The port the server should listen on, or the value ``0``
                to request that the server dynamically allocate a port
 
-           :returns: ``True`` to set up standard port forwarding,
-                     ``False`` to reject the request, or a coroutine
-                     which returns an :class:`SSHListener` object or
-                     ``None``
+           :returns: One of the following:
+
+                     * A callable or coroutine which returns an
+                       :class:`SSHListener` object or ``None`` if
+                       the listener can't be opened
+                     * ``True`` to set up standard port forwarding
+                     * ``False`` to reject the request
 
         """
 
@@ -2757,7 +2946,7 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
               is called.
            4. The SSH handshake and authentication process is initiated,
               calling methods on the client object if needed.
-           5. When authentication completes successfully, he client's
+           5. When authentication completes successfully, the client's
               :meth:`auth_completed() <SSHClient.auth_completed>` method is
               called.
            6. The coroutine returns the ``(connection, client)`` pair. At
@@ -2835,6 +3024,8 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
        :type encryption_algs: list of strings
        :type mac_algs: list of strings
        :type compression_algs: list of strings
+
+       :returns: An :class:`SSHClientConnection` and :class:`SSHClient`
 
     """
 
@@ -2929,6 +3120,8 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
        :type encryption_algs: list of strings
        :type mac_algs: list of strings
        :type compression_algs: list of strings
+
+       :returns: ``AbstractServer``
 
     """
 

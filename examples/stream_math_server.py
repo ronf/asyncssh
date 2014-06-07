@@ -18,27 +18,33 @@ import asyncio, asyncssh, crypt, sys
 # one SSH private key to use as a server host key in it
 ssh_host_keys = asyncssh.read_private_key_list('ssh_host_keys')
 
-class MySSHServerSession(asyncssh.SSHServerSession):
-    def connection_made(self, chan):
-        self._chan = chan
+@asyncio.coroutine
+def handle_connection(stdin, stdout, stderr):
+    total = 0
 
-    def shell_requested(self):
-        return True
+    try:
+        while not stdin.at_eof():
+            try:
+                line = yield from stdin.readline()
+            except (asyncssh.BreakReceived, asyncssh.SignalReceived):
+                # Exit if the client sends a break or signal
+                break
+            except asyncssh.TerminalSizeChanged:
+                # Ignore terminal size changes
+                continue
 
-    def session_started(self):
-        term_type = self._chan.get_terminal_type()
-        term_size = self._chan.get_terminal_size()
-        self._chan.write('Terminal type: %s, size: %sx%s\r\n' %
-                             (term_type, term_size[0], term_size[1]))
-        self._chan.write('Try resizing your window!\r\n')
+            line = line.rstrip('\n')
+            if line:
+                try:
+                    total += int(line)
+                except ValueError:
+                    stderr.write('Invalid number: %s\r\n' % line)
 
-    def terminal_size_changed(self, width, height, pixwidth, pixheight):
-        self._chan.write('New window size: %sx%s' % (width, height))
+        stdout.write('Total = %s\r\n' % total)
+    except BrokenPipeError:
+        pass
 
-        if pixwidth and pixheight:
-            self._chan.write(' (%sx%s pixels)' % (pixwidth, pixheight))
-
-        self._chan.write('\r\n')
+    stdout.close()
 
 class MySSHServer(asyncssh.SSHServer):
     def connection_made(self, conn):
@@ -53,7 +59,7 @@ class MySSHServer(asyncssh.SSHServer):
         return False
 
     def session_requested(self):
-        return MySSHServerSession()
+        return handle_connection
 
 @asyncio.coroutine
 def start_server():

@@ -21,9 +21,7 @@ def start_client():
                                                   'www.google.com', 80)
     yield from listener.wait_closed()
 
-loop = asyncio.get_event_loop()
-
 try:
-    loop.run_until_complete(start_client())
+    asyncio.get_event_loop().run_until_complete(start_client())
 except (OSError, asyncssh.Error) as exc:
     sys.exit('SSH connection failed: ' + str(exc))

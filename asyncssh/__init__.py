@@ -18,7 +18,7 @@ __author_email__ = '<ronf@timeheart.net>'
 
 __url__ = 'http://asyncssh.timeheart.net/'
 
-__version__ = '0.6.0'
+__version__ = '0.7.0'
 
 from .constants import *
 
@@ -32,6 +32,7 @@ from .connection import create_connection, create_server
 from .listen import SSHListener
 
 from .misc import Error, DisconnectError, ChannelOpenError
+from .misc import BreakReceived, SignalReceived, TerminalSizeChanged
 
 from .pbe import KeyEncryptionError
 
@@ -39,6 +40,8 @@ from .public_key import SSHKey, KeyImportError, KeyExportError
 from .public_key import import_private_key, import_public_key
 from .public_key import read_private_key, read_public_key
 from .public_key import read_private_key_list, read_public_key_list
+
+from .stream import SSHReader, SSHWriter
 
 # Import these explicitly to trigger register calls in them
 from . import ec, rsa, dsa, dh

@@ -85,3 +85,67 @@ class ChannelOpenError(Error):
 
     def __str__(self):
         return 'Channel Open Error: %s' % self.reason
+
+
+class BreakReceived(Exception):
+    """SSH break request received
+
+       This exception is raised on an SSH server stdin stream when the
+       client sends a break on the channel.
+
+       :param integer msec:
+           The duration of the break in milliseconds
+
+    """
+
+    def __init__(self, msec):
+        self.msec = msec
+
+    def __str__(self):
+        return 'Break for %s msec' % self.msec
+
+
+class SignalReceived(Exception):
+    """SSH signal request received
+
+       This exception is raised on an SSH server stdin stream when the
+       client sends a signal on the channel.
+
+       :param string signal:
+           The name of the signal sent by the client
+
+    """
+
+    def __init__(self, signal):
+        self.signal = signal
+
+    def __str__(self):
+        return 'Signal: %s' % self.signal
+
+
+class TerminalSizeChanged(Exception):
+    """SSH terminal size change notification received
+
+       This exception is raised on an SSH server stdin stream when the
+       client sends a terminal size change on the channel.
+
+       :param integer width:
+           The new terminal width
+       :param integer height:
+           The new terminal height
+       :param integer pixwidth:
+           The new terminal width in pixels
+       :param integer pixheight:
+           The new terminal height in pixels
+
+    """
+
+    def __init__(self, width, height, pixwidth, pixheight):
+        self.width = width
+        self.height = height
+        self.pixwidth = pixwidth
+        self.pixheight = pixheight
+
+    def __str__(self):
+        return 'Terminal size change: (%s, %s, %s, %s)' % \
+                   (self.width, self.height, self.pixwidth, self.pixheight)

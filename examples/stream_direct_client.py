@@ -15,12 +15,21 @@
 import asyncio, asyncssh, sys
 
 @asyncio.coroutine
-def start_client():
+def run_client():
     conn, _ = yield from asyncssh.create_connection(None, 'localhost')
-    listener = yield from conn.forward_remote_port('', 8080, 'localhost', 80)
-    yield from listener.wait_closed()
+    reader, writer = yield from conn.open_connection('www.google.com', 80)
+
+    # By default, TCP connections send and receive bytes
+    writer.write(b'HEAD / HTTP/1.0\r\n\r\n')
+    writer.write_eof()
+
+    # We use sys.stdout.buffer here because we're writing bytes
+    response = yield from reader.read()
+    sys.stdout.buffer.write(response)
+
+    conn.close()
 
 try:
-    asyncio.get_event_loop().run_until_complete(start_client())
+    asyncio.get_event_loop().run_until_complete(run_client())
 except (OSError, asyncssh.Error) as exc:
     sys.exit('SSH connection failed: ' + str(exc))

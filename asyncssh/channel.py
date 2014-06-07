@@ -187,7 +187,7 @@ class SSHChannel(SSHPacketHandler):
 
         self._cleanup(exc)
 
-    def _process_open(self, send_chan, send_window, send_pktsize, coro):
+    def _process_open(self, send_chan, send_window, send_pktsize, session):
         """Process a channel open request"""
 
         if self._recv_state != 'closed':
@@ -198,14 +198,17 @@ class SSHChannel(SSHPacketHandler):
         self._send_window = send_window
         self._send_pktsize = send_pktsize
 
-        asyncio.async(self._finish_open_request(coro), loop=self._loop)
+        asyncio.async(self._finish_open_request(session), loop=self._loop)
 
     @asyncio.coroutine
-    def _finish_open_request(self, coro):
+    def _finish_open_request(self, session):
         """Finish processing a channel open request"""
 
         try:
-            self._session = yield from coro
+            if asyncio.iscoroutine(session):
+                session = yield from session
+
+            self._session = session
 
             self._conn._send_channel_open_confirmation(self._send_chan,
                                                        self._recv_chan,
@@ -370,7 +373,7 @@ class SSHChannel(SSHPacketHandler):
         """Make a request to open the channel"""
 
         if self._send_state != 'closed':
-            raise IOError('Channel already open')
+            raise OSError('Channel already open')
 
         self._open_waiter = asyncio.Future(loop=self._loop)
 
@@ -386,7 +389,7 @@ class SSHChannel(SSHPacketHandler):
         """Send a packet on the channel"""
 
         if self._send_chan is None:
-            raise IOError('Channel not open')
+            raise OSError('Channel not open')
 
         self._conn._send_packet(Byte(pkttype), UInt32(self._send_chan), *args)
 
@@ -450,9 +453,13 @@ class SSHChannel(SSHPacketHandler):
         """Get additional information about the channel
 
            This method returns extra information about the channel once
-           it is established. Supported values include 'connection' to
-           return the SSH connection this channel is running over plus
-           all of the values supported on that channel.
+           it is established. Supported values include ``'connection'``
+           to return the SSH connection this channel is running over plus
+           all of the values supported on that connection.
+
+           For TCP channels, the values ``'local_peername'`` and
+           ``'remote_peername'`` are added to return the local and remote
+           host and port information for the tunneled TCP connection.
 
         """
 
@@ -521,17 +528,17 @@ class SSHChannel(SSHPacketHandler):
                data types <ExtendedDataTypes>`
            :type data: string or bytes
 
-           :raises: :exc:`IOError` if the channel isn't open for sending
+           :raises: :exc:`OSError` if the channel isn't open for sending
                     or the extended data type is not valid for this type
                     of channel
 
         """
 
         if self._send_state != 'open':
-            raise IOError('Channel not open for sending')
+            raise BrokenPipeError('Channel not open for sending')
 
         if datatype is not None and datatype not in self._write_datatypes:
-            raise IOError('Invalid extended data type')
+            raise OSError('Invalid extended data type')
 
         if len(data) == 0:
             return
@@ -550,6 +557,17 @@ class SSHChannel(SSHPacketHandler):
            data bytes to the channel. It is functionality equivalent to
            calling :meth:`write` on each element in the list.
 
+           :param list_of_data:
+               The data to send on the channel
+           :param integer datatype: (optional)
+               The extended data type of the data, from :ref:`extended
+               data types <ExtendedDataTypes>`
+           :type list_of_data: iterable of ``string`` or ``bytes`` objects
+
+           :raises: :exc:`OSError` if the channel isn't open for sending
+                    or the extended data type is not valid for this type
+                    of channel
+
         """
 
         sep = '' if self._encoding else b''
@@ -563,12 +581,12 @@ class SSHChannel(SSHPacketHandler):
            channel remains open, though, and data may still be
            sent in the other direction.
 
-           :raises: :exc:`IOError` if the channel isn't open for sending
+           :raises: :exc:`OSError` if the channel isn't open for sending
 
         """
 
         if self._send_state != 'open':
-            raise IOError('Channel not open for sending')
+            raise BrokenPipeError('Channel not open for sending')
 
         self._send_state = 'eof_pending'
         self._flush_send_buf()
@@ -613,6 +631,12 @@ class SSHClientChannel(SSHChannel):
     """SSH client channel"""
 
     _read_datatypes = {EXTENDED_DATA_STDERR}
+
+    def __init__(self, conn, loop, encoding, window, max_pktsize):
+        super().__init__(conn, loop, encoding, window, max_pktsize)
+
+        self._exit_status = None
+        self._exit_signal = None
 
     @asyncio.coroutine
     def _create(self, session_factory, command, subsystem, env,
@@ -697,6 +721,7 @@ class SSHClientChannel(SSHChannel):
         status = packet.get_uint32()
         packet.check_end()
 
+        self._exit_status = status
         self._session.exit_status_received(status)
         return True
 
@@ -717,8 +742,41 @@ class SSHClientChannel(SSHChannel):
             raise DisconnectError(DISC_PROTOCOL_ERROR,
                                   'Invalid exit signal request')
 
+        self._exit_signal = (signal, core_dumped, msg, lang)
         self._session.exit_signal_received(signal, core_dumped, msg, lang)
         return True
+
+    def get_exit_status(self):
+        """Return the session's exit status
+
+           This method returns the exit status of the session if one has
+           been sent. If an exit signal was received, this method
+           returns -1 and the exit signal information can be collected
+           by calling :meth:`get_exit_signal`. If neither has been sent,
+           this method returns ``None``.
+
+        """
+
+        if self._exit_status is not None:
+            return self._exit_status
+        elif self._exit_signal:
+            return -1
+        else:
+            return None
+
+    def get_exit_signal(self):
+        """Return the session's exit signal, if one was sent
+
+           This method returns information about the exit signal sent on
+           this session. If an exit signal was sent, a tuple is returned
+           containing the signal name, a boolean for whether a core dump
+           occurred, a message associated with the signal, and the language
+           the message was in. If no exit signal was sent, ``None`` is
+           returned.
+
+        """
+
+        return self._exit_signal
 
     def change_terminal_size(self, width, height, pixwidth=0, pixheight=0):
         """Change the terminal window size for this session
@@ -750,7 +808,7 @@ class SSHClientChannel(SSHChannel):
            :param integer msec:
                The duration of the break in milliseconds
 
-           :raises: :exc:`IOError` if the channel is not open
+           :raises: :exc:`OSError` if the channel is not open
 
         """
 
@@ -766,7 +824,7 @@ class SSHClientChannel(SSHChannel):
            :param string signal:
                The signal to deliver
 
-           :raises: :exc:`IOError` if the channel is not open
+           :raises: :exc:`OSError` if the channel is not open
 
         """
 
@@ -780,7 +838,7 @@ class SSHClientChannel(SSHChannel):
            This method can be called to terminate the remote process or
            service by sending it a ``TERM`` signal.
 
-           :raises: :exc:`IOError` if the channel is not open
+           :raises: :exc:`OSError` if the channel is not open
 
         """
 
@@ -792,7 +850,7 @@ class SSHClientChannel(SSHChannel):
            This method can be called to forcibly stop  the remote process
            or service by sending it a ``KILL`` signal.
 
-           :raises: :exc:`IOError` if the channel is not open
+           :raises: :exc:`OSError` if the channel is not open
 
         """
 
@@ -810,6 +868,8 @@ class SSHServerChannel(SSHChannel):
         super().__init__(conn, loop, encoding, window, max_pktsize)
 
         self._env = {}
+        self._command = None
+        self._subsystem = None
         self._term_type = None
         self._term_size = (0, 0, 0, 0)
         self._term_modes = {}
@@ -883,6 +943,7 @@ class SSHServerChannel(SSHChannel):
         except UnicodeDecodeError:
             return False
 
+        self._command = command
         return self._session.exec_requested(command)
 
     def _process_subsystem_request(self, packet):
@@ -896,6 +957,7 @@ class SSHServerChannel(SSHChannel):
         except UnicodeDecodeError:
             return False
 
+        self._subsystem = subsystem
         return self._session.subsystem_requested(subsystem)
 
     def _process_window_change_request(self, packet):
@@ -949,6 +1011,38 @@ class SSHServerChannel(SSHChannel):
 
         return self._env
 
+    def get_command(self):
+        """Return the command the client requested to execute, if any
+
+           This method returns the command the client requested to
+           execute when the session was opened, if any. If the client
+           did not request that a command be executed, this method
+           will return ``None``. Calls to this method should only be made
+           after :meth:`session_started <SSHServerSession.session_started>`
+           has been called on the :class:`SSHServerSession`. When using
+           the stream-based API, calls to this can be made at any time
+           after the handler function has started up.
+
+        """
+
+        return self._command
+
+    def get_subsystem(self):
+        """Return the subsystem the client requested to open, if any
+
+           This method returns the subsystem the client requested to
+           open when the session was opened, if any. If the client
+           did not request that a subsystem be opened, this method will
+           return ``None``. Calls to this method should only be made
+           after :meth:`session_started <SSHServerSession.session_started>`
+           has been called on the :class:`SSHServerSession`. When using
+           the stream-based API, calls to this can be made at any time
+           after the handler function has started up.
+
+        """
+
+        return self._subsystem
+
     def get_terminal_type(self):
         """Return the terminal type for this session
 
@@ -956,8 +1050,10 @@ class SSHServerChannel(SSHChannel):
            when the session was opened. If the client didn't request
            a pseudo-terminal, this method will return ``None``. Calls
            to this method should only be made after :meth:`session_started
-           <SSHServerSession.session_started>` has been called on
-           the :class:`SSHServerSession`.
+           <SSHServerSession.session_started>` has been called on the
+           :class:`SSHServerSession`. When using the stream-based API,
+           calls to this can be made at any time after the handler
+           function has started up.
 
            :returns: A string containing the terminal type or ``None`` if
                      no pseudo-terminal was requested
@@ -973,10 +1069,15 @@ class SSHServerChannel(SSHChannel):
            by the client. If the client didn't set any terminal size
            information, all values returned will be zero. Calls to
            this method should only be made after :meth:`session_started
-           <SSHServerSession.session_started>` has been called on
-           the :class:`SSHServerSession`. Also see
-           :meth:`terminal_size_changed` for how to get notified
-           asynchronously whenever the terminal size changes.
+           <SSHServerSession.session_started>` has been called on the
+           :class:`SSHServerSession`. When using the stream-based API,
+           calls to this can be made at any time after the handler
+           function has started up.
+
+           Also see :meth:`terminal_size_changed()
+           <SSHServerSession.terminal_size_changed>` or the
+           :exc:`TerminalSizeChanged` exception for how to get notified
+           when the terminal size changes.
 
            :returns: A tuple of four integers containing the width and
                      height of the terminal in characters and the width
@@ -994,8 +1095,10 @@ class SSHServerChannel(SSHChannel):
            didn't request a pseudo-terminal or didn't set the requested
            TTY mode opcode, this method will return ``None``. Calls to
            this method should only be made after :meth:`session_started
-           <SSHServerSession.session_started>` has been called on
-           the :class:`SSHServerSession`.
+           <SSHServerSession.session_started>` has been called on the
+           :class:`SSHServerSession`. When using the stream-based API,
+           calls to this can be made at any time after the handler
+           function has started up.
 
            :param integer mode:
                POSIX terminal mode taken from :ref:`POSIX terminal modes
@@ -1027,8 +1130,8 @@ class SSHServerChannel(SSHChannel):
 
         self._send_request(b'xon-xoff', Boolean(client_can_do))
 
-    def send_stderr(self, data):
-        """Send output to stderr
+    def write_stderr(self, data):
+        """Write output to stderr
 
            This method can be called to send output to the client which
            is intended to be displayed on stderr. If an encoding was
@@ -1040,11 +1143,22 @@ class SSHServerChannel(SSHChannel):
                The data to send to stderr
            :type data: string or bytes
 
-           :raises: :exc:`IOError` if the channel isn't open for sending
+           :raises: :exc:`OSError` if the channel isn't open for sending
 
         """
 
-        self.send(data, EXTENDED_DATA_STDERR)
+        self.write(data, EXTENDED_DATA_STDERR)
+
+    def writelines_stderr(self, list_of_data):
+        """Write a list of data bytes to stderr
+
+           This method can be called to write a list (or any iterable) of
+           data bytes to the channel. It is functionality equivalent to
+           calling :meth:`write_stderr` on each element in the list.
+
+        """
+
+        self.writelines(list_of_data, EXTENDED_DATA_STDERR)
 
     def exit(self, status):
         """Send exit status and close the channel
@@ -1058,12 +1172,12 @@ class SSHServerChannel(SSHChannel):
            :param integer status:
                The exit status to report to the client
 
-           :raises: :exc:`IOError` if the channel isn't open
+           :raises: :exc:`OSError` if the channel isn't open
 
         """
 
         if self._send_state not in {'open', 'eof_pending', 'eof_sent'}:
-            raise IOError('Channel not open')
+            raise OSError('Channel not open')
 
         self._send_request(b'exit-status', UInt32(status))
         self.close()
@@ -1087,12 +1201,12 @@ class SSHServerChannel(SSHChannel):
            :param lang: (optional)
                The language the error message is in
 
-           :raises: :exc:`IOError` if the channel isn't open
+           :raises: :exc:`OSError` if the channel isn't open
 
         """
 
         if self._send_state not in {'open', 'eof_pending', 'eof_sent'}:
-            raise IOError('Channel not open')
+            raise OSError('Channel not open')
 
         signal = signal.encode('ascii')
         msg = msg.encode('utf-8')
@@ -1107,16 +1221,30 @@ class SSHTCPChannel(SSHChannel):
     """SSH TCP channel"""
 
     @asyncio.coroutine
-    def _finish_open_request(self, coro):
+    def _finish_open_request(self, session):
         """Finish processing a TCP channel open request"""
 
-        yield from super()._finish_open_request(coro)
+        yield from super()._finish_open_request(session)
 
         if self._session:
             self._session.session_started()
 
-    def _finish_open(self, session_factory):
-        """Finish opening a TCP channel"""
+    @asyncio.coroutine
+    def _open(self, session_factory, chantype, host, port,
+              orig_host, orig_port):
+        """Open a TCP channel"""
+
+        self._extra['local_peername'] = (orig_host, orig_port)
+        self._extra['remote_peername'] = (host, port)
+
+        host = host.encode('utf-8')
+        orig_host = orig_host.encode('utf-8')
+
+        packet = yield from super()._open(chantype, String(host), UInt32(port),
+                                          String(orig_host), UInt32(orig_port))
+
+        # TCP sessions should have no extra data in the open confirmation
+        packet.check_end()
 
         self._session = session_factory()
         self._session.connection_made(self)
@@ -1128,49 +1256,29 @@ class SSHTCPChannel(SSHChannel):
     def _connect(self, session_factory, host, port, orig_host, orig_port):
         """Create a new outbound TCP session"""
 
-        host = host.encode('utf-8')
-        orig_host = orig_host.encode('utf-8')
-
-        packet = yield from self._open(b'direct-tcpip', String(host),
-                                       UInt32(port), String(orig_host),
-                                       UInt32(orig_port))
-
-        # Direct TCP sessions should have no extra data in the open
-        # confirmation
-        packet.check_end()
-
-        return self._finish_open(session_factory)
+        return (yield from self._open(session_factory, b'direct-tcpip',
+                                      host, port, orig_host, orig_port))
 
     @asyncio.coroutine
     def _accept(self, session_factory, host, port, orig_host, orig_port):
         """Create a new forwarded TCP session"""
 
-        host = host.encode('utf-8')
-        orig_host = orig_host.encode('utf-8')
-
-        packet = yield from self._open(b'forwarded-tcpip', String(host),
-                                       UInt32(port), String(orig_host),
-                                       UInt32(orig_port))
-
-        # Forwarded TCP sessions should have no extra data in the open
-        # confirmation
-        packet.check_end()
-
-        return self._finish_open(session_factory)
+        return (yield from self._open(session_factory, b'forwarded-tcpip',
+                                      host, port, orig_host, orig_port))
 
 
 class SSHSession:
     """SSH session handler"""
 
-    def connection_made(self, channel):
+    def connection_made(self, chan):
         """Called when a channel is opened successfully
 
            This method is called when a channel is opened successfully. The
            channel parameter should be stored if needed for later use.
 
-           :param channel:
+           :param chan:
                The channel which was successfully opened.
-           :type channel: :class:`SSHClientChannel`
+           :type chan: :class:`SSHClientChannel`
 
         """
 

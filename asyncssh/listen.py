@@ -97,9 +97,13 @@ class SSHClientListener(SSHListener):
     def _process_connection(self, orig_host, orig_port):
         """Process a forwarded TCP connection"""
 
-        return (SSHTCPChannel(self._conn, self._loop, self._encoding,
-                              self._window, self._max_pktsize),
-                self._session_factory(orig_host, orig_port))
+        chan = SSHTCPChannel(self._conn, self._loop, self._encoding,
+                             self._window, self._max_pktsize)
+
+        chan._extra['local_peername'] = (self._listen_host, self._listen_port)
+        chan._extra['remote_peername'] = (orig_host, orig_port)
+
+        return chan, self._session_factory(orig_host, orig_port)
 
     def get_port(self):
         return self._listen_port

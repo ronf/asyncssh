@@ -58,7 +58,6 @@ class MySSHServer(asyncssh.SSHServer):
         pw = passwords.get(username, '*')
         return crypt.crypt(password, pw) == pw
 
-    @asyncio.coroutine
     def session_requested(self):
         return MySSHServerSession()
 

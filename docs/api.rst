@@ -36,19 +36,26 @@ credentials provided by clients.
 Once an SSH client connection is established and authentication is successful,
 multiple simultaneous channels can be opened on it.  This is accomplished
 calling methods such as :meth:`create_session()
-<SSHClientConnection.create_session>` and :meth:`create_connection()
+<SSHClientConnection.create_session>` or :meth:`create_connection()
 <SSHClientConnection.create_connection>` on the :class:`SSHClientConnection`
 object. The client can also set up listeners on remote TCP ports by calling
 :meth:`create_server() <SSHClientConnection.create_server>`. All of these
 methods take ``session_factory`` arguments that return
 :class:`SSHClientSession` or :class:`SSHTCPSession` objects used to manage
-the channels once they are open.
+the channels once they are open. Alternately, channels can be opened using
+:meth:`open_session() <SSHClientConnection.open_session>` or
+:meth:`open_connection() <SSHClientConnection.open_connection>`, which
+return :class:`SSHReader` and :class:`SSHWriter` objects which can be used
+to perform I/O on the channel. The method :meth:`start_server()
+<SSHClientConnection.start_server>` can be used to set up listeners on
+remote TCP ports and get back these :class:`SSHReader` and :class:`SSHWriter`
+objects in a callback when new connections are opened.
 
 The client can also set up TCP port forwarding by calling
 :meth:`forward_local_port() <SSHClientConnection.forward_local_port>` or
 :meth:`forward_remote_port() <SSHClientConnection.forward_remote_port>`. In
 these cases, data transfer on the channels is managed automatically by
-AsyncSSH whenever new connections are opened and custom session objects are
+AsyncSSH whenever new connections are opened, so custom session objects are
 not required.
 
 When an SSH server receives a new connection and authentication is successful,
@@ -58,8 +65,9 @@ handlers such as :meth:`session_requested() <SSHServer.session_requested>`,
 :class:`SSHServer` object will be called when clients attempt to open
 channels or set up listeners. These methods return coroutines which can
 set up the requested sessions or connections, returning
-:class:`SSHServerSession` or :class:`SSHTCPSession` objects which manage
-the channels once they are open.
+:class:`SSHServerSession` or :class:`SSHTCPSession` objects or handler
+functions that accept :class:`SSHReader` and :class:`SSHWriter` objects
+as arguments which manage the channels once they are open.
 
 Each session object also has an associated :class:`SSHClientChannel`,
 :class:`SSHServerChannel`, or :class:`SSHTCPChannel` object passed to it
@@ -195,13 +203,16 @@ SSHClientConnection
    | .. automethod:: send_debug     |
    +--------------------------------+
 
-   +-------------------------------------+
-   | Client session open methods         |
-   +=====================================+
-   | .. automethod:: create_session      |
-   | .. automethod:: create_connection   |
-   | .. automethod:: create_server       |
-   +-------------------------------------+
+   +-----------------------------------+
+   | Client session open methods       |
+   +===================================+
+   | .. automethod:: create_session    |
+   | .. automethod:: open_session      |
+   | .. automethod:: create_connection |
+   | .. automethod:: open_connection   |
+   | .. automethod:: create_server     |
+   | .. automethod:: start_server      |
+   +-----------------------------------+
 
    +-------------------------------------+
    | Client forwarding methods           |
@@ -237,19 +248,25 @@ SSHServerConnection
    | .. automethod:: send_auth_banner |
    +----------------------------------+
 
+   +------------------------------------+
+   | Server connection open methods     |
+   +====================================+
+   | .. automethod:: create_connection  |
+   | .. automethod:: open_connection    |
+   +------------------------------------+
+
+   +------------------------------------+
+   | Server forwarding methods          |
+   +====================================+
+   | .. automethod:: forward_connection |
+   +------------------------------------+
+
    +---------------------------------------+
    | Server channel creation methods       |
    +=======================================+
    | .. automethod:: create_server_channel |
    | .. automethod:: create_tcp_channel    |
    +---------------------------------------+
-
-   +------------------------------------+
-   | Server forwarding methods          |
-   +====================================+
-   | .. automethod:: accept_connection  |
-   | .. automethod:: forward_connection |
-   +------------------------------------+
 
    +----------------------------+
    | Connection close methods   |
@@ -336,9 +353,9 @@ SSHServerSession
    +---------------------------------------+
    | Other server session handlers         |
    +=======================================+
-   | .. automethod:: terminal_size_changed |
-   | .. automethod:: signal_received       |
    | .. automethod:: break_received        |
+   | .. automethod:: signal_received       |
+   | .. automethod:: terminal_size_changed |
    +---------------------------------------+
 
 SSHTCPSession
@@ -383,14 +400,14 @@ SSHClientChannel
    +--------------------------------+
 
    +--------------------------------+
-   | General channel read methods   |
+   | Client channel read methods    |
    +================================+
    | .. automethod:: pause_reading  |
    | .. automethod:: resume_reading |
    +--------------------------------+
 
    +-----------------------------------------+
-   | General channel write methods           |
+   | Client channel write methods            |
    +=========================================+
    | .. automethod:: can_write_eof           |
    | .. automethod:: get_write_buffer_size   |
@@ -403,6 +420,8 @@ SSHClientChannel
    +---------------------------------------+
    | Other client channel methods          |
    +=======================================+
+   | .. automethod:: get_exit_status       |
+   | .. automethod:: get_exit_signal       |
    | .. automethod:: change_terminal_size  |
    | .. automethod:: send_break            |
    | .. automethod:: send_signal           |
@@ -434,25 +453,27 @@ SSHServerChannel
    +===================================+
    | .. automethod:: get_environment   |
    | .. automethod:: get_terminal_type |
-   | .. automethod:: get_terminal_mode |
    | .. automethod:: get_terminal_size |
+   | .. automethod:: get_terminal_mode |
    +-----------------------------------+
 
    +--------------------------------+
-   | General channel read methods   |
+   | Server channel read methods    |
    +================================+
    | .. automethod:: pause_reading  |
    | .. automethod:: resume_reading |
    +--------------------------------+
 
    +-----------------------------------------+
-   | General channel write methods           |
+   | Server channel write methods            |
    +=========================================+
    | .. automethod:: can_write_eof           |
    | .. automethod:: get_write_buffer_size   |
    | .. automethod:: set_write_buffer_limits |
    | .. automethod:: write                   |
    | .. automethod:: writelines              |
+   | .. automethod:: write_stderr            |
+   | .. automethod:: writelines_stderr       |
    | .. automethod:: write_eof               |
    +-----------------------------------------+
 
@@ -521,6 +542,37 @@ SSHListener
    .. automethod:: close
    .. automethod:: wait_closed
 
+Stream Classes
+==============
+
+SSHReader
+---------
+
+.. autoclass:: SSHReader
+
+   .. autoattribute:: channel
+
+   .. automethod:: get_extra_info
+   .. automethod:: at_eof
+   .. automethod:: read
+   .. automethod:: readline
+   .. automethod:: readexactly
+
+SSHWriter
+---------
+
+.. autoclass:: SSHWriter
+
+   .. autoattribute:: channel
+
+   .. automethod:: get_extra_info
+   .. automethod:: can_write_eof
+   .. automethod:: close
+   .. automethod:: drain
+   .. automethod:: write
+   .. automethod:: writelines
+   .. automethod:: write_eof
+
 .. index:: Public key support
 .. _PublicKeyFunctions:
 
@@ -572,6 +624,21 @@ read_public_key_list
 
 Exceptions
 ==========
+
+BreakReceived
+-------------
+
+.. autoexception:: BreakReceived
+
+SignalReceived
+--------------
+
+.. autoexception:: SignalReceived
+
+TerminalSizeChanged
+-------------------
+
+.. autoexception:: TerminalSizeChanged
 
 DisconnectError
 ---------------

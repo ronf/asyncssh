@@ -18,12 +18,17 @@ import asyncio, asyncssh, sys
 # one SSH private key to use as a server host key in it
 host_keys = asyncssh.read_private_key_list('ssh_host_keys')
 
-class MySSHTCPSession(asyncssh.SSHTCPSession):
-    def connection_made(self, chan):
-        self._chan = chan
+@asyncio.coroutine
+def handle_connection(reader, writer):
+    while not reader.at_eof():
+        data = yield from reader.read()
 
-    def data_received(self, data, datatype):
-        self._chan.write(data)
+        try:
+            writer.write(data)
+        except BrokenPipeError:
+            break
+
+    writer.close()
 
 class MySSHServer(asyncssh.SSHServer):
     def begin_auth(self, username):
@@ -32,7 +37,7 @@ class MySSHServer(asyncssh.SSHServer):
 
     def connection_requested(self, dest_host, dest_port, orig_host, orig_port):
         if dest_port == 7:
-            return MySSHTCPSession()
+            return handle_connection
         else:
             raise asyncssh.ChannelOpenError(
                       asyncssh.OPEN_ADMINISTRATIVELY_PROHIBITED,

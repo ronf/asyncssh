@@ -15,12 +15,25 @@
 import asyncio, asyncssh, sys
 
 @asyncio.coroutine
-def start_client():
+def handle_connection(reader, writer):
+    while not reader.at_eof():
+        data = yield from reader.read()
+        writer.write(data)
+
+    writer.close()
+
+def connection_requested(orig_host, orig_port):
+    print('Connection received from %s, port %s' % (orig_host, orig_port))
+    return handle_connection
+
+@asyncio.coroutine
+def run_client():
     conn, _ = yield from asyncssh.create_connection(None, 'localhost')
-    listener = yield from conn.forward_remote_port('', 8080, 'localhost', 80)
-    yield from listener.wait_closed()
+    server = yield from conn.start_server(connection_requested, '', 8888,
+                                          encoding='utf-8')
+    yield from server.wait_closed()
 
 try:
-    asyncio.get_event_loop().run_until_complete(start_client())
+    asyncio.get_event_loop().run_until_complete(run_client())
 except (OSError, asyncssh.Error) as exc:
     sys.exit('SSH connection failed: ' + str(exc))

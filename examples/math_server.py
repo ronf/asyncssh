@@ -38,7 +38,7 @@ class MySSHServerSession(asyncssh.SSHServerSession):
                 if line:
                     self._total += int(line)
             except ValueError:
-                self._chan.write('Invalid number: %s\r\n' % line)
+                self._chan.write_stderr('Invalid number: %s\r\n' % line)
 
         self._input = lines[-1]
 
@@ -57,7 +57,6 @@ class MySSHServer(asyncssh.SSHServer):
         # No auth in this example
         return False
 
-    @asyncio.coroutine
     def session_requested(self):
         return MySSHServerSession()
 

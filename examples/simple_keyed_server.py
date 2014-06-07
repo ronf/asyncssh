@@ -63,7 +63,6 @@ class MySSHServer(asyncssh.SSHServer):
     def validate_public_key(self, username, key):
         return key in self._keys
 
-    @asyncio.coroutine
     def session_requested(self):
         return MySSHServerSession()
 
