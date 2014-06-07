@@ -452,6 +452,8 @@ SSHServerChannel
    | Server channel info methods       |
    +===================================+
    | .. automethod:: get_environment   |
+   | .. automethod:: get_command       |
+   | .. automethod:: get_subsystem     |
    | .. automethod:: get_terminal_type |
    | .. automethod:: get_terminal_size |
    | .. automethod:: get_terminal_mode |

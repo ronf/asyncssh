@@ -44,7 +44,7 @@ Release 0.7.0 (7 June 2014)
   the :class:`SSHServerChannel` class.
 
 * Fixed the name of the :meth:`write_stderr() <SSHServerChannel.write_stderr>`
-  method and added the missing `writelines_stderr()
+  method and added the missing :meth:`writelines_stderr()
   <SSHServerChannel.writelines_stderr>` method to the :class:`SSHServerChannel`
   class for outputting data to the stderr channel.
 
