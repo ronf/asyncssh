@@ -1,1 +1,2 @@
 include COPYRIGHT LICENSE examples/*.py
+exclude examples/test*.py

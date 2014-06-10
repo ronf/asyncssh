@@ -25,7 +25,7 @@ Release 0.7.0 (7 June 2014)
   streams API.
 
 * Changed :meth:`create_server() <SSHClientConnection.create_server>` to
-  accept either a callable or a coroutine for its ``session_Factory``
+  accept either a callable or a coroutine for its ``session_factory``
   argument, to allow asynchronous operations to be used when deciding
   whether to accept a forwarded TCP connection.
 
