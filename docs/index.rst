@@ -27,6 +27,7 @@ Notable features include:
       - Diffie Hellman group1 and group14 with SHA1
       - Diffie Hellman group exchange with SHA1 and SHA256
       - Elliptic Curve Diffie Hellman (nistp256, nistp384, and nistp521)
+      - Curve25519 (if curve25519-donna Python wrapper is installed)
    * Support for multiple authentication methods
       - Password, public key, and keyboard-interactive
    * Support for a variety of public key formats
