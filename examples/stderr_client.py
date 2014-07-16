@@ -26,13 +26,13 @@ class MySSHClientSession(asyncssh.SSHClientSession):
             print('SSH session error: ' + str(exc), file=sys.stderr)
 
 @asyncio.coroutine
-def start_client():
-    conn, _ = yield from asyncssh.create_connection(None, 'localhost')
-    chan, _ = yield from conn.create_session(MySSHClientSession, 'ls abc')
+def run_client():
+    conn, client = yield from asyncssh.create_connection(None, 'localhost')
+    chan, session = yield from conn.create_session(MySSHClientSession, 'ls abc')
     yield from chan.wait_closed()
     conn.close()
 
 try:
-    asyncio.get_event_loop().run_until_complete(start_client())
+    asyncio.get_event_loop().run_until_complete(run_client())
 except (OSError, asyncssh.Error) as exc:
     sys.exit('SSH connection failed: ' + str(exc))

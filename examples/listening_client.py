@@ -26,8 +26,8 @@ def connection_requested(orig_host, orig_port):
     return MySSHTCPSession()
 
 @asyncio.coroutine
-def start_client():
-    conn, _ = yield from asyncssh.create_connection(None, 'localhost')
+def run_client():
+    conn, client = yield from asyncssh.create_connection(None, 'localhost')
     server = yield from conn.create_server(connection_requested, '', 8888,
                                            encoding='utf-8')
 
@@ -37,6 +37,6 @@ def start_client():
         print('Listener couldn''t be opened.', file=sys.stderr)
 
 try:
-    asyncio.get_event_loop().run_until_complete(start_client())
+    asyncio.get_event_loop().run_until_complete(run_client())
 except (OSError, asyncssh.Error) as exc:
     sys.exit('SSH connection failed: ' + str(exc))

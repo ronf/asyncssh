@@ -16,7 +16,7 @@ import asyncio, asyncssh, sys
 
 @asyncio.coroutine
 def run_client():
-    conn, _ = yield from asyncssh.create_connection(None, 'localhost')
+    conn, client = yield from asyncssh.create_connection(None, 'localhost')
     reader, writer = yield from conn.open_connection('www.google.com', 80)
 
     # By default, TCP connections send and receive bytes

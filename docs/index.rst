@@ -67,11 +67,15 @@ Installation
     #. Install PyCrypto 2.6 or later from http://www.pycrypto.org or your
        favorite packaging system.
 
-    #. Download, unpack, and install `asyncssh-0.7.0.tar.gz
-       <asyncssh-0.7.0.tar.gz>`_ by running the following commands::
+    #. Optionally install curve25519-donna from
+       http://github.com/agl/curve25519-donna if you want support for
+       Curve25519 Diffie Hellman key exchange.
 
-       % tar zxf asyncssh-0.7.0.tar.gz
-       % cd asyncssh-0.7.0
+    #. Download, unpack, and install `asyncssh-0.8.0.tar.gz
+       <asyncssh-0.8.0.tar.gz>`_ by running the following commands::
+
+       % tar zxf asyncssh-0.8.0.tar.gz
+       % cd asyncssh-0.8.0
        % python setup.py install
 
     #. Check out the examples below to get started!
@@ -104,8 +108,8 @@ instance is created:
 
      host_keys = asyncssh.read_public_key_list('ssh_host_keys.pub')
 
-     conn, _ = yield from asyncssh.create_connection(None, 'localhost',
-                                                     server_host_keys=host_keys)
+     conn, client = yield from asyncssh.create_connection(None, 'localhost',
+                                                          server_host_keys=host_keys)
 
 
 Server host key checking can be disabled by setting the server_host_keys
@@ -117,8 +121,8 @@ provided:
 
    .. code::
 
-     conn, _ = yield from asyncssh.create_connection(None, 'localhost',
-                                                     username='user123')
+     conn, client = yield from asyncssh.create_connection(None, 'localhost',
+                                                          username='user123')
 
 To use a different set of client keys for authentication, they can be
 read and provided in the client_keys argument:
@@ -127,15 +131,15 @@ read and provided in the client_keys argument:
 
      client_key = asyncssh.read_private_key('my_ssh_key')
 
-     conn, _ = yield from asyncssh.create_connection(None, 'localhost',
-                                                     client_keys=[client_key])
+     conn, client = yield from asyncssh.create_connection(None, 'localhost',
+                                                          client_keys=[client_key])
 
 Password authentication can be used by providing a password argument:
 
    .. code::
 
-     conn, _ = yield from asyncssh.create_connection(None, 'localhost',
-                                                     password='secretpw')
+     conn, client = yield from asyncssh.create_connection(None, 'localhost',
+                                                          password='secretpw')
 
 Any of the arguments above can be combined together as needed. If client
 keys and a password are both provided, either may be used depending

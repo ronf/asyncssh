@@ -15,13 +15,13 @@
 import asyncio, asyncssh, sys
 
 @asyncio.coroutine
-def start_client():
-    conn, _ = yield from asyncssh.create_connection(None, 'localhost')
+def run_client():
+    conn, client = yield from asyncssh.create_connection(None, 'localhost')
     listener = yield from conn.forward_local_port('', 0, 'www.google.com', 80)
     print('Listening on port %s...' % listener.get_port())
     yield from listener.wait_closed()
 
 try:
-    asyncio.get_event_loop().run_until_complete(start_client())
+    asyncio.get_event_loop().run_until_complete(run_client())
 except (OSError, asyncssh.Error) as exc:
     sys.exit('SSH connection failed: ' + str(exc))

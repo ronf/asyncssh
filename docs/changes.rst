@@ -3,6 +3,15 @@
 Change Log
 ==========
 
+Release 0.8.0 (15 July 2014)
+----------------------------
+
+* Added support for Curve25519 Diffie Hellman key exchange on systems with
+  the curve25519-donna Python package installed.
+
+* Updated the examples to more clearly show what values are returned even
+  when not all of the return values are used.
+
 Release 0.7.0 (7 June 2014)
 ---------------------------
 

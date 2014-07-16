@@ -16,7 +16,7 @@ import asyncio, asyncssh, sys
 
 @asyncio.coroutine
 def run_client():
-    conn, _ = yield from asyncssh.create_connection(None, 'localhost')
+    conn, client = yield from asyncssh.create_connection(None, 'localhost')
     stdin, stdout, stderr = yield from conn.open_session('bc')
 
     for op in ['2+2', '1*2*3*4', '2^32']:
