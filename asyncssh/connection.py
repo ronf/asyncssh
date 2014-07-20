@@ -2624,6 +2624,12 @@ class SSHServer:
 
            By default, this method returns ``False`` for all client keys.
 
+               .. note:: This function only needs to report whether the
+                         public key provided is a valid client key for this
+                         user. If it is, AsyncSSH will verify that the
+                         client possesses the corresponding private key
+                         before allowing the authentication to succeed.
+
            :param string username:
                The user being authenticated
            :param key:
