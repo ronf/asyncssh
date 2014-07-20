@@ -20,7 +20,7 @@ Python 3.4 or later and the PyCrypto library for some cryptographic functions.
 
 """
 
-from distutils.core import setup
+from setuptools import setup, find_packages
 import asyncssh
 
 doclines = __doc__.split("\n", 1)
@@ -39,6 +39,7 @@ setup(name = 'asyncssh',
       requires = ['Crypto (>= 2.6)'],
       packages = ['asyncssh'],
       scripts = [],
+      test_suite = 'tests',
       classifiers = [
           'Development Status :: 3 - Alpha',
           'Environment :: Console',
