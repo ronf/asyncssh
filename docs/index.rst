@@ -80,6 +80,21 @@ Installation
 
     #. Check out the examples below to get started!
 
+Mailing Lists
+=============
+
+Three mailing lists are available for AsyncSSH:
+
+    * `asyncssh-announce@googlegroups.com`__: Project announcements
+
+    * `asyncssh-dev@googlegroups.com`__: Development discussions
+
+    * `asyncssh-users@googlegroups.com`__: End-user discussions
+
+    __ http://groups.google.com/d/forum/asyncssh-announce
+    __ http://groups.google.com/d/forum/asyncssh-dev
+    __ http://groups.google.com/d/forum/asyncssh-users
+
 .. _ClientExamples:
 
 Client Examples (session API)
