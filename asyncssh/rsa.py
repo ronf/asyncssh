@@ -10,13 +10,10 @@
 # Contributors:
 #     Ron Frederick - initial implementation, API, and documentation
 
-"""RSA public key encryption handler based on PyCrypto"""
-
-from Crypto.Hash import SHA
-from Crypto.PublicKey import RSA
-from Crypto.Signature import PKCS1_v1_5
+"""RSA public key encryption handler"""
 
 from .asn1 import *
+from .crypto import *
 from .misc import *
 from .packet import *
 from .public_key import *
@@ -29,11 +26,16 @@ class _RSAKey(SSHKey):
     pem_name = b'RSA'
     pkcs8_oid = ObjectIdentifier('1.2.840.113549.1.1.1')
 
-    def __init__(self, key):
+    def __init__(self, key, private):
         self._key = key
+        self._private = private
 
     def __eq__(self, other):
-        return isinstance(other, self.__class__) and self._key == other._key
+        return (isinstance(other, self.__class__) and
+                self._key.n == other._key.n and
+                self._key.e == other._key.e and
+                ((self._private and self._key.d) ==
+                 (other._private and other._key.d)))
 
     def __hash__(self):
         return hash((self._key.n, self._key.e,
@@ -45,7 +47,7 @@ class _RSAKey(SSHKey):
     def decode_pkcs1_private(cls, key_data):
         if (isinstance(key_data, tuple) and all_ints(key_data) and
             len(key_data) >= 9):
-            return cls(RSA.construct(key_data[1:6]))
+            return cls(RSAPrivateKey(*key_data[1:6]), True)
         else:
             raise KeyImportError('Invalid RSA private key')
 
@@ -53,7 +55,7 @@ class _RSAKey(SSHKey):
     def decode_pkcs1_public(cls, key_data):
         if (isinstance(key_data, tuple) and all_ints(key_data) and
             len(key_data) == 2):
-            return cls(RSA.construct(key_data))
+            return cls(RSAPublicKey(*key_data), False)
         else:
             raise KeyImportError('Invalid RSA public key')
 
@@ -88,7 +90,7 @@ class _RSAKey(SSHKey):
             n = packet.get_mpint()
             packet.check_end()
 
-            return cls(RSA.construct((n, e)))
+            return cls(RSAPublicKey(n, e), False)
         except DisconnectError:
             # Fall through and return a key import error
             pass
@@ -96,7 +98,7 @@ class _RSAKey(SSHKey):
         raise KeyImportError('Invalid RSA public key')
 
     def encode_pkcs1_private(self):
-        if not self._key.has_private():
+        if not self._private:
             raise KeyExportError('Key is not private')
 
         return (0, self._key.n, self._key.e, self._key.d,
@@ -119,10 +121,10 @@ class _RSAKey(SSHKey):
                          MPInt(self._key.n)))
 
     def sign(self, data):
-        if not self._key.has_private():
+        if not self._private:
             raise ValueError('Private key needed for signing')
 
-        sig = PKCS1_v1_5.new(self._key).sign(SHA.new(data))
+        sig = self._key.sign(data)
         return b''.join((String(self.algorithm), String(sig)))
 
     def verify(self, data, sig):
@@ -132,7 +134,7 @@ class _RSAKey(SSHKey):
             return False
 
         sig = sig.get_string()
-        return PKCS1_v1_5.new(self._key).verify(SHA.new(data), sig)
+        return self._key.verify(data, sig)
 
 
 register_public_key_alg(_RSAKey)

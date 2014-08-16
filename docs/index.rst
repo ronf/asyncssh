@@ -34,7 +34,7 @@ Notable features include:
       - DSA, RSA, and ECDSA keys
       - PKCS#1/PKCS#8 DER and PEM, OpenSSH, and RFC4716 formats
       - Password-based encryption of private keys
-   * Support for a variety of ciphers (provided via PyCrypto)
+   * Support for a variety of ciphers (provided via PyCA or PyCrypto)
       - AES, ARC4, Blowfish, CAST, and Triple DES
    * Support for a variety of MAC algorithms
       - HMAC with MD5, SHA1, SHA256, and SHA512

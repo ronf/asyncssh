@@ -10,14 +10,10 @@
 # Contributors:
 #     Ron Frederick - initial implementation, API, and documentation
 
-"""DSA public key encryption handler based on PyCrypto"""
-
-import random
-
-from Crypto.Hash import SHA
-from Crypto.PublicKey import DSA
+"""DSA public key encryption handler"""
 
 from .asn1 import *
+from .crypto import *
 from .misc import *
 from .packet import *
 from .public_key import *
@@ -30,11 +26,18 @@ class _DSAKey(SSHKey):
     pem_name = b'DSA'
     pkcs8_oid = ObjectIdentifier('1.2.840.10040.4.1')
 
-    def __init__(self, key):
+    def __init__(self, key, private):
         self._key = key
+        self._private = private
 
     def __eq__(self, other):
-        return isinstance(other, self.__class__) and self._key == other._key
+        return (isinstance(other, self.__class__) and
+                self._key.p == other._key.p and
+                self._key.q == other._key.q and
+                self._key.g == other._key.g and
+                self._key.y == other._key.y and
+                ((self._private and self._key.x) ==
+                 (other._private and other._key.x)))
 
     def __hash__(self):
         return hash((self._key.p, self._key.q, self._key.g, self._key.y,
@@ -45,7 +48,7 @@ class _DSAKey(SSHKey):
         if (isinstance(key_data, tuple) and len(key_data) == 6 and
             all_ints(key_data) and key_data[0] == 0):
             _, p, q, g, y, x = key_data
-            return cls(DSA.construct((y, g, p, q, x)))
+            return cls(DSAPrivateKey(p, q, g, y, x), True)
         else:
             raise KeyImportError('Invalid DSA private key')
 
@@ -54,7 +57,7 @@ class _DSAKey(SSHKey):
         if (isinstance(key_data, tuple) and len(key_data) == 5 and
             all_ints(key_data) and key_data[0] == 0):
             _, p, q, g, y = key_data
-            return cls(DSA.construct((y, g, p, q)))
+            return cls(DSAPublicKey(p, q, g, y), False)
         else:
             raise KeyImportError('Invalid DSA public key')
 
@@ -68,7 +71,7 @@ class _DSAKey(SSHKey):
         if len(alg_params) == 3 and all_ints(alg_params) and isinstance(x, int):
             p, q, g = alg_params
             y = pow(g, x, p)
-            return cls(DSA.construct((y, g, p, q, x)))
+            return cls(DSAPrivateKey(p, q, g, y, x), True)
         else:
             raise KeyImportError('Invalid DSA private key')
 
@@ -81,7 +84,7 @@ class _DSAKey(SSHKey):
 
         if len(alg_params) == 3 and all_ints(alg_params) and isinstance(y, int):
             p, q, g = alg_params
-            return cls(DSA.construct((y, g, p, q)))
+            return cls(DSAPublicKey(p, q, g, y), False)
         else:
             raise KeyImportError('Invalid DSA public key')
 
@@ -94,7 +97,7 @@ class _DSAKey(SSHKey):
             y = packet.get_mpint()
             packet.check_end()
 
-            return cls(DSA.construct((y, g, p, q)))
+            return cls(DSAPublicKey(p, q, g, y), False)
         except DisconnectError:
             # Fall through and return a key import error
             pass
@@ -102,7 +105,7 @@ class _DSAKey(SSHKey):
         raise KeyImportError('Invalid DSA public key')
 
     def encode_pkcs1_private(self):
-        if not self._key.has_private():
+        if not self._private:
             raise KeyExportError('Key is not private')
 
         return (0, self._key.p, self._key.q, self._key.g,
@@ -112,7 +115,7 @@ class _DSAKey(SSHKey):
         return (0, self._key.p, self._key.q, self._key.g, self._key.y)
 
     def encode_pkcs8_private(self):
-        if not self._key.has_private():
+        if not self._private:
             raise KeyExportError('Key is not private')
 
         return (self._key.p, self._key.q, self._key.g), der_encode(self._key.x)
@@ -126,13 +129,12 @@ class _DSAKey(SSHKey):
                          MPInt(self._key.y)))
 
     def sign(self, data):
-        if not self._key.has_private():
+        if not self._private:
             raise ValueError('Private key needed for signing')
 
-        k = random.randrange(2, self._key.q)
-        r, s = self._key.sign(SHA.new(data).digest(), k)
-        sig = r.to_bytes(20, 'big') + s.to_bytes(20, 'big')
-        return b''.join((String(self.algorithm), String(sig)))
+        r, s = self._key.sign(data)
+        return b''.join((String(self.algorithm), String(r.to_bytes(20, 'big') +
+                                                        s.to_bytes(20, 'big'))))
 
     def verify(self, data, sig):
         sig = SSHPacket(sig)
@@ -141,9 +143,8 @@ class _DSAKey(SSHKey):
             return False
 
         sig = sig.get_string()
-        return self._key.verify(SHA.new(data).digest(),
-                                (int.from_bytes(sig[:20], 'big'),
-                                 int.from_bytes(sig[20:], 'big')))
+        return self._key.verify(data, (int.from_bytes(sig[:20], 'big'),
+                                       int.from_bytes(sig[20:], 'big')))
 
 
 register_public_key_alg(_DSAKey)

@@ -15,9 +15,9 @@
 import zlib
 
 _cmp_algs = []
+_cmp_params = {}
 _cmp_compressors = {}
 _cmp_decompressors = {}
-_cmp_after_auth = {}
 
 def _None():
     """Compressor/decompressor for no compression."""
@@ -37,24 +37,24 @@ def register_compression_alg(alg, compressor, decompressor, after_auth):
     """Register a compression algorithm"""
 
     _cmp_algs.append(alg)
+    _cmp_params[alg] = after_auth
     _cmp_compressors[alg] = compressor
     _cmp_decompressors[alg] = decompressor
-    _cmp_after_auth[alg] = after_auth
 
 def get_compression_algs():
     """Return a list of available compression algorithms"""
 
     return _cmp_algs
 
-def lookup_compression_alg(alg):
-    """Look up a compression algorithm
+def get_compression_params(alg):
+    """Get parameters of a compression algorithm
 
-       This function looks up a compression algorithm and returns whether
-       or not compression should be delayed until after authentication.
+       This function returns whether or not a compression algorithm should
+       be delayed until after authentication completes.
 
     """
 
-    return _cmp_after_auth[alg]
+    return _cmp_params[alg]
 
 def get_compressor(alg):
     """Return an instance of a compressor

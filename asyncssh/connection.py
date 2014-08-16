@@ -96,6 +96,7 @@ class SSHConnection(SSHPacketHandler):
         self._send_cipher = None
         self._send_blocksize = 8
         self._send_mac = None
+        self._send_gcm = False
         self._send_etm = False
         self._compressor = None
         self._compress_after_auth = False
@@ -107,6 +108,7 @@ class SSHConnection(SSHPacketHandler):
         self._recv_blocksize = 8
         self._recv_mac = None
         self._recv_macsize = 0
+        self._recv_gcm = False
         self._recv_etm = False
         self._decompressor = None
         self._decompress_after_auth = None
@@ -114,6 +116,7 @@ class SSHConnection(SSHPacketHandler):
         self._next_recv_blocksize = 0
         self._next_recv_mac = None
         self._next_recv_macsize = 0
+        self._next_recv_gcm = False
         self._next_recv_etm = False
         self._next_decompressor = None
         self._next_decompress_after_auth = None
@@ -130,25 +133,12 @@ class SSHConnection(SSHPacketHandler):
 
         self._enc_alg_cs = None
         self._enc_alg_sc = None
-        self._enc_keysize_cs = None
-        self._enc_keysize_sc = None
-        self._enc_blocksize_cs = None
-        self._enc_blocksize_sc = None
 
         self._mac_alg_cs = None
         self._mac_alg_sc = None
-        self._mac_keysize_cs = None
-        self._mac_keysize_sc = None
-        self._mac_hashsize_cs = None
-        self._mac_hashsize_sc = None
-
-        self._etm_cs = False
-        self._etm_sc = False
 
         self._cmp_alg_cs = None
         self._cmp_alg_sc = None
-        self._cmp_after_auth_cs = False
-        self._cmp_after_auth_sc = False
 
         self._next_service = None
 
@@ -330,7 +320,7 @@ class SSHConnection(SSHPacketHandler):
         self._packet = self._inpbuf[:self._recv_blocksize]
         self._inpbuf = self._inpbuf[self._recv_blocksize:]
 
-        if self._recv_cipher and not self._recv_etm:
+        if self._recv_cipher and not (self._recv_gcm or self._recv_etm):
             self._packet = self._recv_cipher.decrypt(self._packet)
 
         self._pktlen = int.from_bytes(self._packet[:4], byteorder='big')
@@ -344,7 +334,20 @@ class SSHConnection(SSHPacketHandler):
 
         rest = self._inpbuf[:rem-self._recv_macsize]
 
-        if self._recv_etm:
+        if self._recv_gcm:
+            self._packet += rest
+            mac = self._inpbuf[rem-self._recv_macsize:rem]
+
+            hdr = self._packet[:4]
+            self._packet = self._packet[4:]
+
+            self._packet = self._recv_cipher.decrypt(self._packet, hdr, mac)
+            if not self._packet:
+                raise DisconnectError(DISC_MAC_ERROR,
+                                      'MAC verification failed')
+
+            payload = self._packet[1:-self._packet[0]]
+        elif self._recv_etm:
             self._packet += rest
             mac = self._inpbuf[rem-self._recv_macsize:rem]
 
@@ -430,7 +433,7 @@ class SSHConnection(SSHPacketHandler):
                                  not self._compress_after_auth):
             payload = self._compressor.compress(payload)
 
-        hdrlen = 1 if self._send_etm else 5
+        hdrlen = 1 if (self._send_gcm or self._send_etm) else 5
 
         padlen = -(hdrlen + len(payload)) % self._send_blocksize
         if padlen < 4:
@@ -438,19 +441,23 @@ class SSHConnection(SSHPacketHandler):
 
         packet = Byte(padlen) + payload + urandom(padlen)
         pktlen = len(packet)
+        hdr = UInt32(pktlen)
 
-        if self._send_etm:
+        if self._send_gcm:
+            packet, mac = self._send_cipher.encrypt(packet, hdr)
+            packet = hdr + packet
+        elif self._send_etm:
             if self._send_cipher:
                 packet = self._send_cipher.encrypt(packet)
 
-            packet = UInt32(pktlen) + packet
+            packet = hdr + packet
 
             if self._send_mac:
                 mac = self._send_mac.sign(UInt32(self._send_seq) + packet)
             else:
                 mac = b''
         else:
-            packet = UInt32(pktlen) + packet
+            packet = hdr + packet
 
             if self._send_mac:
                 mac = self._send_mac.sign(UInt32(self._send_seq) + packet)
@@ -507,43 +514,74 @@ class SSHConnection(SSHPacketHandler):
         if not self._session_id:
             self._session_id = h
 
+        enc_keysize_cs, enc_ivsize_cs, enc_blocksize_cs, gcm_cs = \
+            get_encryption_params(self._enc_alg_cs)
+        enc_keysize_sc, enc_ivsize_sc, enc_blocksize_sc, gcm_sc = \
+            get_encryption_params(self._enc_alg_sc)
+
+        if gcm_cs:
+            mac_keysize_cs, mac_hashsize_cs, etm_cs = 0, 16, False
+        else:
+            mac_keysize_cs, mac_hashsize_cs, etm_cs = \
+                get_mac_params(self._mac_alg_cs)
+
+        if gcm_sc:
+            mac_keysize_sc, mac_hashsize_sc, etm_sc = 0, 16, False
+        else:
+            mac_keysize_sc, mac_hashsize_sc, etm_sc = \
+                get_mac_params(self._mac_alg_sc)
+
+        cmp_after_auth_cs = get_compression_params(self._cmp_alg_cs)
+        cmp_after_auth_sc = get_compression_params(self._cmp_alg_sc)
+
         iv_cs = self._kex.compute_key(k, h, b'A', self._session_id,
-                                      self._enc_blocksize_cs)
+                                      enc_ivsize_cs)
         iv_sc = self._kex.compute_key(k, h, b'B', self._session_id,
-                                      self._enc_blocksize_sc)
+                                      enc_ivsize_sc)
         enc_key_cs = self._kex.compute_key(k, h, b'C', self._session_id,
-                                           self._enc_keysize_cs)
+                                           enc_keysize_cs)
         enc_key_sc = self._kex.compute_key(k, h, b'D', self._session_id,
-                                           self._enc_keysize_sc)
+                                           enc_keysize_sc)
         mac_key_cs = self._kex.compute_key(k, h, b'E', self._session_id,
-                                           self._mac_keysize_cs)
+                                           mac_keysize_cs)
         mac_key_sc = self._kex.compute_key(k, h, b'F', self._session_id,
-                                           self._mac_keysize_sc)
+                                           mac_keysize_sc)
         self._kex = None
 
         next_cipher_cs = get_cipher(self._enc_alg_cs, enc_key_cs, iv_cs)
         next_cipher_sc = get_cipher(self._enc_alg_sc, enc_key_sc, iv_sc)
 
-        next_mac_cs = get_mac(self._mac_alg_cs, mac_key_cs)
-        next_mac_sc = get_mac(self._mac_alg_sc, mac_key_sc)
+        if gcm_cs:
+            self._mac_alg_cs = self._enc_alg_cs
+            next_mac_cs = None
+        else:
+            next_mac_cs = get_mac(self._mac_alg_cs, mac_key_cs)
+
+        if gcm_sc:
+            self._mac_alg_sc = self._enc_alg_sc
+            next_mac_sc = None
+        else:
+            next_mac_sc = get_mac(self._mac_alg_sc, mac_key_sc)
 
         self._send_packet(Byte(MSG_NEWKEYS))
 
         if self.is_client():
             self._send_cipher = next_cipher_cs
-            self._send_blocksize = max(8, self._enc_blocksize_cs)
+            self._send_blocksize = max(8, enc_blocksize_cs)
             self._send_mac = next_mac_cs
-            self._send_etm = self._etm_cs
+            self._send_gcm = gcm_cs
+            self._send_etm = etm_cs
             self._compressor = get_compressor(self._cmp_alg_cs)
-            self._compress_after_auth = self._cmp_after_auth_cs
+            self._compress_after_auth = cmp_after_auth_cs
 
             self._next_recv_cipher = next_cipher_sc
-            self._next_recv_blocksize = max(8, self._enc_blocksize_sc)
+            self._next_recv_blocksize = max(8, enc_blocksize_sc)
             self._next_recv_mac = next_mac_sc
-            self._next_recv_macsize = self._mac_hashsize_sc
-            self._next_recv_etm = self._etm_sc
+            self._next_recv_macsize = mac_hashsize_sc
+            self._next_recv_gcm = gcm_sc
+            self._next_recv_etm = etm_sc
             self._next_decompressor = get_decompressor(self._cmp_alg_sc)
-            self._next_decompress_after_auth = self._cmp_after_auth_sc
+            self._next_decompress_after_auth = cmp_after_auth_sc
 
             self._extra.update(
                     send_cipher=self._enc_alg_cs.decode('ascii'),
@@ -554,19 +592,21 @@ class SSHConnection(SSHPacketHandler):
                     recv_compression=self._cmp_alg_sc.decode('ascii'))
         else:
             self._send_cipher = next_cipher_sc
-            self._send_blocksize = max(8, self._enc_blocksize_sc)
+            self._send_blocksize = max(8, enc_blocksize_sc)
             self._send_mac = next_mac_sc
-            self._send_etm = self._etm_sc
+            self._send_gcm = gcm_sc
+            self._send_etm = etm_sc
             self._compressor = get_compressor(self._cmp_alg_sc)
-            self._compress_after_auth = self._cmp_after_auth_sc
+            self._compress_after_auth = cmp_after_auth_sc
 
             self._next_recv_cipher = next_cipher_cs
-            self._next_recv_blocksize = max(8, self._enc_blocksize_cs)
+            self._next_recv_blocksize = max(8, enc_blocksize_cs)
             self._next_recv_mac = next_mac_cs
-            self._next_recv_macsize = self._mac_hashsize_cs
-            self._next_recv_etm = self._etm_cs
+            self._next_recv_macsize = mac_hashsize_cs
+            self._next_recv_gcm = gcm_cs
+            self._next_recv_etm = etm_cs
             self._next_decompressor = get_decompressor(self._cmp_alg_cs)
-            self._next_decompress_after_auth = self._cmp_after_auth_cs
+            self._next_decompress_after_auth = cmp_after_auth_cs
 
             self._extra.update(
                     send_cipher=self._enc_alg_sc.decode('ascii'),
@@ -836,35 +876,22 @@ class SSHConnection(SSHPacketHandler):
             self._send_kexinit()
 
         kex_alg = self._choose_alg('key exchange', self._kex_algs, kex_algs)
-        self._kex = lookup_kex_alg(self, kex_alg)
+        self._kex = get_kex(self, kex_alg)
         self._ignore_first_kex = (first_kex_follows and
                                   self._kex.algorithm != kex_algs[0])
 
         self._enc_alg_cs = self._choose_alg('encryption', self._enc_algs,
                                             enc_algs_cs)
-        self._enc_keysize_cs, self._enc_blocksize_cs = \
-            lookup_encryption_alg(self._enc_alg_cs)
-
         self._enc_alg_sc = self._choose_alg('encryption', self._enc_algs,
                                             enc_algs_sc)
-        self._enc_keysize_sc, self._enc_blocksize_sc = \
-            lookup_encryption_alg(self._enc_alg_sc)
 
         self._mac_alg_cs = self._choose_alg('MAC', self._mac_algs, mac_algs_cs)
-        self._mac_keysize_cs, self._mac_hashsize_cs, self._etm_cs = \
-            lookup_mac_alg(self._mac_alg_cs)
-
         self._mac_alg_sc = self._choose_alg('MAC', self._mac_algs, mac_algs_sc)
-        self._mac_keysize_sc, self._mac_hashsize_sc, self._etm_sc = \
-            lookup_mac_alg(self._mac_alg_sc)
 
         self._cmp_alg_cs = self._choose_alg('compression', self._cmp_algs,
                                             cmp_algs_cs)
-        self._cmp_after_auth_cs = lookup_compression_alg(self._cmp_alg_cs)
-
         self._cmp_alg_sc = self._choose_alg('compression', self._cmp_algs,
                                             cmp_algs_sc)
-        self._cmp_after_auth_sc = lookup_compression_alg(self._cmp_alg_sc)
 
     def _process_newkeys(self, pkttype, packet):
         """Process a new keys message, finishing a key exchange"""
@@ -875,6 +902,7 @@ class SSHConnection(SSHPacketHandler):
             self._recv_cipher = self._next_recv_cipher
             self._recv_blocksize = self._next_recv_blocksize
             self._recv_mac = self._next_recv_mac
+            self._recv_gcm = self._next_recv_gcm
             self._recv_etm = self._next_recv_etm
             self._recv_macsize = self._next_recv_macsize
             self._decompressor = self._next_decompressor

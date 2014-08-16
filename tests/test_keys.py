@@ -23,26 +23,26 @@ from asyncssh import read_private_key, read_public_key
 
 pkcs1_ciphers = ('aes128', 'aes192', 'aes256', 'des', 'des3')
 
-pkcs8_ciphers = (('des',     'md5',  1, '-v1 PBE-MD5-DES'),
-                 ('des',     'sha1', 1, '-v1 PBE-SHA1-DES'),
-                 ('rc2-64',  'md5',  1, '-v1 PBE-MD5-RC2-64'),
-                 ('rc2-64',  'sha1', 1, '-v1 PBE-SHA1-RC2-64'),
-                 ('des2',    'sha1', 1, '-v1 PBE-SHA1-2DES'),
-                 ('des3',    'sha1', 1, '-v1 PBE-SHA1-3DES'),
-                 ('rc2-40',  'sha1', 1, '-v1 PBE-SHA1-RC2-40'),
-                 ('rc2-128', 'sha1', 1, '-v1 PBE-SHA1-RC2-128'),
-                 ('rc4-40',  'sha1', 1, '-v1 PBE-SHA1-RC4-40'),
-                 ('rc4-128', 'sha1', 1, '-v1 PBE-SHA1-RC4-128'),
-                 ('aes128',  'sha1', 2, '-v2 aes-128-cbc'),
-                 ('aes192',  'sha1', 2, '-v2 aes-192-cbc'),
-                 ('aes256',  'sha1', 2, '-v2 aes-256-cbc'),
-                 ('bf',      'sha1', 2, '-v2 bf-cbc'),
-                 ('cast128', 'sha1', 2, '-v2 cast-cbc'),
-                 ('des',     'sha1', 2, '-v2 des-cbc'),
-                 ('des3',    'sha1', 2, '-v2 des-ede3-cbc'),
-                 ('rc2-40',  'sha1', 2, '-v2 rc2-40-cbc'),
-                 ('rc2-64',  'sha1', 2, '-v2 rc2-64-cbc'),
-                 ('rc2-128', 'sha1', 2, '-v2 rc2-cbc'))
+pkcs8_ciphers = (('des',      'md5',  1, '-v1 PBE-MD5-DES'),
+                 ('des',      'sha1', 1, '-v1 PBE-SHA1-DES'),
+                 ('rc2-64',   'md5',  1, '-v1 PBE-MD5-RC2-64'),
+                 ('rc2-64',   'sha1', 1, '-v1 PBE-SHA1-RC2-64'),
+                 ('des2',     'sha1', 1, '-v1 PBE-SHA1-2DES'),
+                 ('des3',     'sha1', 1, '-v1 PBE-SHA1-3DES'),
+                 ('rc2-40',   'sha1', 1, '-v1 PBE-SHA1-RC2-40'),
+                 ('rc2-128',  'sha1', 1, '-v1 PBE-SHA1-RC2-128'),
+                 ('rc4-40',   'sha1', 1, '-v1 PBE-SHA1-RC4-40'),
+                 ('rc4-128',  'sha1', 1, '-v1 PBE-SHA1-RC4-128'),
+                 ('aes128',   'sha1', 2, '-v2 aes-128-cbc'),
+                 ('aes192',   'sha1', 2, '-v2 aes-192-cbc'),
+                 ('aes256',   'sha1', 2, '-v2 aes-256-cbc'),
+                 ('blowfish', 'sha1', 2, '-v2 bf-cbc'),
+                 ('cast128',  'sha1', 2, '-v2 cast-cbc'),
+                 ('des',      'sha1', 2, '-v2 des-cbc'),
+                 ('des3',     'sha1', 2, '-v2 des-ede3-cbc'),
+                 ('rc2-40',   'sha1', 2, '-v2 rc2-40-cbc'),
+                 ('rc2-64',   'sha1', 2, '-v2 rc2-64-cbc'),
+                 ('rc2-128',  'sha1', 2, '-v2 rc2-cbc'))
 
 passphrase = 'passphrase'
 

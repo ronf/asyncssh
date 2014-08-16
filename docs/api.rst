@@ -701,6 +701,8 @@ The following are the encryption algorithms currently supported by AsyncSSH:
   | aes256-ctr
   | aes192-ctr
   | aes128-ctr
+  | aes256-gcm\@openssh.com
+  | aes128-gcm\@openssh.com
   | aes256-cbc
   | aes192-cbc
   | aes128-cbc
