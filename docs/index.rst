@@ -71,11 +71,11 @@ Installation
        http://github.com/agl/curve25519-donna if you want support for
        Curve25519 Diffie Hellman key exchange.
 
-    #. Download, unpack, and install `asyncssh-0.8.0.tar.gz
-       <asyncssh-0.8.0.tar.gz>`_ by running the following commands::
+    #. Download, unpack, and install `asyncssh-0.8.1.tar.gz
+       <asyncssh-0.8.1.tar.gz>`_ by running the following commands::
 
-       % tar zxf asyncssh-0.8.0.tar.gz
-       % cd asyncssh-0.8.0
+       % tar zxf asyncssh-0.8.1.tar.gz
+       % cd asyncssh-0.8.1
        % python setup.py install
 
     #. Check out the examples below to get started!

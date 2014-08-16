@@ -3,6 +3,19 @@
 Change Log
 ==========
 
+Release 0.8.1 (15 August 2014)
+------------------------------
+
+* Added a note in the :meth:`validate_public_key()
+  <SSHServer.validate_public_key>` documentation clarifying that AsyncSSH
+  will verify that the client possesses the corresponding private key before
+  authentication is allowed to succeed.
+
+* Switched from setuptools to distutils and added an initial set of unit
+  tests.
+
+* Prepared the package to be uploaded to PyPI.
+
 Release 0.8.0 (15 July 2014)
 ----------------------------
 
