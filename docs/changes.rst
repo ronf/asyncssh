@@ -3,6 +3,11 @@
 Change Log
 ==========
 
+Release 0.8.3 (16 August 2014)
+------------------------------
+
+* Add a missing import in the curve25519 implementation.
+
 Release 0.8.2 (16 August 2014)
 ------------------------------
 
