@@ -3,6 +3,13 @@
 Change Log
 ==========
 
+Release 0.8.2 (16 August 2014)
+------------------------------
+
+* Provide a better long description for PyPI.
+
+* Add link to PyPI in documentation sidebar.
+
 Release 0.8.1 (15 August 2014)
 ------------------------------
 

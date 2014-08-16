@@ -25,6 +25,9 @@ import asyncssh
 
 doclines = __doc__.split("\n", 1)
 
+with open('README.rst') as desc:
+    long_description = desc.read()
+
 setup(name = 'asyncssh',
       version = asyncssh.__version__,
       author = asyncssh.__author__,
@@ -34,7 +37,7 @@ setup(name = 'asyncssh',
                          asyncssh.__version__,
       license = 'Eclipse Public License v1.0',
       description = doclines[0],
-      long_description = doclines[1],
+      long_description = long_description,
       platforms = 'Any',
       requires = ['Crypto (>= 2.6)'],
       packages = ['asyncssh'],
