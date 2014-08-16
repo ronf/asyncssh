@@ -341,7 +341,8 @@ class SSHConnection(SSHPacketHandler):
             hdr = self._packet[:4]
             self._packet = self._packet[4:]
 
-            self._packet = self._recv_cipher.decrypt(self._packet, hdr, mac)
+            self._packet = self._recv_cipher.decrypt_and_verify(self._packet,
+                                                                hdr, mac)
             if not self._packet:
                 raise DisconnectError(DISC_MAC_ERROR,
                                       'MAC verification failed')
@@ -444,7 +445,7 @@ class SSHConnection(SSHPacketHandler):
         hdr = UInt32(pktlen)
 
         if self._send_gcm:
-            packet, mac = self._send_cipher.encrypt(packet, hdr)
+            packet, mac = self._send_cipher.encrypt_and_sign(packet, hdr)
             packet = hdr + packet
         elif self._send_etm:
             if self._send_cipher:

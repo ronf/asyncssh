@@ -47,7 +47,7 @@ class GCMShim:
         invocation = (invocation + 1) & 0xffffffffffffffff
         self._iv = self._iv[:4] + invocation.to_bytes(8, 'big')
 
-    def encrypt(self, data, associated_data):
+    def encrypt_and_sign(self, data, associated_data):
         encryptor = Cipher(self._cipher(self._key), GCM(self._iv),
                            default_backend()).encryptor()
 
@@ -60,7 +60,7 @@ class GCMShim:
 
         return ciphertext, encryptor.tag
 
-    def decrypt(self, data, associated_data, tag):
+    def decrypt_and_verify(self, data, associated_data, tag):
         decryptor = Cipher(self._cipher(self._key), GCM(self._iv, tag),
                            default_backend()).decryptor()
 
