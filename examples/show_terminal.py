@@ -41,9 +41,6 @@ class MySSHServerSession(asyncssh.SSHServerSession):
         self._chan.write('\r\n')
 
 class MySSHServer(asyncssh.SSHServer):
-    def connection_made(self, conn):
-        self._conn = conn
-
     def connection_lost(self, exc):
         if exc:
             print('SSH connection error: ' + str(exc), file=sys.stderr)

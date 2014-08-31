@@ -10,8 +10,8 @@
 
 .. _ClientExamples:
 
-Client Examples (session API)
-=============================
+Client Examples
+===============
 
 Simple client
 -------------
@@ -95,6 +95,20 @@ calculations.
       :literal:
       :start-line: 15
 
+Note that input is not sent on the channel  until the :meth:`session_started()
+<SSHClientSession.session_started>` method is called, and :meth:`write_eof()
+<SSHClientChannel.write_eof>` is used to signal the end of input, causing the
+'bc' program to exit.
+
+This example can be simplified by using the higher-level "streams" API. With
+that, callbacks aren't needed. Here's the streams version of the above example,
+using :meth:`open_session <SSHClientConnection.open_session>` instead of
+:meth:`create_session <SSHClientConnection.create_session>`:
+
+   .. include:: ../examples/stream_math_client.py
+      :literal:
+      :start-line: 15
+
 When run, this program should produce the following output:
 
    .. code::
@@ -103,20 +117,25 @@ When run, this program should produce the following output:
       1*2*3*4 = 24
       2^32 = 4294967296
 
-Note that input is not sent on the channel  until the :meth:`session_started()
-<SSHClientSession.session_started>` method is called, and :meth:`write_eof()
-<SSHClientChannel.write_eof>` is used to signal the end of input, causing the
-'bc' program to exit.
-
 Checking exit status
 --------------------
 
-The following example is a variation of the simple client which shows
-how to check the remote program's exit status.
+The following example is a variation of the simple client which shows how to
+receive the remote program's exit status using the :meth:`exit_status_received
+<SSHClientSession.exit_status_received>` callback.
 
    .. include:: ../examples/check_exit_status.py
       :literal:
       :start-line: 15
+
+From servers that support it, exit signals can also be received using
+:meth:`exit_signal_received <SSHClientSession.exit_signal_received>`.
+
+Exit status can be also queried after the channel has closed by using the
+methods :meth:`get_exit_status <SSHClientChannel.get_exit_status>` and
+:meth:`get_exit_signal <SSHClientChannel.get_exit_signal>`. This is
+how it is done when using the streams API, since callbacks aren't available
+there.
 
 Setting environment variables
 -----------------------------
@@ -144,6 +163,12 @@ passed to the remote session.
    .. include:: ../examples/set_terminal.py
       :literal:
       :start-line: 15
+
+Note that this will cause AsyncSSH to request a pseudo-tty from the
+server. When a pseudo-tty is used, the server will no longer send output
+going to stderr with a different data type. Instead, it will be mixed
+with output going to stdout (unless it is redirected elsewhere by the
+remote command).
 
 Port forwarding
 ---------------
@@ -210,6 +235,14 @@ the encoding to use when the connection is created.
       :literal:
       :start-line: 15
 
+To use the streams API to open a direct connection, you can use
+:meth:`open_connection <SSHClientConnection.open_connection>` instead of
+:meth:`create_connection <SSHClientConnection.create_connection>`:
+
+   .. include:: ../examples/stream_direct_client.py
+      :literal:
+      :start-line: 15
+
 Forwarded TCP connections
 -------------------------
 
@@ -227,41 +260,9 @@ we set the encoding explicitly so all data is sent and received as strings:
       :literal:
       :start-line: 15
 
-Client Examples (streams API)
-=============================
-
-Math client revisited
----------------------
-
-The following example is a rewrite of the earlier math client using
-:meth:`open_session <SSHClientConnection.open_session>` instead of
-:meth:`create_session <SSHClientConnection.create_session>`. As above,
-it executes the calculator program ``bc`` and performs some basic math
-calculations, but the code is much simpler.
-
-   .. include:: ../examples/stream_math_client.py
-      :literal:
-      :start-line: 15
-
-Direct TCP client revisited
----------------------------
-
-The following example is a rewrite of the direct TCP client to use
-:meth:`open_connection <SSHClientConnection.open_connection>` instead of
-:meth:`create_connection <SSHClientConnection.create_connection>` to get
-back AsyncSSH streams to use to perform I/O, avoiding the need to
-create an :class:`SSHTCPSession` object.
-
-   .. include:: ../examples/stream_direct_client.py
-      :literal:
-      :start-line: 15
-
-Listening TCP client revisited
-------------------------------
-
-The following example is a rewrite of the listening TCP client to
-use :meth:`start_server <SSHClientConnection.start_server>` instead
-of :meth:`create_server <SSHClientConnection.create_server>`.
+To use the streams API to open a listening connection, you can use
+:meth:`start_server <SSHClientConnection.start_server>` instead
+of :meth:`create_server <SSHClientConnection.create_server>`:
 
    .. include:: ../examples/stream_listening_client.py
       :literal:
@@ -269,8 +270,8 @@ of :meth:`create_server <SSHClientConnection.create_server>`.
 
 .. _ServerExamples:
 
-Server Examples (session API)
-=============================
+Server Examples
+===============
 
 Simple server
 -------------
@@ -302,6 +303,19 @@ have the SSH client read from a file or pipe rather than the terminal
 or tell it not to allocate a pty for this to work right.
 
    .. include:: ../examples/math_server.py
+      :literal:
+      :start-line: 15
+
+Here's an example of this server written using the streams API. In this
+case, :meth:`session_requested() <SSHServer.session_requested>` returns
+a handler coroutine instead of a session object. When a new SSH session is
+requested, the handler coroutine is called with AsyncSSH stream objects
+representing stdin, stdout, and stderr that it can use to perform I/O.
+
+This example also shows how to catch exceptions thrown when break messages,
+signals, or terminal size changes are received.
+
+   .. include:: ../examples/stream_math_server.py
       :literal:
       :start-line: 15
 
@@ -366,37 +380,12 @@ echoes the data itself rather than forwarding the connection:
       :literal:
       :start-line: 15
 
-Server Examples (streams API)
-=============================
-
-Math server revisited
----------------------
-
-The following example is a rewrite of the earlier math server where
-:meth:`session_requested() <SSHServer.session_requested>` returns a
-handler coroutine instead of a session object. When a new SSH session is
-requested, the handler coroutine is called with AsyncSSH stream objects
-representing stdin, stdout, and stderr that it can use to perform I/O. As
-above, this sums a column of numbers and prints the total and closes the
-connection when it receives EOF.
-
-This example also shows how to handle break messages, signals, and
-terminal size changes when using the new streams API.
-
-   .. include:: ../examples/stream_math_server.py
-      :literal:
-      :start-line: 15
-
-Direct server revisited
------------------------
-
-The following example is a rewrite of the direct TCP server where
-:meth:`connection_requested() <SSHServer.connection_requested>` returns
-a handler coroutine instead of a session object. When a new direct TCP
-connection is opened, the handler coroutine is called with AsyncSSH
-stream objects which can be used to perform I/O on the tunneled
-connection. As above, this simply echoes whatever data it receives
-back to the client and closes the connection when it receives EOF.
+Here's an example of this server written using the streams API. In this
+case, :meth:`connection_requested() <SSHServer.connection_requested>`
+returns a handler coroutine instead of a session object. When a new
+direct TCP connection is opened, the handler coroutine is called with
+AsyncSSH stream objects which can be used to perform I/O on the tunneled
+connection.
 
    .. include:: ../examples/stream_direct_server.py
       :literal:

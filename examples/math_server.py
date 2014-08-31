@@ -44,15 +44,9 @@ class MySSHServerSession(asyncssh.SSHServerSession):
 
     def eof_received(self):
         self._chan.write('Total = %s\r\n' % self._total)
+        self._chan.exit(0)
 
 class MySSHServer(asyncssh.SSHServer):
-    def connection_made(self, conn):
-        self._conn = conn
-
-    def connection_lost(self, exc):
-        if exc:
-            print('SSH connection error: ' + str(exc), file=sys.stderr)
-
     def begin_auth(self, username):
         # No auth in this example
         return False

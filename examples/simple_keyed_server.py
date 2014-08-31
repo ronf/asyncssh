@@ -36,8 +36,6 @@ class MySSHServerSession(asyncssh.SSHServerSession):
 
 class MySSHServer(asyncssh.SSHServer):
     def connection_made(self, conn):
-        self._conn = conn
-
         print('SSH connection received from %s.' %
                   conn.get_extra_info('peername')[0])
 

@@ -41,19 +41,12 @@ def handle_connection(stdin, stdout, stderr):
                     stderr.write('Invalid number: %s\r\n' % line)
 
         stdout.write('Total = %s\r\n' % total)
+        stdout.channel.exit(0)
     except BrokenPipeError:
-        pass
-
-    stdout.close()
+        # The channel is already closed here, so we can't send an exit status
+        stdout.close()
 
 class MySSHServer(asyncssh.SSHServer):
-    def connection_made(self, conn):
-        self._conn = conn
-
-    def connection_lost(self, exc):
-        if exc:
-            print('SSH connection error: ' + str(exc), file=sys.stderr)
-
     def begin_auth(self, username):
         # No auth in this example
         return False
