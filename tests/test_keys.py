@@ -140,8 +140,8 @@ class _TestKeys(unittest.TestCase):
         self.check_public()
 
     def import_rfc4716_public(self):
-        run('ssh-keygen -i -f pub -m pkcs8 > new')
-        run('ssh-keygen -e -f pub -m rfc4716 > new')
+        run('ssh-keygen -i -f pub -m pkcs8 > sshpub')
+        run('ssh-keygen -e -f sshpub -m rfc4716 > new')
 
         self.check_public()
 
@@ -240,10 +240,10 @@ class _TestKeys(unittest.TestCase):
                     self.export_openssh_public()
 
                 with self.subTest('Import RFC4716 public'):
-                    self.import_openssh_public()
+                    self.import_rfc4716_public()
 
                 with self.subTest('Export RFC4716 public'):
-                    self.export_openssh_public()
+                    self.export_rfc4716_public()
 
         tmpdir.cleanup()
 
