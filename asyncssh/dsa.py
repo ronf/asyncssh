@@ -54,9 +54,9 @@ class _DSAKey(SSHKey):
 
     @classmethod
     def decode_pkcs1_public(cls, key_data):
-        if (isinstance(key_data, tuple) and len(key_data) == 5 and
-            all_ints(key_data) and key_data[0] == 0):
-            _, p, q, g, y = key_data
+        if (isinstance(key_data, tuple) and len(key_data) == 4 and
+            all_ints(key_data)):
+            y, p, q, g = key_data
             return cls(DSAPublicKey(p, q, g, y), False)
         else:
             raise KeyImportError('Invalid DSA public key')
@@ -112,7 +112,7 @@ class _DSAKey(SSHKey):
                 self._key.y, self._key.x)
 
     def encode_pkcs1_public(self):
-        return (0, self._key.p, self._key.q, self._key.g, self._key.y)
+        return (self._key.y, self._key.p, self._key.q, self._key.g)
 
     def encode_pkcs8_private(self):
         if not self._private:
