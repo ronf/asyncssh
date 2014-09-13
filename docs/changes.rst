@@ -3,20 +3,27 @@
 Change Log
 ==========
 
-Release 0.8.3 (16 August 2014)
-------------------------------
+Release 0.8.4 (12 Sep 2014)
+---------------------------
 
-* Add a missing import in the curve25519 implementation.
+* Fixed an error in the encode/decode functions for PKCS#1 DSA public keys
 
-Release 0.8.2 (16 August 2014)
-------------------------------
+* Fixed a bug in the unit test code for import/export of RFC4716 public keys
 
-* Provide a better long description for PyPI.
+Release 0.8.3 (16 Aug 2014)
+--------------------------
 
-* Add link to PyPI in documentation sidebar.
+* Added a missing import in the curve25519 implementation.
 
-Release 0.8.1 (15 August 2014)
-------------------------------
+Release 0.8.2 (16 Aug 2014)
+---------------------------
+
+* Provided a better long description for PyPI.
+
+* Added link to PyPI in documentation sidebar.
+
+Release 0.8.1 (15 Aug 2014)
+---------------------------
 
 * Added a note in the :meth:`validate_public_key()
   <SSHServer.validate_public_key>` documentation clarifying that AsyncSSH
@@ -28,8 +35,8 @@ Release 0.8.1 (15 August 2014)
 
 * Prepared the package to be uploaded to PyPI.
 
-Release 0.8.0 (15 July 2014)
-----------------------------
+Release 0.8.0 (15 Jul 2014)
+---------------------------
 
 * Added support for Curve25519 Diffie Hellman key exchange on systems with
   the curve25519-donna Python package installed.
@@ -37,8 +44,8 @@ Release 0.8.0 (15 July 2014)
 * Updated the examples to more clearly show what values are returned even
   when not all of the return values are used.
 
-Release 0.7.0 (7 June 2014)
----------------------------
+Release 0.7.0 (7 Jun 2014)
+--------------------------
 
 * This release adds support for the "high-level" ``asyncio`` streams API,
   in the form of the :class:`SSHReader` and :class:`SSHWriter` classes
