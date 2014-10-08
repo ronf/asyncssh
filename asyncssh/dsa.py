@@ -12,8 +12,6 @@
 
 """DSA public key encryption handler based on PyCrypto"""
 
-import random
-
 from Crypto.Hash import SHA
 from Crypto.PublicKey import DSA
 
@@ -129,7 +127,7 @@ class _DSAKey(SSHKey):
         if not self._key.has_private():
             raise ValueError('Private key needed for signing')
 
-        k = random.randrange(2, self._key.q)
+        k = randrange(2, self._key.q)
         r, s = self._key.sign(SHA.new(data).digest(), k)
         sig = r.to_bytes(20, 'big') + s.to_bytes(20, 'big')
         return b''.join((String(self.algorithm), String(sig)))

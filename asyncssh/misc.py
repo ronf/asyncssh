@@ -12,7 +12,14 @@
 
 """Miscellaneous utility classes and functions"""
 
+from random import SystemRandom
+
 from .constants import *
+
+# Define a version of randrange which is based on SystemRandom(), so that
+# we get back numbers suitable for cryptographic use.
+_random = SystemRandom()
+randrange = _random.randrange
 
 def all_ints(seq):
     """Return if a sequence contains all integers"""

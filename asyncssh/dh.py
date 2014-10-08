@@ -12,7 +12,6 @@
 
 """SSH Diffie-Hellman key exchange handlers"""
 
-import random
 from hashlib import sha1, sha256
 
 from .constants import *
@@ -59,7 +58,7 @@ class _KexDH(Kex):
             self._send_init(MSG_KEXDH_INIT)
 
     def _send_init(self, pkttype):
-        self._x = random.randrange(2, self._q)
+        self._x = randrange(2, self._q)
         self._e = pow(self._g, self._x, self._p)
 
         self._conn._send_packet(Byte(pkttype), MPInt(self._e))
@@ -68,7 +67,7 @@ class _KexDH(Kex):
         if not 1 <= self._e < self._p:
             raise DisconnectError(DISC_PROTOCOL_ERROR, 'Kex DH e out of range')
 
-        y = random.randrange(2, self._q)
+        y = randrange(2, self._q)
         self._f = pow(self._g, y, self._p)
 
         k = pow(self._e, y, self._p)
