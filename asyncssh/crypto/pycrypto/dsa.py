@@ -12,10 +12,10 @@
 
 """A shim around PyCrypto for DSA public and private keys"""
 
-import random
-
 from Crypto.Hash import SHA
 from Crypto.PublicKey import DSA
+
+from ...misc import randrange
 
 
 class _DSAKey:
@@ -28,7 +28,7 @@ class DSAPrivateKey(_DSAKey):
         self._key = DSA.construct((y, g, p, q, x))
 
     def sign(self, data):
-        k = random.randrange(2, self._key.q)
+        k = randrange(2, self._key.q)
         return self._key.sign(SHA.new(data).digest(), k)
 
 

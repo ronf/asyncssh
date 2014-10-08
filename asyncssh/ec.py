@@ -12,7 +12,6 @@
 
 """EC public key encryption handler"""
 
-import random
 from hashlib import sha256, sha384, sha512
 
 from .asn1 import *
@@ -167,7 +166,7 @@ class _KexECDH(Kex):
         Kex.__init__(self, alg, conn, hash)
 
         while True:
-            self._d = random.randrange(2, n)
+            self._d = randrange(2, n)
             self._Q = self._d * G
 
             if self._Q:
@@ -437,7 +436,7 @@ class _ECKey(SSHKey):
 
         while True:
             n = self._n
-            k = random.randrange(2, n)
+            k = randrange(2, n)
             e = int.from_bytes(self._hash(data).digest(), 'big')
 
             try:
