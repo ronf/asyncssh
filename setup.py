@@ -43,7 +43,8 @@ setup(name = 'asyncssh',
           'pycrypto': ['Crypto >= 2.6'],
           'pyca':     ['cryptography >= 0.6.1']
       },
-      packages = ['asyncssh'],
+      packages = ['asyncssh', 'asyncssh.crypto', 'asyncssh.crypto.pyca',
+                  'asyncssh.crypto.pycrypto'],
       scripts = [],
       test_suite = 'tests',
       classifiers = [
