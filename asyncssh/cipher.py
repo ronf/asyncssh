@@ -10,38 +10,39 @@
 # Contributors:
 #     Ron Frederick - initial implementation, API, and documentation
 
-"""Symmetric key encryption handlers based on PyCrypto"""
+"""Symmetric key encryption handlers"""
 
-from Crypto.Cipher import AES, ARC4, Blowfish, CAST, DES3
-from Crypto.Util import Counter
+from .crypto import *
 
 _enc_algs = []
+_enc_params = {}
 _enc_ciphers = {}
-_enc_sizes = {}
 
-_pem_ciphers = {}
-
-def register_encryption_alg(alg, cipher, mode, key_size):
+def register_encryption_alg(alg, cipher_name, mode_name, key_size,
+                            initial_bytes):
     """Register an encryption algorithm"""
 
-    _enc_algs.append(alg)
-    _enc_ciphers[alg] = (cipher, mode)
-    _enc_sizes[alg] = (key_size, cipher.block_size)
+    cipher = lookup_cipher(cipher_name, mode_name)
+    if cipher:
+        _enc_algs.append(alg)
+        _enc_params[alg] = (key_size, cipher.iv_size,
+                            cipher.block_size, mode_name == 'gcm')
+        _enc_ciphers[alg] = (cipher, initial_bytes)
 
 def get_encryption_algs():
     """Return a list of available encryption algorithms"""
 
     return _enc_algs
 
-def lookup_encryption_alg(alg):
-    """Look up an encryption algorithm
+def get_encryption_params(alg):
+    """Get parameters of an encryption algorithm
 
-       This function looks up an encryption algorithm and returns its key
-       and block sizes.
+       This function returns the key, iv, and block sizes of an encryption
+       algorithm.
 
     """
 
-    return _enc_sizes[alg]
+    return _enc_params[alg]
 
 def get_cipher(alg, key, iv=None):
     """Return an instance of a cipher
@@ -51,32 +52,20 @@ def get_cipher(alg, key, iv=None):
 
     """
 
-    cipher, mode = _enc_ciphers[alg]
+    cipher, initial_bytes = _enc_ciphers[alg]
+    return cipher.new(key, iv, initial_bytes)
 
-    if alg.endswith(b'-ctr'):
-        ctr = Counter.new(len(iv)*8, initial_value=int.from_bytes(iv, 'big'))
-        return cipher.new(key, mode=mode, counter=ctr)
-    elif alg.startswith(b'arcfour'):
-        cipher = cipher.new(key)
-
-        # For arcfour ciphers, we overload the mode to be the number of
-        # initial key stream bytes to discard, to work around weak keys
-        if mode:
-            cipher.encrypt(mode * b'\0')
-
-        return cipher
-    else:
-        return cipher.new(key, mode=mode, IV=iv)
-
-register_encryption_alg(b'aes256-ctr',   AES,      AES.MODE_CTR,      32)
-register_encryption_alg(b'aes192-ctr',   AES,      AES.MODE_CTR,      24)
-register_encryption_alg(b'aes128-ctr',   AES,      AES.MODE_CTR,      16)
-register_encryption_alg(b'aes256-cbc',   AES,      AES.MODE_CBC,      32)
-register_encryption_alg(b'aes192-cbc',   AES,      AES.MODE_CBC,      24)
-register_encryption_alg(b'aes128-cbc',   AES,      AES.MODE_CBC,      16)
-register_encryption_alg(b'3des-cbc',     DES3,     DES3.MODE_CBC,     24)
-register_encryption_alg(b'blowfish-cbc', Blowfish, Blowfish.MODE_CBC, 16)
-register_encryption_alg(b'cast128-cbc',  CAST,     CAST.MODE_CBC,     16)
-register_encryption_alg(b'arcfour256',   ARC4,     1536,              32)
-register_encryption_alg(b'arcfour128',   ARC4,     1536,              16)
-register_encryption_alg(b'arcfour',      ARC4,     0,                 16)
+register_encryption_alg(b'aes256-ctr',             'aes',      'ctr', 32, 0)
+register_encryption_alg(b'aes192-ctr',             'aes',      'ctr', 24, 0)
+register_encryption_alg(b'aes128-ctr',             'aes',      'ctr', 16, 0)
+register_encryption_alg(b'aes256-gcm@openssh.com', 'aes',      'gcm', 32, 0)
+register_encryption_alg(b'aes128-gcm@openssh.com', 'aes',      'gcm', 16, 0)
+register_encryption_alg(b'aes256-cbc',             'aes',      'cbc', 32, 0)
+register_encryption_alg(b'aes192-cbc',             'aes',      'cbc', 24, 0)
+register_encryption_alg(b'aes128-cbc',             'aes',      'cbc', 16, 0)
+register_encryption_alg(b'3des-cbc',               'des3',     'cbc', 24, 0)
+register_encryption_alg(b'blowfish-cbc',           'blowfish', 'cbc', 16, 0)
+register_encryption_alg(b'cast128-cbc',            'cast',     'cbc', 16, 0)
+register_encryption_alg(b'arcfour256',             'arc4',     None,  32, 1536)
+register_encryption_alg(b'arcfour128',             'arc4',     None,  16, 1536)
+register_encryption_alg(b'arcfour',                'arc4',     None,  16, 0)

@@ -39,7 +39,10 @@ setup(name = 'asyncssh',
       description = doclines[0],
       long_description = long_description,
       platforms = 'Any',
-      requires = ['Crypto (>= 2.6)'],
+      extras_require = {
+          'pycrypto': ['Crypto >= 2.6'],
+          'pyca':     ['cryptography >= 0.6.1']
+      },
       packages = ['asyncssh'],
       scripts = [],
       test_suite = 'tests',

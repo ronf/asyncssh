@@ -18,7 +18,7 @@ from hashlib import md5, sha1, sha256, sha512
 _ETM = b'-etm@openssh.com'
 
 _mac_algs = []
-_mac_sizes = {}
+_mac_params = {}
 _mac_handlers = {}
 
 class _MAC:
@@ -44,8 +44,8 @@ def register_mac_alg(alg, hash, key_size, hash_size):
     """Register a MAC algorithm"""
 
     _mac_algs.append(alg)
-    _mac_sizes[alg] = (key_size, hash_size)
-    _mac_sizes[alg + _ETM] = (key_size, hash_size)
+    _mac_params[alg] = (key_size, hash_size, False)
+    _mac_params[alg + _ETM] = (key_size, hash_size, True)
     _mac_handlers[alg] = (hash, hash_size)
     _mac_handlers[alg + _ETM] = (hash, hash_size)
 
@@ -54,20 +54,18 @@ def get_mac_algs():
 
     return [alg + _ETM for alg in _mac_algs] + _mac_algs
 
-def lookup_mac_alg(alg):
-    """Look up a MAC algorithm
+def get_mac_params(alg):
+    """Get parameters of a MAC algorithm
 
-       This function looks up a MAC algorithm and returns its key and hash
-       sizes and whether or not to compute the MAC before or after
-       encryption.
+       This function returns the key and hash sizes of a MAC algorithm and
+       whether or not to compute the MAC before or after encryption.
 
     """
 
-    key_size, hash_size = _mac_sizes[alg]
-    return key_size, hash_size, alg.endswith(_ETM)
+    return _mac_params[alg]
 
 def get_mac(alg, key):
-    """Return an instance of a MAC generator
+    """Return a MAC handler
 
        This function returns a MAC object initialized with the specified
        kev that can be used for data signing and verification.

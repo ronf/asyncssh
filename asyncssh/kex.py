@@ -52,8 +52,8 @@ def get_kex_algs():
 
     return _kex_algs
 
-def lookup_kex_alg(conn, alg):
-    """Look up a key exchange algorithm
+def get_kex(conn, alg):
+    """Return a key exchange handler
 
        The function looks up a key exchange algorithm and returns a
        handler which can perform that type of key exchange.

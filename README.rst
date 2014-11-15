@@ -3,8 +3,8 @@ AsyncSSH Overview
 
 AsyncSSH is a Python package which provides an asynchronous client and
 server implementation of the SSHv2 protocol on top of the Python asyncio
-framework. It requires Python 3.4 or later and the PyCrypto library for some
-cryptographic functions.
+framework. It requires Python 3.4 or later and either the PyCA library or
+the PyCrypto library for some cryptographic functions.
 
 This package is released under the following terms:
 
@@ -34,7 +34,7 @@ Notable features include:
     - DSA, RSA, and ECDSA keys
     - PKCS#1/PKCS#8 DER and PEM, OpenSSH, and RFC4716 formats
     - Password-based encryption of private keys
-* Support for a variety of ciphers (provided via PyCrypto)
+* Support for a variety of ciphers (provided via PyCA or PyCrypto)
     - AES, ARC4, Blowfish, CAST, and Triple DES
 * Support for a variety of MAC algorithms
     - HMAC with MD5, SHA1, SHA256, and SHA512
@@ -56,7 +56,7 @@ Prerequisites
 To use ``asyncssh``, you need the following:
 
 * Python 3.4 or later
-* PyCrypto 2.6 or later
+* PyCrypto 2.6 or later and/or PyCA 0.6.1 or later
 
 Installation
 ============
@@ -64,8 +64,11 @@ Installation
 #. Install Python 3.4 or later from http://www.python.org or your
    favorite packaging system.
 
-#. Install PyCrypto 2.6 or later from http://www.pycrypto.org or your
-   favorite packaging system.
+#. Optionally install PyCrypto 2.6 or later from http://www.pycrypto.org
+   or your favorite packaging system.
+
+#. Optionally install PyCA 0.6.1 or later from https://cryptography.io
+   or your favorite packaging system.
 
 #. Optionally install curve25519-donna from
    http://github.com/agl/curve25519-donna if you want support for
