@@ -3,15 +3,24 @@
 Change Log
 ==========
 
+Release 0.9.0 (14 Nov 2014)
+---------------------------
+
+* Added support to use PyCA (0.6.1 or later) for cryptography. AsyncSSH
+  will automatically detect and use either PyCA, PyCrypto, or both depending
+  on which is installed and which algorithms are requested.
+
+* Added support for AES-GCM ciphers when PyCA is installed.
+
 Release 0.8.4 (12 Sep 2014)
 ---------------------------
 
-* Fixed an error in the encode/decode functions for PKCS#1 DSA public keys
+* Fixed an error in the encode/decode functions for PKCS#1 DSA public keys.
 
-* Fixed a bug in the unit test code for import/export of RFC4716 public keys
+* Fixed a bug in the unit test code for import/export of RFC4716 public keys.
 
 Release 0.8.3 (16 Aug 2014)
---------------------------
+---------------------------
 
 * Added a missing import in the curve25519 implementation.
 

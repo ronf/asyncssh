@@ -18,7 +18,7 @@ __author_email__ = '<ronf@timeheart.net>'
 
 __url__ = 'http://asyncssh.timeheart.net/'
 
-__version__ = '0.8.4'
+__version__ = '0.9.0'
 
 from .constants import *
 

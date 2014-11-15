@@ -56,7 +56,7 @@ Prerequisites
 To use ``asyncssh``, you need the following:
 
 * Python 3.4 or later
-* PyCrypto 2.6 or later
+* PyCrypto 2.6 or later and/or PyCA 0.6.1 or later
 
 Installation
 ============
@@ -64,8 +64,11 @@ Installation
 #. Install Python 3.4 or later from http://www.python.org or your
    favorite packaging system.
 
-#. Install PyCrypto 2.6 or later from http://www.pycrypto.org or your
-   favorite packaging system.
+#. Optionally install PyCrypto 2.6 or later from http://www.pycrypto.org
+   or your favorite packaging system.
+
+#. Optionally install PyCA 0.6.1 or later from https://cryptography.io
+   or your favorite packaging system.
 
 #. Optionally install curve25519-donna from
    http://github.com/agl/curve25519-donna if you want support for
