@@ -13,7 +13,7 @@
 """DSA public key encryption handler"""
 
 from .asn1 import *
-from .crypto import *
+from .cipher import *
 from .misc import *
 from .packet import *
 from .public_key import *
