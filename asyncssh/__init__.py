@@ -12,14 +12,6 @@
 
 """An asynchronous SSH2 library for Python"""
 
-__author__ = 'Ron Frederick'
-
-__author_email__ = '<ronf@timeheart.net>'
-
-__url__ = 'http://asyncssh.timeheart.net/'
-
-__version__ = '0.9.0'
-
 from .constants import *
 
 from .channel import SSHClientChannel, SSHServerChannel, SSHTCPChannel
