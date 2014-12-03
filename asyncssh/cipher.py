@@ -12,7 +12,28 @@
 
 """Symmetric key encryption handlers"""
 
-from .crypto import *
+"""A shim for accessing symmetric ciphers needed by asyncssh"""
+
+_ciphers = {}
+
+def register_cipher(cipher_name, mode_name, cipher):
+    """Register a symmetric cipher
+
+       If multiple modules try to register the same cipher and mode, the
+       first one to register it is used.
+
+    """
+
+    if (cipher_name, mode_name) not in _ciphers:
+        cipher.cipher_name = cipher_name
+        cipher.mode_name = mode_name
+        _ciphers[(cipher_name, mode_name)] = cipher
+
+def lookup_cipher(cipher_name, mode_name):
+    """Look up a symmetric cipher"""
+
+    return _ciphers.get((cipher_name, mode_name))
+
 
 _enc_algs = []
 _enc_params = {}
