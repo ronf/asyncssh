@@ -19,26 +19,31 @@ the SSHv2 protocol, based on the Python asyncio framework. It depends on
 Python 3.4 or later and the PyCrypto library for some cryptographic functions.
 
 """
+import os
 
 from setuptools import setup, find_packages
-import asyncssh
+
+__author__ = 'Ron Frederick'
+__author_email__ = '<ronf@timeheart.net>'
+__url__ = 'http://asyncssh.timeheart.net/'
+__version__ = '0.9.1'
 
 doclines = __doc__.split("\n", 1)
 
-with open('README.rst') as desc:
+with open(os.path.join(os.path.abspath(os.path.dirname(__file__)), "README.rst")) as desc:
     long_description = desc.read()
 
 setup(name = 'asyncssh',
-      version = asyncssh.__version__,
-      author = asyncssh.__author__,
-      author_email = asyncssh.__author_email__,
-      url = asyncssh.__url__,
-      download_url = asyncssh.__url__ + 'asyncssh-%s.tar.gz' %
-                         asyncssh.__version__,
+      version = __version__,
+      author = __author__,
+      author_email = __author_email__,
+      url = __url__,
+      download_url = __url__ + 'asyncssh-%s.tar.gz' % __version__,
       license = 'Eclipse Public License v1.0',
       description = doclines[0],
       long_description = long_description,
       platforms = 'Any',
+      install_requires=["pycrypto"],
       extras_require = {
           'pycrypto': ['Crypto >= 2.6'],
           'pyca':     ['cryptography >= 0.6.1']
