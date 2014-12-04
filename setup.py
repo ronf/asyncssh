@@ -43,7 +43,7 @@ setup(name = 'asyncssh',
       long_description = long_description,
       platforms = 'Any',
       extras_require = {
-          'pycrypto': ['Crypto >= 2.6'],
+          'pycrypto': ['pycrypto >= 2.6'],
           'pyca':     ['cryptography >= 0.6.1']
       },
       packages = ['asyncssh', 'asyncssh.crypto', 'asyncssh.crypto.pyca',
