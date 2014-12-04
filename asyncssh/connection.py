@@ -1230,7 +1230,8 @@ class SSHConnection(SSHPacketHandler):
         """
 
         return self._extra.get(name,
-                               self._transport.get_extra_info(name, default))
+                               self._transport.get_extra_info(name, default)
+                                   if self._transport else default)
 
     def send_debug(self, msg, lang=DEFAULT_LANG, always_display=False):
         """Send a debug message on this connection

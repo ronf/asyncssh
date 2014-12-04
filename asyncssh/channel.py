@@ -463,7 +463,8 @@ class SSHChannel(SSHPacketHandler):
 
         """
 
-        return self._extra.get(name, self._conn.get_extra_info(name, default))
+        return self._extra.get(name, self._conn.get_extra_info(name, default)
+                                         if self._conn else default)
 
     def can_write_eof(self):
         """Return whether the channel supports :meth:`write_eof`
