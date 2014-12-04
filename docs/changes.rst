@@ -3,6 +3,17 @@
 Change Log
 ==========
 
+Release 0.9.1 (3 Dec 2014)
+--------------------------
+
+* Added some missing items in setup.py and MANIFEST.in.
+
+* Fixed the install to work even when cryptographic dependencies aren't
+  yet installed.
+
+* Fixed an issue where get_extra_info calls could fail if called when
+  a connection or session was shutting down.
+
 Release 0.9.0 (14 Nov 2014)
 ---------------------------
 

@@ -1,2 +1,2 @@
-include COPYRIGHT LICENSE README.rst examples/*.py tests/*.py
+include COPYRIGHT LICENSE README.rst examples/*.py tests/*.py version.py
 exclude examples/test*.py

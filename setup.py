@@ -14,27 +14,30 @@
 
 """AsyncSSH: Asynchronous SSHv2 client and server library
 
-This package provides an asynchronous client and server implementation of
-the SSHv2 protocol, based on the Python asyncio framework. It depends on
-Python 3.4 or later and the PyCrypto library for some cryptographic functions.
+AsyncSSH is a Python package which provides an asynchronous client and
+server implementation of the SSHv2 protocol on top of the Python asyncio
+framework. It requires Python 3.4 or later and either the PyCA library or
+the PyCrypto library for some cryptographic functions.
 
 """
 
+from os import path
 from setuptools import setup, find_packages
-import asyncssh
 
-doclines = __doc__.split("\n", 1)
+from version import __author__, __author_email__, __url__, __version__
 
-with open('README.rst') as desc:
+doclines = __doc__.split('\n', 1)
+readme = path.join(path.abspath(path.dirname(__file__)), 'README.rst')
+
+with open(readme) as desc:
     long_description = desc.read()
 
 setup(name = 'asyncssh',
-      version = asyncssh.__version__,
-      author = asyncssh.__author__,
-      author_email = asyncssh.__author_email__,
-      url = asyncssh.__url__,
-      download_url = asyncssh.__url__ + 'asyncssh-%s.tar.gz' %
-                         asyncssh.__version__,
+      version = __version__,
+      author = __author__,
+      author_email = __author_email__,
+      url = __url__,
+      download_url = __url__ + 'asyncssh-%s.tar.gz' % __version__,
       license = 'Eclipse Public License v1.0',
       description = doclines[0],
       long_description = long_description,
