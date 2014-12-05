@@ -12,6 +12,8 @@
 
 """An asynchronous SSH2 library for Python"""
 
+from .version import __author__, __author_email__, __url__, __version__
+
 from .constants import *
 
 from .channel import SSHClientChannel, SSHServerChannel, SSHTCPChannel

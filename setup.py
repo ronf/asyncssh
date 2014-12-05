@@ -22,15 +22,17 @@ the PyCrypto library for some cryptographic functions.
 """
 
 from os import path
-from setuptools import setup, find_packages
+from setuptools import setup
 
-from version import __author__, __author_email__, __url__, __version__
+base_dir = path.abspath(path.dirname(__file__))
 
 doclines = __doc__.split('\n', 1)
-readme = path.join(path.abspath(path.dirname(__file__)), 'README.rst')
 
-with open(readme) as desc:
+with open(path.join(base_dir, 'README.rst')) as desc:
     long_description = desc.read()
+
+with open(path.join(base_dir, 'asyncssh', 'version.py')) as version:
+    exec(version.read())
 
 setup(name = 'asyncssh',
       version = __version__,
