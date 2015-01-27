@@ -3,6 +3,11 @@
 Change Log
 ==========
 
+Release 0.9.2 (26 Jan 2014)
+---------------------------
+
+* Fixed a bug in PyCrypto CipherFactory introduced during PyCA refactoring.
+
 Release 0.9.1 (3 Dec 2014)
 --------------------------
 

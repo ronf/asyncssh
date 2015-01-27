@@ -37,11 +37,12 @@ class CipherFactory:
 
     def new(self, key, iv=None, initial_bytes=0, **kwargs):
         if self.mode_name == 'ctr':
-            iv = int.from_bytes(iv, 'big')
-            ctr = Counter.new(len(iv)*8, initial_value=iv)
-            cipher = self._cipher.new(key, mode=mode, counter=ctr, **kwargs)
+            ctr = Counter.new(len(iv)*8,
+                              initial_value=int.from_bytes(iv, 'big'))
+            cipher = self._cipher.new(key, mode=self._mode,
+                                      counter=ctr, **kwargs)
         elif self._mode:
-            cipher = self._cipher.new(key, mode=mode, IV=iv, **kwargs)
+            cipher = self._cipher.new(key, mode=self._mode, IV=iv, **kwargs)
         else:
             cipher = self._cipher.new(key, **kwargs)
 
