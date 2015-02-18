@@ -9,6 +9,7 @@
 #
 # Contributors:
 #     Ron Frederick - initial implementation, API, and documentation
+#     Michael Keller - bugfix
 
 """SSH stream handlers"""
 
@@ -283,7 +284,7 @@ class SSHStreamSession:
                         raise recv_buf.pop(0)
 
                 l = len(recv_buf[0])
-                if n > 0 and l > n:
+                if n > 0 and l >= n:
                     data.append(recv_buf[0][:n])
                     recv_buf[0] = recv_buf[0][n:]
                     self._recv_buf_len -= n
