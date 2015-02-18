@@ -286,7 +286,10 @@ class SSHStreamSession:
                 l = len(recv_buf[0])
                 if n > 0 and l >= n:
                     data.append(recv_buf[0][:n])
-                    recv_buf[0] = recv_buf[0][n:]
+                    if l > n:
+                        recv_buf[0] = recv_buf[0][n:]
+                    else:
+                        recv_buf.pop(0)
                     self._recv_buf_len -= n
                     n = 0
                     break
