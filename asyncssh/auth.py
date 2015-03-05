@@ -17,6 +17,7 @@ from .misc import *
 from .packet import *
 from .public_key import *
 from .saslprep import *
+from .log import logger
 
 # SSH message values for public key auth
 MSG_USERAUTH_PK_OK            = 60

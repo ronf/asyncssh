@@ -16,7 +16,7 @@ import asyncio, socket
 
 from .channel import *
 from .misc import *
-
+from .log import logger
 
 class SSHPortForwarder(SSHTCPSession):
     """SSH port forwarding connection handler"""

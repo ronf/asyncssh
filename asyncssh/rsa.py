@@ -17,6 +17,7 @@ from .crypto import *
 from .misc import *
 from .packet import *
 from .public_key import *
+from .log import logger
 
 
 class _RSAKey(SSHKey):

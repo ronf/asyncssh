@@ -23,6 +23,7 @@
    it into the corresponding Python values.
 
 """
+from .log import logger
 
 # ASN.1 object classes
 UNIVERSAL         = 0x00

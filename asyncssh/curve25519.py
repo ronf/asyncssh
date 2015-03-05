@@ -18,6 +18,7 @@ from .kex import *
 from .misc import *
 from .packet import *
 from .public_key import *
+from .log import logger
 
 # SSH KEX ECDH message values (also used by Curve25519)
 MSG_KEX_ECDH_INIT  = 30

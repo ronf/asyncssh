@@ -18,6 +18,8 @@ from .asn1 import *
 from .packet import *
 from .misc import *
 from .pbe import *
+from .log import logger
+
 
 _public_key_algs = []
 _alg_map = {}

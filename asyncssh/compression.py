@@ -13,6 +13,9 @@
 """SSH compression handlers"""
 
 import zlib
+from .log import logger
+
+
 
 _cmp_algs = []
 _cmp_params = {}
