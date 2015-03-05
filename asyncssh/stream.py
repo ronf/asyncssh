@@ -276,7 +276,7 @@ class SSHStreamSession:
         data = []
 
         while True:
-            while recv_buf:
+            while recv_buf and n != 0:
                 if isinstance(recv_buf[0], Exception):
                     if data:
                         break

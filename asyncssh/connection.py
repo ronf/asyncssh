@@ -14,6 +14,7 @@
 
 import asyncio, getpass, os, socket, time, traceback
 from collections import OrderedDict
+from fnmatch import fnmatch
 from os import urandom
 
 from .auth import *
@@ -1372,14 +1373,14 @@ class SSHClientConnection(SSHConnection):
         except OSError:
             return []
 
-        host = host.encode().lower()
+        host = host.encode()
 
         for line in lines:
             dest_hosts, key = line.split(None, 1)
             dest_hosts = dest_hosts.split(b',')
             for dest_host in dest_hosts:
-                if b':' in dest_host:
-                    dest_host, dest_port = dest_host.rsplit(b':', 1)
+                if dest_host.startswith(b'[') and b']:' in dest_host:
+                    dest_host, dest_port = dest_host[1:].split(b']:', 1)
                     try:
                         dest_port = int(dest_port)
                     except ValueError:
@@ -1387,10 +1388,7 @@ class SSHClientConnection(SSHConnection):
                 else:
                     dest_port = 22
 
-                if dest_host.startswith(b'[') and dest_host.endswith(b']'):
-                    dest_host = dest_host[1:-1]
-
-                if dest_host.lower() == host and dest_port == port:
+                if fnmatch(host, dest_host) and dest_port == port:
                     try:
                         server_host_keys.append(import_public_key(key))
                     except KeyImportError:
@@ -1481,8 +1479,9 @@ class SSHClientConnection(SSHConnection):
             if len(prompts) == 0:
                 # Silently drop any empty challenges used to print messages
                 return []
-            elif len(prompts) == 1 and prompts[0][0] == 'Password:':
-                password = self._get_password()
+            elif len(prompts) == 1 and \
+                 'password' in prompts[0][0].lower().strip():
+                password = self._password_auth_requested()
                 return [password] if password is not None else None
             else:
                 return None
