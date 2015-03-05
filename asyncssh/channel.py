@@ -9,6 +9,7 @@
 #
 # Contributors:
 #     Ron Frederick - initial implementation, API, and documentation
+#     Michael Keller - fix of race condition in _create_session
 
 """SSH channel and session handlers"""
 
@@ -649,8 +650,9 @@ class SSHClientChannel(SSHChannel):
         # Client sessions should have no extra data in the open confirmation
         packet.check_end()
 
-        self._session = session_factory()
+        self._session = session_factory() 
         self._session.connection_made(self)
+        session = self._session # remember the session, self._session might be get lost as ._cleanup() might be called during ._create()
 
         for name, value in env.items():
             name = str(name).encode('utf-8')
@@ -704,8 +706,9 @@ class SSHClientChannel(SSHChannel):
             raise ChannelOpenError(OPEN_REQUEST_SESSION_FAILED,
                                    'Session request failed')
 
-        self._session.session_started()
-        return self, self._session
+        # use remembered session. self._session might be None already...
+        session.session_started()
+        return self, session
 
     def _process_xon_xoff_request(self, packet):
         """Process a request to set up XON/XOFF processing"""
