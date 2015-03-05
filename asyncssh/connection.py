@@ -1479,8 +1479,9 @@ class SSHClientConnection(SSHConnection):
             if len(prompts) == 0:
                 # Silently drop any empty challenges used to print messages
                 return []
-            elif len(prompts) == 1 and prompts[0][0] == 'Password:':
-                password = self._get_password()
+            elif len(prompts) == 1 and \
+                 'password' in prompts[0][0].lower().strip():
+                password = self._password_auth_requested()
                 return [password] if password is not None else None
             else:
                 return None
