@@ -13,6 +13,7 @@
 """SSH key exchange handlers"""
 
 from .packet import *
+from .log import logger
 
 _kex_algs = []
 _kex_handlers = {}

@@ -21,7 +21,7 @@
 
 import stringprep
 import unicodedata
-
+from .log import logger
 
 class SASLPrepError(ValueError):
     """Invalid data provided to saslprep"""

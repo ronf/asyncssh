@@ -19,6 +19,7 @@ from .kex import *
 from .misc import *
 from .packet import *
 from .public_key import *
+from .log import logger
 
 # SSH KEX DH message values
 MSG_KEXDH_INIT  = 30

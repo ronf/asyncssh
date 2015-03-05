@@ -19,6 +19,7 @@ from .kex import *
 from .misc import *
 from .packet import *
 from .public_key import *
+from .log import logger
 
 _domain_map = {}
 _domain_oid_map = {}

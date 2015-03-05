@@ -31,6 +31,7 @@ from .packet import *
 from .public_key import *
 from .saslprep import *
 from .stream import *
+from .log import logger
 
 # SSH default port
 _DEFAULT_PORT = 22

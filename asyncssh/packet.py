@@ -14,6 +14,7 @@
 
 from .constants import *
 from .misc import *
+from .log import logger
 
 def Byte(value):
     """Encode a single byte"""

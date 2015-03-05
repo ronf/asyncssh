@@ -15,6 +15,7 @@
 from random import SystemRandom
 
 from .constants import *
+from .log import logger
 
 # Define a version of randrange which is based on SystemRandom(), so that
 # we get back numbers suitable for cryptographic use.

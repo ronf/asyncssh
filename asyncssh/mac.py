@@ -14,6 +14,7 @@
 
 import hmac
 from hashlib import md5, sha1, sha256, sha512
+from .log import logger
 
 _ETM = b'-etm@openssh.com'
 

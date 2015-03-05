@@ -39,3 +39,5 @@ from .stream import SSHReader, SSHWriter
 
 # Import these explicitly to trigger register calls in them
 from . import curve25519, ec, rsa, dsa, dh
+
+from .log import logger
