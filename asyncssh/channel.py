@@ -62,7 +62,7 @@ class SSHChannel(SSHPacketHandler):
         self._init_recv_window = window
         self._recv_window = window
         self._recv_pktsize = max_pktsize
-        self._recv_paused = False
+        self._recv_paused = True
         self._recv_buf = []
 
         self._open_waiter = None
@@ -344,6 +344,7 @@ class SSHChannel(SSHPacketHandler):
 
         if result and request in ('shell', 'exec', 'subsystem'):
             self._session.session_started()
+            self.resume_reading()
 
     def _process_response(self, pkttype, packet):
         if self._send_state not in {'open', 'eof_pending', 'eof_sent',
@@ -706,7 +707,13 @@ class SSHClientChannel(SSHChannel):
             raise ChannelOpenError(OPEN_REQUEST_SESSION_FAILED,
                                    'Session request failed')
 
+        if not self._session:
+            raise ChannelOpenError(OPEN_REQUEST_SESSION_FAILED,
+                                   'Channel closed during session startup')
+
         self._session.session_started()
+        self.resume_reading()
+
         return self, self._session
 
     def _process_xon_xoff_request(self, packet):
@@ -1231,6 +1238,7 @@ class SSHTCPChannel(SSHChannel):
 
         if self._session:
             self._session.session_started()
+            self.resume_reading()
 
     @asyncio.coroutine
     def _open(self, session_factory, chantype, host, port,
@@ -1252,6 +1260,7 @@ class SSHTCPChannel(SSHChannel):
         self._session = session_factory()
         self._session.connection_made(self)
         self._session.session_started()
+        self.resume_reading()
 
         return self, self._session
 
