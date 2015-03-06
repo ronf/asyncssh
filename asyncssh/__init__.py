@@ -25,6 +25,8 @@ from .connection import create_connection, create_server
 
 from .listen import SSHListener
 
+from .logging import logger
+
 from .misc import Error, DisconnectError, ChannelOpenError
 from .misc import BreakReceived, SignalReceived, TerminalSizeChanged
 

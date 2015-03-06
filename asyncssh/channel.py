@@ -15,8 +15,10 @@
 import asyncio
 
 from .constants import *
+from .logging import *
 from .misc import *
 from .packet import *
+
 
 _EOF = object()
 

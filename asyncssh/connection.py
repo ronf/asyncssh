@@ -25,12 +25,14 @@ from .compression import *
 from .forward import *
 from .kex import *
 from .listen import *
+from .logging import *
 from .mac import *
 from .misc import *
 from .packet import *
 from .public_key import *
 from .saslprep import *
 from .stream import *
+
 
 # SSH default port
 _DEFAULT_PORT = 22

@@ -13,10 +13,12 @@
 """SSH authentication handlers"""
 
 from .constants import *
+from .logging import *
 from .misc import *
 from .packet import *
 from .public_key import *
 from .saslprep import *
+
 
 # SSH message values for public key auth
 MSG_USERAUTH_PK_OK            = 60

@@ -16,9 +16,11 @@ from hashlib import sha1, sha256
 
 from .constants import *
 from .kex import *
+from .logging import *
 from .misc import *
 from .packet import *
 from .public_key import *
+
 
 # SSH KEX DH message values
 MSG_KEXDH_INIT  = 30

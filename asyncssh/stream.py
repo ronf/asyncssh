@@ -14,9 +14,10 @@
 
 import asyncio
 
-from .constants import *
-from .misc import *
 from .channel import *
+from .constants import *
+from .logging import *
+from .misc import *
 
 
 class SSHReader:

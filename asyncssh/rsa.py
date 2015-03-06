@@ -14,6 +14,7 @@
 
 from .asn1 import *
 from .crypto import *
+from .logging import *
 from .misc import *
 from .packet import *
 from .public_key import *

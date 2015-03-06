@@ -16,9 +16,11 @@ from hashlib import sha256, sha384, sha512
 
 from .asn1 import *
 from .kex import *
+from .logging import *
 from .misc import *
 from .packet import *
 from .public_key import *
+
 
 _domain_map = {}
 _domain_oid_map = {}

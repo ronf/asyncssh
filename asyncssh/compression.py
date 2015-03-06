@@ -14,6 +14,9 @@
 
 import zlib
 
+from .logging import *
+
+
 _cmp_algs = []
 _cmp_params = {}
 _cmp_compressors = {}

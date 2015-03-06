@@ -13,7 +13,9 @@
 """SSH packet encoding and decoding functions"""
 
 from .constants import *
+from .logging import *
 from .misc import *
+
 
 def Byte(value):
     """Encode a single byte"""
