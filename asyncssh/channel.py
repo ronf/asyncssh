@@ -9,7 +9,6 @@
 #
 # Contributors:
 #     Ron Frederick - initial implementation, API, and documentation
-#     Michael Keller - fix of race condition in _create_session
 
 """SSH channel and session handlers"""
 
@@ -18,6 +17,7 @@ import asyncio
 from .constants import *
 from .misc import *
 from .packet import *
+
 
 _EOF = object()
 
@@ -61,7 +61,7 @@ class SSHChannel(SSHPacketHandler):
         self._init_recv_window = window
         self._recv_window = window
         self._recv_pktsize = max_pktsize
-        self._recv_paused = False
+        self._recv_paused = True
         self._recv_buf = []
 
         self._open_waiter = None
@@ -343,6 +343,7 @@ class SSHChannel(SSHPacketHandler):
 
         if result and request in ('shell', 'exec', 'subsystem'):
             self._session.session_started()
+            self.resume_reading()
 
     def _process_response(self, pkttype, packet):
         if self._send_state not in {'open', 'eof_pending', 'eof_sent',
@@ -650,9 +651,8 @@ class SSHClientChannel(SSHChannel):
         # Client sessions should have no extra data in the open confirmation
         packet.check_end()
 
-        self._session = session_factory() 
+        self._session = session_factory()
         self._session.connection_made(self)
-        session = self._session # remember the session, self._session might be get lost as ._cleanup() might be called during ._create()
 
         for name, value in env.items():
             name = str(name).encode('utf-8')
@@ -706,9 +706,10 @@ class SSHClientChannel(SSHChannel):
             raise ChannelOpenError(OPEN_REQUEST_SESSION_FAILED,
                                    'Session request failed')
 
-        # use remembered session. self._session might be None already...
-        session.session_started()
-        return self, session
+        self._session.session_started()
+        self.resume_reading()
+
+        return self, self._session
 
     def _process_xon_xoff_request(self, packet):
         """Process a request to set up XON/XOFF processing"""
@@ -1232,6 +1233,7 @@ class SSHTCPChannel(SSHChannel):
 
         if self._session:
             self._session.session_started()
+            self.resume_reading()
 
     @asyncio.coroutine
     def _open(self, session_factory, chantype, host, port,
@@ -1253,6 +1255,7 @@ class SSHTCPChannel(SSHChannel):
         self._session = session_factory()
         self._session.connection_made(self)
         self._session.session_started()
+        self.resume_reading()
 
         return self, self._session
 
