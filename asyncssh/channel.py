@@ -224,7 +224,7 @@ class SSHChannel(SSHPacketHandler):
         except ChannelOpenError as exc:
             self._conn._send_channel_open_failure(self._send_chan, exc.code,
                                                   exc.reason, exc.lang)
-            self._cleanup()
+            self._loop.call_soon(self._cleanup)
 
     def _process_open_confirmation(self, send_chan, send_window, send_pktsize,
                                    packet):
@@ -253,7 +253,7 @@ class SSHChannel(SSHPacketHandler):
 
         self._open_waiter.set_exception(ChannelOpenError(code, reason, lang))
         self._open_waiter = None
-        self._cleanup()
+        self._loop.call_soon(self._cleanup)
 
     def _process_window_adjust(self, pkttype, packet):
         if self._recv_state not in {'open', 'eof_received'}:
@@ -314,7 +314,7 @@ class SSHChannel(SSHPacketHandler):
         if self._send_state not in {'close_sent', 'closed'}:
             self._send_packet(MSG_CHANNEL_CLOSE)
 
-        self._cleanup()
+        self._loop.call_soon(self._cleanup)
 
     def _process_request(self, pkttype, packet):
         if self._recv_state not in {'open', 'eof_received'}:
