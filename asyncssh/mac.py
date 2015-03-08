@@ -15,11 +15,15 @@
 import hmac
 from hashlib import md5, sha1, sha256, sha512
 
+from .logging import *
+
+
 _ETM = b'-etm@openssh.com'
 
 _mac_algs = []
 _mac_params = {}
 _mac_handlers = {}
+
 
 class _MAC:
     """Parent class for SSH message authentication handlers"""
@@ -39,6 +43,7 @@ class _MAC:
         """Verify the signature of a message"""
 
         return self.sign(data) == sig
+
 
 def register_mac_alg(alg, hash, key_size, hash_size):
     """Register a MAC algorithm"""

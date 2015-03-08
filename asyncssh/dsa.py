@@ -14,6 +14,7 @@
 
 from .asn1 import *
 from .crypto import *
+from .logging import *
 from .misc import *
 from .packet import *
 from .public_key import *
@@ -44,65 +45,59 @@ class _DSAKey(SSHKey):
                      self._key.x if hasattr(self, 'x') else None))
 
     @classmethod
+    def make_private(cls, *args):
+        return cls(DSAPrivateKey(*args), True)
+
+    @classmethod
+    def make_public(cls, *args):
+        return cls(DSAPublicKey(*args), False)
+
+    @classmethod
     def decode_pkcs1_private(cls, key_data):
         if (isinstance(key_data, tuple) and len(key_data) == 6 and
             all_ints(key_data) and key_data[0] == 0):
-            _, p, q, g, y, x = key_data
-            return cls(DSAPrivateKey(p, q, g, y, x), True)
+            return key_data[1:]
         else:
-            raise KeyImportError('Invalid DSA private key')
+            return None
 
     @classmethod
     def decode_pkcs1_public(cls, key_data):
         if (isinstance(key_data, tuple) and len(key_data) == 4 and
             all_ints(key_data)):
             y, p, q, g = key_data
-            return cls(DSAPublicKey(p, q, g, y), False)
+            return p, q, g, y
         else:
-            raise KeyImportError('Invalid DSA public key')
+            return None
 
     @classmethod
     def decode_pkcs8_private(cls, alg_params, data):
-        try:
-            x = der_decode(data)
-        except ASN1DecodeError:
-            x = None
+        x = der_decode(data)
 
         if len(alg_params) == 3 and all_ints(alg_params) and isinstance(x, int):
             p, q, g = alg_params
             y = pow(g, x, p)
-            return cls(DSAPrivateKey(p, q, g, y, x), True)
+            return p, q, g, y, x
         else:
-            raise KeyImportError('Invalid DSA private key')
+            return None
 
     @classmethod
     def decode_pkcs8_public(cls, alg_params, data):
-        try:
-            y = der_decode(data)
-        except ASN1DecodeError:
-            y = None
+        y = der_decode(data)
 
         if len(alg_params) == 3 and all_ints(alg_params) and isinstance(y, int):
             p, q, g = alg_params
-            return cls(DSAPublicKey(p, q, g, y), False)
+            return p, q, g, y
         else:
-            raise KeyImportError('Invalid DSA public key')
+            return None
 
     @classmethod
     def decode_ssh_public(cls, packet):
-        try:
-            p = packet.get_mpint()
-            q = packet.get_mpint()
-            g = packet.get_mpint()
-            y = packet.get_mpint()
-            packet.check_end()
+        p = packet.get_mpint()
+        q = packet.get_mpint()
+        g = packet.get_mpint()
+        y = packet.get_mpint()
 
-            return cls(DSAPublicKey(p, q, g, y), False)
-        except DisconnectError:
-            # Fall through and return a key import error
-            pass
-
-        raise KeyImportError('Invalid DSA public key')
+        return p, q, g, y
 
     def encode_pkcs1_private(self):
         if not self._private:
@@ -147,4 +142,9 @@ class _DSAKey(SSHKey):
                                        int.from_bytes(sig[20:], 'big')))
 
 
-register_public_key_alg(_DSAKey)
+register_public_key_alg(b'ssh-dss', _DSAKey)
+
+register_certificate_alg(b'ssh-dss-cert-v01@openssh.com',
+                         _DSAKey, SSHCertificateV01)
+register_certificate_alg(b'ssh-dss-cert-v00@openssh.com',
+                         _DSAKey, SSHCertificateV00)

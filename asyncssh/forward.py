@@ -15,6 +15,7 @@
 import asyncio, socket
 
 from .channel import *
+from .logging import *
 from .misc import *
 
 

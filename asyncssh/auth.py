@@ -13,10 +13,12 @@
 """SSH authentication handlers"""
 
 from .constants import *
+from .logging import *
 from .misc import *
 from .packet import *
 from .public_key import *
 from .saslprep import *
+
 
 # SSH message values for public key auth
 MSG_USERAUTH_PK_OK            = 60
@@ -81,26 +83,23 @@ class _ClientPublicKeyAuth(_ClientAuth):
     def __init__(self, conn, method):
         super().__init__(conn, method)
 
-        key = conn._public_key_auth_requested()
-        if key is None:
+        self._alg, self._key, self._key_data = conn._public_key_auth_requested()
+        if self._alg is None:
             raise _SSHAuthError()
 
-        self._key = key
-        self._public_key = key.encode_ssh_public()
-
-        self.send_request(Boolean(False), String(self._key.algorithm),
-                          String(self._public_key))
+        self.send_request(Boolean(False), String(self._alg),
+                          String(self._key_data))
 
     def _process_public_key_ok(self, pkttype, packet):
-        alg = packet.get_string()
-        public_key = packet.get_string()
+        algorithm = packet.get_string()
+        key_data = packet.get_string()
         packet.check_end()
 
-        if alg != self._key.algorithm or public_key != self._public_key:
+        if algorithm != self._alg or key_data != self._key_data:
             raise DisconnectError(DISC_PROTOCOL_ERROR, 'Key mismatch')
 
-        self.send_request(Boolean(True), String(self._key.algorithm),
-                          String(self._public_key), key=self._key)
+        self.send_request(Boolean(True), String(algorithm),
+                          String(key_data), key=self._key)
         return True
 
     packet_handlers = {
@@ -135,8 +134,8 @@ class _ClientKbdIntAuth(_ClientAuth):
             instruction = instruction.decode('utf-8')
             lang = lang.decode('ascii')
         except UnicodeDecodeError:
-            raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Invalid keyboard interactive info request')
+            raise DisconnectError(DISC_PROTOCOL_ERROR, 'Invalid keyboard '
+                                  'interactive info request') from None
 
         num_prompts = packet.get_uint32()
         prompts = []
@@ -148,7 +147,7 @@ class _ClientKbdIntAuth(_ClientAuth):
                 prompt = prompt.decode('utf-8')
             except UnicodeDecodeError:
                 raise DisconnectError(DISC_PROTOCOL_ERROR, 'Invalid keyboard '
-                                      'interactive info request')
+                                      'interactive info request') from None
 
             prompts.append((prompt, echo))
 
@@ -205,7 +204,7 @@ class _ClientPasswordAuth(_ClientAuth):
             lang = lang.decode('ascii')
         except UnicodeDecodeError:
             raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Invalid password change request')
+                                  'Invalid password change request') from None
 
         result = self._conn._password_change_requested()
         if result == NotImplemented:
@@ -279,28 +278,22 @@ class _ServerPublicKeyAuth(_ServerAuth):
 
         sig_present = packet.get_boolean()
         algorithm = packet.get_string()
-        public_key = packet.get_string()
+        key_data = packet.get_string()
 
-        try:
-            key = decode_ssh_public_key(public_key)
-        except KeyImportError:
+        key = self._conn._validate_public_key(self._username, key_data)
+
+        if key is None:
             self.send_failure()
-            return
-
-        if sig_present:
-            if self._conn._validate_public_key(self._username, key) and \
-               self.verify_signed_request(key, packet):
+        elif sig_present:
+            if self.verify_signed_request(key, packet):
                 self.send_success()
             else:
                 self.send_failure()
         else:
             packet.check_end()
 
-            if self._conn._validate_public_key(self._username, key):
-                self._conn._send_packet(Byte(MSG_USERAUTH_PK_OK),
-                                        String(algorithm), String(public_key))
-            else:
-                self.send_failure()
+            self._conn._send_packet(Byte(MSG_USERAUTH_PK_OK),
+                                    String(algorithm), String(key_data))
 
 
 class _ServerKbdIntAuth(_ServerAuth):
@@ -321,8 +314,8 @@ class _ServerKbdIntAuth(_ServerAuth):
             lang = lang.decode('ascii')
             submethods = submethods.decode('utf-8')
         except UnicodeDecodeError:
-            raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Invalid keyboard interactive auth request')
+            raise DisconnectError(DISC_PROTOCOL_ERROR, 'Invalid keyboard '
+                                  'interactive auth request') from None
 
         challenge = self._conn._get_kbdint_challenge(self._username,
                                                      lang, submethods)
@@ -355,7 +348,7 @@ class _ServerKbdIntAuth(_ServerAuth):
                 response = response.decode('utf-8')
             except UnicodeDecodeError:
                 raise DisconnectError(DISC_PROTOCOL_ERROR, 'Invalid keyboard '
-                                      'interactive info response')
+                                      'interactive info response') from None
 
             responses.append(response)
 
@@ -390,7 +383,7 @@ class _ServerPasswordAuth(_ServerAuth):
             new_password = saslprep(new_password.decode('utf-8'))
         except (UnicodeDecodeError, SASLPrepError):
             raise DisconnectError(DISC_PROTOCOL_ERROR, 'Invalid password auth '
-                                  'request')
+                                  'request') from None
 
         # TODO: Handle password change request
 

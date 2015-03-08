@@ -24,6 +24,9 @@
 
 """
 
+from .logging import *
+
+
 # ASN.1 object classes
 UNIVERSAL         = 0x00
 APPLICATION       = 0x01

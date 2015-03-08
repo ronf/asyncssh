@@ -12,17 +12,25 @@
 
 """SSH asymmetric encryption handlers"""
 
-import binascii
+import binascii, ipaddress, time
 
 from .asn1 import *
-from .packet import *
+from .logging import *
 from .misc import *
+from .packet import *
 from .pbe import *
 
+
 _public_key_algs = []
-_alg_map = {}
+_certificate_algs = []
+_public_key_alg_map = {}
+_certificate_alg_map = {}
 _pem_map = {}
 _pkcs8_oid_map = {}
+
+# SSH certificate types
+CERT_TYPE_USER = 1
+CERT_TYPE_HOST = 2
 
 def _wrap_base64(data):
     """Break a Base64 value into multiple lines, each 64 characters wide."""
@@ -223,6 +231,226 @@ class SSHKey:
             f.write(self.export_public_key(*args, **kwargs))
 
 
+class SSHCertificate:
+    """Parent class which holds an SSH certificate"""
+
+    _user_critical_options = {}
+    _user_extensions =       {}
+    _host_critical_options = {}
+    _host_extensions =       {}
+
+    def __init__(self, packet, algorithm, key_handler, key_params, serial,
+                 cert_type, key_id, valid_principals, valid_after,
+                 valid_before, options, extensions):
+        if not key_params:
+            raise KeyImportError('Invalid key data in certificate')
+
+        signing_key = decode_ssh_public_key(packet.get_string())
+        msg = packet.get_consumed_payload()
+        signature = packet.get_string()
+        packet.check_end()
+
+        if not signing_key.verify(msg, signature):
+            raise KeyImportError('Invalid certificate signature')
+
+        self.algorithm = algorithm
+        self.key = key_handler.make_public(*key_params)
+        self.data = packet.get_consumed_payload()
+        self.options = {}
+        self.signing_key = signing_key
+
+        self._serial = serial
+        self._cert_type = cert_type
+        self._key_id = key_id
+
+        packet = SSHPacket(valid_principals)
+        self._valid_principals = []
+        while packet:
+            try:
+                principal = packet.get_string().decode('utf-8')
+            except UnicodeDecodeError:
+                raise KeyImportError('Invalid characters in principal name')
+
+            self._valid_principals.append(principal)
+
+        self._valid_after = valid_after
+        self._valid_before = valid_before
+
+        if cert_type == CERT_TYPE_USER:
+            self._decode_options(options, self._user_critical_options, True)
+            self._decode_options(extensions, self._user_extensions, False)
+        elif cert_type == CERT_TYPE_HOST:
+            self._decode_options(options, self._host_critical_options, True)
+            self._decode_options(extensions, self._host_extensions, False)
+        else:
+            raise KeyImportError('Unknown certificate type')
+
+    @staticmethod
+    def _parse_force_command(packet):
+        try:
+            return packet.get_string().decode('utf-8')
+        except UnicodeDecodeError:
+            raise KeyImportError('Invalid characters in command') from None
+
+    @staticmethod
+    def _parse_source_address(packet):
+        try:
+            return [ipaddress.ip_network(addr.decode('ascii'))
+                        for addr in packet.get_namelist()]
+        except (UnicodeDecodeError, ValueError):
+            raise KeyImportError('Invalid source address') from None
+
+    def _decode_options(self, options, valid_options, critical=True):
+        packet = SSHPacket(options)
+        while packet:
+            name = packet.get_string()
+
+            decoder = valid_options.get(name)
+            if decoder:
+                data_packet = SSHPacket(packet.get_string())
+                data = decoder(data_packet) if callable(decoder) else True
+                data_packet.check_end()
+                self.options[name.decode('ascii')] = data
+            elif critical:
+                raise KeyImportError('Unrecognized critical option: %s' %
+                                         name.decode('ascii', errors='replace'))
+
+    def validate(self, cert_type, principal):
+        """Validate the certificate type, validity period, and principal
+
+           This method validates that the certificate is of the specified
+           type, that the current time is within the certificate validity
+           period, and that the principal being authenticated is one of
+           the certificate's valid principals.
+
+           :param integer cert_type:
+               The expected :ref:`certificate type <CertificateTypes>`.
+           :param string principal:
+               The principal being authenticated.
+
+           :raises: :exc:`ValueError` if any of the validity checks fail
+
+        """
+
+        if self._cert_type != cert_type:
+            raise ValueError('Invalid certificate type')
+
+        now = time.time()
+
+        if now < self._valid_after:
+            raise ValueError('Certificate not yet valid')
+
+        if now >= self._valid_before:
+            raise ValueError('Certificate expired')
+
+        if self._valid_principals and principal not in self._valid_principals:
+            raise ValueError('Certificate principal mismatch')
+
+
+class SSHCertificateV00(SSHCertificate):
+    """Decoder class for version 00 SSH certificates"""
+
+    _user_critical_options = {
+        b'force-command':           SSHCertificate._parse_force_command,
+        b'permit-X11-forwarding':   True,
+        b'permit-agent-forwarding': True,
+        b'permit-port-forwarding':  True,
+        b'permit-pty':              True,
+        b'permit-user-rc':          True,
+        b'source-address':          SSHCertificate._parse_source_address
+    }
+
+    def __init__(self, packet, algorithm, key_handler):
+        key_params = key_handler.decode_ssh_public(packet)
+
+        cert_type = packet.get_uint32()
+        key_id = packet.get_string()
+        valid_principals = packet.get_string()
+        valid_after = packet.get_uint64()
+        valid_before = packet.get_uint64()
+        options = packet.get_string()
+        nonce = packet.get_string()
+        reserved = packet.get_string()
+
+        return super().__init__(packet, algorithm, key_handler, key_params,
+                                0, cert_type, key_id, valid_principals,
+                                valid_after, valid_before, options, b'')
+
+
+class SSHCertificateV01(SSHCertificate):
+    """Decoder class for version 01 SSH certificates"""
+
+    _user_critical_options = {
+        b'force-command':           SSHCertificate._parse_force_command,
+        b'source-address':          SSHCertificate._parse_source_address
+    }
+
+    _user_extensions = {
+        b'permit-X11-forwarding':   True,
+        b'permit-agent-forwarding': True,
+        b'permit-port-forwarding':  True,
+        b'permit-pty':              True,
+        b'permit-user-rc':          True
+    }
+
+    def __init__(self, packet, algorithm, key_handler):
+        nonce = packet.get_string()
+
+        key_params = key_handler.decode_ssh_public(packet)
+
+        serial = packet.get_uint64()
+        cert_type = packet.get_uint32()
+        key_id = packet.get_string()
+        valid_principals = packet.get_string()
+        valid_after = packet.get_uint64()
+        valid_before = packet.get_uint64()
+        options = packet.get_string()
+        extensions = packet.get_string()
+        reserved = packet.get_string()
+
+        return super().__init__(packet, algorithm, key_handler, key_params,
+                                serial, cert_type, key_id, valid_principals,
+                                valid_after, valid_before, options, extensions)
+
+
+def _decode_pkcs1_private(pem_name, key_data):
+    """Decode a PKCS#1 format private key"""
+
+    handler = _pem_map.get(pem_name)
+    if handler:
+        try:
+            key_params = handler.decode_pkcs1_private(key_data)
+        except ASN1DecodeError:
+            key_params = None
+
+        if key_params:
+            return handler.make_private(*key_params)
+        else:
+            raise KeyImportError('Invalid %s private key' %
+                                     pem_name.decode('ascii'))
+    else:
+        raise KeyImportError('Unknown PEM key type: %s' %
+                                 pem_name.decode('ascii'))
+
+def _decode_pkcs1_public(pem_name, key_data):
+    """Decode a PKCS#1 format public key"""
+
+    handler = _pem_map.get(pem_name)
+    if handler:
+        try:
+            key_params = handler.decode_pkcs1_public(key_data)
+        except ASN1DecodeError:
+            key_params = None
+
+        if key_params:
+            return handler.make_public(*key_params)
+        else:
+            raise KeyImportError('Invalid %s public key' %
+                                     pem_name.decode('ascii'))
+    else:
+        raise KeyImportError('Unknown PEM key type: %s' %
+                                 pem_name.decode('ascii'))
+
 def _decode_pkcs8_private(key_data):
     """Decode a PKCS#8 format private key"""
 
@@ -231,9 +459,19 @@ def _decode_pkcs8_private(key_data):
         len(key_data[1]) == 2 and isinstance(key_data[2], bytes)):
         alg, alg_params = key_data[1]
 
-        if alg in _pkcs8_oid_map:
-            return _pkcs8_oid_map[alg].decode_pkcs8_private(alg_params,
-                                                            key_data[2])
+        handler = _pkcs8_oid_map.get(alg)
+        if handler:
+            try:
+                key_params = handler.decode_pkcs8_private(alg_params,
+                                                          key_data[2])
+            except ASN1DecodeError:
+                key_params = None
+
+            if key_params:
+                return handler.make_private(*key_params)
+            else:
+                raise KeyImportError('Invalid %s private key' %
+                                         handler.pem_name.decode('ascii'))
         else:
             raise KeyImportError('Unknown PKCS#8 algorithm')
     else:
@@ -247,9 +485,19 @@ def _decode_pkcs8_public(key_data):
         isinstance(key_data[1], BitString) and key_data[1].unused == 0):
         alg, alg_params = key_data[0]
 
-        if alg in _pkcs8_oid_map:
-            return _pkcs8_oid_map[alg].decode_pkcs8_public(alg_params,
-                                                           key_data[1].value)
+        handler = _pkcs8_oid_map.get(alg)
+        if handler:
+            try:
+                key_params = handler.decode_pkcs8_public(alg_params,
+                                                         key_data[1].value)
+            except ASNDecodeError:
+                key_params = None
+
+            if key_params:
+                return handler.make_public(*key_params)
+            else:
+                raise KeyImportError('Invalid %s public key' %
+                                         handler.pem_name.decode('ascii'))
         else:
             raise KeyImportError('Unknown PKCS#8 algorithm')
     else:
@@ -261,7 +509,7 @@ def _decode_der_private(data, passphrase):
     try:
         key_data, end = der_decode(data, partial_ok=True)
     except ASN1DecodeError:
-        raise KeyImportError('Invalid DER private key')
+        raise KeyImportError('Invalid DER private key') from None
 
     # First, if there's a passphrase, try to decrypt PKCS#8
     if passphrase is not None:
@@ -281,7 +529,7 @@ def _decode_der_private(data, passphrase):
     # If that fails, try each of the possible PKCS#1 encodings
     for pem_name in _pem_map:
         try:
-            return _pem_map[pem_name].decode_pkcs1_private(key_data), end
+            return _decode_pkcs1_private(pem_name, key_data), end
         except KeyImportError:
             # Try the next PKCS#1 encoding
             pass
@@ -294,7 +542,7 @@ def _decode_der_public(data):
     try:
         key_data, end = der_decode(data, partial_ok=True)
     except ASN1DecodeError:
-        raise KeyImportError('Invalid DER public key')
+        raise KeyImportError('Invalid DER public key') from None
 
     # First, try to decode PKCS#8
     try:
@@ -306,7 +554,7 @@ def _decode_der_public(data):
     # If that fails, try each of the possible PKCS#1 encodings
     for pem_name in _pem_map:
         try:
-            return _pem_map[pem_name].decode_pkcs1_public(key_data), end
+            return _decode_pkcs1_public(pem_name, key_data), end
         except KeyImportError:
             # Try the next PKCS#1 encoding
             pass
@@ -325,7 +573,8 @@ def _decode_pem(lines, type):
             break
 
     if not start:
-        raise KeyImportError('Missing PEM header of type ' + type.decode())
+        raise KeyImportError('Missing PEM header of type %s' %
+                                 type.decode('ascii'))
 
     pem_name = line[11:-(6+len(type))].strip()
     if pem_name:
@@ -354,7 +603,7 @@ def _decode_pem(lines, type):
     try:
         data = binascii.a2b_base64(b''.join(lines[start:end]))
     except binascii.Error:
-        raise KeyImportError('Invalid PEM data')
+        raise KeyImportError('Invalid PEM data') from None
 
     return pem_name, headers, data, end+1
 
@@ -376,17 +625,18 @@ def _decode_pem_private(lines, passphrase):
         try:
             iv = binascii.a2b_hex(iv)
         except binascii.Error:
-            raise KeyImportError('Invalid PEM encryption params')
+            raise KeyImportError('Invalid PEM encryption params') from None
 
         try:
             data = pkcs1_decrypt(data, alg, iv, passphrase)
         except KeyEncryptionError:
-            raise KeyImportError('Unable to decrypt PKCS#1 private key')
+            raise KeyImportError('Unable to decrypt PKCS#1 '
+                                 'private key') from None
 
     try:
         key_data = der_decode(data)
     except ASN1DecodeError:
-        raise KeyImportError('Invalid PEM private key')
+        raise KeyImportError('Invalid PEM private key') from None
 
     if pem_name == b'ENCRYPTED':
         if passphrase is None:
@@ -398,14 +648,13 @@ def _decode_pem_private(lines, passphrase):
         try:
             key_data = pkcs8_decrypt(key_data, passphrase)
         except KeyEncryptionError:
-            raise KeyImportError('Unable to decrypt PKCS#8 private key')
+            raise KeyImportError('Unable to decrypt PKCS#8 '
+                                 'private key') from None
 
-    if not pem_name:
-        return _decode_pkcs8_private(key_data), end
-    elif pem_name in _pem_map:
-        return _pem_map[pem_name].decode_pkcs1_private(key_data), end
+    if pem_name:
+        return _decode_pkcs1_private(pem_name, key_data), end
     else:
-        raise KeyImportError('Unknown PEM key type: %s' % pem_name.decode())
+        return _decode_pkcs8_private(key_data), end
 
 def _decode_pem_public(lines):
     """Decode a PEM format public key"""
@@ -415,28 +664,25 @@ def _decode_pem_public(lines):
     try:
         key_data = der_decode(data)
     except ASN1DecodeError:
-        raise KeyImportError('Invalid PEM public key')
+        raise KeyImportError('Invalid PEM public key') from None
 
-    if not pem_name:
-        return _decode_pkcs8_public(key_data), end
-    elif pem_name in _pem_map:
-        return _pem_map[pem_name].decode_pkcs1_public(key_data), end
+    if pem_name:
+        return _decode_pkcs1_public(pem_name, key_data), end
     else:
-        raise KeyImportError('Unknown PEM key type: %s' % pem_name.decode())
+        return _decode_pkcs8_public(key_data), end
 
 def _decode_openssh(line):
-    """Decode an OpenSSH format public key"""
+    """Decode an OpenSSH format public key or certificate"""
 
     line = line.split()
     if len(line) < 2:
-        raise KeyImportError('Invalid OpenSSH public key')
+        raise KeyImportError('Invalid OpenSSH public key or certificate')
 
     try:
-        data = binascii.a2b_base64(line[1])
+        return binascii.a2b_base64(line[1])
     except binascii.Error:
-        raise KeyImportError('Invalid OpenSSH public key')
-
-    return decode_ssh_public_key(data)
+        raise KeyImportError('Invalid OpenSSH public key '
+                             'or certificate') from None
 
 def _decode_rfc4716(lines):
     """Decode an RFC 4716 format public key"""
@@ -470,49 +716,75 @@ def _decode_rfc4716(lines):
         raise KeyImportError('Missing RFC 4716 footer')
 
     try:
-        data = binascii.a2b_base64(b''.join(lines[start:end]))
+        return binascii.a2b_base64(b''.join(lines[start:end])), end+1
     except binascii.Error:
-        raise KeyImportError('Invalid RFC 4716 public key')
+        raise KeyImportError('Invalid RFC 4716 public key '
+                             'or certificate') from None
 
-    return decode_ssh_public_key(data), end+1
-
-def register_public_key_alg(handler):
+def register_public_key_alg(algorithm, handler):
     """Register a new public key algorithm"""
 
-    if hasattr(handler, 'algorithms'):
-        algs = handler.algorithms
-    else:
-        algs = (handler.algorithm,)
-
-    for alg in algs:
-        _public_key_algs.append(alg)
-        _alg_map[alg] = handler
+    _public_key_alg_map[algorithm] = handler
+    _public_key_algs.append(algorithm)
 
     _pem_map[handler.pem_name] = handler
 
     _pkcs8_oid_map[handler.pkcs8_oid] = handler
+
+def register_certificate_alg(algorithm, key_handler, cert_handler):
+    _certificate_alg_map[algorithm] = (key_handler, cert_handler)
+    _certificate_algs.append(algorithm)
 
 def get_public_key_algs():
     """Return supported public key algorithms"""
 
     return _public_key_algs
 
+def get_certificate_algs():
+    """Return supported certificate-based public key algorithms"""
+
+    return _certificate_algs
+
 def decode_ssh_public_key(data):
     """Decode a packetized SSH public key"""
 
     try:
         packet = SSHPacket(data)
-
         alg = packet.get_string()
-        if alg not in _alg_map:
-            raise KeyImportError('Unknown SSH key algorithm: %s' % alg.decode())
+        handler = _public_key_alg_map.get(alg)
 
-        return _alg_map[alg].decode_ssh_public(packet)
+        if handler:
+            key_params = handler.decode_ssh_public(packet)
+            packet.check_end()
+
+            if key_params:
+                key = handler.make_public(*key_params)
+                key.algorithm = alg
+                return key
+            else:
+                raise KeyImportError('Invalid %s public key' %
+                                         alg.decode('ascii'))
+        else:
+            raise KeyImportError('Unknown key algorithm: %s' %
+                                     alg.decode('ascii'))
     except DisconnectError:
-        # Fall through and return a key import error
-        pass
+        raise KeyImportError('Invalid public key') from None
 
-    raise KeyImportError('Invalid SSH public key')
+def decode_ssh_certificate(data):
+    """Decode a packetized SSH certificate"""
+
+    try:
+        packet = SSHPacket(data)
+        alg = packet.get_string()
+        key_handler, cert_handler = _certificate_alg_map.get(alg, (None, None))
+
+        if cert_handler:
+            return cert_handler(packet, alg, key_handler)
+        else:
+            raise KeyImportError('Unknown certificate algorithm: %s' %
+                                     alg.decode('ascii'))
+    except DisconnectError:
+        raise KeyImportError('Invalid certificate') from None
 
 def import_private_key(data, passphrase=None):
     """Import a private key
@@ -555,19 +827,43 @@ def import_public_key(data):
     if stripped_key.startswith(b'-----'):
         key, _ = _decode_pem_public(stripped_key.splitlines())
     elif stripped_key.startswith(b'---- '):
-        key, _ = _decode_rfc4716(stripped_key.splitlines())
+        data, _ = _decode_rfc4716(stripped_key.splitlines())
+        key = decode_ssh_public_key(data)
     elif data.startswith(b'\x30'):
         key, _ = _decode_der_public(data)
     else:
-        key = _decode_openssh(stripped_key.splitlines()[0])
+        data = _decode_openssh(stripped_key.splitlines()[0])
+        key = decode_ssh_public_key(data)
 
     return key
+
+def import_certificate(data):
+    """Import a certificate
+
+       This function imports an SSH certificate in OpenSSH or RFC4716
+       format.
+
+       :param bytes data:
+           The data to import.
+
+       :returns: An :class:`SSHCertificate` certificate
+
+    """
+
+    stripped_key = data.lstrip()
+    if stripped_key.startswith(b'---- '):
+        data, _ = _decode_rfc4716(stripped_key.splitlines())
+    else:
+        data = _decode_openssh(stripped_key.splitlines()[0])
+
+    return decode_ssh_certificate(data)
 
 def read_private_key(filename, passphrase=None):
     """Read a private key from a file
 
        This function reads a private key from a file. See the function
-       import_private_key for information about the formats supported.
+       :func:`import_private_key` for information about the formats
+       supported.
 
        :param string filename:
            The file to read the key from.
@@ -585,7 +881,8 @@ def read_public_key(filename):
     """Read a public key from a file
 
        This function reads a public key from a file. See the function
-       import_public_key for information about the formats supported.
+       :func:`import_public_key` for information about the formats
+       supported.
 
        :param string filename:
            The file to read the key from.
@@ -597,13 +894,30 @@ def read_public_key(filename):
     with open(filename, 'rb') as f:
         return import_public_key(f.read())
 
+def read_certificate(filename):
+    """Read a certificate from a file
+
+       This function reads an SSH certificate from a file. See the
+       function :func:`import_certificate` for information about the
+       formats supported.
+
+       :param string filename:
+           The file to read the certificate from.
+
+       :returns: An :class:`SSHCertificate` certificate
+
+    """
+
+    with open(filename, 'rb') as f:
+        return import_certificate(f.read())
+
 def read_private_key_list(filename, passphrase=None):
     """Read a list of private keys from a file
 
        This function reads a list of private keys from a file. See the
-       function import_private_key for information about the formats
-       supported. If any of the keys are encrypted, they must all be
-       encrypted with the same passphrase.
+       function :func:`import_private_key` for information about the
+       formats supported. If any of the keys are encrypted, they must
+       all be encrypted with the same passphrase.
 
        :param string filename:
            The file to read the keys from.
@@ -638,8 +952,8 @@ def read_public_key_list(filename):
     """Read a list of public keys from a file
 
        This function reads a list of public keys from a file. See the
-       function import_public_key for information about the formats
-       supported.
+       function :func:`import_public_key` for information about the
+       formats supported.
 
        :param string filename:
            The file to read the keys from.
@@ -663,8 +977,8 @@ def read_public_key_list(filename):
     elif stripped_key.startswith(b'---- '):
         lines = stripped_key.splitlines()
         while lines:
-            key, end = _decode_rfc4716(lines)
-            keys.append(key)
+            data, end = _decode_rfc4716(lines)
+            keys.append(decode_ssh_public_key(data))
             lines = lines[end:]
     elif data.startswith(b'\x30'):
         while data:
@@ -673,6 +987,38 @@ def read_public_key_list(filename):
             data = data[end:]
     else:
         for line in stripped_key.splitlines():
-            keys.append(_decode_openssh(line))
+            keys.append(decode_ssh_public_key(_decode_openssh(line)))
 
     return keys
+
+def read_certificate_list(filename):
+    """Read a list of certificates from a file
+
+       This function reads a list of SSH certificates from a file. See
+       the function :func:`import_certificate` for information about
+       the formats supported.
+
+       :param string filename:
+           The file to read the certificates from.
+
+       :returns: A list of :class:`SSHCertificate` certificates
+
+    """
+
+    with open(filename, 'rb') as f:
+        data = f.read()
+
+    certs = []
+
+    stripped_key = data.strip()
+    if stripped_key.startswith(b'---- '):
+        lines = stripped_key.splitlines()
+        while lines:
+            data, end = _decode_rfc4716(lines)
+            certs.append(decode_ssh_certificate(data))
+            lines = lines[end:]
+    else:
+        for line in stripped_key.splitlines():
+            certs.append(decode_ssh_certificate(_decode_openssh(line)))
+
+    return certs

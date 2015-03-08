@@ -16,6 +16,7 @@ import asyncio, socket
 
 from .channel import *
 from .forward import *
+from .logging import *
 
 
 class SSHListener(asyncio.AbstractServer):

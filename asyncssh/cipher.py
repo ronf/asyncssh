@@ -13,6 +13,8 @@
 """Symmetric key encryption handlers"""
 
 from .crypto import *
+from .logging import *
+
 
 _enc_algs = []
 _enc_params = {}

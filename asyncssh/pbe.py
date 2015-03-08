@@ -18,6 +18,8 @@ from os import urandom
 
 from .asn1 import *
 from .crypto import *
+from .logging import *
+
 
 _ES1_MD5_DES    = ObjectIdentifier('1.2.840.113549.1.5.3')
 _ES1_MD5_RC2    = ObjectIdentifier('1.2.840.113549.1.5.6')
