@@ -88,7 +88,8 @@ class SSHChannel(SSHPacketHandler):
 
         if self._close_waiters:
             for waiter in self._close_waiters:
-                waiter.set_result(None)
+                if not waiter.cancelled():
+                    waiter.set_result(None)
 
             self._close_waiters = []
 
@@ -241,7 +242,8 @@ class SSHChannel(SSHPacketHandler):
         self._send_state = 'open'
         self._recv_state = 'open'
 
-        self._open_waiter.set_result(packet)
+        if not self._open_waiter.cancelled():
+            self._open_waiter.set_result(packet)
         self._open_waiter = None
 
     def _process_open_failure(self, code, reason, lang):
@@ -355,7 +357,8 @@ class SSHChannel(SSHPacketHandler):
 
         if self._request_waiters:
             waiter = self._request_waiters.pop(0)
-            waiter.set_result(pkttype == MSG_CHANNEL_SUCCESS)
+            if not waiter.cancelled():
+                waiter.set_result(pkttype == MSG_CHANNEL_SUCCESS)
         else:
             raise DisconnectError(DISC_PROTOCOL_ERROR,
                                   'Unexpected channel response')
