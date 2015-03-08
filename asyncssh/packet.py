@@ -66,6 +66,16 @@ class SSHPacket:
         self._idx = 0
         self._len = len(packet)
 
+    def __bool__(self):
+        return self._idx != self._len
+
+    def check_end(self):
+        """Confirm that all of the data in the packet has been consumed"""
+
+        if self:
+            raise DisconnectError(DISC_PROTOCOL_ERROR,
+                                  'Unexpected data at end of packet')
+
     def get_consumed_payload(self):
         """Return the portion of the packet consumed so far"""
 
@@ -117,17 +127,10 @@ class SSHPacket:
         return int.from_bytes(self.get_string(), 'big')
 
     def get_namelist(self):
-        """Extract a comma-separate list of byte strings from the packet"""
+        """Extract a comma-separated list of byte strings from the packet"""
 
         namelist = self.get_string()
         return namelist.split(b',') if namelist else []
-
-    def check_end(self):
-        """Confirm that all of the data in the packet has been consumed"""
-
-        if self._idx != self._len:
-            raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Unexpected data at end of packet')
 
 
 class SSHPacketHandler:

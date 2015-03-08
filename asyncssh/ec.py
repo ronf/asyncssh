@@ -165,7 +165,7 @@ class _KexECDH(Kex):
     """Handler for elliptic curve Diffie-Hellman key exchange"""
 
     def __init__(self, alg, conn, hash, G, n):
-        Kex.__init__(self, alg, conn, hash)
+        super().__init__(alg, conn, hash)
 
         while True:
             self._d = randrange(2, n)
@@ -180,13 +180,13 @@ class _KexECDH(Kex):
         else:
             self._Qs = self._Q.encode()
 
-    def _compute_hash(self, server_host_key, k):
+    def _compute_hash(self, host_key_data, k):
         hash = self._hash()
         hash.update(String(self._conn._client_version))
         hash.update(String(self._conn._server_version))
         hash.update(String(self._conn._client_kexinit))
         hash.update(String(self._conn._server_kexinit))
-        hash.update(String(server_host_key.encode_ssh_public()))
+        hash.update(String(host_key_data))
         hash.update(String(self._Qc))
         hash.update(String(self._Qs))
         hash.update(MPInt(k))
@@ -207,16 +207,15 @@ class _KexECDH(Kex):
                                       'Invalid kex init msg')
         except ValueError:
             raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Invalid kex init msg')
+                                  'Invalid kex init msg') from None
 
-        server_host_key = self._conn._server_host_key
+        host_key, host_key_data = self._conn._get_server_host_key()
 
         k = P.x
-        h = self._compute_hash(server_host_key, k)
-        sig = server_host_key.sign(h)
+        h = self._compute_hash(host_key_data, k)
+        sig = host_key.sign(h)
 
-        self._conn._send_packet(Byte(MSG_KEX_ECDH_REPLY),
-                                String(server_host_key.encode_ssh_public()),
+        self._conn._send_packet(Byte(MSG_KEX_ECDH_REPLY), String(host_key_data),
                                 String(self._Qs), String(sig))
 
         self._conn._send_newkeys(k, h)
@@ -226,16 +225,12 @@ class _KexECDH(Kex):
             raise DisconnectError(DISC_PROTOCOL_ERROR,
                                   'Unexpected kex reply msg')
 
-        server_host_key = packet.get_string()
+        host_key_data = packet.get_string()
         self._Qs = packet.get_string()
         sig = packet.get_string()
         packet.check_end()
 
-        server_host_key = decode_ssh_public_key(server_host_key)
-
-        if not self._conn._verify_server_host_key(server_host_key):
-            raise DisconnectError(DISC_HOST_KEY_NOT_VERIFYABLE,
-                                  'Host key verification failed')
+        host_key = self._conn._validate_server_host_key(host_key_data)
 
         try:
             P = self._d * _PrimePoint.decode(self._Q.curve, self._Qs)
@@ -244,11 +239,11 @@ class _KexECDH(Kex):
                                       'Invalid kex reply msg')
         except ValueError:
             raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Invalid kex reply msg')
+                                  'Invalid kex reply msg') from None
 
         k = P.x
-        h = self._compute_hash(server_host_key, k)
-        if not server_host_key.verify(h, sig):
+        h = self._compute_hash(host_key_data, k)
+        if not host_key.verify(h, sig):
             raise DisconnectError(DISC_KEY_EXCHANGE_FAILED,
                                   'Key exchange hash mismatch')
 
@@ -263,11 +258,10 @@ class _KexECDH(Kex):
 class _ECKey(SSHKey):
     """Handler for elliptic curve public key encryption"""
 
-    algorithms = []
     pem_name = b'EC'
     pkcs8_oid = ObjectIdentifier('1.2.840.10045.2.1')
 
-    def __init__(self, domain, private_key=None, public_key=None):
+    def __init__(self, domain, private_key, public_key):
         algorithm, alg_id, alg_oid, hash, G, n = domain
 
         d = None
@@ -286,7 +280,7 @@ class _ECKey(SSHKey):
                 if not Q or n * Q:
                     raise KeyImportError('Invalid public key')
             except ValueError:
-                raise KeyImportError('Invalid public key')
+                raise KeyImportError('Invalid public key') from None
 
         if d:
             if Q:
@@ -314,6 +308,14 @@ class _ECKey(SSHKey):
         return hash(self._Q)
 
     @classmethod
+    def make_private(cls, domain, private_key, public_key):
+        return cls(domain, private_key, public_key)
+
+    @classmethod
+    def make_public(cls, domain, public_key):
+        return cls(domain, None, public_key)
+
+    @classmethod
     def decode_pkcs1_private(cls, key_data):
         if (isinstance(key_data, tuple) and len(key_data) > 2 and
             key_data[0] == 1 and isinstance(key_data[1], bytes) and
@@ -336,9 +338,9 @@ class _ECKey(SSHKey):
             if not domain:
                 raise KeyImportError('Unknown curve OID: %s' % oid)
 
-            return cls(domain, private_key, public_key)
+            return domain, private_key, public_key
         else:
-            raise KeyImportError('Invalid EC private key')
+            return None
 
     @classmethod
     def decode_pkcs1_public(cls, key_data):
@@ -369,9 +371,9 @@ class _ECKey(SSHKey):
             if not domain:
                 raise KeyImportError('Unknown curve OID: %s' % oid)
 
-            return cls(domain, private_key, public_key)
+            return domain, private_key, public_key
         else:
-            raise KeyImportError('Invalid EC private key')
+            return None
 
     @classmethod
     def decode_pkcs8_public(cls, alg_params, key_data):
@@ -380,27 +382,20 @@ class _ECKey(SSHKey):
             if not domain:
                 raise KeyImportError('Unknown curve OID: %s' % alg_params)
 
-            return cls(domain, None, key_data)
+            return domain, key_data
         else:
-            raise KeyImportError('Invalid EC public key')
+            return None
 
     @classmethod
     def decode_ssh_public(cls, packet):
-        try:
-            id = packet.get_string()
-            public_key = packet.get_string()
-            packet.check_end()
+        id = packet.get_string()
+        public_key = packet.get_string()
 
-            domain = _domain_map.get(id)
-            if not domain:
-                raise KeyImportError('Unknown curve name: %s' % id.decode())
+        domain = _domain_map.get(id)
+        if not domain:
+            raise KeyImportError('Unknown curve name: %s' % id.decode('ascii'))
 
-            return cls(domain, None, public_key)
-        except DisconnectError:
-            # Fall through and return a key import error
-            pass
-
-        raise KeyImportError('Invalid EC public key')
+        return domain, public_key
 
     def encode_private(self):
         return self._d.to_bytes((self._n.bit_length() + 7) // 8, 'big')
@@ -498,12 +493,12 @@ def register_prime_domain(id, oid, hash, p, a, b, Gx, Gy, n):
     G = _PrimePoint.construct(_PrimeCurve(p, a, b), Gx, Gy)
 
     if n * G:
-        raise ValueError('Invalid order for curve %s' % id.decode())
+        raise ValueError('Invalid order for curve %s' % id.decode('ascii'))
 
     pb = p % n
     for b in range(100):
         if pb == 1:
-            raise ValueError('Invalid order for curve %s' % id.decode())
+            raise ValueError('Invalid order for curve %s' % id.decode('ascii'))
 
         pb = (pb * p) % n
 
@@ -512,7 +507,10 @@ def register_prime_domain(id, oid, hash, p, a, b, Gx, Gy, n):
     _domain_map[id] = domain
     _domain_oid_map[oid] = domain
 
-    _ECKey.algorithms.append(algorithm)
+    register_public_key_alg(algorithm, _ECKey)
+
+    register_certificate_alg(algorithm + b'-cert-v01@openssh.com',
+                             _ECKey, SSHCertificateV01)
 
     register_kex_alg(b'ecdh-sha2-' + id, _KexECDH, hash, G, n)
 
@@ -539,5 +537,3 @@ register_prime_domain(b'nistp256', '1.2.840.10045.3.1.7', sha256,
                       0x6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296,
                       0x4fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5,
                       115792089210356248762697446949407573529996955224135760342422259061068512044369)
-
-register_public_key_alg(_ECKey)

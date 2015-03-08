@@ -19,8 +19,8 @@ Simple client
 The following code shows an example of a simple SSH client which logs into
 localhost and lists files in a directory named 'abc' under the user's home
 directory. The username provided is the logged in user, and the user's
-default SSH client certificates are presented during authentication. The
-server's host key is checked against the user's SSH known_hosts file and
+default SSH client keys or certificates are presented during authentication.
+The server's host key is checked against the user's SSH known_hosts file and
 the connection will fail if there's no entry for localhost there or if the
 key doesn't match.
 
@@ -284,11 +284,19 @@ a meessage when users authenticate successfully and start a shell.
       :literal:
       :start-line: 15
 
-To authenticate with client keys, the server would look something like
-the following. Client keys need to be copied into a a file named
+To authenticate with SSH client keys, the server would look something
+like the following. Client keys need to be placed in a file named
 :samp:`{username}.pub` in a directory called ``authorized_keys``.
 
    .. include:: ../examples/simple_keyed_server.py
+      :literal:
+      :start-line: 15
+
+To authenticate with SSH certificates, the server would look something
+like the following. Public keys to trust as certificate authorities need
+to be placed in a file called ``ssh_user_ca_keys``.
+
+   .. include:: ../examples/simple_cert_server.py
       :literal:
       :start-line: 15
 

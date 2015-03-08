@@ -34,6 +34,11 @@ Notable features include:
     - DSA, RSA, and ECDSA keys
     - PKCS#1/PKCS#8 DER and PEM, OpenSSH, and RFC4716 formats
     - Password-based encryption of private keys
+* Support for OpenSSH host and user certificates
+    - Version 00 certificates for DSA and RSA keys
+    - Version 01 certificates for DSA, RSA, and ECDSA keys
+    - Support for force-command and source-address critical options
+    - Support for permit-pty and permit-port-forwarding extensions
 * Support for a variety of ciphers (provided via PyCA or PyCrypto)
     - AES, ARC4, Blowfish, CAST, and Triple DES
 * Support for a variety of MAC algorithms

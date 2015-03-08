@@ -9,6 +9,7 @@
 #
 # Contributors:
 #     Ron Frederick - initial implementation, API, and documentation
+#     Michael Keller - bugfix
 
 """SSH stream handlers"""
 
@@ -220,12 +221,14 @@ class SSHStreamSession:
     def _unblock_read(self, datatype):
         waiter = self._read_waiter[datatype]
         if waiter:
-            waiter.set_result(None)
+            if not waiter.cancelled():
+                waiter.set_result(None)
             self._read_waiter[datatype] = None
 
     def _unblock_drain(self):
         for waiter in self._drain_waiters:
-            waiter.set_result(None)
+            if not waiter.cancelled():
+                waiter.set_result(None)
 
         self._drain_waiters = []
 
@@ -284,9 +287,12 @@ class SSHStreamSession:
                         raise recv_buf.pop(0)
 
                 l = len(recv_buf[0])
-                if n > 0 and l > n:
-                    data.append(recv_buf[0][:n])
-                    recv_buf[0] = recv_buf[0][n:]
+                if n > 0 and l >= n:
+                    if l > n:
+                        data.append(recv_buf[0][:n])
+                        recv_buf[0] = recv_buf[0][n:]
+                    else:
+                        data.append(recv_buf.pop(0))
                     self._recv_buf_len -= n
                     n = 0
                     break
