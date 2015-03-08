@@ -44,7 +44,7 @@ master_doc = 'index'
 
 # General information about the project.
 project = 'AsyncSSH'
-copyright = '2013-2014, ' + __author__
+copyright = '2013-2015, ' + __author__
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
@@ -101,7 +101,7 @@ html_theme = 'rftheme'
 # further.  For a list of options available for each theme, see the
 # documentation.
 html_theme_options = {
-    "sidebarwidth": 285,
+    "sidebarwidth": 305,
     "stickysidebar": "true"
 }
 

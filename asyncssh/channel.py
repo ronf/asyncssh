@@ -165,7 +165,7 @@ class SSHChannel(SSHPacketHandler):
                     data = data.decode(self._encoding)
                 except UnicodeDecodeError:
                     raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                          'Unicode decode error')
+                                          'Unicode decode error') from None
 
             self._session.data_received(data, datatype)
 
@@ -330,7 +330,7 @@ class SSHChannel(SSHPacketHandler):
             request = request.decode('ascii')
         except UnicodeDecodeError:
             raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Invalid channel request')
+                                  'Invalid channel request') from None
 
         name = '_process_' + request.replace('-', '_') + '_request'
         handler = getattr(self, name, None)
@@ -750,7 +750,7 @@ class SSHClientChannel(SSHChannel):
             lang = lang.decode('ascii')
         except UnicodeDecodeError:
             raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Invalid exit signal request')
+                                  'Invalid exit signal request') from None
 
         self._exit_signal = (signal, core_dumped, msg, lang)
         self._session.exit_signal_received(signal, core_dumped, msg, lang)
@@ -898,7 +898,11 @@ class SSHServerChannel(SSHChannel):
         try:
             self._term_type = term_type.decode('ascii')
         except UnicodeDecodeError:
-            raise DisconnectError(DISC_PROTOCOL_ERROR, 'Invalid pty request')
+            raise DisconnectError(DISC_PROTOCOL_ERROR,
+                                  'Invalid pty request') from None
+
+        if not self._conn.check_certificate_permission('permit-pty'):
+            return False
 
         self._term_size = (width, height, pixwidth, pixheight)
 
@@ -935,12 +939,28 @@ class SSHServerChannel(SSHChannel):
         self._env[name] = value
         return True
 
+    def _start_session(self, command=None, subsystem=None):
+        forced_command = self._conn.get_certificate_option('force-command')
+        if forced_command:
+            command = forced_command
+
+        if command is not None:
+            self._command = command
+            result = self._session.exec_requested(command)
+        elif subsystem is not None:
+            self._subsystem = subsystem
+            result = self._session.subsystem_requested(subsystem)
+        else:
+            result = self._session.shell_requested()
+
+        return result
+
     def _process_shell_request(self, packet):
         """Process a request to open a shell"""
 
         packet.check_end()
 
-        return self._session.shell_requested()
+        return self._start_session()
 
     def _process_exec_request(self, packet):
         """Process a request to execute a command"""
@@ -953,8 +973,7 @@ class SSHServerChannel(SSHChannel):
         except UnicodeDecodeError:
             return False
 
-        self._command = command
-        return self._session.exec_requested(command)
+        return self._start_session(command=command)
 
     def _process_subsystem_request(self, packet):
         """Process a request to open a subsystem"""
@@ -967,8 +986,7 @@ class SSHServerChannel(SSHChannel):
         except UnicodeDecodeError:
             return False
 
-        self._subsystem = subsystem
-        return self._session.subsystem_requested(subsystem)
+        return self._start_session(subsystem=subsystem)
 
     def _process_window_change_request(self, packet):
         """Process a request to change the window size"""

@@ -32,10 +32,12 @@ from .misc import BreakReceived, SignalReceived, TerminalSizeChanged
 
 from .pbe import KeyEncryptionError
 
-from .public_key import SSHKey, KeyImportError, KeyExportError
+from .public_key import SSHKey, SSHCertificate, KeyImportError, KeyExportError
 from .public_key import import_private_key, import_public_key
-from .public_key import read_private_key, read_public_key
+from .public_key import import_certificate
+from .public_key import read_private_key, read_public_key, read_certificate
 from .public_key import read_private_key_list, read_public_key_list
+from .public_key import read_certificate_list
 
 from .stream import SSHReader, SSHWriter
 
