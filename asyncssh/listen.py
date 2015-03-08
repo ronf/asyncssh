@@ -116,7 +116,8 @@ class SSHClientListener(SSHListener):
         self._conn = None
 
         for waiter in self._waiters:
-            waiter.set_result(None)
+            if not waiter.cancelled():
+                waiter.set_result(None)
 
     @asyncio.coroutine
     def wait_closed(self):

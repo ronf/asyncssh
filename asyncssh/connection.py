@@ -1081,7 +1081,8 @@ class SSHConnection(SSHPacketHandler):
             self._send_deferred_packets()
 
             self._owner.auth_completed()
-            self._auth_waiter.set_result(None)
+            if not self._auth_waiter.cancelled():
+                self._auth_waiter.set_result(None)
             self._auth_waiter = None
         else:
             raise DisconnectError(DISC_PROTOCOL_ERROR,
@@ -1131,7 +1132,8 @@ class SSHConnection(SSHPacketHandler):
 
         if self._global_request_waiters:
             waiter = self._global_request_waiters.pop(0)
-            waiter.set_result((pkttype, packet))
+            if not waiter.cancelled():
+                waiter.set_result((pkttype, packet))
         else:
             raise DisconnectError(DISC_PROTOCOL_ERROR,
                                   'Unexpected global response')
