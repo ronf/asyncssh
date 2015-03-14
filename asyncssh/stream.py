@@ -244,6 +244,10 @@ class SSHStreamSession:
         self._exception = exc
 
         if not self._eof_received:
+            if exc:
+                for datatype in self._read_waiter.keys():
+                    self._recv_buf[datatype].append(exc)
+
             self.eof_received()
 
         if self._write_paused:
