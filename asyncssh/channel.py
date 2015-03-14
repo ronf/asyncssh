@@ -731,7 +731,7 @@ class SSHClientChannel(SSHChannel):
     def _process_exit_status_request(self, packet):
         """Process a request to deliver exit status"""
 
-        status = packet.get_uint32()
+        status = packet.get_uint32() & 0xff
         packet.check_end()
 
         self._exit_status = status
@@ -1210,7 +1210,7 @@ class SSHServerChannel(SSHChannel):
         if self._send_state not in {'open', 'eof_pending', 'eof_sent'}:
             raise OSError('Channel not open')
 
-        self._send_request(b'exit-status', UInt32(status))
+        self._send_request(b'exit-status', UInt32(status & 0xff))
         self.close()
 
     def exit_with_signal(self, signal, core_dumped=False,
