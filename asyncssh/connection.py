@@ -23,6 +23,7 @@ from .cipher import *
 from .compression import *
 from .forward import *
 from .kex import *
+from .known_hosts import parse_known_hosts
 from .listen import *
 from .logging import *
 from .mac import *
@@ -1418,7 +1419,7 @@ class SSHClientConnection(SSHConnection):
         else:
             if server_host_keys is () and server_ca_keys is ():
                 server_host_keys, server_ca_keys = \
-                    self._parse_known_hosts(host, port)
+                    parse_known_hosts(host, port)
             else:
                 server_host_keys = self._load_public_key_list(server_host_keys)
                 server_ca_keys = self._load_public_key_list(server_ca_keys)
@@ -1473,56 +1474,6 @@ class SSHClientConnection(SSHConnection):
             self._auth_waiter = None
 
         super()._cleanup(exc)
-
-    def _parse_known_hosts(self, host, port):
-        server_host_keys = []
-        server_ca_keys = []
-
-        try:
-            lines = open(os.path.join(os.environ['HOME'], '.ssh',
-                                      'known_hosts'), 'rb').readlines()
-        except OSError:
-            return []
-
-        host = host.encode()
-
-        for line in lines:
-            dest_hosts, key = line.split(None, 1)
-
-            if dest_hosts == b'@cert-authority':
-                dest_hosts, key = key.split(None, 1)
-                ca = True
-            else:
-                ca = False
-
-            match = False
-            dest_hosts = dest_hosts.split(b',')
-            for dest_host in dest_hosts:
-                if dest_host.startswith(b'[') and b']:' in dest_host:
-                    dest_host, dest_port = dest_host[1:].split(b']:', 1)
-                    try:
-                        dest_port = int(dest_port)
-                    except ValueError:
-                        continue
-                else:
-                    dest_port = 0
-
-                if fnmatch(host, dest_host) and dest_port in (0, port):
-                    match = True
-                    break
-
-            if match:
-                try:
-                    key = import_public_key(key)
-
-                    if ca:
-                        server_ca_keys.append(key)
-                    else:
-                        server_host_keys.append(key)
-                except KeyImportError:
-                    """Move on to the next key in the file"""
-
-        return server_host_keys, server_ca_keys
 
     def _get_server_host_key_algs(self):
         """Return the list of acceptable server host key algorithms"""
