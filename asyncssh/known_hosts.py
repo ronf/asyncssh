@@ -3,7 +3,7 @@ Helper classes and functions for parsing openssh known_hosts file.
 """
 
 import os.path
-from binascii import a2b_base64, b2a_base64
+from binascii import a2b_base64
 from fnmatch import fnmatch
 from hashlib import sha1
 from hmac import HMAC
@@ -149,7 +149,6 @@ def parse_known_hosts(host, port, *, known_hosts_file=None):
         lines = open(known_hosts_file, 'rb').readlines()
     except OSError:
         return [], []
-
 
     DEFAULT_PORT = 22
     hostname = host.encode()
