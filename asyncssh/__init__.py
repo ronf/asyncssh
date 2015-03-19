@@ -42,4 +42,4 @@ from .public_key import read_certificate_list
 from .stream import SSHReader, SSHWriter
 
 # Import these explicitly to trigger register calls in them
-from . import curve25519, ec, rsa, dsa, dh
+from . import curve25519, ed25519, ec, rsa, dsa, dh

@@ -13,8 +13,16 @@
 """SSH asymmetric encryption handlers"""
 
 import binascii, ipaddress, time
+from os import urandom
+
+try:
+    import bcrypt
+    _bcrypt_available = True
+except ImportError:
+    _bcrypt_available = False
 
 from .asn1 import *
+from .cipher import *
 from .logging import *
 from .misc import *
 from .packet import *
@@ -32,11 +40,15 @@ _pkcs8_oid_map = {}
 CERT_TYPE_USER = 1
 CERT_TYPE_HOST = 2
 
-def _wrap_base64(data):
-    """Break a Base64 value into multiple lines, each 64 characters wide."""
+_OPENSSH_KEY_V1 = b'openssh-key-v1\0'
+_OPENSSH_SALT_LEN = 16
+_OPENSSH_WRAP_LEN = 70
+
+def _wrap_base64(data, wrap=64):
+    """Break a Base64 value into multiple lines."""
 
     data = binascii.b2a_base64(data)[:-1]
-    return b'\n'.join(data[i:i+64] for i in range(0, len(data), 64)) + b'\n'
+    return b'\n'.join(data[i:i+wrap] for i in range(0, len(data), wrap)) + b'\n'
 
 
 class KeyImportError(ValueError):
@@ -61,8 +73,8 @@ class KeyExportError(ValueError):
 class SSHKey:
     """Parent class which holds an asymmetric encryption key"""
 
-    def export_private_key(self, format, passphrase=None, cipher='aes256',
-                           hash='sha256', pbe_version=2):
+    def export_private_key(self, format, passphrase=None, cipher='aes256-cbc',
+                           hash='sha256', pbe_version=2, rounds=16):
         """Export a private key in the requested format
 
            This function returns this object's private key encoded in the
@@ -71,16 +83,26 @@ class SSHKey:
 
            Available formats include:
 
-               pkcs1-der, pkcs1-pem, pkcs8-der, pkcs8-pem
+               pkcs1-der, pkcs1-pem, pkcs8-der, pkcs8-pem, openssh
 
-           Encryption is supported in pkcs1-pem, pkcs8-der, and pkcs8-pem
-           formats. For pkcs1-pem, only the cipher can be specified. The
-           hash and PBE version are ignored.
+           Encryption is supported in pkcs1-pem, pkcs8-der, pkcs8-pem,
+           and openssh formats. For pkcs1-pem, only the cipher can be
+           specified. For pkcs8-der and pkcs-8, cipher,  hash and PBE
+           version can be specified. For openssh, cipher and rounds
+           can be specified.
 
-           Available ciphers include:
+           Available ciphers for pkcs1-pem are:
 
-               aes128, aes192, aes256, bf, cast128, des, des2, des3,
-               rc2-40, rc2-64, rc2-128, rc4-40, rc4-128
+               aes128-cbc, aes192-cbc, aes256-cbc, des-cbc, des3-cbc
+
+           Available ciphers for pkcs8-der and pkcs8-pem are:
+
+               aes128-cbc, aes192-cbc, aes256-cbc, blowfish-cbc,
+               cast128-cbc, des-cbc, des2-cbc, des3-cbc, rc2-40-cbc,
+               rc2-64-cbc, rc2-128-cbc, rc4-40, rc4-128
+
+           Available ciphers for openssh format include the following
+           :ref:`encryption algorithms <EncryptionAlgs>`.
 
            Available hashes include:
 
@@ -91,7 +113,8 @@ class SSHKey:
            Not all combinations of cipher, hash, and version are supported.
 
            The default cipher is aes256. In the pkcs8 formats, the default
-           hash is sha256 and default version is PBES2.
+           hash is sha256 and default version is PBES2. In openssh format,
+           the default number of rounds is 16.
 
            :param string format:
                The format to export the key in.
@@ -103,6 +126,8 @@ class SSHKey:
                The hash to use for private key encryption.
            :param integer pbe_version: (optional)
                The PBE version to use for private key encryption.
+           :param integer rounds: (optional)
+               The number of KDF rounds to apply to the passphrase.
 
         """
 
@@ -148,6 +173,62 @@ class SSHKey:
                         b'-----END ' + type + b'-----\n')
 
             return data
+        elif format == 'openssh':
+            check = urandom(4)
+            nkeys = 1
+            comment = b''
+
+            data = b''.join((check, check, self.encode_ssh_private(),
+                             String(comment)))
+
+            if passphrase is not None:
+                if not _bcrypt_available:
+                    raise KeyExportError('OpenSSH private key encryption '
+                                         'requires bcrypt')
+
+                try:
+                    alg = cipher.encode('ascii')
+                    key_size, iv_size, block_size, gcm = \
+                        get_encryption_params(alg)
+                except (KeyError, UnicodeEncodeError):
+                    raise KeyEncryptionError('Unknown cipher: %s' %
+                                                 cipher) from None
+
+                kdf = b'bcrypt'
+                salt = urandom(_OPENSSH_SALT_LEN)
+                kdf_data = b''.join((String(salt), UInt32(rounds)))
+
+                key = bcrypt.kdf(passphrase.encode('utf-8'), salt,
+                                 key_size + iv_size, rounds)
+
+                cipher = get_cipher(alg, key[:key_size], key[key_size:])
+                block_size = max(block_size, 8)
+            else:
+                cipher = None
+                alg = b'none'
+                kdf = b'none'
+                kdf_data = b''
+                block_size = 8
+                mac = b''
+
+            pad = len(data) % block_size
+            if pad:
+                data = data + bytes(range(1, block_size + 1 - pad))
+
+            if cipher:
+                if gcm:
+                    data, mac = cipher.encrypt_and_sign(data, b'')
+                else:
+                    data, mac = cipher.encrypt(data), b''
+
+            data = b''.join((_OPENSSH_KEY_V1, String(alg), String(kdf),
+                             String(kdf_data), UInt32(nkeys),
+                             String(self.encode_ssh_public()),
+                             String(data), mac))
+
+            return (b'-----BEGIN OPENSSH PRIVATE KEY-----\n' +
+                    _wrap_base64(data, _OPENSSH_WRAP_LEN) +
+                    b'-----END OPENSSH PRIVATE KEY-----\n')
         else:
             raise KeyExportError('Unknown export format')
 
@@ -454,8 +535,8 @@ def _decode_pkcs1_public(pem_name, key_data):
 def _decode_pkcs8_private(key_data):
     """Decode a PKCS#8 format private key"""
 
-    if (isinstance(key_data, tuple) and len(key_data) == 3 and
-        key_data[0] == 0 and isinstance(key_data[1], tuple) and
+    if (isinstance(key_data, tuple) and len(key_data) >= 3 and
+        key_data[0] in (0, 1) and isinstance(key_data[1], tuple) and
         len(key_data[1]) == 2 and isinstance(key_data[2], bytes)):
         alg, alg_params = key_data[1]
 
@@ -502,6 +583,93 @@ def _decode_pkcs8_public(key_data):
             raise KeyImportError('Unknown PKCS#8 algorithm')
     else:
         raise KeyImportError('Invalid PKCS#8 public key')
+
+def _decode_openssh_private(data, passphrase):
+    """Decode an OpenSSH format private key"""
+
+    try:
+        if not data.startswith(_OPENSSH_KEY_V1):
+            raise KeyImportError('Unrecognized OpenSSH private key type')
+
+        data = data[len(_OPENSSH_KEY_V1):]
+        packet = SSHPacket(data)
+
+        cipher = packet.get_string()
+        kdf = packet.get_string()
+        kdf_data = packet.get_string()
+        nkeys = packet.get_uint32()
+        public_key = packet.get_string()
+        key_data = packet.get_string()
+        mac = packet.get_remaining_payload()
+
+        if nkeys != 1:
+            raise KeyImportError('Invalid OpenSSH private key')
+
+        if cipher != b'none':
+            if not _bcrypt_available:
+                raise KeyEncryptionError('OpenSSH private key encryption '
+                                         'requires bcrypt')
+
+            if passphrase is None:
+                raise KeyEncryptionError('Passphrase must be specified to '
+                                         'import encrypted private keys')
+
+            try:
+                key_size, iv_size, block_size, gcm = \
+                    get_encryption_params(cipher)
+            except KeyError:
+                raise KeyEncryptionError('Unknown cipher: %s' %
+                                             cipher) from None
+
+            packet = SSHPacket(kdf_data)
+            salt = packet.get_string()
+            rounds = packet.get_uint32()
+            packet.check_end()
+
+            key = bcrypt.kdf(passphrase.encode('utf-8'), salt,
+                             key_size + iv_size, rounds)
+
+            cipher = get_cipher(cipher, key[:key_size], key[key_size:])
+
+            if gcm:
+                key_data = cipher.decrypt_and_verify(key_data, b'', mac)
+                mac = b''
+            else:
+                key_data = cipher.decrypt(key_data)
+
+            block_size = max(block_size, 8)
+        else:
+            block_size = 8
+
+        if mac:
+            raise KeyEncryptionError('Invalid OpenSSH private key')
+
+        packet = SSHPacket(key_data)
+
+        check1 = packet.get_uint32()
+        check2 = packet.get_uint32()
+        if check1 != check2:
+            raise KeyImportError('Invalid OpenSSH private key')
+
+        alg = packet.get_string()
+        handler = _public_key_alg_map.get(alg)
+        if not handler:
+            raise KeyImportError('Unknown OpenSSH private key algorithm')
+
+        key_params = handler.decode_ssh_private(packet)
+        comment = packet.get_string()
+        pad = packet.get_remaining_payload()
+
+        if len(pad) >= block_size or pad != bytes(range(1, len(pad) + 1)):
+            raise KeyImportError('Invalid OpenSSH private key')
+
+        if not key_params:
+            raise KeyImportError('Invalid %s private key' %
+                                     handler.pem_name.decode('ascii'))
+
+        return handler.make_private(*key_params)
+    except DisconnectError:
+        raise KeyImportError('Invalid OpenSSH private key')
 
 def _decode_der_private(data, passphrase):
     """Decode a DER format private key"""
@@ -611,6 +779,9 @@ def _decode_pem_private(lines, passphrase):
     """Decode a PEM format private key"""
 
     pem_name, headers, data, end = _decode_pem(lines, b'PRIVATE KEY')
+
+    if pem_name == b'OPENSSH':
+        return _decode_openssh_private(data, passphrase), end
 
     if headers.get(b'Proc-Type') == b'4,ENCRYPTED':
         if passphrase is None:
@@ -727,9 +898,11 @@ def register_public_key_alg(algorithm, handler):
     _public_key_alg_map[algorithm] = handler
     _public_key_algs.append(algorithm)
 
-    _pem_map[handler.pem_name] = handler
+    if hasattr(handler, 'pem_name'):
+        _pem_map[handler.pem_name] = handler
 
-    _pkcs8_oid_map[handler.pkcs8_oid] = handler
+    if hasattr(handler, 'pkcs8_oid'):
+        _pkcs8_oid_map[handler.pkcs8_oid] = handler
 
 def register_certificate_alg(algorithm, key_handler, cert_handler):
     _certificate_alg_map[algorithm] = (key_handler, cert_handler)
@@ -766,7 +939,7 @@ def decode_ssh_public_key(data):
                                          alg.decode('ascii'))
         else:
             raise KeyImportError('Unknown key algorithm: %s' %
-                                     alg.decode('ascii'))
+                                     alg.decode('ascii', errors='replace'))
     except DisconnectError:
         raise KeyImportError('Invalid public key') from None
 
@@ -782,7 +955,7 @@ def decode_ssh_certificate(data):
             return cert_handler(packet, alg, key_handler)
         else:
             raise KeyImportError('Unknown certificate algorithm: %s' %
-                                     alg.decode('ascii'))
+                                     alg.decode('ascii', errors='replace'))
     except DisconnectError:
         raise KeyImportError('Invalid certificate') from None
 
@@ -790,8 +963,8 @@ def import_private_key(data, passphrase=None):
     """Import a private key
 
        This function imports a private key encoded in PKCS#1 or PKCS#8 DER
-       or PEM format. Encrypted private keys can be imported by specifying
-       the passphrase needed to decrypt them.
+       or PEM format or OpenSSH format. Encrypted private keys can be
+       imported by specifying the passphrase needed to decrypt them.
 
        :param bytes data:
            The data to import.

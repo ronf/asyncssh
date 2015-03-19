@@ -83,6 +83,17 @@ class _RSAKey(SSHKey):
             return None
 
     @classmethod
+    def decode_ssh_private(cls, packet):
+        n = packet.get_mpint()
+        e = packet.get_mpint()
+        d = packet.get_mpint()
+        iqmp = packet.get_mpint()
+        p = packet.get_mpint()
+        q = packet.get_mpint()
+
+        return n, e, d, p, q
+
+    @classmethod
     def decode_ssh_public(cls, packet):
         e = packet.get_mpint()
         n = packet.get_mpint()
@@ -107,6 +118,15 @@ class _RSAKey(SSHKey):
 
     def encode_pkcs8_public(self):
         return None, der_encode(self.encode_pkcs1_public())
+
+    def encode_ssh_private(self):
+        if not self._private:
+            raise KeyExportError('Key is not private')
+
+        return b''.join((String(self.algorithm), MPInt(self._key.n),
+                         MPInt(self._key.e), MPInt(self._key.d),
+                         MPInt(mod_inverse(self._key.q, self._key.p)),
+                         MPInt(self._key.p), MPInt(self._key.q)))
 
     def encode_ssh_public(self):
         return b''.join((String(self.algorithm), MPInt(self._key.e),

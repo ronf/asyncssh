@@ -24,6 +24,10 @@ from .public_key import *
 
 _domain_map = {}
 _domain_oid_map = {}
+_domain_param_map = {}
+
+# OID for EC prime fields
+PRIME_FIELD = ObjectIdentifier('1.2.840.10045.1.1')
 
 # SSH KEX ECDH message values
 MSG_KEX_ECDH_INIT  = 30
@@ -39,6 +43,14 @@ class _PrimeCurve:
         self.b = b
         self.keylen = (p.bit_length() + 7) // 8
 
+    def __eq__(self, other):
+        return (isinstance(other, self.__class__) and
+                self.p == other.p and
+                self.a % self.p == other.a % other.p and
+                self.b % self.p == other.b % other.p)
+
+    def __hash__(self):
+        return hash((self.p, self.a % self.p, self.b % self.p))
 
 class _PrimePoint:
     """A point on an elliptic curve over a prime finite field F(p)"""
@@ -268,7 +280,10 @@ class _ECKey(SSHKey):
         Q = None
 
         if private_key:
-            d = int.from_bytes(private_key, 'big')
+            if isinstance(private_key, bytes):
+                d = int.from_bytes(private_key, 'big')
+            else:
+                d = private_key
 
             if not 0 < d <  n:
                 raise KeyImportError('Invalid private key')
@@ -308,6 +323,36 @@ class _ECKey(SSHKey):
         return hash(self._Q)
 
     @classmethod
+    def _lookup_domain(cls, alg_params):
+        if isinstance(alg_params, ObjectIdentifier):
+            domain = _domain_oid_map.get(alg_params)
+            if not domain:
+                raise KeyImportError('Unknown EC curve OID: %s' % alg_params)
+        elif (isinstance(alg_params, tuple) and len(alg_params) >= 5 and
+              alg_params[0] == 1 and isinstance(alg_params[1], tuple) and
+              len(alg_params[1]) == 2 and alg_params[1][0] == PRIME_FIELD and
+              isinstance(alg_params[2], tuple) and len(alg_params[2]) >= 2 and
+              isinstance(alg_params[3], bytes) and
+              isinstance(alg_params[2][0], bytes) and
+              isinstance(alg_params[2][1], bytes) and
+              isinstance(alg_params[4], int)):
+            p = alg_params[1][1]
+            a = int.from_bytes(alg_params[2][0], 'big')
+            b = int.from_bytes(alg_params[2][1], 'big')
+
+            G = _PrimePoint.decode(_PrimeCurve(p, a, b), alg_params[3])
+            n = alg_params[4]
+
+            domain = _domain_map[b'nistp256']
+            domain = _domain_param_map.get((G, n))
+            if not domain:
+                raise KeyImportError('Unknown EC curve parameters')
+        else:
+            raise KeyImportError('Invalid EC curve parameters')
+
+        return domain
+
+    @classmethod
     def make_private(cls, domain, private_key, public_key):
         return cls(domain, private_key, public_key)
 
@@ -320,9 +365,8 @@ class _ECKey(SSHKey):
         if (isinstance(key_data, tuple) and len(key_data) > 2 and
             key_data[0] == 1 and isinstance(key_data[1], bytes) and
             isinstance(key_data[2], TaggedDERObject) and
-            key_data[2].tag == 0 and
-            isinstance(key_data[2].value, ObjectIdentifier)):
-            oid = key_data[2].value
+            key_data[2].tag == 0):
+            alg_params = key_data[2].value
             private_key = key_data[1]
 
             if (len(key_data) > 3 and
@@ -334,9 +378,7 @@ class _ECKey(SSHKey):
             else:
                 public_key = None
 
-            domain = _domain_oid_map.get(oid)
-            if not domain:
-                raise KeyImportError('Unknown curve OID: %s' % oid)
+            domain = cls._lookup_domain(alg_params)
 
             return domain, private_key, public_key
         else:
@@ -353,10 +395,8 @@ class _ECKey(SSHKey):
         except ASN1DecodeError:
             key_data = None
 
-        if (isinstance(alg_params, ObjectIdentifier) and
-            isinstance(key_data, tuple) and len(key_data) > 1 and
+        if (isinstance(key_data, tuple) and len(key_data) > 1 and
             key_data[0] == 1 and isinstance(key_data[1], bytes)):
-            oid = alg_params
             private_key = key_data[1]
 
             if (isinstance(key_data[2], TaggedDERObject) and
@@ -367,9 +407,7 @@ class _ECKey(SSHKey):
             else:
                 public_key = None
 
-            domain = _domain_oid_map.get(oid)
-            if not domain:
-                raise KeyImportError('Unknown curve OID: %s' % oid)
+            domain = cls._lookup_domain(alg_params)
 
             return domain, private_key, public_key
         else:
@@ -385,6 +423,18 @@ class _ECKey(SSHKey):
             return domain, key_data
         else:
             return None
+
+    @classmethod
+    def decode_ssh_private(cls, packet):
+        id = packet.get_string()
+        public_key = packet.get_string()
+        private_key = packet.get_mpint()
+
+        domain = _domain_map.get(id)
+        if not domain:
+            raise KeyImportError('Unknown curve name: %s' % id.decode('ascii'))
+
+        return domain, private_key, public_key
 
     @classmethod
     def decode_ssh_public(cls, packet):
@@ -422,6 +472,13 @@ class _ECKey(SSHKey):
 
     def encode_pkcs8_public(self):
         return self._alg_oid, self._Q.encode()
+
+    def encode_ssh_private(self):
+        if not self._d:
+            raise KeyExportError('Key is not private')
+
+        return b''.join((String(self.algorithm), String(self._alg_id),
+                         String(self._Q.encode()), MPInt(self._d)))
 
     def encode_ssh_public(self):
         return b''.join((String(self.algorithm), String(self._alg_id),
@@ -506,6 +563,7 @@ def register_prime_domain(id, oid, hash, p, a, b, Gx, Gy, n):
     domain = (algorithm, id, oid, hash, G, n)
     _domain_map[id] = domain
     _domain_oid_map[oid] = domain
+    _domain_param_map[(G, n)] = domain
 
     register_public_key_alg(algorithm, _ECKey)
 

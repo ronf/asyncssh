@@ -41,7 +41,7 @@ _USERAUTH_SERVICE   = b'ssh-userauth'
 _CONNECTION_SERVICE = b'ssh-connection'
 
 # Default file names in .ssh directory to read private keys from
-_DEFAULT_KEY_FILES = ('id_ecdsa', 'id_rsa', 'id_dsa')
+_DEFAULT_KEY_FILES = ('id_ed25519', 'id_ecdsa', 'id_rsa', 'id_dsa')
 
 # Default rekey parameters
 _DEFAULT_REKEY_BYTES    = 1 << 30       # 1 GiB
@@ -3342,9 +3342,10 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
            A list of keys which will be used to authenticate this client
            via public key authentication. If no client keys are specified,
            an attempt will be made to load them from the files
-           :file:`.ssh/id_ecdsa`, :file:`.ssh/id_rsa`, and 
-           :file:`.ssh/id_dsa`, with optional certificates loaded
-           from the files :file:`.ssh/id_ecdsa-cert.pub`,
+           :file:`.ssh/id_ed25519`, :file:`.ssh/id_ecdsa`,
+           :file:`.ssh/id_rsa`, and :file:`.ssh/id_dsa`,
+           with optional certificates loaded from the files
+           :file:`.ssh/id_ed25519-cert.pub`, :file:`.ssh/id_ecdsa-cert.pub`,
            :file:`.ssh/id_rsa-cert.pub`, and :file:`.ssh/id_dsa-cert.pub`.
            If this argument is explicitly set to ``None``, client public
            key authentication will not be performed.

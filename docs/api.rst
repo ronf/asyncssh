@@ -610,9 +610,9 @@ certificate from, a byte string to import it from, an already loaded
 :class:`SSHCertificate`, or ``None`` if no certificate should be
 associated with the key.
 
-When a single filename is provided in as a value in the list, an
-attempt is made to load a private key from that file and a certificate
-from a file constructed by appending '-cert.pub' to the end of the name.
+When a filename is provided as a value in the list, an attempt is
+made to load a private key from that file and a certificate from a
+file constructed by appending '-cert.pub' to the end of the name.
 
 Encrypted private keys can be loaded by making an explicit call to
 :func:`import_private_key` or :func:`read_private_key` with the
@@ -775,6 +775,7 @@ Public key & certificate algorithms
 The following are the public key and certificate algorithms currently
 supported by AsyncSSH:
 
+  | ssh-ed25519-cert-v01\@openssh.com
   | ecdsa-sha2-nistp521-cert-v01\@openssh.com
   | ecdsa-sha2-nistp384-cert-v01\@openssh.com
   | ecdsa-sha2-nistp256-cert-v01\@openssh.com
@@ -782,6 +783,7 @@ supported by AsyncSSH:
   | ssh-rsa-cert-v00\@openssh.com
   | ssh-dss-cert-v01\@openssh.com
   | ssh-dss-cert-v00\@openssh.com
+  | ssh-ed25519
   | ecdsa-sha2-nistp521
   | ecdsa-sha2-nistp384
   | ecdsa-sha2-nistp256

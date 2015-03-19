@@ -114,6 +114,7 @@ class _KexCurve25519DH(Kex):
 
 try:
     import curve25519
-    register_kex_alg(b'curve25519-sha256@libssh.org', _KexCurve25519DH, sha256)
 except ImportError:
     pass
+else:
+    register_kex_alg(b'curve25519-sha256@libssh.org', _KexCurve25519DH, sha256)

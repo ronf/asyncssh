@@ -91,6 +91,16 @@ class _DSAKey(SSHKey):
             return None
 
     @classmethod
+    def decode_ssh_private(cls, packet):
+        p = packet.get_mpint()
+        q = packet.get_mpint()
+        g = packet.get_mpint()
+        y = packet.get_mpint()
+        x = packet.get_mpint()
+
+        return p, q, g, y, x
+
+    @classmethod
     def decode_ssh_public(cls, packet):
         p = packet.get_mpint()
         q = packet.get_mpint()
@@ -117,6 +127,14 @@ class _DSAKey(SSHKey):
 
     def encode_pkcs8_public(self):
         return (self._key.p, self._key.q, self._key.g), der_encode(self._key.y)
+
+    def encode_ssh_private(self):
+        if not self._private:
+            raise KeyExportError('Key is not private')
+
+        return b''.join((String(self.algorithm), MPInt(self._key.p),
+                         MPInt(self._key.q), MPInt(self._key.g),
+                         MPInt(self._key.y), MPInt(self._key.x)))
 
     def encode_ssh_public(self):
         return b''.join((String(self.algorithm), MPInt(self._key.p),
