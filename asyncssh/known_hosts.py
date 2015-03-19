@@ -77,7 +77,7 @@ class HashedEntry:
 
     |1| - is a HASH_MAGIC
     b64_salt - is base64 encoded salt for sha1 hmac
-    b64_hosthash - is base64 hosthash
+    b64_hosthash - is base64 encoded hosthash
     """
 
     MAGIC = b'|1|'
