@@ -278,7 +278,7 @@ Simple server
 
 The following code shows an example of a simple SSH server which listens
 for connections on port 8022, does password authentication, and prints
-a meessage when users authenticate successfully and start a shell.
+a message when users authenticate successfully and start a shell.
 
    .. include:: ../examples/simple_server.py
       :literal:
