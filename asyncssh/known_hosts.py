@@ -85,7 +85,7 @@ class HashedEntry:
     def __init__(self, data):
         salt_and_hosthash = data[len(self.MAGIC):].split(b'|')
         if len(salt_and_hosthash) != 2:
-            raise ValueError("Can't parse hashed entry:", data)
+            raise ValueError("Can't parse hashed entry: %s" % data)
         b64_salt, b64_hosthash = salt_and_hosthash
         self._salt = a2b_base64(b64_salt)
         self._hosthash = a2b_base64(b64_hosthash)
@@ -119,7 +119,7 @@ def _extract_hostname_entry_and_key(line):
     num_splits = 2 if marker else 1
     elements = line.split(None, num_splits)
     if len(elements) != num_splits + 1:
-        raise ValueError("Can't process known_hosts entry:", line)
+        raise ValueError("Can't process known_hosts entry: %s" % line)
     hostnames, key = elements[1 if marker else 0:]
     if hostnames.startswith(b'|'):
         entry = HashedEntry(hostnames)
