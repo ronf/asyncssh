@@ -1,0 +1,10 @@
+.*.swp
+MANIFEST
+__pycache__/
+*.py[cod]
+
+asyncssh.egg-info
+build/
+dist/
+docs/Makefile
+docs/_build/
