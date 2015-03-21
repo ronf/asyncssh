@@ -43,7 +43,8 @@ Notable features include:
     - Support for permit-pty and permit-port-forwarding extensions
 * Support for a variety of ciphers
     - AES, ARC4, Blowfish, CAST, and Triple DES via PyCA or PyCrypto
-    - AES GCM defined by OpenSSH
+    - AES GCM as defined by OpenSSH
+    - Chacha20-Poly1305 as defined by OpenSSH, if libnacl is installed
 * Support for a variety of MAC algorithms
     - HMAC with MD5, SHA1, SHA256, and SHA512
 * Support for gzip compression

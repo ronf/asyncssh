@@ -28,7 +28,7 @@ def register_encryption_alg(alg, cipher_name, mode_name, key_size,
     if cipher:
         _enc_algs.append(alg)
         _enc_params[alg] = (key_size, cipher.iv_size,
-                            cipher.block_size, mode_name == 'gcm')
+                            cipher.block_size, cipher.mode_name)
         _enc_ciphers[alg] = (cipher, initial_bytes)
 
 def get_encryption_algs():
@@ -57,6 +57,8 @@ def get_cipher(alg, key, iv=None):
     cipher, initial_bytes = _enc_ciphers[alg]
     return cipher.new(key, iv, initial_bytes)
 
+register_encryption_alg(b'chacha20-poly1305@openssh.com', 'chacha20-poly1305',
+                        'chacha', 64, 0)
 register_encryption_alg(b'aes256-ctr',             'aes',      'ctr', 32, 0)
 register_encryption_alg(b'aes192-ctr',             'aes',      'ctr', 24, 0)
 register_encryption_alg(b'aes128-ctr',             'aes',      'ctr', 16, 0)

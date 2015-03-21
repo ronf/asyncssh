@@ -16,6 +16,8 @@ import importlib
 
 from .cipher import register_cipher, lookup_cipher
 
+from . import chacha
+
 pyca_available = importlib.find_loader('cryptography')
 pycrypto_available =  importlib.find_loader('Crypto')
 

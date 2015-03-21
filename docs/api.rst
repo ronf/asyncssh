@@ -798,6 +798,7 @@ Encryption algorithms
 
 The following are the encryption algorithms currently supported by AsyncSSH:
 
+  | chacha20-poly1305\@openssh.com
   | aes256-ctr
   | aes192-ctr
   | aes128-ctr
