@@ -628,10 +628,11 @@ class SSHChannel(SSHPacketHandler):
 
         """
 
-        self._recv_paused = False
+        if self._recv_paused:
+            self._recv_paused = False
 
-        while self._recv_buf and not self._recv_paused:
-            self._deliver_data(*self._recv_buf.pop(0))
+            while self._recv_buf and not self._recv_paused:
+                self._deliver_data(*self._recv_buf.pop(0))
 
 
 class SSHClientChannel(SSHChannel):

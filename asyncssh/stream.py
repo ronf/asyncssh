@@ -301,6 +301,9 @@ class SSHStreamSession:
                 self._recv_buf_len -= l
                 n -= l
 
+            if self._recv_buf_len < self._limit:
+                self._chan.resume_reading()
+
             if n == 0 or (data and not exact) or self._eof_received:
                 break
 
@@ -331,11 +334,18 @@ class SSHStreamSession:
                     data.append(recv_buf[0][:idx])
                     recv_buf[0] = recv_buf[0][idx:]
                     self._recv_buf_len -= idx
+
+                    if self._recv_buf_len < self._limit:
+                        self._chan.resume_reading()
+
                     return buf.join(data)
 
                 l = len(recv_buf[0])
                 data.append(recv_buf.pop(0))
                 self._recv_buf_len -= l
+
+            if self._recv_buf_len < self._limit:
+                self._chan.resume_reading()
 
             if self._eof_received:
                 return buf.join(data)
