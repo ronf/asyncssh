@@ -23,6 +23,7 @@ from .cipher import *
 from .compression import *
 from .forward import *
 from .kex import *
+from .known_hosts import *
 from .listen import *
 from .logging import *
 from .mac import *
@@ -32,9 +33,6 @@ from .public_key import *
 from .saslprep import *
 from .stream import *
 
-
-# SSH default port
-_DEFAULT_PORT = 22
 
 # SSH service names
 _USERAUTH_SERVICE   = b'ssh-userauth'
@@ -1418,9 +1416,9 @@ class SSHClientConnection(SSHConnection):
     """
 
     def __init__(self, client_factory, loop, host, port, server_host_keys,
-                 server_ca_keys, client_keys, username, password, kex_algs,
-                 encryption_algs, mac_algs, compression_algs, rekey_bytes,
-                 rekey_seconds, auth_waiter):
+                 server_ca_keys, revoked_server_keys, username, client_keys,
+                 password, kex_algs, encryption_algs, mac_algs,
+                 compression_algs, rekey_bytes, rekey_seconds, auth_waiter):
         super().__init__(client_factory, loop, kex_algs, encryption_algs,
                          mac_algs, compression_algs, rekey_bytes,
                          rekey_seconds, server=False)
@@ -1430,15 +1428,19 @@ class SSHClientConnection(SSHConnection):
         if server_host_keys is None:
             self._server_host_keys = None
             self._server_ca_keys = None
+            self._revoked_server_keys = None
             self._server_host_key_algs = get_public_key_algs() + \
                                          get_certificate_algs()
         else:
-            if server_host_keys is () and server_ca_keys is ():
-                server_host_keys, server_ca_keys = \
-                    self._parse_known_hosts(host, port)
+            if server_host_keys is () and server_ca_keys is () and \
+               revoked_server_keys is ():
+                server_host_keys, server_ca_keys, revoked_server_keys = \
+                    match_known_hosts(host, port)
             else:
                 server_host_keys = self._load_public_key_list(server_host_keys)
                 server_ca_keys = self._load_public_key_list(server_ca_keys)
+                revoked_server_keys = \
+                    self._load_public_key_list(revoked_server_keys)
 
             self._server_host_keys = set()
             self._server_host_key_algs = []
@@ -1447,10 +1449,16 @@ class SSHClientConnection(SSHConnection):
             if server_ca_keys:
                 self._server_host_key_algs.extend(get_certificate_algs())
 
+            self._revoked_server_keys = set(revoked_server_keys)
+
             for key in server_host_keys:
                 self._server_host_keys.add(key)
                 if key.algorithm not in self._server_host_key_algs:
                     self._server_host_key_algs.append(key.algorithm)
+
+        if not self._server_host_key_algs:
+            raise DisconnectError(DISC_HOST_KEY_NOT_VERIFYABLE,
+                                  'No trusted server host keys available')
 
         if username is None:
             username = getpass.getuser()
@@ -1491,56 +1499,6 @@ class SSHClientConnection(SSHConnection):
 
         super()._cleanup(exc)
 
-    def _parse_known_hosts(self, host, port):
-        server_host_keys = []
-        server_ca_keys = []
-
-        try:
-            lines = open(os.path.join(os.environ['HOME'], '.ssh',
-                                      'known_hosts'), 'rb').readlines()
-        except OSError:
-            return []
-
-        host = host.encode()
-
-        for line in lines:
-            dest_hosts, key = line.split(None, 1)
-
-            if dest_hosts == b'@cert-authority':
-                dest_hosts, key = key.split(None, 1)
-                ca = True
-            else:
-                ca = False
-
-            match = False
-            dest_hosts = dest_hosts.split(b',')
-            for dest_host in dest_hosts:
-                if dest_host.startswith(b'[') and b']:' in dest_host:
-                    dest_host, dest_port = dest_host[1:].split(b']:', 1)
-                    try:
-                        dest_port = int(dest_port)
-                    except ValueError:
-                        continue
-                else:
-                    dest_port = 0
-
-                if fnmatch(host, dest_host) and dest_port in (0, port):
-                    match = True
-                    break
-
-            if match:
-                try:
-                    key = import_public_key(key)
-
-                    if ca:
-                        server_ca_keys.append(key)
-                    else:
-                        server_host_keys.append(key)
-                except KeyImportError:
-                    """Move on to the next key in the file"""
-
-        return server_host_keys, server_ca_keys
-
     def _get_server_host_key_algs(self):
         """Return the list of acceptable server host key algorithms"""
 
@@ -1554,6 +1512,11 @@ class SSHClientConnection(SSHConnection):
         except KeyImportError:
             pass
         else:
+            if self._revoked_server_keys is not None and \
+               cert.signing_key in self._revoked_server_keys:
+                raise DisconnectError(DISC_HOST_KEY_NOT_VERIFYABLE,
+                                      'Revoked server CA key')
+
             if self._server_ca_keys is not None and \
                cert.signing_key not in self._server_ca_keys:
                 raise DisconnectError(DISC_HOST_KEY_NOT_VERIFYABLE,
@@ -1572,6 +1535,11 @@ class SSHClientConnection(SSHConnection):
         except KeyImportError:
             pass
         else:
+            if self._revoked_server_keys is not None and \
+               key in self._revoked_server_keys:
+                raise DisconnectError(DISC_HOST_KEY_NOT_VERIFYABLE,
+                                      'Revoked server host key')
+
             if self._server_host_keys is not None and \
                key not in self._server_host_keys:
                 raise DisconnectError(DISC_HOST_KEY_NOT_VERIFYABLE,
@@ -3291,11 +3259,12 @@ class SSHServer:
 
 
 @asyncio.coroutine
-def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
+def create_connection(client_factory, host, port=DEFAULT_PORT, *,
                       loop=None, family=0, flags=0, local_addr=None,
-                      server_host_keys=(), server_ca_keys=(), client_keys=(),
-                      username=None, password=None, kex_algs=(),
-                      encryption_algs=(), mac_algs=(), compression_algs=(),
+                      server_host_keys=(), server_ca_keys=(),
+                      revoked_server_keys=(), username=None, client_keys=(),
+                      password=None, kex_algs=(), encryption_algs=(),
+                      mac_algs=(), compression_algs=(),
                       rekey_bytes=_DEFAULT_REKEY_BYTES,
                       rekey_seconds=_DEFAULT_REKEY_SECONDS):
     """Create an SSH client connection
@@ -3352,6 +3321,9 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
            A list of public keys which will be accepted as a certificate
            authority allowed to sign a host certificate provided by the
            server.
+       :param revoked_server_keys: (optional)
+           A list of public keys which should not be accepted as either
+           a host key or a certificate authority from the server.
        :param string username: (optional)
            Username to authenticate as on the server. If not specified,
            the currently logged in user on the local machine will be used.
@@ -3416,8 +3388,10 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
 
     conn_factory = lambda: SSHClientConnection(client_factory, loop, host,
                                                port, server_host_keys,
-                                               server_ca_keys, client_keys,
-                                               username, password, kex_algs,
+                                               server_ca_keys,
+                                               revoked_server_keys,
+                                               username, client_keys,
+                                               password, kex_algs,
                                                encryption_algs, mac_algs,
                                                compression_algs, rekey_bytes,
                                                rekey_seconds, auth_waiter)
@@ -3431,7 +3405,7 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
     return conn, conn._owner
 
 @asyncio.coroutine
-def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
+def create_server(server_factory, host=None, port=DEFAULT_PORT, *,
                   loop=None, family=0, flags=socket.AI_PASSIVE, backlog=100,
                   reuse_address=None, server_host_keys, client_ca_keys=(),
                   kex_algs=(), encryption_algs=(), mac_algs=(),
