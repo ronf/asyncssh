@@ -1420,6 +1420,13 @@ class SSHClientConnection(SSHConnection):
             if server_host_keys is () and server_ca_keys is ():
                 server_host_keys, server_ca_keys = \
                     parse_known_hosts(host, port)
+                # Try to match OpenSSH behavior and look for
+                # host without port
+                if (not server_host_keys and
+                    not server_ca_keys and
+                    port != _DEFAULT_PORT):
+                    server_host_keys, server_ca_keys = \
+                        parse_known_hosts(host, _DEFAULT_PORT)
             else:
                 server_host_keys = self._load_public_key_list(server_host_keys)
                 server_ca_keys = self._load_public_key_list(server_ca_keys)
