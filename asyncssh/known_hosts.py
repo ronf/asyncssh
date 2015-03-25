@@ -25,13 +25,19 @@ class HostnamePattern:
     """
 
     def __init__(self, pattern):
-        self._pattern = pattern
+        # Escape square brackets with square brackets
+        # fnmatch style :)
+        escaped_pattern = b''
+        for b in pattern:
+            b = bytes([b])
+            if b in (b'[', b']'):
+                escaped_pattern += b'[' + b + b']'
+            else:
+                escaped_pattern += b
+        self._pattern = escaped_pattern
 
     def matches(self, hostname):
-        if hostname.startswith(b'['):
-            return self._pattern == hostname
-        else:
-            return fnmatch(hostname, self._pattern)
+        return fnmatch(hostname, self._pattern)
 
 
 class PlainEntry:
