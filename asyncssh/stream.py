@@ -304,7 +304,7 @@ class SSHStreamSession:
             if self._recv_buf_len < self._limit:
                 self._chan.resume_reading()
 
-            if n == 0 or (data and not exact) or self._eof_received:
+            if n == 0 or (n > 0 and data and not exact) or self._eof_received:
                 break
 
             yield from self._block_read(datatype)
