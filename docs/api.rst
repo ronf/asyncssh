@@ -635,6 +635,26 @@ to import it from, or an already loaded :class:`SSHKey` public key.
 See the function :func:`import_public_key` for the list of supported
 public key formats.
 
+.. index:: Specifying known hosts
+.. _SpecifyingKnownHosts:
+
+Specifying known hosts
+----------------------
+
+Known hosts may be passed into AsyncSSH in a few different forms.
+The simplest option is to pass the name of a file containing a
+list of known hosts in OpenSSH known hosts format or a byte
+string containing data in this format. AsyncSSH supports both
+plain and hashed host entries and both regular and negated host
+patterns in plain entries. It also supports the ``@cert-authority``
+and ``@revoked`` markers on entries.
+
+Alternately, known hosts can be passed into AsyncSSH as a sequence
+of three public key lists containing trusted host keys, trusted CA
+keys, and revoked keys which should no longer be trusted.
+See :ref:`SpecifyingPublicKeys` for the allowed form of each of
+these values.
+
 SSHKey
 ------
 

@@ -14,7 +14,7 @@
 
 """Parser for SSH known_hosts files"""
 
-import binascii, hmac, os
+import binascii, hmac
 from fnmatch import fnmatch
 from hashlib import sha1
 
@@ -71,18 +71,10 @@ class _HashedEntry:
         return hmac.new(self._salt, host, sha1).digest() == self._hosthash
 
 
-def _parse_entries(known_hosts=None):
-    if not known_hosts:
-        known_hosts = os.path.join(os.environ['HOME'], '.ssh', 'known_hosts')
-
-    try:
-        lines = open(known_hosts, 'rb').readlines()
-    except OSError:
-        return []
-
+def _parse_entries(known_hosts):
     entries = []
 
-    for line in lines:
+    for line in known_hosts.splitlines():
         line = line.strip()
         if not line or line.startswith(b'#'):
             continue
@@ -139,7 +131,7 @@ def _match_entries(entries, host, port=DEFAULT_PORT):
 
     return host_keys, ca_keys, revoked_keys
 
-def match_known_hosts(host, port=DEFAULT_PORT, known_hosts_file=None):
+def match_known_hosts(known_hosts, host, port=DEFAULT_PORT):
     """Match a host and port against a known_hosts file
 
        This function looks up a host and port in a file in OpenSSH
@@ -151,7 +143,10 @@ def match_known_hosts(host, port=DEFAULT_PORT, known_hosts_file=None):
 
     """
 
-    entries = _parse_entries(known_hosts_file)
+    if isinstance(known_hosts, str):
+        known_hosts = open(known_hosts, 'rb').read()
+
+    entries = _parse_entries(known_hosts)
 
     host_keys, ca_keys, revoked_keys = _match_entries(entries, host, port)
 

@@ -1415,28 +1415,34 @@ class SSHClientConnection(SSHConnection):
 
     """
 
-    def __init__(self, client_factory, loop, host, port, server_host_keys,
-                 server_ca_keys, revoked_server_keys, username, client_keys,
-                 password, kex_algs, encryption_algs, mac_algs,
-                 compression_algs, rekey_bytes, rekey_seconds, auth_waiter):
+    def __init__(self, client_factory, loop, host, port, known_hosts,
+                 username, client_keys, password, kex_algs, encryption_algs,
+                 mac_algs, compression_algs, rekey_bytes, rekey_seconds,
+                 auth_waiter):
         super().__init__(client_factory, loop, kex_algs, encryption_algs,
                          mac_algs, compression_algs, rekey_bytes,
                          rekey_seconds, server=False)
 
         self._host = host
 
-        if server_host_keys is None:
+        if known_hosts is None:
             self._server_host_keys = None
             self._server_ca_keys = None
             self._revoked_server_keys = None
             self._server_host_key_algs = get_public_key_algs() + \
                                          get_certificate_algs()
         else:
-            if server_host_keys is () and server_ca_keys is () and \
-               revoked_server_keys is ():
+            if not known_hosts:
+                known_hosts = os.path.join(os.environ['HOME'], '.ssh',
+                                           'known_hosts')
+
+            if isinstance(known_hosts, (str, bytes)):
                 server_host_keys, server_ca_keys, revoked_server_keys = \
-                    match_known_hosts(host, port)
+                    match_known_hosts(known_hosts, host, port)
             else:
+                server_host_keys, server_ca_keys, revoked_server_keys = \
+                    known_hosts
+
                 server_host_keys = self._load_public_key_list(server_host_keys)
                 server_ca_keys = self._load_public_key_list(server_ca_keys)
                 revoked_server_keys = \
@@ -3261,8 +3267,7 @@ class SSHServer:
 @asyncio.coroutine
 def create_connection(client_factory, host, port=DEFAULT_PORT, *,
                       loop=None, family=0, flags=0, local_addr=None,
-                      server_host_keys=(), server_ca_keys=(),
-                      revoked_server_keys=(), username=None, client_keys=(),
+                      known_hosts=(), username=None, client_keys=(),
                       password=None, kex_algs=(), encryption_algs=(),
                       mac_algs=(), compression_algs=(),
                       rekey_bytes=_DEFAULT_REKEY_BYTES,
@@ -3311,19 +3316,12 @@ def create_connection(client_factory, host, port=DEFAULT_PORT, *,
            The flags to pass to getaddrinfo() when looking up the host address
        :param local_addr: (optional)
            The host and port to bind the socket to before connecting
-       :param server_host_keys: (optional)
-           A list of public keys which will be accepted as a host key
-           from the server. If neither this nor ``server_ca_keys`` is
-           provided, host and CA keys for the server will be looked up
-           in the file :file:`.ssh/known_hosts`. If this is explicitly set
-           to ``None``, server host key validation will be disabled.
-       :param server_ca_keys: (optional)
-           A list of public keys which will be accepted as a certificate
-           authority allowed to sign a host certificate provided by the
-           server.
-       :param revoked_server_keys: (optional)
-           A list of public keys which should not be accepted as either
-           a host key or a certificate authority from the server.
+       :param known_hosts: (optional)
+           The list of keys which will be used to validate the server host
+           key presented during the SSH handshake. If this is not specified,
+           the keys will be looked up in the file :file:`.ssh/known_hosts`.
+           If this is explicitly set to ``None``, server host key validation
+           will be disabled.
        :param string username: (optional)
            Username to authenticate as on the server. If not specified,
            the currently logged in user on the local machine will be used.
@@ -3366,8 +3364,7 @@ def create_connection(client_factory, host, port=DEFAULT_PORT, *,
                      ``socket.AF_INET6``
        :type flags: flags to pass to :meth:`getaddrinfo() <socket.getaddrinfo>`
        :type local_addr: tuple of string and integer
-       :type server_host_keys: *see* :ref:`SpecifyingPublicKeys`
-       :type server_ca_keys: *see* :ref:`SpecifyingPublicKeys`
+       :type known_hosts: *see* :ref:`SpecifyingKnownHosts`
        :type client_keys: *see* :ref:`SpecifyingPrivateKeys`
        :type kex_algs: list of strings
        :type encryption_algs: list of strings
@@ -3387,11 +3384,8 @@ def create_connection(client_factory, host, port=DEFAULT_PORT, *,
     auth_waiter = asyncio.Future(loop=loop)
 
     conn_factory = lambda: SSHClientConnection(client_factory, loop, host,
-                                               port, server_host_keys,
-                                               server_ca_keys,
-                                               revoked_server_keys,
-                                               username, client_keys,
-                                               password, kex_algs,
+                                               port, known_hosts, username,
+                                               client_keys, password, kex_algs,
                                                encryption_algs, mac_algs,
                                                compression_algs, rekey_bytes,
                                                rekey_seconds, auth_waiter)
