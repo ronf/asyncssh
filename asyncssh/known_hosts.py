@@ -17,37 +17,72 @@
 import binascii, hmac
 from fnmatch import fnmatch
 from hashlib import sha1
+from ipaddress import ip_network
 
 from .constants import *
 from .public_key import *
 
 
-class _PlainEntry:
-    """A plaintext entry in a known_hosts file"""
+class _WildcardPattern:
+    """A host pattern with '*' and '?' wildcards"""
 
     def __init__(self, pattern):
-        self._patterns = []
-        self._negated_patterns = []
+        # We need to escape square brackets in host patterns if we
+        # want to use Python's fnmatch.
+        self._pattern = b''.join(b'[[]' if b == ord('[') else
+                                 b'[]]' if b == ord(']') else
+                                 bytes((b,)) for b in pattern)
+
+    def _match(self, value):
+        return fnmatch(value, self._pattern)
+
+    def matches(self, host, addr, ip):
+        return (host and self._match(host)) or (addr and self._match(addr))
+
+
+class _CIDRPattern:
+    """A literal IPv4/v6 address or CIDR-style subnet pattern"""
+
+    def __init__(self, pattern):
+        self._network = ip_network(pattern.decode('ascii'))
+
+    def matches(self, host, addr, ip):
+        return ip and (ip in self._network)
+
+
+class HostList:
+    """A plaintext host list entry in a known_hosts file"""
+
+    def __init__(self, pattern):
+        self._pos_patterns = []
+        self._neg_patterns = []
 
         for p in pattern.split(b','):
-            # We need to escape square brackets in host patterns if we
-            # want to use Python's fnmatch.
-            p = b''.join(b'[[]' if b == ord('[') else
-                         b'[]]' if b == ord(']') else
-                         bytes((b,)) for b in p)
-
             if p.startswith(b'!'):
-                self._negated_patterns.append(p[1:])
+                negate = True
+                p = p[1:]
             else:
-                self._patterns.append(p)
+                negate = False
 
-    def matches(self, host):
-        return (any(fnmatch(host, p) for p in self._patterns) and
-                not any(fnmatch(host, p) for p in self._negated_patterns))
+            try:
+                p = _CIDRPattern(p)
+            except (ValueError, UnicodeDecodeError):
+                p = _WildcardPattern(p)
+
+            if negate:
+                self._neg_patterns.append(p)
+            else:
+                self._pos_patterns.append(p)
+
+    def matches(self, host, addr, ip):
+        pos_match = any(p.matches(host, addr, ip) for p in self._pos_patterns)
+        neg_match = any(p.matches(host, addr, ip) for p in self._neg_patterns)
+
+        return pos_match and not neg_match
 
 
-class _HashedEntry:
-    """A hashed entry in a known_hosts file"""
+class HashedHost:
+    """A hashed host entry in a known_hosts file"""
 
     _HMAC_SHA1_MAGIC = b'1'
 
@@ -67,8 +102,11 @@ class _HashedEntry:
                                  magic.decode('ascii', errors='replace')) \
                       from None
 
-    def matches(self, host):
-        return hmac.new(self._salt, host, sha1).digest() == self._hosthash
+    def _match(self, value):
+        return hmac.new(self._salt, value, sha1).digest() == self._hosthash
+
+    def matches(self, host, addr, ip):
+        return (host and self._match(host)) or (addr and self._match(addr))
 
 
 def _parse_entries(known_hosts):
@@ -96,9 +134,9 @@ def _parse_entries(known_hosts):
                       from None
 
         if pattern.startswith(b'|'):
-            entry = _HashedEntry(pattern)
+            entry = HashedHost(pattern)
         else:
-            entry = _PlainEntry(pattern)
+            entry = HostList(pattern)
 
         entry.marker = marker
 
@@ -112,16 +150,24 @@ def _parse_entries(known_hosts):
 
     return entries
 
-def _match_entries(entries, host, port=DEFAULT_PORT):
+def _match_entries(entries, host, ip=None, port=DEFAULT_PORT):
+    addr = str(ip) if ip else ''
+
     if port != DEFAULT_PORT:
-        host = '[' + host + ']:' + str(port)
+        host = '[{}]:{}'.format(host, port)
+
+        if addr:
+            addr = '[{}]:{}'.format(addr, port)
+
+    host = host.encode('utf-8')
+    addr = addr.encode('utf-8')
 
     host_keys = []
     ca_keys = []
     revoked_keys = []
 
     for entry in entries:
-        if entry.matches(host.encode()):
+        if entry.matches(host, addr, ip):
             if entry.marker == b'revoked':
                 revoked_keys.append(entry.key)
             elif entry.marker == b'cert-authority':
@@ -131,12 +177,12 @@ def _match_entries(entries, host, port=DEFAULT_PORT):
 
     return host_keys, ca_keys, revoked_keys
 
-def match_known_hosts(known_hosts, host, port=DEFAULT_PORT):
-    """Match a host and port against a known_hosts file
+def match_known_hosts(known_hosts, host, ip, port=DEFAULT_PORT):
+    """Match a host, IP address, and port against a known_hosts file
 
-       This function looks up a host and port in a file in OpenSSH
-       ``known_hosts`` format and returns the host keys, CA keys,
-       and revoked keys which match.
+       This function looks up a host, IP address, and port in a file
+       in OpenSSH ``known_hosts`` format and returns the host keys,
+       CA keys, and revoked keys which match.
 
        If the port is not the default port and no match is found
        for it, the lookup is attempted again without a port number.
@@ -148,9 +194,9 @@ def match_known_hosts(known_hosts, host, port=DEFAULT_PORT):
 
     entries = _parse_entries(known_hosts)
 
-    host_keys, ca_keys, revoked_keys = _match_entries(entries, host, port)
+    host_keys, ca_keys, revoked_keys = _match_entries(entries, host, ip, port)
 
     if port != DEFAULT_PORT and not (host_keys or ca_keys):
-        host_keys, ca_keys, revoked_keys = _match_entries(entries, host)
+        host_keys, ca_keys, revoked_keys = _match_entries(entries, host, ip)
 
     return host_keys, ca_keys, revoked_keys

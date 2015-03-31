@@ -12,9 +12,10 @@
 
 """SSH connection handlers"""
 
-import asyncio, getpass, ipaddress, os, socket, time
+import asyncio, getpass, os, socket, time
 from collections import OrderedDict
 from fnmatch import fnmatch
+from ipaddress import ip_address
 
 from .auth import *
 from .channel import *
@@ -294,9 +295,25 @@ class SSHConnection(SSHPacketHandler):
     def connection_made(self, transport):
         self._transport = transport
 
+        peername = transport.get_extra_info('peername')
+        if peername:
+            peer_addr = peername[0]
+            peer_ip = ip_address(peer_addr)
+        else:
+            peer_addr = None
+            peer_ip = None
+
+        if self.is_client():
+            self._server_addr = peer_addr
+            self._server_ip = peer_ip
+        else:
+            self._client_addr = peer_addr
+            self._client_ip = peer_ip
+
         self._owner = self._protocol_factory()
         self._protocol_factory = None
 
+        self._connection_made()
         self._owner.connection_made(self)
         self._send_version()
 
@@ -1424,47 +1441,8 @@ class SSHClientConnection(SSHConnection):
                          rekey_seconds, server=False)
 
         self._host = host
-
-        if known_hosts is None:
-            self._server_host_keys = None
-            self._server_ca_keys = None
-            self._revoked_server_keys = None
-            self._server_host_key_algs = get_public_key_algs() + \
-                                         get_certificate_algs()
-        else:
-            if not known_hosts:
-                known_hosts = os.path.join(os.environ['HOME'], '.ssh',
-                                           'known_hosts')
-
-            if isinstance(known_hosts, (str, bytes)):
-                server_host_keys, server_ca_keys, revoked_server_keys = \
-                    match_known_hosts(known_hosts, host, port)
-            else:
-                server_host_keys, server_ca_keys, revoked_server_keys = \
-                    known_hosts
-
-                server_host_keys = self._load_public_key_list(server_host_keys)
-                server_ca_keys = self._load_public_key_list(server_ca_keys)
-                revoked_server_keys = \
-                    self._load_public_key_list(revoked_server_keys)
-
-            self._server_host_keys = set()
-            self._server_host_key_algs = []
-
-            self._server_ca_keys = set(server_ca_keys)
-            if server_ca_keys:
-                self._server_host_key_algs.extend(get_certificate_algs())
-
-            self._revoked_server_keys = set(revoked_server_keys)
-
-            for key in server_host_keys:
-                self._server_host_keys.add(key)
-                if key.algorithm not in self._server_host_key_algs:
-                    self._server_host_key_algs.append(key.algorithm)
-
-        if not self._server_host_key_algs:
-            raise DisconnectError(DISC_HOST_KEY_NOT_VERIFYABLE,
-                                  'No trusted server host keys available')
+        self._port = port
+        self._known_hosts = known_hosts
 
         if username is None:
             username = getpass.getuser()
@@ -1490,6 +1468,49 @@ class SSHClientConnection(SSHConnection):
         self._dynamic_remote_listeners = {}
 
         self._auth_waiter = auth_waiter
+
+    def _connection_made(self):
+        if self._known_hosts is None:
+            self._server_host_keys = None
+            self._server_ca_keys = None
+            self._revoked_server_keys = None
+            self._server_host_key_algs = get_public_key_algs() + \
+                                         get_certificate_algs()
+        else:
+            if not self._known_hosts:
+                self._known_hosts = os.path.join(os.environ['HOME'], '.ssh',
+                                                 'known_hosts')
+
+            if isinstance(self._known_hosts, (str, bytes)):
+                server_host_keys, server_ca_keys, revoked_server_keys = \
+                    match_known_hosts(self._known_hosts, self._host,
+                                      self._server_ip, self._port)
+            else:
+                server_host_keys, server_ca_keys, revoked_server_keys = \
+                    self._known_hosts
+
+                server_host_keys = self._load_public_key_list(server_host_keys)
+                server_ca_keys = self._load_public_key_list(server_ca_keys)
+                revoked_server_keys = \
+                    self._load_public_key_list(revoked_server_keys)
+
+            self._server_host_keys = set()
+            self._server_host_key_algs = []
+
+            self._server_ca_keys = set(server_ca_keys)
+            if server_ca_keys:
+                self._server_host_key_algs.extend(get_certificate_algs())
+
+            self._revoked_server_keys = set(revoked_server_keys)
+
+            for key in server_host_keys:
+                self._server_host_keys.add(key)
+                if key.algorithm not in self._server_host_key_algs:
+                    self._server_host_key_algs.append(key.algorithm)
+
+        if not self._server_host_key_algs:
+            raise DisconnectError(DISC_HOST_KEY_NOT_VERIFYABLE,
+                                  'No trusted server host keys available')
 
     def _cleanup(self, exc):
         if self._remote_listeners:
@@ -2106,6 +2127,9 @@ class SSHServerConnection(SSHConnection):
         self._cert_options = None
         self._kbdint_password_auth = False
 
+    def _connection_made(self):
+        pass
+
     def _get_server_host_key_algs(self):
         """Return the list of acceptable server host key algorithms
 
@@ -2176,8 +2200,7 @@ class SSHServerConnection(SSHConnection):
 
             allowed_addresses = self.get_certificate_option('source-address')
             if allowed_addresses:
-                addr = ipaddress.ip_address(self.get_extra_info('peername')[0])
-                if not any(addr in allowed for allowed in allowed_addresses):
+                if not any(self._client_ip in a for a in allowed_addresses):
                     return None
 
             return cert.key
