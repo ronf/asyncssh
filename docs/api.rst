@@ -247,6 +247,9 @@ SSHServerConnection
    | Server authentication methods                |
    +==============================================+
    | .. automethod:: send_auth_banner             |
+   | .. automethod:: set_authorized_keys          |
+   | .. automethod:: get_key_option               |
+   | .. automethod:: check_key_permission         |
    | .. automethod:: get_certificate_option       |
    | .. automethod:: check_certificate_permission |
    +----------------------------------------------+
@@ -635,26 +638,6 @@ to import it from, or an already loaded :class:`SSHKey` public key.
 See the function :func:`import_public_key` for the list of supported
 public key formats.
 
-.. index:: Specifying known hosts
-.. _SpecifyingKnownHosts:
-
-Specifying known hosts
-----------------------
-
-Known hosts may be passed into AsyncSSH in a few different forms.
-The simplest option is to pass the name of a file containing a
-list of known hosts in OpenSSH known hosts format or a byte
-string containing data in this format. AsyncSSH supports both
-plain and hashed host entries and both regular and negated host
-patterns in plain entries. It also supports the ``@cert-authority``
-and ``@revoked`` markers on entries.
-
-Alternately, known hosts can be passed into AsyncSSH as a sequence
-of three public key lists containing trusted host keys, trusted CA
-keys, and revoked keys which should no longer be trusted.
-See :ref:`SpecifyingPublicKeys` for the allowed form of each of
-these values.
-
 SSHKey
 ------
 
@@ -719,6 +702,64 @@ read_certificate_list
 
 .. index:: Exceptions
 .. _Exceptions:
+
+Known hosts
+===========
+
+.. index:: Specifying known hosts
+.. _SpecifyingKnownHosts:
+
+Specifying known hosts
+----------------------
+
+Known hosts may be passed into AsyncSSH via the ``known_hosts``
+argument to :func:`create_connection`. This value can be provided
+in a couple of different forms. The simplest option is to pass the
+name of a file containing a list of known hosts in OpenSSH known
+hosts format. AsyncSSH supports both plain and hashed host entries
+and both regular and negated host patterns in plain entries. It also
+supports the ``@cert-authority`` and ``@revoked`` markers on entries.
+
+Alternately, known hosts can be passed into AsyncSSH as a sequence
+of three public key lists containing trusted host keys, trusted CA
+keys, and revoked keys which should no longer be trusted.
+See :ref:`SpecifyingPublicKeys` for the allowed form of each of
+these values.
+
+Authorized keys
+===============
+
+.. index:: Specifying authorized keys
+.. _SpecifyingAuthorizedKeys:
+
+Specifying authorized keys
+--------------------------
+
+Authorized keys may be passed into AsyncSSH via the
+``authorized_client_keys`` argument to :func:`create_server` or by calling
+:meth:`set_authorized_keys() <SSHServerConnection.set_authorized_keys>`
+on the :class:`SSHServerConnection` from within the :meth:`begin_auth()
+<SSHServer.begin_auth>` method in :class:`SSHServer`.
+
+Authorized keys can be provided as either the name of a file to read
+the keys from or an :class:`SSHAuthorizedKeys` object which was previously
+imported from a string by calling :func:`import_authorized_keys` or read
+from a file by calling :func:`read_authorized_keys`.
+
+SSHAuthorizedKeys
+-----------------
+
+.. autoclass:: SSHAuthorizedKeys()
+
+import_authorized_keys
+----------------------
+
+.. autofunction:: import_authorized_keys
+
+read_authorized_keys
+--------------------
+
+.. autofunction:: read_authorized_keys
 
 Exceptions
 ==========

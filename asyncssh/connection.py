@@ -15,9 +15,9 @@
 import asyncio, getpass, os, socket, time
 from collections import OrderedDict
 from fnmatch import fnmatch
-from ipaddress import ip_address
 
 from .auth import *
+from .auth_keys import *
 from .channel import *
 from .constants import *
 from .cipher import *
@@ -34,6 +34,9 @@ from .public_key import *
 from .saslprep import *
 from .stream import *
 
+
+# SSH default port
+_DEFAULT_PORT = 22
 
 # SSH service names
 _USERAUTH_SERVICE   = b'ssh-userauth'
@@ -292,23 +295,26 @@ class SSHConnection(SSHPacketHandler):
         else:
             return [self._load_public_key(key) for key in keylist]
 
+    def _load_authorized_keys(self, authorized_keys):
+        """Load authorized keys list
+
+           This function loads authorized client keys. The authorized_keys
+           argument can be either a filename to load keys from or an
+           already imported :class:`SSHAuthorizedKeys` object
+           containing the authorized keys and their associated options.
+
+        """
+
+        if isinstance(authorized_keys, str):
+            return read_authorized_keys(authorized_keys)
+        else:
+            return authorized_keys
+
     def connection_made(self, transport):
         self._transport = transport
 
         peername = transport.get_extra_info('peername')
-        if peername:
-            peer_addr = peername[0]
-            peer_ip = ip_address(peer_addr)
-        else:
-            peer_addr = None
-            peer_ip = None
-
-        if self.is_client():
-            self._server_addr = peer_addr
-            self._server_ip = peer_ip
-        else:
-            self._client_addr = peer_addr
-            self._client_ip = peer_ip
+        self._peer_addr = peername[0] if peername else None
 
         self._owner = self._protocol_factory()
         self._protocol_factory = None
@@ -1441,7 +1447,7 @@ class SSHClientConnection(SSHConnection):
                          rekey_seconds, server=False)
 
         self._host = host
-        self._port = port
+        self._port = port if port != _DEFAULT_PORT else None
         self._known_hosts = known_hosts
 
         if username is None:
@@ -1484,7 +1490,7 @@ class SSHClientConnection(SSHConnection):
             if isinstance(self._known_hosts, (str, bytes)):
                 server_host_keys, server_ca_keys, revoked_server_keys = \
                     match_known_hosts(self._known_hosts, self._host,
-                                      self._server_ip, self._port)
+                                      self._peer_addr, self._port)
             else:
                 server_host_keys, server_ca_keys, revoked_server_keys = \
                     self._known_hosts
@@ -2091,7 +2097,7 @@ class SSHServerConnection(SSHConnection):
     """
 
     def __init__(self, server_factory, loop, server_host_keys,
-                 client_ca_keys=(), kex_algs=(), encryption_algs=(),
+                 authorized_client_keys=None, kex_algs=(), encryption_algs=(),
                  mac_algs=(), compression_algs=(),
                  rekey_bytes=_DEFAULT_REKEY_BYTES,
                  rekey_seconds=_DEFAULT_REKEY_SECONDS):
@@ -2121,9 +2127,10 @@ class SSHServerConnection(SSHConnection):
         if not self._server_host_keys:
             raise ValueError('No server host keys provided')
 
-        self._client_ca_keys = self._load_public_key_list(client_ca_keys)
+        self._client_keys = self._load_authorized_keys(authorized_client_keys)
 
         self._server_host_key = None
+        self._key_options = {}
         self._cert_options = None
         self._kbdint_password_auth = False
 
@@ -2169,7 +2176,7 @@ class SSHServerConnection(SSHConnection):
     def _public_key_auth_supported(self):
         """Return whether or not public key authentication is supported"""
 
-        return bool(self._client_ca_keys) or \
+        return bool(self._client_keys) or \
                self._owner.public_key_auth_supported()
 
     def _validate_public_key(self, username, key_data):
@@ -2182,38 +2189,57 @@ class SSHServerConnection(SSHConnection):
 
         """
 
+        options = None
+
         try:
             cert = decode_ssh_certificate(key_data)
         except KeyImportError:
             pass
         else:
-            if cert.signing_key not in self._client_ca_keys and \
+            if self._client_keys:
+                options = self._client_keys.validate(cert.signing_key,
+                                                     self._peer_addr,
+                                                     cert.principals, ca=True)
+
+            if options is None and \
                not self._owner.validate_ca_key(username, cert.signing_key):
                 return None
 
+            self._key_options = {} if options is None else options
+
+            if self.get_key_option('principals'):
+                username = None
+
             try:
                 cert.validate(CERT_TYPE_USER, username)
-            except ValueError as exc:
+            except ValueError:
                 return None
-
-            self._cert_options = cert.options
 
             allowed_addresses = self.get_certificate_option('source-address')
             if allowed_addresses:
-                if not any(self._client_ip in a for a in allowed_addresses):
+                ip = ip_address(self._peer_addr)
+                if not any(ip in network for network in allowed_addresses):
                     return None
+
+            self._cert_options = cert.options
 
             return cert.key
 
         try:
             key = decode_ssh_public_key(key_data)
         except KeyImportError:
-            pass
+            return None
         else:
-            if self._owner.validate_public_key(username, key):
-                return key
+            if self._client_keys:
+                options = self._client_keys.validate(key, self._peer_addr)
 
-        return None
+            if options is None and \
+               not self._owner.validate_public_key(username, key):
+                return None
+
+            self._key_options = {} if options is None else options
+
+            return key
 
     def _password_auth_supported(self):
         """Return whether or not password authentication is supported"""
@@ -2289,9 +2315,19 @@ class SSHServerConnection(SSHConnection):
             raise DisconnectError(DISC_PROTOCOL_ERROR,
                                   'Invalid channel open request') from None
 
-        if not self.check_certificate_permission('permit-port-forwarding'):
+        if not self.check_key_permission('port-forwarding') or \
+           not self.check_certificate_permission('port-forwarding'):
             raise ChannelOpenError(OPEN_ADMINISTRATIVELY_PROHIBITED,
                                    'Port forwarding not permitted')
+
+        permitted_opens = self.get_key_option('permitopen')
+
+        if permitted_opens and \
+           (dest_host, dest_port) not in permitted_opens and \
+           (dest_host, None) not in permitted_opens:
+            raise ChannelOpenError(OPEN_ADMINISTRATIVELY_PROHIBITED,
+                                   'Port forwarding not permitted to %s '
+                                   'port %s' % (dest_host, dest_port))
 
         result = self._owner.connection_requested(dest_host, dest_port,
                                                   orig_host, orig_port)
@@ -2328,7 +2364,8 @@ class SSHServerConnection(SSHConnection):
             raise DisconnectError(DISC_PROTOCOL_ERROR,
                                   'Invalid TCP forward request') from None
 
-        if not self.check_certificate_permission('permit-port-forwarding'):
+        if not self.check_key_permission('port-forwarding') or \
+           not self.check_certificate_permission('port-forwarding'):
             self._report_global_response(False)
             return
 
@@ -2418,12 +2455,114 @@ class SSHServerConnection(SSHConnection):
         lang = lang.encode('ascii')
         self._send_packet(Byte(MSG_USERAUTH_BANNER), String(msg), String(lang))
 
+    def set_authorized_keys(self, authorized_keys):
+        """Set the keys trusted for client public key authentication
+
+           This method can be called to set the trusted user and
+           CA keys for client public key authentication. It should
+           generally be called from the :meth:`begin_auth
+           <SSHServer.begin_auth>` method of :class:`SSHServer` to
+           set the appropriate keys for the user attempting to
+           authenticate.
+
+           :param authorized_keys:
+               The keys to trust for client public key authentication
+           :type authorized_keys: *see* :ref:`SpecifyingAuthorizedKeys`
+
+        """
+
+        self._client_keys = self._load_authorized_keys(authorized_keys)
+
+    def get_key_option(self, option, default=None):
+        """Return option from authorized_keys
+
+           If a client key or certificate was presented during authentication,
+           this method returns the value of the requested option in the
+           corresponding authorized_keys entry if it was set. Otherwise, it
+           returns the default value provided.
+
+           The following standard options are supported:
+
+               | command (string)
+               | environment (dictionary of name/value pairs)
+               | from (list of host patterns)
+               | permitopen (list of host/port tuples)
+               | principals (list of usernames)
+
+           Non-standard options are also supported and will return the
+           value ``True`` if the option is present without a value or
+           return a list of strings containing the values associated
+           with each occurrence of that option name. If the option is
+           not present, the specified default value is returned.
+
+           :param string option:
+               The name of the option to look up.
+           :param default:
+               The default value to return if the option is not present.
+
+           :returns: The value of the option in authorized_keys, if set
+
+        """
+
+        if self._key_options is not None:
+            return self._key_options.get(option, default)
+        else:
+            return default
+
+    def check_key_permission(self, permission):
+        """Check permissions in authorized_keys
+
+           If a client key or certificate was presented during
+           authentication, this method returns whether the specified
+           permission is allowed by the corresponding authorized_keys
+           entry. By default, all permissions are granted, but they
+           can be revoked by specifying an option starting with
+           'no-' without a value.
+
+           The following standard options are supported:
+
+               | X11-forwarding
+               | agent-forwarding
+               | port-forwarding
+               | pty
+               | user-rc
+
+           AsyncSSH internally enforces port-forwarding and pty
+           permissions but ignores the other values since it does
+           not implement those features.
+
+           Non-standard permissions can also be checked, as long as the
+           option follows the convention of starting with 'no-'.
+
+           :param string permission:
+               The name of the permission to check (without the 'no-').
+
+           :returns: A boolean indicating if the permission is granted.
+
+        """
+
+        if self._key_options is not None:
+            return not self._key_options.get('no-' + permission, False)
+        else:
+            return True
+
     def get_certificate_option(self, option, default=None):
         """Return option from user certificate
 
-           If a user certificate was presented during authentication, this
-           method returns the value of the requested option if it was set.
-           Otherwise, it returns the default value provided.
+           If a user certificate was presented during authentication,
+           this method returns the value of the requested option in
+           the certificate if it was set. Otherwise, it returns the
+           default value provided.
+
+           The following options are supported:
+
+               | force-command (string)
+               | source-address (list of CIDR-style IP network addresses)
+
+           :param string option:
+               The name of the option to look up.
+           :param default:
+               The default value to return if the option is not present.
 
            :returns: The value of the option in the user certificate, if set
 
@@ -2437,20 +2576,32 @@ class SSHServerConnection(SSHConnection):
     def check_certificate_permission(self, permission):
         """Check permissions in user certificate
 
-           If a user certificate was presented during authentication, this
-           method returns whether the specified permission was granted
-           in that certificate. Otherwise, it acts as if all permissions
-           are granted and returns ``True``.
+           If a user certificate was presented during authentication,
+           this method returns whether the specified permission was
+           granted in the certificate. Otherwise, it acts as if all
+           permissions are granted and returns ``True``.
+
+           The following permissions are supported:
+
+               | X11-forwarding
+               | agent-forwarding
+               | port-forwarding
+               | pty
+               | user-rc
+
+           AsyncSSH internally enforces port-forwarding and pty permissions
+           but ignores the other values since it does not implement those
+           features.
 
            :param string permission:
-               The name of the permission to check.
+               The name of the permission to check (without the 'permit-').
 
            :returns: A boolean indicating if the permission is granted.
 
         """
 
         if self._cert_options is not None:
-            return self._cert_options.get(permission, False)
+            return self._cert_options.get('permit-' + permission, False)
         else:
             return True
 
@@ -2925,14 +3076,20 @@ class SSHServer:
     def validate_public_key(self, username, key):
         """Return whether key is an authorized client key for this user
 
-           This method should return ``True`` if the specified key is a
-           valid client key for the user being authenticated. It must
-           be overridden by applications wishing to support client public
-           key authentication.
+           Basic key-based client authentication can be supported by
+           passing authorized keys in the ``authorized_client_keys``
+           argument of :func:`create_server`, or by calling
+           :meth:`set_authorized_keys
+           <SSHServerConnection.set_authorized_keys>` on the server
+           connection from the :meth:`begin_auth` method. However, for
+           more flexibility in matching on the allowed set of keys, this
+           method can be implemented by the application to do the
+           matching itself. It should return ``True`` if the specified
+           key is a valid client key for the user being authenticated.
 
            This method may be called multiple times with different keys
-           provided by the client. Applications should determine the list
-           of valid client keys in the :meth:`begin_auth` method so that
+           provided by the client. Applications should precompute as
+           much as possible in the :meth:`begin_auth` method so that
            this function can quickly return whether the key provided is
            in the list.
 
@@ -2960,21 +3117,21 @@ class SSHServer:
     def validate_ca_key(self, username, key):
         """Return whether key is an authorized CA key for this user
 
-           Basic certificate-based client authentication can be supported
-           by passing a list of trusted CA public keys in the
-           ``client_ca_keys`` argument of :func:`create_server`. However,
-           this list of CAs will be trusted for all users, and no
-           checking can be performed on a per-user basis. This method
-           provides additional flexibility, where the username can be
-           validated and the list of CA keys to trust can vary on a
-           per-user basis.
-
-           This method should return ``True`` if the specified key is a
-           valid certificate authority key for the user being authenticated.
+           Basic key-based client authentication can be supported by
+           passing authorized keys in the ``authorized_client_keys``
+           argument of :func:`create_server`, or by calling
+           :meth:`set_authorized_keys
+           <SSHServerConnection.set_authorized_keys>` on the server
+           connection from the :meth:`begin_auth` method. However, for
+           more flexibility in matching on the allowed set of keys, this
+           method can be implemented by the application to do the
+           matching itself. It should return ``True`` if the specified
+           key is a valid certificate authority key for the user being
+           authenticated.
 
            This method may be called multiple times with different keys
-           provided by the client. Applications should determine the list
-           of valid CA keys in the :meth:`begin_auth` method so that
+           provided by the client. Applications should precompute as
+           much as possible in the :meth:`begin_auth` method so that
            this function can quickly return whether the key provided is
            in the list.
 
@@ -3288,7 +3445,7 @@ class SSHServer:
 
 
 @asyncio.coroutine
-def create_connection(client_factory, host, port=DEFAULT_PORT, *,
+def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
                       loop=None, family=0, flags=0, local_addr=None,
                       known_hosts=(), username=None, client_keys=(),
                       password=None, kex_algs=(), encryption_algs=(),
@@ -3422,11 +3579,12 @@ def create_connection(client_factory, host, port=DEFAULT_PORT, *,
     return conn, conn._owner
 
 @asyncio.coroutine
-def create_server(server_factory, host=None, port=DEFAULT_PORT, *,
+def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
                   loop=None, family=0, flags=socket.AI_PASSIVE, backlog=100,
-                  reuse_address=None, server_host_keys, client_ca_keys=(),
-                  kex_algs=(), encryption_algs=(), mac_algs=(),
-                  compression_algs=(), rekey_bytes=_DEFAULT_REKEY_BYTES,
+                  reuse_address=None, server_host_keys,
+                  authorized_client_keys=None, kex_algs=(),
+                  encryption_algs=(), mac_algs=(), compression_algs=(),
+                  rekey_bytes=_DEFAULT_REKEY_BYTES,
                   rekey_seconds=_DEFAULT_REKEY_SECONDS):
     """Create an SSH server
 
@@ -3462,8 +3620,8 @@ def create_server(server_factory, host=None, port=DEFAULT_PORT, *,
            A list of private keys and optional certificates which can be
            used by the server as a host key. This argument must be
            specified.
-       :param client_ca_keys: (optional)
-           A list of certificate authority public keys which should be
+       :param authorized_client_keys: (optional)
+           A list of authorized user and CA public keys which should be
            trusted for certifcate-based client public key authentication.
        :param kex_algs: (optional)
            A list of allowed key exchange algorithms in the SSH handshake,
@@ -3488,7 +3646,7 @@ def create_server(server_factory, host=None, port=DEFAULT_PORT, *,
                      ``socket.AF_INET6``
        :type flags: flags to pass to :meth:`getaddrinfo() <socket.getaddrinfo>`
        :type server_host_keys: *see* :ref:`SpecifyingPrivateKeys`
-       :type client_ca_keys: *see* :ref:`SpecifyingPublicKeys`
+       :type authorized_client_keys: *see* :ref:`SpecifyingAuthorizedKeys`
        :type kex_algs: list of strings
        :type encryption_algs: list of strings
        :type mac_algs: list of strings
@@ -3502,7 +3660,8 @@ def create_server(server_factory, host=None, port=DEFAULT_PORT, *,
         loop = asyncio.get_event_loop()
 
     conn_factory = lambda: SSHServerConnection(server_factory, loop,
-                                               server_host_keys, client_ca_keys,
+                                               server_host_keys,
+                                               authorized_client_keys,
                                                kex_algs, encryption_algs,
                                                mac_algs, compression_algs,
                                                rekey_bytes, rekey_seconds)

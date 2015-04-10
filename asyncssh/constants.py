@@ -12,9 +12,6 @@
 
 """SSH constants"""
 
-# Default TCP port for SSH
-DEFAULT_PORT                        = 22
-
 # Default language for error messages
 DEFAULT_LANG                        = 'en-US'
 

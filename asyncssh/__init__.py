@@ -16,6 +16,9 @@ from .version import __author__, __author_email__, __url__, __version__
 
 from .constants import *
 
+from .auth_keys import SSHAuthorizedKeys
+from .auth_keys import import_authorized_keys, read_authorized_keys
+
 from .channel import SSHClientChannel, SSHServerChannel, SSHTCPChannel
 from .channel import SSHClientSession, SSHServerSession, SSHTCPSession
 

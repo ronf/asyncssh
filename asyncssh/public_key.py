@@ -12,7 +12,7 @@
 
 """SSH asymmetric encryption handlers"""
 
-import binascii, ipaddress, time
+import binascii, time
 from os import urandom
 
 try:
@@ -338,6 +338,7 @@ class SSHCertificate:
         self.key = key_handler.make_public(*key_params)
         self.data = packet.get_consumed_payload()
         self.options = {}
+        self.principals = []
         self.signing_key = signing_key
 
         self._serial = serial
@@ -345,14 +346,13 @@ class SSHCertificate:
         self._key_id = key_id
 
         packet = SSHPacket(valid_principals)
-        self._valid_principals = []
         while packet:
             try:
                 principal = packet.get_string().decode('utf-8')
             except UnicodeDecodeError:
                 raise KeyImportError('Invalid characters in principal name')
 
-            self._valid_principals.append(principal)
+            self.principals.append(principal)
 
         self._valid_after = valid_after
         self._valid_before = valid_before
@@ -376,7 +376,7 @@ class SSHCertificate:
     @staticmethod
     def _parse_source_address(packet):
         try:
-            return [ipaddress.ip_network(addr.decode('ascii'))
+            return [ip_network(addr.decode('ascii'))
                         for addr in packet.get_namelist()]
         except (UnicodeDecodeError, ValueError):
             raise KeyImportError('Invalid source address') from None
@@ -424,7 +424,7 @@ class SSHCertificate:
         if now >= self._valid_before:
             raise ValueError('Certificate expired')
 
-        if self._valid_principals and principal not in self._valid_principals:
+        if principal and self.principals and principal not in self.principals:
             raise ValueError('Certificate principal mismatch')
 
 
@@ -966,14 +966,21 @@ def import_private_key(data, passphrase=None):
        or PEM format or OpenSSH format. Encrypted private keys can be
        imported by specifying the passphrase needed to decrypt them.
 
-       :param bytes data:
+       :param data:
            The data to import.
        :param string passphrase: (optional)
            The passphrase to use to decrypt the key.
+       :type data: bytes or ASCII string
 
        :returns: An :class:`SSHKey` private key
 
     """
+
+    if isinstance(data, str):
+        try:
+            data = data.encode('ascii')
+        except UnicodeEncodeError:
+            raise KeyImportError('Invalid encoding for private key') from None
 
     stripped_key = data.lstrip()
     if stripped_key.startswith(b'-----'):
@@ -989,12 +996,19 @@ def import_public_key(data):
        This function imports a public key encoded in OpenSSH, RFC4716, or
        PKCS#1 or PKCS#8 DER or PEM format.
 
-       :param bytes data:
+       :param data:
            The data to import.
+       :type data: bytes or ASCII string
 
        :returns: An :class:`SSHKey` public key
 
     """
+
+    if isinstance(data, str):
+        try:
+            data = data.encode('ascii')
+        except UnicodeEncodeError:
+            raise KeyImportError('Invalid encoding for public key') from None
 
     stripped_key = data.lstrip()
     if stripped_key.startswith(b'-----'):
@@ -1016,12 +1030,19 @@ def import_certificate(data):
        This function imports an SSH certificate in OpenSSH or RFC4716
        format.
 
-       :param bytes data:
+       :param data:
            The data to import.
+       :type data: bytes or ASCII string
 
        :returns: An :class:`SSHCertificate` certificate
 
     """
+
+    if isinstance(data, str):
+        try:
+            data = data.encode('ascii')
+        except UnicodeEncodeError:
+            raise KeyImportError('Invalid encoding for certificate') from None
 
     stripped_key = data.lstrip()
     if stripped_key.startswith(b'---- '):

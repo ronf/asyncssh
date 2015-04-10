@@ -881,7 +881,7 @@ class SSHServerChannel(SSHChannel):
 
         super().__init__(conn, loop, encoding, window, max_pktsize)
 
-        self._env = {}
+        self._env = self._conn.get_key_option('environment', {})
         self._command = None
         self._subsystem = None
         self._term_type = None
@@ -905,7 +905,8 @@ class SSHServerChannel(SSHChannel):
             raise DisconnectError(DISC_PROTOCOL_ERROR,
                                   'Invalid pty request') from None
 
-        if not self._conn.check_certificate_permission('permit-pty'):
+        if not self._conn.check_key_permission('pty') or \
+           not self._conn.check_certificate_permission('pty'):
             return False
 
         self._term_size = (width, height, pixwidth, pixheight)
@@ -945,7 +946,11 @@ class SSHServerChannel(SSHChannel):
 
     def _start_session(self, command=None, subsystem=None):
         forced_command = self._conn.get_certificate_option('force-command')
-        if forced_command:
+
+        if forced_command is None:
+            forced_command = self._conn.get_key_option('command')
+
+        if forced_command is not None:
             command = forced_command
 
         if command is not None:
@@ -1668,8 +1673,8 @@ class SSHTCPSession(SSHSession):
        Server applications wishing to allow connection forwarding back
        to the client should implement the coroutine :meth:`server_requested()
        <SSHServer.server_requested>` on their :class:`SSHServer` object
-       and call :meth:`accept_connection()
-       <SSHServerConnection.accept_connection>` on their
+       and call :meth:`create_connection()
+       <SSHServerConnection.create_connection>` on their
        :class:`SSHServerConnection` for each new connection, passing it a
        factory which returns instances of this class.
 
