@@ -10,7 +10,7 @@
 # Contributors:
 #     Ron Frederick - initial implementation, API, and documentation
 
-"""Curve25519 public key encryption handler"""
+"""Curve25519 key exchange handler"""
 
 from hashlib import sha256
 
@@ -32,8 +32,8 @@ class _KexCurve25519DH(Kex):
     def __init__(self, alg, conn, hash):
         super().__init__(alg, conn, hash)
 
-        self._priv = curve25519.Private()
-        pub = self._priv.get_public().serialize()
+        self._priv = Curve25519DH()
+        pub = self._priv.get_public()
 
         if conn.is_client():
             self._client_pub = pub
@@ -62,14 +62,13 @@ class _KexCurve25519DH(Kex):
         packet.check_end()
 
         try:
-            pub = curve25519.Public(self._client_pub)
+            shared = self._priv.get_shared(self._client_pub)
         except AssertionError:
                 raise DisconnectError(DISC_PROTOCOL_ERROR,
                                       'Invalid kex init msg') from None
 
         host_key, host_key_data = self._conn._get_server_host_key()
 
-        shared = self._priv.get_shared_key(pub, hashfunc=lambda x: x)
         k = int.from_bytes(shared, 'big')
         h = self._compute_hash(host_key_data, k)
         sig = host_key.sign(h)
@@ -90,14 +89,13 @@ class _KexCurve25519DH(Kex):
         packet.check_end()
 
         try:
-            pub = curve25519.Public(self._server_pub)
+            shared = self._priv.get_shared(self._server_pub)
         except AssertionError:
                 raise DisconnectError(DISC_PROTOCOL_ERROR,
                                       'Invalid kex reply msg') from None
 
         host_key = self._conn._validate_server_host_key(host_key_data)
 
-        shared = self._priv.get_shared_key(pub, hashfunc=lambda x: x)
         k = int.from_bytes(shared, 'big')
         h = self._compute_hash(host_key_data, k)
         if not host_key.verify(h, sig):
@@ -113,7 +111,7 @@ class _KexCurve25519DH(Kex):
 
 
 try:
-    import curve25519
+    from .crypto.curve25519 import Curve25519DH
 except ImportError:
     pass
 else:

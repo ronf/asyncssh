@@ -27,15 +27,15 @@ Notable features include:
     - Diffie Hellman group1 and group14 with SHA1
     - Diffie Hellman group exchange with SHA1 and SHA256
     - Elliptic Curve Diffie Hellman (nistp256, nistp384, and nistp521)
-    - Curve25519, if curve25519-donna Python wrapper is installed
+    - Curve25519, if libnacl or curve25519-donna is installed
 * Support for multiple authentication methods
     - Password, public key, and keyboard-interactive
 * Support for a variety of public key types and formats
     - DSA, RSA, and ECDSA
-    - Ed25519, if libnacl Python wrapper for libsodium is installed
+    - Ed25519, if libnacl is installed
     - PKCS#1/PKCS#8 DER and PEM, OpenSSH, and RFC4716 formats
     - PEM and PKCS#8 password-based private key encryption
-    - OpenSSH private key encryption, if bcrypt wrapper is installed
+    - OpenSSH private key encryption, if bcrypt is installed
 * Support for OpenSSH host and user certificates
     - Version 00 certificates for DSA and RSA keys
     - Version 01 certificates for DSA, RSA, ECDSA, and Ed25519 keys
@@ -86,12 +86,10 @@ Installation
    PyCA 0.6.1 or later from https://cryptography.io to provide basic
    crypto support.
 
-#. Optionally install curve25519-donna from
-   http://github.com/agl/curve25519-donna if you want support for
-   Curve25519 Diffie Hellman key exchange.
-
-#. Optionally install libnacl from https://github.com/saltstack/libnacl
-   if you want support for Ed25519 keys.
+#. Optionally install libsodium from https://github.com/jedisct1/libsodium
+   and libnacl from https://github.com/saltstack/libnacl if you want
+   support for Curve25519 Diffie-Hellman key exchange, Ed25519 keys,
+   and the ChaCha20-Poly1305 cipher.
 
 #. Optionally install bcrypt from https://code.google.com/p/py-bcrypt
    if you want support for OpenSSH private key encryption.
