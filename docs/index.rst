@@ -29,18 +29,16 @@ key doesn't match.
       :start-line: 15
 
 To check against a different set of server host keys, they can be read
-and provided in the server_host_keys argument when the :class:`SSHClient`
+and provided in the known_hosts argument when the :class:`SSHClient`
 instance is created:
 
    .. code::
 
-     host_keys = asyncssh.read_public_key_list('ssh_host_keys.pub')
-
      conn, client = yield from asyncssh.create_connection(None, 'localhost',
-                                                          server_host_keys=host_keys)
+                                                          known_hosts='my_known_hosts')
 
 
-Server host key checking can be disabled by setting the server_host_keys
+Server host key checking can be disabled by setting the known_hosts
 argument to ``None``, but that's not recommended as it makes the
 connection vulnerable to a man-in-the-middle attack.
 
