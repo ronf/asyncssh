@@ -3,7 +3,79 @@
 Change Log
 ==========
 
-Release 0.9.2 (26 Jan 2014)
+Release 1.0.0 (11 Apr 2015)
+---------------------------
+
+* This release finishes adding a number of major features, finally making
+  it worthy of being called a "1.0" release.
+
+* Host and user certificates are now supported!
+
+    * Enforcement is done on principals in certificates.
+    * Enforcement is done on force-command and source-address critical options.
+    * Enforcement is done on permit-pty and permit-port-forwarding extensions.
+
+* OpenSSH-style known hosts files are now supported!
+
+    * Positive and negative wildcard and CIDR-style patterns are supported.
+    * HMAC-SHA1 hashed host entries are supported.
+    * The @cert-authority and @revoked markers are supported.
+
+* OpenSSH-style authorized keys files are now supported!
+
+    * Both client keys and certificate authorities are supported.
+    * Enforcement is done on from and principals options during key matching.
+    * Enforcement is done on no-pty, no-port-forwarding, and permitopen.
+    * The command and environment options are supported.
+    * Applications can query for their own non-standard options.
+
+* Support has been added for OpenSSH format private keys.
+
+    * DSA, RSA, and ECDSA keys in this format are now supported.
+    * Ed25519 keys are supported when libnacl and libsodium are installed.
+    * OpenSSH private key encryption is supported when bcrypt is installed.
+
+* Curve25519 Diffie-Hellman key exchange is now available via either the
+  curve25519-donna or libnacl and libsodium packages.
+
+* ECDSA key support has been enhanced.
+
+    * Support is now available for PKCS#8 ECDSA v2 keys.
+    * Support is now available for both NamedCurve and explicit ECParameter
+      versions of keys, as long as the parameters match one of the supported
+      curves (nistp256, nistp384, or nistp521).
+
+* Support is now available for the OpenSSH chacha20-poly1305 cipher when
+  libnacl and libsodium are installed.
+
+* Cipher names specified in private key encryption have been changed to be
+  consistent with OpenSSH cipher naming, and all SSH ciphers can now be
+  used for encryption of keys in OpenSSH private key format.
+
+* A couple of race conditions in SSHChannel have been fixed and channel
+  cleanup is now delayed to allow outstanding message handling to finish.
+
+* Channel exceptions are now properly delivered in the streams API.
+
+* A bug in SSHStream read() where it could sometimes return more data than
+  requested has been fixed. Also, read() has been changed to properly block
+  and return all data until EOF or a signal is received when it is called
+  with no length.
+
+* A bug in the default implementation of keyboard-interactive authentication
+  has been fixed, and the matching of a password prompt has been loosened
+  to allow it to be used for password authentication on more devices.
+
+* Missing code to resume reading after a stream is paused has been added.
+
+* Improvements have been made in the handling of canceled requests.
+
+* The test code has been updated to test Ed25519 and OpenSSH format
+  private keys.
+
+* Examples have been updated to reflect some of the new capabilities.
+
+Release 0.9.2 (26 Jan 2015)
 ---------------------------
 
 * Fixed a bug in PyCrypto CipherFactory introduced during PyCA refactoring.
