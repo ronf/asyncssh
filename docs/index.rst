@@ -284,17 +284,19 @@ a message when users authenticate successfully and start a shell.
       :literal:
       :start-line: 15
 
-To authenticate with SSH client keys, the server would look something
-like the following. Client keys need to be placed in a file named
-:samp:`{username}.pub` in a directory called ``authorized_keys``.
+To authenticate with SSH client keys or certificates, the server would
+look something like the following. Client and certificate authority
+keys for each user need to be placed in a file in authorized_keys format
+named based on the username in a directory called ``authorized_keys``.
 
    .. include:: ../examples/simple_keyed_server.py
       :literal:
       :start-line: 15
 
-To authenticate with SSH certificates, the server would look something
-like the following. Public keys to trust as certificate authorities need
-to be placed in a file called ``ssh_user_ca_keys``.
+It is also possible to use a single authorized_keys file for all users.
+This is common when using certificates, as AsyncSSH can automatically
+enforce that the certificates presented have a principal in them which
+matches the username. This would look something like the following.
 
    .. include:: ../examples/simple_cert_server.py
       :literal:

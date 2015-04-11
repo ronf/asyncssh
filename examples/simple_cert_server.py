@@ -18,9 +18,8 @@ import asyncio, asyncssh, sys
 # private key in it to use as a server host key. An SSH host certificate
 # can optionally be provided in the file ``ssh_host_key-cert.pub``.
 #
-# THe file ``ssh_user_ca_keys`` must also exist with a list of SSH
-# public keys in it to trust as certificate authorities which can
-# sign valid client certificates.
+# The file ``ssh_user_ca`` must exist with a cert-authority entry of
+# the certificate authority which can sign valid client certificates.
 
 class MySSHServerSession(asyncssh.SSHServerSession):
     def connection_made(self, chan):
@@ -45,15 +44,6 @@ class MySSHServer(asyncssh.SSHServer):
         else:
             print('SSH connection closed.')
 
-    def begin_auth(self, username):
-        return True
-
-    def public_key_auth_supported(self):
-        return True
-
-    def validate_ca_key(self, username, key):
-        return key in ssh_user_ca_keys
-
     def session_requested(self):
         return MySSHServerSession()
 
@@ -61,7 +51,7 @@ class MySSHServer(asyncssh.SSHServer):
 def start_server():
     yield from asyncssh.create_server(MySSHServer, '', 8022,
                                       server_host_keys=['ssh_host_key'],
-                                      client_ca_keys='ssh_user_ca_keys')
+                                      authorized_client_keys='ssh_user_ca')
 
 loop = asyncio.get_event_loop()
 

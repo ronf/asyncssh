@@ -49,6 +49,15 @@ Notable features include:
     - HMAC with MD5, SHA1, SHA256, and SHA512
 * Support for gzip compression
     - Including OpenSSH variant to delay compression until after auth
+* Support for OpenSSH known_hosts files
+    - Positive and negative wildcard and CIDR host patterns
+    - Support for HMAC-SHA1 hashed entries
+    - Support for @cert-authority and @revoked markers
+* Support for OpenSSH authorized_keys files
+    - Support for cert-authority option to validate user certificates
+    - Enforcement of from and principals options to restrict key matching
+    - Enforcement of no-pty, no-port-forwarding, and permitopen options
+    - Support for command and environment options
 * Support for passing environment variables, terminal type, and window size
 * Support for multiple simultaneous sessions on a single SSH connection
 * Support for handling multiple SSH connections in a single event loop
