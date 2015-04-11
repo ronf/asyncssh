@@ -12,6 +12,8 @@
 
 """Miscellaneous utility classes and functions"""
 
+import ipaddress, socket
+
 from random import SystemRandom
 
 from .constants import *
@@ -41,6 +43,40 @@ def mod_inverse(x, m):
         return c if c >= 0 else c + m
     else:
         raise ValueError('%d has no inverse mod %d' % (x, m))
+
+def _normalize_scoped_ip(addr):
+    """Normalize scoped IP address
+
+       The ipaddress module doesn't handle scoped addresses properly,
+       so we strip off the CIDR suffix here and normalize scoped IP
+       addresses using socket.inet_pton before we pass them into
+       ipaddress.
+
+    """
+
+    for family in (socket.AF_INET, socket.AF_INET6):
+        try:
+            return socket.inet_ntop(family, socket.inet_pton(family, addr))
+        except:
+            pass
+
+    return addr
+
+def ip_address(addr):
+    """Wrapper for ipaddress.ip_address which supports scoped addresses"""
+
+    return ipaddress.ip_address(_normalize_scoped_ip(addr))
+
+def ip_network(addr):
+    """Wrapper for ipaddress.ip_network which supports scoped addresses"""
+
+    idx = addr.find('/')
+    if idx >= 0:
+        addr, mask = addr[:idx], addr[idx:]
+    else:
+        mask = ''
+
+    return ipaddress.ip_network(_normalize_scoped_ip(addr) + mask)
 
 
 class Error(Exception):

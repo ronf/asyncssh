@@ -440,7 +440,7 @@ def pkcs1_encrypt(data, cipher, passphrase):
        This function encrypts PKCS#1 key data using the specified cipher
        and passphrase. Available ciphers include:
 
-           aes128, aes192, aes256, des, des3
+           aes128-cbc, aes192-cbc, aes256-cbc, des-cbc, des3-cbc
 
     """
 
@@ -482,8 +482,9 @@ def pkcs8_encrypt(data, cipher, hash, version, passphrase):
 
        Available ciphers include:
 
-           aes128, aes192, aes256, blowfish, cast128, des, des2, des3,
-           rc2-40, rc2-64, rc2-128, rc4-40, and rc4-128
+           aes128-cbc, aes192-cbc, aes256-cbc, blowfish-cbc,
+           cast128-cbc, des-cbc, des2-cbc, des3-cbc, rc2-40-cbc,
+           rc2-64-cbc, rc2-128-cbc, rc4-40, and rc4-128
 
        Available hashes include:
 
@@ -568,38 +569,38 @@ def pkcs8_decrypt(key_data, passphrase):
     return der_decode(cipher.decrypt(data))
 
 _pkcs1_cipher_list = (
-    ('aes128', b'AES-128-CBC',  'aes',  'cbc', 16),
-    ('aes192', b'AES-192-CBC',  'aes',  'cbc', 24),
-    ('aes256', b'AES-256-CBC',  'aes',  'cbc', 32),
-    ('des',    b'DES-CBC',      'des',  'cbc', 8),
-    ('des3',   b'DES-EDE3-CBC', 'des3', 'cbc', 24)
+    ('aes128-cbc', b'AES-128-CBC',  'aes',  'cbc', 16),
+    ('aes192-cbc', b'AES-192-CBC',  'aes',  'cbc', 24),
+    ('aes256-cbc', b'AES-256-CBC',  'aes',  'cbc', 32),
+    ('des-cbc',    b'DES-CBC',      'des',  'cbc', 8),
+    ('des3-cbc',   b'DES-EDE3-CBC', 'des3', 'cbc', 24)
 )
 
 _pkcs8_cipher_list = (
-    ('des',     'md5',  _ES1_MD5_DES,  _pbes1,   md5,  'des',  'cbc', 8),
-    ('des',     'sha1', _ES1_SHA1_DES, _pbes1,   sha1, 'des',  'cbc', 8),
-    ('rc2-64',  'md5',  _ES1_MD5_RC2,  _pbes1,   md5,  'arc2', 'cbc', 8),
-    ('rc2-64',  'sha1', _ES1_SHA1_RC2, _pbes1,   sha1, 'arc2', 'cbc', 8),
+    ('des-cbc',     'md5',  _ES1_MD5_DES,  _pbes1,   md5,  'des',  'cbc', 8),
+    ('des-cbc',     'sha1', _ES1_SHA1_DES, _pbes1,   sha1, 'des',  'cbc', 8),
+    ('rc2-64-cbc',  'md5',  _ES1_MD5_RC2,  _pbes1,   md5,  'arc2', 'cbc', 8),
+    ('rc2-64-cbc',  'sha1', _ES1_SHA1_RC2, _pbes1,   sha1, 'arc2', 'cbc', 8),
 
-    ('des2',    'sha1', _P12_DES2,     _pbe_p12, sha1, 'des3', 'cbc', 16),
-    ('des3',    'sha1', _P12_DES3,     _pbe_p12, sha1, 'des3', 'cbc', 24),
-    ('rc2-40',  'sha1', _P12_RC2_40,   _pbe_p12, sha1, 'arc2', 'cbc', 5),
-    ('rc2-128', 'sha1', _P12_RC2_128,  _pbe_p12, sha1, 'arc2', 'cbc', 16),
-    ('rc4-40',  'sha1', _P12_RC4_40,   _pbe_p12, sha1, 'arc4', None,  5),
-    ('rc4-128', 'sha1', _P12_RC4_128,  _pbe_p12, sha1, 'arc4', None,  16)
+    ('des2-cbc',    'sha1', _P12_DES2,     _pbe_p12, sha1, 'des3', 'cbc', 16),
+    ('des3-cbc',    'sha1', _P12_DES3,     _pbe_p12, sha1, 'des3', 'cbc', 24),
+    ('rc2-40-cbc',  'sha1', _P12_RC2_40,   _pbe_p12, sha1, 'arc2', 'cbc', 5),
+    ('rc2-128-cbc', 'sha1', _P12_RC2_128,  _pbe_p12, sha1, 'arc2', 'cbc', 16),
+    ('rc4-40',      'sha1', _P12_RC4_40,   _pbe_p12, sha1, 'arc4', None,  5),
+    ('rc4-128',     'sha1', _P12_RC4_128,  _pbe_p12, sha1, 'arc4', None,  16)
 )
 
 _pbes2_cipher_list = (
-    ('aes128',   _ES2_AES128,  _pbes2_iv,  'aes',      'cbc', 16),
-    ('aes192',   _ES2_AES192,  _pbes2_iv,  'aes',      'cbc', 24),
-    ('aes256',   _ES2_AES256,  _pbes2_iv,  'aes',      'cbc', 32),
-    ('blowfish', _ES2_BF,      _pbes2_iv,  'blowfish', 'cbc', 16),
-    ('cast128',  _ES2_CAST128, _pbes2_iv,  'cast',     'cbc', 16),
-    ('des',      _ES2_DES,     _pbes2_iv,  'des',      'cbc', 8),
-    ('des3',     _ES2_DES3,    _pbes2_iv,  'des3',     'cbc', 24),
-    ('rc2-40',   _ES2_RC2,     _pbes2_rc2, 'arc2',     'cbc', 5),
-    ('rc2-64',   _ES2_RC2,     _pbes2_rc2, 'arc2',     'cbc', 8),
-    ('rc2-128',  _ES2_RC2,     _pbes2_rc2, 'arc2',     'cbc', 16)
+    ('aes128-cbc',   _ES2_AES128,  _pbes2_iv,  'aes',      'cbc', 16),
+    ('aes192-cbc',   _ES2_AES192,  _pbes2_iv,  'aes',      'cbc', 24),
+    ('aes256-cbc',   _ES2_AES256,  _pbes2_iv,  'aes',      'cbc', 32),
+    ('blowfish-cbc', _ES2_BF,      _pbes2_iv,  'blowfish', 'cbc', 16),
+    ('cast128-cbc',  _ES2_CAST128, _pbes2_iv,  'cast',     'cbc', 16),
+    ('des-cbc',      _ES2_DES,     _pbes2_iv,  'des',      'cbc', 8),
+    ('des3-cbc',     _ES2_DES3,    _pbes2_iv,  'des3',     'cbc', 24),
+    ('rc2-40-cbc',   _ES2_RC2,     _pbes2_rc2, 'arc2',     'cbc', 5),
+    ('rc2-64-cbc',   _ES2_RC2,     _pbes2_rc2, 'arc2',     'cbc', 8),
+    ('rc2-128-cbc',  _ES2_RC2,     _pbes2_rc2, 'arc2',     'cbc', 16)
 )
 
 _pbes2_kdf_list = (

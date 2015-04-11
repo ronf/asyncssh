@@ -17,6 +17,9 @@ import asyncio, asyncssh, sys
 # To run this program, the file ``ssh_host_key`` must exist with an SSH
 # private key in it to use as a server host key. An SSH host certificate
 # can optionally be provided in the file ``ssh_host_key-cert.pub``.
+#
+# The file ``ssh_user_ca`` must exist with a cert-authority entry of
+# the certificate authority which can sign valid client certificates.
 
 class MySSHServerSession(asyncssh.SSHServerSession):
     def connection_made(self, chan):
@@ -26,28 +29,20 @@ class MySSHServerSession(asyncssh.SSHServerSession):
         return True
 
     def session_started(self):
-        term_type = self._chan.get_terminal_type()
-        term_size = self._chan.get_terminal_size()
-        self._chan.write('Terminal type: %s, size: %sx%s\r\n' %
-                             (term_type, term_size[0], term_size[1]))
-        self._chan.write('Try resizing your window!\r\n')
-
-    def terminal_size_changed(self, width, height, pixwidth, pixheight):
-        self._chan.write('New window size: %sx%s' % (width, height))
-
-        if pixwidth and pixheight:
-            self._chan.write(' (%sx%s pixels)' % (pixwidth, pixheight))
-
-        self._chan.write('\r\n')
+        self._chan.write('Welcome to my SSH server, %s!\r\n' %
+                             self._chan.get_extra_info('username'))
+        self._chan.exit(0)
 
 class MySSHServer(asyncssh.SSHServer):
+    def connection_made(self, conn):
+        print('SSH connection received from %s.' %
+                  conn.get_extra_info('peername')[0])
+
     def connection_lost(self, exc):
         if exc:
             print('SSH connection error: ' + str(exc), file=sys.stderr)
-
-    def begin_auth(self, username):
-        # No auth in this example
-        return False
+        else:
+            print('SSH connection closed.')
 
     def session_requested(self):
         return MySSHServerSession()
@@ -55,7 +50,8 @@ class MySSHServer(asyncssh.SSHServer):
 @asyncio.coroutine
 def start_server():
     yield from asyncssh.create_server(MySSHServer, '', 8022,
-                                      server_host_keys=['ssh_host_key'])
+                                      server_host_keys=['ssh_host_key'],
+                                      authorized_client_keys='ssh_user_ca')
 
 loop = asyncio.get_event_loop()
 

@@ -163,6 +163,7 @@ SSHServer
    +===========================================+
    | .. automethod:: public_key_auth_supported |
    | .. automethod:: validate_public_key       |
+   | .. automethod:: validate_ca_key           |
    +-------------------------------------------+
 
    +-----------------------------------------+
@@ -242,11 +243,16 @@ SSHServerConnection
    | .. automethod:: send_debug     |
    +--------------------------------+
 
-   +----------------------------------+
-   | Server authentication methods    |
-   +==================================+
-   | .. automethod:: send_auth_banner |
-   +----------------------------------+
+   +----------------------------------------------+
+   | Server authentication methods                |
+   +==============================================+
+   | .. automethod:: send_auth_banner             |
+   | .. automethod:: set_authorized_keys          |
+   | .. automethod:: get_key_option               |
+   | .. automethod:: check_key_permission         |
+   | .. automethod:: get_certificate_option       |
+   | .. automethod:: check_certificate_permission |
+   +----------------------------------------------+
 
    +------------------------------------+
    | Server connection open methods     |
@@ -581,15 +587,73 @@ SSHWriter
 Public Key Support
 ==================
 
+.. index:: Specifying private keys
+.. _SpecifyingPrivateKeys:
+
+Specifying private keys
+-----------------------
+
+Private keys may be passed into AsyncSSH in a variety of forms. The
+simplest option is to pass the name of a file containing the list of
+private keys to read in using :func:`read_private_key_list`. However,
+this form can only be used for unencrypted private keys and does not
+allow any of the private keys to have associated certificates.
+
+An alternate form involves passing in a list of values which can be
+either a reference to a private key or a tuple containing a reference
+to a private key and a reference to a matching certificate.
+
+Key references can either be the name of a file to load a key from,
+a byte string to import it from, or an already loaded :class:`SSHKey`
+private key. See the function :func:`import_private_key` for the list
+of supported private key formats.
+
+Certificate references can be the name of a file to load the
+certificate from, a byte string to import it from, an already loaded
+:class:`SSHCertificate`, or ``None`` if no certificate should be
+associated with the key.
+
+When a filename is provided as a value in the list, an attempt is
+made to load a private key from that file and a certificate from a
+file constructed by appending '-cert.pub' to the end of the name.
+
+Encrypted private keys can be loaded by making an explicit call to
+:func:`import_private_key` or :func:`read_private_key` with the
+correct passphrase. The resulting :class:`SSHKey` objects can then
+be included in thie list, each with an optional matching certificate.
+
+.. index:: Specifying private keys
+.. _SpecifyingPublicKeys:
+
+Specifying public keys
+----------------------
+
+Public keys may be passed into AsyncSSH in a variety of forms. The
+simplest option is to pass the name of a file containing the list of
+public keys to read in using :func:`read_public_key_list`.
+
+An alternate form involves passing in a list of values each of which
+can be either the name of a file to load a key from, a byte string
+to import it from, or an already loaded :class:`SSHKey` public key.
+See the function :func:`import_public_key` for the list of supported
+public key formats.
+
 SSHKey
 ------
 
-.. autoclass::    SSHKey
+.. autoclass:: SSHKey()
 
    .. automethod:: export_private_key
    .. automethod:: export_public_key
    .. automethod:: write_private_key
    .. automethod:: write_public_key
+
+SSHCertificate
+--------------
+
+.. autoclass:: SSHCertificate()
+
+   .. automethod:: validate
 
 import_private_key
 ------------------
@@ -601,6 +665,11 @@ import_public_key
 
 .. autofunction:: import_public_key
 
+import_certificate
+------------------
+
+.. autofunction:: import_certificate
+
 read_private_key
 ----------------
 
@@ -610,6 +679,11 @@ read_public_key
 ---------------
 
 .. autofunction:: read_public_key
+
+read_certificate
+----------------
+
+.. autofunction:: read_certificate
 
 read_private_key_list
 ---------------------
@@ -621,8 +695,71 @@ read_public_key_list
 
 .. autofunction:: read_public_key_list
 
+read_certificate_list
+---------------------
+
+.. autofunction:: read_certificate_list
+
 .. index:: Exceptions
 .. _Exceptions:
+
+Known hosts
+===========
+
+.. index:: Specifying known hosts
+.. _SpecifyingKnownHosts:
+
+Specifying known hosts
+----------------------
+
+Known hosts may be passed into AsyncSSH via the ``known_hosts``
+argument to :func:`create_connection`. This value can be provided
+in a couple of different forms. The simplest option is to pass the
+name of a file containing a list of known hosts in OpenSSH known
+hosts format. AsyncSSH supports both plain and hashed host entries
+and both regular and negated host patterns in plain entries. It also
+supports the ``@cert-authority`` and ``@revoked`` markers on entries.
+
+Alternately, known hosts can be passed into AsyncSSH as a sequence
+of three public key lists containing trusted host keys, trusted CA
+keys, and revoked keys which should no longer be trusted.
+See :ref:`SpecifyingPublicKeys` for the allowed form of each of
+these values.
+
+Authorized keys
+===============
+
+.. index:: Specifying authorized keys
+.. _SpecifyingAuthorizedKeys:
+
+Specifying authorized keys
+--------------------------
+
+Authorized keys may be passed into AsyncSSH via the
+``authorized_client_keys`` argument to :func:`create_server` or by calling
+:meth:`set_authorized_keys() <SSHServerConnection.set_authorized_keys>`
+on the :class:`SSHServerConnection` from within the :meth:`begin_auth()
+<SSHServer.begin_auth>` method in :class:`SSHServer`.
+
+Authorized keys can be provided as either the name of a file to read
+the keys from or an :class:`SSHAuthorizedKeys` object which was previously
+imported from a string by calling :func:`import_authorized_keys` or read
+from a file by calling :func:`read_authorized_keys`.
+
+SSHAuthorizedKeys
+-----------------
+
+.. autoclass:: SSHAuthorizedKeys()
+
+import_authorized_keys
+----------------------
+
+.. autofunction:: import_authorized_keys
+
+read_authorized_keys
+--------------------
+
+.. autofunction:: read_authorized_keys
 
 Exceptions
 ==========
@@ -690,6 +827,30 @@ The following are the key exchange algorithms currently supported by AsyncSSH:
   | diffie-hellman-group14-sha1
   | diffie-hellman-group1-sha1
 
+.. index:: Public key & certificate algorithms
+.. _PublicKeyAlgs:
+
+Public key & certificate algorithms
+-----------------------------------
+
+The following are the public key and certificate algorithms currently
+supported by AsyncSSH:
+
+  | ssh-ed25519-cert-v01\@openssh.com
+  | ecdsa-sha2-nistp521-cert-v01\@openssh.com
+  | ecdsa-sha2-nistp384-cert-v01\@openssh.com
+  | ecdsa-sha2-nistp256-cert-v01\@openssh.com
+  | ssh-rsa-cert-v01\@openssh.com
+  | ssh-rsa-cert-v00\@openssh.com
+  | ssh-dss-cert-v01\@openssh.com
+  | ssh-dss-cert-v00\@openssh.com
+  | ssh-ed25519
+  | ecdsa-sha2-nistp521
+  | ecdsa-sha2-nistp384
+  | ecdsa-sha2-nistp256
+  | ssh-rsa
+  | ssh-dss
+
 .. index:: Encryption algorithms
 .. _EncryptionAlgs:
 
@@ -698,6 +859,7 @@ Encryption algorithms
 
 The following are the encryption algorithms currently supported by AsyncSSH:
 
+  | chacha20-poly1305\@openssh.com
   | aes256-ctr
   | aes192-ctr
   | aes128-ctr
@@ -756,13 +918,24 @@ The following are the compression algorithms currently supported by AsyncSSH:
 Constants
 =========
 
+.. index:: Certificate types
+.. _CertificateTypes:
+
+Certificate types
+-----------------
+
+The following values can be specified as certificate types:
+
+  | CERT_TYPE_USER
+  | CERT_TYPE_HOST
+
 .. index:: Disconnect reasons
 .. _DisconnectReasons:
 
 Disconnect reasons
 ------------------
 
-The following values specified in section 11.1 of :rfc:`4253#section-11.1`
+The following values defined in section 11.1 of :rfc:`4253#section-11.1`
 can be specified as disconnect reason codes:
 
   | DISC_HOST_NOT_ALLOWED_TO_CONNECT

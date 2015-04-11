@@ -35,7 +35,7 @@ _ciphers = { 'aes':      (AES,       { 'cbc': CBC, 'ctr': CTR, 'gcm': GCM }),
 
 
 class GCMShim:
-    def __init__(self, cipher, block_size, key, iv, tag):
+    def __init__(self, cipher, block_size, key, iv):
         self._cipher = cipher
         self._key = key
         self._iv = iv
@@ -47,12 +47,12 @@ class GCMShim:
         invocation = (invocation + 1) & 0xffffffffffffffff
         self._iv = self._iv[:4] + invocation.to_bytes(8, 'big')
 
-    def encrypt_and_sign(self, data, associated_data):
+    def encrypt_and_sign(self, header, data):
         encryptor = Cipher(self._cipher(self._key), GCM(self._iv),
                            default_backend()).encryptor()
 
-        if associated_data:
-            encryptor.authenticate_additional_data(associated_data)
+        if header:
+            encryptor.authenticate_additional_data(header)
 
         ciphertext = encryptor.update(data) + encryptor.finalize()
 
@@ -60,12 +60,12 @@ class GCMShim:
 
         return ciphertext, encryptor.tag
 
-    def decrypt_and_verify(self, data, associated_data, tag):
+    def verify_and_decrypt(self, header, data, tag):
         decryptor = Cipher(self._cipher(self._key), GCM(self._iv, tag),
                            default_backend()).decryptor()
 
-        if associated_data:
-            decryptor.authenticate_additional_data(associated_data)
+        if header:
+            decryptor.authenticate_additional_data(header)
 
         try:
             plaintext = decryptor.update(data) + decryptor.finalize()
@@ -116,9 +116,9 @@ class CipherFactory:
         self.block_size = 1 if cipher == ARC4 else cipher.block_size // 8
         self.iv_size = 12 if mode == GCM else self.block_size
 
-    def new(self, key, iv=None, initial_bytes=0, tag=None):
+    def new(self, key, iv=None, initial_bytes=0):
         if self._mode == GCM:
-            return GCMShim(self._cipher, self.block_size, key, iv, tag)
+            return GCMShim(self._cipher, self.block_size, key, iv)
         else:
             return CipherShim(self._cipher, self._mode, self.block_size,
                               key, iv, initial_bytes)

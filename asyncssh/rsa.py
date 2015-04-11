@@ -45,58 +45,60 @@ class _RSAKey(SSHKey):
                      self._key.q if hasattr(self, 'q') else None))
 
     @classmethod
+    def make_private(cls, *args):
+        return cls(RSAPrivateKey(*args), True)
+
+    @classmethod
+    def make_public(cls, *args):
+        return cls(RSAPublicKey(*args), False)
+
+    @classmethod
     def decode_pkcs1_private(cls, key_data):
         if (isinstance(key_data, tuple) and all_ints(key_data) and
             len(key_data) >= 9):
-            return cls(RSAPrivateKey(*key_data[1:6]), True)
+            return key_data[1:6]
         else:
-            raise KeyImportError('Invalid RSA private key')
+            return None
 
     @classmethod
     def decode_pkcs1_public(cls, key_data):
         if (isinstance(key_data, tuple) and all_ints(key_data) and
             len(key_data) == 2):
-            return cls(RSAPublicKey(*key_data), False)
+            return key_data
         else:
-            raise KeyImportError('Invalid RSA public key')
+            return None
 
     @classmethod
     def decode_pkcs8_private(cls, alg_params, data):
         if alg_params is None:
-            try:
-                key_data = der_decode(data)
-            except ASN1DecodeError:
-                key_data = None
-
-            return cls.decode_pkcs1_private(key_data)
+            return cls.decode_pkcs1_private(der_decode(data))
         else:
-            raise KeyImportError('Invalid RSA private key')
+            return None
 
     @classmethod
     def decode_pkcs8_public(cls, alg_params, data):
         if alg_params is None:
-            try:
-                key_data = der_decode(data)
-            except ASN1DecodeError:
-                key_data = None
-
-            return cls.decode_pkcs1_public(key_data)
+            return cls.decode_pkcs1_public(der_decode(data))
         else:
-            raise KeyImportError('Invalid RSA public key')
+            return None
+
+    @classmethod
+    def decode_ssh_private(cls, packet):
+        n = packet.get_mpint()
+        e = packet.get_mpint()
+        d = packet.get_mpint()
+        iqmp = packet.get_mpint()
+        p = packet.get_mpint()
+        q = packet.get_mpint()
+
+        return n, e, d, p, q
 
     @classmethod
     def decode_ssh_public(cls, packet):
-        try:
-            e = packet.get_mpint()
-            n = packet.get_mpint()
-            packet.check_end()
+        e = packet.get_mpint()
+        n = packet.get_mpint()
 
-            return cls(RSAPublicKey(n, e), False)
-        except DisconnectError:
-            # Fall through and return a key import error
-            pass
-
-        raise KeyImportError('Invalid RSA public key')
+        return n, e
 
     def encode_pkcs1_private(self):
         if not self._private:
@@ -109,13 +111,22 @@ class _RSAKey(SSHKey):
                 mod_inverse(self._key.q, self._key.p))
 
     def encode_pkcs1_public(self):
-        return (self._key.n, self._key.e)
+        return self._key.n, self._key.e
 
     def encode_pkcs8_private(self):
         return None, der_encode(self.encode_pkcs1_private())
 
     def encode_pkcs8_public(self):
         return None, der_encode(self.encode_pkcs1_public())
+
+    def encode_ssh_private(self):
+        if not self._private:
+            raise KeyExportError('Key is not private')
+
+        return b''.join((String(self.algorithm), MPInt(self._key.n),
+                         MPInt(self._key.e), MPInt(self._key.d),
+                         MPInt(mod_inverse(self._key.q, self._key.p)),
+                         MPInt(self._key.p), MPInt(self._key.q)))
 
     def encode_ssh_public(self):
         return b''.join((String(self.algorithm), MPInt(self._key.e),
@@ -138,4 +149,9 @@ class _RSAKey(SSHKey):
         return self._key.verify(data, sig)
 
 
-register_public_key_alg(_RSAKey)
+register_public_key_alg(b'ssh-rsa', _RSAKey)
+
+register_certificate_alg(b'ssh-rsa-cert-v01@openssh.com',
+                         _RSAKey, SSHCertificateV01)
+register_certificate_alg(b'ssh-rsa-cert-v00@openssh.com',
+                         _RSAKey, SSHCertificateV00)

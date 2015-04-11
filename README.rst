@@ -27,19 +27,37 @@ Notable features include:
     - Diffie Hellman group1 and group14 with SHA1
     - Diffie Hellman group exchange with SHA1 and SHA256
     - Elliptic Curve Diffie Hellman (nistp256, nistp384, and nistp521)
-    - Curve25519 (if curve25519-donna Python wrapper is installed)
+    - Curve25519, if libnacl or curve25519-donna is installed
 * Support for multiple authentication methods
     - Password, public key, and keyboard-interactive
-* Support for a variety of public key formats
-    - DSA, RSA, and ECDSA keys
+* Support for a variety of public key types and formats
+    - DSA, RSA, and ECDSA
+    - Ed25519, if libnacl is installed
     - PKCS#1/PKCS#8 DER and PEM, OpenSSH, and RFC4716 formats
-    - Password-based encryption of private keys
-* Support for a variety of ciphers (provided via PyCA or PyCrypto)
-    - AES, ARC4, Blowfish, CAST, and Triple DES
+    - PEM and PKCS#8 password-based private key encryption
+    - OpenSSH private key encryption, if bcrypt is installed
+* Support for OpenSSH host and user certificates
+    - Version 00 certificates for DSA and RSA keys
+    - Version 01 certificates for DSA, RSA, ECDSA, and Ed25519 keys
+    - Support for force-command and source-address critical options
+    - Support for permit-pty and permit-port-forwarding extensions
+* Support for a variety of ciphers
+    - AES, ARC4, Blowfish, CAST, and Triple DES via PyCA or PyCrypto
+    - AES GCM as defined by OpenSSH
+    - Chacha20-Poly1305 as defined by OpenSSH, if libnacl is installed
 * Support for a variety of MAC algorithms
     - HMAC with MD5, SHA1, SHA256, and SHA512
 * Support for gzip compression
     - Including OpenSSH variant to delay compression until after auth
+* Support for OpenSSH known_hosts files
+    - Positive and negative wildcard and CIDR host patterns
+    - Support for HMAC-SHA1 hashed entries
+    - Support for @cert-authority and @revoked markers
+* Support for OpenSSH authorized_keys files
+    - Support for cert-authority option to validate user certificates
+    - Enforcement of from and principals options to restrict key matching
+    - Enforcement of no-pty, no-port-forwarding, and permitopen options
+    - Support for command and environment options
 * Support for passing environment variables, terminal type, and window size
 * Support for multiple simultaneous sessions on a single SSH connection
 * Support for handling multiple SSH connections in a single event loop
@@ -64,15 +82,17 @@ Installation
 #. Install Python 3.4 or later from http://www.python.org or your
    favorite packaging system.
 
-#. Optionally install PyCrypto 2.6 or later from http://www.pycrypto.org
-   or your favorite packaging system.
+#. Install PyCrypto 2.6 or later from http://www.pycrypto.org and/or
+   PyCA 0.6.1 or later from https://cryptography.io to provide basic
+   crypto support.
 
-#. Optionally install PyCA 0.6.1 or later from https://cryptography.io
-   or your favorite packaging system.
+#. Optionally install libsodium from https://github.com/jedisct1/libsodium
+   and libnacl from https://github.com/saltstack/libnacl if you want
+   support for Curve25519 Diffie-Hellman key exchange, Ed25519 keys,
+   and the ChaCha20-Poly1305 cipher.
 
-#. Optionally install curve25519-donna from
-   http://github.com/agl/curve25519-donna if you want support for
-   Curve25519 Diffie Hellman key exchange.
+#. Optionally install bcrypt from https://code.google.com/p/py-bcrypt
+   if you want support for OpenSSH private key encryption.
 
 #. Install AsyncSSH by running::
 

@@ -12,18 +12,19 @@
 
 """SSH connection handlers"""
 
-import asyncio, getpass, os, socket, time, traceback
+import asyncio, getpass, os, socket, time
 from collections import OrderedDict
 from fnmatch import fnmatch
-from os import urandom
 
 from .auth import *
+from .auth_keys import *
 from .channel import *
 from .constants import *
 from .cipher import *
 from .compression import *
 from .forward import *
 from .kex import *
+from .known_hosts import *
 from .listen import *
 from .logging import *
 from .mac import *
@@ -42,7 +43,7 @@ _USERAUTH_SERVICE   = b'ssh-userauth'
 _CONNECTION_SERVICE = b'ssh-connection'
 
 # Default file names in .ssh directory to read private keys from
-_DEFAULT_KEY_FILES = ('id_ecdsa', 'id_rsa', 'id_dsa')
+_DEFAULT_KEY_FILES = ('id_ed25519', 'id_ecdsa', 'id_rsa', 'id_dsa')
 
 # Default rekey parameters
 _DEFAULT_REKEY_BYTES    = 1 << 30       # 1 GiB
@@ -87,20 +88,20 @@ class SSHConnection(SSHPacketHandler):
         self._extra = {}
         self._server = server
         self._inpbuf = b''
+        self._packet = b''
+        self._pktlen = 0
 
         self._client_version = b''
         self._server_version = b''
         self._client_kexinit = b''
         self._server_kexinit = b''
-        self._server_host_key = None
         self._session_id = None
 
         self._send_seq = 0
         self._send_cipher = None
         self._send_blocksize = 8
         self._send_mac = None
-        self._send_gcm = False
-        self._send_etm = False
+        self._send_mode = None
         self._compressor = None
         self._compress_after_auth = False
         self._deferred_packets = []
@@ -111,16 +112,14 @@ class SSHConnection(SSHPacketHandler):
         self._recv_blocksize = 8
         self._recv_mac = None
         self._recv_macsize = 0
-        self._recv_gcm = False
-        self._recv_etm = False
+        self._recv_mode = None
         self._decompressor = None
         self._decompress_after_auth = None
         self._next_recv_cipher = None
         self._next_recv_blocksize = 0
         self._next_recv_mac = None
         self._next_recv_macsize = 0
-        self._next_recv_gcm = False
-        self._next_recv_etm = False
+        self._next_recv_mode = None
         self._next_decompressor = None
         self._next_decompress_after_auth = None
 
@@ -201,12 +200,126 @@ class SSHConnection(SSHPacketHandler):
     def is_server(self):
         return self._server
 
+    def _load_private_key(self, key):
+        if isinstance(key, str):
+            cert = key + '-cert.pub'
+            ignore_missing_cert = True
+        elif isinstance(key, tuple):
+            key, cert = key
+            ignore_missing_cert = False
+        else:
+            cert = None
+
+        if isinstance(key, str):
+            key = read_private_key(key)
+        elif isinstance(key, bytes):
+            key = import_private_key(key)
+
+        if isinstance(cert, str):
+            try:
+                cert = read_certificate(cert)
+            except OSError:
+                if ignore_missing_cert:
+                    cert = None
+                else:
+                    raise
+        elif isinstance(cert, bytes):
+            cert = import_certificate(cert)
+
+        if cert and key.encode_ssh_public() != cert.key.encode_ssh_public():
+            raise ValueError('Certificate key mismatch')
+
+        return key, cert
+
+    def _load_public_key(self, key):
+        if isinstance(key, str):
+            key = read_public_key(key)
+        elif isinstance(key, bytes):
+            key = import_public_key(key)
+
+        return key
+
+    def _load_private_key_list(self, keylist):
+        """Load list of private keys and optional associated certificates
+
+           This function loads a collection of private keys, each with
+           an optional certificate. The keylist argument can be either
+           a filename to load private keys from (without any certificates)
+           or a list of values representing keys and certificates.
+
+           When a list is passed in, each element in the list can be
+           either a reference to a key or a tuple with a reference to
+           a key and a reference to a matching certificate.
+
+           Key references can either be the name of a file to load the
+           key from, a byte string to import as a private key, or an
+           already loaded :class:`SSHKey` private key.
+
+           Certificate references can  be the name of a file to load the
+           certificate from, a byte string to import as a certificate,
+           an already loaded :class:`SSHCertificate`, or ``None`` if
+           no certificate should be associated with the key.
+
+           When a filename is provided in as a reference outside of a
+           tuple, an attempt is made to load a private key from that
+           file and a certificate from a file constructed by appending
+           '-cert.pub' to the end of the filename.
+
+           This function returns a list of tuples of a :class:`SSHKey`
+           private key and either an :class:`SSHCertificate` or
+           ``None`` depending on whether an associated certificate
+           was specified.
+
+        """
+
+        if isinstance(keylist, str):
+            keys = read_private_key_list(keylist)
+            return [(key, None) for key in keys]
+        else:
+            return [self._load_private_key(key) for key in keylist]
+
+    def _load_public_key_list(self, keylist):
+        """Load public key list
+
+           This function loads a collection of public keys. The keylist
+           argument can be either a filename to load keys from or a
+           list of values representing keys which can be the name of
+           a file to load the key from, a byte string to import the
+           key from, or an already loaded :class:`SSHKey` public key.
+           It returns a list of loaded :class:`SSHKey` public keys.
+
+        """
+
+        if isinstance(keylist, str):
+            return read_public_key_list(keylist)
+        else:
+            return [self._load_public_key(key) for key in keylist]
+
+    def _load_authorized_keys(self, authorized_keys):
+        """Load authorized keys list
+
+           This function loads authorized client keys. The authorized_keys
+           argument can be either a filename to load keys from or an
+           already imported :class:`SSHAuthorizedKeys` object
+           containing the authorized keys and their associated options.
+
+        """
+
+        if isinstance(authorized_keys, str):
+            return read_authorized_keys(authorized_keys)
+        else:
+            return authorized_keys
+
     def connection_made(self, transport):
         self._transport = transport
+
+        peername = transport.get_extra_info('peername')
+        self._peer_addr = peername[0] if peername else None
 
         self._owner = self._protocol_factory()
         self._protocol_factory = None
 
+        self._connection_made()
         self._owner.connection_made(self)
         self._send_version()
 
@@ -323,10 +436,17 @@ class SSHConnection(SSHPacketHandler):
         self._packet = self._inpbuf[:self._recv_blocksize]
         self._inpbuf = self._inpbuf[self._recv_blocksize:]
 
-        if self._recv_cipher and not (self._recv_gcm or self._recv_etm):
-            self._packet = self._recv_cipher.decrypt(self._packet)
+        pktlen = self._packet[:4]
 
-        self._pktlen = int.from_bytes(self._packet[:4], byteorder='big')
+        if self._recv_cipher:
+            if self._recv_mode == 'chacha':
+                nonce = UInt64(self._recv_seq)
+                pktlen = self._recv_cipher.crypt_len(pktlen, nonce)
+            elif self._recv_mode not in ('gcm', 'etm'):
+                self._packet = self._recv_cipher.decrypt(self._packet)
+                pktlen = self._packet[:4]
+
+        self._pktlen = int.from_bytes(pktlen, 'big')
         self._recv_handler = self._recv_packet
         return True
 
@@ -337,21 +457,28 @@ class SSHConnection(SSHPacketHandler):
 
         rest = self._inpbuf[:rem-self._recv_macsize]
 
-        if self._recv_gcm:
+        if self._recv_mode in ('chacha', 'gcm'):
             self._packet += rest
             mac = self._inpbuf[rem-self._recv_macsize:rem]
 
             hdr = self._packet[:4]
             self._packet = self._packet[4:]
 
-            self._packet = self._recv_cipher.decrypt_and_verify(self._packet,
-                                                                hdr, mac)
+            if self._recv_mode == 'chacha':
+                nonce = UInt64(self._recv_seq)
+                self._packet = \
+                    self._recv_cipher.verify_and_decrypt(hdr, self._packet,
+                                                         nonce, mac)
+            else:
+                self._packet = \
+                    self._recv_cipher.verify_and_decrypt(hdr, self._packet, mac)
+
             if not self._packet:
                 raise DisconnectError(DISC_MAC_ERROR,
                                       'MAC verification failed')
 
             payload = self._packet[1:-self._packet[0]]
-        elif self._recv_etm:
+        elif self._recv_mode == 'etm':
             self._packet += rest
             mac = self._inpbuf[rem-self._recv_macsize:rem]
 
@@ -437,20 +564,25 @@ class SSHConnection(SSHPacketHandler):
                                  not self._compress_after_auth):
             payload = self._compressor.compress(payload)
 
-        hdrlen = 1 if (self._send_gcm or self._send_etm) else 5
+        hdrlen = 1 if self._send_mode in ('chacha', 'gcm', 'etm') else 5
 
         padlen = -(hdrlen + len(payload)) % self._send_blocksize
         if padlen < 4:
             padlen += self._send_blocksize
 
-        packet = Byte(padlen) + payload + urandom(padlen)
+        packet = Byte(padlen) + payload + os.urandom(padlen)
         pktlen = len(packet)
         hdr = UInt32(pktlen)
 
-        if self._send_gcm:
-            packet, mac = self._send_cipher.encrypt_and_sign(packet, hdr)
+        if self._send_mode == 'chacha':
+            nonce = UInt64(self._send_seq)
+            hdr = self._send_cipher.crypt_len(hdr, nonce)
+            packet, mac = self._send_cipher.encrypt_and_sign(hdr, packet, nonce)
             packet = hdr + packet
-        elif self._send_etm:
+        elif self._send_mode == 'gcm':
+            packet, mac = self._send_cipher.encrypt_and_sign(hdr, packet)
+            packet = hdr + packet
+        elif self._send_mode == 'etm':
             if self._send_cipher:
                 packet = self._send_cipher.encrypt(packet)
 
@@ -493,7 +625,7 @@ class SSHConnection(SSHPacketHandler):
         self._rekey_bytes_sent = 0
         self._rekey_time = time.monotonic() + self._rekey_seconds
 
-        cookie = urandom(16)
+        cookie = os.urandom(16)
         kex_algs = NameList(self._kex_algs)
         host_key_algs = NameList(self._get_server_host_key_algs())
         enc_algs = NameList(self._enc_algs)
@@ -518,22 +650,26 @@ class SSHConnection(SSHPacketHandler):
         if not self._session_id:
             self._session_id = h
 
-        enc_keysize_cs, enc_ivsize_cs, enc_blocksize_cs, gcm_cs = \
+        enc_keysize_cs, enc_ivsize_cs, enc_blocksize_cs, mode_cs = \
             get_encryption_params(self._enc_alg_cs)
-        enc_keysize_sc, enc_ivsize_sc, enc_blocksize_sc, gcm_sc = \
+        enc_keysize_sc, enc_ivsize_sc, enc_blocksize_sc, mode_sc = \
             get_encryption_params(self._enc_alg_sc)
 
-        if gcm_cs:
-            mac_keysize_cs, mac_hashsize_cs, etm_cs = 0, 16, False
+        if mode_cs in ('chacha', 'gcm'):
+            mac_keysize_cs, mac_hashsize_cs = 0, 16
         else:
             mac_keysize_cs, mac_hashsize_cs, etm_cs = \
                 get_mac_params(self._mac_alg_cs)
+            if etm_cs:
+                mode_cs = 'etm'
 
-        if gcm_sc:
-            mac_keysize_sc, mac_hashsize_sc, etm_sc = 0, 16, False
+        if mode_sc in ('chacha', 'gcm'):
+            mac_keysize_sc, mac_hashsize_sc = 0, 16
         else:
             mac_keysize_sc, mac_hashsize_sc, etm_sc = \
                 get_mac_params(self._mac_alg_sc)
+            if etm_sc:
+                mode_sc = 'etm'
 
         cmp_after_auth_cs = get_compression_params(self._cmp_alg_cs)
         cmp_after_auth_sc = get_compression_params(self._cmp_alg_sc)
@@ -555,13 +691,13 @@ class SSHConnection(SSHPacketHandler):
         next_cipher_cs = get_cipher(self._enc_alg_cs, enc_key_cs, iv_cs)
         next_cipher_sc = get_cipher(self._enc_alg_sc, enc_key_sc, iv_sc)
 
-        if gcm_cs:
+        if mode_cs in ('chacha', 'gcm'):
             self._mac_alg_cs = self._enc_alg_cs
             next_mac_cs = None
         else:
             next_mac_cs = get_mac(self._mac_alg_cs, mac_key_cs)
 
-        if gcm_sc:
+        if mode_sc in ('chacha', 'gcm'):
             self._mac_alg_sc = self._enc_alg_sc
             next_mac_sc = None
         else:
@@ -573,8 +709,7 @@ class SSHConnection(SSHPacketHandler):
             self._send_cipher = next_cipher_cs
             self._send_blocksize = max(8, enc_blocksize_cs)
             self._send_mac = next_mac_cs
-            self._send_gcm = gcm_cs
-            self._send_etm = etm_cs
+            self._send_mode = mode_cs
             self._compressor = get_compressor(self._cmp_alg_cs)
             self._compress_after_auth = cmp_after_auth_cs
 
@@ -582,8 +717,7 @@ class SSHConnection(SSHPacketHandler):
             self._next_recv_blocksize = max(8, enc_blocksize_sc)
             self._next_recv_mac = next_mac_sc
             self._next_recv_macsize = mac_hashsize_sc
-            self._next_recv_gcm = gcm_sc
-            self._next_recv_etm = etm_sc
+            self._next_recv_mode = mode_sc
             self._next_decompressor = get_decompressor(self._cmp_alg_sc)
             self._next_decompress_after_auth = cmp_after_auth_sc
 
@@ -598,8 +732,7 @@ class SSHConnection(SSHPacketHandler):
             self._send_cipher = next_cipher_sc
             self._send_blocksize = max(8, enc_blocksize_sc)
             self._send_mac = next_mac_sc
-            self._send_gcm = gcm_sc
-            self._send_etm = etm_sc
+            self._send_mode = mode_sc
             self._compressor = get_compressor(self._cmp_alg_sc)
             self._compress_after_auth = cmp_after_auth_sc
 
@@ -607,8 +740,7 @@ class SSHConnection(SSHPacketHandler):
             self._next_recv_blocksize = max(8, enc_blocksize_cs)
             self._next_recv_mac = next_mac_cs
             self._next_recv_macsize = mac_hashsize_cs
-            self._next_recv_gcm = gcm_cs
-            self._next_recv_etm = etm_cs
+            self._next_recv_mode = mode_cs
             self._next_decompressor = get_decompressor(self._cmp_alg_cs)
             self._next_decompress_after_auth = cmp_after_auth_cs
 
@@ -734,8 +866,9 @@ class SSHConnection(SSHPacketHandler):
                 for sock in sockets:
                     sock.close()
 
-                raise OSError(exc.errno, 'error while attempting to bind '
-                              'on address %r: %s' % (sa, exc.strerror.lower()))
+                raise OSError(exc.errno, 'error while attempting to bind on '
+                              'address %r: %s' % (sa, exc.strerror.lower())) \
+                    from None
 
             if listen_port == 0:
                 listen_port = sock.getsockname()[1]
@@ -769,7 +902,7 @@ class SSHConnection(SSHPacketHandler):
             lang = lang.decode('ascii')
         except UnicodeDecodeError:
             raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Invalid disconnect message')
+                                  'Invalid disconnect message') from None
 
         if code != DISC_BY_APPLICATION:
             exc = DisconnectError(code, reason, lang)
@@ -806,7 +939,8 @@ class SSHConnection(SSHPacketHandler):
             msg = msg.decode('utf-8')
             lang = lang.decode('ascii')
         except UnicodeDecodeError:
-            raise DisconnectError(DISC_PROTOCOL_ERROR, 'Invalid debug message')
+            raise DisconnectError(DISC_PROTOCOL_ERROR,
+                                  'Invalid debug message') from None
 
         self._owner.debug_msg_received(msg, lang, always_display)
 
@@ -906,8 +1040,7 @@ class SSHConnection(SSHPacketHandler):
             self._recv_cipher = self._next_recv_cipher
             self._recv_blocksize = self._next_recv_blocksize
             self._recv_mac = self._next_recv_mac
-            self._recv_gcm = self._next_recv_gcm
-            self._recv_etm = self._next_recv_etm
+            self._recv_mode = self._next_recv_mode
             self._recv_macsize = self._next_recv_macsize
             self._decompressor = self._next_decompressor
             self._decompress_after_auth = self._next_decompress_after_auth
@@ -936,7 +1069,7 @@ class SSHConnection(SSHPacketHandler):
             username = saslprep(username.decode('utf-8'))
         except (UnicodeDecodeError, SASLPrepError):
             raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Invalid auth request message')
+                                  'Invalid auth request message') from None
 
         if self.is_client():
             raise DisconnectError(DISC_PROTOCOL_ERROR,
@@ -986,7 +1119,8 @@ class SSHConnection(SSHPacketHandler):
             self._send_deferred_packets()
 
             self._owner.auth_completed()
-            self._auth_waiter.set_result(None)
+            if not self._auth_waiter.cancelled():
+                self._auth_waiter.set_result(None)
             self._auth_waiter = None
         else:
             raise DisconnectError(DISC_PROTOCOL_ERROR,
@@ -1004,7 +1138,7 @@ class SSHConnection(SSHPacketHandler):
             lang = lang.decode('ascii')
         except UnicodeDecodeError:
             raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Invalid userauth banner')
+                                  'Invalid userauth banner') from None
 
         if self.is_client():
             self._owner.auth_banner_received(msg, lang)
@@ -1022,7 +1156,7 @@ class SSHConnection(SSHPacketHandler):
             request = request.decode('ascii')
         except UnicodeDecodeError:
             raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Invalid global request')
+                                  'Invalid global request') from None
 
         name = '_process_' + request.replace('-', '_') + '_global_request'
         handler = getattr(self, name, None)
@@ -1036,7 +1170,8 @@ class SSHConnection(SSHPacketHandler):
 
         if self._global_request_waiters:
             waiter = self._global_request_waiters.pop(0)
-            waiter.set_result((pkttype, packet))
+            if not waiter.cancelled():
+                waiter.set_result((pkttype, packet))
         else:
             raise DisconnectError(DISC_PROTOCOL_ERROR,
                                   'Unexpected global response')
@@ -1053,7 +1188,7 @@ class SSHConnection(SSHPacketHandler):
             chantype = chantype.decode('ascii')
         except UnicodeDecodeError:
             raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Invalid channel open request')
+                                  'Invalid channel open request') from None
 
         try:
             name = '_process_' + chantype.replace('-', '_') + '_open'
@@ -1099,7 +1234,7 @@ class SSHConnection(SSHPacketHandler):
             lang = lang.decode('ascii')
         except UnicodeDecodeError:
             raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Invalid channel open failure')
+                                  'Invalid channel open failure') from None
 
         chan = self._channels.get(recv_chan)
         if chan:
@@ -1280,7 +1415,7 @@ class SSHConnection(SSHPacketHandler):
                                                               dest_host,
                                                               dest_port)
         except OSError as exc:
-            raise ChannelOpenError(OPEN_CONNECT_FAILED, str(exc))
+            raise ChannelOpenError(OPEN_CONNECT_FAILED, str(exc)) from None
 
         return SSHRemotePortForwarder(self, self._loop, peer)
 
@@ -1303,46 +1438,34 @@ class SSHClientConnection(SSHConnection):
 
     """
 
-    def __init__(self, client_factory, loop, host, port, server_host_keys,
-                 client_keys, username, password, kex_algs, encryption_algs,
+    def __init__(self, client_factory, loop, host, port, known_hosts,
+                 username, client_keys, password, kex_algs, encryption_algs,
                  mac_algs, compression_algs, rekey_bytes, rekey_seconds,
                  auth_waiter):
         super().__init__(client_factory, loop, kex_algs, encryption_algs,
                          mac_algs, compression_algs, rekey_bytes,
                          rekey_seconds, server=False)
 
-        if server_host_keys is None:
-            self._server_host_keys = None
-        else:
-            if server_host_keys is ():
-                server_host_keys = self._parse_known_hosts(host, port)
-
-            self._server_host_keys = set()
-            self._server_host_key_algs = []
-
-            for key in server_host_keys:
-                self._server_host_keys.add(key)
-                if key.algorithm not in self._server_host_key_algs:
-                    self._server_host_key_algs.append(key.algorithm)
+        self._host = host
+        self._port = port if port != _DEFAULT_PORT else None
+        self._known_hosts = known_hosts
 
         if username is None:
             username = getpass.getuser()
 
         self._username = saslprep(username)
 
-        if client_keys:
-            self._client_keys = list(client_keys)
-        else:
+        if client_keys is ():
             self._client_keys = []
 
-            if client_keys is ():
-                for file in _DEFAULT_KEY_FILES:
+            for file in _DEFAULT_KEY_FILES:
+                try:
                     file = os.path.join(os.environ['HOME'], '.ssh', file)
-
-                    try:
-                        self._client_keys.append(read_private_key(file))
-                    except (OSError, KeyImportError):
-                        """Try the next default key"""
+                    self._client_keys.append(self._load_private_key(file))
+                except OSError:
+                    pass
+        else:
+            self._client_keys = self._load_private_key_list(client_keys)
 
         self._password = password
         self._kbdint_password_auth = False
@@ -1351,6 +1474,49 @@ class SSHClientConnection(SSHConnection):
         self._dynamic_remote_listeners = {}
 
         self._auth_waiter = auth_waiter
+
+    def _connection_made(self):
+        if self._known_hosts is None:
+            self._server_host_keys = None
+            self._server_ca_keys = None
+            self._revoked_server_keys = None
+            self._server_host_key_algs = get_public_key_algs() + \
+                                         get_certificate_algs()
+        else:
+            if not self._known_hosts:
+                self._known_hosts = os.path.join(os.environ['HOME'], '.ssh',
+                                                 'known_hosts')
+
+            if isinstance(self._known_hosts, (str, bytes)):
+                server_host_keys, server_ca_keys, revoked_server_keys = \
+                    match_known_hosts(self._known_hosts, self._host,
+                                      self._peer_addr, self._port)
+            else:
+                server_host_keys, server_ca_keys, revoked_server_keys = \
+                    self._known_hosts
+
+                server_host_keys = self._load_public_key_list(server_host_keys)
+                server_ca_keys = self._load_public_key_list(server_ca_keys)
+                revoked_server_keys = \
+                    self._load_public_key_list(revoked_server_keys)
+
+            self._server_host_keys = set()
+            self._server_host_key_algs = []
+
+            self._server_ca_keys = set(server_ca_keys)
+            if server_ca_keys:
+                self._server_host_key_algs.extend(get_certificate_algs())
+
+            self._revoked_server_keys = set(revoked_server_keys)
+
+            for key in server_host_keys:
+                self._server_host_keys.add(key)
+                if key.algorithm not in self._server_host_key_algs:
+                    self._server_host_key_algs.append(key.algorithm)
+
+        if not self._server_host_key_algs:
+            raise DisconnectError(DISC_HOST_KEY_NOT_VERIFYABLE,
+                                  'No trusted server host keys available')
 
     def _cleanup(self, exc):
         if self._remote_listeners:
@@ -1366,55 +1532,56 @@ class SSHClientConnection(SSHConnection):
 
         super()._cleanup(exc)
 
-    def _parse_known_hosts(self, host, port):
-        server_host_keys = []
-
-        try:
-            lines = open(os.path.join(os.environ['HOME'], '.ssh',
-                                      'known_hosts'), 'rb').readlines()
-        except OSError:
-            return []
-
-        host = host.encode()
-
-        for line in lines:
-            dest_hosts, key = line.split(None, 1)
-            dest_hosts = dest_hosts.split(b',')
-            for dest_host in dest_hosts:
-                if dest_host.startswith(b'[') and b']:' in dest_host:
-                    dest_host, dest_port = dest_host[1:].split(b']:', 1)
-                    try:
-                        dest_port = int(dest_port)
-                    except ValueError:
-                        continue
-                else:
-                    dest_port = 22
-
-                if fnmatch(host, dest_host) and dest_port == port:
-                    try:
-                        server_host_keys.append(import_public_key(key))
-                    except KeyImportError:
-                        """Move on to the next key in the file"""
-
-                    break
-
-        return server_host_keys
-
     def _get_server_host_key_algs(self):
         """Return the list of acceptable server host key algorithms"""
 
-        if self._server_host_keys:
-            return self._server_host_key_algs
-        else:
-            return get_public_key_algs()
+        return self._server_host_key_algs
 
-    def _verify_server_host_key(self, server_host_key):
-        """Verify the server's host key is in the server host key list"""
+    def _validate_server_host_key(self, data):
+        """Validate and return the server's host key"""
 
-        if self._server_host_keys is None:
-            return True
+        try:
+            cert = decode_ssh_certificate(data)
+        except KeyImportError:
+            pass
         else:
-            return server_host_key in self._server_host_keys
+            if self._revoked_server_keys is not None and \
+               cert.signing_key in self._revoked_server_keys:
+                raise DisconnectError(DISC_HOST_KEY_NOT_VERIFYABLE,
+                                      'Revoked server CA key')
+
+            if self._server_ca_keys is not None and \
+               cert.signing_key not in self._server_ca_keys:
+                raise DisconnectError(DISC_HOST_KEY_NOT_VERIFYABLE,
+                                      'Untrusted server CA key')
+
+            try:
+                cert.validate(CERT_TYPE_HOST, self._host)
+            except ValueError as exc:
+                raise DisconnectError(DISC_HOST_KEY_NOT_VERIFYABLE,
+                                      str(exc)) from None
+
+            return cert.key
+
+        try:
+            key = decode_ssh_public_key(data)
+        except KeyImportError:
+            pass
+        else:
+            if self._revoked_server_keys is not None and \
+               key in self._revoked_server_keys:
+                raise DisconnectError(DISC_HOST_KEY_NOT_VERIFYABLE,
+                                      'Revoked server host key')
+
+            if self._server_host_keys is not None and \
+               key not in self._server_host_keys:
+                raise DisconnectError(DISC_HOST_KEY_NOT_VERIFYABLE,
+                                      'Untrusted server host key')
+
+            return key
+
+        raise DisconnectError(DISC_HOST_KEY_NOT_VERIFYABLE,
+                              'Unable to decode server host key')
 
     def _try_next_auth(self):
         """Attempt client authentication using the next compatible method"""
@@ -1428,9 +1595,18 @@ class SSHClientConnection(SSHConnection):
         """Return a client key to authenticate with"""
 
         if self._client_keys:
-            return self._client_keys.pop(0)
+            key, cert = self._client_keys.pop(0)
         else:
-            return self._owner.public_key_auth_requested()
+            client_key = self._owner.public_key_auth_requested()
+            key, cert = self._load_private_key(client_key)
+
+        if cert:
+            self._client_keys.insert(0, (key, None))
+            return cert.algorithm, key, cert.data
+        elif key:
+            return key.algorithm, key, key.encode_ssh_public()
+        else:
+            return None, None, None
 
     def _password_auth_requested(self):
         """Return a password to authenticate with"""
@@ -1525,7 +1701,7 @@ class SSHClientConnection(SSHConnection):
             orig_host = orig_host.decode('utf-8')
         except UnicodeDecodeError:
             raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Invalid channel open request')
+                                  'Invalid channel open request') from None
 
         # Some buggy servers send back a port of ``0`` instead of the actual
         # listening port when reporting connections which arrive on a listener
@@ -1920,26 +2096,46 @@ class SSHServerConnection(SSHConnection):
 
     """
 
-    def __init__(self, server_factory, loop, server_host_keys, kex_algs=(),
-                 encryption_algs=(), mac_algs=(), compression_algs=(),
+    def __init__(self, server_factory, loop, server_host_keys,
+                 authorized_client_keys=None, kex_algs=(), encryption_algs=(),
+                 mac_algs=(), compression_algs=(),
                  rekey_bytes=_DEFAULT_REKEY_BYTES,
                  rekey_seconds=_DEFAULT_REKEY_SECONDS):
         super().__init__(server_factory, loop, kex_algs, encryption_algs,
                          mac_algs, compression_algs, rekey_bytes,
                          rekey_seconds, server=True)
 
+        server_host_keys = self._load_private_key_list(server_host_keys)
+
         self._server_host_keys = OrderedDict()
-        for key in server_host_keys:
+
+        for key, cert in server_host_keys:
             if key.algorithm in self._server_host_keys:
                 raise ValueError('Multiple keys of type %s found' %
-                                     key.algorithm.decode())
+                                     key.algorithm.decode('ascii'))
 
-            self._server_host_keys[key.algorithm] = key
+            self._server_host_keys[key.algorithm] = (key,
+                                                     key.encode_ssh_public())
+
+            if cert:
+                if cert.algorithm in self._server_host_keys:
+                    raise ValueError('Multiple keys of type %s found' %
+                                         cert.algorithm.decode('ascii'))
+
+                self._server_host_keys[cert.algorithm] = (key, cert.data)
 
         if not self._server_host_keys:
             raise ValueError('No server host keys provided')
 
+        self._client_keys = self._load_authorized_keys(authorized_client_keys)
+
+        self._server_host_key = None
+        self._key_options = {}
+        self._cert_options = None
         self._kbdint_password_auth = False
+
+    def _connection_made(self):
+        pass
 
     def _get_server_host_key_algs(self):
         """Return the list of acceptable server host key algorithms
@@ -1967,15 +2163,83 @@ class SSHServerConnection(SSHConnection):
 
         return False
 
+    def _get_server_host_key(self):
+        """Return the chosen server host key
+
+           This method returns the chosen server host private key and a
+           corresponding public key or certificate which contains it.
+
+        """
+
+        return self._server_host_key
+
     def _public_key_auth_supported(self):
         """Return whether or not public key authentication is supported"""
 
-        return self._owner.public_key_auth_supported()
+        return bool(self._client_keys) or \
+               self._owner.public_key_auth_supported()
 
-    def _validate_public_key(self, username, key):
-        """Return whether key is an authorized client key for this user"""
+    def _validate_public_key(self, username, key_data):
+        """Validate and return the public key for the specified user
 
-        return self._owner.validate_public_key(username, key)
+           This method validates that the public key or certificate provided
+           is allowed for the specified user. If it is, the corresponding
+           public key is returned. Otherwise ``None`` is returned to
+           indicate it is not valid.
+
+        """
+
+        options = None
+
+        try:
+            cert = decode_ssh_certificate(key_data)
+        except KeyImportError:
+            pass
+        else:
+            if self._client_keys:
+                options = self._client_keys.validate(cert.signing_key,
+                                                     self._peer_addr,
+                                                     cert.principals, ca=True)
+
+            if options is None and \
+               not self._owner.validate_ca_key(username, cert.signing_key):
+                return None
+
+            self._key_options = {} if options is None else options
+
+            if self.get_key_option('principals'):
+                username = None
+
+            try:
+                cert.validate(CERT_TYPE_USER, username)
+            except ValueError:
+                return None
+
+            allowed_addresses = self.get_certificate_option('source-address')
+            if allowed_addresses:
+                ip = ip_address(self._peer_addr)
+                if not any(ip in network for network in allowed_addresses):
+                    return None
+
+            self._cert_options = cert.options
+
+            return cert.key
+
+        try:
+            key = decode_ssh_public_key(key_data)
+        except KeyImportError:
+            return None
+        else:
+            if self._client_keys:
+                options = self._client_keys.validate(key, self._peer_addr)
+
+            if options is None and \
+               not self._owner.validate_public_key(username, key):
+                return None
+
+            self._key_options = {} if options is None else options
+
+            return key
 
     def _password_auth_supported(self):
         """Return whether or not password authentication is supported"""
@@ -2049,7 +2313,21 @@ class SSHServerConnection(SSHConnection):
             orig_host = orig_host.decode('utf-8')
         except UnicodeDecodeError:
             raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Invalid channel open request')
+                                  'Invalid channel open request') from None
+
+        if not self.check_key_permission('port-forwarding') or \
+           not self.check_certificate_permission('port-forwarding'):
+            raise ChannelOpenError(OPEN_ADMINISTRATIVELY_PROHIBITED,
+                                   'Port forwarding not permitted')
+
+        permitted_opens = self.get_key_option('permitopen')
+
+        if permitted_opens and \
+           (dest_host, dest_port) not in permitted_opens and \
+           (dest_host, None) not in permitted_opens:
+            raise ChannelOpenError(OPEN_ADMINISTRATIVELY_PROHIBITED,
+                                   'Port forwarding not permitted to %s '
+                                   'port %s' % (dest_host, dest_port))
 
         result = self._owner.connection_requested(dest_host, dest_port,
                                                   orig_host, orig_port)
@@ -2084,7 +2362,12 @@ class SSHServerConnection(SSHConnection):
             listen_host = listen_host.decode('utf-8').lower()
         except UnicodeDecodeError:
             raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Invalid TCP forward request')
+                                  'Invalid TCP forward request') from None
+
+        if not self.check_key_permission('port-forwarding') or \
+           not self.check_certificate_permission('port-forwarding'):
+            self._report_global_response(False)
+            return
 
         result = self._owner.server_requested(listen_host, listen_port)
 
@@ -2140,7 +2423,7 @@ class SSHServerConnection(SSHConnection):
             listen_host = listen_host.decode('utf-8').lower()
         except UnicodeDecodeError:
             raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Invalid TCP forward request')
+                                  'Invalid TCP forward request') from None
 
         listener = self._local_listeners.pop((listen_host, listen_port))
         if not listener:
@@ -2171,6 +2454,156 @@ class SSHServerConnection(SSHConnection):
         msg = msg.encode('utf-8')
         lang = lang.encode('ascii')
         self._send_packet(Byte(MSG_USERAUTH_BANNER), String(msg), String(lang))
+
+    def set_authorized_keys(self, authorized_keys):
+        """Set the keys trusted for client public key authentication
+
+           This method can be called to set the trusted user and
+           CA keys for client public key authentication. It should
+           generally be called from the :meth:`begin_auth
+           <SSHServer.begin_auth>` method of :class:`SSHServer` to
+           set the appropriate keys for the user attempting to
+           authenticate.
+
+           :param authorized_keys:
+               The keys to trust for client public key authentication
+           :type authorized_keys: *see* :ref:`SpecifyingAuthorizedKeys`
+
+        """
+
+        self._client_keys = self._load_authorized_keys(authorized_keys)
+
+    def get_key_option(self, option, default=None):
+        """Return option from authorized_keys
+
+           If a client key or certificate was presented during authentication,
+           this method returns the value of the requested option in the
+           corresponding authorized_keys entry if it was set. Otherwise, it
+           returns the default value provided.
+
+           The following standard options are supported:
+
+               | command (string)
+               | environment (dictionary of name/value pairs)
+               | from (list of host patterns)
+               | permitopen (list of host/port tuples)
+               | principals (list of usernames)
+
+           Non-standard options are also supported and will return the
+           value ``True`` if the option is present without a value or
+           return a list of strings containing the values associated
+           with each occurrence of that option name. If the option is
+           not present, the specified default value is returned.
+
+           :param string option:
+               The name of the option to look up.
+           :param default:
+               The default value to return if the option is not present.
+
+           :returns: The value of the option in authorized_keys, if set
+
+        """
+
+        if self._key_options is not None:
+            return self._key_options.get(option, default)
+        else:
+            return default
+
+    def check_key_permission(self, permission):
+        """Check permissions in authorized_keys
+
+           If a client key or certificate was presented during
+           authentication, this method returns whether the specified
+           permission is allowed by the corresponding authorized_keys
+           entry. By default, all permissions are granted, but they
+           can be revoked by specifying an option starting with
+           'no-' without a value.
+
+           The following standard options are supported:
+
+               | X11-forwarding
+               | agent-forwarding
+               | port-forwarding
+               | pty
+               | user-rc
+
+           AsyncSSH internally enforces port-forwarding and pty
+           permissions but ignores the other values since it does
+           not implement those features.
+
+           Non-standard permissions can also be checked, as long as the
+           option follows the convention of starting with 'no-'.
+
+           :param string permission:
+               The name of the permission to check (without the 'no-').
+
+           :returns: A boolean indicating if the permission is granted.
+
+        """
+
+        if self._key_options is not None:
+            return not self._key_options.get('no-' + permission, False)
+        else:
+            return True
+
+    def get_certificate_option(self, option, default=None):
+        """Return option from user certificate
+
+           If a user certificate was presented during authentication,
+           this method returns the value of the requested option in
+           the certificate if it was set. Otherwise, it returns the
+           default value provided.
+
+           The following options are supported:
+
+               | force-command (string)
+               | source-address (list of CIDR-style IP network addresses)
+
+           :param string option:
+               The name of the option to look up.
+           :param default:
+               The default value to return if the option is not present.
+
+           :returns: The value of the option in the user certificate, if set
+
+        """
+
+        if self._cert_options is not None:
+            return self._cert_options.get(option, default)
+        else:
+            return default
+
+    def check_certificate_permission(self, permission):
+        """Check permissions in user certificate
+
+           If a user certificate was presented during authentication,
+           this method returns whether the specified permission was
+           granted in the certificate. Otherwise, it acts as if all
+           permissions are granted and returns ``True``.
+
+           The following permissions are supported:
+
+               | X11-forwarding
+               | agent-forwarding
+               | port-forwarding
+               | pty
+               | user-rc
+
+           AsyncSSH internally enforces port-forwarding and pty permissions
+           but ignores the other values since it does not implement those
+           features.
+
+           :param string permission:
+               The name of the permission to check (without the 'permit-').
+
+           :returns: A boolean indicating if the permission is granted.
+
+        """
+
+        if self._cert_options is not None:
+            return self._cert_options.get('permit-' + permission, False)
+        else:
+            return True
 
     def create_server_channel(self, encoding='utf-8', window=_DEFAULT_WINDOW,
                               max_pktsize=_DEFAULT_MAX_PKTSIZE):
@@ -2399,17 +2832,18 @@ class SSHClient:
     def public_key_auth_requested(self):
         """Public key authentication has been requested
 
-           This method should return a client private key corresponding
-           to the user that authentication is being attempted for. It
-           may be called multiple times and can return a different key
-           to try each time it is called. When there are no client keys
-           left to try, it should return ``None`` to indicate that some
-           other authentication method should be tried.
+           This method should return a private key corresponding to
+           the user that authentication is being attempted for.
+
+           This method may be called multiple times and can return a
+           different key to try each time it is called. When there are
+           no keys left to try, it should return ``None`` to indicate
+           that some other authentication method should be tried.
 
            If client keys were provided when the connection was opened,
            they will be tried before this method is called.
 
-           :returns: A :class:`SSHKey` private key to authenticate with
+           :returns: A key as described in :ref:`SpecifyingPrivateKeys`
                      or ``None`` to move on to another authentication
                      method
 
@@ -2642,14 +3076,20 @@ class SSHServer:
     def validate_public_key(self, username, key):
         """Return whether key is an authorized client key for this user
 
-           This method should return ``True`` if the specified key is a
-           valid client key for the user being authenticated. It must
-           be overridden by applications wishing to support client public
-           key authentication.
+           Basic key-based client authentication can be supported by
+           passing authorized keys in the ``authorized_client_keys``
+           argument of :func:`create_server`, or by calling
+           :meth:`set_authorized_keys
+           <SSHServerConnection.set_authorized_keys>` on the server
+           connection from the :meth:`begin_auth` method. However, for
+           more flexibility in matching on the allowed set of keys, this
+           method can be implemented by the application to do the
+           matching itself. It should return ``True`` if the specified
+           key is a valid client key for the user being authenticated.
 
            This method may be called multiple times with different keys
-           provided by the client. Applications should determine the list
-           of valid client keys in the :meth:`begin_auth` method so that
+           provided by the client. Applications should precompute as
+           much as possible in the :meth:`begin_auth` method so that
            this function can quickly return whether the key provided is
            in the list.
 
@@ -2669,6 +3109,51 @@ class SSHServer:
 
            :returns: A boolean indicating if the specified key is a valid
                      client key for the user being authenticated
+
+        """
+
+        return False
+
+    def validate_ca_key(self, username, key):
+        """Return whether key is an authorized CA key for this user
+
+           Basic key-based client authentication can be supported by
+           passing authorized keys in the ``authorized_client_keys``
+           argument of :func:`create_server`, or by calling
+           :meth:`set_authorized_keys
+           <SSHServerConnection.set_authorized_keys>` on the server
+           connection from the :meth:`begin_auth` method. However, for
+           more flexibility in matching on the allowed set of keys, this
+           method can be implemented by the application to do the
+           matching itself. It should return ``True`` if the specified
+           key is a valid certificate authority key for the user being
+           authenticated.
+
+           This method may be called multiple times with different keys
+           provided by the client. Applications should precompute as
+           much as possible in the :meth:`begin_auth` method so that
+           this function can quickly return whether the key provided is
+           in the list.
+
+           By default, this method returns ``False`` for all CA keys.
+
+               .. note:: This function only needs to report whether the
+                         public key provided is a valid CA key for this
+                         user. If it is, AsyncSSH will verify that the
+                         certificate is valid, that the user is one of
+                         the valid principals for the certificate, and
+                         that the client possesses the private key
+                         corresponding to the public key in the certificate
+                         before allowing the authentication to succeed.
+
+           :param string username:
+               The user being authenticated
+           :param key:
+               The public key which signed the certificate sent by the client
+           :type key: :class:`SSHKey` *public key*
+
+           :returns: A boolean indicating if the specified key is a valid
+                     CA key for the user being authenticated
 
         """
 
@@ -2962,9 +3447,9 @@ class SSHServer:
 @asyncio.coroutine
 def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
                       loop=None, family=0, flags=0, local_addr=None,
-                      server_host_keys=(), client_keys=(),
-                      username=None, password=None, kex_algs=(),
-                      encryption_algs=(), mac_algs=(), compression_algs=(),
+                      known_hosts=(), username=None, client_keys=(),
+                      password=None, kex_algs=(), encryption_algs=(),
+                      mac_algs=(), compression_algs=(),
                       rekey_bytes=_DEFAULT_REKEY_BYTES,
                       rekey_seconds=_DEFAULT_REKEY_SECONDS):
     """Create an SSH client connection
@@ -3011,22 +3496,26 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
            The flags to pass to getaddrinfo() when looking up the host address
        :param local_addr: (optional)
            The host and port to bind the socket to before connecting
-       :param server_host_keys: (optional)
-           A list of public keys which will be accepted as a host key
-           from the server. If this parameter is not provided, host
-           keys for the server will be looked up in
-           :file:`.ssh/known_hosts`. If this is explicitly set to
-           ``None``, server host key validation will be disabled.
+       :param known_hosts: (optional)
+           The list of keys which will be used to validate the server host
+           key presented during the SSH handshake. If this is not specified,
+           the keys will be looked up in the file :file:`.ssh/known_hosts`.
+           If this is explicitly set to ``None``, server host key validation
+           will be disabled.
        :param string username: (optional)
            Username to authenticate as on the server. If not specified,
            the currently logged in user on the local machine will be used.
        :param client_keys: (optional)
-           A list of private keys which will be used to authenticate
-           this client. If no client keys are specified, an attempt will
-           be made to load them from the files :file:`.ssh/id_ecdsa`,
-           :file:`.ssh/id_rsa`, and :file:`.ssh/id_dsa`. If this is
-           explicitly set to ``None``, client public key authentication
-           will not be performed.
+           A list of keys which will be used to authenticate this client
+           via public key authentication. If no client keys are specified,
+           an attempt will be made to load them from the files
+           :file:`.ssh/id_ed25519`, :file:`.ssh/id_ecdsa`,
+           :file:`.ssh/id_rsa`, and :file:`.ssh/id_dsa`,
+           with optional certificates loaded from the files
+           :file:`.ssh/id_ed25519-cert.pub`, :file:`.ssh/id_ecdsa-cert.pub`,
+           :file:`.ssh/id_rsa-cert.pub`, and :file:`.ssh/id_dsa-cert.pub`.
+           If this argument is explicitly set to ``None``, client public
+           key authentication will not be performed.
        :param string password: (optional)
            The password to use for client password authentication or
            keyboard-interactive authentication which prompts for a password.
@@ -3055,8 +3544,8 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
                      ``socket.AF_INET6``
        :type flags: flags to pass to :meth:`getaddrinfo() <socket.getaddrinfo>`
        :type local_addr: tuple of string and integer
-       :type server_host_keys: *list of* :class:`SSHKey` *public keys*
-       :type client_keys: *list of* :class:`SSHKey` *private keys*
+       :type known_hosts: *see* :ref:`SpecifyingKnownHosts`
+       :type client_keys: *see* :ref:`SpecifyingPrivateKeys`
        :type kex_algs: list of strings
        :type encryption_algs: list of strings
        :type mac_algs: list of strings
@@ -3075,12 +3564,11 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
     auth_waiter = asyncio.Future(loop=loop)
 
     conn_factory = lambda: SSHClientConnection(client_factory, loop, host,
-                                               port, server_host_keys,
-                                               client_keys, username, password,
-                                               kex_algs, encryption_algs,
-                                               mac_algs, compression_algs,
-                                               rekey_bytes, rekey_seconds,
-                                               auth_waiter)
+                                               port, known_hosts, username,
+                                               client_keys, password, kex_algs,
+                                               encryption_algs, mac_algs,
+                                               compression_algs, rekey_bytes,
+                                               rekey_seconds, auth_waiter)
 
     _, conn = yield from loop.create_connection(conn_factory, host, port,
                                                 family=family, flags=flags,
@@ -3093,7 +3581,8 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
 @asyncio.coroutine
 def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
                   loop=None, family=0, flags=socket.AI_PASSIVE, backlog=100,
-                  reuse_address=None, server_host_keys, kex_algs=(),
+                  reuse_address=None, server_host_keys,
+                  authorized_client_keys=None, kex_algs=(),
                   encryption_algs=(), mac_algs=(), compression_algs=(),
                   rekey_bytes=_DEFAULT_REKEY_BYTES,
                   rekey_seconds=_DEFAULT_REKEY_SECONDS):
@@ -3126,10 +3615,14 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
        :param boolean reuse_address: (optional)
            Whether or not to reuse a local socket in the TIME_WAIT state
            without waiting for its natural timeout to expire. If not
-           specified, this will be automatically set to True on UNIX.
+           specified, this will be automatically set to ``True`` on UNIX.
        :param server_host_keys:
-           A list of public keys which can be presented as host keys
-           during the SSL handshake. This argument must be specified.
+           A list of private keys and optional certificates which can be
+           used by the server as a host key. This argument must be
+           specified.
+       :param authorized_client_keys: (optional)
+           A list of authorized user and CA public keys which should be
+           trusted for certifcate-based client public key authentication.
        :param kex_algs: (optional)
            A list of allowed key exchange algorithms in the SSH handshake,
            taken from :ref:`key exchange algorithms <KexAlgs>`
@@ -3152,7 +3645,8 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
        :type family: ``socket.AF_UNSPEC``, ``socket.AF_INET``, or
                      ``socket.AF_INET6``
        :type flags: flags to pass to :meth:`getaddrinfo() <socket.getaddrinfo>`
-       :type server_host_keys: *list of* :class:`SSHKey` *private keys*
+       :type server_host_keys: *see* :ref:`SpecifyingPrivateKeys`
+       :type authorized_client_keys: *see* :ref:`SpecifyingAuthorizedKeys`
        :type kex_algs: list of strings
        :type encryption_algs: list of strings
        :type mac_algs: list of strings
@@ -3166,9 +3660,10 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
         loop = asyncio.get_event_loop()
 
     conn_factory = lambda: SSHServerConnection(server_factory, loop,
-                                               server_host_keys, kex_algs,
-                                               encryption_algs, mac_algs,
-                                               compression_algs,
+                                               server_host_keys,
+                                               authorized_client_keys,
+                                               kex_algs, encryption_algs,
+                                               mac_algs, compression_algs,
                                                rekey_bytes, rekey_seconds)
 
     return (yield from loop.create_server(conn_factory, host, port,

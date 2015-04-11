@@ -19,8 +19,8 @@ Simple client
 The following code shows an example of a simple SSH client which logs into
 localhost and lists files in a directory named 'abc' under the user's home
 directory. The username provided is the logged in user, and the user's
-default SSH client certificates are presented during authentication. The
-server's host key is checked against the user's SSH known_hosts file and
+default SSH client keys or certificates are presented during authentication.
+The server's host key is checked against the user's SSH known_hosts file and
 the connection will fail if there's no entry for localhost there or if the
 key doesn't match.
 
@@ -284,11 +284,21 @@ a message when users authenticate successfully and start a shell.
       :literal:
       :start-line: 15
 
-To authenticate with client keys, the server would look something like
-the following. Client keys need to be copied into a a file named
-:samp:`{username}.pub` in a directory called ``authorized_keys``.
+To authenticate with SSH client keys or certificates, the server would
+look something like the following. Client and certificate authority
+keys for each user need to be placed in a file in authorized_keys format
+named based on the username in a directory called ``authorized_keys``.
 
    .. include:: ../examples/simple_keyed_server.py
+      :literal:
+      :start-line: 15
+
+It is also possible to use a single authorized_keys file for all users.
+This is common when using certificates, as AsyncSSH can automatically
+enforce that the certificates presented have a principal in them which
+matches the username. This would look something like the following.
+
+   .. include:: ../examples/simple_cert_server.py
       :literal:
       :start-line: 15
 

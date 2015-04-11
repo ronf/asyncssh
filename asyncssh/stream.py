@@ -220,12 +220,14 @@ class SSHStreamSession:
     def _unblock_read(self, datatype):
         waiter = self._read_waiter[datatype]
         if waiter:
-            waiter.set_result(None)
+            if not waiter.cancelled():
+                waiter.set_result(None)
             self._read_waiter[datatype] = None
 
     def _unblock_drain(self):
         for waiter in self._drain_waiters:
-            waiter.set_result(None)
+            if not waiter.cancelled():
+                waiter.set_result(None)
 
         self._drain_waiters = []
 
@@ -242,6 +244,10 @@ class SSHStreamSession:
         self._exception = exc
 
         if not self._eof_received:
+            if exc:
+                for datatype in self._read_waiter.keys():
+                    self._recv_buf[datatype].append(exc)
+
             self.eof_received()
 
         if self._write_paused:
