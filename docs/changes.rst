@@ -3,6 +3,17 @@
 Change Log
 ==========
 
+Release 1.0.1 (13 Apr 2015)
+---------------------------
+
+* Fixed a bug in OpenSSH private key encryption introduced in some
+  recent cipher refactoring.
+
+* Added bcrypt and libnacl as optional dependencies in setup.py.
+
+* Changed test_keys test to work properly when bcrypt or libnacl aren't
+  installed.
+
 Release 1.0.0 (11 Apr 2015)
 ---------------------------
 
