@@ -188,7 +188,7 @@ class SSHKey:
 
                 try:
                     alg = cipher.encode('ascii')
-                    key_size, iv_size, block_size, gcm = \
+                    key_size, iv_size, block_size, mode = \
                         get_encryption_params(alg)
                 except (KeyError, UnicodeEncodeError):
                     raise KeyEncryptionError('Unknown cipher: %s' %
@@ -216,8 +216,10 @@ class SSHKey:
                 data = data + bytes(range(1, block_size + 1 - pad))
 
             if cipher:
-                if gcm:
-                    data, mac = cipher.encrypt_and_sign(data, b'')
+                if mode == 'chacha':
+                    data, mac = cipher.encrypt_and_sign(b'', data, UInt64(0))
+                elif mode == 'gcm':
+                    data, mac = cipher.encrypt_and_sign(b'', data)
                 else:
                     data, mac = cipher.encrypt(data), b''
 
@@ -615,7 +617,7 @@ def _decode_openssh_private(data, passphrase):
                                          'import encrypted private keys')
 
             try:
-                key_size, iv_size, block_size, gcm = \
+                key_size, iv_size, block_size, mode = \
                     get_encryption_params(cipher)
             except KeyError:
                 raise KeyEncryptionError('Unknown cipher: %s' %
@@ -631,11 +633,18 @@ def _decode_openssh_private(data, passphrase):
 
             cipher = get_cipher(cipher, key[:key_size], key[key_size:])
 
-            if gcm:
-                key_data = cipher.decrypt_and_verify(key_data, b'', mac)
+            if mode == 'chacha':
+                key_data = cipher.verify_and_decrypt(b'', key_data,
+                                                     UInt64(0), mac)
+                mac = b''
+            elif mode == 'gcm':
+                key_data = cipher.verify_and_decrypt(b'', key_data, mac)
                 mac = b''
             else:
                 key_data = cipher.decrypt(key_data)
+
+            if key_data is None:
+                raise KeyEncryptionError('Incorrect passphrase') from None
 
             block_size = max(block_size, 8)
         else:
