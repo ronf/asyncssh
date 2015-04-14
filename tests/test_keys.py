@@ -17,7 +17,10 @@
 
 """
 
-import os, subprocess, tempfile, unittest
+import importlib, os, subprocess, tempfile, unittest
+
+bcrypt_available = importlib.find_loader('bcrypt')
+libnacl_available = importlib.find_loader('libnacl')
 
 from asyncssh import read_private_key, read_public_key
 
@@ -50,7 +53,10 @@ pkcs8_ciphers = (('des-cbc',      'md5',  1, '-v1 PBE-MD5-DES'),
 
 openssh_ciphers = ('aes128-cbc', 'aes192-cbc', 'aes256-cbc',
                    'aes128-ctr', 'aes192-ctr', 'aes256-ctr',
-                   'aes128-gcm@openssh.com', 'aes256-gcm@openssh.com',
+                   # Comment out GCM/Chacha for now, due to a bug in OpenSSH:
+                   #     https://bugzilla.mindrot.org/show_bug.cgi?id=2366
+                   # 'aes128-gcm@openssh.com', 'aes256-gcm@openssh.com',
+                   # 'chacha20-poly1305@openssh.com',
                    'arcfour', 'arcfour128', 'arcfour256',
                    'blowfish-cbc', 'cast128-cbc', '3des-cbc')
 
@@ -259,12 +265,13 @@ class _TestKeys(unittest.TestCase):
         with self.subTest('Export OpenSSH private'):
             self.export_openssh_private()
 
-        for cipher in openssh_ciphers:
-            with self.subTest('Import OpenSSH private (%s)' % cipher):
-                self.import_openssh_private(cipher)
+        if bcrypt_available:
+            for cipher in openssh_ciphers:
+                with self.subTest('Import OpenSSH private (%s)' % cipher):
+                    self.import_openssh_private(cipher)
 
-            with self.subTest('Export OpenSSH private (%s)' % cipher):
-                self.export_openssh_private(cipher)
+                with self.subTest('Export OpenSSH private (%s)' % cipher):
+                    self.export_openssh_private(cipher)
 
         with self.subTest('Import OpenSSH public'):
             self.import_openssh_public()
@@ -336,14 +343,15 @@ class TestEC(_TestKeys):
         run('openssl ecparam -out priv -noout -genkey -name %s' % keytype)
         run('openssl ec -pubout -in priv -out pub')
 
-class TestEd25519(_TestKeys):
-    keyclass = 'ed25519'
-    keytypes = (256, )
-    baseformat = 'openssh'
-    formats = ('openssh', 'rfc4716')
+if libnacl_available:
+    class TestEd25519(_TestKeys):
+        keyclass = 'ed25519'
+        keytypes = (256, )
+        baseformat = 'openssh'
+        formats = ('openssh', 'rfc4716')
 
-    def make_keypair(self, keytype):
-        run('ssh-keygen -t ed25519 -N "" -f priv')
-        run('mv priv.pub pub')
+        def make_keypair(self, keytype):
+            run('ssh-keygen -t ed25519 -N "" -f priv')
+            run('mv priv.pub pub')
 
 del _TestKeys
