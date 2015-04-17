@@ -1803,8 +1803,8 @@ class SSHClientConnection(SSHConnection):
            designed to provide a "high-level" stream interface for creating
            an SSH client session. Instead of taking a ``session_factory``
            argument for constructing an object which will handle activity
-           on the session via callbacks, it returns an :class:``SSHWriter``
-           and two :class:``SSHReader`` objects representing stdin, stdout,
+           on the session via callbacks, it returns an :class:`SSHWriter`
+           and two :class:`SSHReader` objects representing stdin, stdout,
            and stderr which can be used to perform I/O on the session. With
            the exception of ``session_factory``, all of the arguments to
            :meth:`create_session` are supported and have the same meaning.
@@ -1879,7 +1879,7 @@ class SSHClientConnection(SSHConnection):
            an SSH TCP direct connection. Instead of taking a
            ``session_factory`` argument for constructing an object which will
            handle activity on the session via callbacks, it returns
-           :class:``SSHReader`` and :class:``SSHWriter`` objects which can be
+           :class:`SSHReader` and :class:`SSHWriter` objects which can be
            used to perform I/O on the connection.
 
            With the exception of ``session_factory``, all of the arguments
@@ -1974,8 +1974,8 @@ class SSHClientConnection(SSHConnection):
            argument for constructing an object which will handle activity on
            the session via callbacks, it takes a ``handler_factory`` which
            returns a callable or coroutine that will be passed
-           :class:``SSHReader`` and :class:``SSHWriter`` objects which can
-           be used to perform I/O on each new connection which arrives. Like
+           :class:`SSHReader` and :class:`SSHWriter` objects which can be
+           used to perform I/O on each new connection which arrives. Like
            :meth:`create_server`, ``handler_factory`` can also raise
            :exc:`ChannelOpenError` if the connection should not be accepted.
 
@@ -2714,7 +2714,7 @@ class SSHServerConnection(SSHConnection):
            an SSH TCP forwarded connection. Instead of taking a
            ``session_factory`` argument for constructing an object which will
            handle activity on the session via callbacks, it returns
-           :class:``SSHReader`` and :class:``SSHWriter`` objects which can be
+           :class:`SSHReader` and :class:`SSHWriter` objects which can be
            used to perform I/O on the connection.
 
            With the exception of ``session_factory``, all of the arguments
