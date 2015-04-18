@@ -24,7 +24,7 @@ from .channel import SSHClientSession, SSHServerSession, SSHTCPSession
 
 from .connection import SSHClient, SSHServer
 from .connection import SSHClientConnection, SSHServerConnection
-from .connection import create_connection, create_server
+from .connection import create_connection, create_server, connect
 
 from .listen import SSHListener
 

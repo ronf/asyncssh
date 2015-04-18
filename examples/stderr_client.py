@@ -27,7 +27,7 @@ class MySSHClientSession(asyncssh.SSHClientSession):
 
 @asyncio.coroutine
 def run_client():
-    conn, client = yield from asyncssh.create_connection(None, 'localhost')
+    conn = yield from asyncssh.connect('localhost')
     chan, session = yield from conn.create_session(MySSHClientSession, 'ls abc')
     yield from chan.wait_closed()
     conn.close()

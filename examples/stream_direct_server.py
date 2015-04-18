@@ -21,7 +21,7 @@ import asyncio, asyncssh, sys
 @asyncio.coroutine
 def handle_connection(reader, writer):
     while not reader.at_eof():
-        data = yield from reader.read()
+        data = yield from reader.read(8192)
 
         try:
             writer.write(data)

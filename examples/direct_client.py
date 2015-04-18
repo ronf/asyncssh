@@ -25,7 +25,7 @@ class MySSHTCPSession(asyncssh.SSHTCPSession):
 
 @asyncio.coroutine
 def run_client():
-    conn, client = yield from asyncssh.create_connection(None, 'localhost')
+    conn = yield from asyncssh.connect('localhost')
     chan, session = yield from conn.create_connection(MySSHTCPSession,
                                                       'www.google.com', 80)
 

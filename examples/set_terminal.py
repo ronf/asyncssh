@@ -24,7 +24,7 @@ class MySSHClientSession(asyncssh.SSHClientSession):
 
 @asyncio.coroutine
 def run_client():
-    conn, client = yield from asyncssh.create_connection(None, 'localhost')
+    conn = yield from asyncssh.connect('localhost')
     chan, session = yield from conn.create_session(MySSHClientSession,
                                                    'echo $TERM; stty size',
                                                    term_type='xterm-color',

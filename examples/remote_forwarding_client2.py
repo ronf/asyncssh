@@ -28,7 +28,7 @@ def connection_requested(orig_host, orig_port):
 def run_client():
     global conn
 
-    conn, client = yield from asyncssh.create_connection(None, 'localhost')
+    conn = yield from asyncssh.connect('localhost')
     listener = yield from conn.create_server(connection_requested, '', 8080)
     yield from listener.wait_closed()
 

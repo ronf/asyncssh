@@ -27,7 +27,7 @@ def connection_requested(orig_host, orig_port):
 
 @asyncio.coroutine
 def run_client():
-    conn, client = yield from asyncssh.create_connection(None, 'localhost')
+    conn = yield from asyncssh.connect('localhost')
     server = yield from conn.create_server(connection_requested, '', 8888,
                                            encoding='utf-8')
 

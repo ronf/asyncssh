@@ -3454,7 +3454,7 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
                       rekey_seconds=_DEFAULT_REKEY_SECONDS):
     """Create an SSH client connection
 
-       This method is a coroutine which can be run to create an outbound SSH
+       This function is a coroutine which can be run to create an outbound SSH
        client connection to the specified host and port.
 
        When successful, the following steps occur:
@@ -3588,7 +3588,7 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
                   rekey_seconds=_DEFAULT_REKEY_SECONDS):
     """Create an SSH server
 
-       This method is a coroutine which can be run to create an SSH server
+       This function is a coroutine which can be run to create an SSH server
        bound to the specified host and port. The return value is an
        ``AbstractServer`` object which can be used later to shut down the
        server.
@@ -3670,3 +3670,32 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
                                           family=family, flags=flags,
                                           backlog=backlog,
                                           reuse_address=reuse_address))
+
+@asyncio.coroutine
+def connect(host, port=_DEFAULT_PORT, **kwargs):
+    """Make an SSH client connection
+
+       This function is a coroutine wrapper around :func:`create_connection`
+       which can be used when a custom SSHClient instance is not needed.
+       It takes all the same arguments as :func:`create_connection`
+       except for ``client_factory`` and returns only the
+       :class:`SSHClientConnection` object rather than a tuple of
+       an :class:`SSHClientConnection` and :class:`SSHClient`.
+
+       When using this call, the following restrictions apply:
+
+           1. No callbacks are called when the connection is successfully
+              opened, when it is closed, or when authentication completes.
+
+           2. Any authentication information must be provided as arguments
+              to this call, as any authentication callbacks will deny
+              other authentication attempts. Also, authentication banner
+              information will be ignored.
+
+           3. Any debug messages sent by the server will be ignored.
+
+    """
+
+    conn, client = yield from create_connection(None, host, port, **kwargs)
+
+    return conn

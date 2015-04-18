@@ -94,6 +94,11 @@ create_server
 
 .. autofunction:: create_server
 
+connect
+-------
+
+.. autofunction:: connect
+
 Main Classes
 ============
 

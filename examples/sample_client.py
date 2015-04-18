@@ -22,12 +22,17 @@ class MySSHClientSession(asyncssh.SSHClientSession):
         if exc:
             print('SSH session error: ' + str(exc), file=sys.stderr)
 
+class MySSHClient(asyncssh.SSHClient):
+    def connection_made(self, conn):
+        print('Connection made to %s.' % conn.get_extra_info('peername')[0])
+
+    def auth_completed(self):
+        print('Authentication successful.')
+
 @asyncio.coroutine
 def run_client():
-    conn = yield from asyncssh.connect('localhost')
-    chan, session = yield from conn.create_session(MySSHClientSession, 'env',
-                                                   env={ 'LANG': 'en_GB',
-                                                         'LC_COLLATE': 'C'})
+    conn, client = yield from asyncssh.create_connection(MySSHClient, 'localhost')
+    chan, session = yield from conn.create_session(MySSHClientSession, 'ls abc')
     yield from chan.wait_closed()
     conn.close()
 

@@ -16,7 +16,7 @@ import asyncio, asyncssh, sys
 
 @asyncio.coroutine
 def run_client():
-    conn, client = yield from asyncssh.create_connection(None, 'localhost')
+    conn = yield from asyncssh.connect('localhost')
     listener = yield from conn.forward_local_port('', 8080, 'www.google.com', 80)
     yield from listener.wait_closed()
 

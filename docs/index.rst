@@ -24,7 +24,7 @@ The server's host key is checked against the user's SSH known_hosts file and
 the connection will fail if there's no entry for localhost there or if the
 key doesn't match.
 
-   .. include:: ../examples/simple_client.py
+   .. include:: ../examples/sample_client.py
       :literal:
       :start-line: 15
 
@@ -34,7 +34,7 @@ instance is created:
 
    .. code::
 
-     conn, client = yield from asyncssh.create_connection(None, 'localhost',
+     conn, client = yield from asyncssh.create_connection(MySSHClient, 'localhost',
                                                           known_hosts='my_known_hosts')
 
 
@@ -47,7 +47,7 @@ provided:
 
    .. code::
 
-     conn, client = yield from asyncssh.create_connection(None, 'localhost',
+     conn, client = yield from asyncssh.create_connection(MySSHClient, 'localhost',
                                                           username='user123')
 
 To use a different set of client keys for authentication, they can be
@@ -55,22 +55,27 @@ read and provided in the client_keys argument:
 
    .. code::
 
-     client_key = asyncssh.read_private_key('my_ssh_key')
-
-     conn, client = yield from asyncssh.create_connection(None, 'localhost',
-                                                          client_keys=[client_key])
+     conn, client = yield from asyncssh.create_connection(MySSHClient, 'localhost',
+                                                          client_keys=['my_ssh_key'])
 
 Password authentication can be used by providing a password argument:
 
    .. code::
 
-     conn, client = yield from asyncssh.create_connection(None, 'localhost',
+     conn, client = yield from asyncssh.create_connection(MySSHClient, 'localhost',
                                                           password='secretpw')
 
 Any of the arguments above can be combined together as needed. If client
 keys and a password are both provided, either may be used depending
 on what forms of authentication the server supports and whether the
 authentication with them is successful.
+
+In cases where you don't need to customize callbacks on the SSHClient class,
+this code can be simplified somewhat to:
+
+   .. include:: ../examples/simple_client.py
+      :literal:
+      :start-line: 15
 
 Handling of stderr
 ------------------
