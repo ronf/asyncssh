@@ -42,10 +42,9 @@ class MySSHClientSession(asyncssh.SSHClientSession):
 
 @asyncio.coroutine
 def run_client():
-    conn = yield from asyncssh.connect('localhost')
-    chan, session = yield from conn.create_session(MySSHClientSession, 'bc')
-    yield from chan.wait_closed()
-    conn.close()
+    with (yield from asyncssh.connect('localhost')) as conn:
+        chan, session = yield from conn.create_session(MySSHClientSession, 'bc')
+        yield from chan.wait_closed()
 
 try:
     asyncio.get_event_loop().run_until_complete(run_client())

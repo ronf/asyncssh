@@ -167,6 +167,17 @@ class SSHConnection(SSHPacketHandler):
         self._cmp_algs = _select_algs('compression', compression_algs,
                                       get_compression_algs(), b'none')
 
+    def __enter__(self):
+        """Allow SSHConnection to be used as a context manager"""
+
+        return self
+
+    def __exit__(self, *exc_info):
+        """Automatically close the connection when used as a context manager"""
+
+        if not self._loop.is_closed():
+            self.close()
+
     def _cleanup(self, exc=None):
         if self._channels:
             for chan in list(self._channels.values()):

@@ -16,18 +16,16 @@ import asyncio, asyncssh, sys
 
 @asyncio.coroutine
 def run_client():
-    conn = yield from asyncssh.connect('localhost')
-    reader, writer = yield from conn.open_connection('www.google.com', 80)
+    with (yield from asyncssh.connect('localhost')) as conn:
+        reader, writer = yield from conn.open_connection('www.google.com', 80)
 
-    # By default, TCP connections send and receive bytes
-    writer.write(b'HEAD / HTTP/1.0\r\n\r\n')
-    writer.write_eof()
+        # By default, TCP connections send and receive bytes
+        writer.write(b'HEAD / HTTP/1.0\r\n\r\n')
+        writer.write_eof()
 
-    # We use sys.stdout.buffer here because we're writing bytes
-    response = yield from reader.read()
-    sys.stdout.buffer.write(response)
-
-    conn.close()
+        # We use sys.stdout.buffer here because we're writing bytes
+        response = yield from reader.read()
+        sys.stdout.buffer.write(response)
 
 try:
     asyncio.get_event_loop().run_until_complete(run_client())

@@ -25,16 +25,15 @@ class MySSHTCPSession(asyncssh.SSHTCPSession):
 
 @asyncio.coroutine
 def run_client():
-    conn = yield from asyncssh.connect('localhost')
-    chan, session = yield from conn.create_connection(MySSHTCPSession,
-                                                      'www.google.com', 80)
+    with (yield from asyncssh.connect('localhost')) as conn:
+        chan, session = yield from conn.create_connection(MySSHTCPSession,
+                                                          'www.google.com', 80)
 
-    # By default, TCP connections send and receive bytes
-    chan.write(b'HEAD / HTTP/1.0\r\n\r\n')
-    chan.write_eof()
+        # By default, TCP connections send and receive bytes
+        chan.write(b'HEAD / HTTP/1.0\r\n\r\n')
+        chan.write_eof()
 
-    yield from chan.wait_closed()
-    conn.close()
+        yield from chan.wait_closed()
 
 try:
     asyncio.get_event_loop().run_until_complete(run_client())

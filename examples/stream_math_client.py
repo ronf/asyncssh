@@ -16,15 +16,13 @@ import asyncio, asyncssh, sys
 
 @asyncio.coroutine
 def run_client():
-    conn = yield from asyncssh.connect('localhost')
-    stdin, stdout, stderr = yield from conn.open_session('bc')
+    with (yield from asyncssh.connect('localhost')) as conn:
+        stdin, stdout, stderr = yield from conn.open_session('bc')
 
-    for op in ['2+2', '1*2*3*4', '2^32']:
-        stdin.write(op + '\n')
-        result = yield from stdout.readline()
-        print(op, '=', result, end='')
-
-    conn.close()
+        for op in ['2+2', '1*2*3*4', '2^32']:
+            stdin.write(op + '\n')
+            result = yield from stdout.readline()
+            print(op, '=', result, end='')
 
 try:
     asyncio.get_event_loop().run_until_complete(run_client())

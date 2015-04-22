@@ -28,10 +28,10 @@ def connection_requested(orig_host, orig_port):
 
 @asyncio.coroutine
 def run_client():
-    conn = yield from asyncssh.connect('localhost')
-    server = yield from conn.start_server(connection_requested, '', 8888,
-                                          encoding='utf-8')
-    yield from server.wait_closed()
+    with (yield from asyncssh.connect('localhost')) as conn:
+        server = yield from conn.start_server(connection_requested, '', 8888,
+                                              encoding='utf-8')
+        yield from server.wait_closed()
 
 try:
     asyncio.get_event_loop().run_until_complete(run_client())
