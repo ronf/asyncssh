@@ -274,7 +274,6 @@ class SFTPSession:
 
         packet = SSHPacket(self._inpbuf[:self._pktlen])
         self._inpbuf = self._inpbuf[self._pktlen:]
-        print('<-', packet.get_remaining_payload())
 
         pkttype = packet.get_byte()
 
@@ -304,7 +303,6 @@ class SFTPSession:
 
     def send_packet(self, pkttype, *args):
         payload = Byte(pkttype) + b''.join(args)
-        print('->', payload)
         self._chan.write(UInt32(len(payload)) + payload)
 
     def exit(self):
