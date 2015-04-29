@@ -80,6 +80,62 @@ OPEN_RESOURCE_SHORTAGE              = 4
 OPEN_REQUEST_PTY_FAILED             = 0xfffffffe
 OPEN_REQUEST_SESSION_FAILED         = 0xffffffff
 
+# SSH file transfer packet types
+FXP_INIT                            = 1
+FXP_VERSION                         = 2
+FXP_OPEN                            = 3
+FXP_CLOSE                           = 4
+FXP_READ                            = 5
+FXP_WRITE                           = 6
+FXP_LSTAT                           = 7
+FXP_FSTAT                           = 8
+FXP_SETSTAT                         = 9
+FXP_FSETSTAT                        = 10
+FXP_OPENDIR                         = 11
+FXP_READDIR                         = 12
+FXP_REMOVE                          = 13
+FXP_MKDIR                           = 14
+FXP_RMDIR                           = 15
+FXP_REALPATH                        = 16
+FXP_STAT                            = 17
+FXP_RENAME                          = 18
+FXP_READLINK                        = 19
+FXP_SYMLINK                         = 20
+FXP_STATUS                          = 101
+FXP_HANDLE                          = 102
+FXP_DATA                            = 103
+FXP_NAME                            = 104
+FXP_ATTRS                           = 105
+FXP_EXTENDED                        = 200
+FXP_EXTENDED_REPLY                  = 201
+
+# SSH file transfer open flags
+FXF_READ                            = 0x00000001
+FXF_WRITE                           = 0x00000002
+FXF_APPEND                          = 0x00000004
+FXF_CREAT                           = 0x00000008
+FXF_TRUNC                           = 0x00000010
+FXF_EXCL                            = 0x00000020
+
+# SSH file transfer attribute flags
+FILEXFER_ATTR_SIZE                  = 0x00000001
+FILEXFER_ATTR_UIDGID                = 0x00000002
+FILEXFER_ATTR_PERMISSIONS           = 0x00000004
+FILEXFER_ATTR_ACMODTIME             = 0x00000008
+FILEXFER_ATTR_EXTENDED              = 0x80000000
+FILEXFER_ATTR_UNDEFINED             = 0x7ffffff0
+
+# SSH file transfer error codes
+FX_OK                               = 0
+FX_EOF                              = 1
+FX_NO_SUCH_FILE                     = 2
+FX_PERMISSION_DENIED                = 3
+FX_FAILURE                          = 4
+FX_BAD_MESSAGE                      = 5
+FX_NO_CONNECTION                    = 6
+FX_CONNECTION_LOST                  = 7
+FX_OP_UNSUPPORTED                   = 8
+
 # SSH channel data type codes
 EXTENDED_DATA_STDERR                = 1
 

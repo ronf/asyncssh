@@ -32,6 +32,7 @@ from .misc import *
 from .packet import *
 from .public_key import *
 from .saslprep import *
+from .sftp import *
 from .stream import *
 
 
@@ -2081,6 +2082,44 @@ class SSHClientConnection(SSHConnection):
                               self.forward_connection(dest_host, dest_port)
 
         return self.create_server(session_factory, listen_host, listen_port)
+
+    @asyncio.coroutine
+    def start_sftp_client(self, path_encoding='utf-8', path_errors='strict'):
+        """Start an SFTP client
+
+           This method is a coroutine which attempts to start a secure
+           file transfer session. If it succeeds, it returns an
+           :class:`SFTPClient` object which can be used to copy and
+           access files on the remote host.
+
+           An optional Unicode encoding can be specified for sending and
+           receiving pathnames, defaulting to UTF-8 with strict error
+           checking. If an encoding of ``None`` is specified, pathnames
+           will be left as bytes rather than being converted to & from
+           strings.
+
+           :param string path_encoding:
+               The Unicode encoding to apply when sending and receiving
+               remote pathnames
+           :param string path_errors:
+               The error handling strategy to apply on encode/decode errors
+
+           :returns: :class:`SFTPClient`
+
+           :raises: :exc:`SFTPError` if the session can't be opened
+
+        """
+
+        version_waiter = asyncio.Future(loop=self._loop)
+
+        factory = lambda: SFTPClientSession(self._loop, version_waiter)
+
+        _, session = yield from self.create_session(factory, subsystem='sftp',
+                                                    encoding=None)
+
+        yield from version_waiter
+
+        return SFTPClient(session, path_encoding, path_errors)
 
 
 class SSHServerConnection(SSHConnection):
