@@ -69,6 +69,37 @@ class _LocalFile:
         return self._file.write(data)
 
     @asyncio.coroutine
+    def stat(self):
+        # Flush any buffered I/O before we get the attributes
+        self._file.flush()
+
+        st = os.stat(self._file.fileno())
+
+        return SFTPAttrs(size=st.st_size, uid=st.st_uid, gid=st.st_gid,
+                         permissions=st.st_mode, atime=st.st_atime,
+                         mtime=st.st_mtime)
+
+    @asyncio.coroutine
+    def setstat(self, attrs):
+        # Flush any buffered I/O before we set the attributes
+        self._file.flush()
+
+        f = self._file.fileno()
+
+        if attrs.size is not None:
+            self._file.truncate(attrs.size)
+
+        if attrs.uid is not None and attrs.gid is not None:
+            os.chown(f, attrs.uid, attrs.gid)
+
+        if attrs.permissions is not None:
+            os.chmod(f, stat.S_IMODE(attrs.permissions))
+
+        if attrs.atime is not None and attrs.mtime is not None:
+            print(f, attrs.atime, attrs.mtime)
+            os.utime(f, times=(attrs.atime, attrs.mtime))
+
+    @asyncio.coroutine
     def close(self):
         self.close()
 
@@ -585,18 +616,18 @@ class SFTPFile:
         return attrs.size
 
     @asyncio.coroutine
-    def _read(self, size=_SFTP_BLOCK_SIZE):
-        data = yield from self._session.read(self._handle, self._offset, size)
-        self._offset += len(data)
-        return data
-
-    @asyncio.coroutine
-    def read(self, size=-1):
+    def read(self, size=-1, offset=None):
         """Read data from the remote file
 
            This method reads and returns up to ``size`` bytes of data
            from the remote file. If size is negative, all data up to
            the end of the file is returned.
+
+           If offset is specified, the read will be performed starting
+           at that offset rather than the current file position. This
+           argument should be provided if you want to issue parallel
+           reads on the same file, since the file position is not
+           predictable in that case.
 
            Data will be returned as a string if an encoding was set when
            the file was opened. Otherwise, data is returned as bytes.
@@ -605,6 +636,8 @@ class SFTPFile:
 
            :param integer size:
                The number of bytes to read
+           :param integer offset: (optional)
+               The offset from the beginning of the file to begin reading
 
            :returns: data read from the file, as a string or bytes
 
@@ -618,15 +651,23 @@ class SFTPFile:
         if self._handle is None:
             raise ValueError('I/O operation on closed file')
 
-        if self._offset is None:
-            self._offset = yield from self._end()
+        if offset is None:
+            offset = self._offset
 
-        if size is None or size < 0:
+        if offset is None:
+            # We're appending and haven't seeked backward in the file
+            # since the last write, so there's no data to return
+            data = b''
+        elif size is None or size < 0:
             data = []
 
             try:
                 while True:
-                    data.append((yield from self._read()))
+                    result = yield from self._session.read(self._handle, offset,
+                                                           _SFTP_BLOCK_SIZE)
+                    data.append(result)
+                    offset += len(result)
+                    self._offset = offset
             except SFTPError as exc:
                 if exc.code != FX_EOF:
                     raise
@@ -636,7 +677,8 @@ class SFTPFile:
             data = b''
 
             try:
-                data = yield from self._read(size)
+                data = yield from self._session.read(self._handle, offset, size)
+                self._offset = offset + len(data)
             except SFTPError as exc:
                 if exc.code != FX_EOF:
                     raise
@@ -647,7 +689,7 @@ class SFTPFile:
         return data
 
     @asyncio.coroutine
-    def write(self, data):
+    def write(self, data, offset=None):
         """Write data to the remote file
 
            This method writes the specified data at the current
@@ -655,7 +697,15 @@ class SFTPFile:
 
            :param data:
                The data to write to the file
+           :param integer offset: (optional)
+               The offset from the beginning of the file to begin writing
            :type data: string or bytes
+
+           If offset is specified, the write will be performed starting
+           at that offset rather than the current file position. This
+           argument should be provided if you want to issue parallel
+           writes on the same file, since the file position is not
+           predictable in that case.
 
            :returns: number of bytes written
 
@@ -669,11 +719,16 @@ class SFTPFile:
         if self._handle is None:
             raise ValueError('I/O operation on closed file')
 
+        if offset is None:
+            # Offset is ignored when appending, so fill in an offset of 0
+            # if we don't have a current file position
+            offset = self._offset or 0
+
         if self._encoding:
             data = data.encode(self._encoding, self._errors)
 
-        yield from self._session.write(self._handle, self._offset, data)
-        self._offset = None if self._appending else self._offset + len(data)
+        yield from self._session.write(self._handle, offset, data)
+        self._offset = None if self._appending else offset + len(data)
         return len(data)
 
     @asyncio.coroutine
@@ -689,7 +744,7 @@ class SFTPFile:
 
            :param integer offset:
                The amount to seek
-           :param integer from_what:
+           :param integer from_what: (optional)
                The reference point to use (SEEK_SET, SEEK_CUR, or SEEK_END)
 
            :returns: The new byte offset from the beginning of the file
@@ -761,7 +816,7 @@ class SFTPFile:
            value. If a size is not provided, the current file position
            is used.
 
-           :param integer size:
+           :param integer size: (optional)
                The desired size of the file, in bytes
 
            :raises: :exc:`SFTPError` if the server returns an error
@@ -815,7 +870,7 @@ class SFTPFile:
            currently open file. If ``times`` is not provided,
            the times will be changed to the current time.
 
-           :param times:
+           :param times: (optional)
                The new access and modify times, as seconds relative to
                the UNIX epoch
            :type times: tuple of two integer or float values
@@ -904,7 +959,7 @@ class SFTPClient:
                 raise
 
     @asyncio.coroutine
-    def _copy(self, src, dst):
+    def _copy(self, src, dst, preserve):
         """Asynchronously copy file data from src to dst"""
 
         while True:
@@ -914,8 +969,14 @@ class SFTPClient:
 
             yield from dst.write(data)
 
+        if preserve:
+            attrs = yield from src.stat()
+            yield from dst.setstat(SFTPAttrs(permissions=attrs.permissions,
+                                             atime=attrs.atime,
+                                             mtime=attrs.mtime))
+
     @asyncio.coroutine
-    def get(self, remotepath, localpath=None):
+    def get(self, remotepath, localpath=None, preserve=False):
         """Download a remote file
 
            This method downloads a file from the remote system. If
@@ -924,10 +985,16 @@ class SFTPClient:
            local path is provided, the file is downloaded into the
            local current working directory.
 
+           If preserve is ``True``, the access and modification times
+           and permissions of the original file are set on the
+           downloaded file.
+
            :param remotepath:
                The path of the remote file to download
-           :param string localpath:
+           :param string localpath: (optional)
                The path of the local file or directory to download into
+           :param bool preserve: (optional)
+               Whether or not to preserve original file attributes
            :type remotepath: string or bytes
 
            :raises: | :exc:`SFTPError` if the server returns an error
@@ -941,10 +1008,10 @@ class SFTPClient:
 
         with (yield from self.open(remotepath, 'rb')) as src:
             with _LocalFile.open(localpath, 'wb') as dst:
-                yield from self._copy(src, dst)
+                yield from self._copy(src, dst, preserve)
 
     @asyncio.coroutine
-    def put(self, localpath, remotepath=None):
+    def put(self, localpath, remotepath=None, preserve=False):
         """Upload a local file
 
            This method uploads a file to the remote system. If the
@@ -953,10 +1020,16 @@ class SFTPClient:
            path is provided, the file is uploaded into the remote
            current working directory.
 
+           If preserve is ``True``, the access and modification times
+           and permissions of the original file are set on the
+           uploaded file.
+
            :param string localpath:
                The path of the local file to upload
-           :param remotepath:
+           :param remotepath: (optional)
                The path of the remote file or directory to upload into
+           :param bool preserve: (optional)
+               Whether or not to preserve original file attributes
            :type remotepath: string or bytes
 
            :raises: | :exc:`SFTPError` if the server returns an error
@@ -970,10 +1043,10 @@ class SFTPClient:
 
         with _LocalFile.open(localpath, 'rb') as src:
             with (yield from self.open(remotepath, 'wb')) as dst:
-                yield from self._copy(src, dst)
+                yield from self._copy(src, dst, preserve)
 
     @asyncio.coroutine
-    def copy(self, srcpath, dstpath=None):
+    def copy(self, srcpath, dstpath=None, preserve=False):
         """Copy a remote file to a new location
 
            This method copies a file on the remote system to a new
@@ -982,10 +1055,16 @@ class SFTPClient:
            file name. If no destination path is provided, the file is
            copied into the remote current working directory.
 
+           If preserve is ``True``, the access and modification times
+           and permissions of the original file are set on the
+           copied file.
+
            :param srcpath:
                The path of the remote source file to copy
-           :param dstpath:
+           :param dstpath: (optional)
                The path of the remote file or directory to copy into
+           :param bool preserve: (optional)
+               Whether or not to preserve original file attributes
            :type srcpath: string or bytes
            :type dstpath: string or bytes
 
@@ -1000,7 +1079,7 @@ class SFTPClient:
 
         with (yield from self.open(srcpath, 'rb')) as srcfile:
             with (yield from self.open(dstpath, 'wb')) as dstfile:
-                yield from self._copy(srcfile, dstfile)
+                yield from self._copy(srcfile, dstfile, preserve)
 
     @asyncio.coroutine
     def open(self, path, mode='r', attrs=SFTPAttrs(),
@@ -1043,14 +1122,14 @@ class SFTPClient:
 
            :param path:
                The name of the remote file to open
-           :param string mode:
+           :param string mode: (optional)
                The access mode to use for the remote file (see above)
-           :param attrs:
+           :param attrs: (optional)
                File attributes to use if the file needs to be created
-           :param string encoding:
+           :param string encoding: (optional)
                The Unicode encoding to use for data read and written
                to the remote file
-           :param string errors:
+           :param string errors: (optional)
                The error-handling mode if an invalid Unicode byte
                sequence is detected, defaulting to 'strict' which
                raises an exception
@@ -1221,7 +1300,7 @@ class SFTPClient:
 
            :param path:
                The path of the remote file to change
-           :param times:
+           :param times: (optional)
                The new access and modify times, as seconds relative to
                the UNIX epoch
            :type path: string or bytes
@@ -1403,7 +1482,7 @@ class SFTPClient:
            path is provided, it defaults to the current remote working
            directory.
 
-           :param path:
+           :param path: (optional)
                The path of the remote directory to read
            :type path: string or bytes
 
@@ -1441,7 +1520,7 @@ class SFTPClient:
            in a remote directory. If no path is provided, it defaults
            to the current remote working directory.
 
-           :param path:
+           :param path: (optional)
                The path of the remote directory to read
            :type path: string or bytes
 
@@ -1463,7 +1542,7 @@ class SFTPClient:
 
            :param path:
                The path of where the new remote directory should be created
-           :param attrs:
+           :param attrs: (optional)
                The file attributes to use when creating the directory
            :type path: string or bytes
            :type attrs: :class:`SFTPAttrs`
@@ -1498,8 +1577,10 @@ class SFTPClient:
         """Return the canonical version of a path
 
            This method returns a canonical version of the requested path.
+           If no path is specified, the canonical version of the current
+           remote working directory is returned.
 
-           :param path:
+           :param path: (optional)
                The path of the remote directory to canonicalize
            :type path: string or bytes
 
