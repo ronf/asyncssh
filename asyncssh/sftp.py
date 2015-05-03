@@ -57,47 +57,195 @@ class _LocalFile:
         self._file.close()
 
     @classmethod
+    @asyncio.coroutine
+    def _compose_path(cls, *elements):
+        if elements[-1:] == [None]:
+            elements.pop()
+
+        return os.path.join(*elements) if elements else '.'
+
+    @classmethod
+    @asyncio.coroutine
     def open(cls, *args):
         return cls(open(*args))
 
+    @classmethod
     @asyncio.coroutine
-    def read(self, size=-1):
-        return self._file.read(size)
-
-    @asyncio.coroutine
-    def write(self, data):
-        return self._file.write(data)
-
-    @asyncio.coroutine
-    def stat(self):
-        # Flush any buffered I/O before we get the attributes
-        self._file.flush()
-
-        st = os.stat(self._file.fileno())
+    def stat(cls, path):
+        st = os.stat(path)
 
         return SFTPAttrs(size=st.st_size, uid=st.st_uid, gid=st.st_gid,
                          permissions=st.st_mode, atime=st.st_atime,
                          mtime=st.st_mtime)
 
+    @classmethod
     @asyncio.coroutine
-    def setstat(self, attrs):
-        # Flush any buffered I/O before we set the attributes
-        self._file.flush()
+    def lstat(cls, path):
+        st = os.lstat(path)
 
-        f = self._file.fileno()
+        return SFTPAttrs(size=st.st_size, uid=st.st_uid, gid=st.st_gid,
+                         permissions=st.st_mode, atime=st.st_atime,
+                         mtime=st.st_mtime)
 
+    @classmethod
+    @asyncio.coroutine
+    def setstat(self, path, attrs):
         if attrs.size is not None:
-            self._file.truncate(attrs.size)
+            os.truncate(path, attrs.size)
 
         if attrs.uid is not None and attrs.gid is not None:
-            os.chown(f, attrs.uid, attrs.gid)
+            os.chown(path, attrs.uid, attrs.gid)
 
         if attrs.permissions is not None:
-            os.chmod(f, stat.S_IMODE(attrs.permissions))
+            os.chmod(path, stat.S_IMODE(attrs.permissions))
 
         if attrs.atime is not None and attrs.mtime is not None:
-            print(f, attrs.atime, attrs.mtime)
-            os.utime(f, times=(attrs.atime, attrs.mtime))
+            os.utime(path, times=(attrs.atime, attrs.mtime))
+
+    @classmethod
+    @asyncio.coroutine
+    def truncate(cls, path):
+        os.truncate(path)
+
+    @classmethod
+    @asyncio.coroutine
+    def chown(cls, path, uid, gid):
+        os.chown(path, uid, gid)
+
+    @classmethod
+    @asyncio.coroutine
+    def chmod(cls, path, mode):
+        os.chmod(path, mode)
+
+    @classmethod
+    @asyncio.coroutine
+    def utime(cls, path, times=None):
+        os.utime(path, times)
+
+    @classmethod
+    @asyncio.coroutine
+    def exists(cls, path):
+        return os.path.exists(path)
+
+    @classmethod
+    @asyncio.coroutine
+    def lexists(cls, path):
+        return os.path.lexists(path)
+
+    @classmethod
+    @asyncio.coroutine
+    def getatime(cls, path):
+        return os.path.getatime(path)
+
+    @classmethod
+    @asyncio.coroutine
+    def getmtime(cls, path):
+        return os.path.getmtime(path)
+
+    @classmethod
+    @asyncio.coroutine
+    def getsize(cls, path):
+        return os.path.getsize(path)
+
+    @classmethod
+    @asyncio.coroutine
+    def isdir(cls, path):
+        return os.path.isdir(path)
+
+    @classmethod
+    @asyncio.coroutine
+    def isfile(cls, path):
+        return os.path.isfile(path)
+
+    @classmethod
+    @asyncio.coroutine
+    def islink(cls, path):
+        return os.path.islink(path)
+
+    @classmethod
+    @asyncio.coroutine
+    def remove(cls, path):
+        os.remove(path)
+
+    @classmethod
+    @asyncio.coroutine
+    def unlink(cls, path):
+        os.unlink(path)
+
+    @classmethod
+    @asyncio.coroutine
+    def rename(cls, oldpath, newpath):
+        os.rename(oldpath, newpath)
+
+    @classmethod
+    @asyncio.coroutine
+    def readdir(cls, path):
+        names = os.listdir(path)
+
+        return [SFTPName(filename=name, attrs=(yield from cls.stat(name)))
+                    for name in names]
+
+    @classmethod
+    @asyncio.coroutine
+    def listdir(cls, path):
+        return os.listdir(path)
+
+    @classmethod
+    @asyncio.coroutine
+    def mkdir(cls, path):
+        os.mkdir(path)
+
+    @classmethod
+    @asyncio.coroutine
+    def rmdir(cls, path):
+        os.rmdir(path)
+
+    @classmethod
+    @asyncio.coroutine
+    def realpath(cls, path):
+        return os.realpath(path)
+
+    @classmethod
+    @asyncio.coroutine
+    def getcwd(cls):
+        return os.getcwd()
+
+    @classmethod
+    @asyncio.coroutine
+    def chdir(cls, path):
+        os.chdir(path)
+
+    @classmethod
+    @asyncio.coroutine
+    def readlink(cls, path):
+        return os.readlink(path)
+
+    @classmethod
+    @asyncio.coroutine
+    def symlink(cls, srcpath, dstpath):
+        os.symlink(srcpath, dstpath)
+
+    @asyncio.coroutine
+    def read(self, size=-1, offset=None):
+        if offset is not None:
+            self._file.seek(offset)
+
+        return self._file.read(size)
+
+    @asyncio.coroutine
+    def write(self, data, offset=None):
+        if offset is not None:
+            self._file.seek(offset)
+
+        return self._file.write(data)
+
+    @asyncio.coroutine
+    def seek(self, offset, from_what=SEEK_SET):
+        return self._file.seek(offset, from_what)
+
+    @asyncio.coroutine
+    def tell(self):
+        return self._file.tell()
 
     @asyncio.coroutine
     def close(self):
@@ -933,15 +1081,16 @@ class SFTPClient:
 
         self.exit()
 
-    def _compose_path(self, path):
-        """Construct a path relative to the current remote working directory"""
+    @asyncio.coroutine
+    def _compose_path(self, *elements):
+        """Compose a path relative to the current remote working directory"""
+
+        if self._cwd is not None:
+            elements.insert(0, self._cwd)
 
         # TODO: Eventually do path composition on the server for version >= 6
 
-        if path:
-            return os.path.join(self._cwd, path) if self._cwd else path
-        else:
-            return self._cwd if self._cwd else '.'
+        return (yield from _LocalFile._compose_path(*elements))
 
     @asyncio.coroutine
     def _mode(self, path, statfunc=None):
@@ -959,24 +1108,80 @@ class SFTPClient:
                 raise
 
     @asyncio.coroutine
-    def _copy(self, src, dst, preserve):
-        """Asynchronously copy file data from src to dst"""
+    def _copy(self, srcfs, dstfs, srcpath, dstpath, preserve,
+              recurse, follow_symlinks, error_handler):
+        """Copy a file, directory, or symbolic link"""
 
-        while True:
-            data = yield from src.read(_SFTP_BLOCK_SIZE)
-            if not data:
-                break
+        print(srcpath, dstpath)
+        if follow_symlinks:
+            srcattrs = yield from srcfs.stat(srcpath)
+        else:
+            srcattrs = yield from srcfs.lstat(srcpath)
 
-            yield from dst.write(data)
+        try:
+            if stat.S_ISDIR(srcattrs.permissions):
+                if not recurse:
+                    raise SFTPError(FX_FAILURE, '%s is a directory' % srcpath)
 
-        if preserve:
-            attrs = yield from src.stat()
-            yield from dst.setstat(SFTPAttrs(permissions=attrs.permissions,
-                                             atime=attrs.atime,
-                                             mtime=attrs.mtime))
+                if not (yield from dstfs.exists(dstpath)):
+                    yield from dstfs.mkdir(dstpath)
+
+                names = yield from srcfs.listdir(srcpath)
+
+                for name in names:
+                    if name in ('.', '..'):
+                        continue
+
+                    srcfile = yield from srcfs._compose_path(srcpath, name)
+                    dstfile = yield from dstfs._compose_path(dstpath, name)
+
+                    yield from self._copy(srcfs, dstfs, srcfile,
+                                          dstfile, preserve, recurse,
+                                          follow_symlinks, error_handler)
+            elif stat.S_ISLNK(srcattrs.permissions):
+                targetpath = yield from srcfs.readlink(srcpath)
+                yield from dstfs.symlink(targetpath, dstpath)
+            else:
+                with (yield from srcfs.open(srcpath, 'rb')) as src:
+                    with (yield from dstfs.open(dstpath, 'wb')) as dst:
+                        while True:
+                            data = yield from src.read(_SFTP_BLOCK_SIZE)
+                            if not data:
+                                break
+
+                            yield from dst.write(data)
+
+            if preserve:
+                yield from dstfs.setstat(dstpath,
+                    SFTPAttrs(permissions=srcattrs.permissions,
+                              atime=srcattrs.atime, mtime=srcattrs.mtime))
+        except (OSError, SFTPError) as exc:
+            exc.srcpath = srcpath
+            exc.dstpath = dstpath
+
+            if error_handler:
+                error_handler(exc)
+            else:
+                raise
 
     @asyncio.coroutine
-    def get(self, remotepath, localpath=None, preserve=False):
+    def _begin_copy(self, srcfs, dstfs, srcpath, dstpath, preserve,
+                    recurse, follow_symlinks, error_handler):
+        """Kick off a new file upload, download, or copy"""
+
+        srcfile = os.path.basename(srcpath)
+
+        if dstpath is None:
+            dstpath = srcfile
+        elif (yield from dstfs.isdir(dstpath)):
+            dstpath = yield from dstfs._compose_path(dstpath, srcfile)
+
+        yield from self._copy(srcfs, dstfs, srcpath, dstpath, preserve,
+                              recurse, follow_symlinks, error_handler)
+
+    @asyncio.coroutine
+    def get(self, remotepath, localpath=None, *, preserve=False,
+            recurse=False, follow_symlinks=False, error_handler=None):
         """Download a remote file
 
            This method downloads a file from the remote system. If
@@ -989,29 +1194,52 @@ class SFTPClient:
            and permissions of the original file are set on the
            downloaded file.
 
+           If recurse is ``True`` and the remote path points at a
+           directory, the entire subtree under that directory is
+           downloaded.
+
+           If follow_symlinks is set to ``True``, symbolic links found
+           on the remote system will have the contents of their target
+           downloaded rather than creating a local symbolic link. When
+           using this option during a recursive download, one needs to
+           watch out for links that result in loops.
+
+           If error_handler is specified and an error occurs during
+           the download, the error_handler will be called with the
+           exception instead of it being raised. This is intended to
+           primarily be used when recurse is set to ``True``, to allow
+           error information to be collected without aborting the
+           download of the other files in the tree. The error handler
+           can raise an exception if it wants the download to stop.
+           Otherwise, after an error, the download will continue
+           starting with the next file.
+
            :param remotepath:
                The path of the remote file to download
            :param string localpath: (optional)
                The path of the local file or directory to download into
            :param bool preserve: (optional)
-               Whether or not to preserve original file attributes
+               Whether or not to preserve the original file attributes
+           :param bool recurse: (optional)
+               Whether or not to recursively copy directories
+           :param bool follow_symlinks: (optional)
+               Whether or not to follow symbolic links
+           :param callable error_handler: (optional)
+               The function to call when an error occurs
            :type remotepath: string or bytes
 
-           :raises: | :exc:`SFTPError` if the server returns an error
+           :raises: | :exc:`OSError` if a local file I/O error occurs
+                    | :exc:`SFTPError` if the server returns an error
 
         """
 
-        if localpath is None:
-            localpath = os.path.basename(remotepath)
-        elif os.path.isdir(localpath):
-            localpath = os.path.join(localpath, os.path.basename(remotepath))
-
-        with (yield from self.open(remotepath, 'rb')) as src:
-            with _LocalFile.open(localpath, 'wb') as dst:
-                yield from self._copy(src, dst, preserve)
+        yield from self._begin_copy(self, _LocalFile, remotepath, localpath,
+                                    preserve, recurse, follow_symlinks,
+                                    error_handler)
 
     @asyncio.coroutine
-    def put(self, localpath, remotepath=None, preserve=False):
+    def put(self, localpath, remotepath=None, *, preserve=False,
+            recurse=False, follow_symlinks=False, error_handler=None):
         """Upload a local file
 
            This method uploads a file to the remote system. If the
@@ -1024,29 +1252,51 @@ class SFTPClient:
            and permissions of the original file are set on the
            uploaded file.
 
+           If recurse is ``True`` and the local path points at a
+           directory, the entire subtree under that directory is
+           uploaded.
+
+           If follow_symlinks is set to ``True``, symbolic links found
+           on the local system will have the contents of their target
+           uploaded rather than creating a remote symbolic link. When
+           using this option during a recursive upload, one needs to
+           watch out for links that result in loops.
+
+           If error_handler is specified and an error occurs during
+           the upload, the error_handler will be called with the
+           exception instead of it being raised. This is intended to
+           primarily be used when recurse is set to ``True``, to allow
+           error information to be collected without aborting the upload
+           of other files in the tree. The error handler can raise an
+           exception if it wants the upload to stop. Otherwise, after an
+           error, the upload will continue starting with the next file.
+
            :param string localpath:
                The path of the local file to upload
            :param remotepath: (optional)
                The path of the remote file or directory to upload into
            :param bool preserve: (optional)
-               Whether or not to preserve original file attributes
+               Whether or not to preserve the original file attributes
+           :param bool recurse: (optional)
+               Whether or not to recursively copy directories
+           :param bool follow_symlinks: (optional)
+               Whether or not to follow symbolic links
+           :param callable error_handler: (optional)
+               The function to call when an error occurs
            :type remotepath: string or bytes
 
-           :raises: | :exc:`SFTPError` if the server returns an error
+           :raises: | :exc:`OSError` if a local file I/O error occurs
+                    | :exc:`SFTPError` if the server returns an error
 
         """
 
-        if remotepath is None:
-            remotepath = os.path.basename(localpath)
-        elif (yield from self.isdir(remotepath)):
-            remotepath = os.path.join(remotepath, os.path.basename(localpath))
-
-        with _LocalFile.open(localpath, 'rb') as src:
-            with (yield from self.open(remotepath, 'wb')) as dst:
-                yield from self._copy(src, dst, preserve)
+        yield from self._begin_copy(_LocalFile, self, localpath, remotepath,
+                                    preserve, recurse, follow_symlinks,
+                                    error_handler)
 
     @asyncio.coroutine
-    def copy(self, srcpath, dstpath=None, preserve=False):
+    def copy(self, srcpath, dstpath=None, *, preserve=False,
+             recurse=False, follow_symlinks=False, error_handler=None):
         """Copy a remote file to a new location
 
            This method copies a file on the remote system to a new
@@ -1059,27 +1309,47 @@ class SFTPClient:
            and permissions of the original file are set on the
            copied file.
 
+           If recurse is ``True`` and the source path points at a
+           directory, the entire subtree under that directory is
+           copied.
+
+           If follow_symlinks is set to ``True``, symbolic links found
+           in the source will have the contents of their target copied
+           rather than creating a copy of the symbolic link. When
+           using this option during a recursive copy, one needs to
+           watch out for links that result in loops.
+
+           If error_handler is specified and an error occurs during
+           the copy, the error_handler will be called with the
+           exception instead of it being raised. This is intended to
+           primarily be used when recurse is set to ``True``, to allow
+           error information to be collected without aborting the copy
+           of other files in the tree. The error handler can raise an
+           exception if it wants the copy to stop. Otherwise, after an
+           error, the copy will continue starting with the next file.
+
            :param srcpath:
                The path of the remote source file to copy
            :param dstpath: (optional)
                The path of the remote file or directory to copy into
            :param bool preserve: (optional)
-               Whether or not to preserve original file attributes
+               Whether or not to preserve the original file attributes
+           :param bool recurse: (optional)
+               Whether or not to recursively copy directories
+           :param bool follow_symlinks: (optional)
+               Whether or not to follow symbolic links
+           :param callable error_handler: (optional)
+               The function to call when an error occurs
            :type srcpath: string or bytes
            :type dstpath: string or bytes
 
-           :raises: | :exc:`SFTPError` if the server returns an error
+           :raises: | :exc:`OSError` if a local file I/O error occurs
+                    | :exc:`SFTPError` if the server returns an error
 
         """
 
-        if dstpath is None:
-            dstpath = os.path.basename(srcpath)
-        elif (yield from self.isdir(dstpath)):
-            remotepath = os.path.join(dstpath, os.path.basename(srcpath))
-
-        with (yield from self.open(srcpath, 'rb')) as srcfile:
-            with (yield from self.open(dstpath, 'wb')) as dstfile:
-                yield from self._copy(srcfile, dstfile, preserve)
+        yield from self._begin_copy(self, self, srcpath, dstpath, preserve,
+                                    recurse, follow_symlinks, error_handler)
 
     @asyncio.coroutine
     def open(self, path, mode='r', attrs=SFTPAttrs(),
@@ -1151,7 +1421,7 @@ class SFTPClient:
         if not pflags:
             raise ValueError('Invalid mode: %r' % mode)
 
-        path = self._compose_path(path)
+        path = yield from self._compose_path(path)
         handle = yield from self._session.open(path, pflags, attrs)
 
         return SFTPFile(self._session, handle, pflags & FXF_APPEND,
@@ -1176,7 +1446,7 @@ class SFTPClient:
 
         """
 
-        path = self._compose_path(path)
+        path = yield from self._compose_path(path)
         return (yield from self._session.stat(path))
 
     @asyncio.coroutine
@@ -1199,7 +1469,7 @@ class SFTPClient:
 
         """
 
-        path = self._compose_path(path)
+        path = yield from self._compose_path(path)
         return (yield from self._session.lstat(path))
 
     @asyncio.coroutine
@@ -1223,7 +1493,7 @@ class SFTPClient:
 
         """
 
-        path = self._compose_path(path)
+        path = yield from self._compose_path(path)
         yield from self._session.setstat(path, attrs)
 
     @asyncio.coroutine
@@ -1443,7 +1713,7 @@ class SFTPClient:
 
         """
 
-        path = self._compose_path(path)
+        path = yield from self._compose_path(path)
         yield from self._session.remove(path)
 
     @asyncio.coroutine
@@ -1469,8 +1739,8 @@ class SFTPClient:
 
         """
 
-        oldpath = self._compose_path(oldpath)
-        newpath = self._compose_path(newpath)
+        oldpath = yield from self._compose_path(oldpath)
+        newpath = yield from self._compose_path(newpath)
         yield from self._session.rename(oldpath, newpath)
 
     @asyncio.coroutine
@@ -1494,7 +1764,7 @@ class SFTPClient:
 
         names = []
 
-        path = self._compose_path(path)
+        path = yield from self._compose_path(path)
         handle = yield from self._session.opendir(path)
 
         try:
@@ -1551,7 +1821,7 @@ class SFTPClient:
 
         """
 
-        path = self._compose_path(path)
+        path = yield from self._compose_path(path)
         yield from self._session.mkdir(path, attrs)
 
     @asyncio.coroutine
@@ -1569,7 +1839,7 @@ class SFTPClient:
 
         """
 
-        path = self._compose_path(path)
+        path = yield from self._compose_path(path)
         yield from self._session.rmdir(path)
 
     @asyncio.coroutine
@@ -1590,7 +1860,7 @@ class SFTPClient:
 
         """
 
-        path = self._compose_path(path)
+        path = yield from self._compose_path(path)
         names = yield from self._session.realpath(path)
 
         if len(names) > 1:
@@ -1646,6 +1916,7 @@ class SFTPClient:
 
         """
 
+        path = yield from self._compose_path(path)
         names = yield from self._session.readlink(path)
 
         if len(names) > 1:
@@ -1672,13 +1943,15 @@ class SFTPClient:
                The path the link should point to
            :param dstpath:
                The path of where to create the remote symbolic link
-           :type linkpath: string or bytes
-           :type targetpath: string or bytes
+           :type srcpath: string or bytes
+           :type dstpath: string or bytes
 
            :raises: :exc:`SFTPError` if the server returns an error
 
         """
 
+        srcpath = yield from self._compose_path(srcpath)
+        dstpath = yield from self._compose_path(dstpath)
         yield from self._session.symlink(srcpath, dstpath)
 
     def exit(self):
