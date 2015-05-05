@@ -28,7 +28,7 @@ try:
     _curve25519_base = nacl.crypto_scalarmult_curve25519_base
 
     _found = 'libnacl'
-except (ImportError, AttributeError):
+except (ImportError, OSError, AttributeError):
     try:
         import curve25519
 

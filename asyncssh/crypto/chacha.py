@@ -110,7 +110,7 @@ try:
 
     _poly1305 = nacl.crypto_onetimeauth_poly1305
     _poly1305_verify = nacl.crypto_onetimeauth_poly1305_verify
-except (ImportError, AttributeError):
+except (ImportError, OSError, AttributeError):
     pass
 else:
     register_cipher('chacha20-poly1305', 'chacha', _Chacha20Poly1305Cipher)
