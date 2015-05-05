@@ -1,4 +1,1 @@
-pycrypto >= 2.6
 cryptography >= 0.6.1
-py-bcrypt >= 0.4
-libnacl >= 1.4.2
