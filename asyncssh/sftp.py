@@ -1123,7 +1123,7 @@ class SFTPClient:
                 if not recurse:
                     raise SFTPError(FX_FAILURE, '%s is a directory' % srcpath)
 
-                if not (yield from dstfs.exists(dstpath)):
+                if not (yield from dstfs.isdir(dstpath)):
                     yield from dstfs.mkdir(dstpath)
 
                 names = yield from srcfs.listdir(srcpath)
@@ -1165,30 +1165,50 @@ class SFTPClient:
                 raise
 
     @asyncio.coroutine
-    def _begin_copy(self, srcfs, dstfs, srcpath, dstpath, preserve,
+    def _begin_copy(self, srcfs, dstfs, srcpaths, dstpath, preserve,
                     recurse, follow_symlinks, error_handler):
         """Kick off a new file upload, download, or copy"""
 
-        srcfile = os.path.basename(srcpath)
+        dst_isdir = dstpath is None or (yield from dstfs.isdir(dstpath))
 
-        if dstpath is None:
-            dstpath = srcfile
-        elif (yield from dstfs.isdir(dstpath)):
-            dstpath = yield from dstfs._compose_path(dstpath, srcfile)
+        if isinstance(srcpaths, (str, bytes)):
+            srcpaths = [srcpaths]
+        elif not dst_isdir:
+            raise SFTPError(FX_FAILURE, '%s must be a directory' % dstpath)
 
-        yield from self._copy(srcfs, dstfs, srcpath, dstpath, preserve,
-                              recurse, follow_symlinks, error_handler)
+        for srcfile in srcpaths:
+            filename = os.path.basename(srcfile)
+
+            if dstpath is None:
+                dstfile = filename
+            elif dst_isdir:
+                dstfile = yield from dstfs._compose_path(dstpath, filename)
+            else:
+                dstfile = dstpath
+
+            yield from self._copy(srcfs, dstfs, srcfile, dstfile, preserve,
+                                  recurse, follow_symlinks, error_handler)
 
     @asyncio.coroutine
-    def get(self, remotepath, localpath=None, *, preserve=False,
+    def get(self, remotepaths, localpath=None, *, preserve=False,
             recurse=False, follow_symlinks=False, error_handler=None):
-        """Download a remote file
+        """Download remote files
 
-           This method downloads a file from the remote system. If
-           the local path points at a directory, the file name of
-           the remote file is used as the local file name. If no
-           local path is provided, the file is downloaded into the
-           local current working directory.
+           This method downloads one or more files or directories from
+           the remote system. Either a single remote path or a sequence
+           of remote paths to download can be provided.
+
+           When downloading a single file or directory, the local path can
+           be either the full path to download data into or the path to an
+           existing directory where the data should be placed. In the
+           latter case, the base file name from the remote path will be
+           used as the local name.
+
+           When downloading multiple files, the local path must refer to
+           an existing directory.
+
+           If no local path is provided, the file is downloaded
+           into the current local working directory.
 
            If preserve is ``True``, the access and modification times
            and permissions of the original file are set on the
@@ -1214,8 +1234,8 @@ class SFTPClient:
            Otherwise, after an error, the download will continue
            starting with the next file.
 
-           :param remotepath:
-               The path of the remote file to download
+           :param remotepaths:
+               The paths of the remote files or directories to download
            :param string localpath: (optional)
                The path of the local file or directory to download into
            :param bool preserve: (optional)
@@ -1226,27 +1246,37 @@ class SFTPClient:
                Whether or not to follow symbolic links
            :param callable error_handler: (optional)
                The function to call when an error occurs
-           :type remotepath: string or bytes
+           :type remotepaths: string or bytes, or a sequence of these
 
            :raises: | :exc:`OSError` if a local file I/O error occurs
                     | :exc:`SFTPError` if the server returns an error
 
         """
 
-        yield from self._begin_copy(self, _LocalFile, remotepath, localpath,
+        yield from self._begin_copy(self, _LocalFile, remotepaths, localpath,
                                     preserve, recurse, follow_symlinks,
                                     error_handler)
 
     @asyncio.coroutine
-    def put(self, localpath, remotepath=None, *, preserve=False,
+    def put(self, localpaths, remotepath=None, *, preserve=False,
             recurse=False, follow_symlinks=False, error_handler=None):
-        """Upload a local file
+        """Upload local files
 
-           This method uploads a file to the remote system. If the
-           remote path points at a directory, the file name of the
-           local file is used as the remote file name. If no remote
-           path is provided, the file is uploaded into the remote
-           current working directory.
+           This method uploads one or more files or directories to the
+           remote system. Either a single local path or a sequence of
+           local paths to upload can be provided.
+
+           When uploading a single file or directory, the remote path can
+           be either the full path to upload data into or the path to an
+           existing directory where the data should be placed. In the
+           latter case, the base file name from the local path will be
+           used as the remote name.
+
+           When uploading multiple files, the remote path must refer to
+           an existing directory.
+
+           If no remote path is provided, the file is uploaded into the
+           current remote working directory.
 
            If preserve is ``True``, the access and modification times
            and permissions of the original file are set on the
@@ -1271,8 +1301,8 @@ class SFTPClient:
            exception if it wants the upload to stop. Otherwise, after an
            error, the upload will continue starting with the next file.
 
-           :param string localpath:
-               The path of the local file to upload
+           :param localpaths:
+               The paths of the local files or directories to upload
            :param remotepath: (optional)
                The path of the remote file or directory to upload into
            :param bool preserve: (optional)
@@ -1283,6 +1313,7 @@ class SFTPClient:
                Whether or not to follow symbolic links
            :param callable error_handler: (optional)
                The function to call when an error occurs
+           :type localpaths: string or bytes, or a sequence of these
            :type remotepath: string or bytes
 
            :raises: | :exc:`OSError` if a local file I/O error occurs
@@ -1290,20 +1321,30 @@ class SFTPClient:
 
         """
 
-        yield from self._begin_copy(_LocalFile, self, localpath, remotepath,
+        yield from self._begin_copy(_LocalFile, self, localpaths, remotepath,
                                     preserve, recurse, follow_symlinks,
                                     error_handler)
 
     @asyncio.coroutine
-    def copy(self, srcpath, dstpath=None, *, preserve=False,
+    def copy(self, srcpaths, dstpath=None, *, preserve=False,
              recurse=False, follow_symlinks=False, error_handler=None):
-        """Copy a remote file to a new location
+        """Copy remote files to a new location
 
-           This method copies a file on the remote system to a new
-           location. If the destination path points at a directory,
-           the file name of the source file is used as the destination
-           file name. If no destination path is provided, the file is
-           copied into the remote current working directory.
+           This method copies one or more files or directories on the
+           remote system to a new location. Either a single source path
+           or a sequence of source paths to copy can be provided.
+
+           When copying a single file or directory, the destination path
+           can be either the full path to copy data into or the path to
+           an existing directory where the data should be placed. In the
+           latter case, the base file name from the source path will be
+           used as the destination name.
+
+           When copying multiple files, the destination path must refer
+           to an existing remote directory.
+
+           If no destination path is provided, the file is copied into
+           the current remote working directory.
 
            If preserve is ``True``, the access and modification times
            and permissions of the original file are set on the
@@ -1328,8 +1369,8 @@ class SFTPClient:
            exception if it wants the copy to stop. Otherwise, after an
            error, the copy will continue starting with the next file.
 
-           :param srcpath:
-               The path of the remote source file to copy
+           :param srcpaths:
+               The paths of the remote files or directories to copy
            :param dstpath: (optional)
                The path of the remote file or directory to copy into
            :param bool preserve: (optional)
@@ -1340,7 +1381,7 @@ class SFTPClient:
                Whether or not to follow symbolic links
            :param callable error_handler: (optional)
                The function to call when an error occurs
-           :type srcpath: string or bytes
+           :type srcpaths: string or bytes, or a sequence of these
            :type dstpath: string or bytes
 
            :raises: | :exc:`OSError` if a local file I/O error occurs
@@ -1348,7 +1389,7 @@ class SFTPClient:
 
         """
 
-        yield from self._begin_copy(self, self, srcpath, dstpath, preserve,
+        yield from self._begin_copy(self, self, srcpaths, dstpath, preserve,
                                     recurse, follow_symlinks, error_handler)
 
     @asyncio.coroutine
