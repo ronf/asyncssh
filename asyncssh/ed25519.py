@@ -88,7 +88,7 @@ class _Ed25519Key(SSHKey):
 
 try:
     import libnacl
-except ImportError:
+except (ImportError, OSError):
     pass
 else:
     register_public_key_alg(b'ssh-ed25519', _Ed25519Key)
