@@ -1117,7 +1117,6 @@ class SFTPClient:
               recurse, follow_symlinks, error_handler):
         """Copy a file, directory, or symbolic link"""
 
-        print(srcpath, dstpath)
         if follow_symlinks:
             srcattrs = yield from srcfs.stat(srcpath)
         else:
