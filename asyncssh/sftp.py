@@ -12,7 +12,7 @@
 
 """SFTP handlers"""
 
-import asyncio, os, stat, time
+import asyncio, os, posixpath, stat, time
 from collections import OrderedDict
 from os import SEEK_SET, SEEK_CUR, SEEK_END
 
@@ -249,7 +249,7 @@ class _LocalFile:
 
     @asyncio.coroutine
     def close(self):
-        self.close()
+        self._file.close()
 
 
 class SFTPError(Error):
@@ -1088,9 +1088,14 @@ class SFTPClient:
         if self._cwd is not None:
             elements.insert(0, self._cwd)
 
-        # TODO: Eventually do path composition on the server for version >= 6
+        # TODO: Do path composition on the server for SFTP version >= 6
+        #       For now, use posixpath so separator is always '/' regardless
+        #       of the local host OS.
 
-        return (yield from _LocalFile._compose_path(*elements))
+        if elements[-1:] == [None]:
+            elements.pop()
+
+        return posixpath.join(*elements) if elements else '.'
 
     @asyncio.coroutine
     def _mode(self, path, statfunc=None):
@@ -1177,7 +1182,7 @@ class SFTPClient:
             raise SFTPError(FX_FAILURE, '%s must be a directory' % dstpath)
 
         for srcfile in srcpaths:
-            filename = os.path.basename(srcfile)
+            filename = posixpath.basename(srcfile)
 
             if dstpath is None:
                 dstfile = filename
