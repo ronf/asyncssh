@@ -1134,7 +1134,7 @@ class SFTPClient:
                 raise
 
     @asyncio.coroutine
-    def _match(self, fs, basedir, patlist, decode, result):
+    def _glob(self, fs, basedir, patlist, decode, result):
         """Match a glob pattern"""
 
         pattern, patlist = patlist[0], patlist[1:]
@@ -1152,10 +1152,10 @@ class SFTPClient:
                 if not patlist:
                     result.append(fs._decode(newbase, decode))
                 elif (yield from fs.isdir(newbase)):
-                    yield from self._match(fs, newbase, patlist, decode, result)
+                    yield from self._glob(fs, newbase, patlist, decode, result)
 
     @asyncio.coroutine
-    def _begin_match(self, fs, patterns, error_handler):
+    def _begin_glob(self, fs, patterns, error_handler):
         """Begin a new glob pattern match"""
 
         if isinstance(patterns, (str, bytes)):
@@ -1179,7 +1179,7 @@ class SFTPClient:
             names = []
 
             try:
-                yield from self._match(fs, basedir, patlist, decode, names)
+                yield from self._glob(fs, basedir, patlist, decode, names)
 
                 if names:
                     result.extend(names)
@@ -1497,8 +1497,7 @@ class SFTPClient:
 
         """
 
-        matches = yield from self._begin_match(self, remotepaths,
-                                               error_handler)
+        matches = yield from self._begin_glob(self, remotepaths, error_handler)
 
         yield from self._begin_copy(self, _LocalFile, matches, localpath,
                                     preserve, recurse, follow_symlinks,
@@ -1518,8 +1517,8 @@ class SFTPClient:
 
         """
 
-        matches = yield from self._begin_match(_LocalFile, localpaths,
-                                               error_handler)
+        matches = yield from self._begin_glob(_LocalFile, localpaths,
+                                              error_handler)
 
         yield from self._begin_copy(_LocalFile, self, matches, remotepath,
                                     preserve, recurse, follow_symlinks,
@@ -1539,13 +1538,13 @@ class SFTPClient:
 
         """
 
-        matches = yield from self._begin_match(self, srcpaths, error_handler)
+        matches = yield from self._begin_glob(self, srcpaths, error_handler)
 
         yield from self._begin_copy(self, self, matches, dstpath, preserve,
                                     recurse, follow_symlinks, error_handler)
 
     @asyncio.coroutine
-    def match(self, patterns, error_handler=None):
+    def glob(self, patterns, error_handler=None):
         """Match remote files against glob patterns
 
            This method matches remote files against one or more glob
@@ -1578,7 +1577,7 @@ class SFTPClient:
 
         """
 
-        return (yield from self._begin_match(self, patterns, error_handler))
+        return (yield from self._begin_glob(self, patterns, error_handler))
 
     @asyncio.coroutine
     def open(self, path, mode='r', attrs=SFTPAttrs(),

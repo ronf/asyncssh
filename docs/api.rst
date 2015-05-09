@@ -651,7 +651,7 @@ SFTPClient
    .. automethod:: rmdir
    .. automethod:: readdir
    .. automethod:: listdir
-   .. automethod:: match
+   .. automethod:: glob
    ============================================== =
 
 SFTPServer
