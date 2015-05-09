@@ -12,8 +12,9 @@
 
 """SFTP handlers"""
 
-import asyncio, os, posixpath, stat, time
+import asyncio, os, posixpath, stat, sys, time
 from collections import OrderedDict
+from fnmatch import fnmatch
 from os import SEEK_SET, SEEK_CUR, SEEK_END
 
 from .constants import *
@@ -57,12 +58,24 @@ class _LocalFile:
         self._file.close()
 
     @classmethod
-    @asyncio.coroutine
-    def _compose_path(cls, *elements):
-        if elements[-1:] == [None]:
-            elements.pop()
+    def _encode(cls, path):
+        if isinstance(path, str):
+            path = path.encode(sys.getfilesystemencoding())
 
-        return os.path.join(*elements) if elements else '.'
+        return path
+
+    @classmethod
+    def _decode(cls, path, decode=True):
+        if decode:
+            path = path.decode(sys.getfilesystemencoding())
+
+        return path
+
+    @classmethod
+    def _compose_path(cls, path, parent=None):
+        path = cls._encode(path)
+
+        return os.path.join(parent, path) if parent else path
 
     @classmethod
     @asyncio.coroutine
@@ -89,7 +102,7 @@ class _LocalFile:
 
     @classmethod
     @asyncio.coroutine
-    def setstat(self, path, attrs):
+    def setstat(cls, path, attrs):
         if attrs.size is not None:
             os.truncate(path, attrs.size)
 
@@ -399,15 +412,6 @@ class SFTPName(_Record):
         attrs = SFTPAttrs.decode(packet)
 
         return cls(filename, longname, attrs)
-
-    def decode_paths(self, encoding, errors):
-        """Convert filename and longname to Unicode strings"""
-
-        try:
-            self.filename = self.filename.decode(encoding, errors)
-            self.longname = self.longname.decode(encoding, errors)
-        except UnicodeDecodeError:
-            raise SFTPError(FX_BAD_MESSAGE, 'Unable to decode name')
 
 
 class SFTPSession:
@@ -1081,21 +1085,38 @@ class SFTPClient:
 
         self.exit()
 
-    @asyncio.coroutine
-    def _compose_path(self, *elements):
-        """Compose a path relative to the current remote working directory"""
+    def _encode(self, path):
+        if isinstance(path, str):
+            if self._path_encoding:
+                path = path.encode(self._path_encoding, self._path_errors)
+            else:
+                raise SFTPError('Path must be bytes when encoding is not set')
 
-        if self._cwd is not None:
-            elements.insert(0, self._cwd)
+        return path
 
-        # TODO: Do path composition on the server for SFTP version >= 6
-        #       For now, use posixpath so separator is always '/' regardless
-        #       of the local host OS.
+    def _decode(self, path, decode=True):
+        if decode and self._path_encoding:
+            try:
+                path = path.decode(self._path_encoding, self._path_errors)
+            except UnicodeDecodeError:
+                raise SFTPError(FX_BAD_MESSAGE, 'Unable to decode name')
 
-        if elements[-1:] == [None]:
-            elements.pop()
+        return path
 
-        return posixpath.join(*elements) if elements else '.'
+    def _compose_path(self, path, parent=...):
+        """Compose a path
+
+           If parent is not specified, return a path relative to the
+           current remote working directory.
+
+        """
+
+        if parent is ...:
+            parent = self._cwd
+
+        path = self._encode(path)
+
+        return posixpath.join(parent, path) if parent else path
 
     @asyncio.coroutine
     def _mode(self, path, statfunc=None):
@@ -1111,6 +1132,68 @@ class SFTPClient:
                 return 0
             else:
                 raise
+
+    @asyncio.coroutine
+    def _match(self, fs, basedir, patlist, decode, result):
+        """Match a glob pattern"""
+
+        pattern, patlist = patlist[0], patlist[1:]
+
+        for name in (yield from fs.listdir(basedir or b'.')):
+            if pattern != name and name in (b'.', b'..'):
+                continue
+
+            if name[:1] == b'.' and not pattern[:1] == b'.':
+                continue
+
+            if fnmatch(name, pattern):
+                newbase = fs._compose_path(name, parent=basedir)
+
+                if not patlist:
+                    result.append(fs._decode(newbase, decode))
+                elif (yield from fs.isdir(newbase)):
+                    yield from self._match(fs, newbase, patlist, decode, result)
+
+    @asyncio.coroutine
+    def _begin_match(self, fs, patterns, error_handler):
+        """Begin a new glob pattern match"""
+
+        if isinstance(patterns, (str, bytes)):
+            patterns = [patterns]
+
+        result = []
+
+        for pattern in patterns:
+            if not pattern:
+                return
+
+            decode = isinstance(pattern, str)
+            patlist = self._encode(pattern).split(b'/')
+
+            if not patlist[0]:
+                basedir = b'/'
+                patlist = patlist[1:]
+            else:
+                basedir = None
+
+            names = []
+
+            try:
+                yield from self._match(fs, basedir, patlist, decode, names)
+
+                if names:
+                    result.extend(names)
+                else:
+                    raise SFTPError(FX_NO_SUCH_FILE, 'No matches found')
+            except (OSError, SFTPError) as exc:
+                exc.srcpath = pattern
+
+                if error_handler:
+                    error_handler(exc)
+                else:
+                    raise exc
+
+        return result
 
     @asyncio.coroutine
     def _copy(self, srcfs, dstfs, srcpath, dstpath, preserve,
@@ -1133,11 +1216,11 @@ class SFTPClient:
                 names = yield from srcfs.listdir(srcpath)
 
                 for name in names:
-                    if name in ('.', '..'):
+                    if name in (b'.', b'..'):
                         continue
 
-                    srcfile = yield from srcfs._compose_path(srcpath, name)
-                    dstfile = yield from dstfs._compose_path(dstpath, name)
+                    srcfile = srcfs._compose_path(name, parent=srcpath)
+                    dstfile = dstfs._compose_path(name, parent=dstpath)
 
                     yield from self._copy(srcfs, dstfs, srcfile,
                                           dstfile, preserve, recurse,
@@ -1171,9 +1254,10 @@ class SFTPClient:
     @asyncio.coroutine
     def _begin_copy(self, srcfs, dstfs, srcpaths, dstpath, preserve,
                     recurse, follow_symlinks, error_handler):
-        """Kick off a new file upload, download, or copy"""
+        """Begin a new file upload, download, or copy"""
 
         dst_isdir = dstpath is None or (yield from dstfs.isdir(dstpath))
+        dstpath = self._encode(dstpath)
 
         if isinstance(srcpaths, (str, bytes)):
             srcpaths = [srcpaths]
@@ -1181,12 +1265,13 @@ class SFTPClient:
             raise SFTPError(FX_FAILURE, '%s must be a directory' % dstpath)
 
         for srcfile in srcpaths:
+            srcfile = self._encode(srcfile)
             filename = posixpath.basename(srcfile)
 
             if dstpath is None:
                 dstfile = filename
             elif dst_isdir:
-                dstfile = yield from dstfs._compose_path(dstpath, filename)
+                dstfile = dstfs._compose_path(filename, parent=dstpath)
             else:
                 dstfile = dstpath
 
@@ -1229,14 +1314,14 @@ class SFTPClient:
            watch out for links that result in loops.
 
            If error_handler is specified and an error occurs during
-           the download, the error_handler will be called with the
-           exception instead of it being raised. This is intended to
-           primarily be used when recurse is set to ``True``, to allow
-           error information to be collected without aborting the
-           download of the other files in the tree. The error handler
-           can raise an exception if it wants the download to stop.
-           Otherwise, after an error, the download will continue
-           starting with the next file.
+           the download, this handler will be called with the exception
+           instead of it being raised. This is intended to primarily be
+           used when multiple remote paths are provided or when recurse
+           is set to ``True``, to allow error information to be collected
+           without aborting the download of the remaining files. The
+           error handler can raise an exception if it wants the download
+           to completely stop. Otherwise, after an error, the download
+           will continue starting with the next file.
 
            :param remotepaths:
                The paths of the remote files or directories to download
@@ -1297,13 +1382,14 @@ class SFTPClient:
            watch out for links that result in loops.
 
            If error_handler is specified and an error occurs during
-           the upload, the error_handler will be called with the
-           exception instead of it being raised. This is intended to
-           primarily be used when recurse is set to ``True``, to allow
-           error information to be collected without aborting the upload
-           of other files in the tree. The error handler can raise an
-           exception if it wants the upload to stop. Otherwise, after an
-           error, the upload will continue starting with the next file.
+           the upload, this handler will be called with the exception
+           instead of it being raised. This is intended to primarily be
+           used when multiple local paths are provided or when recurse
+           is set to ``True``, to allow error information to be collected
+           without aborting the upload of the remaining files. The
+           error handler can raise an exception if it wants the upload
+           to completely stop. Otherwise, after an error, the upload
+           will continue starting with the next file.
 
            :param localpaths:
                The paths of the local files or directories to upload
@@ -1365,13 +1451,14 @@ class SFTPClient:
            watch out for links that result in loops.
 
            If error_handler is specified and an error occurs during
-           the copy, the error_handler will be called with the
-           exception instead of it being raised. This is intended to
-           primarily be used when recurse is set to ``True``, to allow
-           error information to be collected without aborting the copy
-           of other files in the tree. The error handler can raise an
-           exception if it wants the copy to stop. Otherwise, after an
-           error, the copy will continue starting with the next file.
+           the copy, this handler will be called with the exception
+           instead of it being raised. This is intended to primarily be
+           used when multiple source paths are provided or when recurse
+           is set to ``True``, to allow error information to be collected
+           without aborting the copy of the remaining files. The error
+           handler can raise an exception if it wants the copy to
+           completely stop. Otherwise, after an error, the copy will
+           continue starting with the next file.
 
            :param srcpaths:
                The paths of the remote files or directories to copy
@@ -1395,6 +1482,103 @@ class SFTPClient:
 
         yield from self._begin_copy(self, self, srcpaths, dstpath, preserve,
                                     recurse, follow_symlinks, error_handler)
+
+    @asyncio.coroutine
+    def mget(self, remotepaths, localpath=None, *, preserve=False,
+             recurse=False, follow_symlinks=False, error_handler=None):
+        """Download remote files with glob pattern match
+
+           This method downloads files and directories from the remote
+           system matching one or more glob patterns.
+
+           The arguments to this method are identical to the :meth:`get`
+           method, except that the remote paths specified can contain
+           '*' and '?' wildcard characters.
+
+        """
+
+        matches = yield from self._begin_match(self, remotepaths,
+                                               error_handler)
+
+        yield from self._begin_copy(self, _LocalFile, matches, localpath,
+                                    preserve, recurse, follow_symlinks,
+                                    error_handler)
+
+    @asyncio.coroutine
+    def mput(self, localpaths, remotepath=None, *, preserve=False,
+             recurse=False, follow_symlinks=False, error_handler=None):
+        """Upload local files with glob pattern match
+
+           This method uploads files and directories to the remote
+           system matching one or more glob patterns.
+
+           The arguments to this method are identical to the :meth:`put`
+           method, except that the local paths specified can contain
+           '*' and '?' wildcard characters.
+
+        """
+
+        matches = yield from self._begin_match(_LocalFile, localpaths,
+                                               error_handler)
+
+        yield from self._begin_copy(_LocalFile, self, matches, remotepath,
+                                    preserve, recurse, follow_symlinks,
+                                    error_handler)
+
+    @asyncio.coroutine
+    def mcopy(self, srcpaths, dstpath=None, *, preserve=False,
+              recurse=False, follow_symlinks=False, error_handler=None):
+        """Download remote files with glob pattern match
+
+           This method copies files and directories on the remote
+           system matching one or more glob patterns.
+
+           The arguments to this method are identical to the :meth:`copy`
+           method, except that the source paths specified can contain
+           '*' and '?' wildcard characters.
+
+        """
+
+        matches = yield from self._begin_match(self, srcpaths, error_handler)
+
+        yield from self._begin_copy(self, self, matches, dstpath, preserve,
+                                    recurse, follow_symlinks, error_handler)
+
+    @asyncio.coroutine
+    def match(self, patterns, error_handler=None):
+        """Match remote files against glob patterns
+
+           This method matches remote files against one or more glob
+           patterns. Either a single pattern or a sequence of patterns
+           can be provided to match against.
+
+           If error_handler is specified and an error occurs during
+           the match, this handler will be called with the exception
+           instead of it being raised. This is intended to primarily be
+           used when multiple patterns are provided to allow error
+           information to be collected without aborting the match
+           against the remaining patterns. The error handler can raise
+           an exception if it wants to completely abort the match.
+           Otherwise, after an error, the match will continue starting
+           with the next pattern.
+
+           An error will be raised if any of the patterns completely
+           fail to match, and this can either stop the match against
+           the remaining patterns or be handled by the error_handler
+           just like other errors.
+
+           :param patterns:
+               Glob patterns to try and match remote files against
+           :param callable error_handler: (optional)
+               The function to call when an error occurs
+           :type patterns: string or bytes, or a sequence of these
+
+           :raises: :exc:`SFTPError` if the server returns an error
+                    or no match is found
+
+        """
+
+        return (yield from self._begin_match(self, patterns, error_handler))
 
     @asyncio.coroutine
     def open(self, path, mode='r', attrs=SFTPAttrs(),
@@ -1466,7 +1650,7 @@ class SFTPClient:
         if not pflags:
             raise ValueError('Invalid mode: %r' % mode)
 
-        path = yield from self._compose_path(path)
+        path = self._compose_path(path)
         handle = yield from self._session.open(path, pflags, attrs)
 
         return SFTPFile(self._session, handle, pflags & FXF_APPEND,
@@ -1491,7 +1675,7 @@ class SFTPClient:
 
         """
 
-        path = yield from self._compose_path(path)
+        path = self._compose_path(path)
         return (yield from self._session.stat(path))
 
     @asyncio.coroutine
@@ -1514,7 +1698,7 @@ class SFTPClient:
 
         """
 
-        path = yield from self._compose_path(path)
+        path = self._compose_path(path)
         return (yield from self._session.lstat(path))
 
     @asyncio.coroutine
@@ -1538,7 +1722,7 @@ class SFTPClient:
 
         """
 
-        path = yield from self._compose_path(path)
+        path = self._compose_path(path)
         yield from self._session.setstat(path, attrs)
 
     @asyncio.coroutine
@@ -1758,7 +1942,7 @@ class SFTPClient:
 
         """
 
-        path = yield from self._compose_path(path)
+        path = self._compose_path(path)
         yield from self._session.remove(path)
 
     @asyncio.coroutine
@@ -1784,12 +1968,12 @@ class SFTPClient:
 
         """
 
-        oldpath = yield from self._compose_path(oldpath)
-        newpath = yield from self._compose_path(newpath)
+        oldpath = self._compose_path(oldpath)
+        newpath = self._compose_path(newpath)
         yield from self._session.rename(oldpath, newpath)
 
     @asyncio.coroutine
-    def readdir(self, path=None):
+    def readdir(self, path='.'):
         """Read the contents of a remote directory
 
            This method reads the contents of a directory, returning
@@ -1801,7 +1985,8 @@ class SFTPClient:
                The path of the remote directory to read
            :type path: string or bytes
 
-           :returns: A list of :class:`SFTPName` entries
+           :returns: A list of :class:`SFTPName` entries, with path
+                     names matching the type used to pass in the path
 
            :raises: :exc:`SFTPError` if the server returns an error
 
@@ -1809,8 +1994,8 @@ class SFTPClient:
 
         names = []
 
-        path = yield from self._compose_path(path)
-        handle = yield from self._session.opendir(path)
+        dirpath = self._compose_path(path)
+        handle = yield from self._session.opendir(dirpath)
 
         try:
             while True:
@@ -1821,14 +2006,15 @@ class SFTPClient:
         finally:
             yield from self._session.close(handle)
 
-        if self._path_encoding:
+        if isinstance(path, str):
             for name in names:
-                name.decode_paths(self._path_encoding, self._path_errors)
+                name.filename = self._decode(name.filename)
+                name.longname = self._decode(name.longname)
 
         return names
 
     @asyncio.coroutine
-    def listdir(self, path=None):
+    def listdir(self, path='.'):
         """Read the names of the files in a remote directory
 
            This method reads the names of files and subdirectories
@@ -1839,7 +2025,8 @@ class SFTPClient:
                The path of the remote directory to read
            :type path: string or bytes
 
-           :returns: A list of file/subdirectory names as strings or bytes
+           :returns: A list of file/subdirectory names, matching the
+                     type used to pass in the path
 
            :raises: :exc:`SFTPError` if the server returns an error
 
@@ -1866,7 +2053,7 @@ class SFTPClient:
 
         """
 
-        path = yield from self._compose_path(path)
+        path = self._compose_path(path)
         yield from self._session.mkdir(path, attrs)
 
     @asyncio.coroutine
@@ -1884,53 +2071,49 @@ class SFTPClient:
 
         """
 
-        path = yield from self._compose_path(path)
+        path = self._compose_path(path)
         yield from self._session.rmdir(path)
 
     @asyncio.coroutine
-    def realpath(self, path=None):
+    def realpath(self, path):
         """Return the canonical version of a path
 
            This method returns a canonical version of the requested path.
-           If no path is specified, the canonical version of the current
-           remote working directory is returned.
 
            :param path: (optional)
                The path of the remote directory to canonicalize
            :type path: string or bytes
 
-           :returns: The canonical path as a string or bytes
+           :returns: The canonical path as a string or bytes, matching
+                     the type used to pass in the path
 
            :raises: :exc:`SFTPError` if the server returns an error
 
         """
 
-        path = yield from self._compose_path(path)
-        names = yield from self._session.realpath(path)
+        fullpath = self._compose_path(path)
+        names = yield from self._session.realpath(fullpath)
 
         if len(names) > 1:
             raise SFTPError(FX_BAD_MESSAGE, 'Too many names returned')
 
-        name = names[0]
-        if self._path_encoding:
-            name.decode_paths(self._path_encoding, self._path_errors)
-
-        return name.filename
+        return self._decode(names[0].filename, isinstance(path, str))
 
     @asyncio.coroutine
     def getcwd(self):
         """Return the current remote working directory
 
-           :returns: The current remote working directory as a string or bytes
+           :returns: The current remote working directory, decoded using
+                     the specified path encoding
 
            :raises: :exc:`SFTPError` if the server returns an error
 
         """
 
         if self._cwd is None:
-            self._cwd = yield from self.realpath()
+            self._cwd = yield from self.realpath(b'.')
 
-        return self._cwd
+        return self._decode(self._cwd)
 
     @asyncio.coroutine
     def chdir(self, path):
@@ -1943,7 +2126,7 @@ class SFTPClient:
 
         """
 
-        self._cwd = yield from self.realpath(path)
+        self._cwd = yield from self.realpath(self._encode(path))
 
     @asyncio.coroutine
     def readlink(self, path):
@@ -1961,17 +2144,13 @@ class SFTPClient:
 
         """
 
-        path = yield from self._compose_path(path)
-        names = yield from self._session.readlink(path)
+        linkpath = self._compose_path(path)
+        names = yield from self._session.readlink(linkpath)
 
         if len(names) > 1:
             raise SFTPError(FX_BAD_MESSAGE, 'Too many names returned')
 
-        name = names[0]
-        if self._path_encoding:
-            name.decode_paths(self._path_encoding, self._path_errors)
-
-        return name.filename
+        return self._decode(names[0].filename, isinstance(path, str))
 
     @asyncio.coroutine
     def symlink(self, srcpath, dstpath):
@@ -1995,8 +2174,8 @@ class SFTPClient:
 
         """
 
-        srcpath = yield from self._compose_path(srcpath)
-        dstpath = yield from self._compose_path(dstpath)
+        srcpath = self._compose_path(srcpath)
+        dstpath = self._encode(dstpath)
         yield from self._session.symlink(srcpath, dstpath)
 
     def exit(self):

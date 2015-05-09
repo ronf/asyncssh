@@ -605,6 +605,9 @@ SFTPClient
    .. automethod:: get
    .. automethod:: put
    .. automethod:: copy
+   .. automethod:: mget
+   .. automethod:: mput
+   .. automethod:: mcopy
    ===================== =
 
    ========================================================================================== =
@@ -642,12 +645,13 @@ SFTPClient
    ============================================== =
    Directory access methods
    ============================================== =
-   .. automethod:: readdir
-   .. automethod:: listdir
+   .. automethod:: chdir
+   .. automethod:: getcwd
    .. automethod:: mkdir(path, attrs=SFTPAttrs())
    .. automethod:: rmdir
-   .. automethod:: getcwd
-   .. automethod:: chdir
+   .. automethod:: readdir
+   .. automethod:: listdir
+   .. automethod:: match
    ============================================== =
 
 SFTPServer
