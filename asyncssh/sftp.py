@@ -17,7 +17,6 @@ from collections import OrderedDict
 from fnmatch import fnmatch
 from os import SEEK_SET, SEEK_CUR, SEEK_END
 
-from .channel import *
 from .constants import *
 from .logging import *
 from .misc import *
@@ -479,7 +478,7 @@ class SFTPName(_Record):
         return cls(filename, longname, attrs)
 
 
-class SFTPSession(SSHClientSession):
+class SFTPSession:
     """SFTP session handler"""
 
     # SFTP implementations with broken order for SYMLINK arguments
@@ -501,8 +500,7 @@ class SFTPSession(SSHClientSession):
         b'fstatvfs@openssh.com':  FXP_EXTENDED_REPLY
     }
 
-    def __init__(self, loop):
-        self._loop = loop
+    def __init__(self):
         self._chan = None
         self._inpbuf = b''
         self._pktlen = 0
@@ -565,8 +563,9 @@ class SFTPClientSession(SFTPSession):
     _extensions = []
 
     def __init__(self, loop, version_waiter):
-        super().__init__(loop)
+        super().__init__()
 
+        self._loop = loop
         self._version = None
         self._next_id = 0
         self._requests = { None: (None, version_waiter) }
@@ -2439,13 +2438,17 @@ class SFTPClient:
 class SFTPServerSession(SFTPSession):
     _extensions = []
 
-    def __init__(self, loop):
-        super.__init__(loop)
+    def __init__(self, server):
+        super().__init__()
 
+        self._server = server
         self._version = None
 
     def connection_lost(self, exc):
         self.exit()
+
+    def session_started(self):
+        pass
 
     def _process_init(self, packet):
         version = packet.get_uint32()
@@ -2455,22 +2458,17 @@ class SFTPServerSession(SFTPSession):
                           for name, data in self._extensions)
         self.send_packet(Byte(FXP_VERSION), UInt32(version), *extensions)
 
-    def _fail(self, code, reason, lang=DEFAULT_LANG):
-        self.send_packet(Byte(FXP_STATUS), UInt32(code),
-                         String(reason), String(lang))
+    def _process_version(self, packet):
+        # FXP_VERSION not expected on server - close the connection
         self.exit()
 
-    def _process_version(self, packet):
-        self._fail(FX_OP_UNSUPPORTED, 'FXP_VERSION not expected on server')
-
     def _process_packet(self, pkttype, id, packet):
-        handler = self._packet_handlers.get(pkttype)
-        if not handler:
-            self._fail(FX_OP_UNSUPPORTED,
-                       'Unsupported request type: %s' % ord(pkttype))
-            return
-
         try:
+            handler = self._packet_handlers.get(pkttype)
+            if not handler:
+                raise SFTPError(FX_OP_UNSUPPORTED,
+                                'Unsupported request type: %s' % pkttype)
+
             return_type = self._return_types.get(pkttype, FXP_STATUS)
             result = handler(self, packet)
 
@@ -2478,13 +2476,19 @@ class SFTPServerSession(SFTPSession):
                 result = UInt32(FX_OK) + String('') + String('')
             elif return_type in (FXP_HANDLE, FXP_DATA):
                 result = String(result)
+            elif return_type == FXP_NAME:
+                result = UInt32(len(result)) + \
+                             b''.join(name.encode() for name in result)
             else:
                 result = result.encode()
         except SFTPError as exc:
             return_type = FXP_STATUS
             result = UInt32(exc.code) + String(exc.reason) + String(exc.lang)
 
-        send_packet(Byte(return_type), UInt32(id), result)
+        self.send_packet(Byte(return_type), UInt32(id), result)
+
+    _packet_handlers = {
+    }
 
 
 class SFTPServer:

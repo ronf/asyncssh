@@ -18,6 +18,7 @@ from .channel import *
 from .constants import *
 from .logging import *
 from .misc import *
+from .sftp import *
 
 
 class SSHReader:
@@ -375,24 +376,40 @@ class SSHClientStreamSession(SSHStreamSession, SSHClientSession):
 class SSHServerStreamSession(SSHStreamSession, SSHServerSession):
     """SSH server stream session handler"""
 
-    def __init__(self, handler_factory):
+    def __init__(self, allow_pty, session_factory, sftp_factory):
         super().__init__()
 
-        self._handler_factory = handler_factory
+        self._allow_pty = allow_pty
+        self._session_factory = session_factory
+        self._sftp_factory = sftp_factory
+
+    def pty_requested(self, term_type, term_size, term_modes):
+        return self._allow_pty
 
     def shell_requested(self):
-        return True
+        return bool(self._session_factory)
 
     def exec_requested(self, command):
-        return True
+        return bool(self._session_factory)
 
     def subsystem_requested(self, subsystem):
-        return True
+        if subsystem == 'sftp':
+            return bool(self._sftp_factory)
+        else:
+            return bool(self._session_factory)
 
     def session_started(self):
-        if self._handler_factory:
+        if self._chan._subsystem == 'sftp':
+            # Switch to an SFTP server session for handling this channel,
+            # and reset the encoding to None to allow the transfer of
+            # binary data
+            self._chan._encoding = None
+            self._chan._session = SFTPServerSession(self._sftp_factory())
+            self._chan._session.connection_made(self._chan)
+            self._chan._session.session_started()
+        else:
             handler = \
-                self._handler_factory(SSHReader(self), SSHWriter(self),
+                self._session_factory(SSHReader(self), SSHWriter(self),
                                       SSHWriter(self, EXTENDED_DATA_STDERR))
 
             if asyncio.iscoroutine(handler):

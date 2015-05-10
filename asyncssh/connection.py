@@ -25,7 +25,7 @@ from .compression import *
 from .forward import *
 from .kex import *
 from .known_hosts import *
-from .listen import *
+from .listener import *
 from .logging import *
 from .mac import *
 from .misc import *
@@ -2147,13 +2147,20 @@ class SSHServerConnection(SSHConnection):
     """
 
     def __init__(self, server_factory, loop, server_host_keys,
-                 authorized_client_keys=None, kex_algs=(), encryption_algs=(),
-                 mac_algs=(), compression_algs=(),
-                 rekey_bytes=_DEFAULT_REKEY_BYTES,
-                 rekey_seconds=_DEFAULT_REKEY_SECONDS):
+                 authorized_client_keys, kex_algs, encryption_algs, mac_algs,
+                 compression_algs, allow_pty, session_factory,
+                 session_encoding, sftp_factory, window, max_pktsize,
+                 rekey_bytes, rekey_seconds):
         super().__init__(server_factory, loop, kex_algs, encryption_algs,
                          mac_algs, compression_algs, rekey_bytes,
                          rekey_seconds, server=True)
+
+        self._allow_pty = allow_pty
+        self._session_factory = session_factory
+        self._session_encoding = session_encoding
+        self._sftp_factory = sftp_factory
+        self._window = window
+        self._max_pktsize = max_pktsize
 
         server_host_keys = self._load_private_key_list(server_host_keys)
 
@@ -2334,20 +2341,29 @@ class SSHServerConnection(SSHConnection):
     def _process_session_open(self, packet):
         packet.check_end()
 
-        result = self._owner.session_requested()
-
-        if not result:
-            raise ChannelOpenError(OPEN_CONNECT_FAILED, 'Session refused')
-
-        if isinstance(result, tuple):
-            chan, result = result
+        if self._session_factory or self._sftp_factory:
+            chan = self.create_server_channel(self._session_encoding,
+                                              self._window, self._max_pktsize)
+            session = SSHServerStreamSession(self._allow_pty,
+                                             self._session_factory,
+                                             self._sftp_factory)
         else:
-            chan = self.create_server_channel()
+            result = self._owner.session_requested()
 
-        if callable(result):
-            session = SSHServerStreamSession(result)
-        else:
-            session = result
+            if not result:
+                raise ChannelOpenError(OPEN_CONNECT_FAILED, 'Session refused')
+
+            if isinstance(result, tuple):
+                chan, result = result
+            else:
+                chan = self.create_server_channel(self._session_encoding,
+                                                  self._window,
+                                                  self._max_pktsize)
+
+            if callable(result):
+                session = SSHServerStreamSession(result, None)
+            else:
+                session = result
 
         return chan, session
 
@@ -3634,6 +3650,9 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
                   reuse_address=None, server_host_keys,
                   authorized_client_keys=None, kex_algs=(),
                   encryption_algs=(), mac_algs=(), compression_algs=(),
+                  allow_pty=True, session_factory=None,
+                  session_encoding='utf-8', sftp_factory=None,
+                  window=_DEFAULT_WINDOW, max_pktsize=_DEFAULT_MAX_PKTSIZE,
                   rekey_bytes=_DEFAULT_REKEY_BYTES,
                   rekey_seconds=_DEFAULT_REKEY_SECONDS):
     """Create an SSH server
@@ -3686,12 +3705,36 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
            A list of compression algorithms to use during the SSH handshake,
            taken from :ref:`compression algorithms <CompressionAlgs>`, or
            ``None`` to disable compression
+       :param boolean allow_pty: (optional)
+           Whether or not to allow allocation of a pseudo-tty in sessions,
+           defaulting to ``True``
+       :param callable session_factory: (optional)
+           A callable or coroutine handler function which takes AsyncSSH
+           stream objects for stdin, stdout, and stderr that will be called
+           each time a new shell, exec, or subsytem other than SFTP is
+           requested by the client. If not specified, sessions are rejected
+           by default unless the :meth:`session_requested()
+           <SSHServer.session_requested>` method is overridden on the
+           :class:`SSHServer` object returned by ``server_factory`` to make
+           this decision.
+       :param string session_encoding: (optional)
+           The Unicode encoding to use for data exchanged on sessions on
+           this server, defaulting to UTF-8 (ISO 10646) format. If ``None``
+           is passed in, the application can send and receive raw bytes.
+       :param callable sftp_factory: (optional)
+           A callable which returns an :class:`SFTPServer` object that
+           will be created each time an SFTP session is requested by the
+           client. If not specified, SFTP sessions are rejected by default.
+       :param integer window: (optional)
+           The receive window size for sessions on this server
+       :param integer max_pktsize: (optional)
+           The maximum packet size for sessions on this server
        :param integer rekey_bytes: (optional)
            The number of bytes which can be sent before the SSH session
-           key is renegotiated. This defaults to 1 GB.
+           key is renegotiated, defaulting to 1 GB
        :param integer rekey_seconds: (optional)
            The maximum time in seconds before the SSH session key is
-           renegotiated. This defaults to 1 hour.
+           renegotiated, defaulting to 1 hour
        :type family: ``socket.AF_UNSPEC``, ``socket.AF_INET``, or
                      ``socket.AF_INET6``
        :type flags: flags to pass to :meth:`getaddrinfo() <socket.getaddrinfo>`
@@ -3706,6 +3749,9 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
 
     """
 
+    if not server_factory:
+        server_factory = SSHServer
+
     if not loop:
         loop = asyncio.get_event_loop()
 
@@ -3714,6 +3760,9 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
                                                authorized_client_keys,
                                                kex_algs, encryption_algs,
                                                mac_algs, compression_algs,
+                                               allow_pty, session_factory,
+                                               session_encoding, sftp_factory,
+                                               window, max_pktsize,
                                                rekey_bytes, rekey_seconds)
 
     return (yield from loop.create_server(conn_factory, host, port,
@@ -3749,3 +3798,35 @@ def connect(host, port=_DEFAULT_PORT, **kwargs):
     conn, client = yield from create_connection(None, host, port, **kwargs)
 
     return conn
+
+@asyncio.coroutine
+def listen(host, port=_DEFAULT_PORT, **kwargs):
+    """Start an SSH server
+
+       This function is a coroutine wrapper around :func:`create_server`
+       which can be used when a custom SSHServer instance is not needed.
+       It takes all the same arguments as :func:`create_server` except for
+       ``server_factory``.
+
+       When using this call, the following restrictions apply:
+
+           1. No callbacks are called when a new connection arrives,
+              when a connection is closed, or when authentication
+              completes.
+
+           2. Any authentication information must be provided as arguments
+              to this call, as any authentication callbacks will deny other
+              authentication attempts. Currently, this allows only public
+              key authentication to be used, by passing in the
+              ``authorized_client_keys`` argument.
+
+           3. Only handlers using the streams API are supported and the same
+              handlers must be used for all clients. These handlers must
+              be provided in the ``session_factory`` and/or ``sftp_factory``
+              arguments to this call.
+
+           4. Any debug messages sent by the client will be ignored.
+
+    """
+
+    return (yield from create_server(None, host, port, **kwargs))

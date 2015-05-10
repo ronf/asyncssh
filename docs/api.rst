@@ -99,6 +99,11 @@ connect
 
 .. autofunction:: connect
 
+listen
+------
+
+.. autofunction:: listen
+
 Main Classes
 ============
 
@@ -679,8 +684,8 @@ SFTPFile
    .. automethod:: chown
    .. automethod:: chmod
    .. automethod:: utime
-   .. automethod:: close
    .. automethod:: fsync
+   .. automethod:: close
    ================================================ =
 
 SFTPAttrs
