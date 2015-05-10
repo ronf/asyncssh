@@ -17,6 +17,7 @@ from collections import OrderedDict
 from fnmatch import fnmatch
 from os import SEEK_SET, SEEK_CUR, SEEK_END
 
+from .channel import *
 from .constants import *
 from .logging import *
 from .misc import *
@@ -235,8 +236,13 @@ class _LocalFile:
 
     @classmethod
     @asyncio.coroutine
-    def symlink(cls, srcpath, dstpath):
-        os.symlink(srcpath, dstpath)
+    def symlink(cls, oldpath, newpath):
+        os.symlink(oldpath, newpath)
+
+    @classmethod
+    @asyncio.coroutine
+    def link(cls, oldpath, newpath):
+        os.link(oldpath, newpath)
 
     @asyncio.coroutine
     def read(self, size=-1, offset=None):
@@ -288,7 +294,7 @@ class SFTPError(Error):
 
 class SFTPAttrs(_Record):
     """SFTP file attributes
-    
+
        SFTPAttrs is a simple record class with the following fields:
 
          ============ =========================================== ======
@@ -379,9 +385,68 @@ class SFTPAttrs(_Record):
         return attrs
 
 
+class SFTPVFSAttrs(_Record):
+    """SFTP file system attributes
+
+       SFTPVFSAttrs is a simple record class with the following fields:
+
+         ============ =========================================== ======
+         Field        Description                                 Type
+         ============ =========================================== ======
+         bsize        File system block size (I/O size)           uint64
+         frsize       Fundamental block size (allocation size)    uint64
+         blocks       Total data blocks (in frsize units)         uint64
+         bfree        Free data blocks                            uint64
+         bavail       Available data blocks (for non-root)        uint64
+         files        Total file inodes                           uint64
+         ffree        Free file inodes                            uint64
+         favail       Available file inodes (for non-root)        uint64
+         fsid         File system id                              uint64
+         flags        File system flags (read-only, no-setuid)    uint64
+         namemax      Maximum filename length                     uint64
+         ============ =========================================== ======
+
+    """
+
+    __slots__ = OrderedDict((('bsize', 0), ('frsize', 0), ('blocks', 0),
+                             ('bfree', 0), ('bavail', 0), ('files', 0),
+                             ('ffree', 0), ('favail', 0), ('fsid', 0),
+                             ('flags', 0), ('namemax', 0)))
+
+    def encode(self):
+        """Encode SFTP statvfs attributes as bytes in an SSH packet"""
+
+        return b''.join(UInt64(self.bsize), UInt64(self.frsize),
+                        UInt64(self.blocks), UInt64(self.bfree),
+                        UInt64(self.bavail), UInt64(self.files),
+                        UInt64(self.ffree), UInt64(self.favail),
+                        UInt64(self.fsid), UInt64(self.flags),
+                        UInt64(self.namemax))
+
+    @classmethod
+    def decode(cls, packet):
+        """Decode bytes in an SSH packet as SFTP attributes"""
+
+        vfsattrs = cls()
+
+        vfsattrs.bsize = packet.get_uint64()
+        vfsattrs.frsize = packet.get_uint64()
+        vfsattrs.blocks = packet.get_uint64()
+        vfsattrs.bfree = packet.get_uint64()
+        vfsattrs.bavail = packet.get_uint64()
+        vfsattrs.files = packet.get_uint64()
+        vfsattrs.ffree = packet.get_uint64()
+        vfsattrs.favail = packet.get_uint64()
+        vfsattrs.fsid = packet.get_uint64()
+        vfsattrs.flags = packet.get_uint64()
+        vfsattrs.namemax = packet.get_uint64()
+
+        return vfsattrs
+
+
 class SFTPName(_Record):
     """SFTP file name and attributes
-    
+
        SFTPName is a simple record class with the following fields:
 
          ========= ================================== ==================
@@ -414,7 +479,7 @@ class SFTPName(_Record):
         return cls(filename, longname, attrs)
 
 
-class SFTPSession:
+class SFTPSession(SSHClientSession):
     """SFTP session handler"""
 
     # SFTP implementations with broken order for SYMLINK arguments
@@ -423,15 +488,17 @@ class SFTPSession:
     # Return types by message -- unlisted entries always return FXP_STATUS,
     #                            those below return FXP_STATUS on error
     _return_types = {
-        FXP_OPEN:       FXP_HANDLE,
-        FXP_READ:       FXP_DATA,
-        FXP_LSTAT:      FXP_ATTRS,
-        FXP_FSTAT:      FXP_ATTRS,
-        FXP_OPENDIR:    FXP_HANDLE,
-        FXP_READDIR:    FXP_NAME,
-        FXP_REALPATH:   FXP_NAME,
-        FXP_STAT:       FXP_ATTRS,
-        FXP_READLINK:   FXP_NAME
+        FXP_OPEN:                 FXP_HANDLE,
+        FXP_READ:                 FXP_DATA,
+        FXP_LSTAT:                FXP_ATTRS,
+        FXP_FSTAT:                FXP_ATTRS,
+        FXP_OPENDIR:              FXP_HANDLE,
+        FXP_READDIR:              FXP_NAME,
+        FXP_REALPATH:             FXP_NAME,
+        FXP_STAT:                 FXP_ATTRS,
+        FXP_READLINK:             FXP_NAME,
+        b'statvfs@openssh.com':   FXP_EXTENDED_REPLY,
+        b'fstatvfs@openssh.com':  FXP_EXTENDED_REPLY
     }
 
     def __init__(self, loop):
@@ -484,8 +551,8 @@ class SFTPSession:
     def eof_received(self):
         self.connection_lost(None)
 
-    def send_packet(self, pkttype, *args):
-        payload = Byte(pkttype) + b''.join(args)
+    def send_packet(self, *args):
+        payload = b''.join(args)
         self._chan.write(UInt32(len(payload)) + payload)
 
     def exit(self):
@@ -505,6 +572,11 @@ class SFTPClientSession(SFTPSession):
         self._requests = { None: (None, version_waiter) }
         self._exc = SFTPError(FX_NO_CONNECTION, 'Connection not yet open')
         self._nonstandard_symlink = False
+        self._supports_posix_rename = False
+        self._supports_statvfs = False
+        self._supports_fstatvfs = False
+        self._supports_hardlink = False
+        self._supports_fsync = False
 
     def _fail(self, code, reason, lang=DEFAULT_LANG):
         self._exc = SFTPError(code, reason, lang)
@@ -525,7 +597,13 @@ class SFTPClientSession(SFTPSession):
 
         return_type = self._return_types.get(pkttype)
         self._requests[id] = (return_type, waiter)
-        self.send_packet(pkttype, UInt32(id), *args)
+
+        if isinstance(pkttype, bytes):
+            hdr = Byte(FXP_EXTENDED) + UInt32(id) + String(pkttype)
+        else:
+            hdr = Byte(pkttype) + UInt32(id)
+
+        self.send_packet(hdr, *args)
 
     @asyncio.coroutine
     def _make_request(self, pkttype, *args):
@@ -545,7 +623,7 @@ class SFTPClientSession(SFTPSession):
         extensions = (String(name) + String(data)
                           for name, data in self._extensions)
 
-        self.send_packet(FXP_INIT, UInt32(_SFTP_VERSION), *extensions)
+        self.send_packet(Byte(FXP_INIT), UInt32(_SFTP_VERSION), *extensions)
 
     def _process_init(self, packet):
         self._fail(FX_OP_UNSUPPORTED, 'FXP_INIT not expected on client')
@@ -575,7 +653,17 @@ class SFTPClientSession(SFTPSession):
 
         self._version = version
 
-        # TODO: Process extensions
+        for name, data in extensions:
+            if name == b'posix-rename@openssh.com' and data == b'1':
+                self._supports_posix_rename = True
+            elif name == b'statvfs@openssh.com' and data == b'2':
+                self._supports_statvfs = True
+            elif name == b'fstatvfs@openssh.com' and data == b'2':
+                self._supports_fstatvfs = True
+            elif name == b'hardlink@openssh.com' and data == b'1':
+                self._supports_hardlink = True
+            elif name == b'fsync@openssh.com' and data == b'1':
+                self._supports_fsync = True
 
         if version == 3:
             # Check if the server has a buggy SYMLINK implementation
@@ -597,7 +685,7 @@ class SFTPClientSession(SFTPSession):
 
         if pkttype not in (FXP_STATUS, return_type):
             self._fail(FX_BAD_MESSAGE,
-                       'Unexpected response type: %s' % ord(pkttype))
+                       'Unexpected response type: %s' % pkttype)
             return
 
         if waiter and not waiter.cancelled():
@@ -653,8 +741,8 @@ class SFTPClientSession(SFTPSession):
         return attrs
 
     def _process_extended_reply(self, packet):
-        # TODO
-        pass
+        # Let the caller do the decoding for extended replies
+        return packet
 
     _packet_handlers = {
         FXP_STATUS:         _process_status,
@@ -699,11 +787,42 @@ class SFTPClientSession(SFTPSession):
     def fsetstat(self, handle, attrs):
         return self._make_request(FXP_FSETSTAT, String(handle), attrs.encode())
 
+    @asyncio.coroutine
+    def statvfs(self, path):
+        if self._supports_statvfs:
+            packet = yield from self._make_request(b'statvfs@openssh.com',
+                                                   String(path))
+            vfsattrs = SFTPVFSAttrs.decode(packet)
+            packet.check_end()
+
+            return vfsattrs
+        else:
+            raise SFTPError(FX_OP_UNSUPPORTED, 'statvfs not supported')
+
+    @asyncio.coroutine
+    def fstatvfs(self, handle):
+        if self._supports_fstatvfs:
+            packet = yield from self._make_request(b'fstatvfs@openssh.com',
+                                                   String(handle))
+            vfsattrs = SFTPVFSAttrs.decode(packet)
+            packet.check_end()
+
+            return vfsattrs
+        else:
+            raise SFTPError(FX_OP_UNSUPPORTED, 'fstatvfs not supported')
+
     def remove(self, path):
         return self._make_request(FXP_REMOVE, String(path))
 
     def rename(self, oldpath, newpath):
         return self._make_request(FXP_RENAME, String(oldpath), String(newpath))
+
+    def posix_rename(self, oldpath, newpath):
+        if self._supports_posix_rename:
+            return self._make_request(b'posix-rename@openssh.com',
+                                      String(oldpath), String(newpath))
+        else:
+            raise SFTPError(FX_OP_UNSUPPORTED, 'POSIX rename not supported')
 
     def opendir(self, path):
         return self._make_request(FXP_OPENDIR, String(path))
@@ -723,13 +842,26 @@ class SFTPClientSession(SFTPSession):
     def readlink(self, path):
         return self._make_request(FXP_READLINK, String(path))
 
-    def symlink(self, srcpath, dstpath):
+    def symlink(self, oldpath, newpath):
         if self._nonstandard_symlink:
-            args = String(srcpath) + String(dstpath)
+            args = String(oldpath) + String(newpath)
         else:
-            args = String(dstpath) + String(srcpath)
+            args = String(newpath) + String(oldpath)
 
         return self._make_request(FXP_SYMLINK, args)
+
+    def link(self, oldpath, newpath):
+        if self._supports_hardlink:
+            return self._make_request(b'hardlink@openssh.com',
+                                      String(oldpath), String(newpath))
+        else:
+            raise SFTPError(FX_OP_UNSUPPORTED, 'link not supported')
+
+    def fsync(self, handle):
+        if self._supports_fsync:
+            return self._make_request(b'fsync@openssh.com', String(handle))
+        else:
+            raise SFTPError(FX_OP_UNSUPPORTED, 'fsync not supported')
 
 
 class SFTPFile:
@@ -903,6 +1035,9 @@ class SFTPFile:
 
         """
 
+        if self._handle is None:
+            raise ValueError('I/O operation on closed file')
+
         if from_what == SEEK_SET:
             self._offset = offset
         elif from_what == SEEK_CUR:
@@ -921,6 +1056,9 @@ class SFTPFile:
            :returns: The current byte offset from the beginning of the file
 
         """
+
+        if self._handle is None:
+            raise ValueError('I/O operation on closed file')
 
         if self._offset is None:
             self._offset = yield from self._end()
@@ -958,12 +1096,35 @@ class SFTPFile:
 
         """
 
+        if self._handle is None:
+            raise ValueError('I/O operation on closed file')
+
         yield from self._session.fsetstat(self._handle, attrs)
+
+    @asyncio.coroutine
+    def statvfs(self):
+        """Return file system attributes of the remote file
+
+           This method queries attributes of the file system containing
+           the currently open file.
+
+           :returns: An :class:`SFTPVFSAttrs` containing the file system
+                     attributes
+
+           :raises: :exc:`SFTPError` if the server doesn't support this
+                    extension or returns an error
+
+        """
+
+        if self._handle is None:
+            raise ValueError('I/O operation on closed file')
+
+        return (yield from self._session.fstatvfs(self._handle))
 
     @asyncio.coroutine
     def truncate(self, size=None):
         """Truncate the remote file to the specified size
-        
+
            This method changes the remote file's size to the specified
            value. If a size is not provided, the current file position
            is used.
@@ -1039,6 +1200,15 @@ class SFTPFile:
         yield from self.setstat(SFTPAttrs(atime=atime, mtime=mtime))
 
     @asyncio.coroutine
+    def fsync(self):
+        """Force the remote file data to be written to disk"""
+
+        if self._handle is None:
+            raise ValueError('I/O operation on closed file')
+
+        yield from self._session.fsync(self._handle)
+
+    @asyncio.coroutine
     def close(self):
         """Close the remote file"""
 
@@ -1054,7 +1224,7 @@ class SFTPClient:
        started by calling the :meth:`start_sftp_client()
        <SSHClientConnection.start_sftp_client>` method on the
        :class:`SSHClientConnection` class.
-    
+
     """
 
     _open_modes = {
@@ -1658,7 +1828,7 @@ class SFTPClient:
     @asyncio.coroutine
     def stat(self, path):
         """Get attributes of a remote file or directory, following symlinks
-        
+
            This method queries the attributes of a remote file or
            directory. If the path provided is a symbolic link, the
            returned attributes will correspond to the target of the
@@ -1723,6 +1893,28 @@ class SFTPClient:
 
         path = self._compose_path(path)
         yield from self._session.setstat(path, attrs)
+
+    @asyncio.coroutine
+    def statvfs(self, path):
+        """Get attributes of a remote file system
+
+           This method queries the attributes of file system containing
+           the specified path.
+
+           :param path:
+               The path of the remote file system to get attributes for
+           :type path: string or bytes
+
+           :returns: An :class:`SFTPVFSAttrs` containing the file system
+                     attributes
+
+           :raises: :exc:`SFTPError` if the server doesn't support this
+                    extension or returns an error
+
+        """
+
+        path = self._compose_path(path)
+        return (yield from self._session.statvfs(path))
 
     @asyncio.coroutine
     def truncate(self, path, size):
@@ -1956,6 +2148,12 @@ class SFTPClient:
 
            This method renames a remote file, directory, or link.
 
+           .. note:: This requests the standard SFTP version of rename
+                     which will not overwrite the new path if it already
+                     exists. To request POSIX behavior where the new
+                     path is removed before the rename, use
+                     :meth:`posix_rename`.
+
            :param oldpath:
                The path of the remote file, directory, or link to rename
            :param newpath:
@@ -1970,6 +2168,31 @@ class SFTPClient:
         oldpath = self._compose_path(oldpath)
         newpath = self._compose_path(newpath)
         yield from self._session.rename(oldpath, newpath)
+
+    def posix_rename(self, oldpath, newpath):
+        """Rename a remote file, directory, or link with POSIX semantics
+
+           This method renames a remote file, directory, or link,
+           removing the prior instance of new path if it previously
+           existed.
+
+           This method may not be supported by all SFTP servers.
+
+           :param oldpath:
+               The path of the remote file, directory, or link to rename
+           :param newpath:
+               The new name for this file, directory, or link
+           :type oldpath: string or bytes
+           :type newpath: string or bytes
+
+           :raises: :exc:`SFTPError` if the server doesn't support this
+                    extension or returns an error
+
+        """
+
+        oldpath = self._compose_path(oldpath)
+        newpath = self._compose_path(newpath)
+        yield from self._session.posix_rename(oldpath, newpath)
 
     @asyncio.coroutine
     def readdir(self, path='.'):
@@ -2152,7 +2375,7 @@ class SFTPClient:
         return self._decode(names[0].filename, isinstance(path, str))
 
     @asyncio.coroutine
-    def symlink(self, srcpath, dstpath):
+    def symlink(self, oldpath, newpath):
         """Create a symbolic link
 
            This method creates a symbolic link. The argument order here
@@ -2162,24 +2385,49 @@ class SFTPClient:
            a number of servers (OpenSSH in particular) did not follow
            the SFTP standard when implementing this call.
 
-           :param srcpath:
+           :param oldpath:
                The path the link should point to
-           :param dstpath:
+           :param newpath:
                The path of where to create the remote symbolic link
-           :type srcpath: string or bytes
-           :type dstpath: string or bytes
+           :type oldpath: string or bytes
+           :type newpath: string or bytes
 
            :raises: :exc:`SFTPError` if the server returns an error
 
         """
 
-        srcpath = self._compose_path(srcpath)
-        dstpath = self._encode(dstpath)
-        yield from self._session.symlink(srcpath, dstpath)
+        oldpath = self._compose_path(oldpath)
+        newpath = self._encode(newpath)
+        yield from self._session.symlink(oldpath, newpath)
+
+    @asyncio.coroutine
+    def link(self, oldpath, newpath):
+        """Create a hard link
+
+           This method creates a hard link to the remote file specified
+           by oldpath at the location specified by newpath.
+
+           This method may not be supported by all SFTP servers.
+
+           :param oldpath:
+               The path of the remote file the hard link should point to
+           :param newpath:
+               The path of where to create the remote hard link
+           :type oldpath: string or bytes
+           :type newpath: string or bytes
+
+           :raises: :exc:`SFTPError` if the server doesn't support this
+                    extension or returns an error
+
+        """
+
+        oldpath = self._compose_path(oldpath)
+        newpath = self._compose_path(newpath)
+        yield from self._session.link(oldpath, newpath)
 
     def exit(self):
         """Exit the SFTP client session
-        
+
            This method exists the SFTP client session, closing the
            corresponding channel opened on the server.
 
@@ -2205,7 +2453,7 @@ class SFTPServerSession(SFTPSession):
         version = min(version, _SFTP_VERSION)
         extensions = (String(name) + String(data)
                           for name, data in self._extensions)
-        self.send_packet(FXP_INIT, UInt32(version), *extensions)
+        self.send_packet(Byte(FXP_VERSION), UInt32(version), *extensions)
 
     def _fail(self, code, reason, lang=DEFAULT_LANG):
         self.send_packet(Byte(FXP_STATUS), UInt32(code),

@@ -616,10 +616,12 @@ SFTPClient
    .. automethod:: open(path, mode='r', attrs=SFTPAttrs(), encoding='utf-8', errors='strict')
    .. automethod:: truncate
    .. automethod:: rename
+   .. automethod:: posix_rename
    .. automethod:: remove
    .. automethod:: unlink
    .. automethod:: readlink
    .. automethod:: symlink
+   .. automethod:: link
    .. automethod:: realpath
    ========================================================================================== =
 
@@ -629,6 +631,7 @@ SFTPClient
    .. automethod:: stat
    .. automethod:: lstat
    .. automethod:: setstat
+   .. automethod:: statvfs
    .. automethod:: chown
    .. automethod:: chmod
    .. automethod:: utime
@@ -671,11 +674,13 @@ SFTPFile
    .. automethod:: tell
    .. automethod:: stat
    .. automethod:: setstat
+   .. automethod:: statvfs
    .. automethod:: truncate
    .. automethod:: chown
    .. automethod:: chmod
    .. automethod:: utime
    .. automethod:: close
+   .. automethod:: fsync
    ================================================ =
 
 SFTPAttrs

@@ -125,6 +125,10 @@ FILEXFER_ATTR_ACMODTIME             = 0x00000008
 FILEXFER_ATTR_EXTENDED              = 0x80000000
 FILEXFER_ATTR_UNDEFINED             = 0x7ffffff0
 
+# OpenSSH statvfs attribute flags
+FXE_STATVFS_ST_RDONLY               = 0x1
+FXE_STATVFS_ST_NOSUID               = 0x2
+
 # SSH file transfer error codes
 FX_OK                               = 0
 FX_EOF                              = 1
