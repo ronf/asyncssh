@@ -3210,7 +3210,7 @@ class SFTPServer:
         oldpath = self.map_path(oldpath)
         newpath = self.map_path(newpath)
 
-        if os.exists(newpath):
+        if os.path.exists(newpath):
             raise SFTPError(FX_FAILURE, 'File already exists')
 
         return os.rename(oldpath, newpath)
