@@ -3229,7 +3229,7 @@ class SFTPServer:
 
         target = os.readlink(self.map_path(path))
 
-        if target.startswith(b'/'):
+        if os.path.isabs(target):
             return self.reverse_map_path(target)
         else:
             return target
@@ -3246,13 +3246,19 @@ class SFTPServer:
 
         """
 
-        if oldpath.startswith(b'/'):
+
+        if posixpath.isabs(oldpath):
             oldpath = self.map_path(oldpath)
         else:
-            newdir = os.path.dirname(newpath)
-            mapped_oldpath = self.map_path(os.path.join(newdir, oldpath))
+            newdir = posixpath.dirname(newpath)
+            abspath1 = self.map_path(posixpath.join(newdir, oldpath))
+
             mapped_newdir = self.map_path(newdir)
-            oldpath = os.path.relpath(mapped_oldpath, start=mapped_newdir)
+            abspath2 = os.path.join(mapped_newdir, oldpath)
+
+            # Make sure the symlink doesn't point outside the chroot
+            if os.path.realpath(abspath1) != os.path.realpath(abspath2):
+                oldpath = os.path.relpath(abspath1, start=mapped_newdir)
 
         newpath = self.map_path(newpath)
 
