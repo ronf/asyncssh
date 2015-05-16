@@ -12,7 +12,7 @@
 
 """SFTP handlers"""
 
-import asyncio, os, posixpath, stat, sys, time
+import asyncio, grp, os, posixpath, pwd, stat, sys, time
 from collections import OrderedDict
 from fnmatch import fnmatch
 from os import SEEK_SET, SEEK_CUR, SEEK_END
@@ -24,6 +24,21 @@ from .packet import *
 
 _SFTP_VERSION = 3
 _SFTP_BLOCK_SIZE = 8192
+
+def _setstat(path, attrs):
+    """Utility function to set file attributes"""
+
+    if attrs.size is not None:
+        os.truncate(path, attrs.size)
+
+    if attrs.uid is not None and attrs.gid is not None:
+        os.chown(path, attrs.uid, attrs.gid)
+
+    if attrs.permissions is not None:
+        os.chmod(path, stat.S_IMODE(attrs.permissions))
+
+    if attrs.atime is not None and attrs.mtime is not None:
+        os.utime(path, times=(attrs.atime, attrs.mtime))
 
 
 class _Record:
@@ -60,14 +75,14 @@ class _LocalFile:
     @classmethod
     def _encode(cls, path):
         if isinstance(path, str):
-            path = path.encode(sys.getfilesystemencoding())
+            path = os.fsencode(path)
 
         return path
 
     @classmethod
     def _decode(cls, path, decode=True):
         if decode:
-            path = path.decode(sys.getfilesystemencoding())
+            path = os.fsdecode(path)
 
         return path
 
@@ -85,35 +100,17 @@ class _LocalFile:
     @classmethod
     @asyncio.coroutine
     def stat(cls, path):
-        st = os.stat(path)
-
-        return SFTPAttrs(size=st.st_size, uid=st.st_uid, gid=st.st_gid,
-                         permissions=st.st_mode, atime=st.st_atime,
-                         mtime=st.st_mtime)
+        return SFTPAttrs.from_local(os.stat(path))
 
     @classmethod
     @asyncio.coroutine
     def lstat(cls, path):
-        st = os.lstat(path)
-
-        return SFTPAttrs(size=st.st_size, uid=st.st_uid, gid=st.st_gid,
-                         permissions=st.st_mode, atime=st.st_atime,
-                         mtime=st.st_mtime)
+        return SFTPAttrs.from_local(os.lstat(path))
 
     @classmethod
     @asyncio.coroutine
     def setstat(cls, path, attrs):
-        if attrs.size is not None:
-            os.truncate(path, attrs.size)
-
-        if attrs.uid is not None and attrs.gid is not None:
-            os.chown(path, attrs.uid, attrs.gid)
-
-        if attrs.permissions is not None:
-            os.chmod(path, stat.S_IMODE(attrs.permissions))
-
-        if attrs.atime is not None and attrs.mtime is not None:
-            os.utime(path, times=(attrs.atime, attrs.mtime))
+        _setstat(path, attrs)
 
     @classmethod
     @asyncio.coroutine
@@ -307,6 +304,12 @@ class SFTPAttrs(_Record):
          mtime        Last modification time, UNIX epoch seconds  uint32
          ============ =========================================== ======
 
+       In addition to the above, an ``nlink`` field is provided which
+       stores the number of links to this file, but it is not encoded
+       in the SFTP protocol. It's included here only so that it can be
+       used to create the default ``longname`` string in :class:`SFTPName`
+       objects.
+
        Extended attributes can also be added via a field named
        ``extended`` which is a list of string name/value pairs.
 
@@ -317,7 +320,8 @@ class SFTPAttrs(_Record):
 
     __slots__ = OrderedDict((('size', None), ('uid', None), ('gid', None),
                              ('permissions', None), ('atime', None),
-                             ('mtime', None), ('extended', [])))
+                             ('mtime', None), ('nlink', None),
+                             ('extended', [])))
 
     def encode(self):
         """Encode SFTP attributes as bytes in an SSH packet"""
@@ -383,6 +387,12 @@ class SFTPAttrs(_Record):
 
         return attrs
 
+    @classmethod
+    def from_local(cls, stat):
+        """Convert from local stat attributes"""
+
+        return cls(stat.st_size, stat.st_uid, stat.st_gid, stat.st_mode,
+                   stat.st_atime, stat.st_mtime, stat.st_nlink)
 
 class SFTPVFSAttrs(_Record):
     """SFTP file system attributes
@@ -415,16 +425,16 @@ class SFTPVFSAttrs(_Record):
     def encode(self):
         """Encode SFTP statvfs attributes as bytes in an SSH packet"""
 
-        return b''.join(UInt64(self.bsize), UInt64(self.frsize),
-                        UInt64(self.blocks), UInt64(self.bfree),
-                        UInt64(self.bavail), UInt64(self.files),
-                        UInt64(self.ffree), UInt64(self.favail),
-                        UInt64(self.fsid), UInt64(self.flags),
-                        UInt64(self.namemax))
+        return b''.join((UInt64(self.bsize), UInt64(self.frsize),
+                         UInt64(self.blocks), UInt64(self.bfree),
+                         UInt64(self.bavail), UInt64(self.files),
+                         UInt64(self.ffree), UInt64(self.favail),
+                         UInt64(self.fsid), UInt64(self.flags),
+                         UInt64(self.namemax)))
 
     @classmethod
     def decode(cls, packet):
-        """Decode bytes in an SSH packet as SFTP attributes"""
+        """Decode bytes in an SSH packet as SFTP statvfs attributes"""
 
         vfsattrs = cls()
 
@@ -441,6 +451,15 @@ class SFTPVFSAttrs(_Record):
         vfsattrs.namemax = packet.get_uint64()
 
         return vfsattrs
+
+    @classmethod
+    def from_local(cls, vfsstat):
+        """Convert from local statvfs attributes"""
+
+        return cls(vfsstat.f_bsize, vfsstat.f_frsize, vfsstat.f_blocks,
+                   vfsstat.f_bfree, vfsstat.f_bavail, vfsstat.f_files,
+                   vfsstat.f_ffree, vfsstat.f_favail, 0,
+                   vfsstat.f_flag, vfsstat.f_namemax)
 
 
 class SFTPName(_Record):
@@ -864,7 +883,7 @@ class SFTPClientSession(SFTPSession):
 
 
 class SFTPFile:
-    """Remote SFTP file object
+    """SFTP client remote file object
 
        This class represents an open file on a remote SFTP server. It
        is opened with the :meth:`open() <SFTPClient.open>` method on the
@@ -1083,7 +1102,7 @@ class SFTPFile:
 
     @asyncio.coroutine
     def setstat(self, attrs):
-        """Change attributes of the remote file
+        """Set attributes of the remote file
 
            This method sets file attributes of the currently open file.
 
@@ -1897,7 +1916,7 @@ class SFTPClient:
     def statvfs(self, path):
         """Get attributes of a remote file system
 
-           This method queries the attributes of file system containing
+           This method queries the attributes of the file system containing
            the specified path.
 
            :param path:
@@ -2122,7 +2141,7 @@ class SFTPClient:
     def remove(self, path):
         """Remove a remote file
 
-           This method removes a remote file or link.
+           This method removes a remote file or symbolic link.
 
            :param path:
                The path of the remote file or link to remove
@@ -2261,7 +2280,7 @@ class SFTPClient:
         """Create a remote directory with the specified attributes
 
            This method creates a new remote directory at the
-           specified path with requested attributes.
+           specified path with the requested attributes.
 
            :param path:
                The path of where the new remote directory should be created
@@ -2436,15 +2455,53 @@ class SFTPClient:
 
 
 class SFTPServerSession(SFTPSession):
-    _extensions = []
+    _extensions = [(b'posix-rename@openssh.com', b'1'),
+                   (b'statvfs@openssh.com', b'2'),
+                   (b'fstatvfs@openssh.com', b'2'),
+                   (b'hardlink@openssh.com', b'1'),
+                   (b'fsync@openssh.com', b'1')]
+
+    _open_modes = {
+        FXF_READ:                                      'rb',
+        FXF_WRITE | FXF_CREAT | FXF_TRUNC:             'wb',
+        FXF_WRITE | FXF_CREAT | FXF_APPEND:            'ab',
+        FXF_WRITE | FXF_CREAT | FXF_EXCL:              'xb',
+
+        FXF_READ | FXF_WRITE:                          'rb+',
+        FXF_READ | FXF_WRITE | FXF_CREAT | FXF_TRUNC:  'wb+',
+        FXF_READ | FXF_WRITE | FXF_CREAT | FXF_APPEND: 'ab+',
+        FXF_READ | FXF_WRITE | FXF_CREAT | FXF_EXCL:   'xb+'
+    }
 
     def __init__(self, server):
         super().__init__()
 
         self._server = server
         self._version = None
+        self._nonstandard_symlink = False
+        self._next_handle = 0
+        self._file_handles = {}
+        self._dir_handles = {}
+
+    def _get_next_handle(self):
+        while True:
+            handle = self._next_handle.to_bytes(4, 'big')
+            self._next_handle = (self._next_handle + 1) & 0xffffffff
+
+            if (handle not in self._file_handles and
+                handle not in self._dir_handles):
+                return handle
 
     def connection_lost(self, exc):
+        if self._server:
+            for file_obj in self._file_handles:
+                self._server.close(file_obj)
+
+            self._server.exit()
+            self._server = None
+            self._file_handles = []
+            self._dir_handles = []
+
         self.exit()
 
     def session_started(self):
@@ -2452,6 +2509,14 @@ class SFTPServerSession(SFTPSession):
 
     def _process_init(self, packet):
         version = packet.get_uint32()
+
+        if version == 3:
+            # Check if the server has a buggy SYMLINK implementation
+
+            client_version = self._chan.get_extra_info('client_version', '')
+            if any(name in client_version
+                       for name in self._nonstandard_symlink_impls):
+                self._nonstandard_symlink = True
 
         version = min(version, _SFTP_VERSION)
         extensions = (String(name) + String(data)
@@ -2464,6 +2529,9 @@ class SFTPServerSession(SFTPSession):
 
     def _process_packet(self, pkttype, id, packet):
         try:
+            if pkttype == FXP_EXTENDED:
+                pkttype = packet.get_string()
+
             handler = self._packet_handlers.get(pkttype)
             if not handler:
                 raise SFTPError(FX_OP_UNSUPPORTED,
@@ -2480,23 +2548,790 @@ class SFTPServerSession(SFTPSession):
                 result = UInt32(len(result)) + \
                              b''.join(name.encode() for name in result)
             else:
+                if isinstance(result, os.stat_result):
+                    result = SFTPAttrs.from_local(result)
+                elif isinstance(result, os.statvfs_result):
+                    result = SFTPVFSAttrs.from_local(result)
+
                 result = result.encode()
+        except NotImplementedError as exc:
+            name = handler.__name__[9:]
+            return_type = FXP_STATUS
+            result = UInt32(FX_OP_UNSUPPORTED) + \
+                     String('Operation not supported: %s' % name) + \
+                     String(DEFAULT_LANG)
+        except OSError as exc:
+            return_type = FXP_STATUS
+            result = UInt32(FX_FAILURE) + String(exc.strerror) + \
+                     String(DEFAULT_LANG)
         except SFTPError as exc:
             return_type = FXP_STATUS
             result = UInt32(exc.code) + String(exc.reason) + String(exc.lang)
 
         self.send_packet(Byte(return_type), UInt32(id), result)
 
+    def _process_open(self, packet):
+        path = packet.get_string()
+        pflags = packet.get_uint32()
+        attrs = SFTPAttrs.decode(packet)
+        packet.check_end()
+
+        mode = self._open_modes.get(pflags)
+        if mode is None:
+            raise SFTPError(FX_FAILURE, 'Unsupported open flags')
+
+        f = self._server.open(path, mode, attrs)
+        handle = self._get_next_handle()
+        self._file_handles[handle] = f
+        return handle
+
+    def _process_close(self, packet):
+        handle = packet.get_string()
+        packet.check_end()
+
+        file_obj = self._file_handles.pop(handle, None)
+        if file_obj:
+            self._server.close(file_obj)
+            return
+
+        if self._dir_handles.pop(handle, None) is not None:
+            return
+
+        raise SFTPError(FX_FAILURE, 'Invalid file handle')
+
+    def _process_read(self, packet):
+        handle = packet.get_string()
+        offset = packet.get_uint64()
+        len = packet.get_uint32()
+        packet.check_end()
+
+        file_obj = self._file_handles.get(handle)
+        if file_obj:
+            data = self._server.read(file_obj, offset, len)
+            if data:
+                return data
+            else:
+                raise SFTPError(FX_EOF, '')
+        else:
+            raise SFTPError(FX_FAILURE, 'Invalid file handle')
+
+    def _process_write(self, packet):
+        handle = packet.get_string()
+        offset = packet.get_uint64()
+        data = packet.get_string()
+        packet.check_end()
+
+        file_obj = self._file_handles.get(handle)
+        if file_obj:
+            return self._server.write(file_obj, offset, data)
+        else:
+            raise SFTPError(FX_FAILURE, 'Invalid file handle')
+
+    def _process_lstat(self, packet):
+        path = packet.get_string()
+        packet.check_end()
+
+        return self._server.lstat(path)
+
+    def _process_fstat(self, packet):
+        handle = packet.get_string()
+        packet.check_end()
+
+        file_obj = self._file_handles.get(handle)
+        if file_obj:
+            return self._server.fstat(file_obj)
+        else:
+            raise SFTPError(FX_FAILURE, 'Invalid file handle')
+
+    def _process_setstat(self, packet):
+        path = packet.get_string()
+        attrs = SFTPAttrs.decode(packet)
+        packet.check_end()
+
+        return self._server.setstat(path, attrs)
+
+    def _process_fsetstat(self, packet):
+        handle = packet.get_string()
+        attrs = SFTPAttrs.decode(packet)
+        packet.check_end()
+
+        file_obj = self._file_handles.get(handle)
+        if file_obj:
+            return self._server.fsetstat(file_obj, attrs)
+        else:
+            raise SFTPError(FX_FAILURE, 'Invalid file handle')
+
+    def _process_opendir(self, packet):
+        path = packet.get_string()
+        packet.check_end()
+
+        names = self._server.listdir(path)
+
+        for i, name in enumerate(names):
+            if isinstance(name, bytes):
+                name = SFTPName(name)
+                names[i] = name
+
+                filename = os.path.join(path, name.filename)
+                name.attrs = self._server.lstat(filename)
+                if isinstance(name.attrs, os.stat_result):
+                    name.attrs = SFTPAttrs.from_local(name.attrs)
+
+            if not name.longname:
+                self._server.format_longname(name)
+
+        handle = self._get_next_handle()
+        self._dir_handles[handle] = names
+        return handle
+
+    def _process_readdir(self, packet):
+        handle = packet.get_string()
+        packet.check_end()
+
+        names = self._dir_handles.get(handle)
+        if names:
+            self._dir_handles[handle] = []
+            return names
+        else:
+            raise SFTPError(FX_EOF, '')
+
+    def _process_remove(self, packet):
+        path = packet.get_string()
+        packet.check_end()
+
+        return self._server.remove(path)
+
+    def _process_mkdir(self, packet):
+        path = packet.get_string()
+        attrs = SFTPAttrs.decode(packet)
+        packet.check_end()
+
+        return self._server.mkdir(path, attrs)
+
+    def _process_rmdir(self, packet):
+        path = packet.get_string()
+        packet.check_end()
+
+        return self._server.rmdir(path)
+
+    def _process_realpath(self, packet):
+        path = packet.get_string()
+        packet.check_end()
+
+        return [SFTPName(self._server.realpath(path))]
+
+    def _process_stat(self, packet):
+        path = packet.get_string()
+        packet.check_end()
+
+        return self._server.stat(path)
+
+    def _process_rename(self, packet):
+        oldpath = packet.get_string()
+        newpath = packet.get_string()
+        packet.check_end()
+
+        return self._server.rename(oldpath, newpath)
+
+    def _process_readlink(self, packet):
+        path = packet.get_string()
+        packet.check_end()
+
+        return [SFTPName(self._server.readlink(path))]
+
+    def _process_symlink(self, packet):
+        if self._nonstandard_symlink:
+            oldpath = packet.get_string()
+            newpath = packet.get_string()
+        else:
+            newpath = packet.get_string()
+            oldpath = packet.get_string()
+
+        packet.check_end()
+
+        return self._server.symlink(oldpath, newpath)
+
+    def _process_posix_rename(self, packet):
+        oldpath = packet.get_string()
+        newpath = packet.get_string()
+        packet.check_end()
+
+        return self._server.posix_rename(oldpath, newpath)
+
+    def _process_statvfs(self, packet):
+        path = packet.get_string()
+        packet.check_end()
+
+        return self._server.statvfs(path)
+
+    def _process_fstatvfs(self, packet):
+        handle = packet.get_string()
+        packet.check_end()
+
+        file_obj = self._file_handles.get(handle)
+        if file_obj:
+            return self._server.fstatvfs(file_obj)
+        else:
+            raise SFTPError(FX_FAILURE, 'Invalid file handle')
+
+    def _process_link(self, packet):
+        oldpath = packet.get_string()
+        newpath = packet.get_string()
+        packet.check_end()
+
+        return self._server.link(oldpath, newpath)
+
+    def _process_fsync(self, packet):
+        handle = packet.get_string()
+        packet.check_end()
+
+        file_obj = self._file_handles.get(handle)
+        if file_obj:
+            return self._server.fsync(file_obj)
+        else:
+            raise SFTPError(FX_FAILURE, 'Invalid file handle')
+
     _packet_handlers = {
+        FXP_OPEN:                     _process_open,
+        FXP_CLOSE:                    _process_close,
+        FXP_READ:                     _process_read,
+        FXP_WRITE:                    _process_write,
+        FXP_LSTAT:                    _process_lstat,
+        FXP_FSTAT:                    _process_fstat,
+        FXP_SETSTAT:                  _process_setstat,
+        FXP_FSETSTAT:                 _process_fsetstat,
+        FXP_OPENDIR:                  _process_opendir,
+        FXP_READDIR:                  _process_readdir,
+        FXP_REMOVE:                   _process_remove,
+        FXP_MKDIR:                    _process_mkdir,
+        FXP_RMDIR:                    _process_rmdir,
+        FXP_REALPATH:                 _process_realpath,
+        FXP_STAT:                     _process_stat,
+        FXP_RENAME:                   _process_rename,
+        FXP_READLINK:                 _process_readlink,
+        FXP_SYMLINK:                  _process_symlink,
+        b'posix-rename@openssh.com':  _process_posix_rename,
+        b'statvfs@openssh.com':       _process_statvfs,
+        b'fstatvfs@openssh.com':      _process_fstatvfs,
+        b'hardlink@openssh.com':      _process_link,
+        b'fsync@openssh.com':         _process_fsync
     }
 
 
 class SFTPServer:
     """SFTP server
 
-       Coming soon!
+       Applications should subclass this when implementing an SFTP
+       server. The methods listed below should be implemented to
+       provide the desired application behavior.
+
+       The ``conn`` object provided here refers to the
+       :class:`SSHServerConnection` instance this SFTP server is
+       associated with. It can be queried to determine which user
+       the client authenticated as or to request key and certificate
+       options or permissions which should be applied to this session.
+
+       If the ``chroot`` argument is specified when this object is
+       created, the default :meth:`map_path` and :meth:`reverse_map_path`
+       methods will enforce a virtual root directory starting in that
+       location, limiting access to only files within that directory
+       tree. This will also affect path names returned by the
+       :meth:`realpath` and :meth:`readlink` methods.
 
     """
 
-    # TODO
-    pass
+    def __init__(self, conn, chroot=None):
+        self._conn = conn
+        self._chroot = os.fsencode(os.path.realpath(chroot)) if chroot else None
+
+    def format_longname(self, name):
+        """Format the long name associated with an SFTP name
+
+           This method fills in the ``longname`` field of a
+           :class:`SFTPName` object. By default, it generates
+           something similar to UNIX "ls -l" output. The ``filename``
+           and ``attrs`` fields of the :class:`SFTPName` should
+           already be filled in before this method is called.
+
+           :param name:
+               The :class:`SFTPName` instance to format the long name for
+           :type name: :class:`SFTPName`
+
+        """
+
+        mode = stat.filemode(name.attrs.permissions)
+        nlink = str(name.attrs.nlink) if name.attrs.nlink else ''
+
+        try:
+            user = pwd.getpwuid(name.attrs.uid).pw_name
+        except KeyError:
+            user = str(name.attrs.uid)
+
+        try:
+            group = grp.getgrgid(name.attrs.gid).gr_name
+        except KeyError:
+            group = str(name.attrs.gid)
+
+        now = time.time()
+        mtime = time.localtime(name.attrs.mtime)
+        if now - 365*24*60*60/2 < name.attrs.mtime <= now:
+            modtime = time.strftime('%b %e %H:%M', mtime)
+        else:
+            modtime = time.strftime('%b %e  %Y', mtime)
+
+        detail = '{} {:>4s} {:8s} {:8s} {:8d} {} '.format(
+                     mode, nlink, user, group, name.attrs.size, modtime)
+
+        name.longname =  detail.encode('utf-8') + name.filename
+
+    def map_path(self, path):
+        """Map the path requested by the client to a local path
+
+           This method can be overridden to provide a custom mapping
+           from path names requested by the client to paths in the local
+           filesystem. By default, it will enforce a virtual "chroot"
+           if one was specified when this server was created. Otherwise,
+           path names are left unchanged, with relative paths being
+           interpreted based on the working directory of the currently
+           running process.
+
+           :param bytes path:
+               The path name to map
+
+           :returns: A byte string containing he local path name to operate on
+
+        """
+
+        if self._chroot:
+            normpath = os.path.normpath(os.path.join(b'/', path))
+            return os.path.join(self._chroot, normpath[1:])
+        else:
+            return path
+
+    def reverse_map_path(self, path):
+        """Reverse map a local path into the path reported to the client
+
+           This method can be overridden to provide a custom reverse
+           mapping for the mapping provided by :meth:`map_path`. By
+           default, it hides the portion of the local path associated
+           with the virtual "chroot" if one was specified.
+
+           :param bytes path:
+               The local path name to reverse map
+
+           :returns: A byte string containing the path name to report to
+                     the client
+
+        """
+
+        if self._chroot:
+            if path == self._chroot:
+                return b'/'
+            elif path.startswith(self._chroot + b'/'):
+                return path[len(self._chroot):]
+            else:
+                raise SFTPError(FX_NO_SUCH_FILE, 'File not found')
+        else:
+            return path
+
+    def open(self, path, mode, attrs):
+        """Open a file to serve to a remote client
+
+           This method returns a file object which can be used to read
+           and write data and get and set file attributes.
+
+           The following open modes are supported:
+
+             ==== ===========
+             Mode Description
+             ==== ===========
+             r    Open existing file for reading
+             w    Open file for overwrite, creating or truncating it
+             a    Open file for appending, creating it if necessary
+             x    Open new file for writing, failing if it exists
+
+             r+   Open existing file for reading & writing
+             w+   Open file for reading & writing, creating or truncating it
+             a+   Open file for reading & appending, creating it if necessary
+             x+   Open new file for reading & writing, failing if it exists
+             ==== ===========
+
+           The attrs argument is used to set initial attributes of the
+           file if it needs to be created. Otherwise, this argument is
+           ignored.
+
+           :param bytes path:
+               The name of the file to open
+           :param string mode:
+               The access mode to use for the file (see above)
+           :param attrs:
+               File attributes to use if the file needs to be created
+           :type attrs: :class:`SFTPAttrs`
+
+           :returns: A file object to use to access the file
+
+           :raises: :exc:`SFTPError` to return an error to the client
+
+        """
+
+        perms = 0o666 if attrs.permissions is None else attrs.permissions
+        return open(self.map_path(path), mode,
+                    opener=lambda path, flags: os.open(path, flags, perms))
+
+    def close(self, file_obj):
+        """Close an open file or directory
+
+           :param file file_obj:
+               The file or directory object to close
+
+           :raises: :exc:`SFTPError` to return an error to the client
+
+        """
+
+        file_obj.close()
+
+    def read(self, file_obj, offset, size):
+        """Read data from an open file
+
+           :param file file_obj:
+               The file to read from
+           :param integer offset:
+               The offset from the beginning of the file to begin reading
+           :param integer size:
+               The number of bytes to read
+
+           :returns: bytes read from the file
+
+           :raises: :exc:`SFTPError` to return an error to the client
+
+        """
+
+        file_obj.seek(offset)
+        return file_obj.read(size)
+
+    def write(self, file_obj, offset, data):
+        """Write data to an open file
+
+           :param file file_obj:
+               The file to write to
+           :param integer offset:
+               The offset from the beginning of the file to begin writing
+           :param bytes data:
+               The data to write to the file
+
+           :returns: number of bytes written
+
+           :raises: :exc:`SFTPError` to return an error to the client
+
+        """
+
+        file_obj.seek(offset)
+        return file_obj.write(data)
+
+    def lstat(self, path):
+        """Get attributes of a file, directory, or symlink
+
+           This method queries the attributes of a file, directory,
+           or symlink. Unlike :meth:`stat`, this method should
+           return the attributes of a symlink itself rather than
+           the target of that link.
+
+           :param bytes path:
+               The path of the file, directory, or link to get attributes for
+
+           :returns: An :class:`SFTPAttrs` or an os.stat_result containing
+                     the file attributes
+
+           :raises: :exc:`SFTPError` to return an error to the client
+
+        """
+
+        return os.lstat(self.map_path(path))
+
+    def fstat(self, file_obj):
+        """Get attributes of an open file
+
+           :param file file_obj:
+               The file to get attributes for
+
+           :returns: An :class:`SFTPAttrs` or an os.stat_result containing
+                     the file attributes
+
+           :raises: :exc:`SFTPError` to return an error to the client
+
+        """
+
+        file_obj.flush()
+        return os.fstat(file_obj.fileno())
+
+    def setstat(self, path, attrs):
+        """Set attributes of a file or directory
+
+           This method sets attributes of a file or directory. If
+           the path provided is a symbolic link, the attributes
+           should be set on the target of the link. A subset of the
+           fields in ``attrs`` can be initialized and only those
+           attributes should be changed.
+
+           :param bytes path:
+               The path of the remote file or directory to set attributes for
+           :param attrs:
+               File attributes to set
+           :type attrs: :class:`SFTPAttrs`
+
+           :raises: :exc:`SFTPError` to return an error to the client
+
+        """
+
+        _setstat(self.map_path(path), attrs)
+
+    def fsetstat(self, file_obj, attrs):
+        """Set attributes of an open file
+
+           :param attrs:
+               File attributes to set on the file
+           :type attrs: :class:`SFTPAttrs`
+
+           :raises: :exc:`SFTPError` to return an error to the client
+
+        """
+
+        file_obj.flush()
+        _setstat(file_obj.fileno(), attrs)
+
+    def listdir(self, path):
+        """List the contents of a directory
+
+           :param bytes path:
+               The path of the directory to open
+
+           :returns: A list of names of files in the directory
+
+           :raises: :exc:`SFTPError` to return an error to the client
+
+        """
+
+        return os.listdir(self.map_path(path))
+
+    def remove(self, path):
+        """Remove a file or symbolic link
+
+           :param bytes path:
+               The path of the file or link to remove
+
+           :raises: :exc:`SFTPError` to return an error to the client
+
+        """
+
+        return os.remove(self.map_path(path))
+
+    def mkdir(self, path, attrs):
+        """Create a directory with the specified attributes
+
+           :param bytes path:
+               The path of where the new directory should be created
+           :param attrs:
+               The file attributes to use when creating the directory
+           :type attrs: :class:`SFTPAttrs`
+
+           :raises: :exc:`SFTPError` to return an error to the client
+
+        """
+
+        mode = 0o777 if attrs.permissions is None else attrs.permissions
+        return os.mkdir(self.map_path(path), mode)
+
+    def rmdir(self, path):
+        """Remove a directory
+
+           :param bytes path:
+               The path of the directory to remove
+
+           :raises: :exc:`SFTPError` to return an error to the client
+
+        """
+
+        return os.rmdir(self.map_path(path))
+
+    def realpath(self, path):
+        """Return the canonical version of a path
+
+           :param bytes path:
+               The path of the directory to canonicalize
+
+           :returns: A byte string containing the canonical path
+
+           :raises: :exc:`SFTPError` to return an error to the client
+
+        """
+
+        return self.reverse_map_path(os.path.realpath(self.map_path(path)))
+
+    def stat(self, path):
+        """Get attributes of a file or directory, following symlinks
+
+           This method queries the attributes of a file or directory.
+           If the path provided is a symbolic link, the returned
+           attributes should correspond to the target of the link.
+
+           :param bytes path:
+               The path of the remote file or directory to get attributes for
+
+           :returns: An :class:`SFTPAttrs` or an os.stat_result containing
+                     the file attributes
+
+           :raises: :exc:`SFTPError` to return an error to the client
+
+        """
+
+        return os.stat(self.map_path(path))
+
+    def rename(self, oldpath, newpath):
+        """Rename a file, directory, or link
+
+           This method renames a file, directory, or link.
+
+           .. note:: This is a request for the standard SFTP version
+                     of rename which will not overwrite the new path
+                     if it already exists. The :meth:`posix_rename`
+                     method will be called if the client requests the
+                     POSIX behavior where an existing instance of the
+                     new path is removed before the rename.
+
+           :param bytes oldpath:
+               The path of the file, directory, or link to rename
+           :param bytes newpath:
+               The new name for this file, directory, or link
+
+           :raises: :exc:`SFTPError` to return an error to the client
+
+        """
+
+        oldpath = self.map_path(oldpath)
+        newpath = self.map_path(newpath)
+
+        if os.exists(newpath):
+            raise SFTPError(FX_FAILURE, 'File already exists')
+
+        return os.rename(oldpath, newpath)
+
+    def readlink(self, path):
+        """Return the target of a symbolic link
+
+           :param bytes path:
+               The path of the symbolic link to follow
+
+           :returns: A byte string containing the target path of the link
+
+           :raises: :exc:`SFTPError` to return an error to the client
+
+        """
+
+        target = os.readlink(self.map_path(path))
+
+        if target.startswith(b'/'):
+            return self.reverse_map_path(target)
+        else:
+            return target
+
+    def symlink(self, oldpath, newpath):
+        """Create a symbolic link
+
+           :param bytes oldpath:
+               The path the link should point to
+           :param bytes newpath:
+               The path of where to create the symbolic link
+
+           :raises: :exc:`SFTPError` to return an error to the client
+
+        """
+
+        if oldpath.startswith(b'/'):
+            oldpath = self.map_path(oldpath)
+        else:
+            newdir = os.path.dirname(newpath)
+            mapped_oldpath = self.map_path(os.path.join(newdir, oldpath))
+            mapped_newdir = self.map_path(newdir)
+            oldpath = os.path.relpath(mapped_oldpath, start=mapped_newdir)
+
+        newpath = self.map_path(newpath)
+
+        return os.symlink(oldpath, newpath)
+
+    def posix_rename(self, oldpath, newpath):
+        """Rename a file, directory, or link with POSIX semantics
+
+           This method renames a file, directory, or link, removing
+           the prior instance of new path if it previously existed.
+
+           :param bytes oldpath:
+               The path of the file, directory, or link to rename
+           :param bytes newpath:
+               The new name for this file, directory, or link
+
+           :raises: :exc:`SFTPError` to return an error to the client
+
+        """
+
+        return os.rename(self.map_path(oldpath), self.map_path(newpath))
+
+    def statvfs(self, path):
+        """Get attributes of the file system containing a file
+
+           :param bytes path:
+               The path of the file system to get attributes for
+
+           :returns: An :class:`SFTPVFSAttrs` or an os.statvfs_result
+                     containing the file system attributes
+
+           :raises: :exc:`SFTPError` to return an error to the client
+
+        """
+
+        return os.statvfs(self.map_path(path))
+
+    def fstatvfs(self, file_obj):
+        """Return attributes of the file system containing an open file
+
+           :param file file_obj:
+               The open file to get file system attributes for
+
+           :returns: An :class:`SFTPVFSAttrs` or an os.statvfs_result
+                     containing the file system attributes
+
+           :raises: :exc:`SFTPError` to return an error to the client
+
+        """
+
+        return os.statvfs(file_obj.fileno())
+
+    def link(self, oldpath, newpath):
+        """Create a hard link
+
+           :param bytes oldpath:
+               The path of the file the hard link should point to
+           :param bytes newpath:
+               The path of where to create the hard link
+
+           :raises: :exc:`SFTPError` to return an error to the client
+
+        """
+
+        return os.link(self.map_path(oldpath), self.map_path(newpath))
+
+    def fsync(self, file_obj):
+        """Force file data to be written to disk
+
+           :param file file_obj:
+               The open file containing the data to flush to disk
+
+           :raises: :exc:`SFTPError` to return an error to the client
+
+        """
+
+        os.fsync(file_obj.fileno())
+
+    def exit(self):
+        """Shut down this SFTP server"""
+
+        pass

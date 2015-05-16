@@ -403,8 +403,9 @@ class SSHServerStreamSession(SSHStreamSession, SSHServerSession):
             # Switch to an SFTP server session for handling this channel,
             # and reset the encoding to None to allow the transfer of
             # binary data
+            sftp_server = self._sftp_factory(self._chan._conn)
             self._chan._encoding = None
-            self._chan._session = SFTPServerSession(self._sftp_factory())
+            self._chan._session = SFTPServerSession(sftp_server)
             self._chan._session.connection_made(self._chan)
             self._chan._session.session_started()
         else:

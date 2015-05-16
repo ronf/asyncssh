@@ -43,7 +43,7 @@ from .public_key import read_private_key_list, read_public_key_list
 from .public_key import read_certificate_list
 
 from .sftp import SFTPClient, SFTPServer, SFTPFile, SFTPError
-from .sftp import SFTPAttrs, SFTPName
+from .sftp import SFTPAttrs, SFTPVFSAttrs, SFTPName
 from .sftp import SEEK_SET, SEEK_CUR, SEEK_END
 
 from .stream import SSHReader, SSHWriter

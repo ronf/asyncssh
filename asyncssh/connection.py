@@ -3724,7 +3724,9 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
        :param callable sftp_factory: (optional)
            A callable which returns an :class:`SFTPServer` object that
            will be created each time an SFTP session is requested by the
-           client. If not specified, SFTP sessions are rejected by default.
+           client, or ``True`` to use the base :class:`SFTPServer` class
+           to handle SFTP requests. If not specified, SFTP sessions are
+           rejected by default.
        :param integer window: (optional)
            The receive window size for sessions on this server
        :param integer max_pktsize: (optional)
@@ -3751,6 +3753,9 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
 
     if not server_factory:
         server_factory = SSHServer
+
+    if sftp_factory == True:
+        sftp_factory = SFTPServer
 
     if not loop:
         loop = asyncio.get_event_loop()

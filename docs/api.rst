@@ -665,7 +665,57 @@ SFTPClient
 SFTPServer
 ----------
 
-.. autoclass:: SFTPServer()
+.. autoclass:: SFTPServer
+
+   ================================== =
+   Path remapping and display methods
+   ================================== =
+   .. automethod:: format_longname
+   .. automethod:: map_path
+   .. automethod:: reverse_map_path
+   ================================== =
+
+   ============================ =
+   File access methods
+   ============================ =
+   .. automethod:: open
+   .. automethod:: close
+   .. automethod:: read
+   .. automethod:: write
+   .. automethod:: rename
+   .. automethod:: posix_rename
+   .. automethod:: remove
+   .. automethod:: readlink
+   .. automethod:: symlink
+   .. automethod:: link
+   .. automethod:: realpath
+   ============================ =
+
+   ============================= =
+   File attribute access methods
+   ============================= =
+   .. automethod:: stat
+   .. automethod:: lstat
+   .. automethod:: fstat
+   .. automethod:: setstat
+   .. automethod:: fsetstat
+   .. automethod:: statvfs
+   .. automethod:: fstatvfs
+   ============================= =
+
+   ======================== =
+   Directory access methods
+   ======================== =
+   .. automethod:: listdir
+   .. automethod:: mkdir
+   .. automethod:: rmdir
+   ======================== =
+
+   ===================== =
+   Cleanup methods
+   ===================== =
+   .. automethod:: exit
+   ===================== =
 
 SFTPFile
 --------
@@ -692,6 +742,11 @@ SFTPAttrs
 ---------
 
 .. autoclass:: SFTPAttrs()
+
+SFTPVFSAttrs
+------------
+
+.. autoclass:: SFTPVFSAttrs()
 
 SFTPName
 --------
