@@ -1396,7 +1396,8 @@ class SFTPClient:
         try:
             if stat.S_ISDIR(srcattrs.permissions):
                 if not recurse:
-                    raise SFTPError(FX_FAILURE, '%s is a directory' % srcpath)
+                    raise SFTPError(FX_FAILURE, '%s is a directory' %
+                                    srcpath.decode('utf-8', errors='replace'))
 
                 if not (yield from dstfs.isdir(dstpath)):
                     yield from dstfs.mkdir(dstpath)
@@ -1450,7 +1451,8 @@ class SFTPClient:
         if isinstance(srcpaths, (str, bytes)):
             srcpaths = [srcpaths]
         elif not dst_isdir:
-            raise SFTPError(FX_FAILURE, '%s must be a directory' % dstpath)
+            raise SFTPError(FX_FAILURE, '%s must be a directory' %
+                                dstpath.decode('utf-8', errors='replace'))
 
         for srcfile in srcpaths:
             srcfile = self._encode(srcfile)
