@@ -12,11 +12,11 @@
 # Contributors:
 #     Ron Frederick - initial implementation, API, and documentation
 
-import asyncio, asyncssh, crypt, sys
-
 # To run this program, the file ``ssh_host_key`` must exist with an SSH
 # private key in it to use as a server host key. An SSH host certificate
 # can optionally be provided in the file ``ssh_host_key-cert.pub``.
+
+import asyncio, asyncssh, crypt, sys
 
 passwords = {'guest': '',                 # guest account with no password
              'user123': 'qV2iEadIGV2rw'   # password of 'secretpw'

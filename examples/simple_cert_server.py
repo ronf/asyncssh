@@ -12,14 +12,14 @@
 # Contributors:
 #     Ron Frederick - initial implementation, API, and documentation
 
-import asyncio, asyncssh, sys
-
 # To run this program, the file ``ssh_host_key`` must exist with an SSH
 # private key in it to use as a server host key. An SSH host certificate
 # can optionally be provided in the file ``ssh_host_key-cert.pub``.
 #
 # The file ``ssh_user_ca`` must exist with a cert-authority entry of
 # the certificate authority which can sign valid client certificates.
+
+import asyncio, asyncssh, sys
 
 class MySSHServerSession(asyncssh.SSHServerSession):
     def connection_made(self, chan):
@@ -34,16 +34,6 @@ class MySSHServerSession(asyncssh.SSHServerSession):
         self._chan.exit(0)
 
 class MySSHServer(asyncssh.SSHServer):
-    def connection_made(self, conn):
-        print('SSH connection received from %s.' %
-                  conn.get_extra_info('peername')[0])
-
-    def connection_lost(self, exc):
-        if exc:
-            print('SSH connection error: ' + str(exc), file=sys.stderr)
-        else:
-            print('SSH connection closed.')
-
     def session_requested(self):
         return MySSHServerSession()
 

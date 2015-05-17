@@ -21,43 +21,11 @@
 
 import asyncio, asyncssh, sys
 
-class MySSHServerSession(asyncssh.SSHServerSession):
-    def __init__(self):
-        self._input = ''
-        self._total = 0
-
-    def connection_made(self, chan):
-        self._chan = chan
-
-    def shell_requested(self):
-        return True
-
-    def data_received(self, data, datatype):
-        self._input += data
-
-        lines = self._input.split('\n')
-        for line in lines[:-1]:
-            try:
-                if line:
-                    self._total += int(line)
-            except ValueError:
-                self._chan.write_stderr('Invalid number: %s\r\n' % line)
-
-        self._input = lines[-1]
-
-    def eof_received(self):
-        self._chan.write('Total = %s\r\n' % self._total)
-        self._chan.exit(0)
-
-class MySSHServer(asyncssh.SSHServer):
-    def session_requested(self):
-        return MySSHServerSession()
-
 @asyncio.coroutine
 def start_server():
-    yield from asyncssh.create_server(MySSHServer, '', 8022,
-                                      server_host_keys=['ssh_host_key'],
-                                      authorized_client_keys='ssh_user_ca')
+    yield from asyncssh.listen('', 8022, server_host_keys=['ssh_host_key'],
+                               authorized_client_keys='ssh_user_ca',
+                               sftp_factory=True)
 
 loop = asyncio.get_event_loop()
 
