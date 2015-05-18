@@ -8,7 +8,7 @@ the PyCrypto library for some cryptographic functions.
 
 This package is released under the following terms:
 
-    Copyright (c) 2013-2014 by Ron Frederick <ronf@timeheart.net>.
+    Copyright (c) 2013-2015 by Ron Frederick <ronf@timeheart.net>.
     All rights reserved.
 
     This program and the accompanying materials are made available under
