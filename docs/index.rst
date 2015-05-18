@@ -2,6 +2,7 @@
    :hidden:
 
    changes
+   contributing
    api
 
 .. currentmodule:: asyncssh
