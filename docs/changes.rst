@@ -3,6 +3,31 @@
 Change Log
 ==========
 
+Release 1.1.0 (22 May 2015)
+---------------------------
+
+* SFTP is now supported!
+
+    * Both client and server support is available.
+    * SFTP version 3 is supported, with OpenSSH extensions.
+    * Recursive transfers and glob matching are supported in the client.
+    * File I/O APIs allow files to be accessed without downloading them.
+
+* New simplified connect and listen APIs have been added.
+
+* SSHConnection can now be used as a context manager.
+
+* New arguments to create_server now allow the specification of a
+  session_factory and encoding or sftp_factory as well as controls
+  over whether a pty is allowed and the window and max packet size,
+  avoiding the need to create custom SSHServer subclasses or custom
+  SSHServerChannel instances.
+
+* New examples have been added for SFTP and to show the use of the new
+  connect and listen APIs.
+
+* Copyrights in changed files have all been updated to 2015.
+
 Release 1.0.1 (13 Apr 2015)
 ---------------------------
 
