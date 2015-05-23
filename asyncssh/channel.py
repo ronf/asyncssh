@@ -18,6 +18,7 @@ from .constants import *
 from .logging import *
 from .misc import *
 from .packet import *
+from .sftp import *
 
 
 _EOF = object()
@@ -1031,6 +1032,36 @@ class SSHServerChannel(SSHChannel):
         packet.check_end()
 
         return self._session.break_received(msec)
+
+    def start_sftp_server(self, sftp_factory):
+        """Start an SFTP server for this session
+
+           This method can be used by an existing :class:`SSHServerSession`
+           to replace itself with an SFTP server session. Calls to this
+           method should be made from  :meth:`session_started
+           <SSHServerSession.session_started>` before any data is read
+           or written.  Once called, no further calls will be made on the
+           original session.
+
+             .. note:: The :meth:`connection_lost
+                       <SSHServerSession.connection_lost>` method will not
+                       be called on the original server session when this
+                       is used.
+
+           :param callable sftp_server:
+               A callable which returns an :class:`SFTPServer` object
+               that will be created to handle SFTP requests on this
+               channel.
+
+        """
+
+        # Reset the encoding to allow the transfer of binary data
+        self._encoding = None
+
+        # Replace the session with an SFTPServerSession
+        self._session = SFTPServerSession(sftp_factory(self._conn))
+        self._session.connection_made(self)
+        self._session.session_started()
 
     def get_environment(self):
         """Return the environment for this session

@@ -400,14 +400,7 @@ class SSHServerStreamSession(SSHStreamSession, SSHServerSession):
 
     def session_started(self):
         if self._chan._subsystem == 'sftp':
-            # Switch to an SFTP server session for handling this channel,
-            # and reset the encoding to None to allow the transfer of
-            # binary data
-            sftp_server = self._sftp_factory(self._chan._conn)
-            self._chan._encoding = None
-            self._chan._session = SFTPServerSession(sftp_server)
-            self._chan._session.connection_made(self._chan)
-            self._chan._session.session_started()
+            self._chan.start_sftp_server(self._sftp_factory)
         else:
             handler = \
                 self._session_factory(SSHReader(self), SSHWriter(self),

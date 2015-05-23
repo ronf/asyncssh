@@ -499,6 +499,7 @@ SSHServerChannel
    ================================= =
    Other server channel methods
    ================================= =
+   .. automethod:: start_sftp_server
    .. automethod:: set_xon_xoff
    .. automethod:: exit
    .. automethod:: exit_with_signal
