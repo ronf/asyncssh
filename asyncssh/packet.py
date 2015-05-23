@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2014 by Ron Frederick <ronf@timeheart.net>.
+# Copyright (c) 2013-2015 by Ron Frederick <ronf@timeheart.net>.
 # All rights reserved.
 #
 # This program and the accompanying materials are made available under
@@ -41,7 +41,7 @@ def String(value):
     """Encode a UTF-8 string value"""
 
     if isinstance(value, str):
-        value = value.encode(errors='replace')
+        value = value.encode('utf-8', errors='strict')
 
     return len(value).to_bytes(4, 'big') + value
 

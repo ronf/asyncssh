@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2014 by Ron Frederick <ronf@timeheart.net>.
+# Copyright (c) 2013-2015 by Ron Frederick <ronf@timeheart.net>.
 # All rights reserved.
 #
 # This program and the accompanying materials are made available under
@@ -24,9 +24,9 @@ from .channel import SSHClientSession, SSHServerSession, SSHTCPSession
 
 from .connection import SSHClient, SSHServer
 from .connection import SSHClientConnection, SSHServerConnection
-from .connection import create_connection, create_server, connect
+from .connection import create_connection, create_server, connect, listen
 
-from .listen import SSHListener
+from .listener import SSHListener
 
 from .logging import logger
 
@@ -41,6 +41,10 @@ from .public_key import import_certificate
 from .public_key import read_private_key, read_public_key, read_certificate
 from .public_key import read_private_key_list, read_public_key_list
 from .public_key import read_certificate_list
+
+from .sftp import SFTPClient, SFTPServer, SFTPFile, SFTPError
+from .sftp import SFTPAttrs, SFTPVFSAttrs, SFTPName
+from .sftp import SEEK_SET, SEEK_CUR, SEEK_END
 
 from .stream import SSHReader, SSHWriter
 

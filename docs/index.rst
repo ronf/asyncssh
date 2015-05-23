@@ -2,6 +2,7 @@
    :hidden:
 
    changes
+   contributing
    api
 
 .. currentmodule:: asyncssh
@@ -26,7 +27,7 @@ key doesn't match.
 
    .. include:: ../examples/sample_client.py
       :literal:
-      :start-line: 15
+      :start-line: 14
 
 To check against a different set of server host keys, they can be read
 and provided in the known_hosts argument when the :class:`SSHClient`
@@ -75,7 +76,7 @@ this code can be simplified somewhat to:
 
    .. include:: ../examples/simple_client.py
       :literal:
-      :start-line: 15
+      :start-line: 14
 
 Handling of stderr
 ------------------
@@ -85,7 +86,7 @@ that's easy to do with the following change:
 
    .. include:: ../examples/stderr_client.py
       :literal:
-      :start-line: 15
+      :start-line: 14
 
 Simple client with input
 ------------------------
@@ -96,7 +97,7 @@ calculations.
 
    .. include:: ../examples/math_client.py
       :literal:
-      :start-line: 15
+      :start-line: 14
 
 Note that input is not sent on the channel  until the :meth:`session_started()
 <SSHClientSession.session_started>` method is called, and :meth:`write_eof()
@@ -110,7 +111,7 @@ using :meth:`open_session <SSHClientConnection.open_session>` instead of
 
    .. include:: ../examples/stream_math_client.py
       :literal:
-      :start-line: 15
+      :start-line: 14
 
 When run, this program should produce the following output:
 
@@ -129,7 +130,7 @@ receive the remote program's exit status using the :meth:`exit_status_received
 
    .. include:: ../examples/check_exit_status.py
       :literal:
-      :start-line: 15
+      :start-line: 14
 
 From servers that support it, exit signals can also be received using
 :meth:`exit_signal_received <SSHClientSession.exit_signal_received>`.
@@ -149,7 +150,7 @@ command.
 
    .. include:: ../examples/set_environment.py
       :literal:
-      :start-line: 15
+      :start-line: 14
 
 Any number of environment variables can be passed in the dictionary
 given to :meth:`create_session() <SSHClientConnection.create_session>`.
@@ -165,7 +166,7 @@ passed to the remote session.
 
    .. include:: ../examples/set_terminal.py
       :literal:
-      :start-line: 15
+      :start-line: 14
 
 Note that this will cause AsyncSSH to request a pseudo-tty from the
 server. When a pseudo-tty is used, the server will no longer send output
@@ -183,7 +184,7 @@ that port be forwarded across SSH to the server and on to port 80 on
 
    .. include:: ../examples/local_forwarding_client.py
       :literal:
-      :start-line: 15
+      :start-line: 14
 
 To listen on a dynamically assigned port, the client can pass in ``0``
 as the listening port. If the listener is successfully opened, the selected
@@ -192,7 +193,7 @@ method on the returned listener object:
 
    .. include:: ../examples/local_forwarding_client2.py
       :literal:
-      :start-line: 15
+      :start-line: 14
 
 The client can also request remote port forwarding from the server. The
 following example shows the client requesting that the server listen on
@@ -201,7 +202,7 @@ and on to port 80 on ``localhost``:
 
    .. include:: ../examples/remote_forwarding_client.py
       :literal:
-      :start-line: 15
+      :start-line: 14
 
 To limit which connections are accepted or dynamically select where to
 forward traffic to, the client can implement their own session factory and
@@ -211,7 +212,7 @@ wish to reject:
 
    .. include:: ../examples/remote_forwarding_client2.py
       :literal:
-      :start-line: 15
+      :start-line: 14
 
 Just as with local listeners, the client can request remote port forwarding
 from a dynamic port by passing in ``0`` as the listening port and then call
@@ -236,7 +237,7 @@ the encoding to use when the connection is created.
 
    .. include:: ../examples/direct_client.py
       :literal:
-      :start-line: 15
+      :start-line: 14
 
 To use the streams API to open a direct connection, you can use
 :meth:`open_connection <SSHClientConnection.open_connection>` instead of
@@ -244,7 +245,7 @@ To use the streams API to open a direct connection, you can use
 
    .. include:: ../examples/stream_direct_client.py
       :literal:
-      :start-line: 15
+      :start-line: 14
 
 Forwarded TCP connections
 -------------------------
@@ -261,7 +262,7 @@ we set the encoding explicitly so all data is sent and received as strings:
 
    .. include:: ../examples/listening_client.py
       :literal:
-      :start-line: 15
+      :start-line: 14
 
 To use the streams API to open a listening connection, you can use
 :meth:`start_server <SSHClientConnection.start_server>` instead
@@ -269,7 +270,36 @@ of :meth:`create_server <SSHClientConnection.create_server>`:
 
    .. include:: ../examples/stream_listening_client.py
       :literal:
-      :start-line: 15
+      :start-line: 14
+
+SFTP client
+-----------
+
+AsyncSSH also provides SFTP support. The following code shows an example
+of starting an SFTP client and requestng the download of a file:
+
+   .. include:: ../examples/sftp_client.py
+      :literal:
+      :start-line: 14
+
+To recursively download a directory, preserving access and modification
+times and permissions on the files, the preserve and recurse arguments
+can be included:
+
+   .. code::
+
+      yield from sftp.get('example_dir', preserve=True, recurse=True)
+
+Wild card pattern matching is supported by the :meth:`mget <SFTPClient.mget>`,
+:meth:`mput <SFTPClient.mput>`, and :meth:`mcopy <SFTPClient.mcopy>` methods.
+The following downloads all files with extension "txt":
+
+   .. code::
+
+      yield from sftp.mget('*.txt')
+
+See the :class:`SFTPClient` documentation for the full list of available
+actions.
 
 .. _ServerExamples:
 
@@ -285,7 +315,7 @@ a message when users authenticate successfully and start a shell.
 
    .. include:: ../examples/simple_server.py
       :literal:
-      :start-line: 15
+      :start-line: 14
 
 To authenticate with SSH client keys or certificates, the server would
 look something like the following. Client and certificate authority
@@ -294,7 +324,7 @@ named based on the username in a directory called ``authorized_keys``.
 
    .. include:: ../examples/simple_keyed_server.py
       :literal:
-      :start-line: 15
+      :start-line: 22
 
 It is also possible to use a single authorized_keys file for all users.
 This is common when using certificates, as AsyncSSH can automatically
@@ -303,7 +333,7 @@ matches the username. This would look something like the following.
 
    .. include:: ../examples/simple_cert_server.py
       :literal:
-      :start-line: 15
+      :start-line: 21
 
 Simple server with input
 ------------------------
@@ -317,20 +347,22 @@ or tell it not to allocate a pty for this to work right.
 
    .. include:: ../examples/math_server.py
       :literal:
-      :start-line: 15
+      :start-line: 21
 
 Here's an example of this server written using the streams API. In this
-case, :meth:`session_requested() <SSHServer.session_requested>` returns
-a handler coroutine instead of a session object. When a new SSH session is
-requested, the handler coroutine is called with AsyncSSH stream objects
-representing stdin, stdout, and stderr that it can use to perform I/O.
+case, :func:`listen` is used in place of :func:`create_server` since a
+custom subclass of :class:`SSHServer` is not required. The handler
+coroutine to call to handle new sessions is specified using the
+``session_factory`` argument. When a new session is requested, the
+handler coroutine is called with AsyncSSH stream objects representing
+stdin, stdout, and stderr that it can use to perform I/O.
 
 This example also shows how to catch exceptions thrown when break messages,
 signals, or terminal size changes are received.
 
    .. include:: ../examples/stream_math_server.py
       :literal:
-      :start-line: 15
+      :start-line: 21
 
 Getting environment variables
 -----------------------------
@@ -343,7 +375,7 @@ need to set options in the client to get it to do so.
 
    .. include:: ../examples/show_environment.py
       :literal:
-      :start-line: 15
+      :start-line: 21
 
 Getting terminal information
 ----------------------------
@@ -354,7 +386,7 @@ session.
 
    .. include:: ../examples/show_terminal.py
       :literal:
-      :start-line: 15
+      :start-line: 21
 
 Port forwarding
 ---------------
@@ -368,7 +400,7 @@ other port are rejected.
 
    .. include:: ../examples/local_forwarding_server.py
       :literal:
-      :start-line: 15
+      :start-line: 21
 
 The server can also support forwarding inbound TCP connections back to
 the client. The following example demonstrates a server which will accept
@@ -379,7 +411,7 @@ client.
 
    .. include:: ../examples/remote_forwarding_server.py
       :literal:
-      :start-line: 15
+      :start-line: 21
 
 Direct TCP connections
 ----------------------
@@ -391,7 +423,7 @@ echoes the data itself rather than forwarding the connection:
 
    .. include:: ../examples/direct_server.py
       :literal:
-      :start-line: 15
+      :start-line: 21
 
 Here's an example of this server written using the streams API. In this
 case, :meth:`connection_requested() <SSHServer.connection_requested>`
@@ -402,4 +434,29 @@ connection.
 
    .. include:: ../examples/stream_direct_server.py
       :literal:
-      :start-line: 15
+      :start-line: 21
+
+SFTP server
+-----------
+
+The following example shows how to start an SFTP server with default
+behavior:
+
+   .. include:: ../examples/simple_sftp_server.py
+      :literal:
+      :start-line: 21
+
+A subclass of :class:`SFTPServer` can be provided as the value of the SFTP
+factory to override specific behavior. For example, the following code
+remaps path names so that each user gets access to only their own individual
+directory under ``/tmp/sftp``:
+
+   .. include:: ../examples/chroot_sftp_server.py
+      :literal:
+      :start-line: 21
+
+More complex path remapping can be performed by implementing the
+:meth:`map_path <SFTPServer.map_path>` and
+:meth:`reverse_map_path <SFTPServer.reverse_map_path>` methods. Individual
+SFTP actions can also be overridden as needed. See the :class:`SFTPServer`
+documentation for the full list of methods to override.

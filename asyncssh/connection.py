@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2014 by Ron Frederick <ronf@timeheart.net>.
+# Copyright (c) 2013-2015 by Ron Frederick <ronf@timeheart.net>.
 # All rights reserved.
 #
 # This program and the accompanying materials are made available under
@@ -25,13 +25,14 @@ from .compression import *
 from .forward import *
 from .kex import *
 from .known_hosts import *
-from .listen import *
+from .listener import *
 from .logging import *
 from .mac import *
 from .misc import *
 from .packet import *
 from .public_key import *
 from .saslprep import *
+from .sftp import *
 from .stream import *
 
 
@@ -166,6 +167,17 @@ class SSHConnection(SSHPacketHandler):
         self._mac_algs = _select_algs('MAC', mac_algs, get_mac_algs())
         self._cmp_algs = _select_algs('compression', compression_algs,
                                       get_compression_algs(), b'none')
+
+    def __enter__(self):
+        """Allow SSHConnection to be used as a context manager"""
+
+        return self
+
+    def __exit__(self, *exc_info):
+        """Automatically close the connection when used as a context manager"""
+
+        if not self._loop.is_closed():
+            self.close()
 
     def _cleanup(self, exc=None):
         if self._channels:
@@ -2071,6 +2083,44 @@ class SSHClientConnection(SSHConnection):
 
         return self.create_server(session_factory, listen_host, listen_port)
 
+    @asyncio.coroutine
+    def start_sftp_client(self, path_encoding='utf-8', path_errors='strict'):
+        """Start an SFTP client
+
+           This method is a coroutine which attempts to start a secure
+           file transfer session. If it succeeds, it returns an
+           :class:`SFTPClient` object which can be used to copy and
+           access files on the remote host.
+
+           An optional Unicode encoding can be specified for sending and
+           receiving pathnames, defaulting to UTF-8 with strict error
+           checking. If an encoding of ``None`` is specified, pathnames
+           will be left as bytes rather than being converted to & from
+           strings.
+
+           :param string path_encoding:
+               The Unicode encoding to apply when sending and receiving
+               remote pathnames
+           :param string path_errors:
+               The error handling strategy to apply on encode/decode errors
+
+           :returns: :class:`SFTPClient`
+
+           :raises: :exc:`SFTPError` if the session can't be opened
+
+        """
+
+        version_waiter = asyncio.Future(loop=self._loop)
+
+        factory = lambda: SFTPClientSession(self._loop, version_waiter)
+
+        _, session = yield from self.create_session(factory, subsystem='sftp',
+                                                    encoding=None)
+
+        yield from version_waiter
+
+        return SFTPClient(session, path_encoding, path_errors)
+
 
 class SSHServerConnection(SSHConnection):
     """SSH server connection
@@ -2097,13 +2147,20 @@ class SSHServerConnection(SSHConnection):
     """
 
     def __init__(self, server_factory, loop, server_host_keys,
-                 authorized_client_keys=None, kex_algs=(), encryption_algs=(),
-                 mac_algs=(), compression_algs=(),
-                 rekey_bytes=_DEFAULT_REKEY_BYTES,
-                 rekey_seconds=_DEFAULT_REKEY_SECONDS):
+                 authorized_client_keys, kex_algs, encryption_algs, mac_algs,
+                 compression_algs, allow_pty, session_factory,
+                 session_encoding, sftp_factory, window, max_pktsize,
+                 rekey_bytes, rekey_seconds):
         super().__init__(server_factory, loop, kex_algs, encryption_algs,
                          mac_algs, compression_algs, rekey_bytes,
                          rekey_seconds, server=True)
+
+        self._allow_pty = allow_pty
+        self._session_factory = session_factory
+        self._session_encoding = session_encoding
+        self._sftp_factory = sftp_factory
+        self._window = window
+        self._max_pktsize = max_pktsize
 
         server_host_keys = self._load_private_key_list(server_host_keys)
 
@@ -2284,20 +2341,29 @@ class SSHServerConnection(SSHConnection):
     def _process_session_open(self, packet):
         packet.check_end()
 
-        result = self._owner.session_requested()
-
-        if not result:
-            raise ChannelOpenError(OPEN_CONNECT_FAILED, 'Session refused')
-
-        if isinstance(result, tuple):
-            chan, result = result
+        if self._session_factory or self._sftp_factory:
+            chan = self.create_server_channel(self._session_encoding,
+                                              self._window, self._max_pktsize)
+            session = SSHServerStreamSession(self._allow_pty,
+                                             self._session_factory,
+                                             self._sftp_factory)
         else:
-            chan = self.create_server_channel()
+            result = self._owner.session_requested()
 
-        if callable(result):
-            session = SSHServerStreamSession(result)
-        else:
-            session = result
+            if not result:
+                raise ChannelOpenError(OPEN_CONNECT_FAILED, 'Session refused')
+
+            if isinstance(result, tuple):
+                chan, result = result
+            else:
+                chan = self.create_server_channel(self._session_encoding,
+                                                  self._window,
+                                                  self._max_pktsize)
+
+            if callable(result):
+                session = SSHServerStreamSession(result, None)
+            else:
+                session = result
 
         return chan, session
 
@@ -3584,6 +3650,9 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
                   reuse_address=None, server_host_keys,
                   authorized_client_keys=None, kex_algs=(),
                   encryption_algs=(), mac_algs=(), compression_algs=(),
+                  allow_pty=True, session_factory=None,
+                  session_encoding='utf-8', sftp_factory=None,
+                  window=_DEFAULT_WINDOW, max_pktsize=_DEFAULT_MAX_PKTSIZE,
                   rekey_bytes=_DEFAULT_REKEY_BYTES,
                   rekey_seconds=_DEFAULT_REKEY_SECONDS):
     """Create an SSH server
@@ -3636,12 +3705,38 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
            A list of compression algorithms to use during the SSH handshake,
            taken from :ref:`compression algorithms <CompressionAlgs>`, or
            ``None`` to disable compression
+       :param boolean allow_pty: (optional)
+           Whether or not to allow allocation of a pseudo-tty in sessions,
+           defaulting to ``True``
+       :param callable session_factory: (optional)
+           A callable or coroutine handler function which takes AsyncSSH
+           stream objects for stdin, stdout, and stderr that will be called
+           each time a new shell, exec, or subsytem other than SFTP is
+           requested by the client. If not specified, sessions are rejected
+           by default unless the :meth:`session_requested()
+           <SSHServer.session_requested>` method is overridden on the
+           :class:`SSHServer` object returned by ``server_factory`` to make
+           this decision.
+       :param string session_encoding: (optional)
+           The Unicode encoding to use for data exchanged on sessions on
+           this server, defaulting to UTF-8 (ISO 10646) format. If ``None``
+           is passed in, the application can send and receive raw bytes.
+       :param callable sftp_factory: (optional)
+           A callable which returns an :class:`SFTPServer` object that
+           will be created each time an SFTP session is requested by the
+           client, or ``True`` to use the base :class:`SFTPServer` class
+           to handle SFTP requests. If not specified, SFTP sessions are
+           rejected by default.
+       :param integer window: (optional)
+           The receive window size for sessions on this server
+       :param integer max_pktsize: (optional)
+           The maximum packet size for sessions on this server
        :param integer rekey_bytes: (optional)
            The number of bytes which can be sent before the SSH session
-           key is renegotiated. This defaults to 1 GB.
+           key is renegotiated, defaulting to 1 GB
        :param integer rekey_seconds: (optional)
            The maximum time in seconds before the SSH session key is
-           renegotiated. This defaults to 1 hour.
+           renegotiated, defaulting to 1 hour
        :type family: ``socket.AF_UNSPEC``, ``socket.AF_INET``, or
                      ``socket.AF_INET6``
        :type flags: flags to pass to :meth:`getaddrinfo() <socket.getaddrinfo>`
@@ -3656,6 +3751,12 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
 
     """
 
+    if not server_factory:
+        server_factory = SSHServer
+
+    if sftp_factory == True:
+        sftp_factory = SFTPServer
+
     if not loop:
         loop = asyncio.get_event_loop()
 
@@ -3664,6 +3765,9 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
                                                authorized_client_keys,
                                                kex_algs, encryption_algs,
                                                mac_algs, compression_algs,
+                                               allow_pty, session_factory,
+                                               session_encoding, sftp_factory,
+                                               window, max_pktsize,
                                                rekey_bytes, rekey_seconds)
 
     return (yield from loop.create_server(conn_factory, host, port,
@@ -3699,3 +3803,35 @@ def connect(host, port=_DEFAULT_PORT, **kwargs):
     conn, client = yield from create_connection(None, host, port, **kwargs)
 
     return conn
+
+@asyncio.coroutine
+def listen(host, port=_DEFAULT_PORT, **kwargs):
+    """Start an SSH server
+
+       This function is a coroutine wrapper around :func:`create_server`
+       which can be used when a custom SSHServer instance is not needed.
+       It takes all the same arguments as :func:`create_server` except for
+       ``server_factory``.
+
+       When using this call, the following restrictions apply:
+
+           1. No callbacks are called when a new connection arrives,
+              when a connection is closed, or when authentication
+              completes.
+
+           2. Any authentication information must be provided as arguments
+              to this call, as any authentication callbacks will deny other
+              authentication attempts. Currently, this allows only public
+              key authentication to be used, by passing in the
+              ``authorized_client_keys`` argument.
+
+           3. Only handlers using the streams API are supported and the same
+              handlers must be used for all clients. These handlers must
+              be provided in the ``session_factory`` and/or ``sftp_factory``
+              arguments to this call.
+
+           4. Any debug messages sent by the client will be ignored.
+
+    """
+
+    return (yield from create_server(None, host, port, **kwargs))

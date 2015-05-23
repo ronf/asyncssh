@@ -1,6 +1,6 @@
 #!/usr/bin/env python3.4
 #
-# Copyright (c) 2013-2015 by Ron Frederick <ronf@timeheart.net>.
+# Copyright (c) 2015 by Ron Frederick <ronf@timeheart.net>.
 # All rights reserved.
 #
 # This program and the accompanying materials are made available under
@@ -19,26 +19,19 @@
 # The file ``ssh_user_ca`` must exist with a cert-authority entry of
 # the certificate authority which can sign valid client certificates.
 
-import asyncio, asyncssh, sys
+import asyncio, asyncssh, os, sys
 
-@asyncio.coroutine
-def handle_connection(stdin, stdout, stderr):
-    env = stdout.channel.get_environment()
-    if env:
-        keywidth = max(map(len, env.keys()))+1
-        stdout.write('Environment:\r\n')
-        for key, value in env.items():
-            stdout.write('  %-*s %s\r\n' % (keywidth, key+':', value))
-        stdout.channel.exit(0)
-    else:
-        stderr.write('No environment sent.\r\n')
-        stdout.channel.exit(1)
+class MySFTPServer(asyncssh.SFTPServer):
+    def __init__(self, conn):
+        root = '/tmp/sftp/' + conn.get_extra_info('username')
+        os.makedirs(root, exist_ok=True)
+        super().__init__(conn, chroot=root)
 
 @asyncio.coroutine
 def start_server():
     yield from asyncssh.listen('', 8022, server_host_keys=['ssh_host_key'],
                                authorized_client_keys='ssh_user_ca',
-                               session_factory=handle_connection)
+                               sftp_factory=MySFTPServer)
 
 loop = asyncio.get_event_loop()
 

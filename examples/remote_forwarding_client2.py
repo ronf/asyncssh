@@ -1,6 +1,6 @@
 #!/usr/bin/env python3.4
 #
-# Copyright (c) 2013-2014 by Ron Frederick <ronf@timeheart.net>.
+# Copyright (c) 2013-2015 by Ron Frederick <ronf@timeheart.net>.
 # All rights reserved.
 #
 # This program and the accompanying materials are made available under
@@ -28,9 +28,9 @@ def connection_requested(orig_host, orig_port):
 def run_client():
     global conn
 
-    conn = yield from asyncssh.connect('localhost')
-    listener = yield from conn.create_server(connection_requested, '', 8080)
-    yield from listener.wait_closed()
+    with (yield from asyncssh.connect('localhost')) as conn:
+        listener = yield from conn.create_server(connection_requested, '', 8080)
+        yield from listener.wait_closed()
 
 try:
     asyncio.get_event_loop().run_until_complete(run_client())

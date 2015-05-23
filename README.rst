@@ -8,7 +8,7 @@ the PyCrypto library for some cryptographic functions.
 
 This package is released under the following terms:
 
-    Copyright (c) 2013-2014 by Ron Frederick <ronf@timeheart.net>.
+    Copyright (c) 2013-2015 by Ron Frederick <ronf@timeheart.net>.
     All rights reserved.
 
     This program and the accompanying materials are made available under
@@ -58,6 +58,10 @@ Notable features include:
     - Enforcement of from and principals options to restrict key matching
     - Enforcement of no-pty, no-port-forwarding, and permitopen options
     - Support for command and environment options
+* SFTP client and server support
+    - SFTP protocol version 3 with OpenSSH extensions
+    - Support for recursive transfers and glob matching
+    - File I/O API to allow accessing remote files without downloading them
 * Support for passing environment variables, terminal type, and window size
 * Support for multiple simultaneous sessions on a single SSH connection
 * Support for handling multiple SSH connections in a single event loop

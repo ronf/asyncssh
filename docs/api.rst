@@ -99,6 +99,11 @@ connect
 
 .. autofunction:: connect
 
+listen
+------
+
+.. autofunction:: listen
+
 Main Classes
 ============
 
@@ -107,92 +112,92 @@ SSHClient
 
 .. autoclass:: SSHClient
 
-   +------------------------------------+
-   | General connection handlers        |
-   +====================================+
-   | .. automethod:: connection_made    |
-   | .. automethod:: connection_lost    |
-   | .. automethod:: debug_msg_received |
-   +------------------------------------+
+   ================================== =
+   General connection handlers
+   ================================== =
+   .. automethod:: connection_made
+   .. automethod:: connection_lost
+   .. automethod:: debug_msg_received
+   ================================== =
 
-   +--------------------------------------+
-   | General authentication handlers      |
-   +======================================+
-   | .. automethod:: auth_banner_received |
-   | .. automethod:: auth_completed       |
-   +--------------------------------------+
+   ==================================== =
+   General authentication handlers
+   ==================================== =
+   .. automethod:: auth_banner_received
+   .. automethod:: auth_completed
+   ==================================== =
 
-   +-------------------------------------------+
-   | Public key authentication handlers        |
-   +===========================================+
-   | .. automethod:: public_key_auth_requested |
-   +-------------------------------------------+
+   ========================================= =
+   Public key authentication handlers
+   ========================================= =
+   .. automethod:: public_key_auth_requested
+   ========================================= =
 
-   +-------------------------------------------+
-   | Password authentication handlers          |
-   +===========================================+
-   | .. automethod:: password_auth_requested   |
-   | .. automethod:: password_change_requested |
-   | .. automethod:: password_changed          |
-   | .. automethod:: password_change_failed    |
-   +-------------------------------------------+
+   ========================================= =
+   Password authentication handlers
+   ========================================= =
+   .. automethod:: password_auth_requested
+   .. automethod:: password_change_requested
+   .. automethod:: password_changed
+   .. automethod:: password_change_failed
+   ========================================= =
 
-   +----------------------------------------------+
-   | Keyboard-interactive authentication handlers |
-   +==============================================+
-   | .. automethod:: kbdint_auth_requested        |
-   | .. automethod:: kbdint_challenge_received    |
-   +----------------------------------------------+
+   ============================================ =
+   Keyboard-interactive authentication handlers
+   ============================================ =
+   .. automethod:: kbdint_auth_requested
+   .. automethod:: kbdint_challenge_received
+   ============================================ =
 
 SSHServer
 ---------
 
 .. autoclass:: SSHServer
 
-   +------------------------------------+
-   | General connection handlers        |
-   +====================================+
-   | .. automethod:: connection_made    |
-   | .. automethod:: connection_lost    |
-   | .. automethod:: debug_msg_received |
-   +------------------------------------+
+   ================================== =
+   General connection handlers
+   ================================== =
+   .. automethod:: connection_made
+   .. automethod:: connection_lost
+   .. automethod:: debug_msg_received
+   ================================== =
 
-   +---------------------------------+
-   | General authentication handlers |
-   +=================================+
-   | .. automethod:: begin_auth      |
-   +---------------------------------+
+   =============================== =
+   General authentication handlers
+   =============================== =
+   .. automethod:: begin_auth
+   =============================== =
 
-   +-------------------------------------------+
-   | Public key authentication handlers        |
-   +===========================================+
-   | .. automethod:: public_key_auth_supported |
-   | .. automethod:: validate_public_key       |
-   | .. automethod:: validate_ca_key           |
-   +-------------------------------------------+
+   ========================================= =
+   Public key authentication handlers
+   ========================================= =
+   .. automethod:: public_key_auth_supported
+   .. automethod:: validate_public_key
+   .. automethod:: validate_ca_key
+   ========================================= =
 
-   +-----------------------------------------+
-   | Password authentication handlers        |
-   +=========================================+
-   | .. automethod:: password_auth_supported |
-   | .. automethod:: validate_password       |
-   +-----------------------------------------+
+   ======================================= =
+   Password authentication handlers
+   ======================================= =
+   .. automethod:: password_auth_supported
+   .. automethod:: validate_password
+   ======================================= =
 
-   +----------------------------------------------+
-   | Keyboard-interactive authentication handlers |
-   +==============================================+
-   | .. automethod:: kbdint_auth_supported        |
-   | .. automethod:: get_kbdint_challenge         |
-   | .. automethod:: validate_kbdint_response     |
-   +----------------------------------------------+
+   ============================================ =
+   Keyboard-interactive authentication handlers
+   ============================================ =
+   .. automethod:: kbdint_auth_supported
+   .. automethod:: get_kbdint_challenge
+   .. automethod:: validate_kbdint_response
+   ============================================ =
 
-   +--------------------------------------+
-   | Channel session open handlers        |
-   +======================================+
-   | .. automethod:: session_requested    |
-   | .. automethod:: connection_requested |
-   | .. automethod:: server_requested     |
-   +--------------------------------------+
+   ==================================== =
+   Channel session open handlers
+   ==================================== =
+   .. automethod:: session_requested
+   .. automethod:: connection_requested
+   .. automethod:: server_requested
+   ==================================== =
 
 Connection Classes
 ==================
@@ -202,90 +207,91 @@ SSHClientConnection
 
 .. autoclass:: SSHClientConnection()
 
-   +--------------------------------+
-   | General connection methods     |
-   +================================+
-   | .. automethod:: get_extra_info |
-   | .. automethod:: send_debug     |
-   +--------------------------------+
+   ============================== =
+   General connection methods
+   ============================== =
+   .. automethod:: get_extra_info
+   .. automethod:: send_debug
+   ============================== =
 
-   +-----------------------------------+
-   | Client session open methods       |
-   +===================================+
-   | .. automethod:: create_session    |
-   | .. automethod:: open_session      |
-   | .. automethod:: create_connection |
-   | .. automethod:: open_connection   |
-   | .. automethod:: create_server     |
-   | .. automethod:: start_server      |
-   +-----------------------------------+
+   ================================= =
+   Client session open methods
+   ================================= =
+   .. automethod:: create_session
+   .. automethod:: open_session
+   .. automethod:: create_connection
+   .. automethod:: open_connection
+   .. automethod:: create_server
+   .. automethod:: start_server
+   .. automethod:: start_sftp_client
+   ================================= =
 
-   +-------------------------------------+
-   | Client forwarding methods           |
-   +=====================================+
-   | .. automethod:: forward_connection  |
-   | .. automethod:: forward_local_port  |
-   | .. automethod:: forward_remote_port |
-   +-------------------------------------+
+   =================================== =
+   Client forwarding methods
+   =================================== =
+   .. automethod:: forward_connection
+   .. automethod:: forward_local_port
+   .. automethod:: forward_remote_port
+   =================================== =
 
-   +----------------------------+
-   | Connection close methods   |
-   +============================+
-   | .. automethod:: abort      |
-   | .. automethod:: close      |
-   | .. automethod:: disconnect |
-   +----------------------------+
+   ========================== =
+   Connection close methods
+   ========================== =
+   .. automethod:: abort
+   .. automethod:: close
+   .. automethod:: disconnect
+   ========================== =
 
 SSHServerConnection
 -------------------
 
 .. autoclass:: SSHServerConnection()
 
-   +--------------------------------+
-   | General connection methods     |
-   +================================+
-   | .. automethod:: get_extra_info |
-   | .. automethod:: send_debug     |
-   +--------------------------------+
+   ============================== =
+   General connection methods
+   ============================== =
+   .. automethod:: get_extra_info
+   .. automethod:: send_debug
+   ============================== =
 
-   +----------------------------------------------+
-   | Server authentication methods                |
-   +==============================================+
-   | .. automethod:: send_auth_banner             |
-   | .. automethod:: set_authorized_keys          |
-   | .. automethod:: get_key_option               |
-   | .. automethod:: check_key_permission         |
-   | .. automethod:: get_certificate_option       |
-   | .. automethod:: check_certificate_permission |
-   +----------------------------------------------+
+   ============================================ =
+   Server authentication methods
+   ============================================ =
+   .. automethod:: send_auth_banner
+   .. automethod:: set_authorized_keys
+   .. automethod:: get_key_option
+   .. automethod:: check_key_permission
+   .. automethod:: get_certificate_option
+   .. automethod:: check_certificate_permission
+   ============================================ =
 
-   +------------------------------------+
-   | Server connection open methods     |
-   +====================================+
-   | .. automethod:: create_connection  |
-   | .. automethod:: open_connection    |
-   +------------------------------------+
+   ================================== =
+   Server connection open methods
+   ================================== =
+   .. automethod:: create_connection
+   .. automethod:: open_connection
+   ================================== =
 
-   +------------------------------------+
-   | Server forwarding methods          |
-   +====================================+
-   | .. automethod:: forward_connection |
-   +------------------------------------+
+   ================================== =
+   Server forwarding methods
+   ================================== =
+   .. automethod:: forward_connection
+   ================================== =
 
-   +---------------------------------------+
-   | Server channel creation methods       |
-   +=======================================+
-   | .. automethod:: create_server_channel |
-   | .. automethod:: create_tcp_channel    |
-   +---------------------------------------+
+   ===================================== =
+   Server channel creation methods
+   ===================================== =
+   .. automethod:: create_server_channel
+   .. automethod:: create_tcp_channel
+   ===================================== =
 
-   +----------------------------+
-   | Connection close methods   |
-   +============================+
-   | .. automethod:: abort      |
-   | .. automethod:: close      |
-   | .. automethod:: disconnect |
-   +----------------------------+
+   ========================== =
+   Connection close methods
+   ========================== =
+   .. automethod:: abort
+   .. automethod:: close
+   .. automethod:: disconnect
+   ========================== =
 
 Session Classes
 ===============
@@ -295,106 +301,106 @@ SSHClientSession
 
 .. autoclass:: SSHClientSession
 
-   +---------------------------------+
-   | General session handlers        |
-   +=================================+
-   | .. automethod:: connection_made |
-   | .. automethod:: connection_lost |
-   | .. automethod:: session_started |
-   +---------------------------------+
+   =============================== =
+   General session handlers
+   =============================== =
+   .. automethod:: connection_made
+   .. automethod:: connection_lost
+   .. automethod:: session_started
+   =============================== =
 
-   +-------------------------------+
-   | General session read handlers |
-   +===============================+
-   | .. automethod:: data_received |
-   | .. automethod:: eof_received  |
-   +-------------------------------+
+   ============================= =
+   General session read handlers
+   ============================= =
+   .. automethod:: data_received
+   .. automethod:: eof_received
+   ============================= =
 
-   +--------------------------------+
-   | General session write handlers |
-   +================================+
-   | .. automethod:: pause_writing  |
-   | .. automethod:: resume_writing |
-   +--------------------------------+
+   ============================== =
+   General session write handlers
+   ============================== =
+   .. automethod:: pause_writing
+   .. automethod:: resume_writing
+   ============================== =
 
-   +--------------------------------------+
-   | Other client session handlers        |
-   +======================================+
-   | .. automethod:: xon_xoff_requested   |
-   | .. automethod:: exit_status_received |
-   | .. automethod:: exit_signal_received |
-   +--------------------------------------+
+   ==================================== =
+   Other client session handlers
+   ==================================== =
+   .. automethod:: xon_xoff_requested
+   .. automethod:: exit_status_received
+   .. automethod:: exit_signal_received
+   ==================================== =
 
 SSHServerSession
 ----------------
 
 .. autoclass:: SSHServerSession
 
-   +---------------------------------+
-   | General session handlers        |
-   +=================================+
-   | .. automethod:: connection_made |
-   | .. automethod:: connection_lost |
-   | .. automethod:: session_started |
-   +---------------------------------+
+   =============================== =
+   General session handlers
+   =============================== =
+   .. automethod:: connection_made
+   .. automethod:: connection_lost
+   .. automethod:: session_started
+   =============================== =
 
-   +-------------------------------------+
-   | Server session open handlers        |
-   +=====================================+
-   | .. automethod:: pty_requested       |
-   | .. automethod:: shell_requested     |
-   | .. automethod:: exec_requested      |
-   | .. automethod:: subsystem_requested |
-   +-------------------------------------+
+   =================================== =
+   Server session open handlers
+   =================================== =
+   .. automethod:: pty_requested
+   .. automethod:: shell_requested
+   .. automethod:: exec_requested
+   .. automethod:: subsystem_requested
+   =================================== =
 
-   +-------------------------------+
-   | General session read handlers |
-   +===============================+
-   | .. automethod:: data_received |
-   | .. automethod:: eof_received  |
-   +-------------------------------+
+   ============================= =
+   General session read handlers
+   ============================= =
+   .. automethod:: data_received
+   .. automethod:: eof_received
+   ============================= =
 
-   +--------------------------------+
-   | General session write handlers |
-   +================================+
-   | .. automethod:: pause_writing  |
-   | .. automethod:: resume_writing |
-   +--------------------------------+
+   ============================== =
+   General session write handlers
+   ============================== =
+   .. automethod:: pause_writing
+   .. automethod:: resume_writing
+   ============================== =
 
-   +---------------------------------------+
-   | Other server session handlers         |
-   +=======================================+
-   | .. automethod:: break_received        |
-   | .. automethod:: signal_received       |
-   | .. automethod:: terminal_size_changed |
-   +---------------------------------------+
+   ===================================== =
+   Other server session handlers
+   ===================================== =
+   .. automethod:: break_received
+   .. automethod:: signal_received
+   .. automethod:: terminal_size_changed
+   ===================================== =
 
 SSHTCPSession
 -------------
 
 .. autoclass:: SSHTCPSession
 
-   +---------------------------------+
-   | General session handlers        |
-   +=================================+
-   | .. automethod:: connection_made |
-   | .. automethod:: connection_lost |
-   | .. automethod:: session_started |
-   +---------------------------------+
+   =============================== =
+   General session handlers
+   =============================== =
+   .. automethod:: connection_made
+   .. automethod:: connection_lost
+   .. automethod:: session_started
+   =============================== =
 
-   +-------------------------------+
-   | General session read handlers |
-   +===============================+
-   | .. automethod:: data_received |
-   | .. automethod:: eof_received  |
-   +-------------------------------+
+   ============================= =
+   General session read handlers
+   ============================= =
+   .. automethod:: data_received
+   .. automethod:: eof_received
+   ============================= =
 
-   +--------------------------------+
-   | General session write handlers |
-   +================================+
-   | .. automethod:: pause_writing  |
-   | .. automethod:: resume_writing |
-   +--------------------------------+
+   ============================== =
+   General session write handlers
+   ============================== =
+   .. automethod:: pause_writing
+   .. automethod:: resume_writing
+   ============================== =
 
 Channel Classes
 ===============
@@ -404,144 +410,144 @@ SSHClientChannel
 
 .. autoclass:: SSHClientChannel()
 
-   +--------------------------------+
-   | General channel methods        |
-   +================================+
-   | .. automethod:: get_extra_info |
-   +--------------------------------+
+   ============================== =
+   General channel methods
+   ============================== =
+   .. automethod:: get_extra_info
+   ============================== =
 
-   +--------------------------------+
-   | Client channel read methods    |
-   +================================+
-   | .. automethod:: pause_reading  |
-   | .. automethod:: resume_reading |
-   +--------------------------------+
+   ============================== =
+   Client channel read methods
+   ============================== =
+   .. automethod:: pause_reading
+   .. automethod:: resume_reading
+   ============================== =
 
-   +-----------------------------------------+
-   | Client channel write methods            |
-   +=========================================+
-   | .. automethod:: can_write_eof           |
-   | .. automethod:: get_write_buffer_size   |
-   | .. automethod:: set_write_buffer_limits |
-   | .. automethod:: write                   |
-   | .. automethod:: writelines              |
-   | .. automethod:: write_eof               |
-   +-----------------------------------------+
+   ======================================= =
+   Client channel write methods
+   ======================================= =
+   .. automethod:: can_write_eof
+   .. automethod:: get_write_buffer_size
+   .. automethod:: set_write_buffer_limits
+   .. automethod:: write
+   .. automethod:: writelines
+   .. automethod:: write_eof
+   ======================================= =
 
-   +---------------------------------------+
-   | Other client channel methods          |
-   +=======================================+
-   | .. automethod:: get_exit_status       |
-   | .. automethod:: get_exit_signal       |
-   | .. automethod:: change_terminal_size  |
-   | .. automethod:: send_break            |
-   | .. automethod:: send_signal           |
-   | .. automethod:: kill                  |
-   | .. automethod:: terminate             |
-   +---------------------------------------+
+   ===================================== =
+   Other client channel methods
+   ===================================== =
+   .. automethod:: get_exit_status
+   .. automethod:: get_exit_signal
+   .. automethod:: change_terminal_size
+   .. automethod:: send_break
+   .. automethod:: send_signal
+   .. automethod:: kill
+   .. automethod:: terminate
+   ===================================== =
 
-   +-------------------------------+
-   | General channel close methods |
-   +===============================+
-   | .. automethod:: abort         |
-   | .. automethod:: close         |
-   | .. automethod:: wait_closed   |
-   +-------------------------------+
+   ============================= =
+   General channel close methods
+   ============================= =
+   .. automethod:: abort
+   .. automethod:: close
+   .. automethod:: wait_closed
+   ============================= =
 
 SSHServerChannel
 ----------------
 
 .. autoclass:: SSHServerChannel()
 
-   +--------------------------------+
-   | General channel methods        |
-   +================================+
-   | .. automethod:: get_extra_info |
-   +--------------------------------+
+   ============================== =
+   General channel methods
+   ============================== =
+   .. automethod:: get_extra_info
+   ============================== =
 
-   +-----------------------------------+
-   | Server channel info methods       |
-   +===================================+
-   | .. automethod:: get_environment   |
-   | .. automethod:: get_command       |
-   | .. automethod:: get_subsystem     |
-   | .. automethod:: get_terminal_type |
-   | .. automethod:: get_terminal_size |
-   | .. automethod:: get_terminal_mode |
-   +-----------------------------------+
+   ================================= =
+   Server channel info methods
+   ================================= =
+   .. automethod:: get_environment
+   .. automethod:: get_command
+   .. automethod:: get_subsystem
+   .. automethod:: get_terminal_type
+   .. automethod:: get_terminal_size
+   .. automethod:: get_terminal_mode
+   ================================= =
 
-   +--------------------------------+
-   | Server channel read methods    |
-   +================================+
-   | .. automethod:: pause_reading  |
-   | .. automethod:: resume_reading |
-   +--------------------------------+
+   ============================== =
+   Server channel read methods
+   ============================== =
+   .. automethod:: pause_reading
+   .. automethod:: resume_reading
+   ============================== =
 
-   +-----------------------------------------+
-   | Server channel write methods            |
-   +=========================================+
-   | .. automethod:: can_write_eof           |
-   | .. automethod:: get_write_buffer_size   |
-   | .. automethod:: set_write_buffer_limits |
-   | .. automethod:: write                   |
-   | .. automethod:: writelines              |
-   | .. automethod:: write_stderr            |
-   | .. automethod:: writelines_stderr       |
-   | .. automethod:: write_eof               |
-   +-----------------------------------------+
+   ======================================= =
+   Server channel write methods
+   ======================================= =
+   .. automethod:: can_write_eof
+   .. automethod:: get_write_buffer_size
+   .. automethod:: set_write_buffer_limits
+   .. automethod:: write
+   .. automethod:: writelines
+   .. automethod:: write_stderr
+   .. automethod:: writelines_stderr
+   .. automethod:: write_eof
+   ======================================= =
 
-   +-----------------------------------+
-   | Other server channel methods      |
-   +===================================+
-   | .. automethod:: set_xon_xoff      |
-   | .. automethod:: exit              |
-   | .. automethod:: exit_with_signal  |
-   +-----------------------------------+
+   ================================= =
+   Other server channel methods
+   ================================= =
+   .. automethod:: set_xon_xoff
+   .. automethod:: exit
+   .. automethod:: exit_with_signal
+   ================================= =
 
-   +-------------------------------+
-   | General channel close methods |
-   +===============================+
-   | .. automethod:: abort         |
-   | .. automethod:: close         |
-   | .. automethod:: wait_closed   |
-   +-------------------------------+
+   ============================= =
+   General channel close methods
+   ============================= =
+   .. automethod:: abort
+   .. automethod:: close
+   .. automethod:: wait_closed
+   ============================= =
 
 SSHTCPChannel
 -------------
 
 .. autoclass:: SSHTCPChannel()
 
-   +--------------------------------+
-   | General channel methods        |
-   +================================+
-   | .. automethod:: get_extra_info |
-   +--------------------------------+
+   ============================== =
+   General channel methods
+   ============================== =
+   .. automethod:: get_extra_info
+   ============================== =
 
-   +--------------------------------+
-   | General channel read methods   |
-   +================================+
-   | .. automethod:: pause_reading  |
-   | .. automethod:: resume_reading |
-   +--------------------------------+
+   ============================== =
+   General channel read methods
+   ============================== =
+   .. automethod:: pause_reading
+   .. automethod:: resume_reading
+   ============================== =
 
-   +-----------------------------------------+
-   | General channel write methods           |
-   +=========================================+
-   | .. automethod:: can_write_eof           |
-   | .. automethod:: get_write_buffer_size   |
-   | .. automethod:: set_write_buffer_limits |
-   | .. automethod:: write                   |
-   | .. automethod:: writelines              |
-   | .. automethod:: write_eof               |
-   +-----------------------------------------+
+   ======================================= =
+   General channel write methods
+   ======================================= =
+   .. automethod:: can_write_eof
+   .. automethod:: get_write_buffer_size
+   .. automethod:: set_write_buffer_limits
+   .. automethod:: write
+   .. automethod:: writelines
+   .. automethod:: write_eof
+   ======================================= =
 
-   +-------------------------------+
-   | General channel close methods |
-   +===============================+
-   | .. automethod:: abort         |
-   | .. automethod:: close         |
-   | .. automethod:: wait_closed   |
-   +-------------------------------+
+   ============================= =
+   General channel close methods
+   ============================= =
+   .. automethod:: abort
+   .. automethod:: close
+   .. automethod:: wait_closed
+   ============================= =
 
 Listener Classes
 ================
@@ -551,9 +557,11 @@ SSHListener
 
 .. autoclass:: SSHListener
 
+   =========================== =
    .. automethod:: get_port
    .. automethod:: close
    .. automethod:: wait_closed
+   =========================== =
 
 Stream Classes
 ==============
@@ -563,21 +571,22 @@ SSHReader
 
 .. autoclass:: SSHReader
 
+   ============================== =
    .. autoattribute:: channel
-
    .. automethod:: get_extra_info
    .. automethod:: at_eof
    .. automethod:: read
    .. automethod:: readline
    .. automethod:: readexactly
+   ============================== =
 
 SSHWriter
 ---------
 
 .. autoclass:: SSHWriter
 
+   ============================== =
    .. autoattribute:: channel
-
    .. automethod:: get_extra_info
    .. automethod:: can_write_eof
    .. automethod:: close
@@ -585,6 +594,164 @@ SSHWriter
    .. automethod:: write
    .. automethod:: writelines
    .. automethod:: write_eof
+   ============================== =
+
+SFTP Support
+============
+
+SFTPClient
+----------
+
+.. autoclass:: SFTPClient()
+
+   ===================== =
+   File transfer methods
+   ===================== =
+   .. automethod:: get
+   .. automethod:: put
+   .. automethod:: copy
+   .. automethod:: mget
+   .. automethod:: mput
+   .. automethod:: mcopy
+   ===================== =
+
+   ========================================================================================== =
+   File access methods
+   ========================================================================================== =
+   .. automethod:: open(path, mode='r', attrs=SFTPAttrs(), encoding='utf-8', errors='strict')
+   .. automethod:: truncate
+   .. automethod:: rename
+   .. automethod:: posix_rename
+   .. automethod:: remove
+   .. automethod:: unlink
+   .. automethod:: readlink
+   .. automethod:: symlink
+   .. automethod:: link
+   .. automethod:: realpath
+   ========================================================================================== =
+
+   ============================= =
+   File attribute access methods
+   ============================= =
+   .. automethod:: stat
+   .. automethod:: lstat
+   .. automethod:: setstat
+   .. automethod:: statvfs
+   .. automethod:: chown
+   .. automethod:: chmod
+   .. automethod:: utime
+   .. automethod:: exists
+   .. automethod:: lexists
+   .. automethod:: getatime
+   .. automethod:: getmtime
+   .. automethod:: getsize
+   .. automethod:: isdir
+   .. automethod:: isfile
+   .. automethod:: islink
+   ============================= =
+
+   ============================================== =
+   Directory access methods
+   ============================================== =
+   .. automethod:: chdir
+   .. automethod:: getcwd
+   .. automethod:: mkdir(path, attrs=SFTPAttrs())
+   .. automethod:: rmdir
+   .. automethod:: readdir
+   .. automethod:: listdir
+   .. automethod:: glob
+   ============================================== =
+
+SFTPServer
+----------
+
+.. autoclass:: SFTPServer
+
+   ================================== =
+   Path remapping and display methods
+   ================================== =
+   .. automethod:: format_longname
+   .. automethod:: map_path
+   .. automethod:: reverse_map_path
+   ================================== =
+
+   ============================ =
+   File access methods
+   ============================ =
+   .. automethod:: open
+   .. automethod:: close
+   .. automethod:: read
+   .. automethod:: write
+   .. automethod:: rename
+   .. automethod:: posix_rename
+   .. automethod:: remove
+   .. automethod:: readlink
+   .. automethod:: symlink
+   .. automethod:: link
+   .. automethod:: realpath
+   ============================ =
+
+   ============================= =
+   File attribute access methods
+   ============================= =
+   .. automethod:: stat
+   .. automethod:: lstat
+   .. automethod:: fstat
+   .. automethod:: setstat
+   .. automethod:: fsetstat
+   .. automethod:: statvfs
+   .. automethod:: fstatvfs
+   ============================= =
+
+   ======================== =
+   Directory access methods
+   ======================== =
+   .. automethod:: listdir
+   .. automethod:: mkdir
+   .. automethod:: rmdir
+   ======================== =
+
+   ===================== =
+   Cleanup methods
+   ===================== =
+   .. automethod:: exit
+   ===================== =
+
+SFTPFile
+--------
+
+.. autoclass:: SFTPFile()
+
+   ================================================ =
+   .. automethod:: read
+   .. automethod:: write
+   .. automethod:: seek(offset, from_what=SEEK_SET)
+   .. automethod:: tell
+   .. automethod:: stat
+   .. automethod:: setstat
+   .. automethod:: statvfs
+   .. automethod:: truncate
+   .. automethod:: chown
+   .. automethod:: chmod
+   .. automethod:: utime
+   .. automethod:: fsync
+   .. automethod:: close
+   ================================================ =
+
+SFTPAttrs
+---------
+
+.. autoclass:: SFTPAttrs()
+
+SFTPVFSAttrs
+------------
+
+.. autoclass:: SFTPVFSAttrs()
+
+SFTPName
+--------
+
+.. autoclass:: SFTPName()
 
 .. index:: Public key support
 .. _PublicKeyFunctions:
@@ -648,10 +815,12 @@ SSHKey
 
 .. autoclass:: SSHKey()
 
+   ================================== =
    .. automethod:: export_private_key
    .. automethod:: export_public_key
    .. automethod:: write_private_key
    .. automethod:: write_public_key
+   ================================== =
 
 SSHCertificate
 --------------
@@ -793,6 +962,11 @@ ChannelOpenError
 ----------------
 
 .. autoexception:: ChannelOpenError
+
+SFTPError
+---------
+
+.. autoexception:: SFTPError
 
 KeyImportError
 --------------
@@ -974,6 +1148,26 @@ be specified as channel open failure reason codes:
   | OPEN_RESOURCE_SHORTAGE
   | OPEN_REQUEST_PTY_FAILED
   | OPEN_REQUEST_SESSION_FAILED
+
+.. index:: SFTP error codes
+.. _SFTPErrorCodes:
+
+SFTP error codes
+----------------
+
+The following values defined in the `SSH File Transfer Internet Draft
+<http://www.openssh.com/txt/draft-ietf-secsh-filexfer-02.txt>`_ can be
+specified as SFTP error codes:
+
+  | FX_OK
+  | FX_EOF
+  | FX_NO_SUCH_FILE
+  | FX_PERMISSION_DENIED
+  | FX_FAILURE
+  | FX_BAD_MESSAGE
+  | FX_NO_CONNECTION
+  | FX_CONNECTION_LOST
+  | FX_OP_UNSUPPORTED
 
 .. index:: Extended data types
 .. _ExtendedDataTypes:

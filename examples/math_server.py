@@ -1,6 +1,6 @@
 #!/usr/bin/env python3.4
 #
-# Copyright (c) 2013-2014 by Ron Frederick <ronf@timeheart.net>.
+# Copyright (c) 2013-2015 by Ron Frederick <ronf@timeheart.net>.
 # All rights reserved.
 #
 # This program and the accompanying materials are made available under
@@ -12,11 +12,14 @@
 # Contributors:
 #     Ron Frederick - initial implementation, API, and documentation
 
-import asyncio, asyncssh, sys
-
 # To run this program, the file ``ssh_host_key`` must exist with an SSH
 # private key in it to use as a server host key. An SSH host certificate
 # can optionally be provided in the file ``ssh_host_key-cert.pub``.
+#
+# The file ``ssh_user_ca`` must exist with a cert-authority entry of
+# the certificate authority which can sign valid client certificates.
+
+import asyncio, asyncssh, sys
 
 class MySSHServerSession(asyncssh.SSHServerSession):
     def __init__(self):
@@ -47,17 +50,14 @@ class MySSHServerSession(asyncssh.SSHServerSession):
         self._chan.exit(0)
 
 class MySSHServer(asyncssh.SSHServer):
-    def begin_auth(self, username):
-        # No auth in this example
-        return False
-
     def session_requested(self):
         return MySSHServerSession()
 
 @asyncio.coroutine
 def start_server():
     yield from asyncssh.create_server(MySSHServer, '', 8022,
-                                      server_host_keys=['ssh_host_key'])
+                                      server_host_keys=['ssh_host_key'],
+                                      authorized_client_keys='ssh_user_ca')
 
 loop = asyncio.get_event_loop()
 
