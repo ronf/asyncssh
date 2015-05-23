@@ -2361,7 +2361,7 @@ class SSHServerConnection(SSHConnection):
                                                   self._max_pktsize)
 
             if callable(result):
-                session = SSHServerStreamSession(result, None)
+                session = SSHServerStreamSession(self._allow_pty, result, None)
             else:
                 session = result
 
