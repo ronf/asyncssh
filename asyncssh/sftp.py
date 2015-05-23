@@ -2861,28 +2861,43 @@ class SFTPServer:
 
         """
 
-        mode = stat.filemode(name.attrs.permissions)
+        if name.attrs.permissions is not None:
+            mode = stat.filemode(name.attrs.permissions)
+        else:
+            mode = ''
+
         nlink = str(name.attrs.nlink) if name.attrs.nlink else ''
 
-        try:
-            user = pwd.getpwuid(name.attrs.uid).pw_name
-        except KeyError:
-            user = str(name.attrs.uid)
-
-        try:
-            group = grp.getgrgid(name.attrs.gid).gr_name
-        except KeyError:
-            group = str(name.attrs.gid)
-
-        now = time.time()
-        mtime = time.localtime(name.attrs.mtime)
-        if now - 365*24*60*60/2 < name.attrs.mtime <= now:
-            modtime = time.strftime('%b %e %H:%M', mtime)
+        if name.attrs.uid is not None:
+            try:
+                user = pwd.getpwuid(name.attrs.uid).pw_name
+            except KeyError:
+                user = str(name.attrs.uid)
         else:
-            modtime = time.strftime('%b %e  %Y', mtime)
+            user = ''
 
-        detail = '{} {:>4s} {:8s} {:8s} {:8d} {} '.format(
-                     mode, nlink, user, group, name.attrs.size, modtime)
+        if name.attrs.gid is not None:
+            try:
+                group = grp.getgrgid(name.attrs.gid).gr_name
+            except KeyError:
+                group = str(name.attrs.gid)
+        else:
+            group = ''
+
+        size = str(name.attrs.size) if name.attrs.size is not None else ''
+
+        if name.attrs.mtime is not None:
+            now = time.time()
+            mtime = time.localtime(name.attrs.mtime)
+            if now - 365*24*60*60/2 < name.attrs.mtime <= now:
+                modtime = time.strftime('%b %e %H:%M', mtime)
+            else:
+                modtime = time.strftime('%b %e  %Y', mtime)
+        else:
+            modtime = ''
+
+        detail = '{:10s} {:>4s} {:8s} {:8s} {:>8s} {:12s} '.format(
+                     mode, nlink, user, group, size, modtime)
 
         name.longname =  detail.encode('utf-8') + name.filename
 
