@@ -3,6 +3,21 @@
 Change Log
 ==========
 
+Release 1.1.1 (25 May 2015)
+---------------------------
+
+* Added new start_sftp_server method on SSHChannel to allow applications
+  using the non-streams API to start an SFTP server.
+
+* Enhanced the default format_longname() method in SFTPServer to properly
+  handle the case where not all of the file attributes are returned by
+  stat().
+
+* Fixed a bug related to the new allow_pty parameter in create_server.
+
+* Fixed a bug in the hashed known_hosts support introduced in some recent
+  refactoring of the host pattern matching code.
+
 Release 1.1.0 (22 May 2015)
 ---------------------------
 
