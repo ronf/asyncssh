@@ -51,9 +51,10 @@ class HashedHost:
                                  magic) from None
 
     def _match(self, value):
-        return hmac.new(self._salt, value, sha1).digest() == self._hosthash
+        hosthash = hmac.new(self._salt, value.encode(), sha1).digest()
+        return hosthash == self._hosthash
 
-    def matches(self, host, addr):
+    def matches(self, host, addr, ip):
         return (host and self._match(host)) or (addr and self._match(addr))
 
 
