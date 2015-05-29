@@ -15,7 +15,11 @@
 import importlib
 
 from .cipher import register_cipher, lookup_cipher
-from .curve25519 import Curve25519DH
+
+try:
+    from .curve25519 import Curve25519DH
+except ImportError:
+    pass
 
 from . import chacha
 
