@@ -486,6 +486,9 @@ class SSHChannel(SSHPacketHandler):
            ``'remote_peername'`` are added to return the local and remote
            host and port information for the tunneled TCP connection.
 
+           See :meth:`get_extra_info() <SSHClientConnection.get_extra_info>`
+           on :class:`SSHClientConnection` for more information.
+
         """
 
         return self._extra.get(name, self._conn.get_extra_info(name, default)

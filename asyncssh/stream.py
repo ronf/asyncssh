@@ -37,7 +37,9 @@ class SSHReader:
         """Return additional information about this stream
 
            This method returns extra information about the channel
-           associated with this stream.
+           associated with this stream. See :meth:`get_extra_info()
+           <SSHClientChannel.get_extra_info>` on :class:`SSHClientChannel`
+           for additional information.
 
         """
 
@@ -122,7 +124,9 @@ class SSHWriter:
         """Return additional information about this stream
 
            This method returns extra information about the channel
-           associated with this stream.
+           associated with this stream. See :meth:`get_extra_info()
+           <SSHClientChannel.get_extra_info>` on :class:`SSHClientChannel`
+           for additional information.
 
         """
 

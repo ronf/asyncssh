@@ -1494,6 +1494,9 @@ class SSHConnection(SSHPacketHandler):
              | recv_mac
              | recv_compression
 
+           See :meth:`get_extra_info() <asyncio.BaseTransport.get_extra_info>`
+           in :class:`asyncio.BaseTransport` for more information.
+
         """
 
         return self._extra.get(name,
