@@ -12,7 +12,7 @@
 
 """A shim around PyCA for symmetric encryption"""
 
-from .. import register_cipher
+from ..cipher import register_cipher
 
 from cryptography.exceptions import InvalidTag
 
@@ -26,12 +26,16 @@ from cryptography.hazmat.primitives.ciphers.algorithms import TripleDES
 
 from cryptography.hazmat.primitives.ciphers.modes import CBC, CTR, GCM
 
-_ciphers = { 'aes':      (AES,       { 'cbc': CBC, 'ctr': CTR, 'gcm': GCM }),
-             'arc4':     (ARC4,      { None: None }),
-             'blowfish': (Blowfish,  { 'cbc': CBC }),
-             'cast':     (CAST5,     { 'cbc': CBC }),
-             'des':      (TripleDES, { 'cbc': CBC }),
-             'des3':     (TripleDES, { 'cbc': CBC })}
+# pylint: disable=bad-whitespace
+
+_ciphers = {'aes':      (AES,       {'cbc': CBC, 'ctr': CTR, 'gcm': GCM}),
+            'arc4':     (ARC4,      {None: None}),
+            'blowfish': (Blowfish,  {'cbc': CBC}),
+            'cast':     (CAST5,     {'cbc': CBC}),
+            'des':      (TripleDES, {'cbc': CBC}),
+            'des3':     (TripleDES, {'cbc': CBC})}
+
+# pylint: enable=bad-whitespace
 
 
 class GCMShim:
@@ -88,6 +92,7 @@ class CipherShim:
         self._decryptor = None
 
         self.block_size = block_size
+        self.mode_name = None                   # set by register_cipher()
 
     def encrypt(self, data):
         if not self._encryptor:
@@ -124,6 +129,7 @@ class CipherFactory:
                               key, iv, initial_bytes)
 
 
-for cipher_name, (cipher, modes) in _ciphers.items():
-    for mode_name, mode in modes.items():
-        register_cipher(cipher_name, mode_name, CipherFactory(cipher, mode))
+for _cipher_name, (_cipher, _modes) in _ciphers.items():
+    for _mode_name, _mode in _modes.items():
+        register_cipher(_cipher_name, _mode_name,
+                        CipherFactory(_cipher, _mode))

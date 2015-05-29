@@ -14,18 +14,18 @@
 
 import zlib
 
-from .logging import *
-
 
 _cmp_algs = []
 _cmp_params = {}
 _cmp_compressors = {}
 _cmp_decompressors = {}
 
-def _None():
+
+def _none():
     """Compressor/decompressor for no compression."""
 
     return None
+
 
 class _ZLibCompress:
     """Wrapper class to force a sync flush when compressing"""
@@ -36,6 +36,7 @@ class _ZLibCompress:
     def compress(self, data):
         return self._comp.compress(data) + self._comp.flush(zlib.Z_SYNC_FLUSH)
 
+
 def register_compression_alg(alg, compressor, decompressor, after_auth):
     """Register a compression algorithm"""
 
@@ -44,10 +45,12 @@ def register_compression_alg(alg, compressor, decompressor, after_auth):
     _cmp_compressors[alg] = compressor
     _cmp_decompressors[alg] = decompressor
 
+
 def get_compression_algs():
     """Return a list of available compression algorithms"""
 
     return _cmp_algs
+
 
 def get_compression_params(alg):
     """Get parameters of a compression algorithm
@@ -59,6 +62,7 @@ def get_compression_params(alg):
 
     return _cmp_params[alg]
 
+
 def get_compressor(alg):
     """Return an instance of a compressor
 
@@ -67,6 +71,7 @@ def get_compressor(alg):
     """
 
     return _cmp_compressors[alg]()
+
 
 def get_decompressor(alg):
     """Return an instance of a decompressor
@@ -77,9 +82,11 @@ def get_decompressor(alg):
 
     return _cmp_decompressors[alg]()
 
+# pylint: disable=bad-whitespace
+
 register_compression_alg(b'zlib@openssh.com',
                          _ZLibCompress, zlib.decompressobj, True)
 register_compression_alg(b'zlib',
                          _ZLibCompress, zlib.decompressobj, False)
 register_compression_alg(b'none',
-                         _None,         _None,              False)
+                         _none,         _none,              False)

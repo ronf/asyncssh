@@ -12,12 +12,12 @@
 
 """Miscellaneous utility classes and functions"""
 
-import ipaddress, socket
+import ipaddress
+import socket
 
 from random import SystemRandom
 
-from .constants import *
-from .logging import *
+from .constants import DEFAULT_LANG
 
 
 # Define a version of randrange which is based on SystemRandom(), so that
@@ -25,13 +25,17 @@ from .logging import *
 _random = SystemRandom()
 randrange = _random.randrange
 
+
 def all_ints(seq):
     """Return if a sequence contains all integers"""
 
     return all(isinstance(i, int) for i in seq)
 
+
 def mod_inverse(x, m):
     """Compute the modular inverse (x^-1) modulo m"""
+
+    # pylint: disable=invalid-name
 
     a, b, c, d = m, x % m, 0, 1
 
@@ -43,6 +47,7 @@ def mod_inverse(x, m):
         return c if c >= 0 else c + m
     else:
         raise ValueError('%d has no inverse mod %d' % (x, m))
+
 
 def _normalize_scoped_ip(addr):
     """Normalize scoped IP address
@@ -57,15 +62,17 @@ def _normalize_scoped_ip(addr):
     for family in (socket.AF_INET, socket.AF_INET6):
         try:
             return socket.inet_ntop(family, socket.inet_pton(family, addr))
-        except:
+        except (ValueError, socket.error):
             pass
 
     return addr
+
 
 def ip_address(addr):
     """Wrapper for ipaddress.ip_address which supports scoped addresses"""
 
     return ipaddress.ip_address(_normalize_scoped_ip(addr))
+
 
 def ip_network(addr):
     """Wrapper for ipaddress.ip_network which supports scoped addresses"""
@@ -82,13 +89,11 @@ def ip_network(addr):
 class Error(Exception):
     """General SSH error"""
 
-    def __init__(self, code, reason, lang=DEFAULT_LANG):
+    def __init__(self, errtype, code, reason, lang):
+        super().__init__('%s Error: %s' % (errtype, reason))
         self.code = code
         self.reason = reason
         self.lang = lang
-
-    def __str__(self):
-        return 'SSH Error: %s' % self.reason
 
 
 class DisconnectError(Error):
@@ -108,8 +113,8 @@ class DisconnectError(Error):
 
     """
 
-    def __str__(self):
-        return 'Disconnect Error: %s' % self.reason
+    def __init__(self, code, reason, lang=DEFAULT_LANG):
+        super().__init__('Disconnect', code, reason, lang)
 
 
 class ChannelOpenError(Error):
@@ -128,8 +133,8 @@ class ChannelOpenError(Error):
 
     """
 
-    def __str__(self):
-        return 'Channel Open Error: %s' % self.reason
+    def __init__(self, code, reason, lang=DEFAULT_LANG):
+        super().__init__('Channel Open', code, reason, lang)
 
 
 class BreakReceived(Exception):
@@ -144,10 +149,8 @@ class BreakReceived(Exception):
     """
 
     def __init__(self, msec):
+        super().__init__('Break for %s msec' % msec)
         self.msec = msec
-
-    def __str__(self):
-        return 'Break for %s msec' % self.msec
 
 
 class SignalReceived(Exception):
@@ -162,10 +165,8 @@ class SignalReceived(Exception):
     """
 
     def __init__(self, signal):
+        super().__init__('Signal: %s' % signal)
         self.signal = signal
-
-    def __str__(self):
-        return 'Signal: %s' % self.signal
 
 
 class TerminalSizeChanged(Exception):
@@ -186,11 +187,9 @@ class TerminalSizeChanged(Exception):
     """
 
     def __init__(self, width, height, pixwidth, pixheight):
+        super().__init__('Terminal size change: (%s, %s, %s, %s)' %
+                         (width, height, pixwidth, pixheight))
         self.width = width
         self.height = height
         self.pixwidth = pixwidth
         self.pixheight = pixheight
-
-    def __str__(self):
-        return 'Terminal size change: (%s, %s, %s, %s)' % \
-                   (self.width, self.height, self.pixwidth, self.pixheight)

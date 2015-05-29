@@ -12,21 +12,22 @@
 
 """A shim around PyCA for RSA public and private keys"""
 
-from asyncssh.asn1 import der_decode
-
 from cryptography.exceptions import InvalidSignature
 
 from cryptography.hazmat.backends import default_backend
 
 from cryptography.hazmat.primitives.asymmetric.padding import PKCS1v15
 
-from cryptography.hazmat.primitives.hashes import SHA1 
+from cryptography.hazmat.primitives.hashes import SHA1
 
 from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicNumbers
 from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateNumbers
 from cryptography.hazmat.primitives.asymmetric.rsa import rsa_crt_dmp1
 from cryptography.hazmat.primitives.asymmetric.rsa import rsa_crt_dmq1
 from cryptography.hazmat.primitives.asymmetric.rsa import rsa_crt_iqmp
+
+# Short variable names are used here, matching names in the spec
+# pylint: disable=invalid-name
 
 
 class RSAPrivateKey:

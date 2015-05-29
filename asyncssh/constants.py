@@ -12,6 +12,8 @@
 
 """SSH constants"""
 
+# pylint: disable=bad-whitespace
+
 # Default language for error messages
 DEFAULT_LANG                        = 'en-US'
 

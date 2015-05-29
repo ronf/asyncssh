@@ -12,19 +12,23 @@
 
 """A shim around PyCrypto for symmetric encryption"""
 
-from .. import register_cipher
+from ..cipher import register_cipher
 
 from Crypto.Cipher import AES, ARC2, ARC4, Blowfish, CAST, DES, DES3
 from Crypto.Util import Counter
 
-_ciphers = { 'aes':      (AES,      { 'cbc': AES.MODE_CBC,
-                                      'ctr': AES.MODE_CTR }),
-             'arc2':     (ARC2,     { 'cbc': ARC2.MODE_CBC }),
-             'arc4':     (ARC4,     { None: None }),
-             'blowfish': (Blowfish, { 'cbc': Blowfish.MODE_CBC }),
-             'cast':     (CAST,     { 'cbc': CAST.MODE_CBC }),
-             'des':      (DES,      { 'cbc': DES.MODE_CBC }),
-             'des3':     (DES3,     { 'cbc': DES3.MODE_CBC }) }
+# pylint: disable=bad-whitespace
+
+_ciphers = {'aes':      (AES,      {'cbc': AES.MODE_CBC,
+                                    'ctr': AES.MODE_CTR}),
+            'arc2':     (ARC2,     {'cbc': ARC2.MODE_CBC}),
+            'arc4':     (ARC4,     {None: None}),
+            'blowfish': (Blowfish, {'cbc': Blowfish.MODE_CBC}),
+            'cast':     (CAST,     {'cbc': CAST.MODE_CBC}),
+            'des':      (DES,      {'cbc': DES.MODE_CBC}),
+            'des3':     (DES3,     {'cbc': DES3.MODE_CBC})}
+
+# pylint: enable=bad-whitespace
 
 
 class CipherFactory:
@@ -34,6 +38,7 @@ class CipherFactory:
 
         self.iv_size = cipher.block_size
         self.block_size = cipher.block_size
+        self.mode_name = None                   # set by register_cipher()
 
     def new(self, key, iv=None, initial_bytes=0, **kwargs):
         if self.mode_name == 'ctr':
@@ -52,6 +57,7 @@ class CipherFactory:
         return cipher
 
 
-for cipher_name, (cipher, modes) in _ciphers.items():
-    for mode_name, mode in modes.items():
-        register_cipher(cipher_name, mode_name, CipherFactory(cipher, mode))
+for _cipher_name, (_cipher, _modes) in _ciphers.items():
+    for _mode_name, _mode in _modes.items():
+        register_cipher(_cipher_name, _mode_name,
+                        CipherFactory(_cipher, _mode))

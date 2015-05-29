@@ -12,8 +12,7 @@
 
 """SSH key exchange handlers"""
 
-from .logging import *
-from .packet import *
+from .packet import MPInt, SSHPacketHandler
 
 _kex_algs = []
 _kex_handlers = {}
@@ -22,36 +21,38 @@ _kex_handlers = {}
 class Kex(SSHPacketHandler):
     """Parent class for key exchange handlers"""
 
-    def __init__(self, alg, conn, hash):
+    def __init__(self, alg, conn, hash_alg):
         self.algorithm = alg
 
         self._conn = conn
-        self._hash = hash
+        self._hash_alg = hash_alg
 
     def compute_key(self, k, h, x, session_id, keylen):
         """Compute keys from output of key exchange"""
 
         key = b''
         while len(key) < keylen:
-            hash = self._hash()
-            hash.update(MPInt(k))
-            hash.update(h)
-            hash.update(key if key else x + session_id)
-            key += hash.digest()
+            hash_obj = self._hash_alg()
+            hash_obj.update(MPInt(k))
+            hash_obj.update(h)
+            hash_obj.update(key if key else x + session_id)
+            key += hash_obj.digest()
 
         return key[:keylen]
 
 
-def register_kex_alg(alg, handler, hash, *args):
+def register_kex_alg(alg, handler, hash_alg, *args):
     """Register a key exchange algorithm"""
 
     _kex_algs.append(alg)
-    _kex_handlers[alg] = (handler, hash, args)
+    _kex_handlers[alg] = (handler, hash_alg, args)
+
 
 def get_kex_algs():
     """Return a list of available key exchange algorithms"""
 
     return _kex_algs
+
 
 def get_kex(conn, alg):
     """Return a key exchange handler
@@ -61,5 +62,5 @@ def get_kex(conn, alg):
 
     """
 
-    handler, hash, args = _kex_handlers[alg]
-    return handler(alg, conn, hash, *args)
+    handler, hash_alg, args = _kex_handlers[alg]
+    return handler(alg, conn, hash_alg, *args)

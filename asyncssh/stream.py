@@ -14,11 +14,9 @@
 
 import asyncio
 
-from .channel import *
-from .constants import *
-from .logging import *
-from .misc import *
-from .sftp import *
+from .constants import EXTENDED_DATA_STDERR
+from .misc import BreakReceived, SignalReceived, TerminalSizeChanged
+from .session import SSHClientSession, SSHServerSession, SSHTCPSession
 
 
 class SSHReader:
@@ -102,8 +100,8 @@ class SSHReader:
 
         """
 
-        return self._session._eof_received and \
-               not self._session._recv_buf[self._datatype]
+        return (self._session._eof_received and
+                not self._session._recv_buf[self._datatype])
 
 
 class SSHWriter:
@@ -199,12 +197,13 @@ class SSHStreamSession:
 
     def __init__(self):
         self._chan = None
+        self._limit = None
         self._exception = None
         self._eof_received = False
         self._connection_lost = False
-        self._recv_buf = { None: [] }
+        self._recv_buf = {None: []}
         self._recv_buf_len = 0
-        self._read_waiter = { None: None }
+        self._read_waiter = {None: None}
         self._write_paused = False
         self._drain_waiters = []
 
@@ -366,7 +365,8 @@ class SSHStreamSession:
             if not exc and self._write_paused:
                 exc = BrokenPipeError()
 
-            raise exc
+            if exc:
+                raise exc   # pylint: disable=raising-bad-type
 
 
 class SSHClientStreamSession(SSHStreamSession, SSHClientSession):

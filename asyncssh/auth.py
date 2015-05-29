@@ -12,13 +12,13 @@
 
 """SSH authentication handlers"""
 
-from .constants import *
-from .logging import *
-from .misc import *
-from .packet import *
-from .public_key import *
-from .saslprep import *
+from .constants import DISC_PROTOCOL_ERROR
+from .misc import DisconnectError
+from .packet import Boolean, Byte, String, UInt32, SSHPacketHandler
+from .saslprep import saslprep, SASLPrepError
 
+
+# pylint: disable=bad-whitespace
 
 # SSH message values for public key auth
 MSG_USERAUTH_PK_OK            = 60
@@ -29,6 +29,8 @@ MSG_USERAUTH_PASSWD_CHANGEREQ = 60
 # SSH message values for 'keyboard-interactive' auth
 MSG_USERAUTH_INFO_REQUEST     = 60
 MSG_USERAUTH_INFO_RESPONSE    = 61
+
+# pylint: enable=bad-whitespace
 
 _auth_methods = []
 _client_auth_handlers = {}
@@ -83,7 +85,8 @@ class _ClientPublicKeyAuth(_ClientAuth):
     def __init__(self, conn, method):
         super().__init__(conn, method)
 
-        self._alg, self._key, self._key_data = conn._public_key_auth_requested()
+        self._alg, self._key, self._key_data = \
+            conn._public_key_auth_requested()
         if self._alg is None:
             raise _SSHAuthError()
 
@@ -91,6 +94,8 @@ class _ClientPublicKeyAuth(_ClientAuth):
                           String(self._key_data))
 
     def _process_public_key_ok(self, pkttype, packet):
+        # pylint: disable=unused-argument
+
         algorithm = packet.get_string()
         key_data = packet.get_string()
         packet.check_end()
@@ -125,6 +130,8 @@ class _ClientKbdIntAuth(_ClientAuth):
         self.send_request(String(''), String(submethods))
 
     def _process_info_request(self, pkttype, packet):
+        # pylint: disable=unused-argument
+
         name = packet.get_string()
         instruction = packet.get_string()
         lang = packet.get_string()
@@ -139,7 +146,7 @@ class _ClientKbdIntAuth(_ClientAuth):
 
         num_prompts = packet.get_uint32()
         prompts = []
-        for i in range(num_prompts):
+        for _ in range(num_prompts):
             prompt = packet.get_string()
             echo = packet.get_boolean()
 
@@ -196,6 +203,8 @@ class _ClientPasswordAuth(_ClientAuth):
             self._conn._password_change_failed()
 
     def _process_password_change(self, pkttype, packet):
+        # pylint: disable=unused-argument
+
         prompt = packet.get_string()
         lang = packet.get_string()
 
@@ -240,15 +249,15 @@ class _ServerAuth(SSHPacketHandler):
         self._conn._send_userauth_success()
 
     def verify_signed_request(self, key, packet):
-            try:
-                msg = packet.get_consumed_payload()
-                signature = packet.get_string()
-                packet.check_end()
+        try:
+            msg = packet.get_consumed_payload()
+            signature = packet.get_string()
+            packet.check_end()
 
-                return key.verify(String(self._conn._session_id) + msg,
-                                  signature)
-            except DisconnectError:
-                return False
+            return key.verify(String(self._conn._session_id) + msg,
+                              signature)
+        except DisconnectError:
+            return False
 
 
 class _ServerNullAuth(_ServerAuth):
@@ -256,6 +265,7 @@ class _ServerNullAuth(_ServerAuth):
 
     @classmethod
     def supported(cls, conn):
+        # pylint: disable=unused-argument
         return False
 
     def __init__(self, conn, username, packet):
@@ -327,7 +337,7 @@ class _ServerKbdIntAuth(_ServerAuth):
 
             num_prompts = len(prompts)
             prompts = (String(prompt) + Boolean(echo)
-                           for prompt, echo in prompts)
+                       for prompt, echo in prompts)
 
             self._conn._send_packet(Byte(MSG_USERAUTH_INFO_REQUEST),
                                     String(name), String(instruction),
@@ -339,9 +349,11 @@ class _ServerKbdIntAuth(_ServerAuth):
             self.send_failure()
 
     def _process_info_response(self, pkttype, packet):
+        # pylint: disable=unused-argument
+
         num_responses = packet.get_uint32()
         responses = []
-        for i in range(num_responses):
+        for _ in range(num_responses):
             response = packet.get_string()
 
             try:
@@ -400,6 +412,7 @@ def register_auth_method(alg, client_handler, server_handler):
     _client_auth_handlers[alg] = client_handler
     _server_auth_handlers[alg] = server_handler
 
+
 def choose_client_auth(conn):
     """Choose the client authentication method to use"""
 
@@ -413,6 +426,7 @@ def choose_client_auth(conn):
 
     return None
 
+
 def get_server_auth_methods(conn):
     """Return a list of supported auth methods"""
 
@@ -424,6 +438,7 @@ def get_server_auth_methods(conn):
 
     return auth_methods
 
+
 def lookup_server_auth(conn, username, method, packet):
     """Look up the server authentication method to use"""
 
@@ -433,6 +448,8 @@ def lookup_server_auth(conn, username, method, packet):
         conn._send_userauth_failure(False)
         return None
 
+# pylint: disable=bad-whitespace
+
 _auth_method_list = (
     (b'none',                 _ClientNullAuth,      _ServerNullAuth),
     (b'publickey',            _ClientPublicKeyAuth, _ServerPublicKeyAuth),
@@ -440,5 +457,7 @@ _auth_method_list = (
     (b'password',             _ClientPasswordAuth,  _ServerPasswordAuth)
 )
 
-for args in _auth_method_list:
-    register_auth_method(*args)
+# pylint: enable=bad-whitespace
+
+for _args in _auth_method_list:
+    register_auth_method(*_args)

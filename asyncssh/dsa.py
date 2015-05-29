@@ -12,12 +12,16 @@
 
 """DSA public key encryption handler"""
 
-from .asn1 import *
-from .crypto import *
-from .logging import *
-from .misc import *
-from .packet import *
-from .public_key import *
+from .asn1 import ObjectIdentifier, der_encode, der_decode
+from .crypto import DSAPrivateKey, DSAPublicKey
+from .misc import all_ints
+from .packet import MPInt, String, SSHPacket
+from .public_key import SSHKey, SSHCertificateV00, SSHCertificateV01
+from .public_key import KeyExportError
+from .public_key import register_public_key_alg, register_certificate_alg
+
+# Short variable names are used here, matching names in the spec
+# pylint: disable=invalid-name
 
 
 class _DSAKey(SSHKey):
@@ -55,7 +59,7 @@ class _DSAKey(SSHKey):
     @classmethod
     def decode_pkcs1_private(cls, key_data):
         if (isinstance(key_data, tuple) and len(key_data) == 6 and
-            all_ints(key_data) and key_data[0] == 0):
+                all_ints(key_data) and key_data[0] == 0):
             return key_data[1:]
         else:
             return None
@@ -63,7 +67,7 @@ class _DSAKey(SSHKey):
     @classmethod
     def decode_pkcs1_public(cls, key_data):
         if (isinstance(key_data, tuple) and len(key_data) == 4 and
-            all_ints(key_data)):
+                all_ints(key_data)):
             y, p, q, g = key_data
             return p, q, g, y
         else:
@@ -73,7 +77,8 @@ class _DSAKey(SSHKey):
     def decode_pkcs8_private(cls, alg_params, data):
         x = der_decode(data)
 
-        if len(alg_params) == 3 and all_ints(alg_params) and isinstance(x, int):
+        if (len(alg_params) == 3 and all_ints(alg_params) and
+                isinstance(x, int)):
             p, q, g = alg_params
             y = pow(g, x, p)
             return p, q, g, y, x
@@ -84,7 +89,8 @@ class _DSAKey(SSHKey):
     def decode_pkcs8_public(cls, alg_params, data):
         y = der_decode(data)
 
-        if len(alg_params) == 3 and all_ints(alg_params) and isinstance(y, int):
+        if (len(alg_params) == 3 and all_ints(alg_params) and
+                isinstance(y, int)):
             p, q, g = alg_params
             return p, q, g, y
         else:
@@ -146,8 +152,9 @@ class _DSAKey(SSHKey):
             raise ValueError('Private key needed for signing')
 
         r, s = self._key.sign(data)
-        return b''.join((String(self.algorithm), String(r.to_bytes(20, 'big') +
-                                                        s.to_bytes(20, 'big'))))
+        return b''.join((String(self.algorithm),
+                         String(r.to_bytes(20, 'big') +
+                                s.to_bytes(20, 'big'))))
 
     def verify(self, data, sig):
         sig = SSHPacket(sig)

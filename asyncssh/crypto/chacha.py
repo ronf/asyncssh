@@ -14,7 +14,7 @@
 
 import ctypes
 
-from .cipher import *
+from .cipher import register_cipher
 
 
 class _Chacha20Poly1305Cipher:
@@ -32,9 +32,12 @@ class _Chacha20Poly1305Cipher:
 
     @classmethod
     def new(cls, key, iv=None, initial_bytes=0):
+        # pylint: disable=unused-argument
         return cls(key)
 
     def _crypt(self, key, data, nonce, ctr=0):
+        # pylint: disable=no-self-use
+
         datalen = len(data)
         result = ctypes.create_string_buffer(datalen)
         datalen = ctypes.c_ulonglong(datalen)

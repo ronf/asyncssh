@@ -14,13 +14,20 @@
 
 from hashlib import sha256, sha384, sha512
 
-from .asn1 import *
-from .kex import *
-from .logging import *
-from .misc import *
-from .packet import *
-from .public_key import *
+from .asn1 import ASN1DecodeError, BitString, ObjectIdentifier, TaggedDERObject
+from .asn1 import der_encode, der_decode
 
+from .constants import DISC_KEY_EXCHANGE_FAILED, DISC_PROTOCOL_ERROR
+
+from .kex import Kex, register_kex_alg
+
+from .misc import DisconnectError, mod_inverse, randrange
+
+from .packet import Byte, MPInt, String, SSHPacket
+
+from .public_key import SSHKey, SSHCertificateV01
+from .public_key import KeyImportError, KeyExportError
+from .public_key import register_public_key_alg, register_certificate_alg
 
 _domain_map = {}
 _domain_oid_map = {}
@@ -29,9 +36,16 @@ _domain_param_map = {}
 # OID for EC prime fields
 PRIME_FIELD = ObjectIdentifier('1.2.840.10045.1.1')
 
+# pylint: disable=bad-whitespace
+
 # SSH KEX ECDH message values
 MSG_KEX_ECDH_INIT  = 30
 MSG_KEX_ECDH_REPLY = 31
+
+# pylint: enable=bad-whitespace
+
+# Short variable names are used here, matching names in the spec
+# pylint: disable=invalid-name
 
 
 class _PrimeCurve:
@@ -51,6 +65,7 @@ class _PrimeCurve:
 
     def __hash__(self):
         return hash((self.p, self.a % self.p, self.b % self.p))
+
 
 class _PrimePoint:
     """A point on an elliptic curve over a prime finite field F(p)"""
@@ -136,7 +151,7 @@ class _PrimePoint:
         """Construct an elliptic curve point from a curve and x, y values"""
 
         if (0 <= x < curve.p and 0 <= y < curve.p and
-            (y*y - (x*x*x + curve.a*x + curve.b)) % curve.p == 0):
+                (y*y - (x*x*x + curve.a*x + curve.b)) % curve.p == 0):
             return cls(curve, x, y)
         else:
             raise ValueError('Point not on curve')
@@ -165,8 +180,8 @@ class _PrimePoint:
             return b'\x00'
         else:
             keylen = self.curve.keylen
-            return b'\x04' + self.x.to_bytes(keylen, 'big') + \
-                             self.y.to_bytes(keylen, 'big')
+            return (b'\x04' + self.x.to_bytes(keylen, 'big') +
+                    self.y.to_bytes(keylen, 'big'))
 
 
 # Define the point "infinity" which exists on all elliptic curves
@@ -176,8 +191,8 @@ _INFINITY = _PrimePoint(None, None, None)
 class _KexECDH(Kex):
     """Handler for elliptic curve Diffie-Hellman key exchange"""
 
-    def __init__(self, alg, conn, hash, G, n):
-        super().__init__(alg, conn, hash)
+    def __init__(self, alg, conn, hash_alg, G, n):
+        super().__init__(alg, conn, hash_alg)
 
         while True:
             self._d = randrange(2, n)
@@ -193,18 +208,20 @@ class _KexECDH(Kex):
             self._Qs = self._Q.encode()
 
     def _compute_hash(self, host_key_data, k):
-        hash = self._hash()
-        hash.update(String(self._conn._client_version))
-        hash.update(String(self._conn._server_version))
-        hash.update(String(self._conn._client_kexinit))
-        hash.update(String(self._conn._server_kexinit))
-        hash.update(String(host_key_data))
-        hash.update(String(self._Qc))
-        hash.update(String(self._Qs))
-        hash.update(MPInt(k))
-        return hash.digest()
+        hash_obj = self._hash_alg()
+        hash_obj.update(String(self._conn._client_version))
+        hash_obj.update(String(self._conn._server_version))
+        hash_obj.update(String(self._conn._client_kexinit))
+        hash_obj.update(String(self._conn._server_kexinit))
+        hash_obj.update(String(host_key_data))
+        hash_obj.update(String(self._Qc))
+        hash_obj.update(String(self._Qs))
+        hash_obj.update(MPInt(k))
+        return hash_obj.digest()
 
     def _process_init(self, pkttype, packet):
+        # pylint: disable=unused-argument
+
         if self._conn.is_client():
             raise DisconnectError(DISC_PROTOCOL_ERROR,
                                   'Unexpected kex init msg')
@@ -227,12 +244,15 @@ class _KexECDH(Kex):
         h = self._compute_hash(host_key_data, k)
         sig = host_key.sign(h)
 
-        self._conn._send_packet(Byte(MSG_KEX_ECDH_REPLY), String(host_key_data),
+        self._conn._send_packet(Byte(MSG_KEX_ECDH_REPLY),
+                                String(host_key_data),
                                 String(self._Qs), String(sig))
 
         self._conn._send_newkeys(k, h)
 
     def _process_reply(self, pkttype, packet):
+        # pylint: disable=unused-argument
+
         if self._conn.is_server():
             raise DisconnectError(DISC_PROTOCOL_ERROR,
                                   'Unexpected kex reply msg')
@@ -274,7 +294,7 @@ class _ECKey(SSHKey):
     pkcs8_oid = ObjectIdentifier('1.2.840.10045.2.1')
 
     def __init__(self, domain, private_key, public_key):
-        algorithm, alg_id, alg_oid, hash, G, n = domain
+        algorithm, alg_id, alg_oid, hash_alg, G, n = domain
 
         d = None
         Q = None
@@ -285,7 +305,7 @@ class _ECKey(SSHKey):
             else:
                 d = private_key
 
-            if not 0 < d <  n:
+            if not 0 < d < n:
                 raise KeyImportError('Invalid private key')
 
         if public_key:
@@ -309,7 +329,7 @@ class _ECKey(SSHKey):
         self.algorithm = algorithm
         self._alg_id = alg_id
         self._alg_oid = alg_oid
-        self._hash = hash
+        self._hash_alg = hash_alg
         self._G = G
         self._n = n
         self._d = d
@@ -363,17 +383,17 @@ class _ECKey(SSHKey):
     @classmethod
     def decode_pkcs1_private(cls, key_data):
         if (isinstance(key_data, tuple) and len(key_data) > 2 and
-            key_data[0] == 1 and isinstance(key_data[1], bytes) and
-            isinstance(key_data[2], TaggedDERObject) and
-            key_data[2].tag == 0):
+                key_data[0] == 1 and isinstance(key_data[1], bytes) and
+                isinstance(key_data[2], TaggedDERObject) and
+                key_data[2].tag == 0):
             alg_params = key_data[2].value
             private_key = key_data[1]
 
             if (len(key_data) > 3 and
-                isinstance(key_data[3], TaggedDERObject) and
-                key_data[3].tag == 1 and
-                isinstance(key_data[3].value, BitString) and
-                key_data[3].value.unused == 0):
+                    isinstance(key_data[3], TaggedDERObject) and
+                    key_data[3].tag == 1 and
+                    isinstance(key_data[3].value, BitString) and
+                    key_data[3].value.unused == 0):
                 public_key = key_data[3].value.value
             else:
                 public_key = None
@@ -386,6 +406,7 @@ class _ECKey(SSHKey):
 
     @classmethod
     def decode_pkcs1_public(cls, key_data):
+        # pylint: disable=unused-argument
         raise KeyImportError('PKCS#1 not supported for EC public keys')
 
     @classmethod
@@ -396,13 +417,13 @@ class _ECKey(SSHKey):
             key_data = None
 
         if (isinstance(key_data, tuple) and len(key_data) > 1 and
-            key_data[0] == 1 and isinstance(key_data[1], bytes)):
+                key_data[0] == 1 and isinstance(key_data[1], bytes)):
             private_key = key_data[1]
 
             if (isinstance(key_data[2], TaggedDERObject) and
-                key_data[2].tag == 1 and
-                isinstance(key_data[2].value, BitString)
-                and key_data[2].value.unused == 0):
+                    key_data[2].tag == 1 and
+                    isinstance(key_data[2].value, BitString) and
+                    key_data[2].value.unused == 0):
                 public_key = key_data[2].value.value
             else:
                 public_key = None
@@ -426,24 +447,26 @@ class _ECKey(SSHKey):
 
     @classmethod
     def decode_ssh_private(cls, packet):
-        id = packet.get_string()
+        curve_id = packet.get_string()
         public_key = packet.get_string()
         private_key = packet.get_mpint()
 
-        domain = _domain_map.get(id)
+        domain = _domain_map.get(curve_id)
         if not domain:
-            raise KeyImportError('Unknown curve name: %s' % id.decode('ascii'))
+            raise KeyImportError('Unknown curve name: %s' %
+                                 curve_id.decode('ascii'))
 
         return domain, private_key, public_key
 
     @classmethod
     def decode_ssh_public(cls, packet):
-        id = packet.get_string()
+        curve_id = packet.get_string()
         public_key = packet.get_string()
 
-        domain = _domain_map.get(id)
+        domain = _domain_map.get(curve_id)
         if not domain:
-            raise KeyImportError('Unknown curve name: %s' % id.decode('ascii'))
+            raise KeyImportError('Unknown curve name: %s' %
+                                 curve_id.decode('ascii'))
 
         return domain, public_key
 
@@ -491,7 +514,7 @@ class _ECKey(SSHKey):
         while True:
             n = self._n
             k = randrange(2, n)
-            e = int.from_bytes(self._hash(data).digest(), 'big')
+            e = int.from_bytes(self._hash_alg(data).digest(), 'big')
 
             try:
                 r = (k * self._G).x % n
@@ -519,7 +542,7 @@ class _ECKey(SSHKey):
         s = sig.get_mpint()
 
         n = self._n
-        e = int.from_bytes(self._hash(data).digest(), 'big')
+        e = int.from_bytes(self._hash_alg(data).digest(), 'big')
 
         try:
             s1 = mod_inverse(s, n)
@@ -531,7 +554,7 @@ class _ECKey(SSHKey):
             return False
 
 
-def register_prime_domain(id, oid, hash, p, a, b, Gx, Gy, n):
+def register_prime_domain(curve_id, oid, hash_alg, p, a, b, Gx, Gy, n):
     """Register an elliptic curve prime domain
 
        This function registers an elliptic curve prime domain by
@@ -550,18 +573,20 @@ def register_prime_domain(id, oid, hash, p, a, b, Gx, Gy, n):
     G = _PrimePoint.construct(_PrimeCurve(p, a, b), Gx, Gy)
 
     if n * G:
-        raise ValueError('Invalid order for curve %s' % id.decode('ascii'))
+        raise ValueError('Invalid order for curve %s' %
+                         curve_id.decode('ascii'))
 
     pb = p % n
     for b in range(100):
         if pb == 1:
-            raise ValueError('Invalid order for curve %s' % id.decode('ascii'))
+            raise ValueError('Invalid prime for curve %s' %
+                             curve_id.decode('ascii'))
 
         pb = (pb * p) % n
 
-    algorithm = b'ecdsa-sha2-' + id
-    domain = (algorithm, id, oid, hash, G, n)
-    _domain_map[id] = domain
+    algorithm = b'ecdsa-sha2-' + curve_id
+    domain = (algorithm, curve_id, oid, hash_alg, G, n)
+    _domain_map[curve_id] = domain
     _domain_oid_map[oid] = domain
     _domain_param_map[(G, n)] = domain
 
@@ -570,7 +595,9 @@ def register_prime_domain(id, oid, hash, p, a, b, Gx, Gy, n):
     register_certificate_alg(algorithm + b'-cert-v01@openssh.com',
                              _ECKey, SSHCertificateV01)
 
-    register_kex_alg(b'ecdh-sha2-' + id, _KexECDH, hash, G, n)
+    register_kex_alg(b'ecdh-sha2-' + curve_id, _KexECDH, hash_alg, G, n)
+
+# pylint: disable=line-too-long
 
 register_prime_domain(b'nistp521', '1.3.132.0.35', sha512,
                       6864797660130609714981900799081393217269435300143305409394463459185543183397656052122559640661454554977296311391480858037121987999716643812574028291115057151,
@@ -580,7 +607,7 @@ register_prime_domain(b'nistp521', '1.3.132.0.35', sha512,
                       0x11839296a789a3bc0045c8a5fb42c7d1bd998f54449579b446817afbd17273e662c97ee72995ef42640c550b9013fad0761353c7086a272c24088be94769fd16650,
                       6864797660130609714981900799081393217269435300143305409394463459185543183397655394245057746333217197532963996371363321113864768612440380340372808892707005449)
 
-register_prime_domain(b'nistp384', '1.3.132.0.34',sha384,
+register_prime_domain(b'nistp384', '1.3.132.0.34', sha384,
                       39402006196394479212279040100143613805079739270465446667948293404245721771496870329047266088258938001861606973112319,
                       -3,
                       0xb3312fa7e23ee7e4988e056be3f82d19181d9c6efe8141120314088f5013875ac656398d8a2ed19d2a85c8edd3ec2aef,

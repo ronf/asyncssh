@@ -14,23 +14,26 @@
 
 from hashlib import sha256
 
-from .kex import *
-from .logging import *
-from .misc import *
-from .packet import *
-from .public_key import *
+from .constants import DISC_KEY_EXCHANGE_FAILED, DISC_PROTOCOL_ERROR
+from .kex import Kex, register_kex_alg
+from .misc import DisconnectError
+from .packet import Byte, MPInt, String
 
+
+# pylint: disable=bad-whitespace
 
 # SSH KEX ECDH message values (also used by Curve25519)
 MSG_KEX_ECDH_INIT  = 30
 MSG_KEX_ECDH_REPLY = 31
 
+# pylint: enable=bad-whitespace
+
 
 class _KexCurve25519DH(Kex):
     """Handler for Curve25519 Diffie-Hellman key exchange"""
 
-    def __init__(self, alg, conn, hash):
-        super().__init__(alg, conn, hash)
+    def __init__(self, alg, conn, hash_alg):
+        super().__init__(alg, conn, hash_alg)
 
         self._priv = Curve25519DH()
         pub = self._priv.get_public()
@@ -42,18 +45,20 @@ class _KexCurve25519DH(Kex):
             self._server_pub = pub
 
     def _compute_hash(self, host_key_data, k):
-        hash = self._hash()
-        hash.update(String(self._conn._client_version))
-        hash.update(String(self._conn._server_version))
-        hash.update(String(self._conn._client_kexinit))
-        hash.update(String(self._conn._server_kexinit))
-        hash.update(String(host_key_data))
-        hash.update(String(self._client_pub))
-        hash.update(String(self._server_pub))
-        hash.update(MPInt(k))
-        return hash.digest()
+        hash_obj = self._hash_alg()
+        hash_obj.update(String(self._conn._client_version))
+        hash_obj.update(String(self._conn._server_version))
+        hash_obj.update(String(self._conn._client_kexinit))
+        hash_obj.update(String(self._conn._server_kexinit))
+        hash_obj.update(String(host_key_data))
+        hash_obj.update(String(self._client_pub))
+        hash_obj.update(String(self._server_pub))
+        hash_obj.update(MPInt(k))
+        return hash_obj.digest()
 
     def _process_init(self, pkttype, packet):
+        # pylint: disable=unused-argument
+
         if self._conn.is_client():
             raise DisconnectError(DISC_PROTOCOL_ERROR,
                                   'Unexpected kex init msg')
@@ -64,8 +69,8 @@ class _KexCurve25519DH(Kex):
         try:
             shared = self._priv.get_shared(self._client_pub)
         except AssertionError:
-                raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                      'Invalid kex init msg') from None
+            raise DisconnectError(DISC_PROTOCOL_ERROR,
+                                  'Invalid kex init msg') from None
 
         host_key, host_key_data = self._conn._get_server_host_key()
 
@@ -73,12 +78,16 @@ class _KexCurve25519DH(Kex):
         h = self._compute_hash(host_key_data, k)
         sig = host_key.sign(h)
 
-        self._conn._send_packet(Byte(MSG_KEX_ECDH_REPLY), String(host_key_data),
-                                String(self._server_pub), String(sig))
+        self._conn._send_packet(Byte(MSG_KEX_ECDH_REPLY),
+                                String(host_key_data),
+                                String(self._server_pub),
+                                String(sig))
 
         self._conn._send_newkeys(k, h)
 
     def _process_reply(self, pkttype, packet):
+        # pylint: disable=unused-argument
+
         if self._conn.is_server():
             raise DisconnectError(DISC_PROTOCOL_ERROR,
                                   'Unexpected kex reply msg')
@@ -91,8 +100,8 @@ class _KexCurve25519DH(Kex):
         try:
             shared = self._priv.get_shared(self._server_pub)
         except AssertionError:
-                raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                      'Invalid kex reply msg') from None
+            raise DisconnectError(DISC_PROTOCOL_ERROR,
+                                  'Invalid kex reply msg') from None
 
         host_key = self._conn._validate_server_host_key(host_key_data)
 
@@ -111,7 +120,7 @@ class _KexCurve25519DH(Kex):
 
 
 try:
-    from .crypto.curve25519 import Curve25519DH
+    from .crypto import Curve25519DH
 except ImportError:
     pass
 else:

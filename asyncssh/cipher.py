@@ -12,13 +12,13 @@
 
 """Symmetric key encryption handlers"""
 
-from .crypto import *
-from .logging import *
+from .crypto import lookup_cipher
 
 
 _enc_algs = []
 _enc_params = {}
 _enc_ciphers = {}
+
 
 def register_encryption_alg(alg, cipher_name, mode_name, key_size,
                             initial_bytes):
@@ -31,10 +31,12 @@ def register_encryption_alg(alg, cipher_name, mode_name, key_size,
                             cipher.block_size, cipher.mode_name)
         _enc_ciphers[alg] = (cipher, initial_bytes)
 
+
 def get_encryption_algs():
     """Return a list of available encryption algorithms"""
 
     return _enc_algs
+
 
 def get_encryption_params(alg):
     """Get parameters of an encryption algorithm
@@ -46,6 +48,7 @@ def get_encryption_params(alg):
 
     return _enc_params[alg]
 
+
 def get_cipher(alg, key, iv=None):
     """Return an instance of a cipher
 
@@ -56,6 +59,9 @@ def get_cipher(alg, key, iv=None):
 
     cipher, initial_bytes = _enc_ciphers[alg]
     return cipher.new(key, iv, initial_bytes)
+
+
+# pylint: disable=bad-whitespace
 
 register_encryption_alg(b'chacha20-poly1305@openssh.com', 'chacha20-poly1305',
                         'chacha', 64, 0)

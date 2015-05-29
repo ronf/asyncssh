@@ -12,9 +12,8 @@
 
 """SSH packet encoding and decoding functions"""
 
-from .constants import *
-from .logging import *
-from .misc import *
+from .constants import DISC_PROTOCOL_ERROR
+from .misc import DisconnectError
 
 
 def Byte(value):
@@ -22,20 +21,24 @@ def Byte(value):
 
     return bytes((value,))
 
+
 def Boolean(value):
     """Encode a boolean value"""
 
     return Byte(bool(value))
+
 
 def UInt32(value):
     """Encode a 32-bit integer value"""
 
     return value.to_bytes(4, 'big')
 
+
 def UInt64(value):
     """Encode a 64-bit integer value"""
 
     return value.to_bytes(8, 'big')
+
 
 def String(value):
     """Encode a UTF-8 string value"""
@@ -45,12 +48,14 @@ def String(value):
 
     return len(value).to_bytes(4, 'big') + value
 
+
 def MPInt(value):
     """Encode a multiple precision integer value"""
 
     l = value.bit_length()
-    l = l // 8 + 1 if  value != 0 and l % 8 == 0 else (l + 7) // 8
+    l = l // 8 + 1 if value != 0 and l % 8 == 0 else (l + 7) // 8
     return l.to_bytes(4, 'big') + value.to_bytes(l, 'big', signed=True)
+
 
 def NameList(value):
     """Encode a comma-separated list of byte strings"""

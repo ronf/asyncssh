@@ -14,13 +14,13 @@
 
 from hashlib import sha1, sha256
 
-from .constants import *
-from .kex import *
-from .logging import *
-from .misc import *
-from .packet import *
-from .public_key import *
+from .constants import DISC_KEY_EXCHANGE_FAILED, DISC_PROTOCOL_ERROR
+from .kex import Kex, register_kex_alg
+from .misc import DisconnectError, randrange
+from .packet import Byte, MPInt, String, UInt32
 
+
+# pylint: disable=bad-whitespace,line-too-long
 
 # SSH KEX DH message values
 MSG_KEXDH_INIT  = 30
@@ -46,19 +46,30 @@ _group1_p = 0xffffffffffffffffc90fdaa22168c234c4c6628b80dc1cd129024e088a67cc7402
 _group14_g = 2
 _group14_p = 0xffffffffffffffffc90fdaa22168c234c4c6628b80dc1cd129024e088a67cc74020bbea63b139b22514a08798e3404ddef9519b3cd3a431b302b0a6df25f14374fe1356d6d51c245e485b576625e7ec6f44c42e9a637ed6b0bff5cb6f406b7edee386bfb5a899fa5ae9f24117c4b1fe649286651ece45b3dc2007cb8a163bf0598da48361c55d39a69163fa8fd24cf5f83655d23dca3ad961c62f356208552bb9ed529077096966d670c354e4abc9804f1746c08ca18217c32905e462e36ce3be39e772c180e86039b2783a2ec07a28fb5c55df06f4c52c9de2bcbf6955817183995497cea956ae515d2261898fa051015728e5a8aacaa68ffffffffffffffff
 
+# pylint: enable=bad-whitespace,line-too-long
 
-class _KexDH(Kex):
-    """Handler for Diffie-Hellman key exchange"""
+# Short variable names are used here, matching names in the spec
+# pylint: disable=invalid-name
 
-    def __init__(self, alg, conn, hash, g, p):
-        super().__init__(alg, conn, hash)
 
-        self._g = g
-        self._p = p
-        self._q = (p - 1) // 2
+class _KexDHBase(Kex):
+    """Abstract base class for Diffie-Hellman key exchange"""
 
-        if conn.is_client():
-            self._send_init(MSG_KEXDH_INIT)
+    _replytype = None
+
+    def __init__(self, alg, conn, hash_alg):
+        super().__init__(alg, conn, hash_alg)
+
+        self._g = None
+        self._p = None
+        self._q = None
+        self._x = None
+        self._e = None
+        self._f = None
+
+    def _compute_hash(self, host_key_data, k):
+        # Provided by subclass
+        raise NotImplementedError
 
     def _send_init(self, pkttype):
         self._x = randrange(2, self._q)
@@ -83,7 +94,7 @@ class _KexDH(Kex):
         h = self._compute_hash(host_key_data, k)
         sig = host_key.sign(h)
 
-        self._conn._send_packet(Byte(pkttype),String(host_key_data),
+        self._conn._send_packet(Byte(pkttype), String(host_key_data),
                                 MPInt(self._f), String(sig))
 
         self._conn._send_newkeys(k, h)
@@ -106,19 +117,9 @@ class _KexDH(Kex):
 
         self._conn._send_newkeys(k, h)
 
-    def _compute_hash(self, host_key_data, k):
-        hash = self._hash()
-        hash.update(String(self._conn._client_version))
-        hash.update(String(self._conn._server_version))
-        hash.update(String(self._conn._client_kexinit))
-        hash.update(String(self._conn._server_kexinit))
-        hash.update(String(host_key_data))
-        hash.update(MPInt(self._e))
-        hash.update(MPInt(self._f))
-        hash.update(MPInt(k))
-        return hash.digest()
-
     def _process_init(self, pkttype, packet):
+        # pylint: disable=unused-argument
+
         if self._conn.is_client() or not self._p:
             raise DisconnectError(DISC_PROTOCOL_ERROR,
                                   'Unexpected kex init msg')
@@ -126,10 +127,12 @@ class _KexDH(Kex):
         self._e = packet.get_mpint()
         packet.check_end()
 
-        self._send_reply(MSG_KEXDH_REPLY)
+        self._send_reply(self._replytype)
 
     def _process_reply(self, pkttype, packet):
-        if self._conn.is_server():
+        # pylint: disable=unused-argument
+
+        if self._conn.is_server() or not self._p:
             raise DisconnectError(DISC_PROTOCOL_ERROR,
                                   'Unexpected kex reply msg')
 
@@ -140,41 +143,69 @@ class _KexDH(Kex):
 
         self._verify_reply(host_key, sig)
 
+
+class _KexDH(_KexDHBase):
+    """Handler for Diffie-Hellman key exchange"""
+
+    _replytype = MSG_KEXDH_REPLY
+
+    def __init__(self, alg, conn, hash_alg, g, p):
+        super().__init__(alg, conn, hash_alg)
+
+        self._g = g
+        self._p = p
+        self._q = (p - 1) // 2
+
+        if conn.is_client():
+            self._send_init(MSG_KEXDH_INIT)
+
+    def _compute_hash(self, host_key_data, k):
+        hash_obj = self._hash_alg()
+        hash_obj.update(String(self._conn._client_version))
+        hash_obj.update(String(self._conn._server_version))
+        hash_obj.update(String(self._conn._client_kexinit))
+        hash_obj.update(String(self._conn._server_kexinit))
+        hash_obj.update(String(host_key_data))
+        hash_obj.update(MPInt(self._e))
+        hash_obj.update(MPInt(self._f))
+        hash_obj.update(MPInt(k))
+        return hash_obj.digest()
+
     packet_handlers = {
-        MSG_KEXDH_INIT:     _process_init,
-        MSG_KEXDH_REPLY:    _process_reply
+        MSG_KEXDH_INIT:     _KexDHBase._process_init,
+        MSG_KEXDH_REPLY:    _KexDHBase._process_reply
     }
 
 
-class _KexDHGex(_KexDH):
+class _KexDHGex(_KexDHBase):
     """Handler for Diffie-Hellman group exchange"""
 
-    def __init__(self, alg, conn, hash):
-        Kex.__init__(self, alg, conn, hash)
+    _replytype = MSG_KEX_DH_GEX_REPLY
 
-        self._p = 0
+    def __init__(self, alg, conn, hash_alg):
+        super().__init__(alg, conn, hash_alg)
 
         if conn.is_client():
-            self._request = UInt32(KEX_DH_GEX_MIN_SIZE) + \
-                            UInt32(KEX_DH_GEX_PREFERRED_SIZE) + \
-                            UInt32(KEX_DH_GEX_MAX_SIZE)
+            self._request = (UInt32(KEX_DH_GEX_MIN_SIZE) +
+                             UInt32(KEX_DH_GEX_PREFERRED_SIZE) +
+                             UInt32(KEX_DH_GEX_MAX_SIZE))
 
             conn._send_packet(Byte(MSG_KEX_DH_GEX_REQUEST), self._request)
 
     def _compute_hash(self, host_key_data, k):
-        hash = self._hash()
-        hash.update(String(self._conn._client_version))
-        hash.update(String(self._conn._server_version))
-        hash.update(String(self._conn._client_kexinit))
-        hash.update(String(self._conn._server_kexinit))
-        hash.update(String(host_key_data))
-        hash.update(self._request)
-        hash.update(MPInt(self._p))
-        hash.update(MPInt(self._g))
-        hash.update(MPInt(self._e))
-        hash.update(MPInt(self._f))
-        hash.update(MPInt(k))
-        return hash.digest()
+        hash_obj = self._hash_alg()
+        hash_obj.update(String(self._conn._client_version))
+        hash_obj.update(String(self._conn._server_version))
+        hash_obj.update(String(self._conn._client_kexinit))
+        hash_obj.update(String(self._conn._server_kexinit))
+        hash_obj.update(String(host_key_data))
+        hash_obj.update(self._request)
+        hash_obj.update(MPInt(self._p))
+        hash_obj.update(MPInt(self._g))
+        hash_obj.update(MPInt(self._e))
+        hash_obj.update(MPInt(self._f))
+        hash_obj.update(MPInt(k))
+        return hash_obj.digest()
 
     def _process_request(self, pkttype, packet):
         if self._conn.is_client():
@@ -183,21 +214,24 @@ class _KexDHGex(_KexDH):
 
         self._request = packet.get_remaining_payload()
 
+        # The min/max sizes will be needed to fully implement DHGex
+        # pylint: disable=unused-variable
+
         if pkttype == MSG_KEX_DH_GEX_REQUEST_OLD:
-            min = KEX_DH_GEX_MIN_SIZE
-            n = packet.get_uint32()
-            max = KEX_DH_GEX_MAX_SIZE
+            min_size = KEX_DH_GEX_MIN_SIZE
+            requested_size = packet.get_uint32()
+            max_size = KEX_DH_GEX_MAX_SIZE
         else:
-            min = packet.get_uint32()
-            n = packet.get_uint32()
-            max = packet.get_uint32()
+            min_size = packet.get_uint32()
+            requested_size = packet.get_uint32()
+            max_size = packet.get_uint32()
 
         packet.check_end()
 
         # TODO: For now, just select between group1 and group14 primes
         #       based on the requested group size
 
-        if n <= 1024:
+        if requested_size <= 1024:
             self._p, self._g = _group1_p, _group1_g
         else:
             self._p, self._g = _group14_p, _group14_g
@@ -208,6 +242,8 @@ class _KexDHGex(_KexDH):
                                 MPInt(self._g))
 
     def _process_group(self, pkttype, packet):
+        # pylint: disable=unused-argument
+
         if self._conn.is_server():
             raise DisconnectError(DISC_PROTOCOL_ERROR,
                                   'Unexpected kex group msg')
@@ -220,36 +256,16 @@ class _KexDHGex(_KexDH):
 
         self._send_init(MSG_KEX_DH_GEX_INIT)
 
-    def _process_init(self, pkttype, packet):
-        if self._conn.is_client() or not self._p:
-            raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Unexpected kex init msg')
-
-        self._e = packet.get_mpint()
-        packet.check_end()
-
-        self._send_reply(MSG_KEX_DH_GEX_REPLY)
-
-    def _process_reply(self, pkttype, packet):
-        if self._conn.is_server() or not self._p:
-            raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Unexpected kex reply msg')
-
-        host_key = packet.get_string()
-        self._f = packet.get_mpint()
-        sig = packet.get_string()
-        packet.check_end()
-
-        self._verify_reply(host_key, sig)
-
     packet_handlers = {
         MSG_KEX_DH_GEX_REQUEST_OLD: _process_request,
         MSG_KEX_DH_GEX_GROUP:       _process_group,
-        MSG_KEX_DH_GEX_INIT:        _process_init,
-        MSG_KEX_DH_GEX_REPLY:       _process_reply,
+        MSG_KEX_DH_GEX_INIT:        _KexDHBase._process_init,
+        MSG_KEX_DH_GEX_REPLY:       _KexDHBase._process_reply,
         MSG_KEX_DH_GEX_REQUEST:     _process_request
     }
 
+
+# pylint: disable=bad-whitespace
 
 register_kex_alg(b'diffie-hellman-group-exchange-sha256', _KexDHGex, sha256)
 register_kex_alg(b'diffie-hellman-group-exchange-sha1',   _KexDHGex, sha1)

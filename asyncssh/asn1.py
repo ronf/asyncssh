@@ -24,8 +24,7 @@
 
 """
 
-from .logging import *
-
+# pylint: disable=bad-whitespace
 
 # ASN.1 object classes
 UNIVERSAL         = 0x00
@@ -45,10 +44,13 @@ UTF8_STRING       = 0x0c
 SEQUENCE          = 0x10
 SET               = 0x11
 
+# pylint: enable=bad-whitespace
+
 _asn1_class = ('Universal', 'Application', 'Context-specific', 'Private')
 
 _der_class_by_tag = {}
 _der_class_by_type = {}
+
 
 def _encode_identifier(asn1_class, constructed, tag):
     """Encode a DER object's identifier"""
@@ -132,8 +134,8 @@ class RawDERObject:
         self.content = content
 
     def __repr__(self):
-        return 'RawDERObject(%s, %s, %r)' % \
-                   (_asn1_class[self.asn1_class], self.tag, self.content)
+        return ('RawDERObject(%s, %s, %r)' %
+                (_asn1_class[self.asn1_class], self.tag, self.content))
 
     def encode_identifier(self):
         return _encode_identifier(self.asn1_class, False, self.tag)
@@ -162,8 +164,8 @@ class TaggedDERObject:
         if self.asn1_class == CONTEXT_SPECIFIC:
             return 'TaggedDERObject(%s, %r)' % (self.tag, self.value)
         else:
-            return 'TaggedDERObject(%s, %s, %r)' % \
-                       (_asn1_class[self.asn1_class], self.tag, self.value)
+            return ('TaggedDERObject(%s, %s, %r)' %
+                    (_asn1_class[self.asn1_class], self.tag, self.value))
 
     def encode_identifier(self):
         return _encode_identifier(self.asn1_class, True, self.tag)
@@ -176,6 +178,7 @@ class TaggedDERObject:
 class _Null:
     @staticmethod
     def encode(value):
+        # pylint: disable=unused-argument
         return b''
 
     @classmethod
@@ -184,7 +187,7 @@ class _Null:
             raise ASN1DecodeError('NULL should not be constructed')
 
         if content:
-            raise ASN1DecodeError('NULL should not have any associated content')
+            raise ASN1DecodeError('NULL should not have associated content')
 
         return None
 
@@ -266,7 +269,9 @@ class _Sequence:
 
         value = []
         while offset < length:
+            # pylint: disable=unpacking-non-sequence
             item, consumed = der_decode(content[offset:], partial_ok=True)
+            # pylint: enable=unpacking-non-sequence
             value.append(item)
             offset += consumed
 
@@ -289,7 +294,9 @@ class _Set:
 
         value = set()
         while offset < length:
+            # pylint: disable=unpacking-non-sequence
             item, consumed = der_decode(content[offset:], partial_ok=True)
+            # pylint: enable=unpacking-non-sequence
             value.add(item)
             offset += consumed
 
@@ -321,7 +328,8 @@ class BitString:
                     raise ASN1EncodeError('Can\'t have unused bits with empty '
                                           'value')
                 elif value[-1] & ((1 << unused) - 1):
-                    raise ASN1EncodeError('Unused bits in value should be zero')
+                    raise ASN1EncodeError('Unused bits in value should be '
+                                          'zero')
         elif isinstance(value, str):
             if unused:
                 raise ASN1EncodeError('Unused bit count should not be set '
@@ -330,12 +338,13 @@ class BitString:
             used = len(value) % 8
             unused = 8 - used if used else 0
             value += unused * '0'
-            value = bytes(int(value[i:i+8], 2) for i in range(0, len(value), 8))
+            value = bytes(int(value[i:i+8], 2)
+                          for i in range(0, len(value), 8))
         else:
             raise ASN1EncodeError('Unexpected type of bit string value')
 
         if named:
-            while value and not (value[-1] & (1 << unused)):
+            while value and not value[-1] & (1 << unused):
                 unused += 1
                 if unused == 8:
                     value = value[:-1]
@@ -383,7 +392,7 @@ class ObjectIdentifier:
     """
 
     def __init__(self, value):
-            self.value = value
+        self.value = value
 
     def __repr__(self):
         return 'ObjectIdentifier(%s)' % self.value
@@ -486,6 +495,7 @@ def der_encode(value):
         len_bytes = bytes((0x80 | len(len_bytes),)) + len_bytes
 
     return identifier + len_bytes + content
+
 
 def der_decode(data, partial_ok=False):
     """Decode a value in DER format

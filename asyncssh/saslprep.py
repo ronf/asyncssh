@@ -19,10 +19,11 @@
 
 """
 
+# The stringprep module should not be flagged as deprecated
+# pylint: disable=deprecated-module
 import stringprep
+# pylint: enable=deprecated-module
 import unicodedata
-
-from .logging import *
 
 
 class SASLPrepError(ValueError):
@@ -48,6 +49,7 @@ def _check_bidi(s):
     if r_and_al_cat and not (stringprep.in_table_d1(s[0]) and
                              stringprep.in_table_d1(s[-1])):
         raise SASLPrepError('RandALCat character not at both start and end')
+
 
 def _stringprep(s, check_unassigned, mapping, normalization, prohibited, bidi):
     """Implement a stringprep profile as defined in RFC 3454"""
@@ -77,6 +79,7 @@ def _stringprep(s, check_unassigned, mapping, normalization, prohibited, bidi):
 
     return s
 
+
 def _map_saslprep(s):
     """Map stringprep table B.1 to nothing and C.1.2 to ASCII space"""
 
@@ -89,6 +92,7 @@ def _map_saslprep(s):
             r.append(c)
 
     return ''.join(r)
+
 
 def saslprep(s):
     """Implement SASLprep profile defined in RFC 4013"""

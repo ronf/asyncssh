@@ -12,9 +12,12 @@
 
 """Ed25519 public key encryption handler"""
 
-from .logging import *
-from .packet import *
-from .public_key import *
+from .packet import String, SSHPacket
+from .public_key import SSHKey, SSHCertificateV01, KeyExportError
+from .public_key import register_public_key_alg, register_certificate_alg
+
+# Short variable names are used here, matching names in the spec
+# pylint: disable=invalid-name
 
 
 class _Ed25519Key(SSHKey):

@@ -12,11 +12,10 @@
 
 """SSH port forwarding handlers"""
 
-import asyncio, socket
+import asyncio
 
-from .channel import *
-from .logging import *
-from .misc import *
+from .misc import DisconnectError
+from .session import SSHTCPSession
 
 
 class SSHPortForwarder(SSHTCPSession):
@@ -72,8 +71,8 @@ class SSHLocalPortForwarder(SSHPortForwarder):
 
     @asyncio.coroutine
     def _forward(self):
-        session_factory = lambda: SSHPortForwarder(self._conn, self._loop,
-                                                   self._peer)
+        def session_factory():
+            return SSHPortForwarder(self._conn, self._loop, self._peer)
 
         orig_host, orig_port = self._transport.get_extra_info('peername')[:2]
 
@@ -83,7 +82,7 @@ class SSHLocalPortForwarder(SSHPortForwarder):
                                       self._dest_port, orig_host, orig_port)
             self._peer._peer = self
             self._transport.resume_reading()
-        except DisconnectError as exc:
+        except DisconnectError:
             self._transport.close()
             self._transport = None
 
@@ -91,6 +90,7 @@ class SSHLocalPortForwarder(SSHPortForwarder):
         super().connection_made(transport)
         transport.pause_reading()
         asyncio.async(self._forward(), loop=self._loop)
+
 
 class SSHRemotePortForwarder(SSHPortForwarder):
     def __init__(self, conn, loop, peer):

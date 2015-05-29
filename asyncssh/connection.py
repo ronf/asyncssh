@@ -12,47 +12,99 @@
 
 """SSH connection handlers"""
 
-import asyncio, getpass, os, socket, time
-from collections import OrderedDict
-from fnmatch import fnmatch
+import asyncio
+import getpass
+import os
+import socket
+import time
 
-from .auth import *
-from .auth_keys import *
-from .channel import *
-from .constants import *
-from .cipher import *
-from .compression import *
-from .forward import *
-from .kex import *
-from .known_hosts import *
-from .listener import *
-from .logging import *
-from .mac import *
-from .misc import *
-from .packet import *
-from .public_key import *
-from .saslprep import *
-from .sftp import *
-from .stream import *
+from collections import OrderedDict
+
+from .auth import choose_client_auth
+from .auth import get_server_auth_methods, lookup_server_auth
+
+from .auth_keys import read_authorized_keys
+
+from .channel import SSHClientChannel, SSHServerChannel, SSHTCPChannel
+
+from .cipher import get_encryption_algs, get_encryption_params, get_cipher
+
+from .compression import get_compression_algs, get_compression_params
+from .compression import get_compressor, get_decompressor
+
+from .constants import DEFAULT_LANG
+from .constants import DISC_BY_APPLICATION, DISC_CONNECTION_LOST
+from .constants import DISC_KEY_EXCHANGE_FAILED, DISC_HOST_KEY_NOT_VERIFYABLE
+from .constants import DISC_MAC_ERROR, DISC_NO_MORE_AUTH_METHODS_AVAILABLE
+from .constants import DISC_PROTOCOL_ERROR, DISC_SERVICE_NOT_AVAILABLE
+from .constants import EXTENDED_DATA_STDERR
+from .constants import MSG_DISCONNECT, MSG_IGNORE, MSG_UNIMPLEMENTED
+from .constants import MSG_DEBUG, MSG_SERVICE_REQUEST, MSG_SERVICE_ACCEPT
+from .constants import MSG_CHANNEL_OPEN, MSG_CHANNEL_OPEN_CONFIRMATION
+from .constants import MSG_CHANNEL_OPEN_FAILURE, MSG_CHANNEL_WINDOW_ADJUST
+from .constants import MSG_CHANNEL_DATA, MSG_CHANNEL_EXTENDED_DATA
+from .constants import MSG_CHANNEL_EOF, MSG_CHANNEL_CLOSE, MSG_CHANNEL_REQUEST
+from .constants import MSG_CHANNEL_SUCCESS, MSG_CHANNEL_FAILURE
+from .constants import MSG_KEXINIT, MSG_NEWKEYS, MSG_KEX_FIRST, MSG_KEX_LAST
+from .constants import MSG_USERAUTH_REQUEST, MSG_USERAUTH_FAILURE
+from .constants import MSG_USERAUTH_SUCCESS, MSG_USERAUTH_BANNER
+from .constants import MSG_USERAUTH_FIRST, MSG_USERAUTH_LAST
+from .constants import MSG_GLOBAL_REQUEST, MSG_REQUEST_SUCCESS
+from .constants import MSG_REQUEST_FAILURE
+from .constants import OPEN_ADMINISTRATIVELY_PROHIBITED, OPEN_CONNECT_FAILED
+from .constants import OPEN_UNKNOWN_CHANNEL_TYPE
+
+from .forward import SSHPortForwarder, SSHLocalPortForwarder
+from .forward import SSHRemotePortForwarder
+
+from .kex import get_kex_algs, get_kex
+
+from .known_hosts import match_known_hosts
+
+from .listener import SSHClientListener, SSHForwardListener
+
+from .mac import get_mac_algs, get_mac_params, get_mac
+
+from .misc import ChannelOpenError, DisconnectError, ip_address
+
+from .packet import Boolean, Byte, NameList, String, UInt32, UInt64
+from .packet import SSHPacket, SSHPacketHandler
+
+from .public_key import CERT_TYPE_HOST, CERT_TYPE_USER
+from .public_key import get_public_key_algs, get_certificate_algs
+from .public_key import decode_ssh_public_key, decode_ssh_certificate
+from .public_key import import_private_key, import_public_key
+from .public_key import read_private_key, read_public_key
+from .public_key import read_private_key_list, read_public_key_list
+from .public_key import import_certificate, read_certificate
+from .public_key import KeyImportError
+
+from .saslprep import saslprep, SASLPrepError
+
+from .sftp import SFTPClient, SFTPServer, SFTPClientSession
+
+from .stream import SSHClientStreamSession, SSHServerStreamSession
+from .stream import SSHTCPStreamSession, SSHReader, SSHWriter
 
 
 # SSH default port
 _DEFAULT_PORT = 22
 
 # SSH service names
-_USERAUTH_SERVICE   = b'ssh-userauth'
+_USERAUTH_SERVICE = b'ssh-userauth'
 _CONNECTION_SERVICE = b'ssh-connection'
 
 # Default file names in .ssh directory to read private keys from
 _DEFAULT_KEY_FILES = ('id_ed25519', 'id_ecdsa', 'id_rsa', 'id_dsa')
 
 # Default rekey parameters
-_DEFAULT_REKEY_BYTES    = 1 << 30       # 1 GiB
-_DEFAULT_REKEY_SECONDS  = 3600          # 1 hour
+_DEFAULT_REKEY_BYTES = 1 << 30      # 1 GiB
+_DEFAULT_REKEY_SECONDS = 3600       # 1 hour
 
 # Default channel parameters
-_DEFAULT_WINDOW = 2*1024*1024
-_DEFAULT_MAX_PKTSIZE = 32768
+_DEFAULT_WINDOW = 2*1024*1024       # 2 MiB
+_DEFAULT_MAX_PKTSIZE = 32768        # 32 kiB
+
 
 def _select_algs(alg_type, algs, possible_algs, none_value=None):
     """Select a set of allowed algorithms"""
@@ -66,7 +118,7 @@ def _select_algs(alg_type, algs, possible_algs, none_value=None):
             alg = alg_str.encode('ascii')
             if alg not in possible_algs:
                 raise ValueError('%s is not a valid %s algorithm' %
-                                     (alg_str, alg_type))
+                                 (alg_str, alg_type))
 
             result.append(alg)
 
@@ -86,6 +138,8 @@ class SSHConnection(SSHPacketHandler):
         self._protocol_factory = protocol_factory
         self._loop = loop
         self._transport = None
+        self._peer_addr = None
+        self._owner = None
         self._extra = {}
         self._server = server
         self._inpbuf = b''
@@ -149,6 +203,7 @@ class SSHConnection(SSHPacketHandler):
         self._auth_in_progress = False
         self._auth_complete = False
         self._auth_methods = [b'none']
+        self._auth_waiter = None
         self._username = None
 
         self._channels = {}
@@ -168,6 +223,8 @@ class SSHConnection(SSHPacketHandler):
         self._cmp_algs = _select_algs('compression', compression_algs,
                                       get_compression_algs(), b'none')
 
+        self._server_host_key_algs = []
+
     def __enter__(self):
         """Allow SSHConnection to be used as a context manager"""
 
@@ -179,7 +236,7 @@ class SSHConnection(SSHPacketHandler):
         if not self._loop.is_closed():
             self.close()
 
-    def _cleanup(self, exc=None):
+    def _cleanup(self, exc):
         if self._channels:
             for chan in list(self._channels.values()):
                 chan._process_connection_close(exc)
@@ -213,6 +270,8 @@ class SSHConnection(SSHPacketHandler):
         return self._server
 
     def _load_private_key(self, key):
+        # pylint: disable=no-self-use
+
         if isinstance(key, str):
             cert = key + '-cert.pub'
             ignore_missing_cert = True
@@ -244,6 +303,8 @@ class SSHConnection(SSHPacketHandler):
         return key, cert
 
     def _load_public_key(self, key):
+        # pylint: disable=no-self-use
+
         if isinstance(key, str):
             key = read_public_key(key)
         elif isinstance(key, bytes):
@@ -317,6 +378,8 @@ class SSHConnection(SSHPacketHandler):
 
         """
 
+        # pylint: disable=no-self-use
+
         if isinstance(authorized_keys, str):
             return read_authorized_keys(authorized_keys)
         else:
@@ -331,9 +394,12 @@ class SSHConnection(SSHPacketHandler):
         self._owner = self._protocol_factory()
         self._protocol_factory = None
 
-        self._connection_made()
-        self._owner.connection_made(self)
-        self._send_version()
+        try:
+            self._connection_made()
+            self._owner.connection_made(self)
+            self._send_version()
+        except DisconnectError as exc:
+            self._loop.call_soon(self.connection_lost, exc)
 
     def connection_lost(self, exc=None):
         if exc is None and self._transport:
@@ -393,7 +459,7 @@ class SSHConnection(SSHPacketHandler):
     def _send_version(self):
         """Start the SSH handshake"""
 
-        from asyncssh import __version__
+        from .version import __version__
 
         version = b'SSH-2.0-AsyncSSH_' + __version__.encode('ascii')
 
@@ -418,7 +484,7 @@ class SSHConnection(SSHPacketHandler):
         self._inpbuf = self._inpbuf[idx+1:]
 
         if (version.startswith(b'SSH-2.0-') or
-            (self.is_client() and version.startswith(b'SSH-1.99-'))):
+                (self.is_client() and version.startswith(b'SSH-1.99-'))):
             # Accept version 2.0, or 1.99 if we're a client
             if self.is_server():
                 self._client_version = version
@@ -483,7 +549,8 @@ class SSHConnection(SSHPacketHandler):
                                                          nonce, mac)
             else:
                 self._packet = \
-                    self._recv_cipher.verify_and_decrypt(hdr, self._packet, mac)
+                    self._recv_cipher.verify_and_decrypt(hdr, self._packet,
+                                                         mac)
 
             if not self._packet:
                 raise DisconnectError(DISC_MAC_ERROR,
@@ -555,15 +622,16 @@ class SSHConnection(SSHPacketHandler):
         pkttype = payload[0]
 
         if (self._auth_complete and self._kex_complete and
-            (self._rekey_bytes_sent >= self._rekey_bytes or
-             time.monotonic() >= self._rekey_time)):
+                (self._rekey_bytes_sent >= self._rekey_bytes or
+                 time.monotonic() >= self._rekey_time)):
             self._send_kexinit()
             self._kexinit_sent = True
 
         if (((pkttype in {MSG_SERVICE_REQUEST, MSG_SERVICE_ACCEPT} or
               pkttype > MSG_KEX_LAST) and not self._kex_complete) or
-            (pkttype == MSG_USERAUTH_BANNER and not self._auth_in_progress) or
-            (pkttype > MSG_USERAUTH_LAST and not self._auth_complete)):
+                (pkttype == MSG_USERAUTH_BANNER and
+                 not self._auth_in_progress) or
+                (pkttype > MSG_USERAUTH_LAST and not self._auth_complete)):
             self._deferred_packets.append(payload)
             return
 
@@ -589,7 +657,8 @@ class SSHConnection(SSHPacketHandler):
         if self._send_mode == 'chacha':
             nonce = UInt64(self._send_seq)
             hdr = self._send_cipher.crypt_len(hdr, nonce)
-            packet, mac = self._send_cipher.encrypt_and_sign(hdr, packet, nonce)
+            packet, mac = self._send_cipher.encrypt_and_sign(hdr, packet,
+                                                             nonce)
             packet = hdr + packet
         elif self._send_mode == 'gcm':
             packet, mac = self._send_cipher.encrypt_and_sign(hdr, packet)
@@ -639,7 +708,7 @@ class SSHConnection(SSHPacketHandler):
 
         cookie = os.urandom(16)
         kex_algs = NameList(self._kex_algs)
-        host_key_algs = NameList(self._get_server_host_key_algs())
+        host_key_algs = NameList(self._server_host_key_algs)
         enc_algs = NameList(self._enc_algs)
         mac_algs = NameList(self._mac_algs)
         cmp_algs = NameList(self._cmp_algs)
@@ -734,12 +803,12 @@ class SSHConnection(SSHPacketHandler):
             self._next_decompress_after_auth = cmp_after_auth_sc
 
             self._extra.update(
-                    send_cipher=self._enc_alg_cs.decode('ascii'),
-                    send_mac=self._mac_alg_cs.decode('ascii'),
-                    send_compression=self._cmp_alg_cs.decode('ascii'),
-                    recv_cipher=self._enc_alg_sc.decode('ascii'),
-                    recv_mac=self._mac_alg_sc.decode('ascii'),
-                    recv_compression=self._cmp_alg_sc.decode('ascii'))
+                send_cipher=self._enc_alg_cs.decode('ascii'),
+                send_mac=self._mac_alg_cs.decode('ascii'),
+                send_compression=self._cmp_alg_cs.decode('ascii'),
+                recv_cipher=self._enc_alg_sc.decode('ascii'),
+                recv_mac=self._mac_alg_sc.decode('ascii'),
+                recv_compression=self._cmp_alg_sc.decode('ascii'))
         else:
             self._send_cipher = next_cipher_sc
             self._send_blocksize = max(8, enc_blocksize_sc)
@@ -757,12 +826,12 @@ class SSHConnection(SSHPacketHandler):
             self._next_decompress_after_auth = cmp_after_auth_cs
 
             self._extra.update(
-                    send_cipher=self._enc_alg_sc.decode('ascii'),
-                    send_mac=self._mac_alg_sc.decode('ascii'),
-                    send_compression=self._cmp_alg_sc.decode('ascii'),
-                    recv_cipher=self._enc_alg_cs.decode('ascii'),
-                    recv_mac=self._mac_alg_cs.decode('ascii'),
-                    recv_compression=self._cmp_alg_cs.decode('ascii'))
+                send_cipher=self._enc_alg_sc.decode('ascii'),
+                send_mac=self._mac_alg_sc.decode('ascii'),
+                send_compression=self._cmp_alg_sc.decode('ascii'),
+                recv_cipher=self._enc_alg_cs.decode('ascii'),
+                recv_mac=self._mac_alg_cs.decode('ascii'),
+                recv_compression=self._cmp_alg_cs.decode('ascii'))
 
             self._next_service = _USERAUTH_SERVICE
 
@@ -795,8 +864,9 @@ class SSHConnection(SSHPacketHandler):
         self._auth_complete = True
         self._extra.update(username=self._username)
 
-    def _send_channel_open_confirmation(self, send_chan, recv_chan, recv_window,
-                                        recv_pktsize, *result_args):
+    def _send_channel_open_confirmation(self, send_chan, recv_chan,
+                                        recv_window, recv_pktsize,
+                                        *result_args):
         self._send_packet(Byte(MSG_CHANNEL_OPEN_CONFIRMATION),
                           UInt32(send_chan), UInt32(recv_chan),
                           UInt32(recv_window), UInt32(recv_pktsize),
@@ -822,11 +892,11 @@ class SSHConnection(SSHPacketHandler):
         return (yield from waiter)
 
     def _report_global_response(self, result):
-        handler, packet, want_reply = self._global_request_queue.pop(0)
+        _, _, want_reply = self._global_request_queue.pop(0)
 
         if want_reply:
             if result:
-                response = b'' if result == True else result
+                response = b'' if result is True else result
                 self._send_packet(Byte(MSG_REQUEST_SUCCESS), response)
             else:
                 self._send_packet(Byte(MSG_REQUEST_FAILURE))
@@ -837,7 +907,7 @@ class SSHConnection(SSHPacketHandler):
     def _service_next_global_request(self):
         """Process next item on global request queue"""
 
-        handler, packet, want_reply = self._global_request_queue[0]
+        handler, packet, _ = self._global_request_queue[0]
         if callable(handler):
             handler(packet)
         else:
@@ -879,8 +949,7 @@ class SSHConnection(SSHPacketHandler):
                     sock.close()
 
                 raise OSError(exc.errno, 'error while attempting to bind on '
-                              'address %r: %s' % (sa, exc.strerror.lower())) \
-                    from None
+                              'address %r: %s' % (sa, exc.strerror)) from None
 
             if listen_port == 0:
                 listen_port = sock.getsockname()[1]
@@ -901,8 +970,15 @@ class SSHConnection(SSHPacketHandler):
 
         return SSHForwardListener(listen_port, servers)
 
+    def _connection_made(self):
+        """Handle the opening of a new connection"""
+
+        raise NotImplementedError
+
     def _process_disconnect(self, pkttype, packet):
         """Process a disconnect message"""
+
+        # pylint: disable=unused-argument
 
         code = packet.get_uint32()
         reason = packet.get_string()
@@ -926,21 +1002,27 @@ class SSHConnection(SSHPacketHandler):
     def _process_ignore(self, pkttype, packet):
         """Process an ignore message"""
 
-        data = packet.get_string()
+        # pylint: disable=no-self-use,unused-argument
+
+        _ = packet.get_string()     # data
         packet.check_end()
 
         # Do nothing
 
-    def _process_unimplemented(self, packet):
+    def _process_unimplemented(self, pkttype, packet):
         """Process an unimplemented message response"""
 
-        seq = packet.get_uint32()
+        # pylint: disable=no-self-use,unused-argument
+
+        _ = packet.get_uint32()     # seq
         packet.check_end()
 
         # Ignore this
 
     def _process_debug(self, pkttype, packet):
         """Process a debug message"""
+
+        # pylint: disable=unused-argument
 
         always_display = packet.get_boolean()
         msg = packet.get_string()
@@ -959,6 +1041,8 @@ class SSHConnection(SSHPacketHandler):
     def _process_service_request(self, pkttype, packet):
         """Process a service request"""
 
+        # pylint: disable=unused-argument
+
         service = packet.get_string()
         packet.check_end()
 
@@ -976,6 +1060,8 @@ class SSHConnection(SSHPacketHandler):
     def _process_service_accept(self, pkttype, packet):
         """Process a service accept response"""
 
+        # pylint: disable=unused-argument
+
         service = packet.get_string()
         packet.check_end()
 
@@ -984,6 +1070,9 @@ class SSHConnection(SSHPacketHandler):
 
             if self.is_client() and service == _USERAUTH_SERVICE:
                 self._auth_in_progress = True
+
+                # This method is only in SSHClientConnection
+                # pylint: disable=no-member
                 self._try_next_auth()
         else:
             raise DisconnectError(DISC_SERVICE_NOT_AVAILABLE,
@@ -992,11 +1081,13 @@ class SSHConnection(SSHPacketHandler):
     def _process_kexinit(self, pkttype, packet):
         """Process a key exchange request"""
 
+        # pylint: disable=unused-argument
+
         if self._kex:
             raise DisconnectError(DISC_PROTOCOL_ERROR,
                                   'Key exchange already in progress')
 
-        cookie = packet.get_bytes(16)
+        _ = packet.get_bytes(16)                        # cookie
         kex_algs = packet.get_namelist()
         server_host_key_algs = packet.get_namelist()
         enc_algs_cs = packet.get_namelist()
@@ -1005,15 +1096,17 @@ class SSHConnection(SSHPacketHandler):
         mac_algs_sc = packet.get_namelist()
         cmp_algs_cs = packet.get_namelist()
         cmp_algs_sc = packet.get_namelist()
-        lang_cs = packet.get_namelist()
-        lang_sc = packet.get_namelist()
+        _ = packet.get_namelist()                       # lang_cs
+        _ = packet.get_namelist()                       # lang_sc
         first_kex_follows = packet.get_boolean()
-        reserved = packet.get_uint32()
+        _ = packet.get_uint32()                         # reserved
         packet.check_end()
 
         if self.is_server():
             self._client_kexinit = packet.get_consumed_payload()
 
+            # This method is only in SSHServerConnection
+            # pylint: disable=no-member
             if not self._choose_server_host_key(server_host_key_algs):
                 raise DisconnectError(DISC_KEY_EXCHANGE_FAILED, 'Unable to '
                                       'find compatible server host key')
@@ -1046,6 +1139,8 @@ class SSHConnection(SSHPacketHandler):
     def _process_newkeys(self, pkttype, packet):
         """Process a new keys message, finishing a key exchange"""
 
+        # pylint: disable=unused-argument
+
         packet.check_end()
 
         if self._next_recv_cipher:
@@ -1068,6 +1163,8 @@ class SSHConnection(SSHPacketHandler):
 
     def _process_userauth_request(self, pkttype, packet):
         """Process a user authentication request"""
+
+        # pylint: disable=unused-argument
 
         username = packet.get_string()
         service = packet.get_string()
@@ -1103,6 +1200,8 @@ class SSHConnection(SSHPacketHandler):
     def _process_userauth_failure(self, pkttype, packet):
         """Process a user authentication failure response"""
 
+        # pylint: disable=unused-argument
+
         self._auth_methods = packet.get_namelist()
         partial_success = packet.get_boolean()
         packet.check_end()
@@ -1113,6 +1212,8 @@ class SSHConnection(SSHPacketHandler):
             else:
                 self._auth.auth_failed()
 
+            # This method is only in SSHClientConnection
+            # pylint: disable=no-member
             self._try_next_auth()
         else:
             raise DisconnectError(DISC_PROTOCOL_ERROR,
@@ -1120,6 +1221,8 @@ class SSHConnection(SSHPacketHandler):
 
     def _process_userauth_success(self, pkttype, packet):
         """Process a user authentication success response"""
+
+        # pylint: disable=unused-argument
 
         packet.check_end()
 
@@ -1131,15 +1234,19 @@ class SSHConnection(SSHPacketHandler):
             self._send_deferred_packets()
 
             self._owner.auth_completed()
-            if not self._auth_waiter.cancelled():
-                self._auth_waiter.set_result(None)
-            self._auth_waiter = None
+
+            if self._auth_waiter:
+                if not self._auth_waiter.cancelled():
+                    self._auth_waiter.set_result(None)
+                self._auth_waiter = None
         else:
             raise DisconnectError(DISC_PROTOCOL_ERROR,
                                   'Unexpected userauth response')
 
     def _process_userauth_banner(self, pkttype, packet):
         """Process a user authentication banner message"""
+
+        # pylint: disable=unused-argument
 
         msg = packet.get_string()
         lang = packet.get_string()
@@ -1161,6 +1268,8 @@ class SSHConnection(SSHPacketHandler):
     def _process_global_request(self, pkttype, packet):
         """Process a global request"""
 
+        # pylint: disable=unused-argument
+
         request = packet.get_string()
         want_reply = packet.get_boolean()
 
@@ -1180,6 +1289,8 @@ class SSHConnection(SSHPacketHandler):
     def _process_global_response(self, pkttype, packet):
         """Process a global response"""
 
+        # pylint: disable=unused-argument
+
         if self._global_request_waiters:
             waiter = self._global_request_waiters.pop(0)
             if not waiter.cancelled():
@@ -1190,6 +1301,8 @@ class SSHConnection(SSHPacketHandler):
 
     def _process_channel_open(self, pkttype, packet):
         """Process a channel open request"""
+
+        # pylint: disable=unused-argument
 
         chantype = packet.get_string()
         send_chan = packet.get_uint32()
@@ -1219,6 +1332,8 @@ class SSHConnection(SSHPacketHandler):
     def _process_channel_open_confirmation(self, pkttype, packet):
         """Process a channel open confirmation response"""
 
+        # pylint: disable=unused-argument
+
         recv_chan = packet.get_uint32()
         send_chan = packet.get_uint32()
         send_window = packet.get_uint32()
@@ -1234,6 +1349,8 @@ class SSHConnection(SSHPacketHandler):
 
     def _process_channel_open_failure(self, pkttype, packet):
         """Process a channel open failure response"""
+
+        # pylint: disable=unused-argument
 
         recv_chan = packet.get_uint32()
         code = packet.get_uint32()
@@ -1381,7 +1498,7 @@ class SSHConnection(SSHPacketHandler):
 
         return self._extra.get(name,
                                self._transport.get_extra_info(name, default)
-                                   if self._transport else default)
+                               if self._transport else default)
 
     def send_debug(self, msg, lang=DEFAULT_LANG, always_display=False):
         """Send a debug message on this connection
@@ -1400,7 +1517,7 @@ class SSHConnection(SSHPacketHandler):
 
         msg = msg.encode('utf-8')
         lang = lang.encode('ascii')
-        self._send_packet(Byte(MSG_DEBUG), _Boolean(always_display),
+        self._send_packet(Byte(MSG_DEBUG), Boolean(always_display),
                           String(msg), String(lang))
 
     @asyncio.coroutine
@@ -1421,7 +1538,8 @@ class SSHConnection(SSHPacketHandler):
         """
 
         try:
-            protocol_factory = lambda: SSHPortForwarder(self, self._loop)
+            def protocol_factory():
+                return SSHPortForwarder(self, self._loop)
 
             _, peer = yield from self._loop.create_connection(protocol_factory,
                                                               dest_host,
@@ -1430,6 +1548,7 @@ class SSHConnection(SSHPacketHandler):
             raise ChannelOpenError(OPEN_CONNECT_FAILED, str(exc)) from None
 
         return SSHRemotePortForwarder(self, self._loop, peer)
+
 
 class SSHClientConnection(SSHConnection):
     """SSH client connection
@@ -1461,6 +1580,9 @@ class SSHClientConnection(SSHConnection):
         self._host = host
         self._port = port if port != _DEFAULT_PORT else None
         self._known_hosts = known_hosts
+        self._server_host_keys = set()
+        self._server_ca_keys = set()
+        self._revoked_server_keys = set()
 
         if username is None:
             username = getpass.getuser()
@@ -1488,12 +1610,14 @@ class SSHClientConnection(SSHConnection):
         self._auth_waiter = auth_waiter
 
     def _connection_made(self):
+        """Handle the opening of a new connection"""
+
         if self._known_hosts is None:
             self._server_host_keys = None
             self._server_ca_keys = None
             self._revoked_server_keys = None
-            self._server_host_key_algs = get_public_key_algs() + \
-                                         get_certificate_algs()
+            self._server_host_key_algs = (get_public_key_algs() +
+                                          get_certificate_algs())
         else:
             if not self._known_hosts:
                 self._known_hosts = os.path.join(os.environ['HOME'], '.ssh',
@@ -1543,11 +1667,6 @@ class SSHClientConnection(SSHConnection):
             self._auth_waiter = None
 
         super()._cleanup(exc)
-
-    def _get_server_host_key_algs(self):
-        """Return the list of acceptable server host key algorithms"""
-
-        return self._server_host_key_algs
 
     def _validate_server_host_key(self, data):
         """Validate and return the server's host key"""
@@ -1669,8 +1788,8 @@ class SSHClientConnection(SSHConnection):
             if len(prompts) == 0:
                 # Silently drop any empty challenges used to print messages
                 return []
-            elif len(prompts) == 1 and \
-                 'password' in prompts[0][0].lower().strip():
+            elif (len(prompts) == 1 and
+                  'password' in prompts[0][0].lower().strip()):
                 password = self._password_auth_requested()
                 return [password] if password is not None else None
             else:
@@ -1686,6 +1805,8 @@ class SSHClientConnection(SSHConnection):
 
         """
 
+        # pylint: disable=no-self-use,unused-argument
+
         raise ChannelOpenError(OPEN_ADMINISTRATIVELY_PROHIBITED,
                                'Session open forbidden on client')
 
@@ -1695,6 +1816,8 @@ class SSHClientConnection(SSHConnection):
            These requests are disallowed on an SSH client.
 
         """
+
+        # pylint: disable=no-self-use,unused-argument
 
         raise ChannelOpenError(OPEN_ADMINISTRATIVELY_PROHIBITED,
                                'Direct TCP/IP open forbidden on client')
@@ -1718,8 +1841,8 @@ class SSHClientConnection(SSHConnection):
         # Some buggy servers send back a port of ``0`` instead of the actual
         # listening port when reporting connections which arrive on a listener
         # set up on a dynamic port. This lookup attempts to work around that.
-        listener = self._remote_listeners.get((dest_host, dest_port)) or \
-                   self._remote_dynamic_listeners.get(dest_host)
+        listener = (self._remote_listeners.get((dest_host, dest_port)) or
+                    self._dynamic_remote_listeners.get(dest_host))
 
         if listener:
             return listener._process_connection(orig_host, orig_port)
@@ -1729,12 +1852,11 @@ class SSHClientConnection(SSHConnection):
     @asyncio.coroutine
     def _close_client_listener(self, listener, listen_host, listen_port):
         yield from self._make_global_request(
-                            b'cancel-tcpip-forward',
-                            String(listen_host.encode('utf-8')),
-                            UInt32(listen_port))
+            b'cancel-tcpip-forward', String(listen_host.encode('utf-8')),
+            UInt32(listen_port))
 
-        if self._remote_dynamic_listeners[listen_host] == listener:
-            del self._remote_dynamic_listeners[listen_host]
+        if self._dynamic_remote_listeners[listen_host] == listener:
+            del self._dynamic_remote_listeners[listen_host]
 
         del self._remote_listeners[(listen_host, listen_port)]
 
@@ -1802,7 +1924,8 @@ class SSHClientConnection(SSHConnection):
 
         """
 
-        chan = SSHClientChannel(self, self._loop, encoding, window, max_pktsize)
+        chan = SSHClientChannel(self, self._loop, encoding,
+                                window, max_pktsize)
 
         return (yield from chan._create(session_factory, command, subsystem,
                                         env, term_type, term_size, term_modes))
@@ -1826,8 +1949,8 @@ class SSHClientConnection(SSHConnection):
         _, session = yield from self.create_session(SSHClientStreamSession,
                                                     *args, **kwargs)
 
-        return SSHWriter(session), SSHReader(session), \
-               SSHReader(session, EXTENDED_DATA_STDERR)
+        return (SSHWriter(session), SSHReader(session),
+                SSHReader(session, EXTENDED_DATA_STDERR))
 
     @asyncio.coroutine
     def create_connection(self, session_factory, dest_host, dest_port,
@@ -1950,9 +2073,8 @@ class SSHClientConnection(SSHConnection):
 
         pkttype, packet = \
             yield from self._make_global_request(
-                                 b'tcpip-forward',
-                                 String(listen_host.encode('utf-8')),
-                                 UInt32(listen_port))
+                b'tcpip-forward', String(listen_host.encode('utf-8')),
+                UInt32(listen_port))
 
         if pkttype == MSG_REQUEST_SUCCESS:
             if listen_port == 0:
@@ -1968,7 +2090,7 @@ class SSHClientConnection(SSHConnection):
                                          window, max_pktsize)
 
             if dynamic:
-                self._remote_dynamic_listeners[listen_host] = listener
+                self._dynamic_remote_listeners[listen_host] = listener
 
             self._remote_listeners[(listen_host, listen_port)] = listener
             return listener
@@ -2009,9 +2131,8 @@ class SSHClientConnection(SSHConnection):
 
         """
 
-        session_factory = lambda orig_host, orig_port: \
-                              SSHTCPStreamSession(handler_factory(orig_host,
-                                                                  orig_port))
+        def session_factory(orig_host, orig_port):
+            return SSHTCPStreamSession(handler_factory(orig_host, orig_port))
 
         return (yield from self.create_server(session_factory,
                                               *args, **kwargs))
@@ -2042,12 +2163,13 @@ class SSHClientConnection(SSHConnection):
 
         """
 
+        def factory():
+            return SSHLocalPortForwarder(self, self._loop,
+                                         self.create_connection,
+                                         dest_host, dest_port)
+
         listen_port, sockets = \
             yield from self._create_tcp_listener(listen_host, listen_port)
-
-        factory = lambda: SSHLocalPortForwarder(self, self._loop,
-                                                self.create_connection,
-                                                dest_host, dest_port)
 
         return (yield from self._create_forward_listener(listen_port, sockets,
                                                          factory))
@@ -2078,8 +2200,9 @@ class SSHClientConnection(SSHConnection):
 
         """
 
-        session_factory = lambda orig_host, orig_port: \
-                              self.forward_connection(dest_host, dest_port)
+        def session_factory(orig_host, orig_port):
+            # pylint: disable=unused-argument
+            return self.forward_connection(dest_host, dest_port)
 
         return self.create_server(session_factory, listen_host, listen_port)
 
@@ -2110,11 +2233,13 @@ class SSHClientConnection(SSHConnection):
 
         """
 
+        def session_factory():
+            return SFTPClientSession(self._loop, version_waiter)
+
         version_waiter = asyncio.Future(loop=self._loop)
 
-        factory = lambda: SFTPClientSession(self._loop, version_waiter)
-
-        _, session = yield from self.create_session(factory, subsystem='sftp',
+        _, session = yield from self.create_session(session_factory,
+                                                    subsystem='sftp',
                                                     encoding=None)
 
         yield from version_waiter
@@ -2169,7 +2294,7 @@ class SSHServerConnection(SSHConnection):
         for key, cert in server_host_keys:
             if key.algorithm in self._server_host_keys:
                 raise ValueError('Multiple keys of type %s found' %
-                                     key.algorithm.decode('ascii'))
+                                 key.algorithm.decode('ascii'))
 
             self._server_host_keys[key.algorithm] = (key,
                                                      key.encode_ssh_public())
@@ -2177,12 +2302,14 @@ class SSHServerConnection(SSHConnection):
             if cert:
                 if cert.algorithm in self._server_host_keys:
                     raise ValueError('Multiple keys of type %s found' %
-                                         cert.algorithm.decode('ascii'))
+                                     cert.algorithm.decode('ascii'))
 
                 self._server_host_keys[cert.algorithm] = (key, cert.data)
 
         if not self._server_host_keys:
             raise ValueError('No server host keys provided')
+
+        self._server_host_key_algs = self._server_host_keys.keys()
 
         self._client_keys = self._load_authorized_keys(authorized_client_keys)
 
@@ -2192,17 +2319,9 @@ class SSHServerConnection(SSHConnection):
         self._kbdint_password_auth = False
 
     def _connection_made(self):
+        """Handle the opening of a new connection"""
+
         pass
-
-    def _get_server_host_key_algs(self):
-        """Return the list of acceptable server host key algorithms
-
-           Return the algorithms which correspond to the available server
-           host keys.
-
-        """
-
-        return self._server_host_keys.keys()
 
     def _choose_server_host_key(self, peer_host_key_algs):
         """Choose the server host key to use
@@ -2233,8 +2352,8 @@ class SSHServerConnection(SSHConnection):
     def _public_key_auth_supported(self):
         """Return whether or not public key authentication is supported"""
 
-        return bool(self._client_keys) or \
-               self._owner.public_key_auth_supported()
+        return (bool(self._client_keys) or
+                self._owner.public_key_auth_supported())
 
     def _validate_public_key(self, username, key_data):
         """Validate and return the public key for the specified user
@@ -2401,7 +2520,7 @@ class SSHServerConnection(SSHConnection):
         if not result:
             raise ChannelOpenError(OPEN_CONNECT_FAILED, 'Connection refused')
 
-        if result == True:
+        if result is True:
             result = self.forward_connection(dest_host, dest_port)
 
         if isinstance(result, tuple):
@@ -2441,7 +2560,7 @@ class SSHServerConnection(SSHConnection):
             self._report_global_response(False)
             return
 
-        if result == True:
+        if result is True:
             result = self._create_default_forwarder(listen_host, listen_port)
 
         asyncio.async(self._finish_forward(result, listen_host, listen_port),
@@ -2449,12 +2568,13 @@ class SSHServerConnection(SSHConnection):
 
     @asyncio.coroutine
     def _create_default_forwarder(self, listen_host, listen_port):
+        def factory():
+            return SSHLocalPortForwarder(self, self._loop,
+                                         self.create_connection,
+                                         listen_host, listen_port)
+
         listen_port, sockets = \
             yield from self._create_tcp_listener(listen_host, listen_port)
-
-        factory = lambda: SSHLocalPortForwarder(self, self._loop,
-                                                self.create_connection,
-                                                listen_host, listen_port)
 
         return (yield from self._create_forward_listener(listen_port, sockets,
                                                          factory))
@@ -2694,7 +2814,8 @@ class SSHServerConnection(SSHConnection):
 
         """
 
-        return SSHServerChannel(self, self._loop, encoding, window, max_pktsize)
+        return SSHServerChannel(self, self._loop, encoding,
+                                window, max_pktsize)
 
     def create_tcp_channel(self, encoding=None, window=_DEFAULT_WINDOW,
                            max_pktsize=_DEFAULT_MAX_PKTSIZE):
@@ -2791,7 +2912,8 @@ class SSHServerConnection(SSHConnection):
 
         """
 
-        session_factory = lambda: SSHTCPStreamSession(handler_factory)
+        def session_factory():
+            return SSHTCPStreamSession(handler_factory)
 
         _, session = yield from self.create_connection(session_factory,
                                                        *args, **kwargs)
@@ -2826,6 +2948,8 @@ class SSHClient:
        on whether the password change is successful.
 
     """
+
+    # pylint: disable=no-self-use,unused-argument
 
     def connection_made(self, connection):
         """Called when a connection is made
@@ -2894,6 +3018,8 @@ class SSHClient:
            coming from the server.
 
         """
+
+        # pylint: disable=no-self-use
 
     def public_key_auth_requested(self):
         """Public key authentication has been requested
@@ -3064,6 +3190,8 @@ class SSHServer:
        TCP/IP connections.
 
     """
+
+    # pylint: disable=no-self-use,unused-argument
 
     def connection_made(self, connection):
         """Called when a connection is made
@@ -3621,6 +3749,13 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
 
     """
 
+    def conn_factory():
+        return SSHClientConnection(client_factory, loop, host, port,
+                                   known_hosts, username, client_keys,
+                                   password, kex_algs, encryption_algs,
+                                   mac_algs, compression_algs, rekey_bytes,
+                                   rekey_seconds, auth_waiter)
+
     if not client_factory:
         client_factory = SSHClient
 
@@ -3629,13 +3764,6 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
 
     auth_waiter = asyncio.Future(loop=loop)
 
-    conn_factory = lambda: SSHClientConnection(client_factory, loop, host,
-                                               port, known_hosts, username,
-                                               client_keys, password, kex_algs,
-                                               encryption_algs, mac_algs,
-                                               compression_algs, rekey_bytes,
-                                               rekey_seconds, auth_waiter)
-
     _, conn = yield from loop.create_connection(conn_factory, host, port,
                                                 family=family, flags=flags,
                                                 local_addr=local_addr)
@@ -3643,6 +3771,7 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
     yield from auth_waiter
 
     return conn, conn._owner
+
 
 @asyncio.coroutine
 def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
@@ -3754,26 +3883,25 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
     if not server_factory:
         server_factory = SSHServer
 
-    if sftp_factory == True:
+    if sftp_factory is True:
         sftp_factory = SFTPServer
 
     if not loop:
         loop = asyncio.get_event_loop()
 
-    conn_factory = lambda: SSHServerConnection(server_factory, loop,
-                                               server_host_keys,
-                                               authorized_client_keys,
-                                               kex_algs, encryption_algs,
-                                               mac_algs, compression_algs,
-                                               allow_pty, session_factory,
-                                               session_encoding, sftp_factory,
-                                               window, max_pktsize,
-                                               rekey_bytes, rekey_seconds)
+    def conn_factory():
+        return SSHServerConnection(server_factory, loop, server_host_keys,
+                                   authorized_client_keys, kex_algs,
+                                   encryption_algs, mac_algs, compression_algs,
+                                   allow_pty, session_factory,
+                                   session_encoding, sftp_factory, window,
+                                   max_pktsize, rekey_bytes, rekey_seconds)
 
     return (yield from loop.create_server(conn_factory, host, port,
                                           family=family, flags=flags,
                                           backlog=backlog,
                                           reuse_address=reuse_address))
+
 
 @asyncio.coroutine
 def connect(host, port=_DEFAULT_PORT, **kwargs):
@@ -3800,12 +3928,13 @@ def connect(host, port=_DEFAULT_PORT, **kwargs):
 
     """
 
-    conn, client = yield from create_connection(None, host, port, **kwargs)
+    conn, _ = yield from create_connection(None, host, port, **kwargs)
 
     return conn
 
+
 @asyncio.coroutine
-def listen(host, port=_DEFAULT_PORT, **kwargs):
+def listen(host, port=_DEFAULT_PORT, *, server_host_keys, **kwargs):
     """Start an SSH server
 
        This function is a coroutine wrapper around :func:`create_server`
@@ -3834,4 +3963,6 @@ def listen(host, port=_DEFAULT_PORT, **kwargs):
 
     """
 
-    return (yield from create_server(None, host, port, **kwargs))
+    return (yield from create_server(None, host, port,
+                                     server_host_keys=server_host_keys,
+                                     **kwargs))

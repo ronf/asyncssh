@@ -24,6 +24,9 @@ from cryptography.hazmat.primitives.asymmetric.dsa import DSAParameterNumbers
 from cryptography.hazmat.primitives.asymmetric.dsa import DSAPublicNumbers
 from cryptography.hazmat.primitives.asymmetric.dsa import DSAPrivateNumbers
 
+# Short variable names are used here, matching names in the spec
+# pylint: disable=invalid-name
+
 
 class DSAPrivateKey:
     def __init__(self, p, q, g, y, x):
@@ -51,7 +54,7 @@ class DSAPublicKey:
         self.y = y
 
         params = DSAParameterNumbers(p, q, g)
-        self._key =  DSAPublicNumbers(y, params).public_key(default_backend())
+        self._key = DSAPublicNumbers(y, params).public_key(default_backend())
 
     def verify(self, data, sig):
         verifier = self._key.verifier(der_encode(sig), SHA1())

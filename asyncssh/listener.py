@@ -12,11 +12,9 @@
 
 """SSH listeners"""
 
-import asyncio, socket
+import asyncio
 
-from .channel import *
-from .forward import *
-from .logging import *
+from .channel import SSHTCPChannel
 
 
 class SSHListener(asyncio.AbstractServer):
@@ -110,7 +108,8 @@ class SSHClientListener(SSHListener):
         return self._listen_port
 
     def close(self):
-        asyncio.async(self._conn._close_client_listener(self, self._listen_host,
+        asyncio.async(self._conn._close_client_listener(self,
+                                                        self._listen_host,
                                                         self._listen_port),
                       loop=self._loop)
         self._conn = None

@@ -14,13 +14,16 @@
 
 from .version import __author__, __author_email__, __url__, __version__
 
+# pylint: disable=wildcard-import
+
 from .constants import *
+
+# pylint: enable=wildcard-import
 
 from .auth_keys import SSHAuthorizedKeys
 from .auth_keys import import_authorized_keys, read_authorized_keys
 
 from .channel import SSHClientChannel, SSHServerChannel, SSHTCPChannel
-from .channel import SSHClientSession, SSHServerSession, SSHTCPSession
 
 from .connection import SSHClient, SSHServer
 from .connection import SSHClientConnection, SSHServerConnection
@@ -41,6 +44,8 @@ from .public_key import import_certificate
 from .public_key import read_private_key, read_public_key, read_certificate
 from .public_key import read_private_key_list, read_public_key_list
 from .public_key import read_certificate_list
+
+from .session import SSHClientSession, SSHServerSession, SSHTCPSession
 
 from .sftp import SFTPClient, SFTPServer, SFTPFile, SFTPError
 from .sftp import SFTPAttrs, SFTPVFSAttrs, SFTPName

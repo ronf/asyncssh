@@ -12,11 +12,12 @@
 
 """A shim around PyCrypto for RSA public and private keys"""
 
-import random
-
 from Crypto.Hash import SHA
 from Crypto.PublicKey import RSA
 from Crypto.Signature import PKCS1_v1_5
+
+# Short variable names are used here, matching names in the spec
+# pylint: disable=invalid-name
 
 
 class _RSAKey:

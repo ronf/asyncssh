@@ -15,8 +15,6 @@
 import hmac
 from hashlib import md5, sha1, sha256, sha512
 
-from .logging import *
-
 
 _ETM = b'-etm@openssh.com'
 
@@ -28,15 +26,15 @@ _mac_handlers = {}
 class _MAC:
     """Parent class for SSH message authentication handlers"""
 
-    def __init__(self, alg, hash, hash_size, key):
-        self._hash = hash
+    def __init__(self, hash_alg, hash_size, key):
+        self._hash_alg = hash_alg
         self._hash_size = hash_size
         self._key = key
 
     def sign(self, data):
         """Compute a signature for a message"""
 
-        sig = hmac.new(self._key, data, self._hash).digest()
+        sig = hmac.new(self._key, data, self._hash_alg).digest()
         return sig[:self._hash_size]
 
     def verify(self, data, sig):
@@ -45,19 +43,21 @@ class _MAC:
         return self.sign(data) == sig
 
 
-def register_mac_alg(alg, hash, key_size, hash_size):
+def register_mac_alg(alg, hash_alg, key_size, hash_size):
     """Register a MAC algorithm"""
 
     _mac_algs.append(alg)
     _mac_params[alg] = (key_size, hash_size, False)
     _mac_params[alg + _ETM] = (key_size, hash_size, True)
-    _mac_handlers[alg] = (hash, hash_size)
-    _mac_handlers[alg + _ETM] = (hash, hash_size)
+    _mac_handlers[alg] = (hash_alg, hash_size)
+    _mac_handlers[alg + _ETM] = (hash_alg, hash_size)
+
 
 def get_mac_algs():
     """Return a list of available MAC algorithms"""
 
     return [alg + _ETM for alg in _mac_algs] + _mac_algs
+
 
 def get_mac_params(alg):
     """Get parameters of a MAC algorithm
@@ -69,6 +69,7 @@ def get_mac_params(alg):
 
     return _mac_params[alg]
 
+
 def get_mac(alg, key):
     """Return a MAC handler
 
@@ -77,8 +78,10 @@ def get_mac(alg, key):
 
     """
 
-    hash, hash_size = _mac_handlers[alg]
-    return _MAC(alg, hash, hash_size, key)
+    hash_alg, hash_size = _mac_handlers[alg]
+    return _MAC(hash_alg, hash_size, key)
+
+# pylint: disable=bad-whitespace
 
 register_mac_alg(b'hmac-sha2-256',    sha256, 32, 32)
 register_mac_alg(b'hmac-sha2-512',    sha512, 64, 64)

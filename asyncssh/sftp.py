@@ -12,18 +12,46 @@
 
 """SFTP handlers"""
 
-import asyncio, grp, os, posixpath, pwd, stat, sys, time
+import asyncio
+import grp
+import os
+import posixpath
+import pwd
+import stat
+import time
+
 from collections import OrderedDict
 from fnmatch import fnmatch
 from os import SEEK_SET, SEEK_CUR, SEEK_END
 
-from .constants import *
-from .logging import *
-from .misc import *
-from .packet import *
+from .constants import DEFAULT_LANG
+
+from .constants import FXP_INIT, FXP_VERSION, FXP_OPEN, FXP_CLOSE, FXP_READ
+from .constants import FXP_WRITE, FXP_LSTAT, FXP_FSTAT, FXP_SETSTAT
+from .constants import FXP_FSETSTAT, FXP_OPENDIR, FXP_READDIR, FXP_REMOVE
+from .constants import FXP_MKDIR, FXP_RMDIR, FXP_REALPATH, FXP_STAT, FXP_RENAME
+from .constants import FXP_READLINK, FXP_SYMLINK, FXP_STATUS, FXP_HANDLE
+from .constants import FXP_DATA, FXP_NAME, FXP_ATTRS, FXP_EXTENDED
+from .constants import FXP_EXTENDED_REPLY
+
+from .constants import FXF_READ, FXF_WRITE, FXF_APPEND
+from .constants import FXF_CREAT, FXF_TRUNC, FXF_EXCL
+
+from .constants import FILEXFER_ATTR_SIZE, FILEXFER_ATTR_UIDGID
+from .constants import FILEXFER_ATTR_PERMISSIONS, FILEXFER_ATTR_ACMODTIME
+from .constants import FILEXFER_ATTR_EXTENDED, FILEXFER_ATTR_UNDEFINED
+
+from .constants import FX_OK, FX_EOF, FX_NO_SUCH_FILE, FX_PERMISSION_DENIED
+from .constants import FX_FAILURE, FX_BAD_MESSAGE, FX_NO_CONNECTION
+from .constants import FX_CONNECTION_LOST, FX_OP_UNSUPPORTED
+
+from .misc import Error, DisconnectError
+from .packet import Byte, String, UInt32, UInt64, SSHPacket
+from .session import SSHClientSession, SSHServerSession
 
 _SFTP_VERSION = 3
 _SFTP_BLOCK_SIZE = 8192
+
 
 def _setstat(path, attrs):
     """Utility function to set file attributes"""
@@ -42,7 +70,9 @@ def _setstat(path, attrs):
 
 
 class _Record:
-    __slots__ = ()
+    """General-purpose record type with fixed set of fields"""
+
+    __slots__ = OrderedDict()
 
     def __init__(self, *args, **kwargs):
         for k, v in self.__slots__.items():
@@ -57,7 +87,7 @@ class _Record:
     def __repr__(self):
         return '%s(%s)' % (self.__class__.__name__,
                            ', '.join('%s=%r' % (k, getattr(self, k))
-                                         for k in self.__slots__))
+                                     for k in self.__slots__))
 
 
 class _LocalFile:
@@ -193,7 +223,7 @@ class _LocalFile:
         names = os.listdir(path)
 
         return [SFTPName(filename=name, attrs=(yield from cls.stat(name)))
-                    for name in names]
+                for name in names]
 
     @classmethod
     @asyncio.coroutine
@@ -213,7 +243,7 @@ class _LocalFile:
     @classmethod
     @asyncio.coroutine
     def realpath(cls, path):
-        return os.realpath(path)
+        return os.path.realpath(path)
 
     @classmethod
     @asyncio.coroutine
@@ -284,8 +314,8 @@ class SFTPError(Error):
 
     """
 
-    def __str__(self):
-        return 'SFTP Error: %s' % self.reason
+    def __init__(self, code, reason, lang=DEFAULT_LANG):
+        super().__init__('SFTP', code, reason, lang)
 
 
 class SFTPAttrs(_Record):
@@ -318,6 +348,9 @@ class SFTPAttrs(_Record):
 
     """
 
+    # Unfortunately, pylint can't handle attributes defined with setattr
+    # pylint: disable=attribute-defined-outside-init
+
     __slots__ = OrderedDict((('size', None), ('uid', None), ('gid', None),
                              ('permissions', None), ('atime', None),
                              ('mtime', None), ('nlink', None),
@@ -348,7 +381,7 @@ class SFTPAttrs(_Record):
             flags |= FILEXFER_ATTR_EXTENDED
             attrs.append(UInt32(len(self.extended)))
             attrs.extend(String(type) + String(data)
-                    for type, data in self.extended)
+                         for type, data in self.extended)
 
         return UInt32(flags) + b''.join(attrs)
 
@@ -380,19 +413,21 @@ class SFTPAttrs(_Record):
             count = packet.get_uint32()
             attrs.extended = []
 
-            for i in range(count):
-                type = packet.get_string()
+            for _ in range(count):
+                attr = packet.get_string()
                 data = packet.get_string()
-                attrs.extended.append((type, data))
+                attrs.extended.append((attr, data))
 
         return attrs
 
     @classmethod
-    def from_local(cls, stat):
+    def from_local(cls, result):
         """Convert from local stat attributes"""
 
-        return cls(stat.st_size, stat.st_uid, stat.st_gid, stat.st_mode,
-                   stat.st_atime, stat.st_mtime, stat.st_nlink)
+        return cls(result.st_size, result.st_uid, result.st_gid,
+                   result.st_mode, result.st_atime, result.st_mtime,
+                   result.st_nlink)
+
 
 class SFTPVFSAttrs(_Record):
     """SFTP file system attributes
@@ -416,6 +451,9 @@ class SFTPVFSAttrs(_Record):
          ============ =========================================== ======
 
     """
+
+    # Unfortunately, pylint can't handle attributes defined with setattr
+    # pylint: disable=attribute-defined-outside-init
 
     __slots__ = OrderedDict((('bsize', 0), ('frsize', 0), ('blocks', 0),
                              ('bfree', 0), ('bavail', 0), ('files', 0),
@@ -453,13 +491,13 @@ class SFTPVFSAttrs(_Record):
         return vfsattrs
 
     @classmethod
-    def from_local(cls, vfsstat):
+    def from_local(cls, result):
         """Convert from local statvfs attributes"""
 
-        return cls(vfsstat.f_bsize, vfsstat.f_frsize, vfsstat.f_blocks,
-                   vfsstat.f_bfree, vfsstat.f_bavail, vfsstat.f_files,
-                   vfsstat.f_ffree, vfsstat.f_favail, 0,
-                   vfsstat.f_flag, vfsstat.f_namemax)
+        return cls(result.f_bsize, result.f_frsize, result.f_blocks,
+                   result.f_bfree, result.f_bavail, result.f_files,
+                   result.f_ffree, result.f_favail, 0, result.f_flag,
+                   result.f_namemax)
 
 
 class SFTPName(_Record):
@@ -483,10 +521,10 @@ class SFTPName(_Record):
     __slots__ = OrderedDict((('filename', ''), ('longname', ''),
                              ('attrs', SFTPAttrs())))
 
-
     def encode(self):
-        return String(self.filename) + String(self.longname) + \
-               self.attrs.encode()
+        # pylint: disable=no-member
+        return (String(self.filename) + String(self.longname) +
+                self.attrs.encode())
 
     @classmethod
     def decode(cls, packet):
@@ -546,19 +584,40 @@ class SFTPSession:
 
         if pkttype == FXP_INIT:
             self._process_init(packet)
-        elif pkttype ==  FXP_VERSION:
+        elif pkttype == FXP_VERSION:
             self._process_version(packet)
         else:
-            id = packet.get_uint32()
-            self._process_packet(pkttype, id, packet)
+            pktid = packet.get_uint32()
+            self._process_packet(pkttype, pktid, packet)
 
         self._recv_handler = self._recv_pkthdr
         return True
 
+    def _process_init(self, packet):
+        raise NotImplementedError
+
+    def _process_version(self, packet):
+        raise NotImplementedError
+
+    def _process_packet(self, pkttype, pktid, packet):
+        raise NotImplementedError
+
+    def _process_connection_open(self):
+        raise NotImplementedError
+
+    def _process_connection_close(self, exc):
+        raise NotImplementedError
+
     def connection_made(self, chan):
         self._chan = chan
+        self._process_connection_open()
+
+    def connection_lost(self, exc):
+        self._process_connection_close(exc)
 
     def data_received(self, data, datatype):
+        # pylint: disable=unused-argument
+
         if data:
             self._inpbuf += data
 
@@ -578,7 +637,7 @@ class SFTPSession:
             self._chan = None
 
 
-class SFTPClientSession(SFTPSession):
+class SFTPClientSession(SFTPSession, SSHClientSession):
     _extensions = []
 
     def __init__(self, loop, version_waiter):
@@ -586,8 +645,8 @@ class SFTPClientSession(SFTPSession):
 
         self._loop = loop
         self._version = None
-        self._next_id = 0
-        self._requests = { None: (None, version_waiter) }
+        self._next_pktid = 0
+        self._requests = {None: (None, version_waiter)}
         self._exc = SFTPError(FX_NO_CONNECTION, 'Connection not yet open')
         self._nonstandard_symlink = False
         self._supports_posix_rename = False
@@ -599,7 +658,7 @@ class SFTPClientSession(SFTPSession):
     def _fail(self, code, reason, lang=DEFAULT_LANG):
         self._exc = SFTPError(code, reason, lang)
 
-        for return_type, waiter in self._requests.values():
+        for _, waiter in self._requests.values():
             if not waiter.cancelled():
                 waiter.set_exception(self._exc)
 
@@ -610,16 +669,16 @@ class SFTPClientSession(SFTPSession):
         if self._exc:
             raise self._exc
 
-        id = self._next_id
-        self._next_id = (self._next_id + 1) & 0xffffffff
+        pktid = self._next_pktid
+        self._next_pktid = (self._next_pktid + 1) & 0xffffffff
 
         return_type = self._return_types.get(pkttype)
-        self._requests[id] = (return_type, waiter)
+        self._requests[pktid] = (return_type, waiter)
 
         if isinstance(pkttype, bytes):
-            hdr = Byte(FXP_EXTENDED) + UInt32(id) + String(pkttype)
+            hdr = Byte(FXP_EXTENDED) + UInt32(pktid) + String(pkttype)
         else:
-            hdr = Byte(pkttype) + UInt32(id)
+            hdr = Byte(pkttype) + UInt32(pktid)
 
         self.send_packet(hdr, *args)
 
@@ -629,17 +688,16 @@ class SFTPClientSession(SFTPSession):
         self._send_request(pkttype, *args, waiter=waiter)
         return (yield from waiter)
 
-    def connection_made(self, chan):
-        super().connection_made(chan)
+    def _process_connection_open(self):
         self._exc = None
 
-    def connection_lost(self, exc):
+    def _process_connection_close(self, exc):
         reason = exc.reason if exc else 'Connection closed'
         self._fail(FX_CONNECTION_LOST, reason)
 
     def session_started(self):
         extensions = (String(name) + String(data)
-                          for name, data in self._extensions)
+                      for name, data in self._extensions)
 
         self.send_packet(Byte(FXP_INIT), UInt32(_SFTP_VERSION), *extensions)
 
@@ -688,15 +746,15 @@ class SFTPClientSession(SFTPSession):
 
             server_version = self._chan.get_extra_info('server_version', '')
             if any(name in server_version
-                       for name in self._nonstandard_symlink_impls):
+                   for name in self._nonstandard_symlink_impls):
                 self._nonstandard_symlink = True
 
         if not version_waiter.cancelled():
             version_waiter.set_result(None)
 
-    def _process_packet(self, pkttype, id, packet):
+    def _process_packet(self, pkttype, pktid, packet):
         try:
-            return_type, waiter = self._requests.pop(id)
+            return_type, waiter = self._requests.pop(pktid)
         except KeyError:
             self._fail(FX_BAD_MESSAGE, 'Invalid response id')
             return
@@ -722,6 +780,8 @@ class SFTPClientSession(SFTPSession):
                 waiter.set_exception(exc)
 
     def _process_status(self, packet):
+        # pylint: disable=no-self-use
+
         code = packet.get_uint32()
 
         try:
@@ -738,27 +798,37 @@ class SFTPClientSession(SFTPSession):
             raise SFTPError(code, reason, lang)
 
     def _process_handle(self, packet):
+        # pylint: disable=no-self-use
+
         handle = packet.get_string()
         packet.check_end()
         return handle
 
     def _process_data(self, packet):
+        # pylint: disable=no-self-use
+
         data = packet.get_string()
         packet.check_end()
         return data
 
     def _process_name(self, packet):
+        # pylint: disable=no-self-use
+
         count = packet.get_uint32()
         names = [SFTPName.decode(packet) for i in range(count)]
         packet.check_end()
         return names
 
     def _process_attrs(self, packet):
+        # pylint: disable=no-self-use
+
         attrs = SFTPAttrs().decode(packet)
         packet.check_end()
         return attrs
 
     def _process_extended_reply(self, packet):
+        # pylint: disable=no-self-use
+
         # Let the caller do the decoding for extended replies
         return packet
 
@@ -965,7 +1035,8 @@ class SFTPFile:
 
             try:
                 while True:
-                    result = yield from self._session.read(self._handle, offset,
+                    result = yield from self._session.read(self._handle,
+                                                           offset,
                                                            _SFTP_BLOCK_SIZE)
                     data.append(result)
                     offset += len(result)
@@ -979,7 +1050,8 @@ class SFTPFile:
             data = b''
 
             try:
-                data = yield from self._session.read(self._handle, offset, size)
+                data = yield from self._session.read(self._handle,
+                                                     offset, size)
                 self._offset = offset + len(data)
             except SFTPError as exc:
                 if exc.code != FX_EOF:
@@ -1210,6 +1282,7 @@ class SFTPFile:
 
         """
 
+        # pylint: disable=unpacking-non-sequence
         if times is None:
             atime = mtime = time.time()
         else:
@@ -1374,6 +1447,7 @@ class SFTPClient:
                 else:
                     raise SFTPError(FX_NO_SUCH_FILE, 'No matches found')
             except (OSError, SFTPError) as exc:
+                # pylint: disable=attribute-defined-outside-init
                 exc.srcpath = pattern
 
                 if error_handler:
@@ -1428,10 +1502,12 @@ class SFTPClient:
                             yield from dst.write(data)
 
             if preserve:
-                yield from dstfs.setstat(dstpath,
-                    SFTPAttrs(permissions=srcattrs.permissions,
-                              atime=srcattrs.atime, mtime=srcattrs.mtime))
+                yield from dstfs.setstat(
+                    dstpath, SFTPAttrs(permissions=srcattrs.permissions,
+                                       atime=srcattrs.atime,
+                                       mtime=srcattrs.mtime))
         except (OSError, SFTPError) as exc:
+            # pylint: disable=attribute-defined-outside-init
             exc.srcpath = srcpath
             exc.dstpath = dstpath
 
@@ -1452,7 +1528,7 @@ class SFTPClient:
             srcpaths = [srcpaths]
         elif not dst_isdir:
             raise SFTPError(FX_FAILURE, '%s must be a directory' %
-                                dstpath.decode('utf-8', errors='replace'))
+                            dstpath.decode('utf-8', errors='replace'))
 
         for srcfile in srcpaths:
             srcfile = self._encode(srcfile)
@@ -2020,6 +2096,7 @@ class SFTPClient:
 
         """
 
+        # pylint: disable=unpacking-non-sequence
         if times is None:
             atime = mtime = time.time()
         else:
@@ -2456,7 +2533,7 @@ class SFTPClient:
         self._session.exit()
 
 
-class SFTPServerSession(SFTPSession):
+class SFTPServerSession(SFTPSession, SSHServerSession):
     _extensions = [(b'posix-rename@openssh.com', b'1'),
                    (b'statvfs@openssh.com', b'2'),
                    (b'fstatvfs@openssh.com', b'2'),
@@ -2491,10 +2568,13 @@ class SFTPServerSession(SFTPSession):
             self._next_handle = (self._next_handle + 1) & 0xffffffff
 
             if (handle not in self._file_handles and
-                handle not in self._dir_handles):
+                    handle not in self._dir_handles):
                 return handle
 
-    def connection_lost(self, exc):
+    def _process_connection_open(self):
+        pass
+
+    def _process_connection_close(self, exc):
         if self._server:
             for file_obj in self._file_handles:
                 self._server.close(file_obj)
@@ -2506,9 +2586,6 @@ class SFTPServerSession(SFTPSession):
 
         self.exit()
 
-    def session_started(self):
-        pass
-
     def _process_init(self, packet):
         version = packet.get_uint32()
 
@@ -2517,19 +2594,19 @@ class SFTPServerSession(SFTPSession):
 
             client_version = self._chan.get_extra_info('client_version', '')
             if any(name in client_version
-                       for name in self._nonstandard_symlink_impls):
+                   for name in self._nonstandard_symlink_impls):
                 self._nonstandard_symlink = True
 
         version = min(version, _SFTP_VERSION)
         extensions = (String(name) + String(data)
-                          for name, data in self._extensions)
+                      for name, data in self._extensions)
         self.send_packet(Byte(FXP_VERSION), UInt32(version), *extensions)
 
     def _process_version(self, packet):
         # FXP_VERSION not expected on server - close the connection
         self.exit()
 
-    def _process_packet(self, pkttype, id, packet):
+    def _process_packet(self, pkttype, pktid, packet):
         try:
             if pkttype == FXP_EXTENDED:
                 pkttype = packet.get_string()
@@ -2547,8 +2624,8 @@ class SFTPServerSession(SFTPSession):
             elif return_type in (FXP_HANDLE, FXP_DATA):
                 result = String(result)
             elif return_type == FXP_NAME:
-                result = UInt32(len(result)) + \
-                             b''.join(name.encode() for name in result)
+                result = (UInt32(len(result)) +
+                          b''.join(name.encode() for name in result))
             else:
                 if isinstance(result, os.stat_result):
                     result = SFTPAttrs.from_local(result)
@@ -2559,18 +2636,18 @@ class SFTPServerSession(SFTPSession):
         except NotImplementedError as exc:
             name = handler.__name__[9:]
             return_type = FXP_STATUS
-            result = UInt32(FX_OP_UNSUPPORTED) + \
-                     String('Operation not supported: %s' % name) + \
-                     String(DEFAULT_LANG)
+            result = (UInt32(FX_OP_UNSUPPORTED) +
+                      String('Operation not supported: %s' % name) +
+                      String(DEFAULT_LANG))
         except OSError as exc:
             return_type = FXP_STATUS
-            result = UInt32(FX_FAILURE) + String(exc.strerror) + \
-                     String(DEFAULT_LANG)
+            result = (UInt32(FX_FAILURE) + String(exc.strerror) +
+                      String(DEFAULT_LANG))
         except SFTPError as exc:
             return_type = FXP_STATUS
             result = UInt32(exc.code) + String(exc.reason) + String(exc.lang)
 
-        self.send_packet(Byte(return_type), UInt32(id), result)
+        self.send_packet(Byte(return_type), UInt32(pktid), result)
 
     def _process_open(self, packet):
         path = packet.get_string()
@@ -2604,12 +2681,12 @@ class SFTPServerSession(SFTPSession):
     def _process_read(self, packet):
         handle = packet.get_string()
         offset = packet.get_uint64()
-        len = packet.get_uint32()
+        length = packet.get_uint32()
         packet.check_end()
 
         file_obj = self._file_handles.get(handle)
         if file_obj:
-            data = self._server.read(file_obj, offset, len)
+            data = self._server.read(file_obj, offset, length)
             if data:
                 return data
             else:
@@ -2670,12 +2747,17 @@ class SFTPServerSession(SFTPSession):
         names = self._server.listdir(path)
 
         for i, name in enumerate(names):
+            # pylint: disable=no-member
+
             if isinstance(name, bytes):
                 name = SFTPName(name)
                 names[i] = name
 
+                # pylint: disable=attribute-defined-outside-init
+
                 filename = os.path.join(path, name.filename)
                 name.attrs = self._server.lstat(filename)
+
                 if isinstance(name.attrs, os.stat_result):
                     name.attrs = SFTPAttrs.from_local(name.attrs)
 
@@ -2842,9 +2924,16 @@ class SFTPServer:
 
     """
 
+    # The default implementation of a number of these methods don't need self
+    # pylint: disable=no-self-use
+
     def __init__(self, conn, chroot=None):
         self._conn = conn
-        self._chroot = os.fsencode(os.path.realpath(chroot)) if chroot else None
+
+        if chroot:
+            self._chroot = os.fsencode(os.path.realpath(chroot))
+        else:
+            self._chroot = None
 
     def format_longname(self, name):
         """Format the long name associated with an SFTP name
@@ -2897,9 +2986,9 @@ class SFTPServer:
             modtime = ''
 
         detail = '{:10s} {:>4s} {:8s} {:8s} {:>8s} {:12s} '.format(
-                     mode, nlink, user, group, size, modtime)
+            mode, nlink, user, group, size, modtime)
 
-        name.longname =  detail.encode('utf-8') + name.filename
+        name.longname = detail.encode('utf-8') + name.filename
 
     def map_path(self, path):
         """Map the path requested by the client to a local path
@@ -3262,7 +3351,6 @@ class SFTPServer:
            :raises: :exc:`SFTPError` to return an error to the client
 
         """
-
 
         if posixpath.isabs(oldpath):
             oldpath = self.map_path(oldpath)

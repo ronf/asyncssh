@@ -12,12 +12,16 @@
 
 """RSA public key encryption handler"""
 
-from .asn1 import *
-from .crypto import *
-from .logging import *
-from .misc import *
-from .packet import *
-from .public_key import *
+from .asn1 import ObjectIdentifier, der_encode, der_decode
+from .crypto import RSAPrivateKey, RSAPublicKey
+from .misc import all_ints, mod_inverse
+from .packet import MPInt, String, SSHPacket
+from .public_key import SSHKey, SSHCertificateV00, SSHCertificateV01
+from .public_key import KeyExportError
+from .public_key import register_public_key_alg, register_certificate_alg
+
+# Short variable names are used here, matching names in the spec
+# pylint: disable=invalid-name
 
 
 class _RSAKey(SSHKey):
@@ -55,7 +59,7 @@ class _RSAKey(SSHKey):
     @classmethod
     def decode_pkcs1_private(cls, key_data):
         if (isinstance(key_data, tuple) and all_ints(key_data) and
-            len(key_data) >= 9):
+                len(key_data) >= 9):
             return key_data[1:6]
         else:
             return None
@@ -63,7 +67,7 @@ class _RSAKey(SSHKey):
     @classmethod
     def decode_pkcs1_public(cls, key_data):
         if (isinstance(key_data, tuple) and all_ints(key_data) and
-            len(key_data) == 2):
+                len(key_data) == 2):
             return key_data
         else:
             return None
@@ -87,7 +91,7 @@ class _RSAKey(SSHKey):
         n = packet.get_mpint()
         e = packet.get_mpint()
         d = packet.get_mpint()
-        iqmp = packet.get_mpint()
+        _ = packet.get_mpint()  # igmp
         p = packet.get_mpint()
         q = packet.get_mpint()
 

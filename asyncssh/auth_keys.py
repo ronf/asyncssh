@@ -14,10 +14,9 @@
 
 import socket
 
-from .constants import *
-from .known_hosts import *
-from .misc import *
-from .public_key import *
+from .misc import ip_address
+from .pattern import HostPatternList, WildcardPatternList
+from .public_key import import_public_key, KeyImportError
 
 
 class _SSHAuthorizedKeyEntry:
@@ -88,6 +87,7 @@ class _SSHAuthorizedKeyEntry:
     def _parse_options(self, line):
         self._option = ''
 
+        idx = 0
         quoted = False
         escaped = False
 
@@ -151,19 +151,20 @@ class SSHAuthorizedKeys:
                 client_ip = ip_address(client_addr)
 
                 if not all(pattern.matches(client_host, client_addr, client_ip)
-                               for pattern in from_patterns):
+                           for pattern in from_patterns):
                     continue
 
             principal_patterns = entry.options.get('principals')
             if cert_principals is not None and principal_patterns is not None:
                 if not all(any(pattern.matches(principal)
-                                   for principal in cert_principals)
-                               for pattern in principal_patterns):
+                               for principal in cert_principals)
+                           for pattern in principal_patterns):
                     continue
 
             return entry.options
 
         return None
+
 
 def import_authorized_keys(data):
     """Import SSH authorized keys
@@ -179,6 +180,7 @@ def import_authorized_keys(data):
     """
 
     return SSHAuthorizedKeys(data)
+
 
 def read_authorized_keys(filename):
     """Read SSH authorized keys from a file

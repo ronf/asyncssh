@@ -14,47 +14,56 @@
 
 """Parser for SSH known_hosts files"""
 
-import binascii, hmac
+import binascii
+import hmac
 from hashlib import sha1
 
-from .misc import *
-from .pattern import *
-from .public_key import *
+from .misc import ip_address
+from .pattern import HostPatternList
+from .public_key import KeyImportError, import_public_key
 
 
 class PlainHost:
     """A plain host entry in a known_hosts file"""
 
-    def __init__(self, pattern):
+    def __init__(self, pattern, marker, key):
         self._pattern = HostPatternList(pattern)
+        self.marker = marker
+        self.key = key
 
     def matches(self, host, addr, ip):
         return self._pattern.matches(host, addr, ip)
+
 
 class HashedHost:
     """A hashed host entry in a known_hosts file"""
 
     _HMAC_SHA1_MAGIC = '1'
 
-    def __init__(self, pattern):
+    def __init__(self, pattern, marker, key):
+        self.marker = marker
+        self.key = key
+
         try:
             magic, salt, hosthash = pattern[1:].split('|')
             self._salt = binascii.a2b_base64(salt)
             self._hosthash = binascii.a2b_base64(hosthash)
         except (ValueError, binascii.Error):
             raise ValueError('Invalid known hosts hash entry: %s' %
-                                 pattern) from None
+                             pattern) from None
 
         if magic != self._HMAC_SHA1_MAGIC:
             # Only support HMAC SHA-1 for now
             raise ValueError('Invalid known hosts hash type: %s' %
-                                 magic) from None
+                             magic) from None
 
     def _match(self, value):
         hosthash = hmac.new(self._salt, value.encode(), sha1).digest()
         return hosthash == self._hosthash
 
     def matches(self, host, addr, ip):
+        # pylint: disable=unused-argument
+
         return (host and self._match(host)) or (addr and self._match(addr))
 
 
@@ -72,30 +81,29 @@ def _parse_entries(known_hosts):
             else:
                 marker = None
                 pattern, key = line.split(None, 1)
-        except ValueError as exc:
+        except ValueError:
             raise ValueError('Invalid known hosts entry: %s' %
-                                 line) from None
+                             line) from None
 
         if marker not in (None, 'cert-authority', 'revoked'):
             raise ValueError('Invalid known hosts marker: %s' %
-                                 marker) from None
-
-        if pattern.startswith('|'):
-            entry = HashedHost(pattern)
-        else:
-            entry = PlainHost(pattern)
-
-        entry.marker = marker
+                             marker) from None
 
         try:
-            entry.key = import_public_key(key)
+            key = import_public_key(key)
         except KeyImportError:
-            """Ignore keys in the file that we're unable to parse"""
+            # Ignore keys in the file that we're unable to parse
             continue
+
+        if pattern.startswith('|'):
+            entry = HashedHost(pattern, marker, key)
+        else:
+            entry = PlainHost(pattern, marker, key)
 
         entries.append(entry)
 
     return entries
+
 
 def _match_entries(entries, host, addr, port=None):
     ip = ip_address(addr) if addr else None
@@ -121,6 +129,7 @@ def _match_entries(entries, host, addr, port=None):
 
     return host_keys, ca_keys, revoked_keys
 
+
 def match_known_hosts(known_hosts, host, addr, port):
     """Match a host, IP address, and port against a known_hosts file
 
@@ -140,7 +149,8 @@ def match_known_hosts(known_hosts, host, addr, port):
 
     entries = _parse_entries(known_hosts)
 
-    host_keys, ca_keys, revoked_keys = _match_entries(entries, host, addr, port)
+    host_keys, ca_keys, revoked_keys = _match_entries(entries, host,
+                                                      addr, port)
 
     if port and not (host_keys or ca_keys):
         host_keys, ca_keys, revoked_keys = _match_entries(entries, host, addr)

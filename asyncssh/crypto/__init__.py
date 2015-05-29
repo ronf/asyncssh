@@ -15,11 +15,12 @@
 import importlib
 
 from .cipher import register_cipher, lookup_cipher
+from .curve25519 import Curve25519DH
 
 from . import chacha
 
 pyca_available = importlib.find_loader('cryptography')
-pycrypto_available =  importlib.find_loader('Crypto')
+pycrypto_available = importlib.find_loader('Crypto')
 
 if pyca_available:
     from . import pyca
