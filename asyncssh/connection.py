@@ -2262,15 +2262,17 @@ class SSHServerConnection(SSHConnection):
        session objects with non-default channel properties can call
        :meth:`create_server_channel` from their :meth:`session_requested()
        <SSHServer.session_requested>` method and return a tuple of
-       the :class:`SSHServerChannel` object returned from that and a
-       coroutine which creates an :class:`SSHServerSession` object.
+       the :class:`SSHServerChannel` object returned from that and either
+       an :class:`SSHServerSession` object or a coroutine which returns
+       an :class:`SSHServerSession`.
 
        Similarly, :class:`SSHServer` objects wishing to create TCP
        connection objects with non-default channel properties can call
        :meth:`create_tcp_channel` from their :meth:`connection_requested()
        <SSHServer.connection_requested>` method and return a tuple of
-       the :class:`SSHTCPChannel` object returned from that and a
-       coroutine which returns an :class:`SSHTCPSession` object.
+       the :class:`SSHTCPChannel` object returned from that and either
+       an :class:`SSHTCPSession` object or a coroutine which returns an
+       :class:`SSHTCPSession`.
 
     """
 
@@ -3510,16 +3512,15 @@ class SSHServer:
 
            :returns: One of the following:
 
-                       * A callable or coroutine which returns an
-                         :class:`SSHServerSession`
+                       * An :class:`SSHServerSession` object or a coroutine
+                         which returns an :class:`SSHServerSession`
                        * A tuple consisting of an :class:`SSHServerChannel`
-                         and a callable or coroutine which returns an
-                         :class:`SSHServerSession`
+                         and the above
                        * A callable or coroutine handler function which
                          takes AsyncSSH stream objects for stdin, stdout,
                          and stderr as arguments
                        * A tuple consisting of an :class:`SSHServerChannel`
-                         and a callable or coroutine handler function
+                         and the above
                        * ``False`` to refuse the request
 
            :raises: :exc:`ChannelOpenError` if the session shouldn't
@@ -3574,16 +3575,15 @@ class SSHServer:
 
            :returns: One of the following:
 
-                     * A callable or coroutine which returns an
-                       :class:`SSHTCPSession`
+                     * An :class:`SSHTCPSession` object or a coroutine
+                       which returns an :class:`SSHTCPSession`
                      * A tuple consisting of an :class:`SSHTCPChannel`
-                       and a callable or couroutine which returns an
-                       :class:`SSHTCPSession`
+                       and the above
                      * A callable or coroutine handler function which
                        takes AsyncSSH stream objects for reading and
                        writing to the connection
                      * A tuple consisting of an :class:`SSHTCPChannel`
-                       and a callable or coroutine handler function
+                       and the above
                      * ``True`` to request standard port forwarding
                      * ``False`` to refuse the connection
 
@@ -3630,9 +3630,9 @@ class SSHServer:
 
            :returns: One of the following:
 
-                     * A callable or coroutine which returns an
-                       :class:`SSHListener` object or ``None`` if
-                       the listener can't be opened
+                     * An :class:`SSHListener` object or a coroutine
+                       which returns an :class:`SSHListener` or ``False``
+                       if the listener can't be opened
                      * ``True`` to set up standard port forwarding
                      * ``False`` to reject the request
 
