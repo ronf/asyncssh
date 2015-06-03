@@ -203,16 +203,13 @@ class _KexECDH(Kex):
 
         if conn.is_client():
             self._Qc = self._Q.encode()
-            self._conn._send_packet(Byte(MSG_KEX_ECDH_INIT), String(self._Qc))
+            self._conn.send_packet(Byte(MSG_KEX_ECDH_INIT), String(self._Qc))
         else:
             self._Qs = self._Q.encode()
 
     def _compute_hash(self, host_key_data, k):
         hash_obj = self._hash_alg()
-        hash_obj.update(String(self._conn._client_version))
-        hash_obj.update(String(self._conn._server_version))
-        hash_obj.update(String(self._conn._client_kexinit))
-        hash_obj.update(String(self._conn._server_kexinit))
+        hash_obj.update(self._conn.get_hash_prefix())
         hash_obj.update(String(host_key_data))
         hash_obj.update(String(self._Qc))
         hash_obj.update(String(self._Qs))
@@ -238,17 +235,16 @@ class _KexECDH(Kex):
             raise DisconnectError(DISC_PROTOCOL_ERROR,
                                   'Invalid kex init msg') from None
 
-        host_key, host_key_data = self._conn._get_server_host_key()
+        host_key, host_key_data = self._conn.get_server_host_key()
 
         k = P.x
         h = self._compute_hash(host_key_data, k)
         sig = host_key.sign(h)
 
-        self._conn._send_packet(Byte(MSG_KEX_ECDH_REPLY),
-                                String(host_key_data),
-                                String(self._Qs), String(sig))
+        self._conn.send_packet(Byte(MSG_KEX_ECDH_REPLY), String(host_key_data),
+                               String(self._Qs), String(sig))
 
-        self._conn._send_newkeys(k, h)
+        self._conn.send_newkeys(k, h)
 
     def _process_reply(self, pkttype, packet):
         # pylint: disable=unused-argument
@@ -262,7 +258,7 @@ class _KexECDH(Kex):
         sig = packet.get_string()
         packet.check_end()
 
-        host_key = self._conn._validate_server_host_key(host_key_data)
+        host_key = self._conn.validate_server_host_key(host_key_data)
 
         try:
             P = self._d * _PrimePoint.decode(self._Q.curve, self._Qs)
@@ -279,7 +275,7 @@ class _KexECDH(Kex):
             raise DisconnectError(DISC_KEY_EXCHANGE_FAILED,
                                   'Key exchange hash mismatch')
 
-        self._conn._send_newkeys(k, h)
+        self._conn.send_newkeys(k, h)
 
     packet_handlers = {
         MSG_KEX_ECDH_INIT:  _process_init,
@@ -336,6 +332,9 @@ class _ECKey(SSHKey):
         self._Q = Q
 
     def __eq__(self, other):
+        # This isn't protected access - both objects are _ECKey instances
+        # pylint: disable=protected-access
+
         return (isinstance(other, self.__class__) and
                 self._d == other._d and self._Q == other._Q)
 

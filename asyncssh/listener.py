@@ -93,14 +93,14 @@ class SSHClientListener(SSHListener):
         self._max_pktsize = max_pktsize
         self._waiters = []
 
-    def _process_connection(self, orig_host, orig_port):
+    def process_connection(self, orig_host, orig_port):
         """Process a forwarded TCP connection"""
 
         chan = SSHTCPChannel(self._conn, self._loop, self._encoding,
                              self._window, self._max_pktsize)
 
-        chan._extra['local_peername'] = (self._listen_host, self._listen_port)
-        chan._extra['remote_peername'] = (orig_host, orig_port)
+        chan.set_inbound_peer_names(self._listen_host, self._listen_port,
+                                    orig_host, orig_port)
 
         return chan, self._session_factory(orig_host, orig_port)
 
@@ -108,9 +108,8 @@ class SSHClientListener(SSHListener):
         return self._listen_port
 
     def close(self):
-        asyncio.async(self._conn._close_client_listener(self,
-                                                        self._listen_host,
-                                                        self._listen_port),
+        asyncio.async(self._conn.close_client_listener(self, self._listen_host,
+                                                       self._listen_port),
                       loop=self._loop)
         self._conn = None
 

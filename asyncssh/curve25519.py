@@ -40,16 +40,13 @@ class _KexCurve25519DH(Kex):
 
         if conn.is_client():
             self._client_pub = pub
-            self._conn._send_packet(Byte(MSG_KEX_ECDH_INIT), String(pub))
+            self._conn.send_packet(Byte(MSG_KEX_ECDH_INIT), String(pub))
         else:
             self._server_pub = pub
 
     def _compute_hash(self, host_key_data, k):
         hash_obj = self._hash_alg()
-        hash_obj.update(String(self._conn._client_version))
-        hash_obj.update(String(self._conn._server_version))
-        hash_obj.update(String(self._conn._client_kexinit))
-        hash_obj.update(String(self._conn._server_kexinit))
+        hash_obj.update(self._conn.get_hash_prefix())
         hash_obj.update(String(host_key_data))
         hash_obj.update(String(self._client_pub))
         hash_obj.update(String(self._server_pub))
@@ -72,18 +69,16 @@ class _KexCurve25519DH(Kex):
             raise DisconnectError(DISC_PROTOCOL_ERROR,
                                   'Invalid kex init msg') from None
 
-        host_key, host_key_data = self._conn._get_server_host_key()
+        host_key, host_key_data = self._conn.get_server_host_key()
 
         k = int.from_bytes(shared, 'big')
         h = self._compute_hash(host_key_data, k)
         sig = host_key.sign(h)
 
-        self._conn._send_packet(Byte(MSG_KEX_ECDH_REPLY),
-                                String(host_key_data),
-                                String(self._server_pub),
-                                String(sig))
+        self._conn.send_packet(Byte(MSG_KEX_ECDH_REPLY), String(host_key_data),
+                               String(self._server_pub), String(sig))
 
-        self._conn._send_newkeys(k, h)
+        self._conn.send_newkeys(k, h)
 
     def _process_reply(self, pkttype, packet):
         # pylint: disable=unused-argument
@@ -103,7 +98,7 @@ class _KexCurve25519DH(Kex):
             raise DisconnectError(DISC_PROTOCOL_ERROR,
                                   'Invalid kex reply msg') from None
 
-        host_key = self._conn._validate_server_host_key(host_key_data)
+        host_key = self._conn.validate_server_host_key(host_key_data)
 
         k = int.from_bytes(shared, 'big')
         h = self._compute_hash(host_key_data, k)
@@ -111,7 +106,7 @@ class _KexCurve25519DH(Kex):
             raise DisconnectError(DISC_KEY_EXCHANGE_FAILED,
                                   'Key exchange hash mismatch')
 
-        self._conn._send_newkeys(k, h)
+        self._conn.send_newkeys(k, h)
 
     packet_handlers = {
         MSG_KEX_ECDH_INIT:  _process_init,

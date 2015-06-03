@@ -103,22 +103,22 @@ class _LocalFile:
         self._file.close()
 
     @classmethod
-    def _encode(cls, path):
+    def encode(cls, path):
         if isinstance(path, str):
             path = os.fsencode(path)
 
         return path
 
     @classmethod
-    def _decode(cls, path, decode=True):
-        if decode:
+    def decode(cls, path, want_string=True):
+        if want_string:
             path = os.fsdecode(path)
 
         return path
 
     @classmethod
-    def _compose_path(cls, path, parent=None):
-        path = cls._encode(path)
+    def compose_path(cls, path, parent=None):
+        path = cls.encode(path)
 
         return os.path.join(parent, path) if parent else path
 
@@ -1346,7 +1346,13 @@ class SFTPClient:
 
         self.exit()
 
-    def _encode(self, path):
+    def encode(self, path):
+        """Encode path name using configured path encoding
+
+           This method has no effect if the path is already a byte string.
+
+        """
+
         if isinstance(path, str):
             if self._path_encoding:
                 path = path.encode(self._path_encoding, self._path_errors)
@@ -1355,8 +1361,14 @@ class SFTPClient:
 
         return path
 
-    def _decode(self, path, decode=True):
-        if decode and self._path_encoding:
+    def decode(self, path, want_string=True):
+        """Decode path name using configured path encoding
+
+           This method has no effect if want_string is set to ``False``.
+
+        """
+
+        if want_string and self._path_encoding:
             try:
                 path = path.decode(self._path_encoding, self._path_errors)
             except UnicodeDecodeError:
@@ -1364,7 +1376,7 @@ class SFTPClient:
 
         return path
 
-    def _compose_path(self, path, parent=...):
+    def compose_path(self, path, parent=...):
         """Compose a path
 
            If parent is not specified, return a path relative to the
@@ -1375,7 +1387,7 @@ class SFTPClient:
         if parent is ...:
             parent = self._cwd
 
-        path = self._encode(path)
+        path = self.encode(path)
 
         return posixpath.join(parent, path) if parent else path
 
@@ -1408,10 +1420,10 @@ class SFTPClient:
                 continue
 
             if fnmatch(name, pattern):
-                newbase = fs._compose_path(name, parent=basedir)
+                newbase = fs.compose_path(name, parent=basedir)
 
                 if not patlist:
-                    result.append(fs._decode(newbase, decode))
+                    result.append(fs.decode(newbase, decode))
                 elif (yield from fs.isdir(newbase)):
                     yield from self._glob(fs, newbase, patlist, decode, result)
 
@@ -1429,7 +1441,7 @@ class SFTPClient:
                 return
 
             decode = isinstance(pattern, str)
-            patlist = self._encode(pattern).split(b'/')
+            patlist = self.encode(pattern).split(b'/')
 
             if not patlist[0]:
                 basedir = b'/'
@@ -1482,8 +1494,8 @@ class SFTPClient:
                     if name in (b'.', b'..'):
                         continue
 
-                    srcfile = srcfs._compose_path(name, parent=srcpath)
-                    dstfile = dstfs._compose_path(name, parent=dstpath)
+                    srcfile = srcfs.compose_path(name, parent=srcpath)
+                    dstfile = dstfs.compose_path(name, parent=dstpath)
 
                     yield from self._copy(srcfs, dstfs, srcfile,
                                           dstfile, preserve, recurse,
@@ -1522,7 +1534,7 @@ class SFTPClient:
         """Begin a new file upload, download, or copy"""
 
         dst_isdir = dstpath is None or (yield from dstfs.isdir(dstpath))
-        dstpath = self._encode(dstpath)
+        dstpath = self.encode(dstpath)
 
         if isinstance(srcpaths, (str, bytes)):
             srcpaths = [srcpaths]
@@ -1531,13 +1543,13 @@ class SFTPClient:
                             dstpath.decode('utf-8', errors='replace'))
 
         for srcfile in srcpaths:
-            srcfile = self._encode(srcfile)
+            srcfile = self.encode(srcfile)
             filename = posixpath.basename(srcfile)
 
             if dstpath is None:
                 dstfile = filename
             elif dst_isdir:
-                dstfile = dstfs._compose_path(filename, parent=dstpath)
+                dstfile = dstfs.compose_path(filename, parent=dstpath)
             else:
                 dstfile = dstpath
 
@@ -1915,7 +1927,7 @@ class SFTPClient:
         if not pflags:
             raise ValueError('Invalid mode: %r' % mode)
 
-        path = self._compose_path(path)
+        path = self.compose_path(path)
         handle = yield from self._session.open(path, pflags, attrs)
 
         return SFTPFile(self._session, handle, pflags & FXF_APPEND,
@@ -1940,7 +1952,7 @@ class SFTPClient:
 
         """
 
-        path = self._compose_path(path)
+        path = self.compose_path(path)
         return (yield from self._session.stat(path))
 
     @asyncio.coroutine
@@ -1963,7 +1975,7 @@ class SFTPClient:
 
         """
 
-        path = self._compose_path(path)
+        path = self.compose_path(path)
         return (yield from self._session.lstat(path))
 
     @asyncio.coroutine
@@ -1987,7 +1999,7 @@ class SFTPClient:
 
         """
 
-        path = self._compose_path(path)
+        path = self.compose_path(path)
         yield from self._session.setstat(path, attrs)
 
     @asyncio.coroutine
@@ -2009,7 +2021,7 @@ class SFTPClient:
 
         """
 
-        path = self._compose_path(path)
+        path = self.compose_path(path)
         return (yield from self._session.statvfs(path))
 
     @asyncio.coroutine
@@ -2230,7 +2242,7 @@ class SFTPClient:
 
         """
 
-        path = self._compose_path(path)
+        path = self.compose_path(path)
         yield from self._session.remove(path)
 
     @asyncio.coroutine
@@ -2262,8 +2274,8 @@ class SFTPClient:
 
         """
 
-        oldpath = self._compose_path(oldpath)
-        newpath = self._compose_path(newpath)
+        oldpath = self.compose_path(oldpath)
+        newpath = self.compose_path(newpath)
         yield from self._session.rename(oldpath, newpath)
 
     def posix_rename(self, oldpath, newpath):
@@ -2287,8 +2299,8 @@ class SFTPClient:
 
         """
 
-        oldpath = self._compose_path(oldpath)
-        newpath = self._compose_path(newpath)
+        oldpath = self.compose_path(oldpath)
+        newpath = self.compose_path(newpath)
         yield from self._session.posix_rename(oldpath, newpath)
 
     @asyncio.coroutine
@@ -2313,7 +2325,7 @@ class SFTPClient:
 
         names = []
 
-        dirpath = self._compose_path(path)
+        dirpath = self.compose_path(path)
         handle = yield from self._session.opendir(dirpath)
 
         try:
@@ -2327,8 +2339,8 @@ class SFTPClient:
 
         if isinstance(path, str):
             for name in names:
-                name.filename = self._decode(name.filename)
-                name.longname = self._decode(name.longname)
+                name.filename = self.decode(name.filename)
+                name.longname = self.decode(name.longname)
 
         return names
 
@@ -2372,7 +2384,7 @@ class SFTPClient:
 
         """
 
-        path = self._compose_path(path)
+        path = self.compose_path(path)
         yield from self._session.mkdir(path, attrs)
 
     @asyncio.coroutine
@@ -2390,7 +2402,7 @@ class SFTPClient:
 
         """
 
-        path = self._compose_path(path)
+        path = self.compose_path(path)
         yield from self._session.rmdir(path)
 
     @asyncio.coroutine
@@ -2410,13 +2422,13 @@ class SFTPClient:
 
         """
 
-        fullpath = self._compose_path(path)
+        fullpath = self.compose_path(path)
         names = yield from self._session.realpath(fullpath)
 
         if len(names) > 1:
             raise SFTPError(FX_BAD_MESSAGE, 'Too many names returned')
 
-        return self._decode(names[0].filename, isinstance(path, str))
+        return self.decode(names[0].filename, isinstance(path, str))
 
     @asyncio.coroutine
     def getcwd(self):
@@ -2432,7 +2444,7 @@ class SFTPClient:
         if self._cwd is None:
             self._cwd = yield from self.realpath(b'.')
 
-        return self._decode(self._cwd)
+        return self.decode(self._cwd)
 
     @asyncio.coroutine
     def chdir(self, path):
@@ -2445,7 +2457,7 @@ class SFTPClient:
 
         """
 
-        self._cwd = yield from self.realpath(self._encode(path))
+        self._cwd = yield from self.realpath(self.encode(path))
 
     @asyncio.coroutine
     def readlink(self, path):
@@ -2463,13 +2475,13 @@ class SFTPClient:
 
         """
 
-        linkpath = self._compose_path(path)
+        linkpath = self.compose_path(path)
         names = yield from self._session.readlink(linkpath)
 
         if len(names) > 1:
             raise SFTPError(FX_BAD_MESSAGE, 'Too many names returned')
 
-        return self._decode(names[0].filename, isinstance(path, str))
+        return self.decode(names[0].filename, isinstance(path, str))
 
     @asyncio.coroutine
     def symlink(self, oldpath, newpath):
@@ -2493,8 +2505,8 @@ class SFTPClient:
 
         """
 
-        oldpath = self._compose_path(oldpath)
-        newpath = self._encode(newpath)
+        oldpath = self.compose_path(oldpath)
+        newpath = self.encode(newpath)
         yield from self._session.symlink(oldpath, newpath)
 
     @asyncio.coroutine
@@ -2518,8 +2530,8 @@ class SFTPClient:
 
         """
 
-        oldpath = self._compose_path(oldpath)
-        newpath = self._compose_path(newpath)
+        oldpath = self.compose_path(oldpath)
+        newpath = self.compose_path(newpath)
         yield from self._session.link(oldpath, newpath)
 
     def exit(self):

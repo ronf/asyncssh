@@ -30,6 +30,9 @@ class _Ed25519Key(SSHKey):
         self._sk = sk
 
     def __eq__(self, other):
+        # This isn't protected access - both objects are _Ed25519Key instances
+        # pylint: disable=protected-access
+
         return (isinstance(other, self.__class__) and
                 self._vk == other._vk and self._sk == other._sk)
 

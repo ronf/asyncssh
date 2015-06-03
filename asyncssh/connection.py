@@ -20,7 +20,7 @@ import time
 
 from collections import OrderedDict
 
-from .auth import choose_client_auth
+from .auth import lookup_client_auth
 from .auth import get_server_auth_methods, lookup_server_auth
 
 from .auth_keys import read_authorized_keys
@@ -105,6 +105,137 @@ _DEFAULT_REKEY_SECONDS = 3600       # 1 hour
 _DEFAULT_WINDOW = 2*1024*1024       # 2 MiB
 _DEFAULT_MAX_PKTSIZE = 32768        # 32 kiB
 
+
+def _load_private_key(key):
+    """Load a private key
+
+       This function loads a private key and an optional certificate.
+       The key argument can be either a key reference or a tuple
+       with a reference to a key and a reference to a matching
+       certificate.
+
+       Key references can either be the name of a file to load the
+       key from, a byte string to import as a private key, or an
+       already loaded :class:`SSHKey` private key.
+
+       Certificate references can  be the name of a file to load the
+       certificate from, a byte string to import as a certificate,
+       an already loaded :class:`SSHCertificate`, or ``None`` if
+       no certificate should be associated with the key.
+
+       When a filename is provided in as a reference outside of a
+       tuple, an attempt is made to load a private key from that
+       file and a certificate from a file constructed by appending
+       '-cert.pub' to the end of the filename.
+
+       This function returns a tuple of a :class:`SSHKey` private
+       key and either an :class:`SSHCertificate` or ``None``
+       depending on whether an associated certificate was loaded.
+
+    """
+
+    if isinstance(key, str):
+        cert = key + '-cert.pub'
+        ignore_missing_cert = True
+    elif isinstance(key, tuple):
+        key, cert = key
+        ignore_missing_cert = False
+    else:
+        cert = None
+
+    if isinstance(key, str):
+        key = read_private_key(key)
+    elif isinstance(key, bytes):
+        key = import_private_key(key)
+
+    if isinstance(cert, str):
+        try:
+            cert = read_certificate(cert)
+        except OSError:
+            if ignore_missing_cert:
+                cert = None
+            else:
+                raise
+    elif isinstance(cert, bytes):
+        cert = import_certificate(cert)
+
+    if cert and key.encode_ssh_public() != cert.key.encode_ssh_public():
+        raise ValueError('Certificate key mismatch')
+
+    return key, cert
+
+
+def _load_public_key(key):
+    """Load a public key
+
+       This function loads a public key. The key argument can be
+       the name of a file to load the key from, a byte string to
+       import the key from, or an already loaded :class:`SSHKey`
+       public key.
+
+    """
+
+    if isinstance(key, str):
+        key = read_public_key(key)
+    elif isinstance(key, bytes):
+        key = import_public_key(key)
+
+    return key
+
+
+def _load_private_key_list(keylist):
+    """Load list of private keys and optional associated certificates
+
+       This function loads a collection of private keys, each with
+       an optional certificate. The keylist argument can be either
+       a filename to load private keys from (without any certificates)
+       or a list of values representing keys and certificates as
+       described in ::func::`_load_private_key`.
+
+       This function returns a list of tuples of a :class:`SSHKey`
+       private key and either an :class:`SSHCertificate` or
+       ``None`` depending on whether an associated certificate
+       was loaded.
+
+    """
+
+    if isinstance(keylist, str):
+        keys = read_private_key_list(keylist)
+        return [(key, None) for key in keys]
+    else:
+        return [_load_private_key(key) for key in keylist]
+
+def _load_public_key_list(keylist):
+    """Load public key list
+
+       This function loads a collection of public keys. The keylist
+       argument can be either a filename to load keys from or a
+       list of values representing keys as described in
+       :func:`_load_public_key`.
+
+       It returns a list of loaded :class:`SSHKey` public keys.
+
+    """
+
+    if isinstance(keylist, str):
+        return read_public_key_list(keylist)
+    else:
+        return [_load_public_key(key) for key in keylist]
+
+def _load_authorized_keys(authorized_keys):
+    """Load authorized keys list
+
+       This function loads authorized client keys. The authorized_keys
+       argument can be either a filename to load keys from or an
+       already imported :class:`SSHAuthorizedKeys` object
+       containing the authorized keys and their associated options.
+
+    """
+
+    if isinstance(authorized_keys, str):
+        return read_authorized_keys(authorized_keys)
+    else:
+        return authorized_keys
 
 def _select_algs(alg_type, algs, possible_algs, none_value=None):
     """Select a set of allowed algorithms"""
@@ -239,7 +370,7 @@ class SSHConnection(SSHPacketHandler):
     def _cleanup(self, exc):
         if self._channels:
             for chan in list(self._channels.values()):
-                chan._process_connection_close(exc)
+                chan.process_connection_close(exc)
             self._channels = {}
 
         if self._local_listeners:
@@ -269,121 +400,22 @@ class SSHConnection(SSHPacketHandler):
     def is_server(self):
         return self._server
 
-    def _load_private_key(self, key):
-        # pylint: disable=no-self-use
+    def get_owner(self):
+        return self._owner
 
-        if isinstance(key, str):
-            cert = key + '-cert.pub'
-            ignore_missing_cert = True
-        elif isinstance(key, tuple):
-            key, cert = key
-            ignore_missing_cert = False
-        else:
-            cert = None
+    def get_hash_prefix(self):
+        """Return the bytes used in calculating unique connection hashes
 
-        if isinstance(key, str):
-            key = read_private_key(key)
-        elif isinstance(key, bytes):
-            key = import_private_key(key)
-
-        if isinstance(cert, str):
-            try:
-                cert = read_certificate(cert)
-            except OSError:
-                if ignore_missing_cert:
-                    cert = None
-                else:
-                    raise
-        elif isinstance(cert, bytes):
-            cert = import_certificate(cert)
-
-        if cert and key.encode_ssh_public() != cert.key.encode_ssh_public():
-            raise ValueError('Certificate key mismatch')
-
-        return key, cert
-
-    def _load_public_key(self, key):
-        # pylint: disable=no-self-use
-
-        if isinstance(key, str):
-            key = read_public_key(key)
-        elif isinstance(key, bytes):
-            key = import_public_key(key)
-
-        return key
-
-    def _load_private_key_list(self, keylist):
-        """Load list of private keys and optional associated certificates
-
-           This function loads a collection of private keys, each with
-           an optional certificate. The keylist argument can be either
-           a filename to load private keys from (without any certificates)
-           or a list of values representing keys and certificates.
-
-           When a list is passed in, each element in the list can be
-           either a reference to a key or a tuple with a reference to
-           a key and a reference to a matching certificate.
-
-           Key references can either be the name of a file to load the
-           key from, a byte string to import as a private key, or an
-           already loaded :class:`SSHKey` private key.
-
-           Certificate references can  be the name of a file to load the
-           certificate from, a byte string to import as a certificate,
-           an already loaded :class:`SSHCertificate`, or ``None`` if
-           no certificate should be associated with the key.
-
-           When a filename is provided in as a reference outside of a
-           tuple, an attempt is made to load a private key from that
-           file and a certificate from a file constructed by appending
-           '-cert.pub' to the end of the filename.
-
-           This function returns a list of tuples of a :class:`SSHKey`
-           private key and either an :class:`SSHCertificate` or
-           ``None`` depending on whether an associated certificate
-           was specified.
+           This methods returns a packetized version of the client and
+           server version and kexinit strings which is needed to perform
+           key exchange hashes.
 
         """
 
-        if isinstance(keylist, str):
-            keys = read_private_key_list(keylist)
-            return [(key, None) for key in keys]
-        else:
-            return [self._load_private_key(key) for key in keylist]
-
-    def _load_public_key_list(self, keylist):
-        """Load public key list
-
-           This function loads a collection of public keys. The keylist
-           argument can be either a filename to load keys from or a
-           list of values representing keys which can be the name of
-           a file to load the key from, a byte string to import the
-           key from, or an already loaded :class:`SSHKey` public key.
-           It returns a list of loaded :class:`SSHKey` public keys.
-
-        """
-
-        if isinstance(keylist, str):
-            return read_public_key_list(keylist)
-        else:
-            return [self._load_public_key(key) for key in keylist]
-
-    def _load_authorized_keys(self, authorized_keys):
-        """Load authorized keys list
-
-           This function loads authorized client keys. The authorized_keys
-           argument can be either a filename to load keys from or an
-           already imported :class:`SSHAuthorizedKeys` object
-           containing the authorized keys and their associated options.
-
-        """
-
-        # pylint: disable=no-self-use
-
-        if isinstance(authorized_keys, str):
-            return read_authorized_keys(authorized_keys)
-        else:
-            return authorized_keys
+        return b''.join((String(self._client_version),
+                         String(self._server_version),
+                         String(self._client_kexinit),
+                         String(self._server_kexinit)))
 
     def connection_made(self, transport):
         self._transport = transport
@@ -428,6 +460,23 @@ class SSHConnection(SSHPacketHandler):
         # Do nothing with this for now
         pass
 
+    def add_channel(self, chan):
+        """Add a new channel, returning its channel number"""
+
+        while self._next_recv_chan in self._channels:
+            self._next_recv_chan = (self._next_recv_chan + 1) & 0xffffffff
+
+        recv_chan = self._next_recv_chan
+        self._next_recv_chan = (self._next_recv_chan + 1) & 0xffffffff
+
+        self._channels[recv_chan] = chan
+        return recv_chan
+
+    def remove_channel(self, recv_chan):
+        """Remove the channel with the specified channel number"""
+
+        del self._channels[recv_chan]
+
     def _choose_alg(self, alg_type, local_algs, remote_algs):
         if self.is_client():
             client_algs, server_algs = local_algs, remote_algs
@@ -440,15 +489,6 @@ class SSHConnection(SSHPacketHandler):
 
         raise DisconnectError(DISC_KEY_EXCHANGE_FAILED,
                               'No matching %s algorithm found' % alg_type)
-
-    def _get_recv_chan(self):
-        while self._next_recv_chan in self._channels:
-            self._next_recv_chan = (self._next_recv_chan + 1) & 0xffffffff
-
-        recv_chan = self._next_recv_chan
-        self._next_recv_chan = (self._next_recv_chan + 1) & 0xffffffff
-
-        return recv_chan
 
     def _send(self, data):
         """Send data to the SSH connection"""
@@ -609,7 +649,7 @@ class SSHConnection(SSHPacketHandler):
             processed = self.process_packet(pkttype, packet)
 
         if not processed:
-            self._send_packet(Byte(MSG_UNIMPLEMENTED), UInt32(self._recv_seq))
+            self.send_packet(Byte(MSG_UNIMPLEMENTED), UInt32(self._recv_seq))
 
         if self._transport:
             self._recv_seq = (self._recv_seq + 1) & 0xffffffff
@@ -617,7 +657,7 @@ class SSHConnection(SSHPacketHandler):
 
         return True
 
-    def _send_packet(self, *args):
+    def send_packet(self, *args):
         payload = b''.join(args)
         pkttype = payload[0]
 
@@ -638,7 +678,7 @@ class SSHConnection(SSHPacketHandler):
         # If we're encrypting and we have no data outstanding, insert an
         # ignore packet into the stream
         if self._send_cipher and payload[0] != MSG_IGNORE:
-            self._send_packet(Byte(MSG_IGNORE), String(b''))
+            self.send_packet(Byte(MSG_IGNORE), String(b''))
 
         if self._compressor and (self._auth_complete or
                                  not self._compress_after_auth):
@@ -697,7 +737,7 @@ class SSHConnection(SSHPacketHandler):
         self._deferred_packets = []
 
         for packet in deferred_packets:
-            self._send_packet(packet)
+            self.send_packet(packet)
 
     def _send_kexinit(self):
         """Start a kex exchange"""
@@ -723,9 +763,9 @@ class SSHConnection(SSHPacketHandler):
         else:
             self._client_kexinit = packet
 
-        self._send_packet(packet)
+        self.send_packet(packet)
 
-    def _send_newkeys(self, k, h):
+    def send_newkeys(self, k, h):
         """Finish a key exchange and send a new keys message"""
 
         if not self._session_id:
@@ -784,7 +824,7 @@ class SSHConnection(SSHPacketHandler):
         else:
             next_mac_sc = get_mac(self._mac_alg_sc, mac_key_sc)
 
-        self._send_packet(Byte(MSG_NEWKEYS))
+        self.send_packet(Byte(MSG_NEWKEYS))
 
         if self.is_client():
             self._send_cipher = next_cipher_cs
@@ -840,44 +880,50 @@ class SSHConnection(SSHPacketHandler):
 
     def _send_service_request(self, service):
         self._next_service = service
-        self._send_packet(Byte(MSG_SERVICE_REQUEST), String(service))
+        self.send_packet(Byte(MSG_SERVICE_REQUEST), String(service))
 
-    def _send_userauth_request(self, method, *args, key=None):
+    def send_userauth_request(self, method, *args, key=None):
+        """Send a user authentication request"""
+
         packet = b''.join((Byte(MSG_USERAUTH_REQUEST), String(self._username),
                            String(_CONNECTION_SERVICE), String(method)) + args)
 
         if key:
             packet += String(key.sign(String(self._session_id) + packet))
 
-        self._send_packet(packet)
+        self.send_packet(packet)
 
-    def _send_userauth_failure(self, partial_success):
+    def send_userauth_failure(self, partial_success):
+        """Send a user authentication failure response"""
+
         self._auth = None
-        self._send_packet(Byte(MSG_USERAUTH_FAILURE),
-                          NameList(get_server_auth_methods(self)),
-                          Boolean(partial_success))
+        self.send_packet(Byte(MSG_USERAUTH_FAILURE),
+                         NameList(get_server_auth_methods(self)),
+                         Boolean(partial_success))
 
-    def _send_userauth_success(self):
-        self._send_packet(Byte(MSG_USERAUTH_SUCCESS))
+    def send_userauth_success(self):
+        """Send a user authentication success response"""
+
+        self.send_packet(Byte(MSG_USERAUTH_SUCCESS))
         self._auth = None
         self._auth_in_progress = False
         self._auth_complete = True
         self._extra.update(username=self._username)
 
-    def _send_channel_open_confirmation(self, send_chan, recv_chan,
-                                        recv_window, recv_pktsize,
-                                        *result_args):
-        self._send_packet(Byte(MSG_CHANNEL_OPEN_CONFIRMATION),
-                          UInt32(send_chan), UInt32(recv_chan),
-                          UInt32(recv_window), UInt32(recv_pktsize),
-                          *result_args)
+    def send_channel_open_confirmation(self, send_chan, recv_chan,
+                                       recv_window, recv_pktsize,
+                                       *result_args):
+        self.send_packet(Byte(MSG_CHANNEL_OPEN_CONFIRMATION),
+                         UInt32(send_chan), UInt32(recv_chan),
+                         UInt32(recv_window), UInt32(recv_pktsize),
+                         *result_args)
 
-    def _send_channel_open_failure(self, send_chan, code, reason, lang):
+    def send_channel_open_failure(self, send_chan, code, reason, lang):
         reason = reason.encode('utf-8')
         lang = lang.encode('ascii')
 
-        self._send_packet(Byte(MSG_CHANNEL_OPEN_FAILURE), UInt32(send_chan),
-                          UInt32(code), String(reason), String(lang))
+        self.send_packet(Byte(MSG_CHANNEL_OPEN_FAILURE), UInt32(send_chan),
+                         UInt32(code), String(reason), String(lang))
 
     @asyncio.coroutine
     def _make_global_request(self, request, *args):
@@ -886,8 +932,8 @@ class SSHConnection(SSHPacketHandler):
         waiter = asyncio.Future(loop=self._loop)
         self._global_request_waiters.append(waiter)
 
-        self._send_packet(Byte(MSG_GLOBAL_REQUEST), String(request),
-                          Boolean(True), *args)
+        self.send_packet(Byte(MSG_GLOBAL_REQUEST), String(request),
+                         Boolean(True), *args)
 
         return (yield from waiter)
 
@@ -897,9 +943,9 @@ class SSHConnection(SSHPacketHandler):
         if want_reply:
             if result:
                 response = b'' if result is True else result
-                self._send_packet(Byte(MSG_REQUEST_SUCCESS), response)
+                self.send_packet(Byte(MSG_REQUEST_SUCCESS), response)
             else:
-                self._send_packet(Byte(MSG_REQUEST_FAILURE))
+                self.send_packet(Byte(MSG_REQUEST_FAILURE))
 
         if self._global_request_queue:
             self._service_next_global_request()
@@ -1048,7 +1094,7 @@ class SSHConnection(SSHPacketHandler):
 
         if service == self._next_service:
             self._next_service = None
-            self._send_packet(Byte(MSG_SERVICE_ACCEPT), String(service))
+            self.send_packet(Byte(MSG_SERVICE_ACCEPT), String(service))
 
             if self.is_server() and service == _USERAUTH_SERVICE:
                 self._auth_in_progress = True
@@ -1073,7 +1119,7 @@ class SSHConnection(SSHPacketHandler):
 
                 # This method is only in SSHClientConnection
                 # pylint: disable=no-member
-                self._try_next_auth()
+                self.try_next_auth()
         else:
             raise DisconnectError(DISC_SERVICE_NOT_AVAILABLE,
                                   'Unexpected service accept received')
@@ -1191,7 +1237,7 @@ class SSHConnection(SSHPacketHandler):
                 self._username = username
 
                 if not self._owner.begin_auth(username):
-                    self._send_userauth_success()
+                    self.send_userauth_success()
                     return
 
             self._auth = lookup_server_auth(self, self._username,
@@ -1214,7 +1260,7 @@ class SSHConnection(SSHPacketHandler):
 
             # This method is only in SSHClientConnection
             # pylint: disable=no-member
-            self._try_next_auth()
+            self.try_next_auth()
         else:
             raise DisconnectError(DISC_PROTOCOL_ERROR,
                                   'Unexpected userauth response')
@@ -1320,14 +1366,14 @@ class SSHConnection(SSHPacketHandler):
             handler = getattr(self, name, None)
             if callable(handler):
                 chan, session = handler(packet)
-                chan._process_open(send_chan, send_window, send_pktsize,
-                                   session)
+                chan.process_open(send_chan, send_window,
+                                  send_pktsize, session)
             else:
                 raise ChannelOpenError(OPEN_UNKNOWN_CHANNEL_TYPE,
                                        'Unknown channel type')
-        except ChannelOpenError as err:
-            self._send_channel_open_failure(send_chan, err.code,
-                                            err.reason, err.lang)
+        except ChannelOpenError as exc:
+            self.send_channel_open_failure(send_chan, exc.code,
+                                           exc.reason, exc.lang)
 
     def _process_channel_open_confirmation(self, pkttype, packet):
         """Process a channel open confirmation response"""
@@ -1341,8 +1387,8 @@ class SSHConnection(SSHPacketHandler):
 
         chan = self._channels.get(recv_chan)
         if chan:
-            chan._process_open_confirmation(send_chan, send_window,
-                                            send_pktsize, packet)
+            chan.process_open_confirmation(send_chan, send_window,
+                                           send_pktsize, packet)
         else:
             raise DisconnectError(DISC_PROTOCOL_ERROR,
                                   'Invalid channel number')
@@ -1367,7 +1413,7 @@ class SSHConnection(SSHPacketHandler):
 
         chan = self._channels.get(recv_chan)
         if chan:
-            chan._process_open_failure(code, reason, lang)
+            chan.process_open_failure(code, reason, lang)
         else:
             raise DisconnectError(DISC_PROTOCOL_ERROR,
                                   'Invalid channel number')
@@ -1471,8 +1517,8 @@ class SSHConnection(SSHPacketHandler):
 
         reason = reason.encode('utf-8')
         lang = lang.encode('ascii')
-        self._send_packet(Byte(MSG_DISCONNECT), UInt32(code),
-                          String(reason), String(lang))
+        self.send_packet(Byte(MSG_DISCONNECT), UInt32(code),
+                         String(reason), String(lang))
 
         self._transport.close()
         self._transport = None
@@ -1520,8 +1566,8 @@ class SSHConnection(SSHPacketHandler):
 
         msg = msg.encode('utf-8')
         lang = lang.encode('ascii')
-        self._send_packet(Byte(MSG_DEBUG), Boolean(always_display),
-                          String(msg), String(lang))
+        self.send_packet(Byte(MSG_DEBUG), Boolean(always_display),
+                         String(msg), String(lang))
 
     @asyncio.coroutine
     def forward_connection(self, dest_host, dest_port):
@@ -1598,11 +1644,11 @@ class SSHClientConnection(SSHConnection):
             for file in _DEFAULT_KEY_FILES:
                 try:
                     file = os.path.join(os.environ['HOME'], '.ssh', file)
-                    self._client_keys.append(self._load_private_key(file))
+                    self._client_keys.append(_load_private_key(file))
                 except OSError:
                     pass
         else:
-            self._client_keys = self._load_private_key_list(client_keys)
+            self._client_keys = _load_private_key_list(client_keys)
 
         self._password = password
         self._kbdint_password_auth = False
@@ -1634,10 +1680,10 @@ class SSHClientConnection(SSHConnection):
                 server_host_keys, server_ca_keys, revoked_server_keys = \
                     self._known_hosts
 
-                server_host_keys = self._load_public_key_list(server_host_keys)
-                server_ca_keys = self._load_public_key_list(server_ca_keys)
+                server_host_keys = _load_public_key_list(server_host_keys)
+                server_ca_keys = _load_public_key_list(server_ca_keys)
                 revoked_server_keys = \
-                    self._load_public_key_list(revoked_server_keys)
+                    _load_public_key_list(revoked_server_keys)
 
             self._server_host_keys = set()
             self._server_host_key_algs = []
@@ -1671,7 +1717,7 @@ class SSHClientConnection(SSHConnection):
 
         super()._cleanup(exc)
 
-    def _validate_server_host_key(self, data):
+    def validate_server_host_key(self, data):
         """Validate and return the server's host key"""
 
         try:
@@ -1717,22 +1763,27 @@ class SSHClientConnection(SSHConnection):
         raise DisconnectError(DISC_HOST_KEY_NOT_VERIFYABLE,
                               'Unable to decode server host key')
 
-    def _try_next_auth(self):
+    def try_next_auth(self):
         """Attempt client authentication using the next compatible method"""
 
-        self._auth = choose_client_auth(self)
-        if not self._auth:
-            raise DisconnectError(DISC_NO_MORE_AUTH_METHODS_AVAILABLE,
-                                  'Permission denied')
+        while self._auth_methods:
+            method = self._auth_methods.pop(0)
 
-    def _public_key_auth_requested(self):
+            self._auth = lookup_client_auth(self, method)
+            if self._auth:
+                return
+
+        raise DisconnectError(DISC_NO_MORE_AUTH_METHODS_AVAILABLE,
+                              'Permission denied')
+
+    def public_key_auth_requested(self):
         """Return a client key to authenticate with"""
 
         if self._client_keys:
             key, cert = self._client_keys.pop(0)
         else:
             client_key = self._owner.public_key_auth_requested()
-            key, cert = self._load_private_key(client_key)
+            key, cert = _load_private_key(client_key)
 
         if cert:
             self._client_keys.insert(0, (key, None))
@@ -1742,8 +1793,15 @@ class SSHClientConnection(SSHConnection):
         else:
             return None, None, None
 
-    def _password_auth_requested(self):
+    def password_auth_requested(self):
         """Return a password to authenticate with"""
+
+        # Only allow passwordauth if the connection supports encryption
+        # and a MAC.
+        if (not self._send_cipher or
+                (not self._send_mac and
+                 self._send_mode not in ('chacha', 'gcm'))):
+            return None
 
         if self._password:
             password = self._password
@@ -1753,22 +1811,22 @@ class SSHClientConnection(SSHConnection):
 
         return password
 
-    def _password_change_requested(self):
+    def password_change_requested(self):
         """Return a password to authenticate with and what to change it to"""
 
         return self._owner.password_change_requested()
 
-    def _password_changed(self):
+    def password_changed(self):
         """Report a successful password change"""
 
         self._owner.password_changed()
 
-    def _password_change_failed(self):
+    def password_change_failed(self):
         """Report a failed password change"""
 
         self._owner.password_change_failed()
 
-    def _kbdint_auth_requested(self):
+    def kbdint_auth_requested(self):
         """Return the list of supported keyboard-interactive auth methods
 
            If keyboard-interactive auth is not supported in the client but
@@ -1777,6 +1835,13 @@ class SSHClientConnection(SSHConnection):
 
         """
 
+        # Only allow keyboard interactive auth if the connection supports
+        # encryption and a MAC.
+        if (not self._send_cipher or
+                (not self._send_mac and
+                 self._send_mode not in ('chacha', 'gcm'))):
+            return None
+
         submethods = self._owner.kbdint_auth_requested()
         if submethods is None and self._password is not None:
             self._kbdint_password_auth = True
@@ -1784,7 +1849,7 @@ class SSHClientConnection(SSHConnection):
 
         return submethods
 
-    def _kbdint_challenge_received(self, name, instructions, lang, prompts):
+    def kbdint_challenge_received(self, name, instructions, lang, prompts):
         """Return responses to a keyboard-interactive auth challenge"""
 
         if self._kbdint_password_auth:
@@ -1793,7 +1858,7 @@ class SSHClientConnection(SSHConnection):
                 return []
             elif (len(prompts) == 1 and
                   'password' in prompts[0][0].lower().strip()):
-                password = self._password_auth_requested()
+                password = self.password_auth_requested()
                 return [password] if password is not None else None
             else:
                 return None
@@ -1848,12 +1913,12 @@ class SSHClientConnection(SSHConnection):
                     self._dynamic_remote_listeners.get(dest_host))
 
         if listener:
-            return listener._process_connection(orig_host, orig_port)
+            return listener.process_connection(orig_host, orig_port)
         else:
             raise ChannelOpenError(OPEN_CONNECT_FAILED, 'No such listener')
 
     @asyncio.coroutine
-    def _close_client_listener(self, listener, listen_host, listen_port):
+    def close_client_listener(self, listener, listen_host, listen_port):
         yield from self._make_global_request(
             b'cancel-tcpip-forward', String(listen_host.encode('utf-8')),
             UInt32(listen_port))
@@ -1930,8 +1995,8 @@ class SSHClientConnection(SSHConnection):
         chan = SSHClientChannel(self, self._loop, encoding,
                                 window, max_pktsize)
 
-        return (yield from chan._create(session_factory, command, subsystem,
-                                        env, term_type, term_size, term_modes))
+        return (yield from chan.create(session_factory, command, subsystem,
+                                       env, term_type, term_size, term_modes))
 
     @asyncio.coroutine
     def open_session(self, *args, **kwargs):
@@ -1949,11 +2014,11 @@ class SSHClientConnection(SSHConnection):
 
         """
 
-        _, session = yield from self.create_session(SSHClientStreamSession,
-                                                    *args, **kwargs)
+        chan, session = yield from self.create_session(SSHClientStreamSession,
+                                                       *args, **kwargs)
 
-        return (SSHWriter(session), SSHReader(session),
-                SSHReader(session, EXTENDED_DATA_STDERR))
+        return (SSHWriter(session, chan), SSHReader(session, chan),
+                SSHReader(session, chan, EXTENDED_DATA_STDERR))
 
     @asyncio.coroutine
     def create_connection(self, session_factory, dest_host, dest_port,
@@ -2005,8 +2070,8 @@ class SSHClientConnection(SSHConnection):
 
         chan = SSHTCPChannel(self, self._loop, encoding, window, max_pktsize)
 
-        return (yield from chan._connect(session_factory, dest_host, dest_port,
-                                         orig_host, orig_port))
+        return (yield from chan.connect(session_factory, dest_host, dest_port,
+                                        orig_host, orig_port))
 
     @asyncio.coroutine
     def open_connection(self, *args, **kwargs):
@@ -2030,10 +2095,10 @@ class SSHClientConnection(SSHConnection):
 
         """
 
-        _, session = yield from self.create_connection(SSHTCPStreamSession,
-                                                       *args, **kwargs)
+        chan, session = yield from self.create_connection(SSHTCPStreamSession,
+                                                          *args, **kwargs)
 
-        return SSHReader(session), SSHWriter(session)
+        return SSHReader(session, chan), SSHWriter(session, chan)
 
     @asyncio.coroutine
     def create_server(self, session_factory, listen_host, listen_port, *,
@@ -2292,7 +2357,7 @@ class SSHServerConnection(SSHConnection):
         self._window = window
         self._max_pktsize = max_pktsize
 
-        server_host_keys = self._load_private_key_list(server_host_keys)
+        server_host_keys = _load_private_key_list(server_host_keys)
 
         self._server_host_keys = OrderedDict()
 
@@ -2316,7 +2381,7 @@ class SSHServerConnection(SSHConnection):
 
         self._server_host_key_algs = self._server_host_keys.keys()
 
-        self._client_keys = self._load_authorized_keys(authorized_client_keys)
+        self._client_keys = _load_authorized_keys(authorized_client_keys)
 
         self._server_host_key = None
         self._key_options = {}
@@ -2344,7 +2409,7 @@ class SSHServerConnection(SSHConnection):
 
         return False
 
-    def _get_server_host_key(self):
+    def get_server_host_key(self):
         """Return the chosen server host key
 
            This method returns the chosen server host private key and a
@@ -2354,85 +2419,104 @@ class SSHServerConnection(SSHConnection):
 
         return self._server_host_key
 
-    def _public_key_auth_supported(self):
-        """Return whether or not public key authentication is supported"""
-
-        return (bool(self._client_keys) or
-                self._owner.public_key_auth_supported())
-
-    def _validate_public_key(self, username, key_data):
-        """Validate and return the public key for the specified user
-
-           This method validates that the public key or certificate provided
-           is allowed for the specified user. If it is, the corresponding
-           public key is returned. Otherwise ``None`` is returned to
-           indicate it is not valid.
-
-        """
-
-        options = None
+    def _validate_client_certificate(self, username, key_data):
+        """Validate a client certificate for the specified user"""
 
         try:
             cert = decode_ssh_certificate(key_data)
         except KeyImportError:
-            pass
-        else:
-            if self._client_keys:
-                options = self._client_keys.validate(cert.signing_key,
-                                                     self._peer_addr,
-                                                     cert.principals, ca=True)
+            return None
 
-            if options is None and \
-               not self._owner.validate_ca_key(username, cert.signing_key):
+        options = None
+
+        if self._client_keys:
+            options = self._client_keys.validate(cert.signing_key,
+                                                 self._peer_addr,
+                                                 cert.principals, ca=True)
+
+        if (options is None and
+                not self._owner.validate_ca_key(username, cert.signing_key)):
+            return None
+
+        self._key_options = {} if options is None else options
+
+        if self.get_key_option('principals'):
+            username = None
+
+        try:
+            cert.validate(CERT_TYPE_USER, username)
+        except ValueError:
+            return None
+
+        allowed_addresses = self.get_certificate_option('source-address')
+        if allowed_addresses:
+            ip = ip_address(self._peer_addr)
+            if not any(ip in network for network in allowed_addresses):
                 return None
 
-            self._key_options = {} if options is None else options
+        self._cert_options = cert.options
 
-            if self.get_key_option('principals'):
-                username = None
+        return cert.key
 
-            try:
-                cert.validate(CERT_TYPE_USER, username)
-            except ValueError:
-                return None
-
-            allowed_addresses = self.get_certificate_option('source-address')
-            if allowed_addresses:
-                ip = ip_address(self._peer_addr)
-                if not any(ip in network for network in allowed_addresses):
-                    return None
-
-            self._cert_options = cert.options
-
-            return cert.key
+    def _validate_client_public_key(self, username, key_data):
+        """Validate a client public key for the specified user"""
 
         try:
             key = decode_ssh_public_key(key_data)
         except KeyImportError:
             return None
+
+        options = None
+
+        if self._client_keys:
+            options = self._client_keys.validate(key, self._peer_addr)
+
+        if (options is None and
+                not self._owner.validate_public_key(username, key)):
+            return None
+
+        self._key_options = {} if options is None else options
+
+        return key
+
+    def public_key_auth_supported(self):
+        """Return whether or not public key authentication is supported"""
+
+        return (bool(self._client_keys) or
+                self._owner.public_key_auth_supported())
+
+    def validate_public_key(self, username, key_data, msg, signature):
+        """Validate the public key or certificate for the specified user
+
+           This method validates that the public key or certificate provided
+           is allowed for the specified user. If msg and signature are
+           provided, the key is used to also validate the message signature.
+           It returns ``True`` when the key is allowed and the signature (if
+           present) is valid. Otherwise, it returns ``False``.
+
+        """
+
+        key = (self._validate_client_certificate(username, key_data) or
+               self._validate_client_public_key(username, key_data))
+
+        if key is None:
+            return False
+        elif msg:
+            return key.verify(String(self._session_id) + msg, signature)
         else:
-            if self._client_keys:
-                options = self._client_keys.validate(key, self._peer_addr)
+            return True
 
-            if options is None and \
-               not self._owner.validate_public_key(username, key):
-                return None
-
-            self._key_options = {} if options is None else options
-
-            return key
-
-    def _password_auth_supported(self):
+    def password_auth_supported(self):
         """Return whether or not password authentication is supported"""
 
         return self._owner.password_auth_supported()
 
-    def _validate_password(self, username, password):
+    def validate_password(self, username, password):
         """Return whether password is valid for this user"""
 
         return self._owner.validate_password(username, password)
 
-    def _kbdint_auth_supported(self):
+    def kbdint_auth_supported(self):
         """Return whether or not keyboard-interactive authentication
            is supported"""
 
@@ -2444,7 +2528,7 @@ class SSHServerConnection(SSHConnection):
         else:
             return False
 
-    def _get_kbdint_challenge(self, username, lang, submethods):
+    def get_kbdint_challenge(self, username, lang, submethods):
         """Return a keyboard-interactive auth challenge"""
 
         if self._kbdint_password_auth:
@@ -2452,7 +2536,7 @@ class SSHServerConnection(SSHConnection):
         else:
             return self._owner.get_kbdint_challenge(username, lang, submethods)
 
-    def _validate_kbdint_response(self, username, responses):
+    def validate_kbdint_response(self, username, responses):
         """Return whether the keyboard-interactive response is valid
            for this user"""
 
@@ -2538,8 +2622,7 @@ class SSHServerConnection(SSHConnection):
         else:
             session = result
 
-        chan._extra['local_peername'] = (dest_host, dest_port)
-        chan._extra['remote_peername'] = (orig_host, orig_port)
+        chan.set_inbound_peer_names(dest_host, dest_port, orig_host, orig_port)
 
         return chan, session
 
@@ -2644,7 +2727,7 @@ class SSHServerConnection(SSHConnection):
 
         msg = msg.encode('utf-8')
         lang = lang.encode('ascii')
-        self._send_packet(Byte(MSG_USERAUTH_BANNER), String(msg), String(lang))
+        self.send_packet(Byte(MSG_USERAUTH_BANNER), String(msg), String(lang))
 
     def set_authorized_keys(self, authorized_keys):
         """Set the keys trusted for client public key authentication
@@ -2662,7 +2745,7 @@ class SSHServerConnection(SSHConnection):
 
         """
 
-        self._client_keys = self._load_authorized_keys(authorized_keys)
+        self._client_keys = _load_authorized_keys(authorized_keys)
 
     def get_key_option(self, option, default=None):
         """Return option from authorized_keys
@@ -2894,8 +2977,8 @@ class SSHServerConnection(SSHConnection):
 
         chan = SSHTCPChannel(self, self._loop, encoding, window, max_pktsize)
 
-        return (yield from chan._accept(session_factory, listen_host,
-                                        listen_port, orig_host, orig_port))
+        return (yield from chan.accept(session_factory, listen_host,
+                                       listen_port, orig_host, orig_port))
 
     @asyncio.coroutine
     def open_connection(self, handler_factory, *args, **kwargs):
@@ -2920,10 +3003,10 @@ class SSHServerConnection(SSHConnection):
         def session_factory():
             return SSHTCPStreamSession(handler_factory)
 
-        _, session = yield from self.create_connection(session_factory,
-                                                       *args, **kwargs)
+        chan, session = yield from self.create_connection(session_factory,
+                                                          *args, **kwargs)
 
-        return SSHReader(session), SSHWriter(session)
+        return SSHReader(session, chan), SSHWriter(session, chan)
 
 
 class SSHClient:
@@ -3773,7 +3856,7 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
 
     yield from auth_waiter
 
-    return conn, conn._owner
+    return conn, conn.get_owner()
 
 
 @asyncio.coroutine

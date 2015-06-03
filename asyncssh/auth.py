@@ -60,12 +60,12 @@ class _ClientAuth(SSHPacketHandler):
         except _SSHAuthError:
             # We can't complete the current auth - move to the next one
             processed = True
-            choose_client_auth(self._conn)
+            self._conn.try_next_auth()
 
         return processed
 
     def send_request(self, *args, key=None):
-        self._conn._send_userauth_request(self._method, *args, key=key)
+        self._conn.send_userauth_request(self._method, *args, key=key)
 
 
 class _ClientNullAuth(_ClientAuth):
@@ -85,8 +85,7 @@ class _ClientPublicKeyAuth(_ClientAuth):
     def __init__(self, conn, method):
         super().__init__(conn, method)
 
-        self._alg, self._key, self._key_data = \
-            conn._public_key_auth_requested()
+        self._alg, self._key, self._key_data = conn.public_key_auth_requested()
         if self._alg is None:
             raise _SSHAuthError()
 
@@ -118,12 +117,7 @@ class _ClientKbdIntAuth(_ClientAuth):
     def __init__(self, conn, method):
         super().__init__(conn, method)
 
-        # Only allow keyboard interactive  auth if the transport supports
-        # encryption and a MAC.
-        if not conn._send_cipher or not conn._send_mac:
-            raise _SSHAuthError()
-
-        submethods = conn._kbdint_auth_requested()
+        submethods = conn.kbdint_auth_requested()
         if submethods is None:
             raise _SSHAuthError()
 
@@ -158,15 +152,15 @@ class _ClientKbdIntAuth(_ClientAuth):
 
             prompts.append((prompt, echo))
 
-        responses = self._conn._kbdint_challenge_received(name, instruction,
-                                                          lang, prompts)
+        responses = self._conn.kbdint_challenge_received(name, instruction,
+                                                         lang, prompts)
 
         if responses is None:
             raise _SSHAuthError()
 
-        self._conn._send_packet(Byte(MSG_USERAUTH_INFO_RESPONSE),
-                                UInt32(len(responses)),
-                                b''.join(String(r) for r in responses))
+        self._conn.send_packet(Byte(MSG_USERAUTH_INFO_RESPONSE),
+                               UInt32(len(responses)),
+                               b''.join(String(r) for r in responses))
 
     packet_handlers = {
         MSG_USERAUTH_INFO_REQUEST: _process_info_request
@@ -181,12 +175,7 @@ class _ClientPasswordAuth(_ClientAuth):
 
         self._password_change = False
 
-        # Only allow password auth if the transport supports encryption
-        # and a MAC.
-        if not conn._send_cipher or not conn._send_mac:
-            raise _SSHAuthError()
-
-        password = conn._password_auth_requested()
+        password = conn.password_auth_requested()
         if password is None:
             raise _SSHAuthError()
 
@@ -195,12 +184,12 @@ class _ClientPasswordAuth(_ClientAuth):
     def auth_succeeded(self):
         if self._password_change:
             self._password_change = False
-            self._conn._password_changed()
+            self._conn.password_changed()
 
     def auth_failed(self):
         if self._password_change:
             self._password_change = False
-            self._conn._password_change_failed()
+            self._conn.password_change_failed()
 
     def _process_password_change(self, pkttype, packet):
         # pylint: disable=unused-argument
@@ -215,7 +204,7 @@ class _ClientPasswordAuth(_ClientAuth):
             raise DisconnectError(DISC_PROTOCOL_ERROR,
                                   'Invalid password change request') from None
 
-        result = self._conn._password_change_requested()
+        result = self._conn.password_change_requested()
         if result == NotImplemented:
             # Password change not supported - move on to the next auth method
             raise _SSHAuthError()
@@ -243,21 +232,10 @@ class _ServerAuth(SSHPacketHandler):
         self._username = username
 
     def send_failure(self, partial_success=False):
-        self._conn._send_userauth_failure(partial_success)
+        self._conn.send_userauth_failure(partial_success)
 
     def send_success(self):
-        self._conn._send_userauth_success()
-
-    def verify_signed_request(self, key, packet):
-        try:
-            msg = packet.get_consumed_payload()
-            signature = packet.get_string()
-            packet.check_end()
-
-            return key.verify(String(self._conn._session_id) + msg,
-                              signature)
-        except DisconnectError:
-            return False
+        self._conn.send_userauth_success()
 
 
 class _ServerNullAuth(_ServerAuth):
@@ -281,7 +259,7 @@ class _ServerPublicKeyAuth(_ServerAuth):
 
     @classmethod
     def supported(cls, conn):
-        return conn._public_key_auth_supported()
+        return conn.public_key_auth_supported()
 
     def __init__(self, conn, username, packet):
         super().__init__(conn, username)
@@ -290,20 +268,24 @@ class _ServerPublicKeyAuth(_ServerAuth):
         algorithm = packet.get_string()
         key_data = packet.get_string()
 
-        key = self._conn._validate_public_key(self._username, key_data)
+        if sig_present:
+            msg = packet.get_consumed_payload()
+            signature = packet.get_string()
+        else:
+            msg = None
+            signature = None
 
-        if key is None:
-            self.send_failure()
-        elif sig_present:
-            if self.verify_signed_request(key, packet):
+        packet.check_end()
+
+        if self._conn.validate_public_key(self._username, key_data,
+                                          msg, signature):
+            if sig_present:
                 self.send_success()
             else:
-                self.send_failure()
+                self._conn.send_packet(Byte(MSG_USERAUTH_PK_OK),
+                                       String(algorithm), String(key_data))
         else:
-            packet.check_end()
-
-            self._conn._send_packet(Byte(MSG_USERAUTH_PK_OK),
-                                    String(algorithm), String(key_data))
+            self.send_failure()
 
 
 class _ServerKbdIntAuth(_ServerAuth):
@@ -311,7 +293,7 @@ class _ServerKbdIntAuth(_ServerAuth):
 
     @classmethod
     def supported(cls, conn):
-        return conn._kbdint_auth_supported()
+        return conn.kbdint_auth_supported()
 
     def __init__(self, conn, username, packet):
         super().__init__(conn, username)
@@ -327,8 +309,8 @@ class _ServerKbdIntAuth(_ServerAuth):
             raise DisconnectError(DISC_PROTOCOL_ERROR, 'Invalid keyboard '
                                   'interactive auth request') from None
 
-        challenge = self._conn._get_kbdint_challenge(self._username,
-                                                     lang, submethods)
+        challenge = self._conn.get_kbdint_challenge(self._username,
+                                                    lang, submethods)
         self._send_challenge(challenge)
 
     def _send_challenge(self, challenge):
@@ -339,10 +321,10 @@ class _ServerKbdIntAuth(_ServerAuth):
             prompts = (String(prompt) + Boolean(echo)
                        for prompt, echo in prompts)
 
-            self._conn._send_packet(Byte(MSG_USERAUTH_INFO_REQUEST),
-                                    String(name), String(instruction),
-                                    String(lang), UInt32(num_prompts),
-                                    *prompts)
+            self._conn.send_packet(Byte(MSG_USERAUTH_INFO_REQUEST),
+                                   String(name), String(instruction),
+                                   String(lang), UInt32(num_prompts),
+                                   *prompts)
         elif challenge:
             self.send_success()
         else:
@@ -366,8 +348,8 @@ class _ServerKbdIntAuth(_ServerAuth):
 
         packet.check_end()
 
-        next_challenge = \
-            self._conn._validate_kbdint_response(self._username, responses)
+        next_challenge = self._conn.validate_kbdint_response(self._username,
+                                                             responses)
         self._send_challenge(next_challenge)
 
     packet_handlers = {
@@ -380,7 +362,7 @@ class _ServerPasswordAuth(_ServerAuth):
 
     @classmethod
     def supported(cls, conn):
-        return conn._password_auth_supported()
+        return conn.password_auth_supported()
 
     def __init__(self, conn, username, packet):
         super().__init__(conn, username)
@@ -399,7 +381,7 @@ class _ServerPasswordAuth(_ServerAuth):
 
         # TODO: Handle password change request
 
-        if self._conn._validate_password(self._username, password):
+        if self._conn.validate_password(self._username, password):
             self.send_success()
         else:
             self.send_failure()
@@ -413,16 +395,14 @@ def register_auth_method(alg, client_handler, server_handler):
     _server_auth_handlers[alg] = server_handler
 
 
-def choose_client_auth(conn):
-    """Choose the client authentication method to use"""
+def lookup_client_auth(conn, method):
+    """Look up the client authentication method to use"""
 
-    for method in conn._auth_methods:
-        if method in _auth_methods:
-            try:
-                return _client_auth_handlers[method](conn, method)
-            except _SSHAuthError:
-                # Try the next auth method
-                pass
+    if method in _auth_methods:
+        try:
+            return _client_auth_handlers[method](conn, method)
+        except _SSHAuthError:
+            pass
 
     return None
 
@@ -445,7 +425,7 @@ def lookup_server_auth(conn, username, method, packet):
     if method in _auth_methods:
         return _server_auth_handlers[method](conn, username, packet)
     else:
-        conn._send_userauth_failure(False)
+        conn.send_userauth_failure(False)
         return None
 
 # pylint: disable=bad-whitespace

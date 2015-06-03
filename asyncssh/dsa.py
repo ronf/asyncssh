@@ -36,6 +36,9 @@ class _DSAKey(SSHKey):
         self._private = private
 
     def __eq__(self, other):
+        # This isn't protected access - both objects are _DSAKey instances
+        # pylint: disable=protected-access
+
         return (isinstance(other, self.__class__) and
                 self._key.p == other._key.p and
                 self._key.q == other._key.q and

@@ -64,7 +64,6 @@ class SSHChannel(SSHPacketHandler):
         self._send_buf_len = 0
 
         self._recv_state = 'closed'
-        self._recv_chan = conn._get_recv_chan()
         self._init_recv_window = window
         self._recv_window = window
         self._recv_pktsize = max_pktsize
@@ -77,7 +76,27 @@ class SSHChannel(SSHPacketHandler):
 
         self.set_write_buffer_limits()
 
-        conn._channels[self._recv_chan] = self
+        self._recv_chan = conn.add_channel(self)
+
+    def get_loop(self):
+        """Return the event loop used by this channel"""
+
+        return self._loop
+
+    def get_encoding(self):
+        """Return the encoding used by this channel"""
+
+        return self._encoding
+
+    def get_recv_window(self):
+        """Return the configured receive window for this channel"""
+
+        return self._init_recv_window
+
+    def get_read_datatypes(self):
+        """Return the legal read data types for this channel"""
+
+        return self._read_datatypes
 
     def _cleanup(self, exc=None):
         if self._open_waiter:
@@ -104,7 +123,7 @@ class SSHChannel(SSHPacketHandler):
 
         if self._conn:
             if self._recv_chan:
-                del self._conn._channels[self._recv_chan]
+                self._conn.remove_channel(self._recv_chan)
                 self._recv_chan = None
 
             self._conn = None
@@ -190,12 +209,12 @@ class SSHChannel(SSHPacketHandler):
         else:
             self._deliver_data(data, datatype)
 
-    def _process_connection_close(self, exc):
+    def process_connection_close(self, exc):
         """Process the SSH connection closing"""
 
         self._cleanup(exc)
 
-    def _process_open(self, send_chan, send_window, send_pktsize, session):
+    def process_open(self, send_chan, send_window, send_pktsize, session):
         """Process a channel open request"""
 
         if self._recv_state != 'closed':
@@ -218,22 +237,22 @@ class SSHChannel(SSHPacketHandler):
 
             self._session = session
 
-            self._conn._send_channel_open_confirmation(self._send_chan,
-                                                       self._recv_chan,
-                                                       self._recv_window,
-                                                       self._recv_pktsize)
+            self._conn.send_channel_open_confirmation(self._send_chan,
+                                                      self._recv_chan,
+                                                      self._recv_window,
+                                                      self._recv_pktsize)
 
             self._send_state = 'open'
             self._recv_state = 'open'
 
             self._session.connection_made(self)
         except ChannelOpenError as exc:
-            self._conn._send_channel_open_failure(self._send_chan, exc.code,
-                                                  exc.reason, exc.lang)
+            self._conn.send_channel_open_failure(self._send_chan, exc.code,
+                                                 exc.reason, exc.lang)
             self._loop.call_soon(self._cleanup)
 
-    def _process_open_confirmation(self, send_chan, send_window, send_pktsize,
-                                   packet):
+    def process_open_confirmation(self, send_chan, send_window,
+                                  send_pktsize, packet):
         """Process a channel open confirmation"""
 
         if not self._open_waiter:
@@ -251,7 +270,7 @@ class SSHChannel(SSHPacketHandler):
             self._open_waiter.set_result(packet)
         self._open_waiter = None
 
-    def _process_open_failure(self, code, reason, lang):
+    def process_open_failure(self, code, reason, lang):
         """Process a channel open failure"""
 
         if not self._open_waiter:
@@ -402,10 +421,10 @@ class SSHChannel(SSHPacketHandler):
 
         self._open_waiter = asyncio.Future(loop=self._loop)
 
-        self._conn._send_packet(Byte(MSG_CHANNEL_OPEN), String(chantype),
-                                UInt32(self._recv_chan),
-                                UInt32(self._recv_window),
-                                UInt32(self._recv_pktsize), *args)
+        self._conn.send_packet(Byte(MSG_CHANNEL_OPEN), String(chantype),
+                               UInt32(self._recv_chan),
+                               UInt32(self._recv_window),
+                               UInt32(self._recv_pktsize), *args)
 
         self._send_state = 'open_sent'
         return (yield from self._open_waiter)
@@ -416,7 +435,7 @@ class SSHChannel(SSHPacketHandler):
         if self._send_chan is None:
             raise OSError('Channel not open')
 
-        self._conn._send_packet(Byte(pkttype), UInt32(self._send_chan), *args)
+        self._conn.send_packet(Byte(pkttype), UInt32(self._send_chan), *args)
 
     def _send_request(self, request, *args, want_reply=False):
         """Send a channel request"""
@@ -670,8 +689,8 @@ class SSHClientChannel(SSHChannel):
         self._exit_signal = None
 
     @asyncio.coroutine
-    def _create(self, session_factory, command, subsystem, env,
-                term_type, term_size, term_modes):
+    def create(self, session_factory, command, subsystem, env,
+               term_type, term_size, term_modes):
         """Create an SSH client session"""
 
         packet = yield from self._open(b'session')
@@ -1346,15 +1365,22 @@ class SSHTCPChannel(SSHChannel):
         return self, self._session
 
     @asyncio.coroutine
-    def _connect(self, session_factory, host, port, orig_host, orig_port):
+    def connect(self, session_factory, host, port, orig_host, orig_port):
         """Create a new outbound TCP session"""
 
         return (yield from self._open_tcp(session_factory, b'direct-tcpip',
                                           host, port, orig_host, orig_port))
 
     @asyncio.coroutine
-    def _accept(self, session_factory, host, port, orig_host, orig_port):
+    def accept(self, session_factory, host, port, orig_host, orig_port):
         """Create a new forwarded TCP session"""
 
         return (yield from self._open_tcp(session_factory, b'forwarded-tcpip',
                                           host, port, orig_host, orig_port))
+
+    def set_inbound_peer_names(self, dest_host, dest_port,
+                               orig_host, orig_port):
+        """Set local and remote peer names for inbound connections"""
+
+        self._extra['local_peername'] = (dest_host, dest_port)
+        self._extra['remote_peername'] = (orig_host, orig_port)

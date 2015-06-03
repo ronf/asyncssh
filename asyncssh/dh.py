@@ -75,7 +75,7 @@ class _KexDHBase(Kex):
         self._x = randrange(2, self._q)
         self._e = pow(self._g, self._x, self._p)
 
-        self._conn._send_packet(Byte(pkttype), MPInt(self._e))
+        self._conn.send_packet(Byte(pkttype), MPInt(self._e))
 
     def _send_reply(self, pkttype):
         if not 1 <= self._e < self._p:
@@ -89,21 +89,21 @@ class _KexDHBase(Kex):
         if k < 1:
             raise DisconnectError(DISC_PROTOCOL_ERROR, 'Kex DH k out of range')
 
-        host_key, host_key_data = self._conn._get_server_host_key()
+        host_key, host_key_data = self._conn.get_server_host_key()
 
         h = self._compute_hash(host_key_data, k)
         sig = host_key.sign(h)
 
-        self._conn._send_packet(Byte(pkttype), String(host_key_data),
-                                MPInt(self._f), String(sig))
+        self._conn.send_packet(Byte(pkttype), String(host_key_data),
+                               MPInt(self._f), String(sig))
 
-        self._conn._send_newkeys(k, h)
+        self._conn.send_newkeys(k, h)
 
     def _verify_reply(self, host_key_data, sig):
         if not 1 <= self._f < self._p:
             raise DisconnectError(DISC_PROTOCOL_ERROR, 'Kex DH f out of range')
 
-        host_key = self._conn._validate_server_host_key(host_key_data)
+        host_key = self._conn.validate_server_host_key(host_key_data)
 
         k = pow(self._f, self._x, self._p)
 
@@ -115,7 +115,7 @@ class _KexDHBase(Kex):
             raise DisconnectError(DISC_KEY_EXCHANGE_FAILED,
                                   'Key exchange hash mismatch')
 
-        self._conn._send_newkeys(k, h)
+        self._conn.send_newkeys(k, h)
 
     def _process_init(self, pkttype, packet):
         # pylint: disable=unused-argument
@@ -161,10 +161,7 @@ class _KexDH(_KexDHBase):
 
     def _compute_hash(self, host_key_data, k):
         hash_obj = self._hash_alg()
-        hash_obj.update(String(self._conn._client_version))
-        hash_obj.update(String(self._conn._server_version))
-        hash_obj.update(String(self._conn._client_kexinit))
-        hash_obj.update(String(self._conn._server_kexinit))
+        hash_obj.update(self._conn.get_hash_prefix())
         hash_obj.update(String(host_key_data))
         hash_obj.update(MPInt(self._e))
         hash_obj.update(MPInt(self._f))
@@ -190,14 +187,11 @@ class _KexDHGex(_KexDHBase):
                              UInt32(KEX_DH_GEX_PREFERRED_SIZE) +
                              UInt32(KEX_DH_GEX_MAX_SIZE))
 
-            conn._send_packet(Byte(MSG_KEX_DH_GEX_REQUEST), self._request)
+            conn.send_packet(Byte(MSG_KEX_DH_GEX_REQUEST), self._request)
 
     def _compute_hash(self, host_key_data, k):
         hash_obj = self._hash_alg()
-        hash_obj.update(String(self._conn._client_version))
-        hash_obj.update(String(self._conn._server_version))
-        hash_obj.update(String(self._conn._client_kexinit))
-        hash_obj.update(String(self._conn._server_kexinit))
+        hash_obj.update(self._conn.get_hash_prefix())
         hash_obj.update(String(host_key_data))
         hash_obj.update(self._request)
         hash_obj.update(MPInt(self._p))
@@ -238,8 +232,8 @@ class _KexDHGex(_KexDHBase):
 
         self._q = (self._p - 1) // 2
 
-        self._conn._send_packet(Byte(MSG_KEX_DH_GEX_GROUP), MPInt(self._p),
-                                MPInt(self._g))
+        self._conn.send_packet(Byte(MSG_KEX_DH_GEX_GROUP), MPInt(self._p),
+                               MPInt(self._g))
 
     def _process_group(self, pkttype, packet):
         # pylint: disable=unused-argument

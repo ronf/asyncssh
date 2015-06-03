@@ -24,40 +24,66 @@ class SSHPortForwarder(SSHTCPSession):
     def __init__(self, conn, loop, peer=None):
         self._conn = conn
         self._loop = loop
-        self._transport = None
         self._peer = peer
+        self._transport = None
         self._eof_received = False
 
         if peer:
-            peer._peer = self
+            peer.set_peer(self)
 
-    def connection_made(self, transport):
+    def set_peer(self, peer):
+        self._peer = peer
+
+    def clear_peer(self):
+        self._peer = None
+
+    def set_transport(self, transport):
         self._transport = transport
 
-    def connection_lost(self, exc):
+    def clear_transport(self):
         if self._transport:
             self._transport.close()
             self._transport = None
 
+    def write(self, data):
+        self._transport.write(data)
+
+    def write_eof(self):
+        self._transport.write_eof()
+
+    def was_eof_received(self):
+        return self._eof_received
+
+    def pause_reading(self):
+        self._transport.pause_reading()
+
+    def resume_reading(self):
+        self._transport.resume_reading()
+
+    def connection_made(self, transport):
+        self.set_transport(transport)
+
+    def connection_lost(self, exc):
+        self.clear_transport()
+
         if self._peer:
-            self._peer._transport.close()
-            self._peer._transport = None
-            self._peer._peer = None
-            self._peer = None
+            self._peer.clear_transport()
+            self._peer.clear_peer()
+            self.clear_peer()
 
     def data_received(self, data, datatype=None):
-        self._peer._transport.write(data)
+        self._peer.write(data)
 
     def eof_received(self):
         self._eof_received = True
-        self._peer._transport.write_eof()
-        return not self._peer._eof_received
+        self._peer.write_eof()
+        return not self._peer.was_eof_received()
 
     def pause_writing(self):
-        self._peer._transport.pause_reading()
+        self._peer.pause_reading()
 
     def resume_writing(self):
-        self._peer._transport.resume_reading()
+        self._peer.resume_reading()
 
 
 class SSHLocalPortForwarder(SSHPortForwarder):
@@ -80,11 +106,10 @@ class SSHLocalPortForwarder(SSHPortForwarder):
             _, self._peer = \
                 yield from self._coro(session_factory, self._dest_host,
                                       self._dest_port, orig_host, orig_port)
-            self._peer._peer = self
-            self._transport.resume_reading()
+            self._peer.set_peer(self)
+            self.resume_reading()
         except DisconnectError:
-            self._transport.close()
-            self._transport = None
+            self.clear_transport()
 
     def connection_made(self, transport):
         super().connection_made(transport)

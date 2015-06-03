@@ -22,9 +22,9 @@ from .session import SSHClientSession, SSHServerSession, SSHTCPSession
 class SSHReader:
     """SSH read stream handler"""
 
-    def __init__(self, session, datatype=None):
+    def __init__(self, session, chan, datatype=None):
         self._session = session
-        self._chan = session._chan
+        self._chan = chan
         self._datatype = datatype
 
     @property
@@ -102,16 +102,15 @@ class SSHReader:
 
         """
 
-        return (self._session._eof_received and
-                not self._session._recv_buf[self._datatype])
+        return self._session.at_eof(self._datatype)
 
 
 class SSHWriter:
     """SSH write stream handler"""
 
-    def __init__(self, session, datatype=None):
+    def __init__(self, session, chan, datatype=None):
         self._session = session
-        self._chan = session._chan
+        self._chan = chan
         self._datatype = datatype
 
     @property
@@ -201,6 +200,7 @@ class SSHStreamSession:
 
     def __init__(self):
         self._chan = None
+        self._loop = None
         self._limit = None
         self._exception = None
         self._eof_received = False
@@ -217,7 +217,7 @@ class SSHStreamSession:
             raise RuntimeError('read called while another coroutine is '
                                'already waiting to read')
 
-        waiter = asyncio.Future(loop=self._chan._loop)
+        waiter = asyncio.Future(loop=self._loop)
         self._read_waiter[datatype] = waiter
         yield from waiter
 
@@ -237,9 +237,10 @@ class SSHStreamSession:
 
     def connection_made(self, chan):
         self._chan = chan
-        self._limit = self._chan._init_recv_window
+        self._loop = chan.get_loop()
+        self._limit = self._chan.get_recv_window()
 
-        for datatype in self._chan._read_datatypes:
+        for datatype in chan.get_read_datatypes():
             self._recv_buf[datatype] = []
             self._read_waiter[datatype] = None
 
@@ -272,6 +273,9 @@ class SSHStreamSession:
 
         return True
 
+    def at_eof(self, datatype):
+        return self._eof_received and not self._recv_buf[datatype]
+
     def pause_writing(self):
         self._write_paused = True
 
@@ -282,7 +286,7 @@ class SSHStreamSession:
     @asyncio.coroutine
     def read(self, n, datatype, exact):
         recv_buf = self._recv_buf[datatype]
-        buf = '' if self._chan._encoding else b''
+        buf = '' if self._chan.get_encoding() else b''
         data = []
 
         while True:
@@ -322,7 +326,7 @@ class SSHStreamSession:
     @asyncio.coroutine
     def readline(self, datatype):
         recv_buf = self._recv_buf[datatype]
-        buf, sep = ('', '\n') if self._chan._encoding else (b'', b'\n')
+        buf, sep = ('', '\n') if self._chan.get_encoding() else (b'', b'\n')
         data = []
 
         while True:
@@ -359,7 +363,7 @@ class SSHStreamSession:
     @asyncio.coroutine
     def drain(self):
         if self._write_paused and not self._connection_lost:
-            waiter = asyncio.Future(loop=self._chan._loop)
+            waiter = asyncio.Future(loop=self._loop)
             self._drain_waiters.append(waiter)
             yield from waiter
 
@@ -403,12 +407,13 @@ class SSHServerStreamSession(SSHStreamSession, SSHServerSession):
             return bool(self._session_factory)
 
     def session_started(self):
-        if self._chan._subsystem == 'sftp':
+        if self._chan.get_subsystem() == 'sftp':
             self._chan.start_sftp_server(self._sftp_factory)
         else:
-            handler = \
-                self._session_factory(SSHReader(self), SSHWriter(self),
-                                      SSHWriter(self, EXTENDED_DATA_STDERR))
+            handler = self._session_factory(SSHReader(self, self._chan),
+                                            SSHWriter(self, self._chan),
+                                            SSHWriter(self, self._chan,
+                                                      EXTENDED_DATA_STDERR))
 
             if asyncio.iscoroutine(handler):
                 asyncio.async(handler)
@@ -437,7 +442,8 @@ class SSHTCPStreamSession(SSHStreamSession, SSHTCPSession):
 
     def session_started(self):
         if self._handler_factory:
-            handler = self._handler_factory(SSHReader(self), SSHWriter(self))
+            handler = self._handler_factory(SSHReader(self, self._chan),
+                                            SSHWriter(self, self._chan))
 
             if asyncio.iscoroutine(handler):
                 asyncio.async(handler)
