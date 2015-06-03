@@ -1,28 +1,29 @@
-AsyncSSH Overview
-=================
+AsyncSSH: Asynchoronous SSH for Python
+======================================
 
-AsyncSSH is a Python package which provides an asynchronous client and
-server implementation of the SSHv2 protocol on top of the Python asyncio
-framework. It requires Python 3.4 or later and either the PyCA library or
-the PyCrypto library for some cryptographic functions.
+AsyncSSH is a Python package which provides an asynchronous client and server implementation of the SSHv2 protocol on top of the Python 3.4+ asyncio framework.
 
-This package is released under the following terms:
+.. code:: python
 
-    Copyright (c) 2013-2015 by Ron Frederick <ronf@timeheart.net>.
-    All rights reserved.
+    import asyncio
+    import asyncssh
+    
+    @asyncio.coroutine
+    def run_client():
+        with (yield from asyncssh.connect('localhost')) as conn:
+            stdin, stdout, stderr = yield from conn.open_session('echo "Hello!"')
+            output = yield from stdout.read()
+            exit_status = stdout.channel.get_exit_status()
+            print(output, end='')
+    
+    asyncio.get_event_loop().run_until_complete(run_client())
 
-    This program and the accompanying materials are made available under
-    the terms of the Eclipse Public License v1.0 which accompanies this
-    distribution and is available at:
+Check out the `examples`__ to get started!
+     __ http://asyncssh.readthedocs.org/#clientexamples
 
-        http://www.eclipse.org/legal/epl-v10.html
+Features
+--------
 
-    Contributors:
-        Ron Frederick - initial implementation, API, and documentation
-
-Notable features include:
-
-* Written from the ground up to be based on Python 3
 * Support for a number of key exchange methods
     - Diffie Hellman group1 and group14 with SHA1
     - Diffie Hellman group exchange with SHA1 and SHA256
@@ -73,7 +74,7 @@ Notable features include:
   authentication methods, ciphers, and compression algorithms
 
 Prerequisites
-=============
+-------------
 
 To use ``asyncssh``, you need the following:
 
@@ -81,32 +82,27 @@ To use ``asyncssh``, you need the following:
 * PyCrypto 2.6 or later and/or PyCA 0.6.1 or later
 
 Installation
-============
+------------
 
-#. Install Python 3.4 or later from http://www.python.org or your
-   favorite packaging system.
+Install AsyncSSH by running::
 
-#. Install PyCrypto 2.6 or later from http://www.pycrypto.org and/or
-   PyCA 0.6.1 or later from https://cryptography.io to provide basic
-   crypto support.
+    pip install asyncssh
 
-#. Optionally install libsodium from https://github.com/jedisct1/libsodium
+Optional Extras
+^^^^^^^^^^^^^^^
+
+There are some optional modules you can install to enable additional functionality.
+
+*  Install libsodium from https://github.com/jedisct1/libsodium
    and libnacl from https://github.com/saltstack/libnacl if you want
    support for Curve25519 Diffie-Hellman key exchange, Ed25519 keys,
    and the ChaCha20-Poly1305 cipher.
 
-#. Optionally install bcrypt from https://code.google.com/p/py-bcrypt
+*  Install bcrypt from https://code.google.com/p/py-bcrypt
    if you want support for OpenSSH private key encryption.
 
-#. Install AsyncSSH by running::
-
-   % pip install asyncssh
-    
-#. Check out the `examples`__ to get started!
-     __ http://asyncssh.timeheart.net/#clientexamples
-
 Mailing Lists
-=============
+-------------
 
 Three mailing lists are available for AsyncSSH:
 
@@ -116,3 +112,18 @@ Three mailing lists are available for AsyncSSH:
     __ http://groups.google.com/d/forum/asyncssh-announce
     __ http://groups.google.com/d/forum/asyncssh-dev
     __ http://groups.google.com/d/forum/asyncssh-users
+
+License
+-------
+
+Copyright (c) 2013-2015 by Ron Frederick <ronf@timeheart.net>.
+All rights reserved.
+
+This program and the accompanying materials are made available under
+the terms of the **Eclipse Public License v1.0** which accompanies this
+distribution and is available at:
+
+http://www.eclipse.org/legal/epl-v10.html
+
+Contributors:
+    Ron Frederick - initial implementation, API, and documentation
