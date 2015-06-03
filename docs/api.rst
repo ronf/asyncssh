@@ -760,6 +760,23 @@ SFTPName
 Public Key Support
 ==================
 
+AsyncSSH has extensive public key and certificate support.
+
+Supported public key types include DSA, RSA, and ECDSA. In addition,
+ed25519 keys are supported if libnacl is installed.
+
+Supported certificate types include version 00 certificates for DSA and
+RSA keys and version 01 certificates for DSA, RSA, ECDSA, and ed25519
+keys. Support is also available for the certificate critical options of
+force-command and source-address and the extensions permit-pty and
+permit-port-forwarding.
+
+Several public key and certificate formats are supported including
+PKCS#1 and PKCS#8 DER and PEM, OpenSSH, and RFC4716 formats.
+
+PEM and PKCS#8 password-based encryption of private keys is supported, as
+is OpenSSH private key encryption when the bcrypt package is installed.
+
 .. index:: Specifying private keys
 .. _SpecifyingPrivateKeys:
 
@@ -904,6 +921,12 @@ these values.
 Authorized keys
 ===============
 
+AsyncSSH supports OpenSSH-style authorized_keys files, including the
+cert-authority option to validate user certificates, enforcement of
+from and principals options to restrict key matching, enforcement
+of no-pty, no-port-forwarding, and permitopen options, and support
+for command and environment options.
+
 .. index:: Specifying authorized keys
 .. _SpecifyingAuthorizedKeys:
 
@@ -1007,29 +1030,8 @@ The following are the key exchange algorithms currently supported by AsyncSSH:
   | diffie-hellman-group14-sha1
   | diffie-hellman-group1-sha1
 
-.. index:: Public key & certificate algorithms
-.. _PublicKeyAlgs:
-
-Public key & certificate algorithms
------------------------------------
-
-The following are the public key and certificate algorithms currently
-supported by AsyncSSH:
-
-  | ssh-ed25519-cert-v01\@openssh.com
-  | ecdsa-sha2-nistp521-cert-v01\@openssh.com
-  | ecdsa-sha2-nistp384-cert-v01\@openssh.com
-  | ecdsa-sha2-nistp256-cert-v01\@openssh.com
-  | ssh-rsa-cert-v01\@openssh.com
-  | ssh-rsa-cert-v00\@openssh.com
-  | ssh-dss-cert-v01\@openssh.com
-  | ssh-dss-cert-v00\@openssh.com
-  | ssh-ed25519
-  | ecdsa-sha2-nistp521
-  | ecdsa-sha2-nistp384
-  | ecdsa-sha2-nistp256
-  | ssh-rsa
-  | ssh-dss
+Curve25519 support is only available when the libnacl or curve25519-donna
+packages are installed.
 
 .. index:: Encryption algorithms
 .. _EncryptionAlgs:
@@ -1054,6 +1056,9 @@ The following are the encryption algorithms currently supported by AsyncSSH:
   | arcfour256
   | arcfour128
   | arcfour
+
+Chacha20-poly1305 support is only available when libnacl is installed. AES
+GCM support is only available when PyCA is installed.
 
 .. index:: MAC algorithms
 .. _MACAlgs:
@@ -1091,6 +1096,30 @@ The following are the compression algorithms currently supported by AsyncSSH:
   | zlib\@openssh.com
   | zlib
   | none
+
+.. index:: Public key & certificate algorithms
+.. _PublicKeyAlgs:
+
+Public key & certificate algorithms
+-----------------------------------
+
+The following are the public key and certificate algorithms currently
+supported by AsyncSSH:
+
+  | ssh-ed25519-cert-v01\@openssh.com
+  | ecdsa-sha2-nistp521-cert-v01\@openssh.com
+  | ecdsa-sha2-nistp384-cert-v01\@openssh.com
+  | ecdsa-sha2-nistp256-cert-v01\@openssh.com
+  | ssh-rsa-cert-v01\@openssh.com
+  | ssh-rsa-cert-v00\@openssh.com
+  | ssh-dss-cert-v01\@openssh.com
+  | ssh-dss-cert-v00\@openssh.com
+  | ssh-ed25519
+  | ecdsa-sha2-nistp521
+  | ecdsa-sha2-nistp384
+  | ecdsa-sha2-nistp256
+  | ssh-rsa
+  | ssh-dss
 
 .. index:: Constants
 .. _Constants:

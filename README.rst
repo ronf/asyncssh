@@ -1,79 +1,79 @@
-AsyncSSH Overview
-=================
+AsyncSSH: Asynchoronous SSH for Python
+======================================
 
 AsyncSSH is a Python package which provides an asynchronous client and
-server implementation of the SSHv2 protocol on top of the Python asyncio
-framework. It requires Python 3.4 or later and either the PyCA library or
-the PyCrypto library for some cryptographic functions.
+server implementation of the SSHv2 protocol on top of the Python 3.4+
+asyncio framework.
 
-This package is released under the following terms:
+.. code::
 
-    Copyright (c) 2013-2015 by Ron Frederick <ronf@timeheart.net>.
-    All rights reserved.
+  import asyncio, asyncssh, sys
 
-    This program and the accompanying materials are made available under
-    the terms of the Eclipse Public License v1.0 which accompanies this
-    distribution and is available at:
+  @asyncio.coroutine
+  def run_client():
+      with (yield from asyncssh.connect('localhost')) as conn:
+          stdin, stdout, stderr = yield from conn.open_session('echo "Hello!"')
+          output = yield from stdout.read()
+          print(output, end='')
 
-        http://www.eclipse.org/legal/epl-v10.html
+          status = stdout.channel.get_exit_status()
+          if status:
+              print('Program exited with status %d' % status, file=sys.stderr)
+          else:
+              print('Program exited successfully')
 
-    Contributors:
-        Ron Frederick - initial implementation, API, and documentation
+  asyncio.get_event_loop().run_until_complete(run_client())
 
-Notable features include:
+Check out the `examples`__ to get started!
+  __ http://asyncssh.readthedocs.org/en/stable/#client-examples
 
-* Written from the ground up to be based on Python 3
-* Support for a number of key exchange methods
-    - Diffie Hellman group1 and group14 with SHA1
-    - Diffie Hellman group exchange with SHA1 and SHA256
-    - Elliptic Curve Diffie Hellman (nistp256, nistp384, and nistp521)
-    - Curve25519, if libnacl or curve25519-donna is installed
-* Support for multiple authentication methods
-    - Password, public key, and keyboard-interactive
-* Support for a variety of public key types and formats
-    - DSA, RSA, and ECDSA
-    - Ed25519, if libnacl is installed
-    - PKCS#1/PKCS#8 DER and PEM, OpenSSH, and RFC4716 formats
-    - PEM and PKCS#8 password-based private key encryption
-    - OpenSSH private key encryption, if bcrypt is installed
-* Support for OpenSSH host and user certificates
-    - Version 00 certificates for DSA and RSA keys
-    - Version 01 certificates for DSA, RSA, ECDSA, and Ed25519 keys
-    - Support for force-command and source-address critical options
-    - Support for permit-pty and permit-port-forwarding extensions
-* Support for a variety of ciphers
-    - AES, ARC4, Blowfish, CAST, and Triple DES via PyCA or PyCrypto
-    - AES GCM as defined by OpenSSH
-    - Chacha20-Poly1305 as defined by OpenSSH, if libnacl is installed
-* Support for a variety of MAC algorithms
-    - HMAC with MD5, SHA1, SHA256, and SHA512
-* Support for gzip compression
-    - Including OpenSSH variant to delay compression until after auth
-* Support for OpenSSH known_hosts files
-    - Positive and negative wildcard and CIDR host patterns
-    - Support for HMAC-SHA1 hashed entries
-    - Support for @cert-authority and @revoked markers
-* Support for OpenSSH authorized_keys files
-    - Support for cert-authority option to validate user certificates
-    - Enforcement of from and principals options to restrict key matching
-    - Enforcement of no-pty, no-port-forwarding, and permitopen options
-    - Support for command and environment options
-* SFTP client and server support
-    - SFTP protocol version 3 with OpenSSH extensions
-    - Support for recursive transfers and glob matching
-    - File I/O API to allow accessing remote files without downloading them
-* Support for passing environment variables, terminal type, and window size
-* Support for multiple simultaneous sessions on a single SSH connection
-* Support for handling multiple SSH connections in a single event loop
-* Support for direct and forwarded TCP/IP channels
-* Support for both byte and string based I/O with settable encoding
+Features
+--------
+
+* Full support for SSHv2 and SFTP client and server functions
+
+  * Shell, command, and subsystem channels
+  * Environment variables, terminal type, and window size
+  * Direct and forwarded TCP/IP channels
+  * Local and remote TCP/IP port forwarding
+  * SFTP protocol version 3 with OpenSSH extensions
+
+* Multiple simultaneous sessions on a single SSH connection
+* Multiple SSH connections in a single event loop
+* Byte and string based I/O with settable encoding
+* A variety of `key exchange`__, `encryption`__, and `MAC`__ algorithms
+* Support for `gzip compression`__
+
+  * Including OpenSSH variant to delay compression until after auth
+
+* Password, public key, and keyboard-interactive user authentication methods
+* Many types and formats of `public keys and certificates`__
+* OpenSSH-style `known_hosts file`__ support
+* OpenSSH-style `authorized_keys file`__ support
 * Compatibility with OpenSSH "Encrypt then MAC" option for better security
 * Time and byte-count based session key renegotiation
 * Designed to be easy to extend to support new forms of key exchange,
-  authentication methods, ciphers, and compression algorithms
+  authentication, encryption, and compression algorithms
+
+License
+-------
+
+This package is released under the following terms:
+
+  Copyright (c) 2013-2015 by Ron Frederick <ronf@timeheart.net>.
+  All rights reserved.
+
+  This program and the accompanying materials are made available under
+  the terms of the **Eclipse Public License v1.0** which accompanies
+  this distribution and is available at:
+
+    http://www.eclipse.org/legal/epl-v10.html
+
+For more information about this license, please see the `Eclipse
+Public License FAQ <https://eclipse.org/legal/eplfaq.php>`_.
 
 Prerequisites
-=============
+-------------
 
 To use ``asyncssh``, you need the following:
 
@@ -81,38 +81,63 @@ To use ``asyncssh``, you need the following:
 * PyCrypto 2.6 or later and/or PyCA 0.6.1 or later
 
 Installation
-============
+------------
 
-#. Install Python 3.4 or later from http://www.python.org or your
-   favorite packaging system.
+Install AsyncSSH by running:
 
-#. Install PyCrypto 2.6 or later from http://www.pycrypto.org and/or
-   PyCA 0.6.1 or later from https://cryptography.io to provide basic
-   crypto support.
+  .. code::
 
-#. Optionally install libsodium from https://github.com/jedisct1/libsodium
-   and libnacl from https://github.com/saltstack/libnacl if you want
-   support for Curve25519 Diffie-Hellman key exchange, Ed25519 keys,
-   and the ChaCha20-Poly1305 cipher.
+    pip install asyncssh
 
-#. Optionally install bcrypt from https://code.google.com/p/py-bcrypt
-   if you want support for OpenSSH private key encryption.
+Optional Extras
+^^^^^^^^^^^^^^^
 
-#. Install AsyncSSH by running::
+There are some optional modules you can install to enable additional
+functionality:
 
-   % pip install asyncssh
-    
-#. Check out the `examples`__ to get started!
-     __ http://asyncssh.timeheart.net/#clientexamples
+* Install bcrypt from https://code.google.com/p/py-bcrypt
+  if you want support for OpenSSH private key encryption.
+
+* Install libsodium from https://github.com/jedisct1/libsodium
+  and libnacl from https://github.com/saltstack/libnacl if you want
+  support for curve25519 Diffie Hellman key exchange, ed25519 keys,
+  and the chacha20-poly1305 cipher.
+
+AsyncSSH defines the following optional PyPI extra packages to make it
+easy to install any or all of these dependencies:
+
+  | pycrypto
+  | pyca
+  | bcrypt
+  | libnacl
+
+For example, to install all of these, you can run:
+
+  .. code::
+
+      pip install 'asyncssh[pycrypto,pyca,bcrypt,libnacl]'
+
+Note that you will still need to manually install the libsodium library
+listed above for libnacl to work correctly. Unfortunately, since
+libsodium is not a Python package, it cannot be directly installed using
+pip.
 
 Mailing Lists
-=============
+-------------
 
 Three mailing lists are available for AsyncSSH:
 
 * `asyncssh-announce@googlegroups.com`__: Project announcements
 * `asyncssh-dev@googlegroups.com`__: Development discussions
 * `asyncssh-users@googlegroups.com`__: End-user discussions
-    __ http://groups.google.com/d/forum/asyncssh-announce
-    __ http://groups.google.com/d/forum/asyncssh-dev
-    __ http://groups.google.com/d/forum/asyncssh-users
+
+__ http://asyncssh.readthedocs.org/en/stable/api.html#key-exchange-algorithms
+__ http://asyncssh.readthedocs.org/en/stable/api.html#encryption-algorithms
+__ http://asyncssh.readthedocs.org/en/stable/api.html#mac-algorithms
+__ http://asyncssh.readthedocs.org/en/stable/api.html#compression-algorithms
+__ http://asyncssh.readthedocs.org/en/stable/api.html#public-key-support
+__ http://asyncssh.readthedocs.org/en/stable/api.html#known-hosts
+__ http://asyncssh.readthedocs.org/en/stable/api.html#authorized-keys
+__ http://groups.google.com/d/forum/asyncssh-announce
+__ http://groups.google.com/d/forum/asyncssh-dev
+__ http://groups.google.com/d/forum/asyncssh-users

@@ -23,10 +23,10 @@ Release 1.1.0 (22 May 2015)
 
 * SFTP is now supported!
 
-    * Both client and server support is available.
-    * SFTP version 3 is supported, with OpenSSH extensions.
-    * Recursive transfers and glob matching are supported in the client.
-    * File I/O APIs allow files to be accessed without downloading them.
+  * Both client and server support is available.
+  * SFTP version 3 is supported, with OpenSSH extensions.
+  * Recursive transfers and glob matching are supported in the client.
+  * File I/O APIs allow files to be accessed without downloading them.
 
 * New simplified connect and listen APIs have been added.
 
@@ -62,39 +62,39 @@ Release 1.0.0 (11 Apr 2015)
 
 * Host and user certificates are now supported!
 
-    * Enforcement is done on principals in certificates.
-    * Enforcement is done on force-command and source-address critical options.
-    * Enforcement is done on permit-pty and permit-port-forwarding extensions.
+  * Enforcement is done on principals in certificates.
+  * Enforcement is done on force-command and source-address critical options.
+  * Enforcement is done on permit-pty and permit-port-forwarding extensions.
 
 * OpenSSH-style known hosts files are now supported!
 
-    * Positive and negative wildcard and CIDR-style patterns are supported.
-    * HMAC-SHA1 hashed host entries are supported.
-    * The @cert-authority and @revoked markers are supported.
+  * Positive and negative wildcard and CIDR-style patterns are supported.
+  * HMAC-SHA1 hashed host entries are supported.
+  * The @cert-authority and @revoked markers are supported.
 
 * OpenSSH-style authorized keys files are now supported!
 
-    * Both client keys and certificate authorities are supported.
-    * Enforcement is done on from and principals options during key matching.
-    * Enforcement is done on no-pty, no-port-forwarding, and permitopen.
-    * The command and environment options are supported.
-    * Applications can query for their own non-standard options.
+  * Both client keys and certificate authorities are supported.
+  * Enforcement is done on from and principals options during key matching.
+  * Enforcement is done on no-pty, no-port-forwarding, and permitopen.
+  * The command and environment options are supported.
+  * Applications can query for their own non-standard options.
 
 * Support has been added for OpenSSH format private keys.
 
-    * DSA, RSA, and ECDSA keys in this format are now supported.
-    * Ed25519 keys are supported when libnacl and libsodium are installed.
-    * OpenSSH private key encryption is supported when bcrypt is installed.
+  * DSA, RSA, and ECDSA keys in this format are now supported.
+  * Ed25519 keys are supported when libnacl and libsodium are installed.
+  * OpenSSH private key encryption is supported when bcrypt is installed.
 
 * Curve25519 Diffie-Hellman key exchange is now available via either the
   curve25519-donna or libnacl and libsodium packages.
 
 * ECDSA key support has been enhanced.
 
-    * Support is now available for PKCS#8 ECDSA v2 keys.
-    * Support is now available for both NamedCurve and explicit ECParameter
-      versions of keys, as long as the parameters match one of the supported
-      curves (nistp256, nistp384, or nistp521).
+  * Support is now available for PKCS#8 ECDSA v2 keys.
+  * Support is now available for both NamedCurve and explicit ECParameter
+    versions of keys, as long as the parameters match one of the supported
+    curves (nistp256, nistp384, or nistp521).
 
 * Support is now available for the OpenSSH chacha20-poly1305 cipher when
   libnacl and libsodium are installed.
@@ -281,11 +281,11 @@ Release 0.5.0 (11 Oct 2013)
   connection forwarding, replacing the methods previously added in
   release 0.2.0:
 
-    * :class:`SSHClientListener`
-    * :class:`SSHServerListener`
-    * :class:`SSHClientLocalPortForwarder`
-    * :class:`SSHClientRemotePortForwarder`
-    * :class:`SSHServerPortForwarder`
+  * :class:`SSHClientListener`
+  * :class:`SSHServerListener`
+  * :class:`SSHClientLocalPortForwarder`
+  * :class:`SSHClientRemotePortForwarder`
+  * :class:`SSHServerPortForwarder`
 
   These new classes allow for DNS lookups and other operations to be
   performed fully asynchronously when new listeners are set up. As with
@@ -304,9 +304,9 @@ Release 0.4.0 (28 Sep 2013)
   to allow asynchronous operations to be used when accepting inbound
   connection requests:
 
-    * :meth:`handle_open_request() <SSHTCPConnection.handle_open_request>`
-    * :meth:`report_open() <SSHTCPConnection.report_open>`
-    * :meth:`report_open_error() <SSHTCPConnection.report_open_error>`
+  * :meth:`handle_open_request() <SSHTCPConnection.handle_open_request>`
+  * :meth:`report_open() <SSHTCPConnection.report_open>`
+  * :meth:`report_open_error() <SSHTCPConnection.report_open_error>`
 
   These new methods are used to implement asynchronous connect
   support for local and remote port forwarding, and to support
@@ -340,12 +340,12 @@ Release 0.2.0 (21 Sep 2013)
 * Added support in :class:`SSHClient` for the following methods related
   to performing standard SSH port forwarding:
 
-    * :meth:`forward_local_port() <SSHClient.forward_local_port>`
-    * :meth:`cancel_local_port_forwarding() <SSHClient.cancel_local_port_forwarding>`
-    * :meth:`forward_remote_port() <SSHClient.forward_remote_port>`
-    * :meth:`cancel_remote_port_forwarding() <SSHClient.cancel_remote_port_forwarding>`
-    * :meth:`handle_remote_port_forwarding() <SSHClient.handle_remote_port_forwarding>`
-    * :meth:`handle_remote_port_forwarding_error() <SSHClient.handle_remote_port_forwarding_error>`
+  * :meth:`forward_local_port() <SSHClient.forward_local_port>`
+  * :meth:`cancel_local_port_forwarding() <SSHClient.cancel_local_port_forwarding>`
+  * :meth:`forward_remote_port() <SSHClient.forward_remote_port>`
+  * :meth:`cancel_remote_port_forwarding() <SSHClient.cancel_remote_port_forwarding>`
+  * :meth:`handle_remote_port_forwarding() <SSHClient.handle_remote_port_forwarding>`
+  * :meth:`handle_remote_port_forwarding_error() <SSHClient.handle_remote_port_forwarding_error>`
 
 * Added support in :class:`SSHServer` for new return values in
   :meth:`handle_direct_connection() <SSHServer.handle_direct_connection>`
