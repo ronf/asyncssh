@@ -979,10 +979,10 @@ def register_public_key_alg(algorithm, handler):
     _public_key_alg_map[algorithm] = handler
     _public_key_algs.append(algorithm)
 
-    if hasattr(handler, 'pem_name'):
+    if handler.pem_name:
         _pem_map[handler.pem_name] = handler
 
-    if hasattr(handler, 'pkcs8_oid'):
+    if handler.pkcs8_oid:
         _pkcs8_oid_map[handler.pkcs8_oid] = handler
 
 
