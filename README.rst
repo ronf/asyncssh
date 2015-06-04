@@ -5,24 +5,24 @@ AsyncSSH is a Python package which provides an asynchronous client and
 server implementation of the SSHv2 protocol on top of the Python 3.4+
 asyncio framework.
 
-.. code::
+.. code:: python
 
-  import asyncio, asyncssh, sys
+    import asyncio, asyncssh, sys
 
-  @asyncio.coroutine
-  def run_client():
-      with (yield from asyncssh.connect('localhost')) as conn:
-          stdin, stdout, stderr = yield from conn.open_session('echo "Hello!"')
-          output = yield from stdout.read()
-          print(output, end='')
+    @asyncio.coroutine
+    def run_client():
+        with (yield from asyncssh.connect('localhost')) as conn:
+            stdin, stdout, stderr = yield from conn.open_session('echo "Hello!"')
+            output = yield from stdout.read()
+            print(output, end='')
 
-          status = stdout.channel.get_exit_status()
-          if status:
-              print('Program exited with status %d' % status, file=sys.stderr)
-          else:
-              print('Program exited successfully')
+            status = stdout.channel.get_exit_status()
+            if status:
+                print('Program exited with status %d' % status, file=sys.stderr)
+            else:
+                print('Program exited successfully')
 
-  asyncio.get_event_loop().run_until_complete(run_client())
+    asyncio.get_event_loop().run_until_complete(run_client())
 
 Check out the `examples`__ to get started!
   __ http://asyncssh.readthedocs.org/en/stable/#client-examples
@@ -60,14 +60,14 @@ License
 
 This package is released under the following terms:
 
-  Copyright (c) 2013-2015 by Ron Frederick <ronf@timeheart.net>.
-  All rights reserved.
+    Copyright (c) 2013-2015 by Ron Frederick <ronf@timeheart.net>.
+    All rights reserved.
 
-  This program and the accompanying materials are made available under
-  the terms of the **Eclipse Public License v1.0** which accompanies
-  this distribution and is available at:
+    This program and the accompanying materials are made available under
+    the terms of the **Eclipse Public License v1.0** which accompanies
+    this distribution and is available at:
 
-    http://www.eclipse.org/legal/epl-v10.html
+        http://www.eclipse.org/legal/epl-v10.html
 
 For more information about this license, please see the `Eclipse
 Public License FAQ <https://eclipse.org/legal/eplfaq.php>`_.
@@ -85,9 +85,9 @@ Installation
 
 Install AsyncSSH by running:
 
-  .. code::
+  .. code:: shell
 
-    pip install asyncssh
+      pip install asyncssh
 
 Optional Extras
 ^^^^^^^^^^^^^^^
@@ -106,16 +106,16 @@ functionality:
 AsyncSSH defines the following optional PyPI extra packages to make it
 easy to install any or all of these dependencies:
 
-  | pycrypto
-  | pyca
-  | bcrypt
-  | libnacl
+    | pycrypto
+    | pyca
+    | bcrypt
+    | libnacl
 
 For example, to install all of these, you can run:
 
-  .. code::
+  .. code:: shell
 
-      pip install 'asyncssh[pycrypto,pyca,bcrypt,libnacl]'
+        pip install 'asyncssh[pycrypto,pyca,bcrypt,libnacl]'
 
 Note that you will still need to manually install the libsodium library
 listed above for libnacl to work correctly. Unfortunately, since
