@@ -7,22 +7,22 @@ asyncio framework.
 
 .. code:: python
 
-    import asyncio, asyncssh, sys
+  import asyncio, asyncssh, sys
 
-    @asyncio.coroutine
-    def run_client():
-        with (yield from asyncssh.connect('localhost')) as conn:
-            stdin, stdout, stderr = yield from conn.open_session('echo "Hello!"')
-            output = yield from stdout.read()
-            print(output, end='')
+  @asyncio.coroutine
+  def run_client():
+      with (yield from asyncssh.connect('localhost')) as conn:
+          stdin, stdout, stderr = yield from conn.open_session('echo "Hello!"')
+          output = yield from stdout.read()
+          print(output, end='')
 
-            status = stdout.channel.get_exit_status()
-            if status:
-                print('Program exited with status %d' % status, file=sys.stderr)
-            else:
-                print('Program exited successfully')
+          status = stdout.channel.get_exit_status()
+          if status:
+              print('Program exited with status %d' % status, file=sys.stderr)
+          else:
+              print('Program exited successfully')
 
-    asyncio.get_event_loop().run_until_complete(run_client())
+  asyncio.get_event_loop().run_until_complete(run_client())
 
 Check out the `examples`__ to get started!
   __ http://asyncssh.readthedocs.org/en/stable/#client-examples
@@ -83,11 +83,9 @@ To use ``asyncssh``, you need the following:
 Installation
 ------------
 
-Install AsyncSSH by running:
+Install AsyncSSH by running::
 
-  .. code:: shell
-
-      pip install asyncssh
+    pip install asyncssh
 
 Optional Extras
 ^^^^^^^^^^^^^^^
@@ -104,18 +102,16 @@ functionality:
   and the chacha20-poly1305 cipher.
 
 AsyncSSH defines the following optional PyPI extra packages to make it
-easy to install any or all of these dependencies:
+easy to install any or all of these dependencies::
 
-    | pycrypto
-    | pyca
-    | bcrypt
-    | libnacl
+    pycrypto
+    pyca
+    bcrypt
+    libnacl
 
-For example, to install all of these, you can run:
+For example, to install all of these, you can run::
 
-  .. code:: shell
-
-        pip install 'asyncssh[pycrypto,pyca,bcrypt,libnacl]'
+    pip install 'asyncssh[pycrypto,pyca,bcrypt,libnacl]'
 
 Note that you will still need to manually install the libsodium library
 listed above for libnacl to work correctly. Unfortunately, since
