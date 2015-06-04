@@ -1,5 +1,5 @@
-AsyncSSH: Asynchoronous SSH for Python
-======================================
+AsyncSSH: Asynchronous SSH for Python
+=====================================
 
 AsyncSSH is a Python package which provides an asynchronous client and
 server implementation of the SSHv2 protocol on top of the Python 3.4+
@@ -60,8 +60,6 @@ License
 
 This package is released under the following terms:
 
-..
-
   Copyright (c) 2013-2015 by Ron Frederick <ronf@timeheart.net>.
   All rights reserved.
 
@@ -69,9 +67,7 @@ This package is released under the following terms:
   the terms of the **Eclipse Public License v1.0** which accompanies
   this distribution and is available at:
 
-  ..
-
-      http://www.eclipse.org/legal/epl-v10.html
+    http://www.eclipse.org/legal/epl-v10.html
 
 For more information about this license, please see the `Eclipse
 Public License FAQ <https://eclipse.org/legal/eplfaq.php>`_.
@@ -109,8 +105,6 @@ functionality:
 
 AsyncSSH defines the following optional PyPI extra packages to make it
 easy to install any or all of these dependencies:
-
-..
 
   | pycrypto
   | pyca
