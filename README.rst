@@ -60,14 +60,18 @@ License
 
 This package is released under the following terms:
 
-    Copyright (c) 2013-2015 by Ron Frederick <ronf@timeheart.net>.
-    All rights reserved.
+..
 
-    This program and the accompanying materials are made available under
-    the terms of the **Eclipse Public License v1.0** which accompanies
-    this distribution and is available at:
+  Copyright (c) 2013-2015 by Ron Frederick <ronf@timeheart.net>.
+  All rights reserved.
 
-        http://www.eclipse.org/legal/epl-v10.html
+  This program and the accompanying materials are made available under
+  the terms of the **Eclipse Public License v1.0** which accompanies
+  this distribution and is available at:
+
+  ..
+
+      http://www.eclipse.org/legal/epl-v10.html
 
 For more information about this license, please see the `Eclipse
 Public License FAQ <https://eclipse.org/legal/eplfaq.php>`_.
@@ -83,7 +87,9 @@ To use ``asyncssh``, you need the following:
 Installation
 ------------
 
-Install AsyncSSH by running::
+Install AsyncSSH by running:
+
+  ::
 
     pip install asyncssh
 
@@ -102,14 +108,18 @@ functionality:
   and the chacha20-poly1305 cipher.
 
 AsyncSSH defines the following optional PyPI extra packages to make it
-easy to install any or all of these dependencies::
+easy to install any or all of these dependencies:
 
-    pycrypto
-    pyca
-    bcrypt
-    libnacl
+..
 
-For example, to install all of these, you can run::
+  | pycrypto
+  | pyca
+  | bcrypt
+  | libnacl
+
+For example, to install all of these, you can run:
+
+  ::
 
     pip install 'asyncssh[pycrypto,pyca,bcrypt,libnacl]'
 
