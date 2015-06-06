@@ -364,8 +364,18 @@ class SSHConnection(SSHPacketHandler):
     def __exit__(self, *exc_info):
         """Automatically close the connection when used as a context manager"""
 
-        if not self._loop.is_closed():
+        try:
             self.close()
+        except RuntimeError as exc:
+            # There's a race in some cases between the close call here
+            # and the code which shuts down the event loop. Since the
+            # loop.is_closed() method is only in Python 3.4.2 and later,
+            # catch and ignore the RuntimeError for now if this happens.
+
+            if exc.args[0] == 'Event loop is closed':
+                pass
+            else:
+                raise
 
     def _cleanup(self, exc):
         """Clean up this connection"""
