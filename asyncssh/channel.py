@@ -99,6 +99,8 @@ class SSHChannel(SSHPacketHandler):
         return self._read_datatypes
 
     def _cleanup(self, exc=None):
+        """Clean up this channel"""
+
         if self._open_waiter:
             self._open_waiter.set_exception(
                 ChannelOpenError(OPEN_CONNECT_FAILED, 'SSH connection closed'))
@@ -132,6 +134,8 @@ class SSHChannel(SSHPacketHandler):
         self._recv_state = 'closed'
 
     def _pause_resume_writing(self):
+        """Pause or resume writing based on send buffer low/high water marks"""
+
         if self._send_paused:
             if self._send_buf_len <= self._send_low_water:
                 self._send_paused = False
@@ -142,6 +146,8 @@ class SSHChannel(SSHPacketHandler):
                 self._session.pause_writing()
 
     def _flush_send_buf(self):
+        """Flush as much data in send buffer as the send window allows"""
+
         while self._send_buf and self._send_window:
             pktsize = min(self._send_window, self._send_pktsize)
             buf, datatype = self._send_buf[0]
@@ -173,6 +179,8 @@ class SSHChannel(SSHPacketHandler):
                 self._send_state = 'close_sent'
 
     def _deliver_data(self, data, datatype):
+        """Deliver incoming data to the session"""
+
         if data == _EOF:
             if not self._session.eof_received():
                 self.close()
@@ -195,6 +203,17 @@ class SSHChannel(SSHPacketHandler):
             self._session.data_received(data, datatype)
 
     def _accept_data(self, data, datatype=None):
+        """Accept new data on the channel
+
+           This method accepts new data on the channel, immediately
+           delivering it to the session if it hasn't paused reading.
+           If it has paused, data is buffered until reading is resumed.
+
+           Data sent after the channel has been closed by the session
+           is dropped.
+
+        """
+
         if not data:
             return
 
@@ -282,6 +301,8 @@ class SSHChannel(SSHPacketHandler):
         self._loop.call_soon(self._cleanup)
 
     def _process_window_adjust(self, pkttype, packet):
+        """Process a send window adjustment"""
+
         # pylint: disable=unused-argument
 
         if self._recv_state not in {'open', 'eof_received'}:
@@ -294,6 +315,8 @@ class SSHChannel(SSHPacketHandler):
         self._flush_send_buf()
 
     def _process_data(self, pkttype, packet):
+        """Process incoming data"""
+
         # pylint: disable=unused-argument
 
         if self._recv_state != 'open':
@@ -306,6 +329,8 @@ class SSHChannel(SSHPacketHandler):
         self._accept_data(data)
 
     def _process_extended_data(self, pkttype, packet):
+        """Process incoming extended data"""
+
         # pylint: disable=unused-argument
 
         if self._recv_state != 'open':
@@ -323,6 +348,8 @@ class SSHChannel(SSHPacketHandler):
         self._accept_data(data, datatype)
 
     def _process_eof(self, pkttype, packet):
+        """Process an incoming end of file"""
+
         # pylint: disable=unused-argument
 
         if self._recv_state != 'open':
@@ -335,6 +362,8 @@ class SSHChannel(SSHPacketHandler):
         self._accept_data(_EOF)
 
     def _process_close(self, pkttype, packet):
+        """Process an incoming channel close"""
+
         # pylint: disable=unused-argument
 
         if self._recv_state not in {'open', 'eof_received'}:
@@ -353,6 +382,8 @@ class SSHChannel(SSHPacketHandler):
         self._loop.call_soon(self._cleanup)
 
     def _process_request(self, pkttype, packet):
+        """Process an incoming channel request"""
+
         # pylint: disable=unused-argument
 
         if self._recv_state not in {'open', 'eof_received'}:
@@ -385,6 +416,8 @@ class SSHChannel(SSHPacketHandler):
             self.resume_reading()
 
     def _process_response(self, pkttype, packet):
+        """Process a success or failure response"""
+
         # pylint: disable=unused-argument
 
         if self._send_state not in {'open', 'eof_pending', 'eof_sent',
@@ -988,6 +1021,8 @@ class SSHServerChannel(SSHChannel):
         return True
 
     def _start_session(self, command=None, subsystem=None):
+        """Tell the session what type of channel is being requested"""
+
         forced_command = self._conn.get_certificate_option('force-command')
 
         if forced_command is None:

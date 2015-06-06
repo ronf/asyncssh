@@ -41,14 +41,20 @@ class _Ed25519Key(SSHKey):
 
     @classmethod
     def make_private(cls, vk, sk):
+        """Construct an Ed25519 private key"""
+
         return cls(vk, sk)
 
     @classmethod
     def make_public(cls, vk):
+        """Construct an Ed25519 public key"""
+
         return cls(vk, None)
 
     @classmethod
     def decode_ssh_private(cls, packet):
+        """Decode an SSH format Ed25519 private key"""
+
         vk = packet.get_string()
         sk = packet.get_string()
 
@@ -56,11 +62,15 @@ class _Ed25519Key(SSHKey):
 
     @classmethod
     def decode_ssh_public(cls, packet):
+        """Decode an SSH format Ed25519 public key"""
+
         vk = packet.get_string()
 
         return (vk,)
 
     def encode_ssh_private(self):
+        """Encode an SSH format Ed25519 private key"""
+
         if self._sk is None:
             raise KeyExportError('Key is not private')
 
@@ -68,9 +78,13 @@ class _Ed25519Key(SSHKey):
                          String(self._sk)))
 
     def encode_ssh_public(self):
+        """Encode an SSH format Ed25519 public key"""
+
         return b''.join((String(self.algorithm), String(self._vk)))
 
     def sign(self, data):
+        """Return a signature of the specified data using this key"""
+
         if self._sk is None:
             raise ValueError('Private key needed for signing')
 
@@ -78,6 +92,8 @@ class _Ed25519Key(SSHKey):
         return b''.join((String(self.algorithm), String(sig[:-len(data)])))
 
     def verify(self, data, sig):
+        """Verify a signature of the specified data using this key"""
+
         packet = SSHPacket(sig)
 
         if packet.get_string() != self.algorithm:

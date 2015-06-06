@@ -20,6 +20,8 @@ from .public_key import import_public_key, KeyImportError
 
 
 class _SSHAuthorizedKeyEntry:
+    """An entry in an SSH authorized_keys list"""
+
     def __init__(self, line):
         self.options = {}
 
@@ -33,9 +35,13 @@ class _SSHAuthorizedKeyEntry:
         self.key = import_public_key(line)
 
     def _set_string(self, option, value):
+        """Set an option with a string value"""
+
         self.options[option] = value
 
     def _add_environment(self, option, value):
+        """Add an environment key/value pair"""
+
         if value.startswith('=') or '=' not in value:
             raise ValueError('Invalid environment entry in authorized_keys')
 
@@ -43,9 +49,13 @@ class _SSHAuthorizedKeyEntry:
         self.options.setdefault(option, {})[name] = value
 
     def _add_from(self, option, value):
+        """Add a from host pattern"""
+
         self.options.setdefault(option, []).append(HostPatternList(value))
 
     def _add_permitopen(self, option, value):
+        """Add a permitopen host/port pair"""
+
         try:
             host, port = value.rsplit(':', 1)
 
@@ -59,6 +69,8 @@ class _SSHAuthorizedKeyEntry:
         self.options.setdefault(option, set()).add((host, port))
 
     def _add_principals(self, option, value):
+        """Add a principals wildcard pattern list"""
+
         self.options.setdefault(option, []).append(WildcardPatternList(value))
 
     _handlers = {
@@ -70,6 +82,8 @@ class _SSHAuthorizedKeyEntry:
     }
 
     def _add_option(self):
+        """Add an option value"""
+
         if self._option.startswith('='):
             raise ValueError('Missing option name in authorized_keys')
 
@@ -85,6 +99,8 @@ class _SSHAuthorizedKeyEntry:
             self.options[self._option] = True
 
     def _parse_options(self, line):
+        """Parse options in this entry"""
+
         self._option = ''
 
         idx = 0
@@ -120,6 +136,8 @@ class _SSHAuthorizedKeyEntry:
 
 
 class SSHAuthorizedKeys:
+    """An SSH authorized keys list"""
+
     def __init__(self, data):
         self._user_entries = []
         self._ca_entries = []
@@ -140,6 +158,8 @@ class SSHAuthorizedKeys:
                 self._user_entries.append(entry)
 
     def validate(self, key, client_addr, cert_principals=None, ca=False):
+        """Return whether a public key or CA is valid for authentication"""
+
         for entry in self._ca_entries if ca else self._user_entries:
             if entry.key != key:
                 continue

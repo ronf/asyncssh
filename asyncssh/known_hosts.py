@@ -32,6 +32,8 @@ class PlainHost:
         self.key = key
 
     def matches(self, host, addr, ip):
+        """Return whether a host or address matches this host pattern list"""
+
         return self._pattern.matches(host, addr, ip)
 
 
@@ -58,16 +60,22 @@ class HashedHost:
                              magic) from None
 
     def _match(self, value):
+        """Return whether this host hash matches a value"""
+
         hosthash = hmac.new(self._salt, value.encode(), sha1).digest()
         return hosthash == self._hosthash
 
     def matches(self, host, addr, ip):
+        """Return whether a host or address matches this host hash"""
+
         # pylint: disable=unused-argument
 
         return (host and self._match(host)) or (addr and self._match(addr))
 
 
 def _parse_entries(known_hosts):
+    """Parse the entries in a known hosts file"""
+
     entries = []
 
     for line in known_hosts.splitlines():
@@ -106,6 +114,8 @@ def _parse_entries(known_hosts):
 
 
 def _match_entries(entries, host, addr, port=None):
+    """Return matching keys in a known_hosts file"""
+
     ip = ip_address(addr) if addr else None
 
     if port:

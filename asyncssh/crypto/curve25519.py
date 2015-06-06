@@ -38,6 +38,8 @@ except (ImportError, OSError, AttributeError):
 
 if _found == 'libnacl':
     class Curve25519DH:
+        """Curve25519 Diffie Hellman implementation"""
+
         def __init__(self, secret=None):
             if secret is None:
                 secret = urandom(_CURVE25519_SCALARBYTES)
@@ -47,6 +49,8 @@ if _found == 'libnacl':
             self._private = secret
 
         def get_public(self):
+            """Return the public key to send in the handshake"""
+
             public = ctypes.create_string_buffer(_CURVE25519_BYTES)
 
             if _curve25519_base(public, self._private) != 0:
@@ -55,6 +59,8 @@ if _found == 'libnacl':
             return public.raw
 
         def get_shared(self, public):
+            """Return the shared key from the peer's public key"""
+
             if len(public) != _CURVE25519_BYTES:
                 raise AssertionError('Invalid curve25519 public key size')
 
@@ -66,13 +72,19 @@ if _found == 'libnacl':
             return shared.raw
 elif _found == 'curve25519':
     class Curve25519DH:
+        """Curve25519 Diffie Hellman implementation"""
+
         def __init__(self, secret=None):
             self._private = curve25519.Private(secret)
 
         def get_public(self):
+            """Return the public key to send in the handshake"""
+
             return self._private.get_public().serialize()
 
         def get_shared(self, public):
+            """Return the shared key from the peer's public key"""
+
             public = curve25519.Public(public)
 
             return self._private.get_shared_key(public, hashfunc=lambda x: x)

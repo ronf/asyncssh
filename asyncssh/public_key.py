@@ -421,6 +421,8 @@ class SSHCertificate:
 
     @staticmethod
     def _parse_force_command(packet):
+        """Parse a force-command option"""
+
         try:
             return packet.get_string().decode('utf-8')
         except UnicodeDecodeError:
@@ -428,6 +430,8 @@ class SSHCertificate:
 
     @staticmethod
     def _parse_source_address(packet):
+        """Parse a source-address option"""
+
         try:
             return [ip_network(addr.decode('ascii'))
                     for addr in packet.get_namelist()]
@@ -435,6 +439,8 @@ class SSHCertificate:
             raise KeyImportError('Invalid source address') from None
 
     def _decode_options(self, options, valid_options, critical=True):
+        """Decode options found in this certificate"""
+
         packet = SSHPacket(options)
         while packet:
             name = packet.get_string()
@@ -987,6 +993,8 @@ def register_public_key_alg(algorithm, handler):
 
 
 def register_certificate_alg(algorithm, key_handler, cert_handler):
+    """Register a new certificate algorithm"""
+
     _certificate_alg_map[algorithm] = (key_handler, cert_handler)
     _certificate_algs.append(algorithm)
 

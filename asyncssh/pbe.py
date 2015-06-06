@@ -101,11 +101,15 @@ class _RFC1423Pad:
         self._block_size = cipher.block_size
 
     def encrypt(self, data):
+        """Pad data before encrypting it"""
+
         pad = self._block_size - (len(data) % self._block_size)
         data += pad * bytes((pad,))
         return self._cipher.encrypt(data)
 
     def decrypt(self, data):
+        """Remove padding from data after decrypting it"""
+
         data = self._cipher.decrypt(data)
 
         if data:
@@ -185,6 +189,8 @@ def _pbkdf_p12(hash_alg, passphrase, salt, count, key_size, idx):
     # pylint: disable=invalid-name
 
     def _make_block(data, v):
+        """Make a block a multiple of v bytes long by repeating data"""
+
         l = len(data)
         if l:
             size = ((l + v - 1) // v) * v

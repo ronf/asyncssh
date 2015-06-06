@@ -213,6 +213,8 @@ class SSHStreamSession:
 
     @asyncio.coroutine
     def _block_read(self, datatype):
+        """Wait for more data to arrive on the stream"""
+
         if self._read_waiter[datatype]:
             raise RuntimeError('read called while another coroutine is '
                                'already waiting to read')
@@ -222,6 +224,8 @@ class SSHStreamSession:
         yield from waiter
 
     def _unblock_read(self, datatype):
+        """Signal that more data has arrived on the stream"""
+
         waiter = self._read_waiter[datatype]
         if waiter:
             if not waiter.cancelled():
@@ -229,6 +233,8 @@ class SSHStreamSession:
             self._read_waiter[datatype] = None
 
     def _unblock_drain(self):
+        """Signal that more data can be written on the stream"""
+
         for waiter in self._drain_waiters:
             if not waiter.cancelled():
                 waiter.set_result(None)
@@ -236,6 +242,8 @@ class SSHStreamSession:
         self._drain_waiters = []
 
     def connection_made(self, chan):
+        """Handle a newly opened channel"""
+
         self._chan = chan
         self._loop = chan.get_loop()
         self._limit = self._chan.get_recv_window()
@@ -245,6 +253,8 @@ class SSHStreamSession:
             self._read_waiter[datatype] = None
 
     def connection_lost(self, exc):
+        """Handle an incoming channel close"""
+
         self._connection_lost = True
         self._exception = exc
 
@@ -259,6 +269,8 @@ class SSHStreamSession:
             self._unblock_drain()
 
     def data_received(self, data, datatype):
+        """Handle incoming data on the channel"""
+
         self._recv_buf[datatype].append(data)
         self._recv_buf_len += len(data)
         self._unblock_read(datatype)
@@ -267,6 +279,8 @@ class SSHStreamSession:
             self._chan.pause_reading()
 
     def eof_received(self):
+        """Handle an incoming end of file on the channel"""
+
         self._eof_received = True
         for datatype in self._read_waiter.keys():
             self._unblock_read(datatype)
@@ -274,17 +288,25 @@ class SSHStreamSession:
         return True
 
     def at_eof(self, datatype):
+        """Return whether end of file has been received on the channel"""
+
         return self._eof_received and not self._recv_buf[datatype]
 
     def pause_writing(self):
+        """Handle a request to pause writing on the channel"""
+
         self._write_paused = True
 
     def resume_writing(self):
+        """Handle a request to resume writing on the channel"""
+
         self._write_paused = False
         self._unblock_drain()
 
     @asyncio.coroutine
     def read(self, n, datatype, exact):
+        """Read data from the channel"""
+
         recv_buf = self._recv_buf[datatype]
         buf = '' if self._chan.get_encoding() else b''
         data = []
@@ -325,6 +347,8 @@ class SSHStreamSession:
 
     @asyncio.coroutine
     def readline(self, datatype):
+        """Read a line from the channel"""
+
         recv_buf = self._recv_buf[datatype]
         buf, sep = ('', '\n') if self._chan.get_encoding() else (b'', b'\n')
         data = []
@@ -362,6 +386,8 @@ class SSHStreamSession:
 
     @asyncio.coroutine
     def drain(self):
+        """Wait for data written to the channel to drain"""
+
         if self._write_paused and not self._connection_lost:
             waiter = asyncio.Future(loop=self._loop)
             self._drain_waiters.append(waiter)
@@ -392,21 +418,31 @@ class SSHServerStreamSession(SSHStreamSession, SSHServerSession):
         self._sftp_factory = sftp_factory
 
     def pty_requested(self, term_type, term_size, term_modes):
+        """Return whether a pseudo-tty can be requested"""
+
         return self._allow_pty
 
     def shell_requested(self):
+        """Return whether a shell can be requested"""
+
         return bool(self._session_factory)
 
     def exec_requested(self, command):
+        """Return whether execution of a command can be requested"""
+
         return bool(self._session_factory)
 
     def subsystem_requested(self, subsystem):
+        """Return whether starting a subsystem can be requested"""
+
         if subsystem == 'sftp':
             return bool(self._sftp_factory)
         else:
             return bool(self._session_factory)
 
     def session_started(self):
+        """Start a session for this newly opened server channel"""
+
         if self._chan.get_subsystem() == 'sftp':
             self._chan.start_sftp_server(self._sftp_factory)
         else:
@@ -419,15 +455,21 @@ class SSHServerStreamSession(SSHStreamSession, SSHServerSession):
                 asyncio.async(handler)
 
     def break_received(self, msec):
+        """Handle an incoming break on the channel"""
+
         self._recv_buf[None].append(BreakReceived(msec))
         self._unblock_read(None)
         return True
 
     def signal_received(self, signal):
+        """Handle an incoming signal on the channel"""
+
         self._recv_buf[None].append(SignalReceived(signal))
         self._unblock_read(None)
 
     def terminal_size_changed(self, *args):
+        """Handle an incoming terminal size change on the channel"""
+
         self._recv_buf[None].append(TerminalSizeChanged(*args))
         self._unblock_read(None)
 
@@ -441,6 +483,8 @@ class SSHTCPStreamSession(SSHStreamSession, SSHTCPSession):
         self._handler_factory = handler_factory
 
     def session_started(self):
+        """Start a session for this newly opened TCP channel"""
+
         if self._handler_factory:
             handler = self._handler_factory(SSHReader(self, self._chan),
                                             SSHWriter(self, self._chan))

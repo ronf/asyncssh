@@ -138,9 +138,13 @@ class RawDERObject:
                 (_asn1_class[self.asn1_class], self.tag, self.content))
 
     def encode_identifier(self):
+        """Encode the DER identifier for this object as a byte string"""
+
         return _encode_identifier(self.asn1_class, False, self.tag)
 
     def encode(self):
+        """Encode the content for this object as a DER byte string"""
+
         return self.content
 
 
@@ -168,21 +172,31 @@ class TaggedDERObject:
                     (_asn1_class[self.asn1_class], self.tag, self.value))
 
     def encode_identifier(self):
+        """Encode the DER identifier for this object as a byte string"""
+
         return _encode_identifier(self.asn1_class, True, self.tag)
 
     def encode(self):
+        """Encode the content for this object as a DER byte string"""
+
         return der_encode(self.value)
 
 
 @DERTag(NULL, (type(None),))
 class _Null:
+    """A null value"""
+
     @staticmethod
     def encode(value):
+        """Encode a DER null value"""
+
         # pylint: disable=unused-argument
         return b''
 
     @classmethod
     def decode(cls, constructed, content):
+        """Decode a DER null value"""
+
         if constructed:
             raise ASN1DecodeError('NULL should not be constructed')
 
@@ -194,12 +208,18 @@ class _Null:
 
 @DERTag(BOOLEAN, (bool,))
 class _Boolean:
+    """A boolean value"""
+
     @staticmethod
     def encode(value):
+        """Encode a DER boolean value"""
+
         return b'\xff' if value else b'\0'
 
     @classmethod
     def decode(cls, constructed, content):
+        """Decode a DER boolean value"""
+
         if constructed:
             raise ASN1DecodeError('BOOLEAN should not be constructed')
 
@@ -211,14 +231,20 @@ class _Boolean:
 
 @DERTag(INTEGER, (int,))
 class _Integer:
+    """An integer value"""
+
     @staticmethod
     def encode(value):
+        """Encode a DER integer value"""
+
         l = value.bit_length()
         l = l // 8 + 1 if l % 8 == 0 else (l + 7) // 8
         return value.to_bytes(l, 'big', signed=True)
 
     @classmethod
     def decode(cls, constructed, content):
+        """Decode a DER integer value"""
+
         if constructed:
             raise ASN1DecodeError('INTEGER should not be constructed')
 
@@ -227,12 +253,18 @@ class _Integer:
 
 @DERTag(OCTET_STRING, (bytes, bytearray))
 class _OctetString:
+    """An octet string value"""
+
     @staticmethod
     def encode(value):
+        """Encode a DER octet string"""
+
         return value
 
     @classmethod
     def decode(cls, constructed, content):
+        """Decode a DER octet string"""
+
         if constructed:
             raise ASN1DecodeError('OCTET STRING should not be constructed')
 
@@ -241,12 +273,18 @@ class _OctetString:
 
 @DERTag(UTF8_STRING, (str,))
 class _UTF8String:
+    """A UTF-8 string value"""
+
     @staticmethod
     def encode(value):
+        """Encode a DER UTF-8 string"""
+
         return value.encode('utf-8')
 
     @classmethod
     def decode(cls, constructed, content):
+        """Decode a DER UTF-8 string"""
+
         if constructed:
             raise ASN1DecodeError('UTF8 STRING should not be constructed')
 
@@ -255,12 +293,18 @@ class _UTF8String:
 
 @DERTag(SEQUENCE, (list, tuple), constructed=True)
 class _Sequence:
+    """A sequence of values"""
+
     @staticmethod
     def encode(value):
+        """Encode a sequence of DER values"""
+
         return b''.join(der_encode(item) for item in value)
 
     @classmethod
     def decode(cls, constructed, content):
+        """Decode a sequence of DER values"""
+
         if not constructed:
             raise ASN1DecodeError('SEQUENCE should always be constructed')
 
@@ -280,12 +324,18 @@ class _Sequence:
 
 @DERTag(SET, (set, frozenset), constructed=True)
 class _Set:
+    """A set of DER values"""
+
     @staticmethod
     def encode(value):
+        """Encode a set of DER values"""
+
         return b''.join(sorted(der_encode(item) for item in value))
 
     @classmethod
     def decode(cls, constructed, content):
+        """Decode a set of DER values"""
+
         if not constructed:
             raise ASN1DecodeError('SET should always be constructed')
 
@@ -364,10 +414,14 @@ class BitString:
         return 'BitString(%s)' % self
 
     def encode(self):
+        """Encode a DER bit string"""
+
         return bytes((self.unused,)) + self.value
 
     @classmethod
     def decode(cls, constructed, content):
+        """Decode a DER bit string"""
+
         if constructed:
             raise ASN1DecodeError('BIT STRING should not be constructed')
 
@@ -404,7 +458,11 @@ class ObjectIdentifier:
         return hash(self.value)
 
     def encode(self):
+        """Encode a DER object identifier"""
+
         def _bytes(component):
+            """Convert a single element of an OID to a DER byte string"""
+
             result = [component & 0x7f]
             while component >= 0x80:
                 component >>= 7
@@ -428,6 +486,8 @@ class ObjectIdentifier:
 
     @classmethod
     def decode(cls, constructed, content):
+        """Decode a DER object identifier"""
+
         if constructed:
             raise ASN1DecodeError('OBJECT IDENTIFIER  should not be '
                                   'constructed')

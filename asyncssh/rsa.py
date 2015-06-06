@@ -53,14 +53,20 @@ class _RSAKey(SSHKey):
 
     @classmethod
     def make_private(cls, *args):
+        """Construct an RSA private key"""
+
         return cls(RSAPrivateKey(*args), True)
 
     @classmethod
     def make_public(cls, *args):
+        """Construct an RSA public key"""
+
         return cls(RSAPublicKey(*args), False)
 
     @classmethod
     def decode_pkcs1_private(cls, key_data):
+        """Decode a PKCS#1 format RSA private key"""
+
         if (isinstance(key_data, tuple) and all_ints(key_data) and
                 len(key_data) >= 9):
             return key_data[1:6]
@@ -69,6 +75,8 @@ class _RSAKey(SSHKey):
 
     @classmethod
     def decode_pkcs1_public(cls, key_data):
+        """Decode a PKCS#1 format RSA public key"""
+
         if (isinstance(key_data, tuple) and all_ints(key_data) and
                 len(key_data) == 2):
             return key_data
@@ -77,6 +85,8 @@ class _RSAKey(SSHKey):
 
     @classmethod
     def decode_pkcs8_private(cls, alg_params, data):
+        """Decode a PKCS#8 format RSA private key"""
+
         if alg_params is None:
             return cls.decode_pkcs1_private(der_decode(data))
         else:
@@ -84,6 +94,8 @@ class _RSAKey(SSHKey):
 
     @classmethod
     def decode_pkcs8_public(cls, alg_params, data):
+        """Decode a PKCS#8 format RSA public key"""
+
         if alg_params is None:
             return cls.decode_pkcs1_public(der_decode(data))
         else:
@@ -91,6 +103,8 @@ class _RSAKey(SSHKey):
 
     @classmethod
     def decode_ssh_private(cls, packet):
+        """Decode an SSH format RSA private key"""
+
         n = packet.get_mpint()
         e = packet.get_mpint()
         d = packet.get_mpint()
@@ -102,12 +116,16 @@ class _RSAKey(SSHKey):
 
     @classmethod
     def decode_ssh_public(cls, packet):
+        """Decode an SSH format RSA public key"""
+
         e = packet.get_mpint()
         n = packet.get_mpint()
 
         return n, e
 
     def encode_pkcs1_private(self):
+        """Encode a PKCS#1 format RSA private key"""
+
         if not self._private:
             raise KeyExportError('Key is not private')
 
@@ -118,15 +136,23 @@ class _RSAKey(SSHKey):
                 mod_inverse(self._key.q, self._key.p))
 
     def encode_pkcs1_public(self):
+        """Encode a PKCS#1 format RSA public key"""
+
         return self._key.n, self._key.e
 
     def encode_pkcs8_private(self):
+        """Encode a PKCS#8 format RSA private key"""
+
         return None, der_encode(self.encode_pkcs1_private())
 
     def encode_pkcs8_public(self):
+        """Encode a PKCS#8 format RSA public key"""
+
         return None, der_encode(self.encode_pkcs1_public())
 
     def encode_ssh_private(self):
+        """Encode an SSH format RSA private key"""
+
         if not self._private:
             raise KeyExportError('Key is not private')
 
@@ -136,10 +162,14 @@ class _RSAKey(SSHKey):
                          MPInt(self._key.p), MPInt(self._key.q)))
 
     def encode_ssh_public(self):
+        """Encode an SSH format RSA public key"""
+
         return b''.join((String(self.algorithm), MPInt(self._key.e),
                          MPInt(self._key.n)))
 
     def sign(self, data):
+        """Return a signature of the specified data using this key"""
+
         if not self._private:
             raise ValueError('Private key needed for signing')
 
@@ -147,6 +177,8 @@ class _RSAKey(SSHKey):
         return b''.join((String(self.algorithm), String(sig)))
 
     def verify(self, data, sig):
+        """Verify a signature of the specified data using this key"""
+
         sig = SSHPacket(sig)
 
         if sig.get_string() != self.algorithm:

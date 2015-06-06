@@ -28,6 +28,8 @@ class WildcardPattern:
                                 ch for ch in pattern)
 
     def matches(self, value):
+        """Return whether a wild card pattern matches a value"""
+
         return fnmatch(value, self._pattern)
 
 
@@ -35,9 +37,12 @@ class WildcardHostPattern(WildcardPattern):
     """Match a host name or address against a wildcard pattern"""
 
     def matches(self, host, addr, ip):
+        """Return whether a host or address matches a wild card host pattern"""
+
         # Arguments vary by class, but inheritance is still needed here
         # IP matching is only done for CIDRHostPattern
         # pylint: disable=arguments-differ,unused-argument
+
         return (host and super().matches(host)) or \
                (addr and super().matches(addr))
 
@@ -49,8 +54,11 @@ class CIDRHostPattern:
         self._network = ip_network(pattern)
 
     def matches(self, host, addr, ip):
+        """Return whether an IP address matches a CIDR address pattern"""
+
         # Host & addr matching is only done for WildcardHostPattern
         # pylint: disable=unused-argument
+
         return ip and ip in self._network
 
 
@@ -88,9 +96,13 @@ class _PatternList:
                 self._pos_patterns.append(matcher)
 
     def build_pattern(self, pattern):
+        """Abstract method to build a pattern object"""
+
         raise NotImplementedError
 
     def matches(self, *args):
+        """Match a set of values against positive & negative pattern lists"""
+
         pos_match = any(p.matches(*args) for p in self._pos_patterns)
         neg_match = any(p.matches(*args) for p in self._neg_patterns)
 
@@ -101,6 +113,8 @@ class WildcardPatternList(_PatternList):
     """Match names against wildcard patterns"""
 
     def build_pattern(self, pattern):
+        """Build a wild card pattern"""
+
         return WildcardPattern(pattern)
 
 
@@ -108,6 +122,8 @@ class HostPatternList(_PatternList):
     """Match host names & addresses against wildcard and CIDR patterns"""
 
     def build_pattern(self, pattern):
+        """Build a CIDR address or wild card host pattern"""
+
         try:
             return CIDRHostPattern(pattern)
         except ValueError:

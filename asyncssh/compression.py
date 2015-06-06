@@ -34,6 +34,8 @@ class _ZLibCompress:
         self._comp = zlib.compressobj()
 
     def compress(self, data):
+        """Compress data using zlib compression with sync flush"""
+
         return self._comp.compress(data) + self._comp.flush(zlib.Z_SYNC_FLUSH)
 
 

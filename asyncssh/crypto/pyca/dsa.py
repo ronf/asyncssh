@@ -29,6 +29,8 @@ from cryptography.hazmat.primitives.asymmetric.dsa import DSAPrivateNumbers
 
 
 class DSAPrivateKey:
+    """A shim around PyCA for DSA private keys"""
+
     def __init__(self, p, q, g, y, x):
         self.p = p
         self.q = q
@@ -41,12 +43,16 @@ class DSAPrivateKey:
         self._key = DSAPrivateNumbers(x, pub).private_key(default_backend())
 
     def sign(self, data):
+        """Sign a block of data"""
+
         signer = self._key.signer(SHA1())
         signer.update(data)
         return der_decode(signer.finalize())
 
 
 class DSAPublicKey:
+    """A shim around PyCA for DSA public keys"""
+
     def __init__(self, p, q, g, y):
         self.p = p
         self.q = q
@@ -57,6 +63,8 @@ class DSAPublicKey:
         self._key = DSAPublicNumbers(y, params).public_key(default_backend())
 
     def verify(self, data, sig):
+        """Verify the signature on a block of data"""
+
         verifier = self._key.verifier(der_encode(sig), SHA1())
         verifier.update(data)
 

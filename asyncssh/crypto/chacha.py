@@ -32,10 +32,14 @@ class _Chacha20Poly1305Cipher:
 
     @classmethod
     def new(cls, key, iv=None, initial_bytes=0):
+        """Construct a new chacha20-poly1305 cipher object"""
+
         # pylint: disable=unused-argument
         return cls(key)
 
     def _crypt(self, key, data, nonce, ctr=0):
+        """Encrypt/decrypt a block of data"""
+
         # pylint: disable=no-self-use
 
         datalen = len(data)
@@ -49,6 +53,8 @@ class _Chacha20Poly1305Cipher:
         return result.raw
 
     def _polykey(self, nonce):
+        """Generate a poly1305 key"""
+
         polykey = ctypes.create_string_buffer(_POLY1305_KEYBYTES)
         polykeylen = ctypes.c_ulonglong(_POLY1305_KEYBYTES)
 
@@ -58,6 +64,8 @@ class _Chacha20Poly1305Cipher:
         return polykey
 
     def _compute_tag(self, data, nonce):
+        """Compute a poly1305 tag for a block of data"""
+
         tag = ctypes.create_string_buffer(_POLY1305_BYTES)
         datalen = ctypes.c_ulonglong(len(data))
         polykey = self._polykey(nonce)
@@ -68,18 +76,24 @@ class _Chacha20Poly1305Cipher:
         return tag.raw
 
     def _verify_tag(self, data, nonce, tag):
+        """Verify a poly1305 tag on a block of data"""
+
         datalen = ctypes.c_ulonglong(len(data))
         polykey = self._polykey(nonce)
 
         return _poly1305_verify(tag, data, datalen, polykey) == 0
 
     def crypt_len(self, data, nonce):
+        """Encrypt/decrypt an SSH packet length value"""
+
         if len(nonce) != _CHACHA20_NONCEBYTES:
             raise ValueError('Invalid chacha20-poly1305 nonce size')
 
         return self._crypt(self._adkey, data, nonce)
 
     def encrypt_and_sign(self, header, data, nonce):
+        """Encrypt and sign a block of data"""
+
         if len(nonce) != _CHACHA20_NONCEBYTES:
             raise ValueError('Invalid chacha20-poly1305 nonce size')
 
@@ -89,6 +103,8 @@ class _Chacha20Poly1305Cipher:
         return ciphertext, tag
 
     def verify_and_decrypt(self, header, data, nonce, tag):
+        """Verify the signature of and decrypt a block of data"""
+
         if len(nonce) != _CHACHA20_NONCEBYTES:
             raise ValueError('Invalid chacha20-poly1305 nonce size')
 

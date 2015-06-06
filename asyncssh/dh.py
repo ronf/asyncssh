@@ -68,16 +68,22 @@ class _KexDHBase(Kex):
         self._f = None
 
     def _compute_hash(self, host_key_data, k):
+        """Abstract method for computing connection hash"""
+
         # Provided by subclass
         raise NotImplementedError
 
     def _send_init(self, pkttype):
+        """Send a DH init message"""
+
         self._x = randrange(2, self._q)
         self._e = pow(self._g, self._x, self._p)
 
         self._conn.send_packet(Byte(pkttype), MPInt(self._e))
 
     def _send_reply(self, pkttype):
+        """Send a DH reply message"""
+
         if not 1 <= self._e < self._p:
             raise DisconnectError(DISC_PROTOCOL_ERROR, 'Kex DH e out of range')
 
@@ -100,6 +106,8 @@ class _KexDHBase(Kex):
         self._conn.send_newkeys(k, h)
 
     def _verify_reply(self, host_key_data, sig):
+        """Verify a DH reply message"""
+
         if not 1 <= self._f < self._p:
             raise DisconnectError(DISC_PROTOCOL_ERROR, 'Kex DH f out of range')
 
@@ -118,6 +126,8 @@ class _KexDHBase(Kex):
         self._conn.send_newkeys(k, h)
 
     def _process_init(self, pkttype, packet):
+        """Process a DH init message"""
+
         # pylint: disable=unused-argument
 
         if self._conn.is_client() or not self._p:
@@ -130,6 +140,8 @@ class _KexDHBase(Kex):
         self._send_reply(self._replytype)
 
     def _process_reply(self, pkttype, packet):
+        """Process a DH reply message"""
+
         # pylint: disable=unused-argument
 
         if self._conn.is_server() or not self._p:
@@ -160,6 +172,8 @@ class _KexDH(_KexDHBase):
             self._send_init(MSG_KEXDH_INIT)
 
     def _compute_hash(self, host_key_data, k):
+        """Compute a hash of key information associated with the connection"""
+
         hash_obj = self._hash_alg()
         hash_obj.update(self._conn.get_hash_prefix())
         hash_obj.update(String(host_key_data))
@@ -190,6 +204,8 @@ class _KexDHGex(_KexDHBase):
             conn.send_packet(Byte(MSG_KEX_DH_GEX_REQUEST), self._request)
 
     def _compute_hash(self, host_key_data, k):
+        """Compute a hash of key information associated with the connection"""
+
         hash_obj = self._hash_alg()
         hash_obj.update(self._conn.get_hash_prefix())
         hash_obj.update(String(host_key_data))
@@ -202,6 +218,8 @@ class _KexDHGex(_KexDHBase):
         return hash_obj.digest()
 
     def _process_request(self, pkttype, packet):
+        """Process a DH gex request message"""
+
         if self._conn.is_client():
             raise DisconnectError(DISC_PROTOCOL_ERROR,
                                   'Unexpected kex request msg')
@@ -236,6 +254,8 @@ class _KexDHGex(_KexDHBase):
                                MPInt(self._g))
 
     def _process_group(self, pkttype, packet):
+        """Process a DH gex group message"""
+
         # pylint: disable=unused-argument
 
         if self._conn.is_server():

@@ -32,6 +32,8 @@ _ciphers = {'aes':      (AES,      {'cbc': AES.MODE_CBC,
 
 
 class CipherFactory:
+    """A factory which returns shims for PyCrypto symmetric encryption"""
+
     def __init__(self, cipher, mode):
         self._cipher = cipher
         self._mode = mode
@@ -41,6 +43,8 @@ class CipherFactory:
         self.mode_name = None                   # set by register_cipher()
 
     def new(self, key, iv=None, initial_bytes=0, **kwargs):
+        """Construct a new symmetric cipher object"""
+
         if self.mode_name == 'ctr':
             ctr = Counter.new(len(iv)*8,
                               initial_value=int.from_bytes(iv, 'big'))

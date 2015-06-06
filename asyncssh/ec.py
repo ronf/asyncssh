@@ -208,6 +208,8 @@ class _KexECDH(Kex):
             self._Qs = self._Q.encode()
 
     def _compute_hash(self, host_key_data, k):
+        """Compute a hash of key information associated with the connection"""
+
         hash_obj = self._hash_alg()
         hash_obj.update(self._conn.get_hash_prefix())
         hash_obj.update(String(host_key_data))
@@ -217,6 +219,8 @@ class _KexECDH(Kex):
         return hash_obj.digest()
 
     def _process_init(self, pkttype, packet):
+        """Process an ECDH init message"""
+
         # pylint: disable=unused-argument
 
         if self._conn.is_client():
@@ -247,6 +251,8 @@ class _KexECDH(Kex):
         self._conn.send_newkeys(k, h)
 
     def _process_reply(self, pkttype, packet):
+        """Process an ECDH reply message"""
+
         # pylint: disable=unused-argument
 
         if self._conn.is_server():
@@ -343,6 +349,8 @@ class _ECKey(SSHKey):
 
     @classmethod
     def _lookup_domain(cls, alg_params):
+        """Look up an EC domain matching the specified algorithm parameters"""
+
         if isinstance(alg_params, ObjectIdentifier):
             domain = _domain_oid_map.get(alg_params)
             if not domain:
@@ -373,14 +381,20 @@ class _ECKey(SSHKey):
 
     @classmethod
     def make_private(cls, domain, private_key, public_key):
+        """Construct an EC private key"""
+
         return cls(domain, private_key, public_key)
 
     @classmethod
     def make_public(cls, domain, public_key):
+        """Construct an EC public key"""
+
         return cls(domain, None, public_key)
 
     @classmethod
     def decode_pkcs1_private(cls, key_data):
+        """Decode a PKCS#1 format EC private key"""
+
         if (isinstance(key_data, tuple) and len(key_data) > 2 and
                 key_data[0] == 1 and isinstance(key_data[1], bytes) and
                 isinstance(key_data[2], TaggedDERObject) and
@@ -405,11 +419,15 @@ class _ECKey(SSHKey):
 
     @classmethod
     def decode_pkcs1_public(cls, key_data):
+        """Decode a PKCS#1 format EC public key"""
+
         # pylint: disable=unused-argument
         raise KeyImportError('PKCS#1 not supported for EC public keys')
 
     @classmethod
     def decode_pkcs8_private(cls, alg_params, data):
+        """Decode a PKCS#8 format EC private key"""
+
         try:
             key_data = der_decode(data)
         except ASN1DecodeError:
@@ -435,6 +453,8 @@ class _ECKey(SSHKey):
 
     @classmethod
     def decode_pkcs8_public(cls, alg_params, key_data):
+        """Decode a PKCS#8 format EC public key"""
+
         if isinstance(alg_params, ObjectIdentifier):
             domain = _domain_oid_map.get(alg_params)
             if not domain:
@@ -446,6 +466,8 @@ class _ECKey(SSHKey):
 
     @classmethod
     def decode_ssh_private(cls, packet):
+        """Decode an SSH format EC private key"""
+
         curve_id = packet.get_string()
         public_key = packet.get_string()
         private_key = packet.get_mpint()
@@ -459,6 +481,8 @@ class _ECKey(SSHKey):
 
     @classmethod
     def decode_ssh_public(cls, packet):
+        """Decode an SSH format EC public key"""
+
         curve_id = packet.get_string()
         public_key = packet.get_string()
 
@@ -470,12 +494,18 @@ class _ECKey(SSHKey):
         return domain, public_key
 
     def encode_private(self):
+        """Encode an EC private key blob"""
+
         return self._d.to_bytes((self._n.bit_length() + 7) // 8, 'big')
 
     def encode_public(self):
+        """Encode an EC public key blob"""
+
         return TaggedDERObject(1, BitString(self._Q.encode()))
 
     def encode_pkcs1_private(self):
+        """Encode a PKCS#1 format EC private key"""
+
         if not self._d:
             raise KeyExportError('Key is not private')
 
@@ -483,9 +513,13 @@ class _ECKey(SSHKey):
                 self.encode_public())
 
     def encode_pkcs1_public(self):
+        """Encode a PKCS#1 format EC public key"""
+
         raise KeyExportError('PKCS#1 is not supported for EC public keys')
 
     def encode_pkcs8_private(self):
+        """Encode a PKCS#8 format EC private key"""
+
         if not self._d:
             raise KeyExportError('Key is not private')
 
@@ -493,9 +527,13 @@ class _ECKey(SSHKey):
                                           self.encode_public()))
 
     def encode_pkcs8_public(self):
+        """Encode a PKCS#8 format EC public key"""
+
         return self._alg_oid, self._Q.encode()
 
     def encode_ssh_private(self):
+        """Encode an SSH format EC private key"""
+
         if not self._d:
             raise KeyExportError('Key is not private')
 
@@ -503,10 +541,14 @@ class _ECKey(SSHKey):
                          String(self._Q.encode()), MPInt(self._d)))
 
     def encode_ssh_public(self):
+        """Encode an SSH format EC public key"""
+
         return b''.join((String(self.algorithm), String(self._alg_id),
                          String(self._Q.encode())))
 
     def sign(self, data):
+        """Return a signature of the specified data using this key"""
+
         if not self._d:
             raise ValueError('Private key needed for signing')
 
@@ -531,6 +573,8 @@ class _ECKey(SSHKey):
         return b''.join((String(self.algorithm), String(sig)))
 
     def verify(self, data, sig):
+        """Verify a signature of the specified data using this key"""
+
         sig = SSHPacket(sig)
 
         if sig.get_string() != self.algorithm:

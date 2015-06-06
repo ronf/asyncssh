@@ -31,6 +31,8 @@ from cryptography.hazmat.primitives.asymmetric.rsa import rsa_crt_iqmp
 
 
 class RSAPrivateKey:
+    """A shim around PyCA for RSA private keys"""
+
     def __init__(self, n, e, d, p, q):
         self.n = n
         self.e = e
@@ -47,12 +49,16 @@ class RSAPrivateKey:
         self._key = priv.private_key(default_backend())
 
     def sign(self, data):
+        """Sign a block of data"""
+
         signer = self._key.signer(PKCS1v15(), SHA1())
         signer.update(data)
         return signer.finalize()
 
 
 class RSAPublicKey:
+    """A shim around PyCA for RSA public keys"""
+
     def __init__(self, n, e):
         self.n = n
         self.e = e
@@ -60,6 +66,8 @@ class RSAPublicKey:
         self._key = RSAPublicNumbers(e, n).public_key(default_backend())
 
     def verify(self, data, sig):
+        """Verify the signature on a block of data"""
+
         verifier = self._key.verifier(sig, PKCS1v15(), SHA1())
         verifier.update(data)
 

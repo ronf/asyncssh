@@ -65,6 +65,8 @@ class _ClientAuth(SSHPacketHandler):
         return processed
 
     def send_request(self, *args, key=None):
+        """Send a user authentication request"""
+
         self._conn.send_userauth_request(self._method, *args, key=key)
 
 
@@ -93,6 +95,8 @@ class _ClientPublicKeyAuth(_ClientAuth):
                           String(self._key_data))
 
     def _process_public_key_ok(self, pkttype, packet):
+        """Process a public key ok response"""
+
         # pylint: disable=unused-argument
 
         algorithm = packet.get_string()
@@ -124,6 +128,8 @@ class _ClientKbdIntAuth(_ClientAuth):
         self.send_request(String(''), String(submethods))
 
     def _process_info_request(self, pkttype, packet):
+        """Process a keyboard interactive authentication request"""
+
         # pylint: disable=unused-argument
 
         name = packet.get_string()
@@ -192,6 +198,8 @@ class _ClientPasswordAuth(_ClientAuth):
             self._conn.password_change_failed()
 
     def _process_password_change(self, pkttype, packet):
+        """Process a password change request"""
+
         # pylint: disable=unused-argument
 
         prompt = packet.get_string()
@@ -232,9 +240,13 @@ class _ServerAuth(SSHPacketHandler):
         self._username = username
 
     def send_failure(self, partial_success=False):
+        """Send a user authentication failure response"""
+
         self._conn.send_userauth_failure(partial_success)
 
     def send_success(self):
+        """Send a user authentication success response"""
+
         self._conn.send_userauth_success()
 
 
@@ -243,6 +255,8 @@ class _ServerNullAuth(_ServerAuth):
 
     @classmethod
     def supported(cls, conn):
+        """Return that null authentication is never a supported auth mode"""
+
         # pylint: disable=unused-argument
         return False
 
@@ -259,6 +273,8 @@ class _ServerPublicKeyAuth(_ServerAuth):
 
     @classmethod
     def supported(cls, conn):
+        """Return whether public key authentication is supported"""
+
         return conn.public_key_auth_supported()
 
     def __init__(self, conn, username, packet):
@@ -293,6 +309,8 @@ class _ServerKbdIntAuth(_ServerAuth):
 
     @classmethod
     def supported(cls, conn):
+        """Return whether keyboard interactive authentication is supported"""
+
         return conn.kbdint_auth_supported()
 
     def __init__(self, conn, username, packet):
@@ -314,6 +332,8 @@ class _ServerKbdIntAuth(_ServerAuth):
         self._send_challenge(challenge)
 
     def _send_challenge(self, challenge):
+        """Send a keyboard interactive authentication request"""
+
         if isinstance(challenge, (tuple, list)):
             name, instruction, lang, prompts = challenge
 
@@ -331,6 +351,8 @@ class _ServerKbdIntAuth(_ServerAuth):
             self.send_failure()
 
     def _process_info_response(self, pkttype, packet):
+        """Process a keyboard interactive authentication response"""
+
         # pylint: disable=unused-argument
 
         num_responses = packet.get_uint32()
@@ -362,6 +384,8 @@ class _ServerPasswordAuth(_ServerAuth):
 
     @classmethod
     def supported(cls, conn):
+        """Return whether password authentication is supported"""
+
         return conn.password_auth_supported()
 
     def __init__(self, conn, username, packet):

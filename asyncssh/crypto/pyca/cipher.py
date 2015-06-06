@@ -39,6 +39,8 @@ _ciphers = {'aes':      (AES,       {'cbc': CBC, 'ctr': CTR, 'gcm': GCM}),
 
 
 class GCMShim:
+    """Shim for PyCA AES-GCM ciphers"""
+
     def __init__(self, cipher, block_size, key, iv):
         self._cipher = cipher
         self._key = key
@@ -47,11 +49,15 @@ class GCMShim:
         self.block_size = block_size
 
     def _update_iv(self):
+        """Update the IV after each encrypt/decrypt operation"""
+
         invocation = int.from_bytes(self._iv[4:], 'big')
         invocation = (invocation + 1) & 0xffffffffffffffff
         self._iv = self._iv[:4] + invocation.to_bytes(8, 'big')
 
     def encrypt_and_sign(self, header, data):
+        """Encrypt and sign a block of data"""
+
         encryptor = Cipher(self._cipher(self._key), GCM(self._iv),
                            default_backend()).encryptor()
 
@@ -65,6 +71,8 @@ class GCMShim:
         return ciphertext, encryptor.tag
 
     def verify_and_decrypt(self, header, data, tag):
+        """Verify the signature of and decrypt a block of data"""
+
         decryptor = Cipher(self._cipher(self._key), GCM(self._iv, tag),
                            default_backend()).decryptor()
 
@@ -82,6 +90,8 @@ class GCMShim:
 
 
 class CipherShim:
+    """Shim for other PyCA ciphers"""
+
     def __init__(self, cipher, mode, block_size, key, iv, initial_bytes):
         if mode:
             mode = mode(iv)
@@ -95,6 +105,8 @@ class CipherShim:
         self.mode_name = None                   # set by register_cipher()
 
     def encrypt(self, data):
+        """Encrypt a block of data"""
+
         if not self._encryptor:
             self._encryptor = self._cipher.encryptor()
 
@@ -104,6 +116,8 @@ class CipherShim:
         return self._encryptor.update(data)
 
     def decrypt(self, data):
+        """Decrypt a block of data"""
+
         if not self._decryptor:
             self._decryptor = self._cipher.decryptor()
 
@@ -114,6 +128,8 @@ class CipherShim:
 
 
 class CipherFactory:
+    """A factory which returns shims for PyCA symmetric encryption"""
+
     def __init__(self, cipher, mode):
         self._cipher = cipher
         self._mode = mode
@@ -122,6 +138,8 @@ class CipherFactory:
         self.iv_size = 12 if mode == GCM else self.block_size
 
     def new(self, key, iv=None, initial_bytes=0):
+        """Construct a new symmetric cipher object"""
+
         if self._mode == GCM:
             return GCMShim(self._cipher, self.block_size, key, iv)
         else:

@@ -45,6 +45,8 @@ class _KexCurve25519DH(Kex):
             self._server_pub = pub
 
     def _compute_hash(self, host_key_data, k):
+        """Compute a hash of key information associated with the connection"""
+
         hash_obj = self._hash_alg()
         hash_obj.update(self._conn.get_hash_prefix())
         hash_obj.update(String(host_key_data))
@@ -54,6 +56,8 @@ class _KexCurve25519DH(Kex):
         return hash_obj.digest()
 
     def _process_init(self, pkttype, packet):
+        """Process a curve25519 ECDH init message"""
+
         # pylint: disable=unused-argument
 
         if self._conn.is_client():
@@ -81,6 +85,8 @@ class _KexCurve25519DH(Kex):
         self._conn.send_newkeys(k, h)
 
     def _process_reply(self, pkttype, packet):
+        """Process a curve25519 ECDH reply message"""
+
         # pylint: disable=unused-argument
 
         if self._conn.is_server():
