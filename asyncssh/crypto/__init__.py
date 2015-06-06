@@ -12,7 +12,7 @@
 
 """A shim for accessing cryptographic primitives needed by asyncssh"""
 
-import importlib
+import importlib.util
 
 from .cipher import register_cipher, lookup_cipher
 
@@ -23,8 +23,8 @@ except ImportError:
 
 from . import chacha
 
-pyca_available = importlib.find_loader('cryptography')
-pycrypto_available = importlib.find_loader('Crypto')
+pyca_available = importlib.util.find_spec('cryptography')
+pycrypto_available = importlib.util.find_spec('Crypto')
 
 if pyca_available:
     from . import pyca

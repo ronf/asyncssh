@@ -17,10 +17,14 @@
 
 """
 
-import importlib, os, subprocess, tempfile, unittest
+import importlib.util
+import os
+import subprocess
+import tempfile
+import unittest
 
-bcrypt_available = importlib.find_loader('bcrypt')
-libnacl_available = importlib.find_loader('libnacl')
+bcrypt_available = importlib.util.find_spec('bcrypt')
+libnacl_available = importlib.util.find_spec('libnacl')
 
 from asyncssh import read_private_key, read_public_key
 
