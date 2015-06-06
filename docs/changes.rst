@@ -3,6 +3,27 @@
 Change Log
 ==========
 
+Release 1.2.0 (6 Jun 2015)
+--------------------------
+
+* Fixed a problem with the SSHConnection context manager on Python versions
+  older than 3.4.2.
+
+* Updated the documentation for get_extra_info() in the SSHConnection,
+  SSHChannel, SSHReader, and SSHWriter classes to contain pointers
+  to get_extra_info() in their parent transports to make it easier to
+  see all of the attributes which can be queried.
+
+* Clarified the legal return values for the session_requested(),
+  connection_requested(), and server_requested() methods in
+  SSHServer.
+
+* Eliminated calls to the deprecated importlib.find_loader() method.
+
+* Made improvements to README suggested by Nicholas Chammas.
+
+* Fixed a number of issues identified by pylint.
+
 Release 1.1.1 (25 May 2015)
 ---------------------------
 
