@@ -3845,6 +3845,12 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
        If an error occurs, it will be raised as an exception and the partially
        open connection and client objects will be cleaned up.
 
+       .. note:: Unlike :func:`socket.create_connection`, asyncio calls
+                 to create a connection do not support a ``timeout``
+                 parameter. However, asyncio calls can be wrapped in a
+                 call to :func:`asyncio.wait_for` or :func:`asyncio.wait`
+                 which takes a timeout and provides equivalent functionality.
+
        :param callable client_factory:
            A callable which returns an :class:`SSHClient` object that will
            be tied to the connection
