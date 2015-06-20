@@ -55,6 +55,9 @@ _der_class_by_type = {}
 def _encode_identifier(asn1_class, constructed, tag):
     """Encode a DER object's identifier"""
 
+    if asn1_class not in (UNIVERSAL, APPLICATION, CONTEXT_SPECIFIC, PRIVATE):
+        raise ASN1EncodeError('Invalid ASN.1 class')
+
     flags = (asn1_class << 6) | (0x20 if constructed else 0x00)
 
     if tag < 0x20:
@@ -128,7 +131,7 @@ class RawDERObject:
 
     """
 
-    def __init__(self, asn1_class, tag, content):
+    def __init__(self, tag, content, asn1_class):
         self.asn1_class = asn1_class
         self.tag = tag
         self.content = content
@@ -136,6 +139,14 @@ class RawDERObject:
     def __repr__(self):
         return ('RawDERObject(%s, %s, %r)' %
                 (_asn1_class[self.asn1_class], self.tag, self.content))
+
+    def __eq__(self, other):
+        return (isinstance(other, self.__class__) and
+                self.asn1_class == other.asn1_class and
+                self.tag == other.tag and self.content == other.content)
+
+    def __hash__(self):
+        return hash((self.asn1_class, self.tag, self.content))
 
     def encode_identifier(self):
         """Encode the DER identifier for this object as a byte string"""
@@ -170,6 +181,14 @@ class TaggedDERObject:
         else:
             return ('TaggedDERObject(%s, %s, %r)' %
                     (_asn1_class[self.asn1_class], self.tag, self.value))
+
+    def __eq__(self, other):
+        return (isinstance(other, self.__class__) and
+                self.asn1_class == other.asn1_class and
+                self.tag == other.tag and self.value == other.value)
+
+    def __hash__(self):
+        return hash((self.asn1_class, self.tag, self.value))
 
     def encode_identifier(self):
         """Encode the DER identifier for this object as a byte string"""
@@ -239,7 +258,8 @@ class _Integer:
 
         l = value.bit_length()
         l = l // 8 + 1 if l % 8 == 0 else (l + 7) // 8
-        return value.to_bytes(l, 'big', signed=True)
+        result = value.to_bytes(l, 'big', signed=True)
+        return result[1:] if result.startswith(b'\xff\x80') else result
 
     @classmethod
     def decode(cls, constructed, content):
@@ -402,7 +422,6 @@ class BitString:
 
         self.value = value
         self.unused = unused
-        self.named = named
 
     def __str__(self):
         result = ''.join(bin(b)[2:].zfill(8) for b in self.value)
@@ -411,7 +430,14 @@ class BitString:
         return result
 
     def __repr__(self):
-        return 'BitString(%s)' % self
+        return "BitString('%s')" % self
+
+    def __eq__(self, other):
+        return (isinstance(other, self.__class__) and
+                self.value == other.value and self.unused == other.unused)
+
+    def __hash__(self):
+        return hash((self.value, self.unused))
 
     def encode(self):
         """Encode a DER bit string"""
@@ -448,8 +474,11 @@ class ObjectIdentifier:
     def __init__(self, value):
         self.value = value
 
+    def __str__(self):
+        return self.value
+
     def __repr__(self):
-        return 'ObjectIdentifier(%s)' % self.value
+        return "ObjectIdentifier('%s')" % self.value
 
     def __eq__(self, other):
         return isinstance(other, self.__class__) and self.value == other.value
@@ -463,6 +492,10 @@ class ObjectIdentifier:
         def _bytes(component):
             """Convert a single element of an OID to a DER byte string"""
 
+            if component < 0:
+                raise ASN1EncodeError('Components of object identifier must '
+                                      'be greater than or equal to 0')
+
             result = [component & 0x7f]
             while component >= 0x80:
                 component >>= 7
@@ -470,14 +503,18 @@ class ObjectIdentifier:
 
             return bytes(result[::-1])
 
-        components = [int(c) for c in self.value.split('.')]
+        try:
+            components = [int(c) for c in self.value.split('.')]
+        except ValueError:
+            raise ASN1EncodeError('Component values must be integers')
+
         if len(components) < 2:
             raise ASN1EncodeError('Object identifiers must have at least two '
                                   'components')
         elif components[0] < 0 or components[0] > 2:
             raise ASN1EncodeError('First component of object identifier must '
                                   'be between 0 and 2')
-        elif components[0] < 2 and (components[1] < 0 or components[1] > 40):
+        elif components[0] < 2 and (components[1] < 0 or components[1] > 39):
             raise ASN1EncodeError('Second component of object identifier must '
                                   'be between 0 and 39')
 
@@ -489,26 +526,30 @@ class ObjectIdentifier:
         """Decode a DER object identifier"""
 
         if constructed:
-            raise ASN1DecodeError('OBJECT IDENTIFIER  should not be '
+            raise ASN1DecodeError('OBJECT IDENTIFIER should not be '
                                   'constructed')
 
         if not content:
             raise ASN1DecodeError('Empty object identifier')
 
-        components = [str(component) for component in divmod(content[0], 40)]
+        b = content[0]
+        components = list(divmod(b, 40)) if b < 80 else [2, b-80]
+
         component = 0
         for b in content[1:]:
-            if b < 0x80:
-                components.append(str(component | b))
+            if b == 0x80 and component == 0:
+                raise ASN1DecodeError('Invalid component')
+            elif b < 0x80:
+                components.append(component | b)
                 component = 0
             else:
                 component |= b & 0x7f
                 component <<= 7
 
         if component:
-            raise ASN1DecodeError('Incomplete object identifier')
+            raise ASN1DecodeError('Incomplete component')
 
-        return cls('.'.join(components))
+        return cls('.'.join(str(c) for c in components))
 
 
 def der_encode(value):
@@ -545,7 +586,7 @@ def der_encode(value):
         identifier = cls.identifier
         content = cls.encode(value)
     else:
-        raise TypeError('Cannot DER encode type %s' % t.__name__)
+        raise ASN1EncodeError('Cannot DER encode type %s' % t.__name__)
 
     length = len(content)
     if length < 0x80:
@@ -604,7 +645,10 @@ def der_decode(data, partial_ok=False):
                 tag |= b & 0x7f
                 tag <<= 7
         else:
-            raise ASN1DecodeError('Incomplete data')
+            raise ASN1DecodeError('Incomplete tag')
+
+    if offset >= len(data):
+        raise ASN1DecodeError('Incomplete data')
 
     length = data[offset]
     offset += 1
@@ -626,9 +670,9 @@ def der_decode(data, partial_ok=False):
         value = cls.decode(constructed, data[offset:offset+length])
     elif constructed:
         value = TaggedDERObject(tag, der_decode(data[offset:offset+length]),
-                                asn1_class=asn1_class)
+                                asn1_class)
     else:
-        value = RawDERObject(asn1_class, tag, data[offset:offset+length])
+        value = RawDERObject(tag, data[offset:offset+length], asn1_class)
 
     if partial_ok:
         return value, offset+length
