@@ -21,6 +21,7 @@ from asyncssh.asn1 import BitString, ObjectIdentifier
 from asyncssh.asn1 import RawDERObject, TaggedDERObject, PRIVATE
 
 class _TestASN1(unittest.TestCase):
+    """Unit tests for ASN.1 module"""
 
     # pylint: disable=bad-whitespace
 
@@ -85,33 +86,33 @@ class _TestASN1(unittest.TestCase):
         (TaggedDERObject(32, None),           'bf20020500'),
         (TaggedDERObject(128, None),          'bf8100020500'),
         (TaggedDERObject(0, None, PRIVATE),   'e0020500'),
-             
+
         (RawDERObject(0, b'', PRIVATE),       'c000')
     ]
 
     encode_errors = [
-         (range, [1]),                        # Unsupported type
+        (range, [1]),                         # Unsupported type
 
-         (BitString, [b'', 1]),               # Bit count with empty value
-         (BitString, [b'', -1]),              # Invalid unused bit count
-         (BitString, [b'', 8]),               # Invalid unused bit count
-         (BitString, [b'0c0', 7]),            # Unused bits not zero
-         (BitString, ['', 1]),                # Unused bits with string
-         (BitString, [0]),                    # Invalid type
+        (BitString, [b'', 1]),                # Bit count with empty value
+        (BitString, [b'', -1]),               # Invalid unused bit count
+        (BitString, [b'', 8]),                # Invalid unused bit count
+        (BitString, [b'0c0', 7]),             # Unused bits not zero
+        (BitString, ['', 1]),                 # Unused bits with string
+        (BitString, [0]),                     # Invalid type
 
-         (ObjectIdentifier, ['']),            # Too few components
-         (ObjectIdentifier, ['1']),           # Too few components
-         (ObjectIdentifier, ['-1.1']),        # First component out of range
-         (ObjectIdentifier, ['3.1']),         # First component out of range
-         (ObjectIdentifier, ['0.-1']),        # Second component out of range
-         (ObjectIdentifier, ['0.40']),        # Second component out of range
-         (ObjectIdentifier, ['1.-1']),        # Second component out of range
-         (ObjectIdentifier, ['1.40']),        # Second component out of range
-         (ObjectIdentifier, ['1.1.-1']),      # Later component out of range
+        (ObjectIdentifier, ['']),             # Too few components
+        (ObjectIdentifier, ['1']),            # Too few components
+        (ObjectIdentifier, ['-1.1']),         # First component out of range
+        (ObjectIdentifier, ['3.1']),          # First component out of range
+        (ObjectIdentifier, ['0.-1']),         # Second component out of range
+        (ObjectIdentifier, ['0.40']),         # Second component out of range
+        (ObjectIdentifier, ['1.-1']),         # Second component out of range
+        (ObjectIdentifier, ['1.40']),         # Second component out of range
+        (ObjectIdentifier, ['1.1.-1']),       # Later component out of range
 
-         (TaggedDERObject, [0, None, 99]),    # Invalid ASN.1 class
+        (TaggedDERObject, [0, None, 99]),     # Invalid ASN.1 class
 
-         (RawDERObject, [0, None, 99]),       # Invalid ASN.1 class
+        (RawDERObject, [0, None, 99]),        # Invalid ASN.1 class
     ]
 
     decode_errors = [
@@ -156,6 +157,8 @@ class _TestASN1(unittest.TestCase):
     # pylint: enable=bad-whitespace
 
     def test_asn1(self):
+        """Unit test ASN.1 module"""
+
         for value, data in self.tests:
             data = codecs.decode(data, 'hex')
 
