@@ -16,7 +16,7 @@ import hmac
 from hashlib import md5, sha1, sha224, sha256, sha384, sha512
 from os import urandom
 
-from .asn1 import ObjectIdentifier, der_encode, der_decode
+from .asn1 import ASN1DecodeError, ObjectIdentifier, der_encode, der_decode
 from .crypto import lookup_cipher
 
 
@@ -603,7 +603,10 @@ def pkcs8_decrypt(key_data, passphrase):
     else:
         raise KeyEncryptionError('Unknown PKCS#8 encryption algorithm')
 
-    return der_decode(cipher.decrypt(data))
+    try:
+        return der_decode(cipher.decrypt(data))
+    except ASN1DecodeError:
+        raise KeyEncryptionError('Invalid PKCS#8 encrypted key data')
 
 
 # pylint: disable=bad-whitespace

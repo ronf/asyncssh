@@ -12,7 +12,7 @@
 
 """RSA public key encryption handler"""
 
-from .asn1 import ObjectIdentifier, der_encode, der_decode
+from .asn1 import ASN1DecodeError, ObjectIdentifier, der_encode, der_decode
 from .crypto import RSAPrivateKey, RSAPublicKey
 from .misc import all_ints, mod_inverse
 from .packet import MPInt, String, SSHPacket
@@ -87,19 +87,29 @@ class _RSAKey(SSHKey):
     def decode_pkcs8_private(cls, alg_params, data):
         """Decode a PKCS#8 format RSA private key"""
 
-        if alg_params is None:
-            return cls.decode_pkcs1_private(der_decode(data))
-        else:
+        if alg_params is not None:
             return None
+
+        try:
+            key_data = der_decode(data)
+        except ASN1DecodeError:
+            return None
+
+        return cls.decode_pkcs1_private(key_data)
 
     @classmethod
     def decode_pkcs8_public(cls, alg_params, data):
         """Decode a PKCS#8 format RSA public key"""
 
-        if alg_params is None:
-            return cls.decode_pkcs1_public(der_decode(data))
-        else:
+        if alg_params is not None:
             return None
+
+        try:
+            key_data = der_decode(data)
+        except ASN1DecodeError:
+            return None
+
+        return cls.decode_pkcs1_public(key_data)
 
     @classmethod
     def decode_ssh_private(cls, packet):

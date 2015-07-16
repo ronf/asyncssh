@@ -12,7 +12,7 @@
 
 """DSA public key encryption handler"""
 
-from .asn1 import ObjectIdentifier, der_encode, der_decode
+from .asn1 import ASN1DecodeError, ObjectIdentifier, der_encode, der_decode
 from .crypto import DSAPrivateKey, DSAPublicKey
 from .misc import all_ints
 from .packet import MPInt, String, SSHPacket
@@ -88,10 +88,13 @@ class _DSAKey(SSHKey):
     def decode_pkcs8_private(cls, alg_params, data):
         """Decode a PKCS#8 format DSA private key"""
 
-        x = der_decode(data)
+        try:
+            x = der_decode(data)
+        except ASN1DecodeError:
+            return None
 
-        if (len(alg_params) == 3 and all_ints(alg_params) and
-                isinstance(x, int)):
+        if (isinstance(alg_params, tuple) and len(alg_params) == 3 and
+                all_ints(alg_params) and isinstance(x, int)):
             p, q, g = alg_params
             y = pow(g, x, p)
             return p, q, g, y, x
@@ -102,10 +105,13 @@ class _DSAKey(SSHKey):
     def decode_pkcs8_public(cls, alg_params, data):
         """Decode a PKCS#8 format DSA public key"""
 
-        y = der_decode(data)
+        try:
+            y = der_decode(data)
+        except ASN1DecodeError:
+            return None
 
-        if (len(alg_params) == 3 and all_ints(alg_params) and
-                isinstance(y, int)):
+        if (isinstance(alg_params, tuple) and len(alg_params) == 3 and
+                all_ints(alg_params) and isinstance(y, int)):
             p, q, g = alg_params
             return p, q, g, y
         else:
