@@ -12,4 +12,4 @@
 
 """Unit tests for AsyncSSH"""
 
-from . import test_keys
+from . import test_cipher, test_compression, test_mac, test_public_key
