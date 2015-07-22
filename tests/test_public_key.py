@@ -31,9 +31,16 @@ from asyncssh import import_private_key, import_public_key
 from asyncssh import read_private_key, read_public_key
 from asyncssh import read_private_key_list, read_public_key_list
 from asyncssh import KeyImportError, KeyExportError, KeyEncryptionError
-from asyncssh.asn1 import der_encode, BitString
+from asyncssh.asn1 import der_encode, BitString, ObjectIdentifier
 from asyncssh.packet import MPInt, String, UInt32
 from asyncssh.public_key import SSHKey
+
+_ES2 = ObjectIdentifier('1.2.840.113549.1.5.13')
+_ES1_SHA1_RC2 = ObjectIdentifier('1.2.840.113549.1.5.11')
+_P12_RC2_40 = ObjectIdentifier('1.2.840.113549.1.12.1.6')
+_ES2_PBKDF2 = ObjectIdentifier('1.2.840.113549.1.5.12')
+_ES2_AES128 = ObjectIdentifier('2.16.840.1.101.3.4.1.2')
+_ES2_RC2 = ObjectIdentifier('1.2.840.113549.3.2')
 
 
 def run(cmd):
@@ -55,26 +62,34 @@ pkcs1_ciphers = (('aes128-cbc', '-aes128'),
                  ('des-cbc',    '-des'),
                  ('des3-cbc',   '-des3'))
 
-pkcs8_ciphers = (('des-cbc',      'md5',  1, '-v1 PBE-MD5-DES'),
-                 ('des-cbc',      'sha1', 1, '-v1 PBE-SHA1-DES'),
-                 ('rc2-64-cbc',   'md5',  1, '-v1 PBE-MD5-RC2-64'),
-                 ('rc2-64-cbc',   'sha1', 1, '-v1 PBE-SHA1-RC2-64'),
-                 ('des2-cbc',     'sha1', 1, '-v1 PBE-SHA1-2DES'),
-                 ('des3-cbc',     'sha1', 1, '-v1 PBE-SHA1-3DES'),
-                 ('rc2-40-cbc',   'sha1', 1, '-v1 PBE-SHA1-RC2-40'),
-                 ('rc2-128-cbc',  'sha1', 1, '-v1 PBE-SHA1-RC2-128'),
-                 ('rc4-40',       'sha1', 1, '-v1 PBE-SHA1-RC4-40'),
-                 ('rc4-128',      'sha1', 1, '-v1 PBE-SHA1-RC4-128'),
-                 ('aes128-cbc',   'sha1', 2, '-v2 aes-128-cbc'),
-                 ('aes192-cbc',   'sha1', 2, '-v2 aes-192-cbc'),
-                 ('aes256-cbc',   'sha1', 2, '-v2 aes-256-cbc'),
-                 ('blowfish-cbc', 'sha1', 2, '-v2 bf-cbc'),
-                 ('cast128-cbc',  'sha1', 2, '-v2 cast-cbc'),
-                 ('des-cbc',      'sha1', 2, '-v2 des-cbc'),
-                 ('des3-cbc',     'sha1', 2, '-v2 des-ede3-cbc'),
-                 ('rc2-40-cbc',   'sha1', 2, '-v2 rc2-40-cbc'),
-                 ('rc2-64-cbc',   'sha1', 2, '-v2 rc2-64-cbc'),
-                 ('rc2-128-cbc',  'sha1', 2, '-v2 rc2-cbc'))
+pkcs8_ciphers = (('des-cbc',      'md5',    1, '-v1 PBE-MD5-DES'),
+                 ('des-cbc',      'sha1',   1, '-v1 PBE-SHA1-DES'),
+                 ('rc2-64-cbc',   'md5',    1, '-v1 PBE-MD5-RC2-64'),
+                 ('rc2-64-cbc',   'sha1',   1, '-v1 PBE-SHA1-RC2-64'),
+                 ('des2-cbc',     'sha1',   1, '-v1 PBE-SHA1-2DES'),
+                 ('des3-cbc',     'sha1',   1, '-v1 PBE-SHA1-3DES'),
+                 ('rc2-40-cbc',   'sha1',   1, '-v1 PBE-SHA1-RC2-40'),
+                 ('rc2-128-cbc',  'sha1',   1, '-v1 PBE-SHA1-RC2-128'),
+                 ('rc4-40',       'sha1',   1, '-v1 PBE-SHA1-RC4-40'),
+                 ('rc4-128',      'sha1',   1, '-v1 PBE-SHA1-RC4-128'),
+                 ('aes128-cbc',   'sha1',   2, '-v2 aes-128-cbc'),
+                 ('aes128-cbc',   'sha224', 2, '-v2 aes-128-cbc '
+                                               '-v2prf hmacWithSHA224'),
+                 ('aes128-cbc',   'sha256', 2, '-v2 aes-128-cbc '
+                                               '-v2prf hmacWithSHA256'),
+                 ('aes128-cbc',   'sha384', 2, '-v2 aes-128-cbc '
+                                               '-v2prf hmacWithSHA384'),
+                 ('aes128-cbc',   'sha512', 2, '-v2 aes-128-cbc '
+                                               '-v2prf hmacWithSHA512'),
+                 ('aes192-cbc',   'sha1',   2, '-v2 aes-192-cbc'),
+                 ('aes256-cbc',   'sha1',   2, '-v2 aes-256-cbc'),
+                 ('blowfish-cbc', 'sha1',   2, '-v2 bf-cbc'),
+                 ('cast128-cbc',  'sha1',   2, '-v2 cast-cbc'),
+                 ('des-cbc',      'sha1',   2, '-v2 des-cbc'),
+                 ('des3-cbc',     'sha1',   2, '-v2 des-ede3-cbc'),
+                 ('rc2-40-cbc',   'sha1',   2, '-v2 rc2-40-cbc'),
+                 ('rc2-64-cbc',   'sha1',   2, '-v2 rc2-64-cbc'),
+                 ('rc2-128-cbc',  'sha1',   2, '-v2 rc2-cbc'))
 
 openssh_ciphers = ('aes128-cbc', 'aes192-cbc', 'aes256-cbc',
                    'aes128-ctr', 'aes192-ctr', 'aes256-ctr',
@@ -327,9 +342,33 @@ class _TestPublicKey(unittest.TestCase):
             with self.assertRaises(KeyExportError):
                 self.privkey.export_private_key('pkcs1-der', 'passphrase')
 
-        with self.subTest('Encode with unknown openssh cipher'):
-            with self.assertRaises(KeyEncryptionError):
-                self.privkey.export_private_key('openssh', 'passphrase', 'xxx')
+        if 'pkcs1' in self.private_formats:
+            with self.subTest('Encode with unknown PKCS#1 cipher'):
+                with self.assertRaises(KeyEncryptionError):
+                    self.privkey.export_private_key('pkcs1-pem', 'passphrase',
+                                                    'xxx')
+
+        if 'pkcs8' in self.private_formats:
+            with self.subTest('Encode with unknown PKCS#8 cipher'):
+                with self.assertRaises(KeyEncryptionError):
+                    self.privkey.export_private_key('pkcs8-pem', 'passphrase',
+                                                    'xxx')
+
+            with self.subTest('Encode with unknown PKCS#8 hash'):
+                with self.assertRaises(KeyEncryptionError):
+                    self.privkey.export_private_key('pkcs8-pem', 'passphrase',
+                                                    'aes128-cbc', 'xxx')
+
+            with self.subTest('Encode with unknown PKCS#8 version'):
+                with self.assertRaises(KeyEncryptionError):
+                    self.privkey.export_private_key('pkcs8-pem', 'passphrase',
+                                                    'aes128-cbc', 'sha1', 3)
+
+        if 'openssh' in self.private_formats:
+            with self.subTest('Encode with unknown openssh cipher'):
+                with self.assertRaises(KeyEncryptionError):
+                    self.privkey.export_private_key('openssh', 'passphrase',
+                                                    'xxx')
 
     def check_decode_errors(self):
         """Check error code paths in key decoding"""
@@ -437,56 +476,148 @@ class _TestPublicKey(unittest.TestCase):
              b'-----BEGIN ENCRYPTED PRIVATE KEY-----\n' +
              binascii.b2a_base64(der_encode(None)) +
              b'-----END ENCRYPTED PRIVATE KEY-----'),
+            ('Invalid PEM PKCS#8 encrypted header',
+             b'-----BEGIN ENCRYPTED PRIVATE KEY-----\n' +
+             binascii.b2a_base64(der_encode((None, None))) +
+             b'-----END ENCRYPTED PRIVATE KEY-----'),
+            ('Invalid PEM PKCS#8 encryption algorithm',
+             b'-----BEGIN ENCRYPTED PRIVATE KEY-----\n' +
+             binascii.b2a_base64(der_encode(((None, None), b''))) +
+             b'-----END ENCRYPTED PRIVATE KEY-----'),
+            ('Invalid PEM PKCS#8 PBES1 encryption parameters',
+             b'-----BEGIN ENCRYPTED PRIVATE KEY-----\n' +
+             binascii.b2a_base64(der_encode(((_ES1_SHA1_RC2, None), b''))) +
+             b'-----END ENCRYPTED PRIVATE KEY-----'),
+            ('Invalid PEM PKCS#8 PBES1 PKCS#12 encryption parameters',
+             b'-----BEGIN ENCRYPTED PRIVATE KEY-----\n' +
+             binascii.b2a_base64(der_encode(((_P12_RC2_40, None), b''))) +
+             b'-----END ENCRYPTED PRIVATE KEY-----'),
+            ('Invalid PEM PKCS#8 PBES1 PKCS#12 salt',
+             b'-----BEGIN ENCRYPTED PRIVATE KEY-----\n' +
+             binascii.b2a_base64(der_encode(((_P12_RC2_40, (b'', 0)), b''))) +
+             b'-----END ENCRYPTED PRIVATE KEY-----'),
+            ('Invalid PEM PKCS#8 PBES1 PKCS#12 iteration count',
+             b'-----BEGIN ENCRYPTED PRIVATE KEY-----\n' +
+             binascii.b2a_base64(der_encode(((_P12_RC2_40, (b'x', 0)), b''))) +
+             b'-----END ENCRYPTED PRIVATE KEY-----'),
+            ('Invalid PEM PKCS#8 PBES2 encryption parameters',
+             b'-----BEGIN ENCRYPTED PRIVATE KEY-----\n' +
+             binascii.b2a_base64(der_encode(((_ES2, None), b''))) +
+             b'-----END ENCRYPTED PRIVATE KEY-----'),
+            ('Invalid PEM PKCS#8 PBES2 KDF algorithm',
+             b'-----BEGIN ENCRYPTED PRIVATE KEY-----\n' +
+             binascii.b2a_base64(der_encode(
+                 ((_ES2, ((None, None), (None, None))), b''))) +
+             b'-----END ENCRYPTED PRIVATE KEY-----'),
+            ('Invalid PEM PKCS#8 PBES2 encryption algorithm',
+             b'-----BEGIN ENCRYPTED PRIVATE KEY-----\n' +
+             binascii.b2a_base64(der_encode(
+                 ((_ES2, ((_ES2_PBKDF2, None), (None, None))), b''))) +
+             b'-----END ENCRYPTED PRIVATE KEY-----'),
+            ('Invalid PEM PKCS#8 PBES2 PBKDF2 parameters',
+             b'-----BEGIN ENCRYPTED PRIVATE KEY-----\n' +
+             binascii.b2a_base64(der_encode(
+                 ((_ES2, ((_ES2_PBKDF2, None), (_ES2_AES128, None))), b''))) +
+             b'-----END ENCRYPTED PRIVATE KEY-----'),
+            ('Invalid PEM PKCS#8 PBES2 PBKDF2 salt',
+             b'-----BEGIN ENCRYPTED PRIVATE KEY-----\n' +
+             binascii.b2a_base64(der_encode(
+                 ((_ES2, ((_ES2_PBKDF2, (None, None)),
+                          (_ES2_AES128, None))), b''))) +
+             b'-----END ENCRYPTED PRIVATE KEY-----'),
+            ('Invalid PEM PKCS#8 PBES2 PBKDF2 iteration count',
+             b'-----BEGIN ENCRYPTED PRIVATE KEY-----\n' +
+             binascii.b2a_base64(der_encode(
+                 ((_ES2, ((_ES2_PBKDF2, (b'', None)),
+                          (_ES2_AES128, None))), b''))) +
+             b'-----END ENCRYPTED PRIVATE KEY-----'),
+            ('Invalid PEM PKCS#8 PBES2 PBKDF2 PRF',
+             b'-----BEGIN ENCRYPTED PRIVATE KEY-----\n' +
+             binascii.b2a_base64(der_encode(
+                 ((_ES2, ((_ES2_PBKDF2, (b'', 0, None)),
+                          (_ES2_AES128, None))), b''))) +
+             b'-----END ENCRYPTED PRIVATE KEY-----'),
+            ('Unknown PEM PKCS#8 PBES2 PBKDF2 PRF',
+             b'-----BEGIN ENCRYPTED PRIVATE KEY-----\n' +
+             binascii.b2a_base64(der_encode(
+                 ((_ES2, ((_ES2_PBKDF2, (b'', 0,
+                                         (ObjectIdentifier('1.1'), None))),
+                          (_ES2_AES128, None))), b''))) +
+             b'-----END ENCRYPTED PRIVATE KEY-----'),
+            ('Invalid PEM PKCS#8 PBES2 encryption parameters',
+             b'-----BEGIN ENCRYPTED PRIVATE KEY-----\n' +
+             binascii.b2a_base64(der_encode(
+                 ((_ES2, ((_ES2_PBKDF2, (b'', 0)),
+                          (_ES2_AES128, None))), b''))) +
+             b'-----END ENCRYPTED PRIVATE KEY-----'),
+            ('Invalid length PEM PKCS#8 PBES2 IV',
+             b'-----BEGIN ENCRYPTED PRIVATE KEY-----\n' +
+             binascii.b2a_base64(der_encode(
+                 ((_ES2, ((_ES2_PBKDF2, (b'', 0)),
+                          (_ES2_AES128, b''))), b''))) +
+             b'-----END ENCRYPTED PRIVATE KEY-----'),
+            ('Invalid PEM PKCS#8 PBES2 RC2 parameters',
+             b'-----BEGIN ENCRYPTED PRIVATE KEY-----\n' +
+             binascii.b2a_base64(der_encode(
+                 ((_ES2, ((_ES2_PBKDF2, (b'', 0)),
+                          (_ES2_RC2, None))), b''))) +
+             b'-----END ENCRYPTED PRIVATE KEY-----'),
+            ('Invalid PEM PKCS#8 PBES2 RC2 version',
+             b'-----BEGIN ENCRYPTED PRIVATE KEY-----\n' +
+             binascii.b2a_base64(der_encode(
+                 ((_ES2, ((_ES2_PBKDF2, (b'', 0)),
+                          (_ES2_RC2, (0, None)))), b''))) +
+             b'-----END ENCRYPTED PRIVATE KEY-----'),
+            ('Invalid PEM PKCS#8 PBES2 RC2 IV',
+             b'-----BEGIN ENCRYPTED PRIVATE KEY-----\n' +
+             binascii.b2a_base64(der_encode(
+                 ((_ES2, ((_ES2_PBKDF2, (b'', 0)),
+                          (_ES2_RC2, (None,)))), b''))) +
+             b'-----END ENCRYPTED PRIVATE KEY-----'),
+            ('Invalid length PEM PKCS#8 PBES2 RC2 IV',
+             b'-----BEGIN ENCRYPTED PRIVATE KEY-----\n' +
+             binascii.b2a_base64(der_encode(
+                 ((_ES2, ((_ES2_PBKDF2, (b'', 0)),
+                          (_ES2_RC2, (b'',)))), b''))) +
+             b'-----END ENCRYPTED PRIVATE KEY-----'),
             ('Invalid OpenSSH cipher',
              b'-----BEGIN OPENSSH PRIVATE KEY-----\n' +
-             binascii.b2a_base64(b''.join((b'openssh-key-v1\0', String('xxx'),
-                                           String(''), String(''), UInt32(1),
-                                           String(''), String('')))) +
+             binascii.b2a_base64(b''.join(
+                 (b'openssh-key-v1\0', String('xxx'), String(''), String(''),
+                  UInt32(1), String(''), String('')))) +
              b'-----END OPENSSH PRIVATE KEY-----'),
             ('Invalid OpenSSH kdf',
              b'-----BEGIN OPENSSH PRIVATE KEY-----\n' +
-             binascii.b2a_base64(b''.join((b'openssh-key-v1\0',
-                                           String('aes256-cbc'), String('xxx'),
-                                           String(''), UInt32(1), String(''),
-                                           String('')))) +
+             binascii.b2a_base64(b''.join(
+                 (b'openssh-key-v1\0', String('aes256-cbc'), String('xxx'),
+                  String(''), UInt32(1), String(''), String('')))) +
              b'-----END OPENSSH PRIVATE KEY-----'),
             ('Invalid OpenSSH kdf data',
              b'-----BEGIN OPENSSH PRIVATE KEY-----\n' +
-             binascii.b2a_base64(b''.join((b'openssh-key-v1\0',
-                                           String('aes256-cbc'),
-                                           String('bcrypt'), String(''),
-                                           UInt32(1), String(''),
-                                           String('')))) +
+             binascii.b2a_base64(b''.join(
+                 (b'openssh-key-v1\0', String('aes256-cbc'), String('bcrypt'),
+                  String(''), UInt32(1), String(''), String('')))) +
              b'-----END OPENSSH PRIVATE KEY-----'),
             ('Invalid OpenSSH salt',
              b'-----BEGIN OPENSSH PRIVATE KEY-----\n' +
-             binascii.b2a_base64(b''.join((b'openssh-key-v1\0',
-                                           String('aes256-cbc'),
-                                           String('bcrypt'),
-                                           String(b''.join((String(b''),
-                                                            UInt32(1)))),
-                                           UInt32(1), String(''),
-                                           String('')))) +
+             binascii.b2a_base64(b''.join(
+                 (b'openssh-key-v1\0', String('aes256-cbc'), String('bcrypt'),
+                  String(b''.join((String(b''), UInt32(1)))), UInt32(1),
+                  String(''), String('')))) +
              b'-----END OPENSSH PRIVATE KEY-----'),
             ('Invalid OpenSSH encrypted data',
              b'-----BEGIN OPENSSH PRIVATE KEY-----\n' +
-             binascii.b2a_base64(b''.join((b'openssh-key-v1\0',
-                                           String('aes256-cbc'),
-                                           String('bcrypt'),
-                                           String(b''.join((String(16*b'\0'),
-                                                            UInt32(1)))),
-                                           UInt32(1), String(''),
-                                           String('')))) +
+             binascii.b2a_base64(b''.join(
+                 (b'openssh-key-v1\0', String('aes256-cbc'), String('bcrypt'),
+                  String(b''.join((String(16*b'\0'), UInt32(1)))), UInt32(1),
+                  String(''), String('')))) +
              b'-----END OPENSSH PRIVATE KEY-----'),
             ('Unexpected OpenSSH trailing data',
              b'-----BEGIN OPENSSH PRIVATE KEY-----\n' +
-             binascii.b2a_base64(b''.join((b'openssh-key-v1\0',
-                                           String('aes256-cbc'),
-                                           String('bcrypt'),
-                                           String(b''.join((String(16*b'\0'),
-                                                            UInt32(1)))),
-                                           UInt32(1), String(''),
-                                           String(''), String('xxx')))) +
+             binascii.b2a_base64(b''.join(
+                 (b'openssh-key-v1\0', String('aes256-cbc'), String('bcrypt'),
+                  String(b''.join((String(16*b'\0'), UInt32(1)))), UInt32(1),
+                  String(''), String(''), String('xxx')))) +
              b'-----END OPENSSH PRIVATE KEY-----')
         ]
 

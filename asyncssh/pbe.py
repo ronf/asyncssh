@@ -192,11 +192,8 @@ def _pbkdf_p12(hash_alg, passphrase, salt, count, key_size, idx):
         """Make a block a multiple of v bytes long by repeating data"""
 
         l = len(data)
-        if l:
-            size = ((l + v - 1) // v) * v
-            return (((size + l - 1) // l) * data)[:size]
-        else:
-            return data
+        size = ((l + v - 1) // v) * v
+        return (((size + l - 1) // l) * data)[:size]
 
     v = hash_alg().block_size
     D = v * bytes((idx,))
@@ -261,9 +258,9 @@ def _pbe_p12(params, passphrase, hash_alg, cipher, key_size):
     """
 
     if (not isinstance(params, tuple) or len(params) != 2 or
-            not isinstance(params[0], bytes) or
-            not isinstance(params[1], int)):
-        raise KeyEncryptionError('Invalid PBES1 encryption parameters')
+            not isinstance(params[0], bytes) or len(params[0]) == 0 or
+            not isinstance(params[1], int) or params[1] == 0):
+        raise KeyEncryptionError('Invalid PBES1 PKCS#12 encryption parameters')
 
     salt, count = params
     key = _pbkdf_p12(hash_alg, passphrase, salt, count, key_size, 1)
@@ -376,13 +373,19 @@ def _pbes2_pbkdf2(params, passphrase, default_key_size):
     else:
         key_size = default_key_size
 
-    if params and isinstance(params[0], ObjectIdentifier):
-        prf_alg = params.pop(0)
-        if prf_alg in _pbes2_prfs:
-            handler, args = _pbes2_prfs[prf_alg]
-            prf = handler(*args)
+    if params:
+        if (isinstance(params[0], tuple) and len(params[0]) == 2 and
+                isinstance(params[0][0], ObjectIdentifier)):
+            prf_alg = params[0][0]
+            if prf_alg in _pbes2_prfs:
+                handler, args = _pbes2_prfs[prf_alg]
+                prf = handler(*args)
+            else:
+                raise KeyEncryptionError('Unknown PBES2 pseudo-random '
+                                         'function')
         else:
-            raise KeyEncryptionError('Unknown PBES2 pseudo-random function')
+            raise KeyEncryptionError('Invalid PBES2 pseudo-random function '
+                                     'parameters')
     else:
         prf = _pbes2_hmac_prf(sha1)
 
@@ -563,7 +566,7 @@ def pkcs8_encrypt(data, cipher_name, hash_name, version, passphrase):
 
         if hash_name != 'sha1':
             if hash_name in _pbes2_prf_names:
-                kdf_params.append(_pbes2_prf_names[hash_name])
+                kdf_params.append((_pbes2_prf_names[hash_name], None))
             else:
                 raise KeyEncryptionError('Unknown PBES2 hash function')
 
