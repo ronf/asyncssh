@@ -69,6 +69,7 @@ class SSHChannel(SSHPacketHandler):
         self._recv_pktsize = max_pktsize
         self._recv_paused = True
         self._recv_buf = []
+        self._recv_partial = {}
 
         self._open_waiter = None
         self._request_waiters = []
@@ -182,6 +183,10 @@ class SSHChannel(SSHPacketHandler):
         """Deliver incoming data to the session"""
 
         if data == _EOF:
+            if datatype in self._recv_partial:
+                raise DisconnectError(DISC_PROTOCOL_ERROR,
+                                      'Unicode decode error')
+
             if not self._session.eof_received():
                 self.close()
         else:
@@ -194,13 +199,31 @@ class SSHChannel(SSHPacketHandler):
                 self._recv_window = self._init_recv_window
 
             if self._encoding:
-                try:
-                    data = data.decode(self._encoding)
-                except UnicodeDecodeError:
-                    raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                          'Unicode decode error') from None
+                if datatype in self._recv_partial:
+                    input = self._recv_partial.pop(datatype) + data
+                else:
+                    input = data
 
-            self._session.data_received(data, datatype)
+                while input:
+                    try:
+                        data = input.decode(self._encoding)
+                        input = b''
+                    except UnicodeDecodeError as exc:
+                        if exc.start > 0:
+                            data = input[:exc.start].decode()
+                            input = input[exc.start:]
+                        elif exc.reason == 'unexpected end of data':
+                            break
+                        else:
+                            raise DisconnectError(DISC_PROTOCOL_ERROR,
+                                                  'Unicode decode error')
+
+                    self._session.data_received(data, datatype)
+
+                if input:
+                    self._recv_partial[datatype] = input
+            else:
+                self._session.data_received(data, datatype)
 
     def _accept_data(self, data, datatype=None):
         """Accept new data on the channel
