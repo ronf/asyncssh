@@ -12,8 +12,8 @@
 
 """SSH packet encoding and decoding functions"""
 
-from .constants import DISC_PROTOCOL_ERROR
-from .misc import DisconnectError
+class PacketDecodeError(ValueError):
+    """Packet decoding error"""
 
 
 def Byte(value):
@@ -78,8 +78,7 @@ class SSHPacket:
         """Confirm that all of the data in the packet has been consumed"""
 
         if self:
-            raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Unexpected data at end of packet')
+            raise PacketDecodeError('Unexpected data at end of packet')
 
     def get_consumed_payload(self):
         """Return the portion of the packet consumed so far"""
@@ -95,7 +94,7 @@ class SSHPacket:
         """Extract the requested number of bytes from the packet"""
 
         if self._idx + size > self._len:
-            raise DisconnectError(DISC_PROTOCOL_ERROR, 'Incomplete packet')
+            raise PacketDecodeError('Incomplete packet')
 
         value = self._packet[self._idx:self._idx+size]
         self._idx += size

@@ -68,7 +68,7 @@ from .mac import get_mac_algs, get_mac_params, get_mac
 from .misc import ChannelOpenError, DisconnectError, ip_address
 
 from .packet import Boolean, Byte, NameList, String, UInt32, UInt64
-from .packet import SSHPacket, SSHPacketHandler
+from .packet import PacketDecodeError, SSHPacket, SSHPacketHandler
 
 from .public_key import CERT_TYPE_HOST, CERT_TYPE_USER
 from .public_key import get_public_key_algs, get_certificate_algs
@@ -679,19 +679,23 @@ class SSHConnection(SSHPacketHandler):
                                    not self._decompress_after_auth):
             payload = self._decompressor.decompress(payload)
 
-        packet = SSHPacket(payload)
-        pkttype = packet.get_byte()
+        try:
+            packet = SSHPacket(payload)
+            pkttype = packet.get_byte()
 
-        if self._kex and MSG_KEX_FIRST <= pkttype <= MSG_KEX_LAST:
-            if self._ignore_first_kex:
-                self._ignore_first_kex = False
-                processed = True
+            if self._kex and MSG_KEX_FIRST <= pkttype <= MSG_KEX_LAST:
+                if self._ignore_first_kex:
+                    self._ignore_first_kex = False
+                    processed = True
+                else:
+                    processed = self._kex.process_packet(pkttype, packet)
+            elif (self._auth and
+                  MSG_USERAUTH_FIRST <= pkttype <= MSG_USERAUTH_LAST):
+                processed = self._auth.process_packet(pkttype, packet)
             else:
-                processed = self._kex.process_packet(pkttype, packet)
-        elif self._auth and MSG_USERAUTH_FIRST <= pkttype <= MSG_USERAUTH_LAST:
-            processed = self._auth.process_packet(pkttype, packet)
-        else:
-            processed = self.process_packet(pkttype, packet)
+                processed = self.process_packet(pkttype, packet)
+        except PacketDecodeError as exc:
+            raise DisconnectError(DISC_PROTOCOL_ERROR, str(exc))
 
         if not processed:
             self.send_packet(Byte(MSG_UNIMPLEMENTED), UInt32(self._recv_seq))

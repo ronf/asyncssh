@@ -15,7 +15,7 @@
 from .asn1 import ASN1DecodeError, ObjectIdentifier, der_encode, der_decode
 from .crypto import RSAPrivateKey, RSAPublicKey
 from .misc import all_ints, mod_inverse
-from .packet import MPInt, String, SSHPacket
+from .packet import MPInt, String, PacketDecodeError, SSHPacket
 from .public_key import SSHKey, SSHCertificateV00, SSHCertificateV01
 from .public_key import KeyExportError
 from .public_key import register_public_key_alg, register_certificate_alg
@@ -189,13 +189,16 @@ class _RSAKey(SSHKey):
     def verify(self, data, sig):
         """Verify a signature of the specified data using this key"""
 
-        sig = SSHPacket(sig)
+        try:
+            sig = SSHPacket(sig)
 
-        if sig.get_string() != self.algorithm:
+            if sig.get_string() != self.algorithm:
+                return False
+
+            sig = sig.get_string()
+            return self._key.verify(data, sig)
+        except PacketDecodeError:
             return False
-
-        sig = sig.get_string()
-        return self._key.verify(data, sig)
 
 
 register_public_key_alg(b'ssh-rsa', _RSAKey)

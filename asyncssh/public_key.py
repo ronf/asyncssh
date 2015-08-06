@@ -25,8 +25,8 @@ except ImportError:
 
 from .asn1 import ASN1DecodeError, BitString, der_encode, der_decode
 from .cipher import get_encryption_params, get_cipher
-from .misc import DisconnectError, ip_network
-from .packet import String, UInt32, UInt64, SSHPacket
+from .misc import ip_network
+from .packet import String, UInt32, UInt64, PacketDecodeError, SSHPacket
 from .pbe import KeyEncryptionError, pkcs1_encrypt, pkcs8_encrypt
 from .pbe import pkcs1_decrypt, pkcs8_decrypt
 
@@ -376,9 +376,6 @@ class SSHCertificate:
     def __init__(self, packet, algorithm, key_handler, key_params, serial,
                  cert_type, key_id, valid_principals, valid_after,
                  valid_before, options, extensions):
-        if not key_params:
-            raise KeyImportError('Invalid key data in certificate')
-
         signing_key = decode_ssh_public_key(packet.get_string())
         msg = packet.get_consumed_payload()
         signature = packet.get_string()
@@ -444,10 +441,10 @@ class SSHCertificate:
         packet = SSHPacket(options)
         while packet:
             name = packet.get_string()
+            data_packet = SSHPacket(packet.get_string())
 
             decoder = valid_options.get(name)
             if decoder:
-                data_packet = SSHPacket(packet.get_string())
                 data = decoder(data_packet) if callable(decoder) else True
                 data_packet.check_end()
                 self.options[name.decode('ascii')] = data
@@ -727,7 +724,7 @@ def _decode_openssh_private(data, passphrase):
             raise KeyImportError('Invalid OpenSSH private key')
 
         return handler.make_private(*key_params)
-    except DisconnectError:
+    except PacketDecodeError:
         raise KeyImportError('Invalid OpenSSH private key')
 
 
@@ -1014,7 +1011,7 @@ def decode_ssh_public_key(data):
         else:
             raise KeyImportError('Unknown key algorithm: %s' %
                                  alg.decode('ascii', errors='replace'))
-    except DisconnectError:
+    except PacketDecodeError:
         raise KeyImportError('Invalid public key') from None
 
 
@@ -1031,7 +1028,7 @@ def decode_ssh_certificate(data):
         else:
             raise KeyImportError('Unknown certificate algorithm: %s' %
                                  alg.decode('ascii', errors='replace'))
-    except DisconnectError:
+    except PacketDecodeError:
         raise KeyImportError('Invalid certificate') from None
 
 

@@ -16,15 +16,10 @@ from hashlib import sha256, sha384, sha512
 
 from .asn1 import ASN1DecodeError, BitString, ObjectIdentifier, TaggedDERObject
 from .asn1 import der_encode, der_decode
-
 from .constants import DISC_KEY_EXCHANGE_FAILED, DISC_PROTOCOL_ERROR
-
 from .kex import Kex, register_kex_alg
-
 from .misc import DisconnectError, mod_inverse, randrange
-
 from .packet import Byte, MPInt, String, SSHPacket
-
 from .public_key import SSHKey, SSHCertificateV01
 from .public_key import KeyImportError, KeyExportError
 from .public_key import register_public_key_alg, register_certificate_alg
@@ -575,19 +570,19 @@ class _ECKey(SSHKey):
     def verify(self, data, sig):
         """Verify a signature of the specified data using this key"""
 
-        sig = SSHPacket(sig)
-
-        if sig.get_string() != self.algorithm:
-            return False
-
-        sig = SSHPacket(sig.get_string())
-        r = sig.get_mpint()
-        s = sig.get_mpint()
-
-        n = self._n
-        e = int.from_bytes(self._hash_alg(data).digest(), 'big')
-
         try:
+            sig = SSHPacket(sig)
+
+            if sig.get_string() != self.algorithm:
+                return False
+
+            sig = SSHPacket(sig.get_string())
+            r = sig.get_mpint()
+            s = sig.get_mpint()
+
+            n = self._n
+            e = int.from_bytes(self._hash_alg(data).digest(), 'big')
+
             s1 = mod_inverse(s, n)
             u1 = (e * s1) % n
             u2 = (r * s1) % n

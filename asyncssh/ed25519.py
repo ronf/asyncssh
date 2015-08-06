@@ -94,15 +94,15 @@ class _Ed25519Key(SSHKey):
     def verify(self, data, sig):
         """Verify a signature of the specified data using this key"""
 
-        packet = SSHPacket(sig)
-
-        if packet.get_string() != self.algorithm:
-            return False
-
-        sig = packet.get_string()
-        packet.check_end()
-
         try:
+            packet = SSHPacket(sig)
+
+            if packet.get_string() != self.algorithm:
+                return False
+
+            sig = packet.get_string()
+            packet.check_end()
+
             return libnacl.crypto_sign_open(sig + data, self._vk) == data
         except ValueError:
             return False

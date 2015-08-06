@@ -45,8 +45,8 @@ from .constants import FX_OK, FX_EOF, FX_NO_SUCH_FILE, FX_PERMISSION_DENIED
 from .constants import FX_FAILURE, FX_BAD_MESSAGE, FX_NO_CONNECTION
 from .constants import FX_CONNECTION_LOST, FX_OP_UNSUPPORTED
 
-from .misc import Error, DisconnectError
-from .packet import Byte, String, UInt32, UInt64, SSHPacket
+from .misc import Error
+from .packet import Byte, String, UInt32, UInt64, PacketDecodeError, SSHPacket
 from .session import SSHClientSession, SSHServerSession
 
 _SFTP_VERSION = 3
@@ -656,6 +656,15 @@ class SFTPSession:
         self._pktlen = 0
         self._recv_handler = self._recv_pkthdr
 
+    def _cleanup(self, code, reason, lang=DEFAULT_LANG):
+        """Clean up this SFTP session"""
+
+        # pylint: disable=unused-argument
+
+        if self._chan:
+            self._chan.close()
+            self._chan = None
+
     def _recv_pkthdr(self):
         """Receive and parse an SFTP packet header"""
 
@@ -674,18 +683,21 @@ class SFTPSession:
         if len(self._inpbuf) < self._pktlen:
             return False
 
-        packet = SSHPacket(self._inpbuf[:self._pktlen])
-        self._inpbuf = self._inpbuf[self._pktlen:]
+        try:
+            packet = SSHPacket(self._inpbuf[:self._pktlen])
+            self._inpbuf = self._inpbuf[self._pktlen:]
 
-        pkttype = packet.get_byte()
+            pkttype = packet.get_byte()
 
-        if pkttype == FXP_INIT:
-            self._process_init(packet)
-        elif pkttype == FXP_VERSION:
-            self._process_version(packet)
-        else:
-            pktid = packet.get_uint32()
-            self._process_packet(pkttype, pktid, packet)
+            if pkttype == FXP_INIT:
+                self._process_init(packet)
+            elif pkttype == FXP_VERSION:
+                self._process_version(packet)
+            else:
+                pktid = packet.get_uint32()
+                self._process_packet(pkttype, pktid, packet)
+        except PacketDecodeError as exc:
+            self._cleanup(FX_BAD_MESSAGE, str(exc))
 
         self._recv_handler = self._recv_pkthdr
         return True
@@ -710,11 +722,6 @@ class SFTPSession:
 
         raise NotImplementedError
 
-    def _process_connection_close(self, exc):
-        """Abstract method for handling an incoming connection close"""
-
-        raise NotImplementedError
-
     def connection_made(self, chan):
         """Handle a newly opened SFTP connection"""
 
@@ -724,7 +731,8 @@ class SFTPSession:
     def connection_lost(self, exc):
         """Handle an incoming connection close"""
 
-        self._process_connection_close(exc)
+        reason = exc.reason if exc else 'Connection closed'
+        self._cleanup(FX_CONNECTION_LOST, reason)
 
     def data_received(self, data, datatype):
         """Handle incoming data"""
@@ -751,9 +759,7 @@ class SFTPSession:
     def exit(self):
         """Handle a request to close the SFTP connection"""
 
-        if self._chan:
-            self._chan.close()
-            self._chan = None
+        self._cleanup(FX_CONNECTION_LOST, 'Session closed by application')
 
 
 class SFTPClientSession(SFTPSession, SSHClientSession):
@@ -776,17 +782,18 @@ class SFTPClientSession(SFTPSession, SSHClientSession):
         self._supports_hardlink = False
         self._supports_fsync = False
 
-    def _fail(self, code, reason, lang=DEFAULT_LANG):
-        """Handle a connection failure"""
+    def _cleanup(self, code, reason, lang=DEFAULT_LANG):
+        """Clean up this SFTP client session"""
 
         self._exc = SFTPError(code, reason, lang)
 
         for _, waiter in self._requests.values():
-            if not waiter.cancelled():
+            if waiter and not waiter.cancelled():
                 waiter.set_exception(self._exc)
 
         self._requests = {}
-        self.exit()
+
+        super()._cleanup(code, reason, lang)
 
     def _send_request(self, pkttype, *args, waiter=None):
         """Send an SFTP request"""
@@ -820,12 +827,6 @@ class SFTPClientSession(SFTPSession, SSHClientSession):
 
         self._exc = None
 
-    def _process_connection_close(self, exc):
-        """Process an incoming connection close"""
-
-        reason = exc.reason if exc else 'Connection closed'
-        self._fail(FX_CONNECTION_LOST, reason)
-
     def session_started(self):
         """Begin SFTP client connection handshake"""
 
@@ -837,31 +838,27 @@ class SFTPClientSession(SFTPSession, SSHClientSession):
     def _process_init(self, packet):
         """Process an incoming SFTP init packet"""
 
-        self._fail(FX_OP_UNSUPPORTED, 'FXP_INIT not expected on client')
+        self._cleanup(FX_OP_UNSUPPORTED, 'FXP_INIT not expected on client')
 
     def _process_version(self, packet):
         """Process an incoming SFTP version packet"""
 
-        try:
-            version = packet.get_uint32()
-            extensions = []
+        version = packet.get_uint32()
+        extensions = []
 
-            while packet:
-                name = packet.get_string()
-                data = packet.get_string()
-                extensions.append((name, data))
-        except DisconnectError as exc:
-            self._fail(FX_BAD_MESSAGE, exc.reason)
-            return
+        while packet:
+            name = packet.get_string()
+            data = packet.get_string()
+            extensions.append((name, data))
 
         if version != _SFTP_VERSION:
-            self._fail(FX_BAD_MESSAGE, 'Unsupported version: %d' % version)
+            self._cleanup(FX_BAD_MESSAGE, 'Unsupported version: %d' % version)
             return
 
         try:
             _, version_waiter = self._requests.pop(None)
         except KeyError:
-            self._fail(FX_BAD_MESSAGE, 'FXP_VERSION already received')
+            self._cleanup(FX_BAD_MESSAGE, 'FXP_VERSION already received')
             return
 
         self._version = version
@@ -895,25 +892,26 @@ class SFTPClientSession(SFTPSession, SSHClientSession):
         try:
             return_type, waiter = self._requests.pop(pktid)
         except KeyError:
-            self._fail(FX_BAD_MESSAGE, 'Invalid response id')
+            self._cleanup(FX_BAD_MESSAGE, 'Invalid response id')
             return
 
         if pkttype not in (FXP_STATUS, return_type):
-            self._fail(FX_BAD_MESSAGE,
-                       'Unexpected response type: %s' % pkttype)
+            self._cleanup(FX_BAD_MESSAGE,
+                          'Unexpected response type: %s' % pkttype)
             return
 
         if waiter and not waiter.cancelled():
             try:
                 result = self._packet_handlers[pkttype](self, packet)
 
-                if result is None and return_type is not None:
-                    self._fail(FX_BAD_MESSAGE, 'Unexpected FX_OK response')
-                    return
-
-                waiter.set_result(result)
-            except DisconnectError as exc:
-                exc = SFTPError(FX_BAD_MESSAGE, exc.reason, exc.lang)
+                if result is not None or return_type is None:
+                    waiter.set_result(result)
+                else:
+                    exc = SFTPError(FX_BAD_MESSAGE,
+                                    'Unexpected FX_OK response')
+                    waiter.set_exception(exc)
+            except PacketDecodeError as exc:
+                exc = SFTPError(FX_BAD_MESSAGE, str(exc))
                 waiter.set_exception(exc)
             except SFTPError as exc:
                 waiter.set_exception(exc)
@@ -2777,6 +2775,20 @@ class SFTPServerSession(SFTPSession, SSHServerSession):
         self._file_handles = {}
         self._dir_handles = {}
 
+    def _cleanup(self, code, reason, lang=DEFAULT_LANG):
+        """Clean up this SFTP server session"""
+
+        if self._server:
+            for file_obj in self._file_handles:
+                self._server.close(file_obj)
+
+            self._server.exit()
+            self._server = None
+            self._file_handles = []
+            self._dir_handles = []
+
+        super()._cleanup(code, reason, lang)
+
     def _get_next_handle(self):
         """Get the next available unique file handle number"""
 
@@ -2792,20 +2804,6 @@ class SFTPServerSession(SFTPSession, SSHServerSession):
         """Process a newly opened SFTP client connection"""
 
         pass
-
-    def _process_connection_close(self, exc):
-        """Process an incoming connection close"""
-
-        if self._server:
-            for file_obj in self._file_handles:
-                self._server.close(file_obj)
-
-            self._server.exit()
-            self._server = None
-            self._file_handles = []
-            self._dir_handles = []
-
-        self.exit()
 
     def _process_init(self, packet):
         """Process an incoming SFTP init packet"""
@@ -2828,8 +2826,7 @@ class SFTPServerSession(SFTPSession, SSHServerSession):
     def _process_version(self, packet):
         """Process an incoming SFTP version packet"""
 
-        # FXP_VERSION not expected on server - close the connection
-        self.exit()
+        self._cleanup(FX_BAD_MESSAGE, 'Version message not expected on server')
 
     def _process_packet(self, pkttype, pktid, packet):
         """Process other incoming SFTP packets"""
@@ -2869,6 +2866,10 @@ class SFTPServerSession(SFTPSession, SSHServerSession):
         except OSError as exc:
             return_type = FXP_STATUS
             result = (UInt32(FX_FAILURE) + String(exc.strerror) +
+                      String(DEFAULT_LANG))
+        except PacketDecodeError as exc:
+            return_type = FXP_STATUS
+            result = (UInt32(FX_BAD_MESSAGE) + String(str(exc)) +
                       String(DEFAULT_LANG))
         except SFTPError as exc:
             return_type = FXP_STATUS
