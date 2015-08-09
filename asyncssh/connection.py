@@ -962,6 +962,7 @@ class SSHConnection(SSHPacketHandler):
         self._auth_in_progress = False
         self._auth_complete = True
         self._extra.update(username=self._username)
+        self._send_deferred_packets()
 
     def send_channel_open_confirmation(self, send_chan, recv_chan,
                                        recv_window, recv_pktsize,
@@ -1300,6 +1301,9 @@ class SSHConnection(SSHPacketHandler):
                 if not self._owner.begin_auth(username):
                     self.send_userauth_success()
                     return
+
+            if self._auth:
+                self._auth.cancel()
 
             self._auth = lookup_server_auth(self, self._username,
                                             method, packet)
@@ -2494,6 +2498,7 @@ class SSHServerConnection(SSHConnection):
 
         return self._server_host_key
 
+    @asyncio.coroutine
     def _validate_client_certificate(self, username, key_data):
         """Validate a client certificate for the specified user"""
 
@@ -2509,11 +2514,18 @@ class SSHServerConnection(SSHConnection):
                                                  self._peer_addr,
                                                  cert.principals, ca=True)
 
-        if (options is None and
-                not self._owner.validate_ca_key(username, cert.signing_key)):
-            return None
+        if options is None:
+            result = self._owner.validate_ca_key(username, cert.signing_key)
 
-        self._key_options = {} if options is None else options
+            if asyncio.iscoroutine(result):
+                result = yield from result
+
+            if not result:
+                return None
+
+            options = {}
+
+        self._key_options = options
 
         if self.get_key_option('principals'):
             username = None
@@ -2533,6 +2545,7 @@ class SSHServerConnection(SSHConnection):
 
         return cert.key
 
+    @asyncio.coroutine
     def _validate_client_public_key(self, username, key_data):
         """Validate a client public key for the specified user"""
 
@@ -2546,11 +2559,18 @@ class SSHServerConnection(SSHConnection):
         if self._client_keys:
             options = self._client_keys.validate(key, self._peer_addr)
 
-        if (options is None and
-                not self._owner.validate_public_key(username, key)):
-            return None
+        if options is None:
+            result = self._owner.validate_public_key(username, key)
 
-        self._key_options = {} if options is None else options
+            if asyncio.iscoroutine(result):
+                result = yield from result
+
+            if not result:
+                return None
+
+            options = {}
+
+        self._key_options = options
 
         return key
 
@@ -2560,6 +2580,7 @@ class SSHServerConnection(SSHConnection):
         return (bool(self._client_keys) or
                 self._owner.public_key_auth_supported())
 
+    @asyncio.coroutine
     def validate_public_key(self, username, key_data, msg, signature):
         """Validate the public key or certificate for the specified user
 
@@ -2571,8 +2592,10 @@ class SSHServerConnection(SSHConnection):
 
         """
 
-        key = (self._validate_client_certificate(username, key_data) or
-               self._validate_client_public_key(username, key_data))
+        key = ((yield from self._validate_client_certificate(username,
+                                                             key_data)) or
+               (yield from self._validate_client_public_key(username,
+                                                            key_data)))
 
         if key is None:
             return False
@@ -2586,10 +2609,16 @@ class SSHServerConnection(SSHConnection):
 
         return self._owner.password_auth_supported()
 
+    @asyncio.coroutine
     def validate_password(self, username, password):
         """Return whether password is valid for this user"""
 
-        return self._owner.validate_password(username, password)
+        result = self._owner.validate_password(username, password)
+
+        if asyncio.iscoroutine(result):
+            result = yield from result
+
+        return result
 
     def kbdint_auth_supported(self):
         """Return whether or not keyboard-interactive authentication
@@ -2603,23 +2632,38 @@ class SSHServerConnection(SSHConnection):
         else:
             return False
 
+    @asyncio.coroutine
     def get_kbdint_challenge(self, username, lang, submethods):
         """Return a keyboard-interactive auth challenge"""
 
         if self._kbdint_password_auth:
-            return '', '', DEFAULT_LANG, (('Password:', False),)
+            result = ('', '', DEFAULT_LANG, (('Password:', False),))
         else:
-            return self._owner.get_kbdint_challenge(username, lang, submethods)
+            result = self._owner.get_kbdint_challenge(username, lang,
+                                                      submethods)
 
+            if asyncio.iscoroutine(result):
+                result = yield from result
+
+        return result
+
+    @asyncio.coroutine
     def validate_kbdint_response(self, username, responses):
         """Return whether the keyboard-interactive response is valid
            for this user"""
 
         if self._kbdint_password_auth:
-            return (len(responses) == 1 and
-                    self._owner.validate_password(username, responses[0]))
+            if len(responses) != 1:
+                return False
+
+            result = self._owner.validate_password(username, responses[0])
         else:
-            return self._owner.validate_kbdint_response(username, responses)
+            result = self._owner.validate_kbdint_response(username, responses)
+
+        if asyncio.iscoroutine(result):
+            result = yield from result
+
+        return result
 
     def _process_session_open(self, packet):
         """Process an incoming session open request"""
@@ -3466,6 +3510,9 @@ class SSHServer:
            this function can quickly return whether the key provided is
            in the list.
 
+           If blocking operations need to be performed to determine the
+           validity of the key, this method may be defined as a coroutine.
+
            By default, this method returns ``False`` for all client keys.
 
                .. note:: This function only needs to report whether the
@@ -3507,6 +3554,9 @@ class SSHServer:
            much as possible in the :meth:`begin_auth` method so that
            this function can quickly return whether the key provided is
            in the list.
+
+           If blocking operations need to be performed to determine the
+           validity of the key, this method may be defined as a coroutine.
 
            By default, this method returns ``False`` for all CA keys.
 
@@ -3566,6 +3616,10 @@ class SSHServer:
            returning ``False`` after the maximum number of attempts is
            exceeded.
 
+           If blocking operations need to be performed to determine the
+           validity of the password, this method may be defined as a
+           coroutine.
+
            By default, this method returns ``False`` for all passwords.
 
            :param string username:
@@ -3609,6 +3663,9 @@ class SSHServer:
            indicating whether input should be echoed when a value is
            entered for that prompt.
 
+           If blocking operations need to be performed to determine the
+           challenge to issue, this method may be defined as a coroutine.
+
            :param string username:
                The user being authenticated
            :param string lang:
@@ -3637,6 +3694,10 @@ class SSHServer:
            can be returned with an empty list of prompts. After the client
            acknowledges this message, this function will be called again
            with an empty list of responses to continue the authentication.
+
+           If blocking operations need to be performed to determine the
+           validity of the response or the next challenge to issue, this
+           method may be defined as a coroutine.
 
            :param string username:
                The user being authenticated

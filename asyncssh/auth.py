@@ -12,6 +12,8 @@
 
 """SSH authentication handlers"""
 
+import asyncio
+
 from .constants import DISC_PROTOCOL_ERROR
 from .misc import DisconnectError
 from .packet import Boolean, Byte, String, UInt32, SSHPacketHandler
@@ -235,9 +237,24 @@ class _ClientPasswordAuth(_ClientAuth):
 class _ServerAuth(SSHPacketHandler):
     """Parent class for server side auth"""
 
-    def __init__(self, conn, username):
+    def __init__(self, conn, username, packet):
         self._conn = conn
         self._username = username
+        self._coro = asyncio.async(self._start(packet))
+
+    @asyncio.coroutine
+    def _start(self, packet):
+        """Abstract method for starting server authentication"""
+
+        # Provided by subclass
+        raise NotImplementedError
+
+    def cancel(self):
+        """Cancel any authentication in progress"""
+
+        if self._coro:
+            self._coro.cancel()
+            self._coro = None
 
     def send_failure(self, partial_success=False):
         """Send a user authentication failure response"""
@@ -260,13 +277,12 @@ class _ServerNullAuth(_ServerAuth):
         # pylint: disable=unused-argument
         return False
 
-    def __init__(self, conn, username, packet):
-        super().__init__(conn, username)
+    @asyncio.coroutine
+    def _start(self, packet):
+        """Always fail null server authentication"""
 
         packet.check_end()
-
         self.send_failure()
-
 
 class _ServerPublicKeyAuth(_ServerAuth):
     """Server side implementation of public key auth"""
@@ -277,9 +293,8 @@ class _ServerPublicKeyAuth(_ServerAuth):
 
         return conn.public_key_auth_supported()
 
-    def __init__(self, conn, username, packet):
-        super().__init__(conn, username)
-
+    @asyncio.coroutine
+    def _start(self, packet):
         sig_present = packet.get_boolean()
         algorithm = packet.get_string()
         key_data = packet.get_string()
@@ -293,8 +308,8 @@ class _ServerPublicKeyAuth(_ServerAuth):
 
         packet.check_end()
 
-        if self._conn.validate_public_key(self._username, key_data,
-                                          msg, signature):
+        if (yield from self._conn.validate_public_key(self._username, key_data,
+                                                      msg, signature)):
             if sig_present:
                 self.send_success()
             else:
@@ -313,9 +328,8 @@ class _ServerKbdIntAuth(_ServerAuth):
 
         return conn.kbdint_auth_supported()
 
-    def __init__(self, conn, username, packet):
-        super().__init__(conn, username)
-
+    @asyncio.coroutine
+    def _start(self, packet):
         lang = packet.get_string()
         submethods = packet.get_string()
         packet.check_end()
@@ -327,8 +341,9 @@ class _ServerKbdIntAuth(_ServerAuth):
             raise DisconnectError(DISC_PROTOCOL_ERROR, 'Invalid keyboard '
                                   'interactive auth request') from None
 
-        challenge = self._conn.get_kbdint_challenge(self._username,
-                                                    lang, submethods)
+        challenge = yield from self._conn.get_kbdint_challenge(self._username,
+                                                               lang,
+                                                               submethods)
         self._send_challenge(challenge)
 
     def _send_challenge(self, challenge):
@@ -350,6 +365,15 @@ class _ServerKbdIntAuth(_ServerAuth):
         else:
             self.send_failure()
 
+    @asyncio.coroutine
+    def _validate_response(self, responses):
+        """Validate a keyboard interactive authentication response"""
+
+        next_challenge = \
+            yield from self._conn.validate_kbdint_response(self._username,
+                                                           responses)
+        self._send_challenge(next_challenge)
+
     def _process_info_response(self, pkttype, packet):
         """Process a keyboard interactive authentication response"""
 
@@ -370,9 +394,8 @@ class _ServerKbdIntAuth(_ServerAuth):
 
         packet.check_end()
 
-        next_challenge = self._conn.validate_kbdint_response(self._username,
-                                                             responses)
-        self._send_challenge(next_challenge)
+        self.cancel()
+        self._coro = asyncio.async(self._validate_response(responses))
 
     packet_handlers = {
         MSG_USERAUTH_INFO_RESPONSE: _process_info_response
@@ -388,9 +411,8 @@ class _ServerPasswordAuth(_ServerAuth):
 
         return conn.password_auth_supported()
 
-    def __init__(self, conn, username, packet):
-        super().__init__(conn, username)
-
+    @asyncio.coroutine
+    def _start(self, packet):
         password_change = packet.get_boolean()
         password = packet.get_string()
         new_password = packet.get_string() if password_change else b''
@@ -405,7 +427,7 @@ class _ServerPasswordAuth(_ServerAuth):
 
         # TODO: Handle password change request
 
-        if self._conn.validate_password(self._username, password):
+        if (yield from self._conn.validate_password(self._username, password)):
             self.send_success()
         else:
             self.send_failure()
