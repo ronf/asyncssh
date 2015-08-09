@@ -39,32 +39,41 @@ _client_auth_handlers = {}
 _server_auth_handlers = {}
 
 
-class _SSHAuthError(Exception):
-    """This is raised when we can't proceed with the current form of auth."""
+class _Auth(SSHPacketHandler):
+    """Parent class for authentication"""
 
+    def __init__(self):
+        self._coro = None
 
-class _ClientAuth(SSHPacketHandler):
-    """Parent class for client auth"""
+    def cancel(self):
+        """Cancel any authentication in progress"""
+
+        if self._coro:
+            self._coro.cancel()
+            self._coro = None
+
+class _ClientAuth(_Auth):
+    """Parent class for client authentication"""
 
     def __init__(self, conn, method):
+        super().__init__()
+
         self._conn = conn
         self._method = method
+        self._coro = asyncio.async(self._start())
+
+    @asyncio.coroutine
+    def _start(self):
+        """Abstract method for starting client authentication"""
+
+        # Provided by subclass
+        raise NotImplementedError
 
     def auth_succeeded(self):
         """Callback when auth succeeds"""
 
     def auth_failed(self):
         """Callback when auth fails"""
-
-    def process_packet(self, pkttype, packet):
-        try:
-            processed = super().process_packet(pkttype, packet)
-        except _SSHAuthError:
-            # We can't complete the current auth - move to the next one
-            processed = True
-            self._conn.try_next_auth()
-
-        return processed
 
     def send_request(self, *args, key=None):
         """Send a user authentication request"""
@@ -75,8 +84,9 @@ class _ClientAuth(SSHPacketHandler):
 class _ClientNullAuth(_ClientAuth):
     """Client side implementation of null auth"""
 
-    def __init__(self, conn, method):
-        super().__init__(conn, method)
+    @asyncio.coroutine
+    def _start(self):
+        """Start client null authentication"""
 
         self.send_request()
 
@@ -86,12 +96,16 @@ class _ClientNullAuth(_ClientAuth):
 class _ClientPublicKeyAuth(_ClientAuth):
     """Client side implementation of public key auth"""
 
-    def __init__(self, conn, method):
-        super().__init__(conn, method)
+    @asyncio.coroutine
+    def _start(self):
+        """Start client public key authentication"""
 
-        self._alg, self._key, self._key_data = conn.public_key_auth_requested()
+        self._alg, self._key, self._key_data = \
+            yield from self._conn.public_key_auth_requested()
+
         if self._alg is None:
-            raise _SSHAuthError()
+            self._conn.try_next_auth()
+            return
 
         self.send_request(Boolean(False), String(self._alg),
                           String(self._key_data))
@@ -120,14 +134,33 @@ class _ClientPublicKeyAuth(_ClientAuth):
 class _ClientKbdIntAuth(_ClientAuth):
     """Client side implementation of keyboard-interactive auth"""
 
-    def __init__(self, conn, method):
-        super().__init__(conn, method)
+    @asyncio.coroutine
+    def _start(self):
+        """Start client keyboard interactive authentication"""
 
-        submethods = conn.kbdint_auth_requested()
+        submethods = yield from self._conn.kbdint_auth_requested()
+
         if submethods is None:
-            raise _SSHAuthError()
+            self._conn.try_next_auth()
+            return
 
         self.send_request(String(''), String(submethods))
+
+    @asyncio.coroutine
+    def _receive_challenge(self, name, instruction, lang, prompts):
+        """Receive and respond to a keyboard interactive challenge"""
+
+        responses = \
+            yield from self._conn.kbdint_challenge_received(name, instruction,
+                                                            lang, prompts)
+
+        if responses is None:
+            self._conn.try_next_auth()
+            return
+
+        self._conn.send_packet(Byte(MSG_USERAUTH_INFO_RESPONSE),
+                               UInt32(len(responses)),
+                               b''.join(String(r) for r in responses))
 
     def _process_info_request(self, pkttype, packet):
         """Process a keyboard interactive authentication request"""
@@ -160,15 +193,11 @@ class _ClientKbdIntAuth(_ClientAuth):
 
             prompts.append((prompt, echo))
 
-        responses = self._conn.kbdint_challenge_received(name, instruction,
-                                                         lang, prompts)
+        self.cancel()
+        self._coro = asyncio.async(self._receive_challenge(name, instruction,
+                                                           lang, prompts))
 
-        if responses is None:
-            raise _SSHAuthError()
-
-        self._conn.send_packet(Byte(MSG_USERAUTH_INFO_RESPONSE),
-                               UInt32(len(responses)),
-                               b''.join(String(r) for r in responses))
+        return True
 
     packet_handlers = {
         MSG_USERAUTH_INFO_REQUEST: _process_info_request
@@ -183,11 +212,36 @@ class _ClientPasswordAuth(_ClientAuth):
 
         self._password_change = False
 
-        password = conn.password_auth_requested()
+    @asyncio.coroutine
+    def _start(self):
+        """Start client password authentication"""
+
+        password = yield from self._conn.password_auth_requested()
+
         if password is None:
-            raise _SSHAuthError()
+            self._conn.try_next_auth()
+            return
 
         self.send_request(Boolean(False), String(password))
+
+    @asyncio.coroutine
+    def _change_password(self):
+        """Start password change"""
+
+        result = yield from self._conn.password_change_requested()
+
+        if result == NotImplemented:
+            # Password change not supported - move on to the next auth method
+            self._conn.try_next_auth()
+            return
+
+        old_password, new_password = result
+
+        self._password_change = True
+
+        self.send_request(Boolean(True),
+                          String(old_password.encode('utf-8')),
+                          String(new_password.encode('utf-8')))
 
     def auth_succeeded(self):
         if self._password_change:
@@ -214,18 +268,8 @@ class _ClientPasswordAuth(_ClientAuth):
             raise DisconnectError(DISC_PROTOCOL_ERROR,
                                   'Invalid password change request') from None
 
-        result = self._conn.password_change_requested()
-        if result == NotImplemented:
-            # Password change not supported - move on to the next auth method
-            raise _SSHAuthError()
-        else:
-            old_password, new_password = result
-
-            self._password_change = True
-
-            self.send_request(Boolean(True),
-                              String(old_password.encode('utf-8')),
-                              String(new_password.encode('utf-8')))
+        self.cancel()
+        self._coro = asyncio.async(self._change_password())
 
         return True
 
@@ -234,10 +278,12 @@ class _ClientPasswordAuth(_ClientAuth):
     }
 
 
-class _ServerAuth(SSHPacketHandler):
-    """Parent class for server side auth"""
+class _ServerAuth(_Auth):
+    """Parent class for server authentication"""
 
     def __init__(self, conn, username, packet):
+        super().__init__()
+
         self._conn = conn
         self._username = username
         self._coro = asyncio.async(self._start(packet))
@@ -248,13 +294,6 @@ class _ServerAuth(SSHPacketHandler):
 
         # Provided by subclass
         raise NotImplementedError
-
-    def cancel(self):
-        """Cancel any authentication in progress"""
-
-        if self._coro:
-            self._coro.cancel()
-            self._coro = None
 
     def send_failure(self, partial_success=False):
         """Send a user authentication failure response"""
@@ -295,6 +334,8 @@ class _ServerPublicKeyAuth(_ServerAuth):
 
     @asyncio.coroutine
     def _start(self, packet):
+        """Start server public key authentication"""
+
         sig_present = packet.get_boolean()
         algorithm = packet.get_string()
         key_data = packet.get_string()
@@ -330,6 +371,8 @@ class _ServerKbdIntAuth(_ServerAuth):
 
     @asyncio.coroutine
     def _start(self, packet):
+        """Start server keyboard interactive authentication"""
+
         lang = packet.get_string()
         submethods = packet.get_string()
         packet.check_end()
@@ -413,6 +456,8 @@ class _ServerPasswordAuth(_ServerAuth):
 
     @asyncio.coroutine
     def _start(self, packet):
+        """Start server password authentication"""
+
         password_change = packet.get_boolean()
         password = packet.get_string()
         new_password = packet.get_string() if password_change else b''
@@ -445,12 +490,9 @@ def lookup_client_auth(conn, method):
     """Look up the client authentication method to use"""
 
     if method in _auth_methods:
-        try:
-            return _client_auth_handlers[method](conn, method)
-        except _SSHAuthError:
-            pass
-
-    return None
+        return _client_auth_handlers[method](conn, method)
+    else:
+        return None
 
 
 def get_server_auth_methods(conn):

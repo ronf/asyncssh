@@ -380,6 +380,10 @@ class SSHConnection(SSHPacketHandler):
     def _cleanup(self, exc):
         """Clean up this connection"""
 
+        if self._auth:
+            self._auth.cancel()
+            self._auth = None
+
         if self._channels:
             for chan in list(self._channels.values()):
                 chan.process_connection_close(exc)
@@ -1338,6 +1342,7 @@ class SSHConnection(SSHPacketHandler):
         packet.check_end()
 
         if self.is_client() and self._auth:
+            self._auth.cancel()
             self._auth = None
             self._auth_in_progress = False
             self._auth_complete = True
@@ -1835,6 +1840,10 @@ class SSHClientConnection(SSHConnection):
     def try_next_auth(self):
         """Attempt client authentication using the next compatible method"""
 
+        if self._auth:
+            self._auth.cancel()
+            self._auth = None
+
         while self._auth_methods:
             method = self._auth_methods.pop(0)
 
@@ -1842,17 +1851,22 @@ class SSHClientConnection(SSHConnection):
             if self._auth:
                 return
 
-        raise DisconnectError(DISC_NO_MORE_AUTH_METHODS_AVAILABLE,
-                              'Permission denied')
+        self._force_close(DisconnectError(DISC_NO_MORE_AUTH_METHODS_AVAILABLE,
+                                          'Permission denied'))
 
+    @asyncio.coroutine
     def public_key_auth_requested(self):
         """Return a client key to authenticate with"""
 
         if self._client_keys:
             key, cert = self._client_keys.pop(0)
         else:
-            client_key = self._owner.public_key_auth_requested()
-            key, cert = _load_private_key(client_key)
+            result = self._owner.public_key_auth_requested()
+
+            if asyncio.iscoroutine(result):
+                result = yield from result
+
+            key, cert = _load_private_key(result)
 
         if cert:
             self._client_keys.insert(0, (key, None))
@@ -1862,10 +1876,11 @@ class SSHClientConnection(SSHConnection):
         else:
             return None, None, None
 
+    @asyncio.coroutine
     def password_auth_requested(self):
         """Return a password to authenticate with"""
 
-        # Only allow passwordauth if the connection supports encryption
+        # Only allow password auth if the connection supports encryption
         # and a MAC.
         if (not self._send_cipher or
                 (not self._send_mac and
@@ -1873,17 +1888,26 @@ class SSHClientConnection(SSHConnection):
             return None
 
         if self._password:
-            password = self._password
+            result = self._password
             self._password = None
         else:
-            password = self._owner.password_auth_requested()
+            result = self._owner.password_auth_requested()
 
-        return password
+            if asyncio.iscoroutine(result):
+                result = yield from result
 
+        return result
+
+    @asyncio.coroutine
     def password_change_requested(self):
         """Return a password to authenticate with and what to change it to"""
 
-        return self._owner.password_change_requested()
+        result = self._owner.password_change_requested()
+
+        if asyncio.iscoroutine(result):
+            result = yield from result
+
+        return result
 
     def password_changed(self):
         """Report a successful password change"""
@@ -1895,6 +1919,7 @@ class SSHClientConnection(SSHConnection):
 
         self._owner.password_change_failed()
 
+    @asyncio.coroutine
     def kbdint_auth_requested(self):
         """Return the list of supported keyboard-interactive auth methods
 
@@ -1911,29 +1936,38 @@ class SSHClientConnection(SSHConnection):
                  self._send_mode not in ('chacha', 'gcm'))):
             return None
 
-        submethods = self._owner.kbdint_auth_requested()
-        if submethods is None and self._password is not None:
+        result = self._owner.kbdint_auth_requested()
+
+        if asyncio.iscoroutine(result):
+            result = yield from result
+
+        if result is None and self._password is not None:
             self._kbdint_password_auth = True
-            submethods = ''
+            result = ''
 
-        return submethods
+        return result
 
+    @asyncio.coroutine
     def kbdint_challenge_received(self, name, instructions, lang, prompts):
         """Return responses to a keyboard-interactive auth challenge"""
 
         if self._kbdint_password_auth:
             if len(prompts) == 0:
                 # Silently drop any empty challenges used to print messages
-                return []
-            elif (len(prompts) == 1 and
-                  'password' in prompts[0][0].lower().strip()):
+                result = []
+            elif len(prompts) == 1 and 'password' in prompts[0][0].lower():
                 password = self.password_auth_requested()
-                return [password] if password is not None else None
+                result = [password] if password is not None else None
             else:
-                return None
+                result = None
         else:
-            return self._owner.kbdint_challenge_received(name, instructions,
-                                                         lang, prompts)
+            result = self._owner.kbdint_challenge_received(name, instructions,
+                                                           lang, prompts)
+
+            if asyncio.iscoroutine(result):
+                result = yield from result
+
+        return result
 
     def _process_session_open(self, packet):
         """Process an inbound session open request
@@ -3258,6 +3292,10 @@ class SSHClient:
            If client keys were provided when the connection was opened,
            they will be tried before this method is called.
 
+           If blocking operations need to be performed to determine the
+           key to authenticate with, this method may be defined as a
+           coroutine.
+
            :returns: A key as described in :ref:`SpecifyingPrivateKeys`
                      or ``None`` to move on to another authentication
                      method
@@ -3281,6 +3319,10 @@ class SSHClient:
            If a password was provided when the connection was opened,
            it will be tried before this method is called.
 
+           If blocking operations need to be performed to determine the
+           password to authenticate with, this method may be defined as
+           a coroutine.
+
            :returns: A string containing the password to authenticate
                      with or ``None`` to move on to another authentication
                      method
@@ -3297,6 +3339,10 @@ class SSHClient:
            server. To request a password change, this method should
            return a tuple or two strings containing the old and new
            passwords. Otherwise, it should return ``NotImplemented``.
+
+           If blocking operations need to be performed to determine the
+           passwords to authenticate with, this method may be defined
+           as a coroutine.
 
            By default, this method returns ``NotImplemented``.
 
@@ -3351,6 +3397,10 @@ class SSHClient:
            method and the :meth:`kbdint_challenge_received` method can be
            overridden if other forms of challenge should be supported.
 
+           If blocking operations need to be performed to determine the
+           submethods to request, this method may be defined as a
+           coroutine.
+
            :returns: A string containing the submethods the server should
                      use for authentication or ``None`` to move on to
                      another authentication method
@@ -3369,6 +3419,10 @@ class SSHClient:
            as the number of prompts provided if the challenge can be
            answered, or ``None`` to indicate that some other form of
            authentication should be attempted.
+
+           If blocking operations need to be performed to determine the
+           responses to authenticate with, this method may be defined
+           as a coroutine.
 
            By default, this method will look for a challenge consisting
            of a single 'Password:' prompt, and call the method
