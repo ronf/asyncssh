@@ -733,7 +733,7 @@ class SFTPSession:
     def connection_lost(self, exc):
         """Handle an incoming connection close"""
 
-        reason = exc.reason if exc else 'Connection closed'
+        reason = str(exc) if exc else 'Connection closed'
         self._cleanup(FX_CONNECTION_LOST, reason)
 
     def data_received(self, data, datatype):
@@ -2059,7 +2059,7 @@ class SFTPClient:
         return (yield from self._begin_glob(self, patterns, error_handler))
 
     @asyncio.coroutine
-    def open(self, path, mode='r', attrs=SFTPAttrs(),
+    def open(self, path, pflags_or_mode=FXF_READ, attrs=SFTPAttrs(),
              encoding='utf-8', errors='strict'):
         """Open a remote file
 
@@ -2071,27 +2071,49 @@ class SFTPClient:
            string, it will be encoded using the file encoding specified
            when the :class:`SFTPClient` was started.
 
-           The following open modes are supported:
+           The following open mode flags are supported:
 
-             ==== ===========
-             Mode Description
-             ==== ===========
-             r    Open existing file for reading
-             w    Open file for overwrite, creating or truncating it
-             a    Open file for appending, creating it if necessary
-             x    Open new file for writing, failing if it exists
+             ========== ===========
+             Mode       Description
+             ========== ===========
+             FXF_READ   Open the file for reading.
+             FXF_WRITE  Open the file for writing. If both this and FXF_READ
+                        are set, open the file for both reading and writing.
+             FXF_APPEND Force writes to append data to the end of the file
+                        regardless of seek position.
+             FXF_CREAT  Create the file if it doesn't exist. Without this,
+                        attempts to open a non-existent file will fail.
+             FXF_TRUNC  Truncate the file to zero length if it already exists.
+             FXF_EXCL   Return an error when trying to open a file which
+                        already exists.
+             ========== ===========
 
-             r+   Open existing file for reading & writing
-             w+   Open file for reading & writing, creating or truncating it
-             a+   Open file for reading & appending, creating it if necessary
-             x+   Open new file for reading & writing, failing if it exists
-             ==== ===========
+           By default, file data is read and written as strings in UTF-8
+           format with strict error checking, but this can be changed
+           using the ``encoding`` and ``errors`` parameters. To read and
+           write data as bytes in binary format, an ``encoding`` value of
+           ``None`` can be used.
 
-           If a 'b' is present in the mode, file data will be read and
-           written in binary format, as bytes. Otherwise, file data
-           will be read and written as strings. By default, UTF-8 encoding
-           will be used with strict error checking, but this can be changed
-           using the ``encoding`` and ``errors`` parameters.
+           Instead of these flags, a Python open mode string can also be
+           provided. Python open modes map to the above flags as follows:
+
+             ==== =====
+             Mode Flags
+             ==== =====
+             r    FXF_READ
+             w    FXF_WRITE | FXF_CREAT | FXF_TRUNC
+             a    FXF_WRITE | FXF_CREAT | FXF_APPEND
+             x    FXF_WRITE | FXF_CREAT | FXF_EXCL
+
+             r+   FXF_READ | FXF_WRITE
+             w+   FXF_READ | FXF_WRITE | FXF_CREAT | FXF_TRUNC
+             a+   FXF_READ | FXF_WRITE | FXF_CREAT | FXF_APPEND
+             x+   FXF_READ | FXF_WRITE | FXF_CREAT | FXF_EXCL
+             ==== =====
+
+           Including a 'b' in the mode causes the ``encoding`` to be set
+           to ``None``, forcing all data to be read and written as bytes
+           in binary format.
 
            The attrs argument is used to set initial attributes of the
            file if it needs to be created. Otherwise, this argument is
@@ -2099,7 +2121,7 @@ class SFTPClient:
 
            :param path:
                The name of the remote file to open
-           :param string mode: (optional)
+           :param pflags_or_mode: (optional)
                The access mode to use for the remote file (see above)
            :param attrs: (optional)
                File attributes to use if the file needs to be created
@@ -2111,6 +2133,7 @@ class SFTPClient:
                sequence is detected, defaulting to 'strict' which
                raises an exception
            :type path: string or bytes
+           :type pflags_or_mode: integer or string
            :type attrs: :class:`SFTPAttrs`
 
            :returns: An :class:`SFTPFile` to use to access the file
@@ -2120,13 +2143,20 @@ class SFTPClient:
 
         """
 
-        if 'b' in mode:
-            mode = mode.replace('b', '')
-            encoding = None
+        if isinstance(pflags_or_mode, str):
+            mode = pflags_or_mode
 
-        pflags = self._open_modes.get(mode)
-        if not pflags:
-            raise ValueError('Invalid mode: %r' % mode)
+            if 'b' in mode:
+                # Avoid a false positive where pylint thinks mode is an int
+                # pylint: disable=no-member
+                mode = mode.replace('b', '')
+                encoding = None
+
+            pflags = self._open_modes.get(mode)
+            if not pflags:
+                raise ValueError('Invalid mode: %r' % mode)
+        else:
+            pflags = pflags_or_mode
 
         path = self.compose_path(path)
         handle = yield from self._session.open(path, pflags, attrs)
@@ -2755,18 +2785,6 @@ class SFTPServerSession(SFTPSession, SSHServerSession):
                    (b'hardlink@openssh.com', b'1'),
                    (b'fsync@openssh.com', b'1')]
 
-    _open_modes = {
-        FXF_READ:                                      'rb',
-        FXF_WRITE | FXF_CREAT | FXF_TRUNC:             'wb',
-        FXF_WRITE | FXF_CREAT | FXF_APPEND:            'ab',
-        FXF_WRITE | FXF_CREAT | FXF_EXCL:              'xb',
-
-        FXF_READ | FXF_WRITE:                          'rb+',
-        FXF_READ | FXF_WRITE | FXF_CREAT | FXF_TRUNC:  'wb+',
-        FXF_READ | FXF_WRITE | FXF_CREAT | FXF_APPEND: 'ab+',
-        FXF_READ | FXF_WRITE | FXF_CREAT | FXF_EXCL:   'xb+'
-    }
-
     def __init__(self, server):
         super().__init__()
 
@@ -2843,6 +2861,8 @@ class SFTPServerSession(SFTPSession, SSHServerSession):
 
     @asyncio.coroutine
     def _process_packet_queue(self):
+        """Process queued SFTP client requests"""
+
         while True:
             pkttype, pktid, packet = yield from self._packet_queue.get()
 
@@ -2902,11 +2922,7 @@ class SFTPServerSession(SFTPSession, SSHServerSession):
         attrs = SFTPAttrs.decode(packet)
         packet.check_end()
 
-        mode = self._open_modes.get(pflags)
-        if mode is None:
-            raise SFTPError(FX_FAILURE, 'Unsupported open flags')
-
-        result = self._server.open(path, mode, attrs)
+        result = self._server.open(path, pflags, attrs)
 
         if asyncio.iscoroutine(result):
             result = yield from result
@@ -3471,27 +3487,29 @@ class SFTPServer:
         else:
             return path
 
-    def open(self, path, mode, attrs):
+    def open(self, path, pflags, attrs):
         """Open a file to serve to a remote client
 
            This method returns a file object which can be used to read
            and write data and get and set file attributes.
 
-           The following open modes are supported:
+           The possible open mode flags and their meanings are:
 
-             ==== ===========
-             Mode Description
-             ==== ===========
-             r    Open existing file for reading
-             w    Open file for overwrite, creating or truncating it
-             a    Open file for appending, creating it if necessary
-             x    Open new file for writing, failing if it exists
-
-             r+   Open existing file for reading & writing
-             w+   Open file for reading & writing, creating or truncating it
-             a+   Open file for reading & appending, creating it if necessary
-             x+   Open new file for reading & writing, failing if it exists
-             ==== ===========
+             ========== ===========
+             Mode       Description
+             ========== ===========
+             FXF_READ   Open the file for reading. If neither FXF_READ nor
+                        FXF_WRITE are set, this is the default.
+             FXF_WRITE  Open the file for writing. If both this and FXF_READ
+                        are set, open the file for both reading and writing.
+             FXF_APPEND Force writes to append data to the end of the file
+                        regardless of seek position.
+             FXF_CREAT  Create the file if it doesn't exist. Without this,
+                        attempts to open a non-existent file will fail.
+             FXF_TRUNC  Truncate the file to zero length if it already exists.
+             FXF_EXCL   Return an error when trying to open a file which
+                        already exists.
+             ========== ===========
 
            The attrs argument is used to set initial attributes of the
            file if it needs to be created. Otherwise, this argument is
@@ -3499,7 +3517,7 @@ class SFTPServer:
 
            :param bytes path:
                The name of the file to open
-           :param string mode:
+           :param integer pflags:
                The access mode to use for the file (see above)
            :param attrs:
                File attributes to use if the file needs to be created
@@ -3511,9 +3529,40 @@ class SFTPServer:
 
         """
 
+        if pflags & FXF_EXCL:
+            mode = 'xb'
+        elif pflags & FXF_APPEND:
+            mode = 'ab'
+        elif pflags & FXF_WRITE and not pflags & FXF_READ:
+            mode = 'wb'
+        else:
+            mode = 'rb'
+
+        if pflags & FXF_READ and pflags & FXF_WRITE:
+            mode += '+'
+            flags = os.O_RDWR
+        elif pflags & FXF_WRITE:
+            flags = os.O_WRONLY
+        else:
+            flags = os.O_RDONLY
+
+        if pflags & FXF_APPEND:
+            flags |= os.O_APPEND
+
+        if pflags & FXF_CREAT:
+            flags |= os.O_CREAT
+
+        if pflags & FXF_TRUNC:
+            flags |= os.O_TRUNC
+
+        if pflags & FXF_EXCL:
+            flags |= os.O_EXCL
+
+        flags |= getattr(os, 'O_BINARY', 0)
+
         perms = 0o666 if attrs.permissions is None else attrs.permissions
-        return open(self.map_path(path), mode,
-                    opener=lambda path, flags: os.open(path, flags, perms))
+        return open(self.map_path(path), mode, buffering=0,
+                    opener=lambda path, _: os.open(path, flags, perms))
 
     def close(self, file_obj):
         """Close an open file or directory
