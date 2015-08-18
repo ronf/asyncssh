@@ -2073,9 +2073,9 @@ class SFTPClient:
 
            The following open mode flags are supported:
 
-             ========== ===========
+             ========== ======================================================
              Mode       Description
-             ========== ===========
+             ========== ======================================================
              FXF_READ   Open the file for reading.
              FXF_WRITE  Open the file for writing. If both this and FXF_READ
                         are set, open the file for both reading and writing.
@@ -2086,7 +2086,7 @@ class SFTPClient:
              FXF_TRUNC  Truncate the file to zero length if it already exists.
              FXF_EXCL   Return an error when trying to open a file which
                         already exists.
-             ========== ===========
+             ========== ======================================================
 
            By default, file data is read and written as strings in UTF-8
            format with strict error checking, but this can be changed
@@ -2097,9 +2097,9 @@ class SFTPClient:
            Instead of these flags, a Python open mode string can also be
            provided. Python open modes map to the above flags as follows:
 
-             ==== =====
+             ==== =============================================
              Mode Flags
-             ==== =====
+             ==== =============================================
              r    FXF_READ
              w    FXF_WRITE | FXF_CREAT | FXF_TRUNC
              a    FXF_WRITE | FXF_CREAT | FXF_APPEND
@@ -2109,7 +2109,7 @@ class SFTPClient:
              w+   FXF_READ | FXF_WRITE | FXF_CREAT | FXF_TRUNC
              a+   FXF_READ | FXF_WRITE | FXF_CREAT | FXF_APPEND
              x+   FXF_READ | FXF_WRITE | FXF_CREAT | FXF_EXCL
-             ==== =====
+             ==== =============================================
 
            Including a 'b' in the mode causes the ``encoding`` to be set
            to ``None``, forcing all data to be read and written as bytes
@@ -3495,9 +3495,9 @@ class SFTPServer:
 
            The possible open mode flags and their meanings are:
 
-             ========== ===========
+             ========== ======================================================
              Mode       Description
-             ========== ===========
+             ========== ======================================================
              FXF_READ   Open the file for reading. If neither FXF_READ nor
                         FXF_WRITE are set, this is the default.
              FXF_WRITE  Open the file for writing. If both this and FXF_READ
@@ -3509,7 +3509,7 @@ class SFTPServer:
              FXF_TRUNC  Truncate the file to zero length if it already exists.
              FXF_EXCL   Return an error when trying to open a file which
                         already exists.
-             ========== ===========
+             ========== ======================================================
 
            The attrs argument is used to set initial attributes of the
            file if it needs to be created. Otherwise, this argument is
