@@ -1697,17 +1697,18 @@ class SSHClientConnection(SSHConnection):
 
         self._username = saslprep(username)
 
-        if client_keys is ():
+        if client_keys:
+            self._client_keys = _load_private_key_list(client_keys)
+        else:
             self._client_keys = []
 
-            for file in _DEFAULT_KEY_FILES:
-                try:
-                    file = os.path.join(os.environ['HOME'], '.ssh', file)
-                    self._client_keys.append(_load_private_key(file))
-                except OSError:
-                    pass
-        else:
-            self._client_keys = _load_private_key_list(client_keys)
+            if client_keys is ():
+                for file in _DEFAULT_KEY_FILES:
+                    try:
+                        file = os.path.join(os.environ['HOME'], '.ssh', file)
+                        self._client_keys.append(_load_private_key(file))
+                    except OSError:
+                        pass
 
         self._password = password
         self._kbdint_password_auth = False
