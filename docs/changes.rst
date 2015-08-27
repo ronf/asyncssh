@@ -3,6 +3,18 @@
 Change Log
 ==========
 
+Release 1.2.1 (26 Aug 2015)
+---------------------------
+
+* Fixed a problem with passing in client_keys=None to disable public
+  key authentication in the SSH client.
+
+* Updated Unicode handling to allow multi-byte Unicode characters to be
+  split across successive SSH data messages.
+
+* Added a note to the documentation for AsyncSSH create_connection()
+  explaining how to perform the equivalent of a connect with a timeout.
+
 Release 1.2.0 (6 Jun 2015)
 --------------------------
 
