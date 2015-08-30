@@ -66,11 +66,14 @@ class _TestCipher(unittest.TestCase):
                     self.assertIsNone(baddata)
                 else:
                     dechdr = hdr
-                    encdata = enc_cipher.encrypt(data)
+                    encdata1 = enc_cipher.encrypt(data[:len(data)//2])
+                    encdata2 = enc_cipher.encrypt(data[len(data)//2:])
 
-                    decdata = dec_cipher.decrypt(encdata)
+                    decdata = dec_cipher.decrypt(encdata1)
+                    decdata += dec_cipher.decrypt(encdata2)
 
-                    baddata = bad_cipher.decrypt(encdata)
+                    baddata = bad_cipher.decrypt(encdata1)
+                    baddata += bad_cipher.decrypt(encdata2)
                     self.assertNotEqual(data, baddata)
 
                 self.assertEqual(hdr, dechdr)
