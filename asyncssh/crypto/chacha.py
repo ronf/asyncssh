@@ -48,7 +48,7 @@ class _Chacha20Poly1305Cipher:
         ctr = ctypes.c_ulonglong(ctr)
 
         if _chacha20_xor_ic(result, data, datalen, nonce, ctr, key) != 0:
-            raise ValueError('Chacha encryption failed')
+            raise ValueError('Chacha encryption failed') # pragma: no cover
 
         return result.raw
 
@@ -59,7 +59,7 @@ class _Chacha20Poly1305Cipher:
         polykeylen = ctypes.c_ulonglong(_POLY1305_KEYBYTES)
 
         if _chacha20(polykey, polykeylen, nonce, self._key) != 0:
-            raise ValueError('Poly1305 key generation failed')
+            raise ValueError('Poly1305 key gen failed') # pragma: no cover
 
         return polykey
 
@@ -71,7 +71,7 @@ class _Chacha20Poly1305Cipher:
         polykey = self._polykey(nonce)
 
         if _poly1305(tag, data, datalen, polykey) != 0:
-            raise ValueError('Poly1305 tag generation failed')
+            raise ValueError('Poly1305 tag gen failed') # pragma: no cover
 
         return tag.raw
 
@@ -129,7 +129,7 @@ try:
 
     _poly1305 = nacl.crypto_onetimeauth_poly1305
     _poly1305_verify = nacl.crypto_onetimeauth_poly1305_verify
-except (ImportError, OSError, AttributeError):
+except (ImportError, OSError, AttributeError): # pragma: no cover
     pass
 else:
     register_cipher('chacha20-poly1305', 'chacha', _Chacha20Poly1305Cipher)
