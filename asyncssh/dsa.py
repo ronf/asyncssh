@@ -173,16 +173,15 @@ class _DSAKey(SSHKey):
         if not self._private:
             raise KeyExportError('Key is not private')
 
-        return b''.join((String(self.algorithm), MPInt(self._key.p),
-                         MPInt(self._key.q), MPInt(self._key.g),
-                         MPInt(self._key.y), MPInt(self._key.x)))
+        return b''.join((MPInt(self._key.p), MPInt(self._key.q),
+                         MPInt(self._key.g), MPInt(self._key.y),
+                         MPInt(self._key.x)))
 
     def encode_ssh_public(self):
         """Encode an SSH format DSA public key"""
 
-        return b''.join((String(self.algorithm), MPInt(self._key.p),
-                         MPInt(self._key.q), MPInt(self._key.g),
-                         MPInt(self._key.y)))
+        return b''.join((MPInt(self._key.p), MPInt(self._key.q),
+                         MPInt(self._key.g), MPInt(self._key.y)))
 
     def sign(self, data):
         """Return a signature of the specified data using this key"""

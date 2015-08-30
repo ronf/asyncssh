@@ -532,14 +532,13 @@ class _ECKey(SSHKey):
         if not self._d:
             raise KeyExportError('Key is not private')
 
-        return b''.join((String(self.algorithm), String(self._alg_id),
-                         String(self._Q.encode()), MPInt(self._d)))
+        return b''.join((String(self._alg_id), String(self._Q.encode()),
+                         MPInt(self._d)))
 
     def encode_ssh_public(self):
         """Encode an SSH format EC public key"""
 
-        return b''.join((String(self.algorithm), String(self._alg_id),
-                         String(self._Q.encode())))
+        return b''.join((String(self._alg_id), String(self._Q.encode())))
 
     def sign(self, data):
         """Return a signature of the specified data using this key"""

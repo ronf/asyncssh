@@ -166,16 +166,15 @@ class _RSAKey(SSHKey):
         if not self._private:
             raise KeyExportError('Key is not private')
 
-        return b''.join((String(self.algorithm), MPInt(self._key.n),
-                         MPInt(self._key.e), MPInt(self._key.d),
+        return b''.join((MPInt(self._key.n), MPInt(self._key.e),
+                         MPInt(self._key.d),
                          MPInt(mod_inverse(self._key.q, self._key.p)),
                          MPInt(self._key.p), MPInt(self._key.q)))
 
     def encode_ssh_public(self):
         """Encode an SSH format RSA public key"""
 
-        return b''.join((String(self.algorithm), MPInt(self._key.e),
-                         MPInt(self._key.n)))
+        return b''.join((MPInt(self._key.e), MPInt(self._key.n)))
 
     def sign(self, data):
         """Return a signature of the specified data using this key"""

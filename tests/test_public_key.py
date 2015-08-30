@@ -27,13 +27,16 @@ import unittest
 bcrypt_available = importlib.util.find_spec('bcrypt')
 libnacl_available = importlib.util.find_spec('libnacl')
 
-from asyncssh import import_private_key, import_public_key
-from asyncssh import read_private_key, read_public_key
+from asyncssh import import_private_key, import_public_key, import_certificate
+from asyncssh import read_private_key, read_public_key, read_certificate
 from asyncssh import read_private_key_list, read_public_key_list
+from asyncssh import read_certificate_list
 from asyncssh import KeyImportError, KeyExportError, KeyEncryptionError
 from asyncssh.asn1 import der_encode, BitString, ObjectIdentifier
-from asyncssh.packet import MPInt, String, UInt32
-from asyncssh.public_key import SSHKey
+from asyncssh.packet import MPInt, String, UInt32, UInt64
+from asyncssh.pbe import pkcs1_decrypt
+from asyncssh.public_key import CERT_TYPE_USER, CERT_TYPE_HOST, SSHKey
+from asyncssh.public_key import get_public_key_algs, get_certificate_algs
 
 _ES2 = ObjectIdentifier('1.2.840.113549.1.5.13')
 _ES1_SHA1_RC2 = ObjectIdentifier('1.2.840.113549.1.5.11')
@@ -41,18 +44,6 @@ _P12_RC2_40 = ObjectIdentifier('1.2.840.113549.1.12.1.6')
 _ES2_PBKDF2 = ObjectIdentifier('1.2.840.113549.1.5.12')
 _ES2_AES128 = ObjectIdentifier('2.16.840.1.101.3.4.1.2')
 _ES2_RC2 = ObjectIdentifier('1.2.840.113549.3.2')
-
-
-def run(cmd):
-    """Run a shell commands and return the output"""
-
-    try:
-        return subprocess.check_output(cmd, shell=True,
-                                       stderr=subprocess.STDOUT)
-    except subprocess.CalledProcessError as exc:
-        print(exc.output.decode())
-        raise
-
 
 # pylint: disable=bad-whitespace
 
@@ -96,9 +87,34 @@ openssh_ciphers = ('aes128-cbc', 'aes192-cbc', 'aes256-cbc',
                    'arcfour', 'arcfour128', 'arcfour256',
                    'blowfish-cbc', 'cast128-cbc', '3des-cbc')
 
+
+def run(cmd):
+    """Run a shell commands and return the output"""
+
+    try:
+        return subprocess.check_output(cmd, shell=True,
+                                       stderr=subprocess.STDOUT)
+    except subprocess.CalledProcessError as exc: # pragma: no cover
+        print(exc.output.decode())
+        raise
+
+
+def select_passphrase(cipher, pbe_version=0):
+    """Randomize between string and bytes version of passphrase"""
+
+    if cipher is None:
+        return None
+    elif os.urandom(1)[0] & 1:
+        return 'passphrase'
+    elif pbe_version == 1 and cipher in ('des2-cbc', 'des3-cbc', 'rc2-40-cbc',
+                                         'rc2-128-cbc', 'rc4-40', 'rc4-128'):
+        return 'passphrase'.encode('utf-16-be')
+    else:
+        return 'passphrase'.encode('utf-8')
+
 # pylint: enable=bad-whitespace
 
-if run('ssh -V') >= b'OpenSSH_6.9':
+if run('ssh -V') >= b'OpenSSH_6.9': # pragma: no branch
     # GCM & Chacha tests require OpenSSH 6.9 due to a bug in earlier versions:
     #     https://bugzilla.mindrot.org/show_bug.cgi?id=2366
     openssh_ciphers = openssh_ciphers + ('aes128-gcm@openssh.com',
@@ -114,17 +130,55 @@ class _TestPublicKey(unittest.TestCase):
     base_format = None
     private_formats = ()
     public_formats = ()
+    default_cert_version = ''
+    cert_versions = ()
 
     def __init__(self, methodName='runTest'):
         super().__init__(methodName)
 
         self.privkey = None
         self.pubkey = None
+        self.privca = None
+        self.pubca = None
 
-    def make_keypair(self, keytype):
+    def make_keypair(self, privfile, pubfile, keytype):
         """Method to make a keypair defined by subclasses"""
 
         raise NotImplementedError
+
+    def encode_options(self, options):
+        """Encode SSH certificate critical options and extensions"""
+
+        # pylint: disable=no-self-use
+
+        return b''.join((String(k) + String(v) for k, v in options.items()))
+
+    def make_certificate(self, cert_type, key, signing_key, principals,
+                         valid_after=0, valid_before=0xffffffffffffffff,
+                         options=None, extensions=None, bad_signature=False):
+        """Construct an SSH certificate"""
+
+        keydata = key.encode_ssh_public()
+        principals = b''.join((String(p) for p in principals))
+        options = self.encode_options(options) if options else b''
+        extensions = self.encode_options(extensions) if extensions else b''
+        signing_keydata = b''.join((String(signing_key.algorithm),
+                                    signing_key.encode_ssh_public()))
+
+        data = b''.join((String(self.default_cert_version),
+                         String(os.urandom(8)), keydata, UInt64(0),
+                         UInt32(cert_type), String(''), String(principals),
+                         UInt64(valid_after), UInt64(valid_before),
+                         String(options), String(extensions), String(''),
+                         String(signing_keydata)))
+
+        if bad_signature:
+            data += String('')
+        else:
+            data += String(signing_key.sign(data))
+
+        return b''.join((self.default_cert_version.encode('ascii'), b' ',
+                         binascii.b2a_base64(data)))
 
     def check_private(self, passphrase=None):
         """Check for a private key match"""
@@ -164,14 +218,13 @@ class _TestPublicKey(unittest.TestCase):
             run('openssl %s -in priv -inform pem -out new -outform %s' %
                 (self.keyclass, fmt))
 
-        self.check_private('passphrase' if cipher else None)
+        self.check_private(select_passphrase(cipher))
 
     def export_pkcs1_private(self, fmt, cipher=None):
         """Check export of a PKCS#1 private key"""
 
         self.privkey.write_private_key('privout', 'pkcs1-%s' % fmt,
-                                       'passphrase' if cipher else None,
-                                       cipher)
+                                       select_passphrase(cipher), cipher)
 
         if cipher:
             run('openssl %s -in privout -inform %s -out new -outform pem '
@@ -210,7 +263,8 @@ class _TestPublicKey(unittest.TestCase):
 
         self.check_public()
 
-    def import_pkcs8_private(self, fmt, cipher=None, args=None):
+    def import_pkcs8_private(self, fmt, cipher=None, pbe_version=None,
+                             args=None):
         """Check import of a PKCS#8 private key"""
 
         if cipher:
@@ -220,14 +274,14 @@ class _TestPublicKey(unittest.TestCase):
             run('openssl pkcs8 -topk8 -nocrypt -in priv -inform pem -out new '
                 '-outform %s' % fmt)
 
-        self.check_private('passphrase' if cipher else None)
+        self.check_private(select_passphrase(cipher, pbe_version))
 
     def export_pkcs8_private(self, fmt, cipher=None, hash_alg=None,
                              pbe_version=None):
         """Check export of a PKCS#8 private key"""
 
         self.privkey.write_private_key('privout', 'pkcs8-%s' % fmt,
-                                       'passphrase' if cipher else None,
+                                       select_passphrase(cipher, pbe_version),
                                        cipher, hash_alg, pbe_version)
 
         if cipher:
@@ -267,14 +321,13 @@ class _TestPublicKey(unittest.TestCase):
         else:
             run('ssh-keygen -p -N "" -o -f new')
 
-        self.check_private('passphrase' if cipher else None)
+        self.check_private(select_passphrase(cipher))
 
     def export_openssh_private(self, cipher=None):
         """Check export of an OpenSSH private key"""
 
         self.privkey.write_private_key('new', 'openssh',
-                                       'passphrase' if cipher else None,
-                                       cipher)
+                                       select_passphrase(cipher), cipher)
 
         run('chmod 600 new')
 
@@ -288,10 +341,7 @@ class _TestPublicKey(unittest.TestCase):
     def import_openssh_public(self):
         """Check import of an OpenSSH public key"""
 
-        if self.base_format == 'openssh':
-            run('cp -p pub new')
-        else:
-            run('ssh-keygen -i -f pub -m %s > new' % self.base_format)
+        run('cp -p sshpub new')
 
         self.check_public()
 
@@ -306,11 +356,6 @@ class _TestPublicKey(unittest.TestCase):
 
     def import_rfc4716_public(self):
         """Check import of an RFC4716 public key"""
-
-        if self.base_format == 'openssh':
-            run('cp -p pub sshpub')
-        else:
-            run('ssh-keygen -i -f pub -m pkcs8 > sshpub')
 
         run('ssh-keygen -e -f sshpub -m rfc4716 > new')
 
@@ -340,35 +385,32 @@ class _TestPublicKey(unittest.TestCase):
 
         with self.subTest('Encode encrypted pkcs1-der'):
             with self.assertRaises(KeyExportError):
-                self.privkey.export_private_key('pkcs1-der', 'passphrase')
+                self.privkey.export_private_key('pkcs1-der', 'x')
 
         if 'pkcs1' in self.private_formats:
             with self.subTest('Encode with unknown PKCS#1 cipher'):
                 with self.assertRaises(KeyEncryptionError):
-                    self.privkey.export_private_key('pkcs1-pem', 'passphrase',
-                                                    'xxx')
+                    self.privkey.export_private_key('pkcs1-pem', 'x', 'xxx')
 
         if 'pkcs8' in self.private_formats:
             with self.subTest('Encode with unknown PKCS#8 cipher'):
                 with self.assertRaises(KeyEncryptionError):
-                    self.privkey.export_private_key('pkcs8-pem', 'passphrase',
-                                                    'xxx')
+                    self.privkey.export_private_key('pkcs8-pem', 'x', 'xxx')
 
             with self.subTest('Encode with unknown PKCS#8 hash'):
                 with self.assertRaises(KeyEncryptionError):
-                    self.privkey.export_private_key('pkcs8-pem', 'passphrase',
+                    self.privkey.export_private_key('pkcs8-pem', 'x',
                                                     'aes128-cbc', 'xxx')
 
             with self.subTest('Encode with unknown PKCS#8 version'):
                 with self.assertRaises(KeyEncryptionError):
-                    self.privkey.export_private_key('pkcs8-pem', 'passphrase',
+                    self.privkey.export_private_key('pkcs8-pem', 'x',
                                                     'aes128-cbc', 'sha1', 3)
 
-        if 'openssh' in self.private_formats:
+        if 'openssh' in self.private_formats: # pragma: no branch
             with self.subTest('Encode with unknown openssh cipher'):
                 with self.assertRaises(KeyEncryptionError):
-                    self.privkey.export_private_key('openssh', 'passphrase',
-                                                    'xxx')
+                    self.privkey.export_private_key('openssh', 'x', 'xxx')
 
     def check_decode_errors(self):
         """Check error code paths in key decoding"""
@@ -677,7 +719,7 @@ class _TestPublicKey(unittest.TestCase):
         for fmt, data in decrypt_errors:
             with self.subTest('Decrypt private (%s)' % fmt):
                 with self.assertRaises((KeyImportError, KeyEncryptionError)):
-                    import_private_key(data, 'passphrase')
+                    import_private_key(data, 'x')
 
         for fmt, data in public_errors:
             with self.subTest('Decode public (%s)' % fmt):
@@ -784,7 +826,7 @@ class _TestPublicKey(unittest.TestCase):
         for cipher, hash_alg, pbe_version, args in pkcs8_ciphers:
             with self.subTest('Import PKCS#8 PEM private (%s-%s-v%s)' %
                               (cipher, hash_alg, pbe_version)):
-                self.import_pkcs8_private('pem', cipher, args)
+                self.import_pkcs8_private('pem', cipher, pbe_version, args)
 
             with self.subTest('Export PKCS#8 PEM private (%s-%s-v%s)' %
                               (cipher, hash_alg, pbe_version)):
@@ -792,7 +834,7 @@ class _TestPublicKey(unittest.TestCase):
 
             with self.subTest('Import PKCS#8 DER private (%s-%s-v%s)' %
                               (cipher, hash_alg, pbe_version)):
-                self.import_pkcs8_private('der', cipher, args)
+                self.import_pkcs8_private('der', cipher, pbe_version, args)
 
             with self.subTest('Export PKCS#8 DER private (%s-%s-v%s)' %
                               (cipher, hash_alg, pbe_version)):
@@ -822,7 +864,7 @@ class _TestPublicKey(unittest.TestCase):
         with self.subTest('Export OpenSSH private'):
             self.export_openssh_private()
 
-        if bcrypt_available:
+        if bcrypt_available: # pragma: no branch
             for cipher in openssh_ciphers:
                 with self.subTest('Import OpenSSH private (%s)' % cipher):
                     self.import_openssh_private(cipher)
@@ -848,6 +890,147 @@ class _TestPublicKey(unittest.TestCase):
         with self.subTest('Export RFC4716 public'):
             self.export_rfc4716_public()
 
+    def check_certificate(self, cert_type, version, fmt):
+        """Check SSH certificate import"""
+
+        with self.subTest('Import certificate'):
+            typearg = '-h ' if cert_type == CERT_TYPE_HOST else ''
+
+            if version:
+                version = '-t ' + version + ' '
+
+            if cert_type == CERT_TYPE_USER:
+                options = '-O force-command=xxx -O source-address=127.0.0.1 '
+            else:
+                options = ''
+
+            run('ssh-keygen -s privca %s%s%s-I name sshpub' %
+                (typearg, version, options))
+
+            if fmt == 'openssh':
+                run('mv sshpub-cert.pub cert')
+            else:
+                run('ssh-keygen -e -m %s -f sshpub-cert.pub > cert' % fmt)
+
+            cert = read_certificate('cert')
+            self.assertEqual(cert.key, self.pubkey)
+
+        with self.subTest('Validate certificate'):
+            self.assertIsNone(cert.validate(cert_type, 'name'))
+
+        with self.subTest('Import certificate list'):
+            run('cat cert cert > list')
+            certlist = read_certificate_list('list')
+            self.assertEqual(certlist[0].key, cert.key)
+            self.assertEqual(certlist[1].key, cert.key)
+
+    def check_certificate_errors(self, cert_type):
+        """Check SSH certificate error cases"""
+
+        with self.subTest('Non-ASCII certificate'):
+            with self.assertRaises(KeyImportError):
+                import_certificate('\u0080\n')
+
+        with self.subTest('Invalid SSH format'):
+            with self.assertRaises(KeyImportError):
+                import_certificate('xxx\n')
+
+        with self.subTest('Invalid certificate packetization'):
+            with self.assertRaises(KeyImportError):
+                import_certificate(b'xxx ' + binascii.b2a_base64(b'\x00'))
+
+        with self.subTest('Invalid certificate algorithm'):
+            with self.assertRaises(KeyImportError):
+                import_certificate(b'xxx ' +
+                                   binascii.b2a_base64(String(b'xxx')))
+
+        with self.subTest('Invalid certificate critical option'):
+            with self.assertRaises(KeyImportError):
+                cert = self.make_certificate(cert_type, self.pubkey,
+                                             self.privca, 'name',
+                                             options={b'xxx': b''})
+                import_certificate(cert)
+
+        with self.subTest('Ignored certificate extension'):
+            cert = self.make_certificate(cert_type, self.pubkey,
+                                         self.privca, 'name',
+                                         extensions={b'xxx': b''})
+            self.assertIsNotNone(import_certificate(cert))
+
+        with self.subTest('Invalid certificate signature'):
+            with self.assertRaises(KeyImportError):
+                cert = self.make_certificate(cert_type, self.pubkey,
+                                             self.privca, 'name',
+                                             bad_signature=True)
+                import_certificate(cert)
+
+        with self.subTest('Invalid characters in certificate principal'):
+            with self.assertRaises(KeyImportError):
+                cert = self.make_certificate(cert_type, self.pubkey,
+                                             self.privca, (b'\xff',))
+                import_certificate(cert)
+
+        if cert_type == CERT_TYPE_USER:
+            with self.subTest('Invalid characters in force-command'):
+                with self.assertRaises(KeyImportError):
+                    cert = self.make_certificate(cert_type, self.pubkey,
+                                                 self.privca, ('name',),
+                                                 options={'force-command':
+                                                          String(b'\xff')})
+                    import_certificate(cert)
+
+            with self.subTest('Invalid characters in source-address'):
+                with self.assertRaises(KeyImportError):
+                    cert = self.make_certificate(cert_type, self.pubkey,
+                                                 self.privca, ('name',),
+                                                 options={'source-address':
+                                                          String(b'\xff')})
+                    import_certificate(cert)
+
+            with self.subTest('Invalid IP network in source-address'):
+                with self.assertRaises(KeyImportError):
+                    cert = self.make_certificate(cert_type, self.pubkey,
+                                                 self.privca, ('name',),
+                                                 options={'source-address':
+                                                          String('1.1.1.256')})
+                    import_certificate(cert)
+
+        with self.subTest('Invalid certificate type'):
+            with self.assertRaises(KeyImportError):
+                cert = self.make_certificate(0, self.pubkey,
+                                             self.privca, ('name',))
+                import_certificate(cert)
+
+        with self.subTest('Mismatched certificate type'):
+            with self.assertRaises(ValueError):
+                cert = self.make_certificate(cert_type, self.pubkey,
+                                             self.privca, ('name',))
+                cert = import_certificate(cert)
+                cert.validate(cert_type ^ 3, 'name')
+
+        with self.subTest('Certificate not yet valid'):
+            with self.assertRaises(ValueError):
+                cert = self.make_certificate(cert_type, self.pubkey,
+                                             self.privca, ('name',),
+                                             valid_after=0xffffffffffffffff)
+                cert = import_certificate(cert)
+                cert.validate(cert_type, 'name')
+
+        with self.subTest('Certificate expired'):
+            with self.assertRaises(ValueError):
+                cert = self.make_certificate(cert_type, self.pubkey,
+                                             self.privca, ('name',),
+                                             valid_before=0)
+                cert = import_certificate(cert)
+                cert.validate(cert_type, 'name')
+
+        with self.subTest('Certificate principal mismatch'):
+            with self.assertRaises(ValueError):
+                cert = self.make_certificate(cert_type, self.pubkey,
+                                             self.privca, ('name',))
+                cert = import_certificate(cert)
+                cert.validate(cert_type, 'name2')
+
     def test_key(self):
         """Check key import and export"""
 
@@ -856,12 +1039,21 @@ class _TestPublicKey(unittest.TestCase):
 
         for keytype in self.keytypes:
             with self.subTest(keytype=keytype):
-                self.make_keypair(keytype)
+                self.make_keypair('priv', 'pub', keytype)
+                self.make_keypair('privca', 'pubca', keytype)
 
-                run('chmod 600 priv pub')
+                run('chmod 600 priv privca')
+
+                if self.base_format == 'openssh':
+                    run('cp -p pub sshpub')
+                else:
+                    run('ssh-keygen -i -f pub -m %s > sshpub' %
+                        self.base_format)
 
                 self.privkey = read_private_key('priv')
                 self.pubkey = read_public_key('pub')
+                self.privca = read_private_key('privca')
+                self.pubca = read_public_key('pubca')
 
                 self.check_encode_errors()
                 self.check_decode_errors()
@@ -880,14 +1072,23 @@ class _TestPublicKey(unittest.TestCase):
                 if 'pkcs8' in self.public_formats:
                     self.check_pkcs8_public()
 
-                if 'openssh' in self.private_formats:
+                if 'openssh' in self.private_formats: # pragma: no branch
                     self.check_openssh_private()
 
-                if 'openssh' in self.public_formats:
+                if 'openssh' in self.public_formats: # pragma: no branch
                     self.check_openssh_public()
 
-                if 'rfc4716' in self.public_formats:
+                if 'rfc4716' in self.public_formats: # pragma: no branch
                     self.check_rfc4716_public()
+
+                for cert_type in (CERT_TYPE_USER, CERT_TYPE_HOST):
+                    for version in self.cert_versions:
+                        for fmt in ('openssh', 'rfc4716'):
+                            with self.subTest(cert_type=cert_type,
+                                              version=version, fmt=fmt):
+                                self.check_certificate(cert_type, version, fmt)
+
+                    self.check_certificate_errors(cert_type)
 
         tmpdir.cleanup()
 
@@ -899,14 +1100,16 @@ class TestDSA(_TestPublicKey):
     base_format = 'pkcs8'
     private_formats = ('pkcs1', 'pkcs8', 'openssh')
     public_formats = ('pkcs1', 'pkcs8', 'openssh', 'rfc4716')
+    default_cert_version = 'ssh-dss-cert-v01@openssh.com'
+    cert_versions = ('ssh-dss-cert-v00@openssh.com', '')
 
-    def make_keypair(self, keytype):
+    def make_keypair(self, privfile, pubfile, keytype):
         """Make a DSA key pair"""
 
         # pylint: disable=no-self-use
 
-        run('openssl dsaparam -out priv -noout -genkey %s' % keytype)
-        run('openssl dsa -pubout -in priv -out pub')
+        run('openssl dsaparam -out %s -noout -genkey %s' % (privfile, keytype))
+        run('openssl dsa -pubout -in %s -out %s' % (privfile, pubfile))
 
 class TestRSA(_TestPublicKey):
     """Test RSA public keys"""
@@ -916,14 +1119,16 @@ class TestRSA(_TestPublicKey):
     base_format = 'pkcs8'
     private_formats = ('pkcs1', 'pkcs8', 'openssh')
     public_formats = ('pkcs1', 'pkcs8', 'openssh', 'rfc4716')
+    default_cert_version = 'ssh-rsa-cert-v01@openssh.com'
+    cert_versions = ('ssh-rsa-cert-v00@openssh.com', '')
 
-    def make_keypair(self, keytype):
+    def make_keypair(self, privfile, pubfile, keytype):
         """Make an RSA key pair"""
 
         # pylint: disable=no-self-use
 
-        run('openssl genrsa -out priv %s' % keytype)
-        run('openssl rsa -pubout -in priv -out pub')
+        run('openssl genrsa -out %s %s' % (privfile, keytype))
+        run('openssl rsa -pubout -in %s -out %s' % (privfile, pubfile))
 
 class TestEC(_TestPublicKey):
     """Test elliptic curve public keys"""
@@ -933,16 +1138,24 @@ class TestEC(_TestPublicKey):
     base_format = 'pkcs8'
     private_formats = ('pkcs1', 'pkcs8', 'openssh')
     public_formats = ('pkcs8', 'openssh', 'rfc4716')
+    cert_versions = ('',)
 
-    def make_keypair(self, keytype):
+    @property
+    def default_cert_version(self):
+        """Return default SSH certificate version"""
+
+        return self.privkey.algorithm.decode('ascii') + '-cert-v01@openssh.com'
+
+    def make_keypair(self, privfile, pubfile, keytype):
         """Make an elliptic curve key pair"""
 
         # pylint: disable=no-self-use
 
-        run('openssl ecparam -out priv -noout -genkey -name %s' % keytype)
-        run('openssl ec -pubout -in priv -out pub')
+        run('openssl ecparam -out %s -noout -genkey -name %s' %
+            (privfile, keytype))
+        run('openssl ec -pubout -in %s -out %s' % (privfile, pubfile))
 
-if libnacl_available:
+if libnacl_available: # pragma: no branch
     class TestEd25519(_TestPublicKey):
         """Test Ed25519 public keys"""
 
@@ -951,13 +1164,30 @@ if libnacl_available:
         base_format = 'openssh'
         private_formats = ('openssh')
         public_formats = ('openssh', 'rfc4716')
+        default_cert_version = 'ssh-ed25519-cert-v01@openssh.com'
+        cert_versions = ('',)
 
-        def make_keypair(self, keytype):
+        def make_keypair(self, privfile, pubfile, keytype):
             """Make an Ed25519 key pair"""
 
             # pylint: disable=no-self-use,unused-argument
 
-            run('ssh-keygen -t ed25519 -N "" -f priv')
-            run('mv priv.pub pub')
+            run('ssh-keygen -t ed25519 -N "" -f %s' % privfile)
+            run('mv %s.pub %s' % (privfile, pubfile))
 
 del _TestPublicKey
+
+class _TestPublicKeyTopLevel(unittest.TestCase):
+    """Top-level public key module tests"""
+
+    def test_public_key(self):
+        """Test public key top-level functions"""
+
+        self.assertIsNotNone(get_public_key_algs())
+        self.assertIsNotNone(get_certificate_algs())
+
+    def test_pad_error(self):
+        """Test for missing RFC 1423 padding on PBE decrypt"""
+
+        with self.assertRaises(KeyEncryptionError):
+            pkcs1_decrypt(b'', b'AES-128-CBC', os.urandom(16), 'x')

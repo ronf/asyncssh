@@ -20,7 +20,7 @@ from os import urandom
 try:
     import bcrypt
     _bcrypt_available = True
-except ImportError:
+except ImportError: # pragma: no cover
     _bcrypt_available = False
 
 from .asn1 import ASN1DecodeError, BitString, der_encode, der_decode
@@ -223,11 +223,12 @@ class SSHKey:
             nkeys = 1
             comment = b''
 
-            data = b''.join((check, check, self.encode_ssh_private(),
-                             String(comment)))
+            keydata = String(self.algorithm) + self.encode_ssh_private()
+
+            data = b''.join((check, check, keydata, String(comment)))
 
             if passphrase is not None:
-                if not _bcrypt_available:
+                if not _bcrypt_available: # pragma: no cover
                     raise KeyExportError('OpenSSH private key encryption '
                                          'requires bcrypt')
 
@@ -243,9 +244,11 @@ class SSHKey:
                 salt = urandom(_OPENSSH_SALT_LEN)
                 kdf_data = b''.join((String(salt), UInt32(rounds)))
 
+                if isinstance(passphrase, str):
+                    passphrase = passphrase.encode('utf-8')
+
                 # pylint: disable=no-member
-                key = bcrypt.kdf(passphrase.encode('utf-8'), salt,
-                                 key_size + iv_size, rounds)
+                key = bcrypt.kdf(passphrase, salt, key_size + iv_size, rounds)
                 # pylint: enable=no-member
 
                 cipher = get_cipher(alg, key[:key_size], key[key_size:])
@@ -259,7 +262,7 @@ class SSHKey:
                 mac = b''
 
             pad = len(data) % block_size
-            if pad:
+            if pad: # pragma: no branch
                 data = data + bytes(range(1, block_size + 1 - pad))
 
             if cipher:
@@ -270,9 +273,10 @@ class SSHKey:
                 else:
                     data, mac = cipher.encrypt(data), b''
 
+            keydata = String(self.algorithm) + self.encode_ssh_public()
+
             data = b''.join((_OPENSSH_KEY_V1, String(alg), String(kdf),
-                             String(kdf_data), UInt32(nkeys),
-                             String(self.encode_ssh_public()),
+                             String(kdf_data), UInt32(nkeys), String(keydata),
                              String(data), mac))
 
             return (b'-----BEGIN OPENSSH PRIVATE KEY-----\n' +
@@ -316,12 +320,14 @@ class SSHKey:
 
             return data
         elif format_name == 'openssh':
-            data = self.encode_ssh_public()
+            data = String(self.algorithm) + self.encode_ssh_public()
 
             return self.algorithm + b' ' + binascii.b2a_base64(data)
         elif format_name == 'rfc4716':
+            data = String(self.algorithm) + self.encode_ssh_public()
+
             return (b'---- BEGIN SSH2 PUBLIC KEY ----\n' +
-                    _wrap_base64(self.encode_ssh_public()) +
+                    _wrap_base64(data) +
                     b'---- END SSH2 PUBLIC KEY ----\n')
         else:
             raise KeyExportError('Unknown export format')
@@ -646,7 +652,7 @@ def _decode_openssh_private(data, passphrase):
             raise KeyImportError('Invalid OpenSSH private key')
 
         if cipher_name != b'none':
-            if not _bcrypt_available:
+            if not _bcrypt_available: # pragma: no cover
                 raise KeyEncryptionError('OpenSSH private key encryption '
                                          'requires bcrypt')
 
@@ -670,14 +676,16 @@ def _decode_openssh_private(data, passphrase):
             rounds = packet.get_uint32()
             packet.check_end()
 
-            # pylint: disable=no-member
+            if isinstance(passphrase, str):
+                passphrase = passphrase.encode('utf-8')
+
             try:
-                key = bcrypt.kdf(passphrase.encode('utf-8'), salt,
-                                 key_size + iv_size, rounds)
+                # pylint: disable=no-member
+                key = bcrypt.kdf(passphrase, salt, key_size + iv_size, rounds)
+                # pylint: enable=no-member
             except ValueError:
                 raise KeyEncryptionError('Invalid OpenSSH '
                                          'private key') from None
-            # pylint: enable=no-member
 
             cipher = get_cipher(cipher_name, key[:key_size], key[key_size:])
 
