@@ -18,7 +18,7 @@ from .cipher import register_cipher, lookup_cipher
 
 try:
     from .curve25519 import Curve25519DH
-except ImportError:
+except ImportError: # pragma: no cover
     pass
 
 from . import chacha
@@ -26,17 +26,17 @@ from . import chacha
 pyca_available = importlib.util.find_spec('cryptography')
 pycrypto_available = importlib.util.find_spec('Crypto')
 
-if pyca_available:
+if pyca_available: # pragma: no branch
     from . import pyca
 
-if pycrypto_available:
+if pycrypto_available: # pragma: no branch
     from . import pycrypto
 
 if pyca_available:
     from .pyca.dsa import DSAPrivateKey, DSAPublicKey
     from .pyca.rsa import RSAPrivateKey, RSAPublicKey
-elif pycrypto_available:
+elif pycrypto_available: # pragma: no cover
     from .pycrypto.dsa import DSAPrivateKey, DSAPublicKey
     from .pycrypto.rsa import RSAPrivateKey, RSAPublicKey
-else:
+else: # pragma: no cover
     raise ImportError('No suitable crypto library found.')

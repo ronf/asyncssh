@@ -31,7 +31,7 @@ _ciphers = {'aes':      (AES,      {'cbc': AES.MODE_CBC,
 # pylint: enable=bad-whitespace
 
 
-class CipherFactory:
+class CipherFactory: # pragma: no cover (fallback only when PyCA not installed)
     """A factory which returns shims for PyCrypto symmetric encryption"""
 
     def __init__(self, cipher, mode):
