@@ -303,7 +303,7 @@ def _pbes2_rc2(params, key, cipher):
             effective_keylen = 64
         elif version == 160:
             effective_keylen = 40
-        elif version >= 256:
+        elif version >= 256: # pragma: no cover (not supported by OpenSSL)
             effective_keylen = version
         else:
             raise KeyEncryptionError('Unknown PBES2 RC2 version')
@@ -431,7 +431,7 @@ def register_pkcs1_cipher(cipher_name, alg, cipher, mode, key_size):
 
     cipher = lookup_cipher(cipher, mode)
 
-    if cipher:
+    if cipher: # pragma: no branch
         _pkcs1_ciphers[alg] = (cipher, key_size)
         _pkcs1_cipher_names[cipher_name] = alg
 
@@ -442,7 +442,7 @@ def register_pkcs8_cipher(cipher_name, hash_name, alg, handler, hash_alg,
 
     cipher = lookup_cipher(cipher, mode)
 
-    if cipher:
+    if cipher: # pragma: no branch
         _pkcs8_ciphers[alg] = (handler, hash_alg, cipher, key_size)
         _pkcs8_cipher_suites[(cipher_name, hash_name)] = alg
 
@@ -452,7 +452,7 @@ def register_pbes2_cipher(cipher_name, alg, handler, cipher, mode, key_size):
 
     cipher = lookup_cipher(cipher, mode)
 
-    if cipher:
+    if cipher: # pragma: no branch
         _pbes2_ciphers[alg] = (handler, cipher, key_size)
         _pbes2_cipher_names[cipher_name] = (alg, key_size)
 
@@ -556,7 +556,7 @@ def pkcs8_encrypt(data, cipher_name, hash_name, version, passphrase):
                 version = 120
             elif key_size == 16:
                 version = 58
-            elif key_size >= 32:
+            elif key_size >= 32: # pragma: no cover (not supported by OpenSSL)
                 version = key_size*8
 
             kdf_params.append(key_size)
