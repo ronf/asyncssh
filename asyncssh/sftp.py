@@ -2757,6 +2757,9 @@ class SFTPServerSession(SFTPSession, SSHServerSession):
 
     _open_modes = {
         FXF_READ:                                      'rb',
+        FXF_WRITE:                                     'wb',
+        FXF_WRITE | FXF_CREAT:                         'wb',
+        FXF_WRITE | FXF_EXCL:                          'xb',
         FXF_WRITE | FXF_CREAT | FXF_TRUNC:             'wb',
         FXF_WRITE | FXF_CREAT | FXF_APPEND:            'ab',
         FXF_WRITE | FXF_CREAT | FXF_EXCL:              'xb',
