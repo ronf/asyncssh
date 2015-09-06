@@ -20,12 +20,9 @@
 import binascii
 import importlib.util
 import os
-import subprocess
-import tempfile
 import unittest
 
-bcrypt_available = importlib.util.find_spec('bcrypt')
-libnacl_available = importlib.util.find_spec('libnacl')
+from .util import TempDirTestCase, run
 
 from asyncssh import import_private_key, import_public_key, import_certificate
 from asyncssh import read_private_key, read_public_key, read_certificate
@@ -37,6 +34,10 @@ from asyncssh.packet import MPInt, String, UInt32, UInt64
 from asyncssh.pbe import pkcs1_decrypt
 from asyncssh.public_key import CERT_TYPE_USER, CERT_TYPE_HOST, SSHKey
 from asyncssh.public_key import get_public_key_algs, get_certificate_algs
+
+
+bcrypt_available = importlib.util.find_spec('bcrypt')
+libnacl_available = importlib.util.find_spec('libnacl')
 
 _ES2 = ObjectIdentifier('1.2.840.113549.1.5.13')
 _ES1_SHA1_RC2 = ObjectIdentifier('1.2.840.113549.1.5.11')
@@ -88,17 +89,6 @@ openssh_ciphers = ('aes128-cbc', 'aes192-cbc', 'aes256-cbc',
                    'blowfish-cbc', 'cast128-cbc', '3des-cbc')
 
 
-def run(cmd):
-    """Run a shell commands and return the output"""
-
-    try:
-        return subprocess.check_output(cmd, shell=True,
-                                       stderr=subprocess.STDOUT)
-    except subprocess.CalledProcessError as exc: # pragma: no cover
-        print(exc.output.decode())
-        raise
-
-
 def select_passphrase(cipher, pbe_version=0):
     """Randomize between string and bytes version of passphrase"""
 
@@ -122,7 +112,7 @@ if run('ssh -V') >= b'OpenSSH_6.9': # pragma: no branch
                                          'chacha20-poly1305@openssh.com')
 
 
-class _TestPublicKey(unittest.TestCase):
+class _TestPublicKey(TempDirTestCase):
     """Unit tests for public key modules"""
 
     keyclass = None
@@ -1034,9 +1024,6 @@ class _TestPublicKey(unittest.TestCase):
     def test_key(self):
         """Check key import and export"""
 
-        tmpdir = tempfile.TemporaryDirectory()
-        os.chdir(tmpdir.name)
-
         for keytype in self.keytypes:
             with self.subTest(keytype=keytype):
                 self.make_keypair('priv', 'pub', keytype)
@@ -1089,8 +1076,6 @@ class _TestPublicKey(unittest.TestCase):
                                 self.check_certificate(cert_type, version, fmt)
 
                     self.check_certificate_errors(cert_type)
-
-        tmpdir.cleanup()
 
 class TestDSA(_TestPublicKey):
     """Test DSA public keys"""
