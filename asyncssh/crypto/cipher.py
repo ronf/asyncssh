@@ -23,10 +23,10 @@ def register_cipher(cipher_name, mode_name, cipher):
 
     """
 
-    if (cipher_name, mode_name) not in _ciphers:
+    if (cipher_name, mode_name) not in _ciphers: # pragma: no branch
         cipher.cipher_name = cipher_name
         cipher.mode_name = mode_name
-        _ciphers[(cipher_name, mode_name)] = cipher
+        _ciphers[cipher_name, mode_name] = cipher
 
 
 def lookup_cipher(cipher_name, mode_name):
