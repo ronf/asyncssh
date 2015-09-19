@@ -78,7 +78,7 @@ Prerequisites
 To use ``asyncssh``, you need the following:
 
 * Python 3.4 or later
-* PyCrypto 2.6 or later and/or PyCA 0.6.1 or later
+* cryptography (PyCA) 1.0.0 or later
 
 Installation
 ------------
@@ -106,8 +106,6 @@ functionality:
 AsyncSSH defines the following optional PyPI extra packages to make it
 easy to install any or all of these dependencies:
 
-  | pycrypto
-  | pyca
   | bcrypt
   | libnacl
 
@@ -115,7 +113,7 @@ For example, to install all of these, you can run:
 
   ::
 
-    pip install 'asyncssh[pycrypto,pyca,bcrypt,libnacl]'
+    pip install 'asyncssh[bcrypt,libnacl]'
 
 Note that you will still need to manually install the libsodium library
 listed above for libnacl to work correctly. Unfortunately, since

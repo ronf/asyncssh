@@ -15,11 +15,8 @@
 from ..cipher import register_cipher
 
 from cryptography.exceptions import InvalidTag
-
 from cryptography.hazmat.backends import default_backend
-
 from cryptography.hazmat.primitives.ciphers import Cipher
-
 from cryptography.hazmat.primitives.ciphers.algorithms import AES, ARC4
 from cryptography.hazmat.primitives.ciphers.algorithms import Blowfish, CAST5
 from cryptography.hazmat.primitives.ciphers.algorithms import TripleDES

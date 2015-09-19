@@ -13,8 +13,7 @@
 """Curve25519 key exchange handler primitives"""
 
 import ctypes
-
-from os import urandom
+import os
 
 _found = None
 
@@ -26,27 +25,14 @@ try:
 
     _curve25519 = nacl.crypto_scalarmult_curve25519
     _curve25519_base = nacl.crypto_scalarmult_curve25519_base
-
-    _found = 'libnacl'
-except (ImportError, OSError, AttributeError):
-    try:
-        import curve25519
-
-        _found = 'curve25519'
-    except ImportError:
-        pass
-
-if _found == 'libnacl':
+except (ImportError, OSError, AttributeError): # pragma: no cover
+    pass
+else:
     class Curve25519DH:
         """Curve25519 Diffie Hellman implementation"""
 
-        def __init__(self, secret=None):
-            if secret is None:
-                secret = urandom(_CURVE25519_SCALARBYTES)
-            elif len(secret) != _CURVE25519_SCALARBYTES:
-                raise AssertionError('Invalid curve25519 private key size')
-
-            self._private = secret
+        def __init__(self):
+            self._private = os.urandom(_CURVE25519_SCALARBYTES)
 
         def get_public(self):
             """Return the public key to send in the handshake"""
@@ -54,37 +40,21 @@ if _found == 'libnacl':
             public = ctypes.create_string_buffer(_CURVE25519_BYTES)
 
             if _curve25519_base(public, self._private) != 0:
-                raise ValueError('Curve25519 multiplication failed')
+                # This error is never returned by libsodium
+                raise ValueError('Curve25519 failed') # pragma: no cover
 
             return public.raw
 
-        def get_shared(self, public):
+        def get_shared(self, peer_public):
             """Return the shared key from the peer's public key"""
 
-            if len(public) != _CURVE25519_BYTES:
+            if len(peer_public) != _CURVE25519_BYTES:
                 raise AssertionError('Invalid curve25519 public key size')
 
             shared = ctypes.create_string_buffer(_CURVE25519_BYTES)
 
-            if _curve25519(shared, self._private, public) != 0:
-                raise ValueError('Curve25519 multiplication failed')
+            if _curve25519(shared, self._private, peer_public) != 0:
+                # This error is never returned by libsodium
+                raise ValueError('Curve25519 failed') # pragma: no cover
 
-            return shared.raw
-elif _found == 'curve25519':
-    class Curve25519DH:
-        """Curve25519 Diffie Hellman implementation"""
-
-        def __init__(self, secret=None):
-            self._private = curve25519.Private(secret)
-
-        def get_public(self):
-            """Return the public key to send in the handshake"""
-
-            return self._private.get_public().serialize()
-
-        def get_shared(self, public):
-            """Return the shared key from the peer's public key"""
-
-            public = curve25519.Public(public)
-
-            return self._private.get_shared_key(public, hashfunc=lambda x: x)
+            return int.from_bytes(shared.raw, 'big')

@@ -31,9 +31,8 @@ class _DSAKey(SSHKey):
     pem_name = b'DSA'
     pkcs8_oid = ObjectIdentifier('1.2.840.10040.4.1')
 
-    def __init__(self, key, private):
+    def __init__(self, key):
         self._key = key
-        self._private = private
 
     def __eq__(self, other):
         # This isn't protected access - both objects are _DSAKey instances
@@ -44,24 +43,23 @@ class _DSAKey(SSHKey):
                 self._key.q == other._key.q and
                 self._key.g == other._key.g and
                 self._key.y == other._key.y and
-                ((self._private and self._key.x) ==
-                 (other._private and other._key.x)))
+                self._key.x == other._key.x)
 
     def __hash__(self):
-        return hash((self._key.p, self._key.q, self._key.g, self._key.y,
-                     self._key.x if hasattr(self, 'x') else None))
+        return hash((self._key.p, self._key.q, self._key.g,
+                     self._key.y, self._key.x))
 
     @classmethod
     def make_private(cls, *args):
         """Construct a DSA private key"""
 
-        return cls(DSAPrivateKey(*args), True)
+        return cls(DSAPrivateKey(*args))
 
     @classmethod
     def make_public(cls, *args):
         """Construct a DSA public key"""
 
-        return cls(DSAPublicKey(*args), False)
+        return cls(DSAPublicKey(*args))
 
     @classmethod
     def decode_pkcs1_private(cls, key_data):
@@ -143,7 +141,7 @@ class _DSAKey(SSHKey):
     def encode_pkcs1_private(self):
         """Encode a PKCS#1 format DSA private key"""
 
-        if not self._private:
+        if not self._key.x:
             raise KeyExportError('Key is not private')
 
         return (0, self._key.p, self._key.q, self._key.g,
@@ -157,7 +155,7 @@ class _DSAKey(SSHKey):
     def encode_pkcs8_private(self):
         """Encode a PKCS#8 format DSA private key"""
 
-        if not self._private:
+        if not self._key.x:
             raise KeyExportError('Key is not private')
 
         return (self._key.p, self._key.q, self._key.g), der_encode(self._key.x)
@@ -170,7 +168,7 @@ class _DSAKey(SSHKey):
     def encode_ssh_private(self):
         """Encode an SSH format DSA private key"""
 
-        if not self._private:
+        if not self._key.x:
             raise KeyExportError('Key is not private')
 
         return b''.join((MPInt(self._key.p), MPInt(self._key.q),
@@ -186,7 +184,7 @@ class _DSAKey(SSHKey):
     def sign(self, data):
         """Return a signature of the specified data using this key"""
 
-        if not self._private:
+        if not self._key.x:
             raise ValueError('Private key needed for signing')
 
         r, s = self._key.sign(data)
@@ -198,14 +196,21 @@ class _DSAKey(SSHKey):
         """Verify a signature of the specified data using this key"""
 
         try:
-            sig = SSHPacket(sig)
+            packet = SSHPacket(sig)
 
-            if sig.get_string() != self.algorithm:
+            if packet.get_string() != self.algorithm:
                 return False
 
-            sig = sig.get_string()
-            return self._key.verify(data, (int.from_bytes(sig[:20], 'big'),
-                                           int.from_bytes(sig[20:], 'big')))
+            sig = packet.get_string()
+            packet.check_end()
+
+            if len(sig) != 40:
+                return False
+
+            r = int.from_bytes(sig[:20], 'big')
+            s = int.from_bytes(sig[20:], 'big')
+
+            return self._key.verify(data, (r, s))
         except PacketDecodeError:
             return False
 

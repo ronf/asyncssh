@@ -13,9 +13,8 @@
 """SSH asymmetric encryption handlers"""
 
 import binascii
+import os
 import time
-
-from os import urandom
 
 try:
     import bcrypt
@@ -143,8 +142,7 @@ class SSHKey:
            Available ciphers for pkcs8-der and pkcs8-pem are:
 
                aes128-cbc, aes192-cbc, aes256-cbc, blowfish-cbc,
-               cast128-cbc, des-cbc, des2-cbc, des3-cbc, rc2-40-cbc,
-               rc2-64-cbc, rc2-128-cbc, rc4-40, rc4-128
+               cast128-cbc, des-cbc, des2-cbc, des3-cbc, rc4-40, rc4-128
 
            Available ciphers for openssh format include the following
            :ref:`encryption algorithms <EncryptionAlgs>`.
@@ -219,7 +217,7 @@ class SSHKey:
 
             return data
         elif format_name == 'openssh':
-            check = urandom(4)
+            check = os.urandom(4)
             nkeys = 1
             comment = b''
 
@@ -241,7 +239,7 @@ class SSHKey:
                                              cipher_name) from None
 
                 kdf = b'bcrypt'
-                salt = urandom(_OPENSSH_SALT_LEN)
+                salt = os.urandom(_OPENSSH_SALT_LEN)
                 kdf_data = b''.join((String(salt), UInt32(rounds)))
 
                 if isinstance(passphrase, str):

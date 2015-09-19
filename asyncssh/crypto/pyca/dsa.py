@@ -12,60 +12,80 @@
 
 """A shim around PyCA for DSA public and private keys"""
 
-from asyncssh.asn1 import der_encode, der_decode
+from ...asn1 import der_encode, der_decode
 
 from cryptography.exceptions import InvalidSignature
-
 from cryptography.hazmat.backends import default_backend
-
 from cryptography.hazmat.primitives.hashes import SHA1
-
-from cryptography.hazmat.primitives.asymmetric.dsa import DSAParameterNumbers
-from cryptography.hazmat.primitives.asymmetric.dsa import DSAPublicNumbers
-from cryptography.hazmat.primitives.asymmetric.dsa import DSAPrivateNumbers
+from cryptography.hazmat.primitives.asymmetric import dsa
 
 # Short variable names are used here, matching names in the spec
 # pylint: disable=invalid-name
 
 
-class DSAPrivateKey:
+class _DSAKey:
+    """Base class for shim around PyCA for DSA keys"""
+
+    def __init__(self, p, q, g, y, x=None):
+        self._params = dsa.DSAParameterNumbers(p, q, g)
+        self._pub = dsa.DSAPublicNumbers(y, self._params)
+
+        if x:
+            self._priv = dsa.DSAPrivateNumbers(x, self._pub)
+            self._priv_key = self._priv.private_key(default_backend())
+        else:
+            self._priv = None
+            self._pub_key = self._pub.public_key(default_backend())
+
+    @property
+    def p(self):
+        """Return the DSA public modulus"""
+
+        return self._params.p
+
+    @property
+    def q(self):
+        """Return the DSA sub-group order"""
+
+        return self._params.q
+
+    @property
+    def g(self):
+        """Return the DSA generator"""
+
+        return self._params.g
+
+    @property
+    def y(self):
+        """Return the DSA public value"""
+
+        return self._pub.y
+
+    @property
+    def x(self):
+        """Return the DSA private value"""
+
+        return self._priv.x if self._priv else None
+
+
+class DSAPrivateKey(_DSAKey):
     """A shim around PyCA for DSA private keys"""
-
-    def __init__(self, p, q, g, y, x):
-        self.p = p
-        self.q = q
-        self.g = g
-        self.y = y
-        self.x = x
-
-        params = DSAParameterNumbers(p, q, g)
-        pub = DSAPublicNumbers(y, params)
-        self._key = DSAPrivateNumbers(x, pub).private_key(default_backend())
 
     def sign(self, data):
         """Sign a block of data"""
 
-        signer = self._key.signer(SHA1())
+        signer = self._priv_key.signer(SHA1())
         signer.update(data)
         return der_decode(signer.finalize())
 
 
-class DSAPublicKey:
+class DSAPublicKey(_DSAKey):
     """A shim around PyCA for DSA public keys"""
-
-    def __init__(self, p, q, g, y):
-        self.p = p
-        self.q = q
-        self.g = g
-        self.y = y
-
-        params = DSAParameterNumbers(p, q, g)
-        self._key = DSAPublicNumbers(y, params).public_key(default_backend())
 
     def verify(self, data, sig):
         """Verify the signature on a block of data"""
 
-        verifier = self._key.verifier(der_encode(sig), SHA1())
+        verifier = self._pub_key.verifier(der_encode(sig), SHA1())
         verifier.update(data)
 
         try:
