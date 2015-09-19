@@ -2032,7 +2032,7 @@ class SSHClientConnection(SSHConnection):
         if self._dynamic_remote_listeners[listen_host] == listener:
             del self._dynamic_remote_listeners[listen_host]
 
-        del self._remote_listeners[(listen_host, listen_port)]
+        del self._remote_listeners[listen_host, listen_port]
 
     @asyncio.coroutine
     def create_session(self, session_factory, command=None, *, subsystem=None,
@@ -2266,7 +2266,7 @@ class SSHClientConnection(SSHConnection):
             if dynamic:
                 self._dynamic_remote_listeners[listen_host] = listener
 
-            self._remote_listeners[(listen_host, listen_port)] = listener
+            self._remote_listeners[listen_host, listen_port] = listener
             return listener
         else:
             packet.check_end()
@@ -2848,7 +2848,7 @@ class SSHServerConnection(SSHConnection):
             else:
                 result = True
 
-            self._local_listeners[(listen_host, listen_port)] = listener
+            self._local_listeners[listen_host, listen_port] = listener
 
             self._report_global_response(result)
         else:
