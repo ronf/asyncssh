@@ -20,7 +20,6 @@
 import binascii
 import importlib.util
 import os
-import unittest
 
 from .util import TempDirTestCase, run
 
@@ -30,6 +29,7 @@ from asyncssh import read_private_key_list, read_public_key_list
 from asyncssh import read_certificate_list
 from asyncssh import KeyImportError, KeyExportError, KeyEncryptionError
 from asyncssh.asn1 import der_encode, BitString, ObjectIdentifier
+from asyncssh.asn1 import TaggedDERObject
 from asyncssh.packet import MPInt, String, UInt32, UInt64
 from asyncssh.pbe import pkcs1_decrypt
 from asyncssh.public_key import CERT_TYPE_USER, CERT_TYPE_HOST, SSHKey
@@ -39,12 +39,13 @@ from asyncssh.public_key import get_public_key_algs, get_certificate_algs
 bcrypt_available = importlib.util.find_spec('bcrypt')
 libnacl_available = importlib.util.find_spec('libnacl')
 
+_ES1_SHA1_DES = ObjectIdentifier('1.2.840.113549.1.5.10')
+_P12_RC4_40 = ObjectIdentifier('1.2.840.113549.1.12.1.2')
 _ES2 = ObjectIdentifier('1.2.840.113549.1.5.13')
-_ES1_SHA1_RC2 = ObjectIdentifier('1.2.840.113549.1.5.11')
-_P12_RC2_40 = ObjectIdentifier('1.2.840.113549.1.12.1.6')
 _ES2_PBKDF2 = ObjectIdentifier('1.2.840.113549.1.5.12')
 _ES2_AES128 = ObjectIdentifier('2.16.840.1.101.3.4.1.2')
-_ES2_RC2 = ObjectIdentifier('1.2.840.113549.3.2')
+_ES2_DES3 = ObjectIdentifier('1.2.840.113549.3.7')
+
 
 # pylint: disable=bad-whitespace
 
@@ -56,12 +57,8 @@ pkcs1_ciphers = (('aes128-cbc', '-aes128'),
 
 pkcs8_ciphers = (('des-cbc',      'md5',    1, '-v1 PBE-MD5-DES'),
                  ('des-cbc',      'sha1',   1, '-v1 PBE-SHA1-DES'),
-                 ('rc2-64-cbc',   'md5',    1, '-v1 PBE-MD5-RC2-64'),
-                 ('rc2-64-cbc',   'sha1',   1, '-v1 PBE-SHA1-RC2-64'),
                  ('des2-cbc',     'sha1',   1, '-v1 PBE-SHA1-2DES'),
                  ('des3-cbc',     'sha1',   1, '-v1 PBE-SHA1-3DES'),
-                 ('rc2-40-cbc',   'sha1',   1, '-v1 PBE-SHA1-RC2-40'),
-                 ('rc2-128-cbc',  'sha1',   1, '-v1 PBE-SHA1-RC2-128'),
                  ('rc4-40',       'sha1',   1, '-v1 PBE-SHA1-RC4-40'),
                  ('rc4-128',      'sha1',   1, '-v1 PBE-SHA1-RC4-128'),
                  ('aes128-cbc',   'sha1',   2, '-v2 aes-128-cbc'),
@@ -78,10 +75,7 @@ pkcs8_ciphers = (('des-cbc',      'md5',    1, '-v1 PBE-MD5-DES'),
                  ('blowfish-cbc', 'sha1',   2, '-v2 bf-cbc'),
                  ('cast128-cbc',  'sha1',   2, '-v2 cast-cbc'),
                  ('des-cbc',      'sha1',   2, '-v2 des-cbc'),
-                 ('des3-cbc',     'sha1',   2, '-v2 des-ede3-cbc'),
-                 ('rc2-40-cbc',   'sha1',   2, '-v2 rc2-40-cbc'),
-                 ('rc2-64-cbc',   'sha1',   2, '-v2 rc2-64-cbc'),
-                 ('rc2-128-cbc',  'sha1',   2, '-v2 rc2-cbc'))
+                 ('des3-cbc',     'sha1',   2, '-v2 des-ede3-cbc'))
 
 openssh_ciphers = ('aes128-cbc', 'aes192-cbc', 'aes256-cbc',
                    'aes128-ctr', 'aes192-ctr', 'aes256-ctr',
@@ -96,8 +90,8 @@ def select_passphrase(cipher, pbe_version=0):
         return None
     elif os.urandom(1)[0] & 1:
         return 'passphrase'
-    elif pbe_version == 1 and cipher in ('des2-cbc', 'des3-cbc', 'rc2-40-cbc',
-                                         'rc2-128-cbc', 'rc4-40', 'rc4-128'):
+    elif pbe_version == 1 and cipher in ('des2-cbc', 'des3-cbc',
+                                         'rc4-40', 'rc4-128'):
         return 'passphrase'.encode('utf-16-be')
     else:
         return 'passphrase'.encode('utf-8')
@@ -377,6 +371,11 @@ class _TestPublicKey(TempDirTestCase):
             with self.assertRaises(KeyExportError):
                 self.privkey.export_private_key('pkcs1-der', 'x')
 
+        if self.keyclass == 'ec':
+            with self.subTest('Encode EC public key with PKCS#1'):
+                with self.assertRaises(KeyExportError):
+                    self.privkey.export_public_key('pkcs1-pem')
+
         if 'pkcs1' in self.private_formats:
             with self.subTest('Encode with unknown PKCS#1 cipher'):
                 with self.assertRaises(KeyEncryptionError):
@@ -409,10 +408,18 @@ class _TestPublicKey(TempDirTestCase):
             ('Non-ASCII', '\xff'),
             ('Incomplete ASN.1', b''),
             ('Invalid PKCS#1', der_encode(None)),
-            ('Invalid PKCS#8', der_encode((0, (self.privkey.pkcs8_oid, ()),
-                                           der_encode(None)))),
-            ('Invalid PKCS#8 ASN.1', der_encode((0, (self.privkey.pkcs8_oid,
-                                                     None), b''))),
+            ('Invalid PKCS#1 params',
+             der_encode((1, b'', TaggedDERObject(0, b'')))),
+            ('Invalid PKCS#1 EC named curve OID',
+             der_encode((1, b'',
+                         TaggedDERObject(0, ObjectIdentifier('1.1'))))),
+            ('Invalid PKCS#8',
+             der_encode((0, (self.privkey.pkcs8_oid, ()), der_encode(None)))),
+            ('Invalid PKCS#8 ASN.1',
+             der_encode((0, (self.privkey.pkcs8_oid, None), b''))),
+            ('Invalid PKCS#8 params',
+             der_encode((1, (self.privkey.pkcs8_oid, b''),
+                         der_encode((1, b''))))),
             ('Invalid PEM header', b'-----BEGIN XXX-----\n'),
             ('Missing PEM footer', b'-----BEGIN PRIVATE KEY-----\n'),
             ('Invalid PEM key type',
@@ -518,19 +525,19 @@ class _TestPublicKey(TempDirTestCase):
              b'-----END ENCRYPTED PRIVATE KEY-----'),
             ('Invalid PEM PKCS#8 PBES1 encryption parameters',
              b'-----BEGIN ENCRYPTED PRIVATE KEY-----\n' +
-             binascii.b2a_base64(der_encode(((_ES1_SHA1_RC2, None), b''))) +
+             binascii.b2a_base64(der_encode(((_ES1_SHA1_DES, None), b''))) +
              b'-----END ENCRYPTED PRIVATE KEY-----'),
             ('Invalid PEM PKCS#8 PBES1 PKCS#12 encryption parameters',
              b'-----BEGIN ENCRYPTED PRIVATE KEY-----\n' +
-             binascii.b2a_base64(der_encode(((_P12_RC2_40, None), b''))) +
+             binascii.b2a_base64(der_encode(((_P12_RC4_40, None), b''))) +
              b'-----END ENCRYPTED PRIVATE KEY-----'),
             ('Invalid PEM PKCS#8 PBES1 PKCS#12 salt',
              b'-----BEGIN ENCRYPTED PRIVATE KEY-----\n' +
-             binascii.b2a_base64(der_encode(((_P12_RC2_40, (b'', 0)), b''))) +
+             binascii.b2a_base64(der_encode(((_P12_RC4_40, (b'', 0)), b''))) +
              b'-----END ENCRYPTED PRIVATE KEY-----'),
             ('Invalid PEM PKCS#8 PBES1 PKCS#12 iteration count',
              b'-----BEGIN ENCRYPTED PRIVATE KEY-----\n' +
-             binascii.b2a_base64(der_encode(((_P12_RC2_40, (b'x', 0)), b''))) +
+             binascii.b2a_base64(der_encode(((_P12_RC4_40, (b'x', 0)), b''))) +
              b'-----END ENCRYPTED PRIVATE KEY-----'),
             ('Invalid PEM PKCS#8 PBES2 encryption parameters',
              b'-----BEGIN ENCRYPTED PRIVATE KEY-----\n' +
@@ -587,30 +594,6 @@ class _TestPublicKey(TempDirTestCase):
              binascii.b2a_base64(der_encode(
                  ((_ES2, ((_ES2_PBKDF2, (b'', 0)),
                           (_ES2_AES128, b''))), b''))) +
-             b'-----END ENCRYPTED PRIVATE KEY-----'),
-            ('Invalid PEM PKCS#8 PBES2 RC2 parameters',
-             b'-----BEGIN ENCRYPTED PRIVATE KEY-----\n' +
-             binascii.b2a_base64(der_encode(
-                 ((_ES2, ((_ES2_PBKDF2, (b'', 0)),
-                          (_ES2_RC2, None))), b''))) +
-             b'-----END ENCRYPTED PRIVATE KEY-----'),
-            ('Invalid PEM PKCS#8 PBES2 RC2 version',
-             b'-----BEGIN ENCRYPTED PRIVATE KEY-----\n' +
-             binascii.b2a_base64(der_encode(
-                 ((_ES2, ((_ES2_PBKDF2, (b'', 0)),
-                          (_ES2_RC2, (0, None)))), b''))) +
-             b'-----END ENCRYPTED PRIVATE KEY-----'),
-            ('Invalid PEM PKCS#8 PBES2 RC2 IV',
-             b'-----BEGIN ENCRYPTED PRIVATE KEY-----\n' +
-             binascii.b2a_base64(der_encode(
-                 ((_ES2, ((_ES2_PBKDF2, (b'', 0)),
-                          (_ES2_RC2, (None,)))), b''))) +
-             b'-----END ENCRYPTED PRIVATE KEY-----'),
-            ('Invalid length PEM PKCS#8 PBES2 RC2 IV',
-             b'-----BEGIN ENCRYPTED PRIVATE KEY-----\n' +
-             binascii.b2a_base64(der_encode(
-                 ((_ES2, ((_ES2_PBKDF2, (b'', 0)),
-                          (_ES2_RC2, (b'',)))), b''))) +
              b'-----END ENCRYPTED PRIVATE KEY-----'),
             ('Invalid OpenSSH cipher',
              b'-----BEGIN OPENSSH PRIVATE KEY-----\n' +
@@ -748,18 +731,26 @@ class _TestPublicKey(TempDirTestCase):
             data = os.urandom(8)
 
             sig = self.privkey.sign(data)
-            self.assertTrue(pubkey.verify(data, sig))
+            with self.subTest('Good signature'):
+                self.assertTrue(pubkey.verify(data, sig))
 
             badsig = bytearray(sig)
             badsig[-1] ^= 0xff
             badsig = bytes(badsig)
-            self.assertFalse(pubkey.verify(data, badsig))
+            with self.subTest('Bad signature'):
+                self.assertFalse(pubkey.verify(data, badsig))
+
+            with self.subTest('Empty signature'):
+                self.assertFalse(pubkey.verify(data, String(pubkey.algorithm) +
+                                               String(b'')))
 
             badalg = String('xxx')
-            self.assertFalse(pubkey.verify(data, badalg))
+            with self.subTest('Bad algorithm'):
+                self.assertFalse(pubkey.verify(data, badalg))
 
-            with self.assertRaises(ValueError):
-                pubkey.sign(data)
+            with self.subTest('Sign with public key'):
+                with self.assertRaises(ValueError):
+                    pubkey.sign(data)
 
     def check_pkcs1_private(self):
         """Check PKCS#1 private key format"""
@@ -1162,7 +1153,7 @@ if libnacl_available: # pragma: no branch
 
 del _TestPublicKey
 
-class _TestPublicKeyTopLevel(unittest.TestCase):
+class _TestPublicKeyTopLevel(TempDirTestCase):
     """Top-level public key module tests"""
 
     def test_public_key(self):
@@ -1176,3 +1167,17 @@ class _TestPublicKeyTopLevel(unittest.TestCase):
 
         with self.assertRaises(KeyEncryptionError):
             pkcs1_decrypt(b'', b'AES-128-CBC', os.urandom(16), 'x')
+
+    def test_ec_explicit(self):
+        """Test EC certificate with explcit parameters"""
+
+        with self.subTest('Import EC key with explicit parameters'):
+            run('openssl ecparam -out priv -noout -genkey -name secp256r1 '
+                '-param_enc explicit')
+            read_private_key('priv')
+
+        with self.subTest('Import EC key with unknown explicit parameters'):
+            run('openssl ecparam -out priv -noout -genkey -name secp112r1 '
+                '-param_enc explicit')
+            with self.assertRaises(KeyImportError):
+                read_private_key('priv')
