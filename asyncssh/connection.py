@@ -159,7 +159,7 @@ def _load_private_key(key):
     elif isinstance(cert, bytes):
         cert = import_certificate(cert)
 
-    if cert and key.encode_ssh_public() != cert.key.encode_ssh_public():
+    if cert and key.get_ssh_public_key() != cert.key.get_ssh_public_key():
         raise ValueError('Certificate key mismatch')
 
     return key, cert
@@ -1873,7 +1873,7 @@ class SSHClientConnection(SSHConnection):
             self._client_keys.insert(0, (key, None))
             return cert.algorithm, key, cert.data
         elif key:
-            return key.algorithm, key, key.encode_ssh_public()
+            return key.algorithm, key, key.get_ssh_public_key()
         else:
             return None, None, None
 
@@ -2481,7 +2481,7 @@ class SSHServerConnection(SSHConnection):
                                  key.algorithm.decode('ascii'))
 
             self._server_host_keys[key.algorithm] = (key,
-                                                     key.encode_ssh_public())
+                                                     key.get_ssh_public_key())
 
             if cert:
                 if cert.algorithm in self._server_host_keys:

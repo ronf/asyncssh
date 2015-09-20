@@ -116,6 +116,11 @@ class SSHKey:
         # pylint: disable=no-self-use
         raise KeyExportError('OpenSSH public key export not supported')
 
+    def get_ssh_public_key(self):
+        """Return OpenSSH public key in binary format"""
+
+        return String(self.algorithm) + self.encode_ssh_public()
+
     def export_private_key(self, format_name, passphrase=None,
                            cipher_name='aes256-cbc', hash_name='sha256',
                            pbe_version=2, rounds=16):
@@ -271,10 +276,9 @@ class SSHKey:
                 else:
                     data, mac = cipher.encrypt(data), b''
 
-            keydata = String(self.algorithm) + self.encode_ssh_public()
-
             data = b''.join((_OPENSSH_KEY_V1, String(alg), String(kdf),
-                             String(kdf_data), UInt32(nkeys), String(keydata),
+                             String(kdf_data), UInt32(nkeys),
+                             String(self.get_ssh_public_key()),
                              String(data), mac))
 
             return (b'-----BEGIN OPENSSH PRIVATE KEY-----\n' +
@@ -318,11 +322,11 @@ class SSHKey:
 
             return data
         elif format_name == 'openssh':
-            data = String(self.algorithm) + self.encode_ssh_public()
+            data = self.get_ssh_public_key()
 
             return self.algorithm + b' ' + binascii.b2a_base64(data)
         elif format_name == 'rfc4716':
-            data = String(self.algorithm) + self.encode_ssh_public()
+            data = self.get_ssh_public_key()
 
             return (b'---- BEGIN SSH2 PUBLIC KEY ----\n' +
                     _wrap_base64(data) +
