@@ -33,10 +33,6 @@ Release 1.3.0 (10 Oct 2015)
   string as an argument to SFTPServer open method, it will need to be
   changed to expect a pflags value instead.
 
-* Fixed a bug related to disabling public key auth in SSHClient. Passing
-  client_keys=None when opening a client connection should now properly
-  disable the use of public key authentication.
-
 * Fixed handling of eof_received() when it returns false to close the
   half-open connection but still allow sending or receiving of exit status
   and exit signals.
