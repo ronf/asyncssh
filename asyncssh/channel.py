@@ -187,8 +187,8 @@ class SSHChannel(SSHPacketHandler):
                 raise DisconnectError(DISC_PROTOCOL_ERROR,
                                       'Unicode decode error')
 
-            if not self._session.eof_received():
-                self.close()
+            if not self._session.eof_received() and self._send_state == 'open':
+                self.write_eof()
         else:
             self._recv_window -= len(data)
 
@@ -401,6 +401,7 @@ class SSHChannel(SSHPacketHandler):
         # If we haven't yet sent a close, send one now
         if self._send_state not in {'close_sent', 'closed'}:
             self._send_packet(MSG_CHANNEL_CLOSE)
+            self._send_state = 'close_sent'
 
         self._loop.call_soon(self._cleanup)
 
