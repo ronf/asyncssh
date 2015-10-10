@@ -12,4 +12,5 @@
 
 """Unit tests for AsyncSSH"""
 
-from . import test_keys
+from . import test_asn1, test_cipher, test_compression, test_known_hosts
+from . import test_mac, test_public_key, test_saslprep, util

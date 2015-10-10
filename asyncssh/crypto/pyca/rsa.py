@@ -13,62 +13,97 @@
 """A shim around PyCA for RSA public and private keys"""
 
 from cryptography.exceptions import InvalidSignature
-
 from cryptography.hazmat.backends import default_backend
-
 from cryptography.hazmat.primitives.asymmetric.padding import PKCS1v15
-
 from cryptography.hazmat.primitives.hashes import SHA1
-
-from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicNumbers
-from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateNumbers
-from cryptography.hazmat.primitives.asymmetric.rsa import rsa_crt_dmp1
-from cryptography.hazmat.primitives.asymmetric.rsa import rsa_crt_dmq1
-from cryptography.hazmat.primitives.asymmetric.rsa import rsa_crt_iqmp
+from cryptography.hazmat.primitives.asymmetric import rsa
 
 # Short variable names are used here, matching names in the spec
 # pylint: disable=invalid-name
 
 
-class RSAPrivateKey:
+class _RSAKey:
+    """Base class for shum around PyCA for RSA keys"""
+
+    def __init__(self, n, e, d=None, p=None, q=None,
+                 dmp1=None, dmq1=None, iqmp=None):
+        self._pub = rsa.RSAPublicNumbers(e, n)
+
+        if d:
+            self._priv = rsa.RSAPrivateNumbers(p, q, d, dmp1, dmq1,
+                                               iqmp, self._pub)
+            self._priv_key = self._priv.private_key(default_backend())
+        else:
+            self._priv = None
+            self._pub_key = self._pub.public_key(default_backend())
+
+    @property
+    def n(self):
+        """Return the RSA public modulus"""
+
+        return self._pub.n
+
+    @property
+    def e(self):
+        """Return the RSA public exponent"""
+
+        return self._pub.e
+
+    @property
+    def d(self):
+        """Return the RSA private exponent"""
+
+        return self._priv.d if self._priv else None
+
+    @property
+    def p(self):
+        """Return the RSA first private prime"""
+
+        return self._priv.p if self._priv else None
+
+    @property
+    def q(self):
+        """Return the RSA second private prime"""
+
+        return self._priv.q if self._priv else None
+
+    @property
+    def dmp1(self):
+        """Return d modulo p-1"""
+
+        return self._priv.dmp1 if self._priv else None
+
+    @property
+    def dmq1(self):
+        """Return q modulo p-1"""
+
+        return self._priv.dmq1 if self._priv else None
+
+    @property
+    def iqmp(self):
+        """Return the inverse of q modulo p"""
+
+        return self._priv.iqmp if self._priv else None
+
+
+class RSAPrivateKey(_RSAKey):
     """A shim around PyCA for RSA private keys"""
-
-    def __init__(self, n, e, d, p, q):
-        self.n = n
-        self.e = e
-        self.d = d
-        self.p = p
-        self.q = q
-
-        dmp1 = rsa_crt_dmp1(d, p)
-        dmq1 = rsa_crt_dmq1(d, q)
-        iqmp = rsa_crt_iqmp(p, q)
-
-        pub = RSAPublicNumbers(e, n)
-        priv = RSAPrivateNumbers(p, q, d, dmp1, dmq1, iqmp, pub)
-        self._key = priv.private_key(default_backend())
 
     def sign(self, data):
         """Sign a block of data"""
 
-        signer = self._key.signer(PKCS1v15(), SHA1())
+        signer = self._priv_key.signer(PKCS1v15(), SHA1())
         signer.update(data)
         return signer.finalize()
 
 
-class RSAPublicKey:
+class RSAPublicKey(_RSAKey):
     """A shim around PyCA for RSA public keys"""
-
-    def __init__(self, n, e):
-        self.n = n
-        self.e = e
-
-        self._key = RSAPublicNumbers(e, n).public_key(default_backend())
 
     def verify(self, data, sig):
         """Verify the signature on a block of data"""
 
-        verifier = self._key.verifier(sig, PKCS1v15(), SHA1())
+        verifier = self._pub_key.verifier(sig, PKCS1v15(), SHA1())
         verifier.update(data)
 
         try:

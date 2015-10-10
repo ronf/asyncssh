@@ -57,24 +57,24 @@ def _stringprep(s, check_unassigned, mapping, normalization, prohibited, bidi):
     if not isinstance(s, str):
         raise TypeError('argument 0 must be str, not %s' % type(s).__name__)
 
-    if check_unassigned:
+    if check_unassigned: # pragma: no branch
         for c in s:
             if stringprep.in_table_a1(c):
                 raise SASLPrepError('Unassigned character: %r' % c)
 
-    if mapping:
+    if mapping: # pragma: no branch
         s = mapping(s)
 
-    if normalization:
+    if normalization: # pragma: no branch
         s = unicodedata.normalize(normalization, s)
 
-    if prohibited:
+    if prohibited: # pragma: no branch
         for c in s:
             for lookup in prohibited:
                 if lookup(c):
                     raise SASLPrepError('Prohibited character: %r' % c)
 
-    if bidi:
+    if bidi: # pragma: no branch
         _check_bidi(s)
 
     return s

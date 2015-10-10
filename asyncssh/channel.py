@@ -200,18 +200,20 @@ class SSHChannel(SSHPacketHandler):
 
             if self._encoding:
                 if datatype in self._recv_partial:
-                    input = self._recv_partial.pop(datatype) + data
+                    encdata = self._recv_partial.pop(datatype) + data
                 else:
-                    input = data
+                    encdata = data
 
-                while input:
+                while encdata:
                     try:
-                        data = input.decode(self._encoding)
-                        input = b''
+                        data = encdata.decode(self._encoding)
+                        encdata = b''
                     except UnicodeDecodeError as exc:
                         if exc.start > 0:
-                            data = input[:exc.start].decode()
-                            input = input[exc.start:]
+                            # Avoid pylint false positive
+                            # pylint: disable=invalid-slice-index
+                            data = encdata[:exc.start].decode()
+                            encdata = encdata[exc.start:]
                         elif exc.reason == 'unexpected end of data':
                             break
                         else:
@@ -220,8 +222,8 @@ class SSHChannel(SSHPacketHandler):
 
                     self._session.data_received(data, datatype)
 
-                if input:
-                    self._recv_partial[datatype] = input
+                if encdata:
+                    self._recv_partial[datatype] = encdata
             else:
                 self._session.data_received(data, datatype)
 

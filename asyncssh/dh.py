@@ -92,7 +92,7 @@ class _KexDHBase(Kex):
 
         k = pow(self._e, y, self._p)
 
-        if k < 1:
+        if k < 1: # pragma: no cover, shouldn't be possible with valid p
             raise DisconnectError(DISC_PROTOCOL_ERROR, 'Kex DH k out of range')
 
         host_key, host_key_data = self._conn.get_server_host_key()
@@ -115,7 +115,7 @@ class _KexDHBase(Kex):
 
         k = pow(self._f, self._x, self._p)
 
-        if k < 1:
+        if k < 1: # pragma: no cover, shouldn't be possible with valid p
             raise DisconnectError(DISC_PROTOCOL_ERROR, 'Kex DH k out of range')
 
         h = self._compute_hash(host_key_data, k)
@@ -193,15 +193,20 @@ class _KexDHGex(_KexDHBase):
 
     _replytype = MSG_KEX_DH_GEX_REPLY
 
-    def __init__(self, alg, conn, hash_alg):
+    def __init__(self, alg, conn, hash_alg, old=False, preferred_size=0):
         super().__init__(alg, conn, hash_alg)
 
         if conn.is_client():
-            self._request = (UInt32(KEX_DH_GEX_MIN_SIZE) +
-                             UInt32(KEX_DH_GEX_PREFERRED_SIZE) +
-                             UInt32(KEX_DH_GEX_MAX_SIZE))
-
-            conn.send_packet(Byte(MSG_KEX_DH_GEX_REQUEST), self._request)
+            if old:
+                # Send old request message for unit test
+                self._request = UInt32(preferred_size)
+                conn.send_packet(Byte(MSG_KEX_DH_GEX_REQUEST_OLD),
+                                 self._request)
+            else:
+                self._request = (UInt32(KEX_DH_GEX_MIN_SIZE) +
+                                 UInt32(KEX_DH_GEX_PREFERRED_SIZE) +
+                                 UInt32(KEX_DH_GEX_MAX_SIZE))
+                conn.send_packet(Byte(MSG_KEX_DH_GEX_REQUEST), self._request)
 
     def _compute_hash(self, host_key_data, k):
         """Compute a hash of key information associated with the connection"""

@@ -120,9 +120,7 @@ def _match_entries(entries, host, addr, port=None):
 
     if port:
         host = '[{}]:{}'.format(host, port) if host else None
-
-        if addr:
-            addr = '[{}]:{}'.format(addr, port) if addr else None
+        addr = '[{}]:{}'.format(addr, port) if addr else None
 
     host_keys = []
     ca_keys = []
@@ -153,7 +151,8 @@ def match_known_hosts(known_hosts, host, addr, port):
     """
 
     if isinstance(known_hosts, str):
-        known_hosts = open(known_hosts, 'r').read()
+        with open(known_hosts, 'r') as f:
+            known_hosts = f.read()
     else:
         known_hosts = known_hosts.decode()
 

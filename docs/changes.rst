@@ -3,6 +3,86 @@
 Change Log
 ==========
 
+Release 1.3.0 (10 Oct 2015)
+---------------------------
+
+* Updated AsyncSSH dependencies to make PyCA version 1.0.0 or later
+  mandatory and remove the older PyCrypto support. This change also
+  adds support for the PyCA implementation of ECDSA and removes support
+  for RC2-based private key encryption that was only supported by
+  PyCrypto.
+
+* Refactored ECDH and Curve25519 key exchange code so they can share an
+  implementation, and prepared the code for adding a PyCA shim for this
+  as soon as support for that is released.
+
+* Hardened the DSA and RSA implementations to do stricter checking of the
+  key exchange response, and sped up the RSA implementation by taking
+  advantage of optional RSA private key parameters when they are present.
+
+* Added support for asynchronous client and server authentication,
+  allowing auth-related callbacks in SSHClient and SSHServer to optionally
+  be defined as coroutines.
+
+* Added support for asynchronous SFTP server processing, allowing callbacks
+  in SFTPServer to optionally be defined as coroutines.
+
+* Added support for a broader set of open mode flags in the SFTP server.
+  Note that this change is not completely backward compatible with previous
+  releases. If you have application code which expects a Python mode
+  string as an argument to SFTPServer open method, it will need to be
+  changed to expect a pflags value instead.
+
+* Fixed a bug related to disabling public key auth in SSHClient. Passing
+  client_keys=None when opening a client connection should now properly
+  disable the use of public key authentication.
+
+* Fixed handling of eof_received() when it returns false to close the
+  half-open connection but still allow sending or receiving of exit status
+  and exit signals.
+
+* Added unit tests for the asn1, cipher, compression, ec, kex, known_hosts,
+  mac, and saslprep modules and expended the set of pbe and public_key
+  unit tests.
+
+* Fixed a set of issues uncovered by ASN.1 unit tests:
+
+    * Removed extra 0xff byte when encoding integers of the form -128*256^n
+    * Fixed decoding error for OIDs beginning with 2.n where n >= 40
+    * Fixed range check for second component of ObjectIdentifier
+    * Added check for extraneous 0x80 bytes in ObjectIdentifier components
+    * Added check for negative component values in ObjectIdentifier
+    * Added error handling for ObjectIdentifier components being non-integer
+    * Added handling for missing length byte after extended tag
+    * Raised ASN1EncodeError instead of TypeError on unsupported types
+
+* Added validation on asn1_class argument, and equality and hash methods
+  to BitString, RawDERObject, and TaggedDERObject. Also, reordered
+  RawDERObject arguments to be consistent with TaggedDERObject and added
+  str method to ObjectIdentifier.
+
+* Fixed a set of issues uncovered by additional pbe unit tests:
+
+    * Encoding and decoding of PBES2-encrypted keys with a PRF other than
+      SHA1 is now handled correctly.
+    * Some exception messages were made more specific.
+    * Additional checks were put in for empty salt or zero iteration count
+      in encryption parameters.
+
+* Fixed a set of issues uncovered by additional public key unit tests:
+
+    * Properly handle PKCS#8 keys with invalid ASN.1 data
+    * Properly handle PKCS#8 DSA & RSA keys with non-sequence for arg_params
+    * Properly handle attempts to import empty string as a public key
+    * Properly handle encrypted PEM keys with missing DEK-Info header
+    * Report check byte mismatches for encrypted OpenSSH keys as bad passphrase
+    * Return KeyImportError instead of KeyEncryptionError when passphrase
+      is needed but not provided
+
+* Added information about branches to CONTRIBUTING guide.
+
+* Performed a bunch of code cleanup suggested by pylint.
+
 Release 1.2.1 (26 Aug 2015)
 ---------------------------
 

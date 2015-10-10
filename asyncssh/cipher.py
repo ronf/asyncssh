@@ -25,7 +25,7 @@ def register_encryption_alg(alg, cipher_name, mode_name, key_size,
     """Register an encryption algorithm"""
 
     cipher = lookup_cipher(cipher_name, mode_name)
-    if cipher:
+    if cipher: # pragma: no branch
         _enc_algs.append(alg)
         _enc_params[alg] = (key_size, cipher.iv_size,
                             cipher.block_size, cipher.mode_name)

@@ -74,13 +74,12 @@ class _Ed25519Key(SSHKey):
         if self._sk is None:
             raise KeyExportError('Key is not private')
 
-        return b''.join((String(self.algorithm), String(self._vk),
-                         String(self._sk)))
+        return b''.join((String(self._vk), String(self._sk)))
 
     def encode_ssh_public(self):
         """Encode an SSH format Ed25519 public key"""
 
-        return b''.join((String(self.algorithm), String(self._vk)))
+        return String(self._vk)
 
     def sign(self, data):
         """Return a signature of the specified data using this key"""
@@ -94,15 +93,15 @@ class _Ed25519Key(SSHKey):
     def verify(self, data, sig):
         """Verify a signature of the specified data using this key"""
 
-        packet = SSHPacket(sig)
-
-        if packet.get_string() != self.algorithm:
-            return False
-
-        sig = packet.get_string()
-        packet.check_end()
-
         try:
+            packet = SSHPacket(sig)
+
+            if packet.get_string() != self.algorithm:
+                return False
+
+            sig = packet.get_string()
+            packet.check_end()
+
             return libnacl.crypto_sign_open(sig + data, self._vk) == data
         except ValueError:
             return False
@@ -110,7 +109,7 @@ class _Ed25519Key(SSHKey):
 
 try:
     import libnacl
-except (ImportError, OSError):
+except (ImportError, OSError): # pragma: no cover
     pass
 else:
     register_public_key_alg(b'ssh-ed25519', _Ed25519Key)

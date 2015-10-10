@@ -13,19 +13,18 @@
 """Asymmetric key password based encryption functions"""
 
 import hmac
-from hashlib import md5, sha1, sha224, sha256, sha384, sha512
-from os import urandom
+import os
 
-from .asn1 import ObjectIdentifier, der_encode, der_decode
+from hashlib import md5, sha1, sha224, sha256, sha384, sha512
+
+from .asn1 import ASN1DecodeError, ObjectIdentifier, der_encode, der_decode
 from .crypto import lookup_cipher
 
 
 # pylint: disable=bad-whitespace
 
 _ES1_MD5_DES    = ObjectIdentifier('1.2.840.113549.1.5.3')
-_ES1_MD5_RC2    = ObjectIdentifier('1.2.840.113549.1.5.6')
 _ES1_SHA1_DES   = ObjectIdentifier('1.2.840.113549.1.5.10')
-_ES1_SHA1_RC2   = ObjectIdentifier('1.2.840.113549.1.5.11')
 
 _ES2            = ObjectIdentifier('1.2.840.113549.1.5.13')
 
@@ -33,11 +32,8 @@ _P12_RC4_128    = ObjectIdentifier('1.2.840.113549.1.12.1.1')
 _P12_RC4_40     = ObjectIdentifier('1.2.840.113549.1.12.1.2')
 _P12_DES3       = ObjectIdentifier('1.2.840.113549.1.12.1.3')
 _P12_DES2       = ObjectIdentifier('1.2.840.113549.1.12.1.4')
-_P12_RC2_128    = ObjectIdentifier('1.2.840.113549.1.12.1.5')
-_P12_RC2_40     = ObjectIdentifier('1.2.840.113549.1.12.1.6')
 
 _ES2_CAST128    = ObjectIdentifier('1.2.840.113533.7.66.10')
-_ES2_RC2        = ObjectIdentifier('1.2.840.113549.3.2')
 _ES2_DES3       = ObjectIdentifier('1.2.840.113549.3.7')
 _ES2_BF         = ObjectIdentifier('1.3.6.1.4.1.3029.1.2')
 _ES2_DES        = ObjectIdentifier('1.3.14.3.2.7')
@@ -192,11 +188,8 @@ def _pbkdf_p12(hash_alg, passphrase, salt, count, key_size, idx):
         """Make a block a multiple of v bytes long by repeating data"""
 
         l = len(data)
-        if l:
-            size = ((l + v - 1) // v) * v
-            return (((size + l - 1) // l) * data)[:size]
-        else:
-            return data
+        size = ((l + v - 1) // v) * v
+        return (((size + l - 1) // l) * data)[:size]
 
     v = hash_alg().block_size
     D = v * bytes((idx,))
@@ -242,12 +235,7 @@ def _pbes1(params, passphrase, hash_alg, cipher, key_size):
                   key_size + cipher.block_size)
     key, iv = key[:key_size], key[key_size:]
 
-    if cipher.cipher_name == 'arc2':
-        kwargs = {'effective_keylen': key_size*8}
-    else:
-        kwargs = {}
-
-    return _RFC1423Pad(cipher.new(key, iv, **kwargs))
+    return _RFC1423Pad(cipher.new(key, iv))
 
 
 def _pbe_p12(params, passphrase, hash_alg, cipher, key_size):
@@ -261,9 +249,9 @@ def _pbe_p12(params, passphrase, hash_alg, cipher, key_size):
     """
 
     if (not isinstance(params, tuple) or len(params) != 2 or
-            not isinstance(params[0], bytes) or
-            not isinstance(params[1], int)):
-        raise KeyEncryptionError('Invalid PBES1 encryption parameters')
+            not isinstance(params[0], bytes) or len(params[0]) == 0 or
+            not isinstance(params[1], int) or params[1] == 0):
+        raise KeyEncryptionError('Invalid PBES1 PKCS#12 encryption parameters')
 
     salt, count = params
     key = _pbkdf_p12(hash_alg, passphrase, salt, count, key_size, 1)
@@ -274,52 +262,9 @@ def _pbe_p12(params, passphrase, hash_alg, cipher, key_size):
         iv = _pbkdf_p12(hash_alg, passphrase, salt, count,
                         cipher.block_size, 2)
 
-        if cipher.cipher_name == 'arc2':
-            kwargs = {'effective_keylen': key_size*8}
-        else:
-            kwargs = {}
-
-        cipher = _RFC1423Pad(cipher.new(key, iv, **kwargs))
+        cipher = _RFC1423Pad(cipher.new(key, iv))
 
     return cipher
-
-
-def _pbes2_rc2(params, key, cipher):
-    """PKCS#5 v2.0 handler for PBES2 RC2 ciphers
-
-       This function returns the appropriate cipher object to use for
-       PBES2 encryption for ciphers based on RC2.
-
-    """
-
-    if (len(params) != 1 or not isinstance(params[0], tuple) or
-            len(params[0]) < 1):
-        raise KeyEncryptionError('Invalid PBES2 RC2 encryption parameters')
-
-    params = list(params[0])
-
-    if isinstance(params[0], int):
-        version = params.pop(0)
-        if version == 58:
-            effective_keylen = 128
-        elif version == 120:
-            effective_keylen = 64
-        elif version == 160:
-            effective_keylen = 40
-        elif version >= 256:
-            effective_keylen = version
-        else:
-            raise KeyEncryptionError('Unknown PBES2 RC2 version')
-    else:
-        effective_keylen = 32
-
-    if not params or not isinstance(params[0], bytes):
-        raise KeyEncryptionError('Invalid PBES2 RC2 encryption parameters')
-
-    if len(params[0]) != cipher.block_size:
-        raise KeyEncryptionError('Invalid length IV for PBES2 encryption')
-
-    return cipher.new(key, params[0], effective_keylen=effective_keylen)
 
 
 def _pbes2_iv(params, key, cipher):
@@ -372,17 +317,23 @@ def _pbes2_pbkdf2(params, passphrase, default_key_size):
     count = params.pop(0)
 
     if params and isinstance(params[0], int):
-        key_size = params.pop(0)
+        key_size = params.pop(0)    # pragma: no cover, used only by RC2
     else:
         key_size = default_key_size
 
-    if params and isinstance(params[0], ObjectIdentifier):
-        prf_alg = params.pop(0)
-        if prf_alg in _pbes2_prfs:
-            handler, args = _pbes2_prfs[prf_alg]
-            prf = handler(*args)
+    if params:
+        if (isinstance(params[0], tuple) and len(params[0]) == 2 and
+                isinstance(params[0][0], ObjectIdentifier)):
+            prf_alg = params[0][0]
+            if prf_alg in _pbes2_prfs:
+                handler, args = _pbes2_prfs[prf_alg]
+                prf = handler(*args)
+            else:
+                raise KeyEncryptionError('Unknown PBES2 pseudo-random '
+                                         'function')
         else:
-            raise KeyEncryptionError('Unknown PBES2 pseudo-random function')
+            raise KeyEncryptionError('Invalid PBES2 pseudo-random function '
+                                     'parameters')
     else:
         prf = _pbes2_hmac_prf(sha1)
 
@@ -428,7 +379,7 @@ def register_pkcs1_cipher(cipher_name, alg, cipher, mode, key_size):
 
     cipher = lookup_cipher(cipher, mode)
 
-    if cipher:
+    if cipher: # pragma: no branch
         _pkcs1_ciphers[alg] = (cipher, key_size)
         _pkcs1_cipher_names[cipher_name] = alg
 
@@ -439,9 +390,9 @@ def register_pkcs8_cipher(cipher_name, hash_name, alg, handler, hash_alg,
 
     cipher = lookup_cipher(cipher, mode)
 
-    if cipher:
+    if cipher: # pragma: no branch
         _pkcs8_ciphers[alg] = (handler, hash_alg, cipher, key_size)
-        _pkcs8_cipher_suites[(cipher_name, hash_name)] = alg
+        _pkcs8_cipher_suites[cipher_name, hash_name] = alg
 
 
 def register_pbes2_cipher(cipher_name, alg, handler, cipher, mode, key_size):
@@ -449,7 +400,7 @@ def register_pbes2_cipher(cipher_name, alg, handler, cipher, mode, key_size):
 
     cipher = lookup_cipher(cipher, mode)
 
-    if cipher:
+    if cipher: # pragma: no branch
         _pbes2_ciphers[alg] = (handler, cipher, key_size)
         _pbes2_cipher_names[cipher_name] = (alg, key_size)
 
@@ -482,7 +433,7 @@ def pkcs1_encrypt(data, cipher, passphrase):
         alg = _pkcs1_cipher_names[cipher]
         cipher, key_size = _pkcs1_ciphers[alg]
 
-        iv = urandom(cipher.block_size)
+        iv = os.urandom(cipher.block_size)
         key = _pbkdf1(md5, passphrase, iv[:8], 1, key_size)
 
         cipher = _RFC1423Pad(cipher.new(key, iv))
@@ -518,9 +469,8 @@ def pkcs8_encrypt(data, cipher_name, hash_name, version, passphrase):
 
        Available ciphers include:
 
-           aes128-cbc, aes192-cbc, aes256-cbc, blowfish-cbc,
-           cast128-cbc, des-cbc, des2-cbc, des3-cbc, rc2-40-cbc,
-           rc2-64-cbc, rc2-128-cbc, rc4-40, and rc4-128
+           aes128-cbc, aes192-cbc, aes256-cbc, blowfish-cbc, cast128-cbc,
+           des-cbc, des2-cbc, des3-cbc, rc4-40, and rc4-128
 
        Available hashes include:
 
@@ -533,37 +483,23 @@ def pkcs8_encrypt(data, cipher_name, hash_name, version, passphrase):
     """
 
     if version == 1 and (cipher_name, hash_name) in _pkcs8_cipher_suites:
-        alg = _pkcs8_cipher_suites[(cipher_name, hash_name)]
+        alg = _pkcs8_cipher_suites[cipher_name, hash_name]
         handler, hash_alg, cipher, key_size = _pkcs8_ciphers[alg]
 
-        params = (urandom(8), 2048)
+        params = (os.urandom(8), 2048)
         cipher = handler(params, passphrase, hash_alg, cipher, key_size)
         return der_encode(((alg, params), cipher.encrypt(data)))
     elif version == 2 and cipher_name in _pbes2_cipher_names:
         enc_alg, key_size = _pbes2_cipher_names[cipher_name]
         _, cipher, _ = _pbes2_ciphers[enc_alg]
 
-        kdf_params = [urandom(8), 2048]
-        iv = urandom(cipher.block_size)
-
-        if cipher.cipher_name == 'arc2':
-            if key_size == 5:
-                version = 160
-            elif key_size == 8:
-                version = 120
-            elif key_size == 16:
-                version = 58
-            elif key_size >= 32:
-                version = key_size*8
-
-            kdf_params.append(key_size)
-            enc_params = (enc_alg, (version, iv))
-        else:
-            enc_params = (enc_alg, iv)
+        kdf_params = [os.urandom(8), 2048]
+        iv = os.urandom(cipher.block_size)
+        enc_params = (enc_alg, iv)
 
         if hash_name != 'sha1':
             if hash_name in _pbes2_prf_names:
-                kdf_params.append(_pbes2_prf_names[hash_name])
+                kdf_params.append((_pbes2_prf_names[hash_name], None))
             else:
                 raise KeyEncryptionError('Unknown PBES2 hash function')
 
@@ -603,7 +539,10 @@ def pkcs8_decrypt(key_data, passphrase):
     else:
         raise KeyEncryptionError('Unknown PKCS#8 encryption algorithm')
 
-    return der_decode(cipher.decrypt(data))
+    try:
+        return der_decode(cipher.decrypt(data))
+    except ASN1DecodeError:
+        raise KeyEncryptionError('Invalid PKCS#8 encrypted key data')
 
 
 # pylint: disable=bad-whitespace
@@ -619,13 +558,9 @@ _pkcs1_cipher_list = (
 _pkcs8_cipher_list = (
     ('des-cbc',     'md5',  _ES1_MD5_DES,  _pbes1,   md5,  'des',  'cbc', 8),
     ('des-cbc',     'sha1', _ES1_SHA1_DES, _pbes1,   sha1, 'des',  'cbc', 8),
-    ('rc2-64-cbc',  'md5',  _ES1_MD5_RC2,  _pbes1,   md5,  'arc2', 'cbc', 8),
-    ('rc2-64-cbc',  'sha1', _ES1_SHA1_RC2, _pbes1,   sha1, 'arc2', 'cbc', 8),
 
     ('des2-cbc',    'sha1', _P12_DES2,     _pbe_p12, sha1, 'des3', 'cbc', 16),
     ('des3-cbc',    'sha1', _P12_DES3,     _pbe_p12, sha1, 'des3', 'cbc', 24),
-    ('rc2-40-cbc',  'sha1', _P12_RC2_40,   _pbe_p12, sha1, 'arc2', 'cbc', 5),
-    ('rc2-128-cbc', 'sha1', _P12_RC2_128,  _pbe_p12, sha1, 'arc2', 'cbc', 16),
     ('rc4-40',      'sha1', _P12_RC4_40,   _pbe_p12, sha1, 'arc4', None,  5),
     ('rc4-128',     'sha1', _P12_RC4_128,  _pbe_p12, sha1, 'arc4', None,  16)
 )
@@ -637,10 +572,7 @@ _pbes2_cipher_list = (
     ('blowfish-cbc', _ES2_BF,      _pbes2_iv,  'blowfish', 'cbc', 16),
     ('cast128-cbc',  _ES2_CAST128, _pbes2_iv,  'cast',     'cbc', 16),
     ('des-cbc',      _ES2_DES,     _pbes2_iv,  'des',      'cbc', 8),
-    ('des3-cbc',     _ES2_DES3,    _pbes2_iv,  'des3',     'cbc', 24),
-    ('rc2-40-cbc',   _ES2_RC2,     _pbes2_rc2, 'arc2',     'cbc', 5),
-    ('rc2-64-cbc',   _ES2_RC2,     _pbes2_rc2, 'arc2',     'cbc', 8),
-    ('rc2-128-cbc',  _ES2_RC2,     _pbes2_rc2, 'arc2',     'cbc', 16)
+    ('des3-cbc',     _ES2_DES3,    _pbes2_iv,  'des3',     'cbc', 24)
 )
 
 _pbes2_kdf_list = (

@@ -9,6 +9,8 @@
 #
 # Contributors:
 #     Ron Frederick - initial implementation, API, and documentation
+#     Jonathan Slenders - proposed changes to allow SFTP server callbacks
+#                         to be coroutines
 
 """SFTP handlers"""
 
@@ -45,8 +47,8 @@ from .constants import FX_OK, FX_EOF, FX_NO_SUCH_FILE, FX_PERMISSION_DENIED
 from .constants import FX_FAILURE, FX_BAD_MESSAGE, FX_NO_CONNECTION
 from .constants import FX_CONNECTION_LOST, FX_OP_UNSUPPORTED
 
-from .misc import Error, DisconnectError
-from .packet import Byte, String, UInt32, UInt64, SSHPacket
+from .misc import Error
+from .packet import Byte, String, UInt32, UInt64, PacketDecodeError, SSHPacket
 from .session import SSHClientSession, SSHServerSession
 
 _SFTP_VERSION = 3
@@ -656,6 +658,15 @@ class SFTPSession:
         self._pktlen = 0
         self._recv_handler = self._recv_pkthdr
 
+    def _cleanup(self, code, reason, lang=DEFAULT_LANG):
+        """Clean up this SFTP session"""
+
+        # pylint: disable=unused-argument
+
+        if self._chan:
+            self._chan.close()
+            self._chan = None
+
     def _recv_pkthdr(self):
         """Receive and parse an SFTP packet header"""
 
@@ -674,18 +685,21 @@ class SFTPSession:
         if len(self._inpbuf) < self._pktlen:
             return False
 
-        packet = SSHPacket(self._inpbuf[:self._pktlen])
-        self._inpbuf = self._inpbuf[self._pktlen:]
+        try:
+            packet = SSHPacket(self._inpbuf[:self._pktlen])
+            self._inpbuf = self._inpbuf[self._pktlen:]
 
-        pkttype = packet.get_byte()
+            pkttype = packet.get_byte()
 
-        if pkttype == FXP_INIT:
-            self._process_init(packet)
-        elif pkttype == FXP_VERSION:
-            self._process_version(packet)
-        else:
-            pktid = packet.get_uint32()
-            self._process_packet(pkttype, pktid, packet)
+            if pkttype == FXP_INIT:
+                self._process_init(packet)
+            elif pkttype == FXP_VERSION:
+                self._process_version(packet)
+            else:
+                pktid = packet.get_uint32()
+                self._process_packet(pkttype, pktid, packet)
+        except PacketDecodeError as exc:
+            self._cleanup(FX_BAD_MESSAGE, str(exc))
 
         self._recv_handler = self._recv_pkthdr
         return True
@@ -710,11 +724,6 @@ class SFTPSession:
 
         raise NotImplementedError
 
-    def _process_connection_close(self, exc):
-        """Abstract method for handling an incoming connection close"""
-
-        raise NotImplementedError
-
     def connection_made(self, chan):
         """Handle a newly opened SFTP connection"""
 
@@ -724,7 +733,8 @@ class SFTPSession:
     def connection_lost(self, exc):
         """Handle an incoming connection close"""
 
-        self._process_connection_close(exc)
+        reason = str(exc) if exc else 'Connection closed'
+        self._cleanup(FX_CONNECTION_LOST, reason)
 
     def data_received(self, data, datatype):
         """Handle incoming data"""
@@ -751,9 +761,7 @@ class SFTPSession:
     def exit(self):
         """Handle a request to close the SFTP connection"""
 
-        if self._chan:
-            self._chan.close()
-            self._chan = None
+        self._cleanup(FX_CONNECTION_LOST, 'Session closed by application')
 
 
 class SFTPClientSession(SFTPSession, SSHClientSession):
@@ -776,17 +784,18 @@ class SFTPClientSession(SFTPSession, SSHClientSession):
         self._supports_hardlink = False
         self._supports_fsync = False
 
-    def _fail(self, code, reason, lang=DEFAULT_LANG):
-        """Handle a connection failure"""
+    def _cleanup(self, code, reason, lang=DEFAULT_LANG):
+        """Clean up this SFTP client session"""
 
         self._exc = SFTPError(code, reason, lang)
 
         for _, waiter in self._requests.values():
-            if not waiter.cancelled():
+            if waiter and not waiter.cancelled():
                 waiter.set_exception(self._exc)
 
         self._requests = {}
-        self.exit()
+
+        super()._cleanup(code, reason, lang)
 
     def _send_request(self, pkttype, *args, waiter=None):
         """Send an SFTP request"""
@@ -820,12 +829,6 @@ class SFTPClientSession(SFTPSession, SSHClientSession):
 
         self._exc = None
 
-    def _process_connection_close(self, exc):
-        """Process an incoming connection close"""
-
-        reason = exc.reason if exc else 'Connection closed'
-        self._fail(FX_CONNECTION_LOST, reason)
-
     def session_started(self):
         """Begin SFTP client connection handshake"""
 
@@ -837,31 +840,27 @@ class SFTPClientSession(SFTPSession, SSHClientSession):
     def _process_init(self, packet):
         """Process an incoming SFTP init packet"""
 
-        self._fail(FX_OP_UNSUPPORTED, 'FXP_INIT not expected on client')
+        self._cleanup(FX_OP_UNSUPPORTED, 'FXP_INIT not expected on client')
 
     def _process_version(self, packet):
         """Process an incoming SFTP version packet"""
 
-        try:
-            version = packet.get_uint32()
-            extensions = []
+        version = packet.get_uint32()
+        extensions = []
 
-            while packet:
-                name = packet.get_string()
-                data = packet.get_string()
-                extensions.append((name, data))
-        except DisconnectError as exc:
-            self._fail(FX_BAD_MESSAGE, exc.reason)
-            return
+        while packet:
+            name = packet.get_string()
+            data = packet.get_string()
+            extensions.append((name, data))
 
         if version != _SFTP_VERSION:
-            self._fail(FX_BAD_MESSAGE, 'Unsupported version: %d' % version)
+            self._cleanup(FX_BAD_MESSAGE, 'Unsupported version: %d' % version)
             return
 
         try:
             _, version_waiter = self._requests.pop(None)
         except KeyError:
-            self._fail(FX_BAD_MESSAGE, 'FXP_VERSION already received')
+            self._cleanup(FX_BAD_MESSAGE, 'FXP_VERSION already received')
             return
 
         self._version = version
@@ -895,25 +894,26 @@ class SFTPClientSession(SFTPSession, SSHClientSession):
         try:
             return_type, waiter = self._requests.pop(pktid)
         except KeyError:
-            self._fail(FX_BAD_MESSAGE, 'Invalid response id')
+            self._cleanup(FX_BAD_MESSAGE, 'Invalid response id')
             return
 
         if pkttype not in (FXP_STATUS, return_type):
-            self._fail(FX_BAD_MESSAGE,
-                       'Unexpected response type: %s' % pkttype)
+            self._cleanup(FX_BAD_MESSAGE,
+                          'Unexpected response type: %s' % pkttype)
             return
 
         if waiter and not waiter.cancelled():
             try:
                 result = self._packet_handlers[pkttype](self, packet)
 
-                if result is None and return_type is not None:
-                    self._fail(FX_BAD_MESSAGE, 'Unexpected FX_OK response')
-                    return
-
-                waiter.set_result(result)
-            except DisconnectError as exc:
-                exc = SFTPError(FX_BAD_MESSAGE, exc.reason, exc.lang)
+                if result is not None or return_type is None:
+                    waiter.set_result(result)
+                else:
+                    exc = SFTPError(FX_BAD_MESSAGE,
+                                    'Unexpected FX_OK response')
+                    waiter.set_exception(exc)
+            except PacketDecodeError as exc:
+                exc = SFTPError(FX_BAD_MESSAGE, str(exc))
                 waiter.set_exception(exc)
             except SFTPError as exc:
                 waiter.set_exception(exc)
@@ -2059,7 +2059,7 @@ class SFTPClient:
         return (yield from self._begin_glob(self, patterns, error_handler))
 
     @asyncio.coroutine
-    def open(self, path, mode='r', attrs=SFTPAttrs(),
+    def open(self, path, pflags_or_mode=FXF_READ, attrs=SFTPAttrs(),
              encoding='utf-8', errors='strict'):
         """Open a remote file
 
@@ -2071,27 +2071,49 @@ class SFTPClient:
            string, it will be encoded using the file encoding specified
            when the :class:`SFTPClient` was started.
 
-           The following open modes are supported:
+           The following open mode flags are supported:
 
-             ==== ===========
-             Mode Description
-             ==== ===========
-             r    Open existing file for reading
-             w    Open file for overwrite, creating or truncating it
-             a    Open file for appending, creating it if necessary
-             x    Open new file for writing, failing if it exists
+             ========== ======================================================
+             Mode       Description
+             ========== ======================================================
+             FXF_READ   Open the file for reading.
+             FXF_WRITE  Open the file for writing. If both this and FXF_READ
+                        are set, open the file for both reading and writing.
+             FXF_APPEND Force writes to append data to the end of the file
+                        regardless of seek position.
+             FXF_CREAT  Create the file if it doesn't exist. Without this,
+                        attempts to open a non-existent file will fail.
+             FXF_TRUNC  Truncate the file to zero length if it already exists.
+             FXF_EXCL   Return an error when trying to open a file which
+                        already exists.
+             ========== ======================================================
 
-             r+   Open existing file for reading & writing
-             w+   Open file for reading & writing, creating or truncating it
-             a+   Open file for reading & appending, creating it if necessary
-             x+   Open new file for reading & writing, failing if it exists
-             ==== ===========
+           By default, file data is read and written as strings in UTF-8
+           format with strict error checking, but this can be changed
+           using the ``encoding`` and ``errors`` parameters. To read and
+           write data as bytes in binary format, an ``encoding`` value of
+           ``None`` can be used.
 
-           If a 'b' is present in the mode, file data will be read and
-           written in binary format, as bytes. Otherwise, file data
-           will be read and written as strings. By default, UTF-8 encoding
-           will be used with strict error checking, but this can be changed
-           using the ``encoding`` and ``errors`` parameters.
+           Instead of these flags, a Python open mode string can also be
+           provided. Python open modes map to the above flags as follows:
+
+             ==== =============================================
+             Mode Flags
+             ==== =============================================
+             r    FXF_READ
+             w    FXF_WRITE | FXF_CREAT | FXF_TRUNC
+             a    FXF_WRITE | FXF_CREAT | FXF_APPEND
+             x    FXF_WRITE | FXF_CREAT | FXF_EXCL
+
+             r+   FXF_READ | FXF_WRITE
+             w+   FXF_READ | FXF_WRITE | FXF_CREAT | FXF_TRUNC
+             a+   FXF_READ | FXF_WRITE | FXF_CREAT | FXF_APPEND
+             x+   FXF_READ | FXF_WRITE | FXF_CREAT | FXF_EXCL
+             ==== =============================================
+
+           Including a 'b' in the mode causes the ``encoding`` to be set
+           to ``None``, forcing all data to be read and written as bytes
+           in binary format.
 
            The attrs argument is used to set initial attributes of the
            file if it needs to be created. Otherwise, this argument is
@@ -2099,7 +2121,7 @@ class SFTPClient:
 
            :param path:
                The name of the remote file to open
-           :param string mode: (optional)
+           :param pflags_or_mode: (optional)
                The access mode to use for the remote file (see above)
            :param attrs: (optional)
                File attributes to use if the file needs to be created
@@ -2111,6 +2133,7 @@ class SFTPClient:
                sequence is detected, defaulting to 'strict' which
                raises an exception
            :type path: string or bytes
+           :type pflags_or_mode: integer or string
            :type attrs: :class:`SFTPAttrs`
 
            :returns: An :class:`SFTPFile` to use to access the file
@@ -2120,13 +2143,20 @@ class SFTPClient:
 
         """
 
-        if 'b' in mode:
-            mode = mode.replace('b', '')
-            encoding = None
+        if isinstance(pflags_or_mode, str):
+            mode = pflags_or_mode
 
-        pflags = self._open_modes.get(mode)
-        if not pflags:
-            raise ValueError('Invalid mode: %r' % mode)
+            if 'b' in mode:
+                # Avoid a false positive where pylint thinks mode is an int
+                # pylint: disable=no-member
+                mode = mode.replace('b', '')
+                encoding = None
+
+            pflags = self._open_modes.get(mode)
+            if not pflags:
+                raise ValueError('Invalid mode: %r' % mode)
+        else:
+            pflags = pflags_or_mode
 
         path = self.compose_path(path)
         handle = yield from self._session.open(path, pflags, attrs)
@@ -2755,18 +2785,6 @@ class SFTPServerSession(SFTPSession, SSHServerSession):
                    (b'hardlink@openssh.com', b'1'),
                    (b'fsync@openssh.com', b'1')]
 
-    _open_modes = {
-        FXF_READ:                                      'rb',
-        FXF_WRITE | FXF_CREAT | FXF_TRUNC:             'wb',
-        FXF_WRITE | FXF_CREAT | FXF_APPEND:            'ab',
-        FXF_WRITE | FXF_CREAT | FXF_EXCL:              'xb',
-
-        FXF_READ | FXF_WRITE:                          'rb+',
-        FXF_READ | FXF_WRITE | FXF_CREAT | FXF_TRUNC:  'wb+',
-        FXF_READ | FXF_WRITE | FXF_CREAT | FXF_APPEND: 'ab+',
-        FXF_READ | FXF_WRITE | FXF_CREAT | FXF_EXCL:   'xb+'
-    }
-
     def __init__(self, server):
         super().__init__()
 
@@ -2776,6 +2794,26 @@ class SFTPServerSession(SFTPSession, SSHServerSession):
         self._next_handle = 0
         self._file_handles = {}
         self._dir_handles = {}
+        self._packet_queue = asyncio.queues.Queue()
+        self._queue_task = asyncio.async(self._process_packet_queue())
+
+    def _cleanup(self, code, reason, lang=DEFAULT_LANG):
+        """Clean up this SFTP server session"""
+
+        if self._queue_task:
+            self._queue_task.cancel()
+            self._queue_task = None
+
+        if self._server:
+            for file_obj in self._file_handles:
+                self._server.close(file_obj)
+
+            self._server.exit()
+            self._server = None
+            self._file_handles = []
+            self._dir_handles = []
+
+        super()._cleanup(code, reason, lang)
 
     def _get_next_handle(self):
         """Get the next available unique file handle number"""
@@ -2792,20 +2830,6 @@ class SFTPServerSession(SFTPSession, SSHServerSession):
         """Process a newly opened SFTP client connection"""
 
         pass
-
-    def _process_connection_close(self, exc):
-        """Process an incoming connection close"""
-
-        if self._server:
-            for file_obj in self._file_handles:
-                self._server.close(file_obj)
-
-            self._server.exit()
-            self._server = None
-            self._file_handles = []
-            self._dir_handles = []
-
-        self.exit()
 
     def _process_init(self, packet):
         """Process an incoming SFTP init packet"""
@@ -2828,54 +2852,68 @@ class SFTPServerSession(SFTPSession, SSHServerSession):
     def _process_version(self, packet):
         """Process an incoming SFTP version packet"""
 
-        # FXP_VERSION not expected on server - close the connection
-        self.exit()
+        self._cleanup(FX_BAD_MESSAGE, 'Version message not expected on server')
 
     def _process_packet(self, pkttype, pktid, packet):
         """Process other incoming SFTP packets"""
 
-        try:
-            if pkttype == FXP_EXTENDED:
-                pkttype = packet.get_string()
+        self._packet_queue.put_nowait((pkttype, pktid, packet))
 
-            handler = self._packet_handlers.get(pkttype)
-            if not handler:
-                raise SFTPError(FX_OP_UNSUPPORTED,
-                                'Unsupported request type: %s' % pkttype)
+    @asyncio.coroutine
+    def _process_packet_queue(self):
+        """Process queued SFTP client requests"""
 
-            return_type = self._return_types.get(pkttype, FXP_STATUS)
-            result = handler(self, packet)
+        while True:
+            pkttype, pktid, packet = yield from self._packet_queue.get()
 
-            if return_type == FXP_STATUS:
-                result = UInt32(FX_OK) + String('') + String('')
-            elif return_type in (FXP_HANDLE, FXP_DATA):
-                result = String(result)
-            elif return_type == FXP_NAME:
-                result = (UInt32(len(result)) +
-                          b''.join(name.encode() for name in result))
-            else:
-                if isinstance(result, os.stat_result):
-                    result = SFTPAttrs.from_local(result)
-                elif isinstance(result, os.statvfs_result):
-                    result = SFTPVFSAttrs.from_local(result)
+            try:
+                if pkttype == FXP_EXTENDED:
+                    pkttype = packet.get_string()
 
-                result = result.encode()
-        except NotImplementedError as exc:
-            name = handler.__name__[9:]
-            return_type = FXP_STATUS
-            result = (UInt32(FX_OP_UNSUPPORTED) +
-                      String('Operation not supported: %s' % name) +
-                      String(DEFAULT_LANG))
-        except OSError as exc:
-            return_type = FXP_STATUS
-            result = (UInt32(FX_FAILURE) + String(exc.strerror) +
-                      String(DEFAULT_LANG))
-        except SFTPError as exc:
-            return_type = FXP_STATUS
-            result = UInt32(exc.code) + String(exc.reason) + String(exc.lang)
+                handler = self._packet_handlers.get(pkttype)
+                if not handler:
+                    raise SFTPError(FX_OP_UNSUPPORTED,
+                                    'Unsupported request type: %s' % pkttype)
 
-        self.send_packet(Byte(return_type), UInt32(pktid), result)
+                return_type = self._return_types.get(pkttype, FXP_STATUS)
+                result = yield from handler(self, packet)
 
+                if return_type == FXP_STATUS:
+                    result = UInt32(FX_OK) + String('') + String('')
+                elif return_type in (FXP_HANDLE, FXP_DATA):
+                    result = String(result)
+                elif return_type == FXP_NAME:
+                    result = (UInt32(len(result)) +
+                              b''.join(name.encode() for name in result))
+                else:
+                    if isinstance(result, os.stat_result):
+                        result = SFTPAttrs.from_local(result)
+                    elif isinstance(result, os.statvfs_result):
+                        result = SFTPVFSAttrs.from_local(result)
+
+                    result = result.encode()
+            except NotImplementedError as exc:
+                name = handler.__name__[9:]
+                return_type = FXP_STATUS
+                result = (UInt32(FX_OP_UNSUPPORTED) +
+                          String('Operation not supported: %s' % name) +
+                          String(DEFAULT_LANG))
+            except OSError as exc:
+                return_type = FXP_STATUS
+                result = (UInt32(FX_FAILURE) + String(exc.strerror) +
+                          String(DEFAULT_LANG))
+            except PacketDecodeError as exc:
+                return_type = FXP_STATUS
+                result = (UInt32(FX_BAD_MESSAGE) + String(str(exc)) +
+                          String(DEFAULT_LANG))
+            except SFTPError as exc:
+                return_type = FXP_STATUS
+                result = (UInt32(exc.code) + String(exc.reason) +
+                          String(exc.lang))
+
+            self.send_packet(Byte(return_type), UInt32(pktid), result)
+
+    @asyncio.coroutine
     def _process_open(self, packet):
         """Process an incoming SFTP open request"""
 
@@ -2884,15 +2922,16 @@ class SFTPServerSession(SFTPSession, SSHServerSession):
         attrs = SFTPAttrs.decode(packet)
         packet.check_end()
 
-        mode = self._open_modes.get(pflags)
-        if mode is None:
-            raise SFTPError(FX_FAILURE, 'Unsupported open flags')
+        result = self._server.open(path, pflags, attrs)
 
-        f = self._server.open(path, mode, attrs)
+        if asyncio.iscoroutine(result):
+            result = yield from result
+
         handle = self._get_next_handle()
-        self._file_handles[handle] = f
+        self._file_handles[handle] = result
         return handle
 
+    @asyncio.coroutine
     def _process_close(self, packet):
         """Process an incoming SFTP close request"""
 
@@ -2901,7 +2940,11 @@ class SFTPServerSession(SFTPSession, SSHServerSession):
 
         file_obj = self._file_handles.pop(handle, None)
         if file_obj:
-            self._server.close(file_obj)
+            result = self._server.close(file_obj)
+
+            if asyncio.iscoroutine(result):
+                yield from result
+
             return
 
         if self._dir_handles.pop(handle, None) is not None:
@@ -2909,6 +2952,7 @@ class SFTPServerSession(SFTPSession, SSHServerSession):
 
         raise SFTPError(FX_FAILURE, 'Invalid file handle')
 
+    @asyncio.coroutine
     def _process_read(self, packet):
         """Process an incoming SFTP read request"""
 
@@ -2918,15 +2962,21 @@ class SFTPServerSession(SFTPSession, SSHServerSession):
         packet.check_end()
 
         file_obj = self._file_handles.get(handle)
+
         if file_obj:
-            data = self._server.read(file_obj, offset, length)
-            if data:
-                return data
+            result = self._server.read(file_obj, offset, length)
+
+            if asyncio.iscoroutine(result):
+                result = yield from result
+
+            if result:
+                return result
             else:
                 raise SFTPError(FX_EOF, '')
         else:
             raise SFTPError(FX_FAILURE, 'Invalid file handle')
 
+    @asyncio.coroutine
     def _process_write(self, packet):
         """Process an incoming SFTP write request"""
 
@@ -2936,19 +2986,32 @@ class SFTPServerSession(SFTPSession, SSHServerSession):
         packet.check_end()
 
         file_obj = self._file_handles.get(handle)
+
         if file_obj:
-            return self._server.write(file_obj, offset, data)
+            result = self._server.write(file_obj, offset, data)
+
+            if asyncio.iscoroutine(result):
+                result = yield from result
+
+            return result
         else:
             raise SFTPError(FX_FAILURE, 'Invalid file handle')
 
+    @asyncio.coroutine
     def _process_lstat(self, packet):
         """Process an incoming SFTP lstat request"""
 
         path = packet.get_string()
         packet.check_end()
 
-        return self._server.lstat(path)
+        result = self._server.lstat(path)
 
+        if asyncio.iscoroutine(result):
+            result = yield from result
+
+        return result
+
+    @asyncio.coroutine
     def _process_fstat(self, packet):
         """Process an incoming SFTP fstat request"""
 
@@ -2956,11 +3019,18 @@ class SFTPServerSession(SFTPSession, SSHServerSession):
         packet.check_end()
 
         file_obj = self._file_handles.get(handle)
+
         if file_obj:
-            return self._server.fstat(file_obj)
+            result = self._server.fstat(file_obj)
+
+            if asyncio.iscoroutine(result):
+                result = yield from result
+
+            return result
         else:
             raise SFTPError(FX_FAILURE, 'Invalid file handle')
 
+    @asyncio.coroutine
     def _process_setstat(self, packet):
         """Process an incoming SFTP setstat request"""
 
@@ -2968,8 +3038,14 @@ class SFTPServerSession(SFTPSession, SSHServerSession):
         attrs = SFTPAttrs.decode(packet)
         packet.check_end()
 
-        return self._server.setstat(path, attrs)
+        result = self._server.setstat(path, attrs)
 
+        if asyncio.iscoroutine(result):
+            result = yield from result
+
+        return result
+
+    @asyncio.coroutine
     def _process_fsetstat(self, packet):
         """Process an incoming SFTP fsetstat request"""
 
@@ -2978,41 +3054,60 @@ class SFTPServerSession(SFTPSession, SSHServerSession):
         packet.check_end()
 
         file_obj = self._file_handles.get(handle)
+
         if file_obj:
-            return self._server.fsetstat(file_obj, attrs)
+            result = self._server.fsetstat(file_obj, attrs)
+
+            if asyncio.iscoroutine(result):
+                result = yield from result
+
+            return result
         else:
             raise SFTPError(FX_FAILURE, 'Invalid file handle')
 
+    @asyncio.coroutine
     def _process_opendir(self, packet):
         """Process an incoming SFTP opendir request"""
 
         path = packet.get_string()
         packet.check_end()
 
-        names = self._server.listdir(path)
+        listdir_result = self._server.listdir(path)
 
-        for i, name in enumerate(names):
+        if asyncio.iscoroutine(listdir_result):
+            listdir_result = yield from listdir_result
+
+        for i, name in enumerate(listdir_result):
             # pylint: disable=no-member
 
             if isinstance(name, bytes):
                 name = SFTPName(name)
-                names[i] = name
+                listdir_result[i] = name
 
                 # pylint: disable=attribute-defined-outside-init
 
                 filename = os.path.join(path, name.filename)
-                name.attrs = self._server.lstat(filename)
+                attr_result = self._server.lstat(filename)
 
-                if isinstance(name.attrs, os.stat_result):
-                    name.attrs = SFTPAttrs.from_local(name.attrs)
+                if asyncio.iscoroutine(attr_result):
+                    attr_result = yield from attr_result
+
+                if isinstance(attr_result, os.stat_result):
+                    attr_result = SFTPAttrs.from_local(attr_result)
+
+                name.attrs = attr_result
 
             if not name.longname:
-                self._server.format_longname(name)
+                longname_result = self._server.format_longname(name)
+
+                if asyncio.iscoroutine(longname_result):
+                    yield from longname_result
 
         handle = self._get_next_handle()
-        self._dir_handles[handle] = names
+        self._dir_handles[handle] = listdir_result
         return handle
 
+    @asyncio.coroutine
     def _process_readdir(self, packet):
         """Process an incoming SFTP readdir request"""
 
@@ -3026,14 +3121,21 @@ class SFTPServerSession(SFTPSession, SSHServerSession):
         else:
             raise SFTPError(FX_EOF, '')
 
+    @asyncio.coroutine
     def _process_remove(self, packet):
         """Process an incoming SFTP remove request"""
 
         path = packet.get_string()
         packet.check_end()
 
-        return self._server.remove(path)
+        result = self._server.remove(path)
 
+        if asyncio.iscoroutine(result):
+            result = yield from result
+
+        return result
+
+    @asyncio.coroutine
     def _process_mkdir(self, packet):
         """Process an incoming SFTP mkdir request"""
 
@@ -3041,16 +3143,28 @@ class SFTPServerSession(SFTPSession, SSHServerSession):
         attrs = SFTPAttrs.decode(packet)
         packet.check_end()
 
-        return self._server.mkdir(path, attrs)
+        result = self._server.mkdir(path, attrs)
 
+        if asyncio.iscoroutine(result):
+            result = yield from result
+
+        return result
+
+    @asyncio.coroutine
     def _process_rmdir(self, packet):
         """Process an incoming SFTP rmdir request"""
 
         path = packet.get_string()
         packet.check_end()
 
-        return self._server.rmdir(path)
+        result = self._server.rmdir(path)
 
+        if asyncio.iscoroutine(result):
+            result = yield from result
+
+        return result
+
+    @asyncio.coroutine
     def _process_realpath(self, packet):
         """Process an incoming SFTP realpath request"""
 
@@ -3059,14 +3173,21 @@ class SFTPServerSession(SFTPSession, SSHServerSession):
 
         return [SFTPName(self._server.realpath(path))]
 
+    @asyncio.coroutine
     def _process_stat(self, packet):
         """Process an incoming SFTP stat request"""
 
         path = packet.get_string()
         packet.check_end()
 
-        return self._server.stat(path)
+        result = self._server.stat(path)
 
+        if asyncio.iscoroutine(result):
+            result = yield from result
+
+        return result
+
+    @asyncio.coroutine
     def _process_rename(self, packet):
         """Process an incoming SFTP rename request"""
 
@@ -3074,16 +3195,28 @@ class SFTPServerSession(SFTPSession, SSHServerSession):
         newpath = packet.get_string()
         packet.check_end()
 
-        return self._server.rename(oldpath, newpath)
+        result = self._server.rename(oldpath, newpath)
 
+        if asyncio.iscoroutine(result):
+            result = yield from result
+
+        return result
+
+    @asyncio.coroutine
     def _process_readlink(self, packet):
         """Process an incoming SFTP readlink request"""
 
         path = packet.get_string()
         packet.check_end()
 
-        return [SFTPName(self._server.readlink(path))]
+        result = self._server.readlink(path)
 
+        if asyncio.iscoroutine(result):
+            result = yield from result
+
+        return [SFTPName(result)]
+
+    @asyncio.coroutine
     def _process_symlink(self, packet):
         """Process an incoming SFTP symlink request"""
 
@@ -3096,8 +3229,14 @@ class SFTPServerSession(SFTPSession, SSHServerSession):
 
         packet.check_end()
 
-        return self._server.symlink(oldpath, newpath)
+        result = self._server.symlink(oldpath, newpath)
 
+        if asyncio.iscoroutine(result):
+            result = yield from result
+
+        return result
+
+    @asyncio.coroutine
     def _process_posix_rename(self, packet):
         """Process an incoming SFTP POSIX rename request"""
 
@@ -3105,16 +3244,28 @@ class SFTPServerSession(SFTPSession, SSHServerSession):
         newpath = packet.get_string()
         packet.check_end()
 
-        return self._server.posix_rename(oldpath, newpath)
+        result = self._server.posix_rename(oldpath, newpath)
 
+        if asyncio.iscoroutine(result):
+            result = yield from result
+
+        return result
+
+    @asyncio.coroutine
     def _process_statvfs(self, packet):
         """Process an incoming SFTP statvfs request"""
 
         path = packet.get_string()
         packet.check_end()
 
-        return self._server.statvfs(path)
+        result = self._server.statvfs(path)
 
+        if asyncio.iscoroutine(result):
+            result = yield from result
+
+        return result
+
+    @asyncio.coroutine
     def _process_fstatvfs(self, packet):
         """Process an incoming SFTP fstatvfs request"""
 
@@ -3122,11 +3273,18 @@ class SFTPServerSession(SFTPSession, SSHServerSession):
         packet.check_end()
 
         file_obj = self._file_handles.get(handle)
+
         if file_obj:
-            return self._server.fstatvfs(file_obj)
+            result = self._server.fstatvfs(file_obj)
+
+            if asyncio.iscoroutine(result):
+                result = yield from result
+
+            return result
         else:
             raise SFTPError(FX_FAILURE, 'Invalid file handle')
 
+    @asyncio.coroutine
     def _process_link(self, packet):
         """Process an incoming SFTP hard link request"""
 
@@ -3134,8 +3292,14 @@ class SFTPServerSession(SFTPSession, SSHServerSession):
         newpath = packet.get_string()
         packet.check_end()
 
-        return self._server.link(oldpath, newpath)
+        result = self._server.link(oldpath, newpath)
 
+        if asyncio.iscoroutine(result):
+            result = yield from result
+
+        return result
+
+    @asyncio.coroutine
     def _process_fsync(self, packet):
         """Process an incoming SFTP fsync request"""
 
@@ -3143,8 +3307,14 @@ class SFTPServerSession(SFTPSession, SSHServerSession):
         packet.check_end()
 
         file_obj = self._file_handles.get(handle)
+
         if file_obj:
-            return self._server.fsync(file_obj)
+            result = self._server.fsync(file_obj)
+
+            if asyncio.iscoroutine(result):
+                result = yield from result
+
+            return result
         else:
             raise SFTPError(FX_FAILURE, 'Invalid file handle')
 
@@ -3181,6 +3351,10 @@ class SFTPServer:
        Applications should subclass this when implementing an SFTP
        server. The methods listed below should be implemented to
        provide the desired application behavior.
+
+           .. note:: Any method can optionally be defined as a
+                     coroutine if that method needs to perform
+                     blocking opertions to determine its result.
 
        The ``conn`` object provided here refers to the
        :class:`SSHServerConnection` instance this SFTP server is
@@ -3313,27 +3487,29 @@ class SFTPServer:
         else:
             return path
 
-    def open(self, path, mode, attrs):
+    def open(self, path, pflags, attrs):
         """Open a file to serve to a remote client
 
            This method returns a file object which can be used to read
            and write data and get and set file attributes.
 
-           The following open modes are supported:
+           The possible open mode flags and their meanings are:
 
-             ==== ===========
-             Mode Description
-             ==== ===========
-             r    Open existing file for reading
-             w    Open file for overwrite, creating or truncating it
-             a    Open file for appending, creating it if necessary
-             x    Open new file for writing, failing if it exists
-
-             r+   Open existing file for reading & writing
-             w+   Open file for reading & writing, creating or truncating it
-             a+   Open file for reading & appending, creating it if necessary
-             x+   Open new file for reading & writing, failing if it exists
-             ==== ===========
+             ========== ======================================================
+             Mode       Description
+             ========== ======================================================
+             FXF_READ   Open the file for reading. If neither FXF_READ nor
+                        FXF_WRITE are set, this is the default.
+             FXF_WRITE  Open the file for writing. If both this and FXF_READ
+                        are set, open the file for both reading and writing.
+             FXF_APPEND Force writes to append data to the end of the file
+                        regardless of seek position.
+             FXF_CREAT  Create the file if it doesn't exist. Without this,
+                        attempts to open a non-existent file will fail.
+             FXF_TRUNC  Truncate the file to zero length if it already exists.
+             FXF_EXCL   Return an error when trying to open a file which
+                        already exists.
+             ========== ======================================================
 
            The attrs argument is used to set initial attributes of the
            file if it needs to be created. Otherwise, this argument is
@@ -3341,7 +3517,7 @@ class SFTPServer:
 
            :param bytes path:
                The name of the file to open
-           :param string mode:
+           :param integer pflags:
                The access mode to use for the file (see above)
            :param attrs:
                File attributes to use if the file needs to be created
@@ -3353,9 +3529,40 @@ class SFTPServer:
 
         """
 
+        if pflags & FXF_EXCL:
+            mode = 'xb'
+        elif pflags & FXF_APPEND:
+            mode = 'ab'
+        elif pflags & FXF_WRITE and not pflags & FXF_READ:
+            mode = 'wb'
+        else:
+            mode = 'rb'
+
+        if pflags & FXF_READ and pflags & FXF_WRITE:
+            mode += '+'
+            flags = os.O_RDWR
+        elif pflags & FXF_WRITE:
+            flags = os.O_WRONLY
+        else:
+            flags = os.O_RDONLY
+
+        if pflags & FXF_APPEND:
+            flags |= os.O_APPEND
+
+        if pflags & FXF_CREAT:
+            flags |= os.O_CREAT
+
+        if pflags & FXF_TRUNC:
+            flags |= os.O_TRUNC
+
+        if pflags & FXF_EXCL:
+            flags |= os.O_EXCL
+
+        flags |= getattr(os, 'O_BINARY', 0)
+
         perms = 0o666 if attrs.permissions is None else attrs.permissions
-        return open(self.map_path(path), mode,
-                    opener=lambda path, flags: os.open(path, flags, perms))
+        return open(self.map_path(path), mode, buffering=0,
+                    opener=lambda path, _: os.open(path, flags, perms))
 
     def close(self, file_obj):
         """Close an open file or directory

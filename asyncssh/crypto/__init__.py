@@ -12,31 +12,27 @@
 
 """A shim for accessing cryptographic primitives needed by asyncssh"""
 
-import importlib.util
-
 from .cipher import register_cipher, lookup_cipher
 
-try:
-    from .curve25519 import Curve25519DH
-except ImportError:
-    pass
+from .ec import decode_ec_point, encode_ec_point
+from .ec import get_ec_curve_params, lookup_ec_curve_by_params
 
+# Import PyCA versions of DSA, ECDSA, and RSA
+from .pyca.dsa import DSAPrivateKey, DSAPublicKey
+from .pyca.ec import ECDSAPrivateKey, ECDSAPublicKey
+from .pyca.rsa import RSAPrivateKey, RSAPublicKey
+
+# Import pyca module to get ciphers defined there registered
+from . import pyca
+
+# Import chacha20-poly1305 cipher if available
 from . import chacha
 
-pyca_available = importlib.util.find_spec('cryptography')
-pycrypto_available = importlib.util.find_spec('Crypto')
+# Import curve25519 DH if available
+try:
+    from .curve25519 import Curve25519DH
+except ImportError: # pragma: no cover
+    pass
 
-if pyca_available:
-    from . import pyca
-
-if pycrypto_available:
-    from . import pycrypto
-
-if pyca_available:
-    from .pyca.dsa import DSAPrivateKey, DSAPublicKey
-    from .pyca.rsa import RSAPrivateKey, RSAPublicKey
-elif pycrypto_available:
-    from .pycrypto.dsa import DSAPrivateKey, DSAPublicKey
-    from .pycrypto.rsa import RSAPrivateKey, RSAPublicKey
-else:
-    raise ImportError('No suitable crypto library found.')
+# Import native Python ECDH module
+from .ecdh import ECDH

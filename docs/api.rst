@@ -763,7 +763,8 @@ Public Key Support
 AsyncSSH has extensive public key and certificate support.
 
 Supported public key types include DSA, RSA, and ECDSA. In addition,
-ed25519 keys are supported if libnacl is installed.
+ed25519 keys are supported if the libnacl package and libsodium library
+are installed.
 
 Supported certificate types include version 00 certificates for DSA and
 RSA keys and version 01 certificates for DSA, RSA, ECDSA, and ed25519
@@ -1030,8 +1031,8 @@ The following are the key exchange algorithms currently supported by AsyncSSH:
   | diffie-hellman-group14-sha1
   | diffie-hellman-group1-sha1
 
-Curve25519 support is only available when the libnacl or curve25519-donna
-packages are installed.
+Curve25519 support is only available when the libnacl package and libsodium
+library are installed.
 
 .. index:: Encryption algorithms
 .. _EncryptionAlgs:
@@ -1057,8 +1058,8 @@ The following are the encryption algorithms currently supported by AsyncSSH:
   | arcfour128
   | arcfour
 
-Chacha20-poly1305 support is only available when libnacl is installed. AES
-GCM support is only available when PyCA is installed.
+Chacha20-poly1305 support is only available when the libnacl package and
+libsodium library are installed.
 
 .. index:: MAC algorithms
 .. _MACAlgs:
@@ -1120,6 +1121,9 @@ supported by AsyncSSH:
   | ecdsa-sha2-nistp256
   | ssh-rsa
   | ssh-dss
+
+Ed25519 support is only available when the libnacl package and libsodium
+library are installed.
 
 .. index:: Constants
 .. _Constants:

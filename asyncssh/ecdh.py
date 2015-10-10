@@ -1,4 +1,4 @@
-# Copyright (c) 2014-2015 by Ron Frederick <ronf@timeheart.net>.
+# Copyright (c) 2013-2015 by Ron Frederick <ronf@timeheart.net>.
 # All rights reserved.
 #
 # This program and the accompanying materials are made available under
@@ -10,32 +10,31 @@
 # Contributors:
 #     Ron Frederick - initial implementation, API, and documentation
 
-"""Curve25519 key exchange handler"""
+"""Elliptic curve Diffie-Hellman key exchange handler"""
 
-from hashlib import sha256
+from hashlib import sha256, sha384, sha512
 
 from .constants import DISC_KEY_EXCHANGE_FAILED, DISC_PROTOCOL_ERROR
 from .kex import Kex, register_kex_alg
 from .misc import DisconnectError
 from .packet import Byte, MPInt, String
 
-
 # pylint: disable=bad-whitespace
 
-# SSH KEX ECDH message values (also used by Curve25519)
+# SSH KEX ECDH message values
 MSG_KEX_ECDH_INIT  = 30
 MSG_KEX_ECDH_REPLY = 31
 
 # pylint: enable=bad-whitespace
 
 
-class _KexCurve25519DH(Kex):
-    """Handler for Curve25519 Diffie-Hellman key exchange"""
+class _KexECDH(Kex):
+    """Handler for elliptic curve Diffie-Hellman key exchange"""
 
-    def __init__(self, alg, conn, hash_alg):
+    def __init__(self, alg, conn, hash_alg, ecdh_class, *args):
         super().__init__(alg, conn, hash_alg)
 
-        self._priv = Curve25519DH()
+        self._priv = ecdh_class(*args)
         pub = self._priv.get_public()
 
         if conn.is_client():
@@ -56,7 +55,7 @@ class _KexCurve25519DH(Kex):
         return hash_obj.digest()
 
     def _process_init(self, pkttype, packet):
-        """Process a curve25519 ECDH init message"""
+        """Process an ECDH init message"""
 
         # pylint: disable=unused-argument
 
@@ -68,14 +67,13 @@ class _KexCurve25519DH(Kex):
         packet.check_end()
 
         try:
-            shared = self._priv.get_shared(self._client_pub)
-        except AssertionError:
+            k = self._priv.get_shared(self._client_pub)
+        except (AssertionError, ValueError):
             raise DisconnectError(DISC_PROTOCOL_ERROR,
                                   'Invalid kex init msg') from None
 
         host_key, host_key_data = self._conn.get_server_host_key()
 
-        k = int.from_bytes(shared, 'big')
         h = self._compute_hash(host_key_data, k)
         sig = host_key.sign(h)
 
@@ -85,7 +83,7 @@ class _KexCurve25519DH(Kex):
         self._conn.send_newkeys(k, h)
 
     def _process_reply(self, pkttype, packet):
-        """Process a curve25519 ECDH reply message"""
+        """Process an ECDH reply message"""
 
         # pylint: disable=unused-argument
 
@@ -99,14 +97,13 @@ class _KexCurve25519DH(Kex):
         packet.check_end()
 
         try:
-            shared = self._priv.get_shared(self._server_pub)
-        except AssertionError:
+            k = self._priv.get_shared(self._server_pub)
+        except (AssertionError, ValueError):
             raise DisconnectError(DISC_PROTOCOL_ERROR,
                                   'Invalid kex reply msg') from None
 
         host_key = self._conn.validate_server_host_key(host_key_data)
 
-        k = int.from_bytes(shared, 'big')
         h = self._compute_hash(host_key_data, k)
         if not host_key.verify(h, sig):
             raise DisconnectError(DISC_KEY_EXCHANGE_FAILED,
@@ -121,8 +118,20 @@ class _KexCurve25519DH(Kex):
 
 
 try:
-    from .crypto import Curve25519DH
-except ImportError:
+    from .crypto import ECDH
+except ImportError: # pragma: no cover
     pass
 else:
-    register_kex_alg(b'curve25519-sha256@libssh.org', _KexCurve25519DH, sha256)
+    for _curve_id, _hash_alg in ((b'nistp521', sha512),
+                                 (b'nistp384', sha384),
+                                 (b'nistp256', sha256)):
+        register_kex_alg(b'ecdh-sha2-' + _curve_id, _KexECDH,
+                         _hash_alg, ECDH, _curve_id)
+
+try:
+    from .crypto import Curve25519DH
+except ImportError: # pragma: no cover
+    pass
+else:
+    register_kex_alg(b'curve25519-sha256@libssh.org', _KexECDH,
+                     sha256, Curve25519DH)
