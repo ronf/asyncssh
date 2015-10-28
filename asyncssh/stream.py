@@ -219,9 +219,12 @@ class SSHStreamSession:
             raise RuntimeError('read called while another coroutine is '
                                'already waiting to read')
 
-        waiter = asyncio.Future(loop=self._loop)
-        self._read_waiter[datatype] = waiter
-        yield from waiter
+        try:
+            waiter = asyncio.Future(loop=self._loop)
+            self._read_waiter[datatype] = waiter
+            yield from waiter
+        finally:
+            self._read_waiter[datatype] = None
 
     def _unblock_read(self, datatype):
         """Signal that more data has arrived on the stream"""
@@ -230,7 +233,6 @@ class SSHStreamSession:
         if waiter:
             if not waiter.cancelled():
                 waiter.set_result(None)
-            self._read_waiter[datatype] = None
 
     def _unblock_drain(self):
         """Signal that more data can be written on the stream"""
@@ -238,8 +240,6 @@ class SSHStreamSession:
         for waiter in self._drain_waiters:
             if not waiter.cancelled():
                 waiter.set_result(None)
-
-        self._drain_waiters = []
 
     def connection_made(self, chan):
         """Handle a newly opened channel"""
@@ -389,9 +389,12 @@ class SSHStreamSession:
         """Wait for data written to the channel to drain"""
 
         if self._write_paused and not self._connection_lost:
-            waiter = asyncio.Future(loop=self._loop)
-            self._drain_waiters.append(waiter)
-            yield from waiter
+            try:
+                waiter = asyncio.Future(loop=self._loop)
+                self._drain_waiters.append(waiter)
+                yield from waiter
+            finally:
+                self._drain_waiters.remove(waiter)
 
         if self._connection_lost:
             exc = self._exception
