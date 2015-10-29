@@ -197,7 +197,7 @@ class _ECKey(SSHKey):
     def encode_pkcs1_private(self):
         """Encode a PKCS#1 format EC private key"""
 
-        if not self._key.d:
+        if not self._key.private_value:
             raise KeyExportError('Key is not private')
 
         return (1, self._key.private_value,
@@ -212,7 +212,7 @@ class _ECKey(SSHKey):
     def encode_pkcs8_private(self):
         """Encode a PKCS#8 format EC private key"""
 
-        if not self._key.d:
+        if not self._key.private_value:
             raise KeyExportError('Key is not private')
 
         return self._alg_oid, der_encode((1, self._key.private_value,
@@ -242,7 +242,7 @@ class _ECKey(SSHKey):
     def sign(self, data):
         """Return a signature of the specified data using this key"""
 
-        if not self._key.d:
+        if not self._key.private_value:
             raise ValueError('Private key needed for signing')
 
         r, s = self._key.sign(data)

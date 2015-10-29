@@ -14,12 +14,11 @@
 
 from .cipher import register_cipher, lookup_cipher
 
-from .ec import decode_ec_point, encode_ec_point
-from .ec import get_ec_curve_params, lookup_ec_curve_by_params
+from .ec import lookup_ec_curve_by_params
 
 # Import PyCA versions of DSA, ECDSA, and RSA
 from .pyca.dsa import DSAPrivateKey, DSAPublicKey
-from .pyca.ec import ECDSAPrivateKey, ECDSAPublicKey
+from .pyca.ec import ECDSAPrivateKey, ECDSAPublicKey, ECDH
 from .pyca.rsa import RSAPrivateKey, RSAPublicKey
 
 # Import pyca module to get ciphers defined there registered
@@ -33,6 +32,3 @@ try:
     from .curve25519 import Curve25519DH
 except ImportError: # pragma: no cover
     pass
-
-# Import native Python ECDH module
-from .ecdh import ECDH

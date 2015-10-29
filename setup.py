@@ -43,7 +43,7 @@ setup(name = 'asyncssh',
       description = doclines[0],
       long_description = long_description,
       platforms = 'Any',
-      install_requires = ['cryptography >= 1.0.0'],
+      install_requires = ['cryptography >= 1.1'],
       extras_require = {
           'bcrypt':   ['py-bcrypt >= 0.4'],
           'libnacl':  ['libnacl >= 1.4.2']
