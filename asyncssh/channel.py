@@ -103,13 +103,17 @@ class SSHChannel(SSHPacketHandler):
         """Clean up this channel"""
 
         if self._open_waiter:
-            self._open_waiter.set_exception(
-                ChannelOpenError(OPEN_CONNECT_FAILED, 'SSH connection closed'))
+            if not self._open_waiter.cancelled():
+                self._open_waiter.set_exception(
+                    ChannelOpenError(OPEN_CONNECT_FAILED,
+                                     'SSH connection closed'))
+
             self._open_waiter = None
 
         if self._request_waiters:
             for waiter in self._request_waiters:
-                waiter.set_exception(exc)
+                if not waiter.cancelled():
+                    waiter.set_exception(exc)
 
             self._request_waiters = []
 
@@ -312,6 +316,7 @@ class SSHChannel(SSHPacketHandler):
 
         if not self._open_waiter.cancelled():
             self._open_waiter.set_result(packet)
+
         self._open_waiter = None
 
     def process_open_failure(self, code, reason, lang):
@@ -321,7 +326,10 @@ class SSHChannel(SSHPacketHandler):
             raise DisconnectError(DISC_PROTOCOL_ERROR,
                                   'Channel not being opened')
 
-        self._open_waiter.set_exception(ChannelOpenError(code, reason, lang))
+        if not self._open_waiter.cancelled():
+            self._open_waiter.set_exception(
+                ChannelOpenError(code, reason, lang))
+
         self._open_waiter = None
         self._loop.call_soon(self._cleanup)
 

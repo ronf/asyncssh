@@ -1354,6 +1354,7 @@ class SSHConnection(SSHPacketHandler):
             if self._auth_waiter:
                 if not self._auth_waiter.cancelled():
                     self._auth_waiter.set_result(None)
+
                 self._auth_waiter = None
         else:
             raise DisconnectError(DISC_PROTOCOL_ERROR,
@@ -1788,7 +1789,9 @@ class SSHClientConnection(SSHConnection):
             self._dynamic_remote_listeners = {}
 
         if self._auth_waiter:
-            self._auth_waiter.set_exception(exc)
+            if not self._auth_waiter.cancelled():
+                self._auth_waiter.set_exception(exc)
+
             self._auth_waiter = None
 
         super()._cleanup(exc)
