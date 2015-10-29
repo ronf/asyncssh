@@ -1958,6 +1958,8 @@ class SSHClientConnection(SSHConnection):
                 result = []
             elif len(prompts) == 1 and 'password' in prompts[0][0].lower():
                 password = self.password_auth_requested()
+                if asyncio.iscoroutine(password):
+                    password = yield from password
                 result = [password] if password is not None else None
             else:
                 result = None
