@@ -46,7 +46,7 @@ class _ECKey(SSHKey):
         # This isn't protected access - both objects are _ECKey instances
         # pylint: disable=protected-access
 
-        return (isinstance(other, self.__class__) and
+        return (isinstance(other, type(self)) and
                 self._key.curve_id == other._key.curve_id and
                 self._key.x == other._key.x and
                 self._key.y == other._key.y and

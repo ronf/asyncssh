@@ -38,7 +38,7 @@ class _DSAKey(SSHKey):
         # This isn't protected access - both objects are _DSAKey instances
         # pylint: disable=protected-access
 
-        return (isinstance(other, self.__class__) and
+        return (isinstance(other, type(self)) and
                 self._key.p == other._key.p and
                 self._key.q == other._key.q and
                 self._key.g == other._key.g and

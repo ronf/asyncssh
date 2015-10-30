@@ -141,7 +141,7 @@ class RawDERObject:
                 (_asn1_class[self.asn1_class], self.tag, self.content))
 
     def __eq__(self, other):
-        return (isinstance(other, self.__class__) and
+        return (isinstance(other, type(self)) and
                 self.asn1_class == other.asn1_class and
                 self.tag == other.tag and self.content == other.content)
 
@@ -183,7 +183,7 @@ class TaggedDERObject:
                     (_asn1_class[self.asn1_class], self.tag, self.value))
 
     def __eq__(self, other):
-        return (isinstance(other, self.__class__) and
+        return (isinstance(other, type(self)) and
                 self.asn1_class == other.asn1_class and
                 self.tag == other.tag and self.value == other.value)
 
@@ -433,7 +433,7 @@ class BitString:
         return "BitString('%s')" % self
 
     def __eq__(self, other):
-        return (isinstance(other, self.__class__) and
+        return (isinstance(other, type(self)) and
                 self.value == other.value and self.unused == other.unused)
 
     def __hash__(self):
@@ -481,7 +481,7 @@ class ObjectIdentifier:
         return "ObjectIdentifier('%s')" % self.value
 
     def __eq__(self, other):
-        return isinstance(other, self.__class__) and self.value == other.value
+        return isinstance(other, type(self)) and self.value == other.value
 
     def __hash__(self):
         return hash(self.value)
