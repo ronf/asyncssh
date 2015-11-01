@@ -15,6 +15,8 @@
 import os
 import unittest
 
+from .util import libnacl_available
+
 from asyncssh.cipher import get_encryption_algs, get_encryption_params
 from asyncssh.cipher import get_cipher
 
@@ -79,27 +81,28 @@ class _TestCipher(unittest.TestCase):
                 self.assertEqual(hdr, dechdr)
                 self.assertEqual(data, decdata)
 
-    def test_chacha_errors(self):
-        """Unit test error code paths in chacha cipher"""
+    if libnacl_available: # pragma: no branch
+        def test_chacha_errors(self):
+            """Unit test error code paths in chacha cipher"""
 
-        alg = b'chacha20-poly1305@openssh.com'
-        keysize, ivsize, _, _ = get_encryption_params(alg)
-        key = os.urandom(keysize)
-        iv = os.urandom(ivsize)
+            alg = b'chacha20-poly1305@openssh.com'
+            keysize, ivsize, _, _ = get_encryption_params(alg)
+            key = os.urandom(keysize)
+            iv = os.urandom(ivsize)
 
-        with self.subTest('Chacha20Poly1305 key size error'):
-            with self.assertRaises(ValueError):
-                get_cipher(alg, key[:-1], iv)
+            with self.subTest('Chacha20Poly1305 key size error'):
+                with self.assertRaises(ValueError):
+                    get_cipher(alg, key[:-1], iv)
 
-        with self.subTest('Chacha20Poly1305 nonce size error'):
-            cipher = get_cipher(alg, key, iv)
+            with self.subTest('Chacha20Poly1305 nonce size error'):
+                cipher = get_cipher(alg, key, iv)
 
-            with self.assertRaises(ValueError):
-                cipher.crypt_len(b'', b'')
+                with self.assertRaises(ValueError):
+                    cipher.crypt_len(b'', b'')
 
-            with self.assertRaises(ValueError):
-                cipher.encrypt_and_sign(b'', b'', b'')
+                with self.assertRaises(ValueError):
+                    cipher.encrypt_and_sign(b'', b'', b'')
 
-            with self.assertRaises(ValueError):
-                cipher.verify_and_decrypt(b'', b'', b'', b'')
+                with self.assertRaises(ValueError):
+                    cipher.verify_and_decrypt(b'', b'', b'', b'')
 
