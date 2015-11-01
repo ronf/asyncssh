@@ -231,10 +231,6 @@ class SSHKey:
             data = b''.join((check, check, keydata, String(comment)))
 
             if passphrase is not None:
-                if not _bcrypt_available: # pragma: no cover
-                    raise KeyExportError('OpenSSH private key encryption '
-                                         'requires bcrypt')
-
                 try:
                     alg = cipher_name.encode('ascii')
                     key_size, iv_size, block_size, mode = \
@@ -242,6 +238,10 @@ class SSHKey:
                 except (KeyError, UnicodeEncodeError):
                     raise KeyEncryptionError('Unknown cipher: %s' %
                                              cipher_name) from None
+
+                if not _bcrypt_available: # pragma: no cover
+                    raise KeyExportError('OpenSSH private key encryption '
+                                         'requires bcrypt')
 
                 kdf = b'bcrypt'
                 salt = os.urandom(_OPENSSH_SALT_LEN)
@@ -654,10 +654,6 @@ def _decode_openssh_private(data, passphrase):
             raise KeyImportError('Invalid OpenSSH private key')
 
         if cipher_name != b'none':
-            if not _bcrypt_available: # pragma: no cover
-                raise KeyEncryptionError('OpenSSH private key encryption '
-                                         'requires bcrypt')
-
             if passphrase is None:
                 raise KeyImportError('Passphrase must be specified to import '
                                      'encrypted private keys')
@@ -672,6 +668,10 @@ def _decode_openssh_private(data, passphrase):
             if kdf != b'bcrypt':
                 raise KeyEncryptionError('Unknown kdf: %s' %
                                          kdf.decode('ascii'))
+
+            if not _bcrypt_available: # pragma: no cover
+                raise KeyEncryptionError('OpenSSH private key encryption '
+                                         'requires bcrypt')
 
             packet = SSHPacket(kdf_data)
             salt = packet.get_string()
