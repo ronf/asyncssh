@@ -33,7 +33,7 @@ class _Ed25519Key(SSHKey):
         # This isn't protected access - both objects are _Ed25519Key instances
         # pylint: disable=protected-access
 
-        return (isinstance(other, self.__class__) and
+        return (isinstance(other, type(self)) and
                 self._vk == other._vk and self._sk == other._sk)
 
     def __hash__(self):

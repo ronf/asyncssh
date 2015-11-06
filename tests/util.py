@@ -17,6 +17,22 @@ import subprocess
 import tempfile
 import unittest
 
+# pylint: disable=unused-import
+
+try:
+    import bcrypt
+    bcrypt_available = True
+except ImportError: # pragma: no cover
+    bcrypt_available = False
+
+try:
+    import libnacl
+    libnacl_available = True
+except (ImportError, OSError, AttributeError): # pragma: no cover
+    libnacl_available = False
+
+# pylint: enable=unused-import
+
 
 class TempDirTestCase(unittest.TestCase):
     """Unit test class which operates in a temporary directory"""

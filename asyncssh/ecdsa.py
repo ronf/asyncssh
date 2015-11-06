@@ -46,7 +46,7 @@ class _ECKey(SSHKey):
         # This isn't protected access - both objects are _ECKey instances
         # pylint: disable=protected-access
 
-        return (isinstance(other, self.__class__) and
+        return (isinstance(other, type(self)) and
                 self._key.curve_id == other._key.curve_id and
                 self._key.x == other._key.x and
                 self._key.y == other._key.y and
@@ -197,7 +197,7 @@ class _ECKey(SSHKey):
     def encode_pkcs1_private(self):
         """Encode a PKCS#1 format EC private key"""
 
-        if not self._key.d:
+        if not self._key.private_value:
             raise KeyExportError('Key is not private')
 
         return (1, self._key.private_value,
@@ -212,7 +212,7 @@ class _ECKey(SSHKey):
     def encode_pkcs8_private(self):
         """Encode a PKCS#8 format EC private key"""
 
-        if not self._key.d:
+        if not self._key.private_value:
             raise KeyExportError('Key is not private')
 
         return self._alg_oid, der_encode((1, self._key.private_value,
@@ -242,7 +242,7 @@ class _ECKey(SSHKey):
     def sign(self, data):
         """Return a signature of the specified data using this key"""
 
-        if not self._key.d:
+        if not self._key.private_value:
             raise ValueError('Private key needed for signing')
 
         r, s = self._key.sign(data)

@@ -106,7 +106,7 @@ _DEFAULT_WINDOW = 2*1024*1024       # 2 MiB
 _DEFAULT_MAX_PKTSIZE = 32768        # 32 kiB
 
 
-def _load_private_key(key):
+def _load_private_key(key, passphrase=None):
     """Load a private key
 
        This function loads a private key and an optional certificate.
@@ -144,9 +144,9 @@ def _load_private_key(key):
         cert = None
 
     if isinstance(key, str):
-        key = read_private_key(key)
+        key = read_private_key(key, passphrase)
     elif isinstance(key, bytes):
-        key = import_private_key(key)
+        key = import_private_key(key, passphrase)
 
     if isinstance(cert, str):
         try:
@@ -183,7 +183,7 @@ def _load_public_key(key):
     return key
 
 
-def _load_private_key_list(keylist):
+def _load_private_key_list(keylist, passphrase=None):
     """Load list of private keys and optional associated certificates
 
        This function loads a collection of private keys, each with
@@ -200,10 +200,10 @@ def _load_private_key_list(keylist):
     """
 
     if isinstance(keylist, str):
-        keys = read_private_key_list(keylist)
+        keys = read_private_key_list(keylist, passphrase)
         return [(key, None) for key in keys]
     else:
-        return [_load_private_key(key) for key in keylist]
+        return [_load_private_key(key, passphrase) for key in keylist]
 
 def _load_public_key_list(keylist):
     """Load public key list
@@ -1354,6 +1354,7 @@ class SSHConnection(SSHPacketHandler):
             if self._auth_waiter:
                 if not self._auth_waiter.cancelled():
                     self._auth_waiter.set_result(None)
+
                 self._auth_waiter = None
         else:
             raise DisconnectError(DISC_PROTOCOL_ERROR,
@@ -1691,9 +1692,9 @@ class SSHClientConnection(SSHConnection):
     """
 
     def __init__(self, client_factory, loop, host, port, known_hosts,
-                 username, client_keys, password, kex_algs, encryption_algs,
-                 mac_algs, compression_algs, rekey_bytes, rekey_seconds,
-                 auth_waiter):
+                 username, password, client_keys, passphrase, kex_algs,
+                 encryption_algs, mac_algs, compression_algs, rekey_bytes,
+                 rekey_seconds, auth_waiter):
         super().__init__(client_factory, loop, kex_algs, encryption_algs,
                          mac_algs, compression_algs, rekey_bytes,
                          rekey_seconds, server=False)
@@ -1711,7 +1712,7 @@ class SSHClientConnection(SSHConnection):
         self._username = saslprep(username)
 
         if client_keys:
-            self._client_keys = _load_private_key_list(client_keys)
+            self._client_keys = _load_private_key_list(client_keys, passphrase)
         else:
             self._client_keys = []
 
@@ -1719,7 +1720,8 @@ class SSHClientConnection(SSHConnection):
                 for file in _DEFAULT_KEY_FILES:
                     try:
                         file = os.path.join(os.environ['HOME'], '.ssh', file)
-                        self._client_keys.append(_load_private_key(file))
+                        client_key = _load_private_key(file, passphrase)
+                        self._client_keys.append(client_key)
                     except OSError:
                         pass
 
@@ -1787,7 +1789,9 @@ class SSHClientConnection(SSHConnection):
             self._dynamic_remote_listeners = {}
 
         if self._auth_waiter:
-            self._auth_waiter.set_exception(exc)
+            if not self._auth_waiter.cancelled():
+                self._auth_waiter.set_exception(exc)
+
             self._auth_waiter = None
 
         super()._cleanup(exc)
@@ -2459,7 +2463,7 @@ class SSHServerConnection(SSHConnection):
 
     """
 
-    def __init__(self, server_factory, loop, server_host_keys,
+    def __init__(self, server_factory, loop, server_host_keys, passphrase,
                  authorized_client_keys, kex_algs, encryption_algs, mac_algs,
                  compression_algs, allow_pty, session_factory,
                  session_encoding, sftp_factory, window, max_pktsize,
@@ -2475,7 +2479,7 @@ class SSHServerConnection(SSHConnection):
         self._window = window
         self._max_pktsize = max_pktsize
 
-        server_host_keys = _load_private_key_list(server_host_keys)
+        server_host_keys = _load_private_key_list(server_host_keys, passphrase)
 
         self._server_host_keys = OrderedDict()
 
@@ -3938,8 +3942,9 @@ class SSHServer:
 @asyncio.coroutine
 def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
                       loop=None, family=0, flags=0, local_addr=None,
-                      known_hosts=(), username=None, client_keys=(),
-                      password=None, kex_algs=(), encryption_algs=(),
+                      known_hosts=(), username=None, password=None,
+                      client_keys=(), passphrase=None,
+                      kex_algs=(), encryption_algs=(),
                       mac_algs=(), compression_algs=(),
                       rekey_bytes=_DEFAULT_REKEY_BYTES,
                       rekey_seconds=_DEFAULT_REKEY_SECONDS):
@@ -4002,6 +4007,11 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
        :param string username: (optional)
            Username to authenticate as on the server. If not specified,
            the currently logged in user on the local machine will be used.
+       :param string password: (optional)
+           The password to use for client password authentication or
+           keyboard-interactive authentication which prompts for a password.
+           If this is not specified, client password authentication will
+           not be performed.
        :param client_keys: (optional)
            A list of keys which will be used to authenticate this client
            via public key authentication. If no client keys are specified,
@@ -4013,11 +4023,11 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
            :file:`.ssh/id_rsa-cert.pub`, and :file:`.ssh/id_dsa-cert.pub`.
            If this argument is explicitly set to ``None``, client public
            key authentication will not be performed.
-       :param string password: (optional)
-           The password to use for client password authentication or
-           keyboard-interactive authentication which prompts for a password.
-           If this is not specified, client password authentication will
-           not be performed.
+       :param string passphrase: (optional)
+           The passphrase to use to decrypt client keys when loading them,
+           if they are encrypted. If this is not specified, only unencrypted
+           client keys can be loaded. If the keys passed into client_keys
+           are already loaded, this argument is ignored.
        :param kex_algs: (optional)
            A list of allowed key exchange algorithms in the SSH handshake,
            taken from :ref:`key exchange algorithms <KexAlgs>`
@@ -4056,9 +4066,10 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
         """Return an SSH client connection handler"""
 
         return SSHClientConnection(client_factory, loop, host, port,
-                                   known_hosts, username, client_keys,
-                                   password, kex_algs, encryption_algs,
-                                   mac_algs, compression_algs, rekey_bytes,
+                                   known_hosts, username, password,
+                                   client_keys, passphrase, kex_algs,
+                                   encryption_algs, mac_algs,
+                                   compression_algs, rekey_bytes,
                                    rekey_seconds, auth_waiter)
 
     if not client_factory:
@@ -4081,7 +4092,7 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
 @asyncio.coroutine
 def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
                   loop=None, family=0, flags=socket.AI_PASSIVE, backlog=100,
-                  reuse_address=None, server_host_keys,
+                  reuse_address=None, server_host_keys, passphrase=None,
                   authorized_client_keys=None, kex_algs=(),
                   encryption_algs=(), mac_algs=(), compression_algs=(),
                   allow_pty=True, session_factory=None,
@@ -4123,6 +4134,12 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
            A list of private keys and optional certificates which can be
            used by the server as a host key. This argument must be
            specified.
+       :param string passphrase: (optional)
+           The passphrase to use to decrypt server host keys when loading
+           them, if they are encrypted. If this is not specified, only
+           unencrypted server host keys can be loaded. If the keys passed
+           into server_host_keys are already loaded, this argument is
+           ignored.
        :param authorized_client_keys: (optional)
            A list of authorized user and CA public keys which should be
            trusted for certifcate-based client public key authentication.
@@ -4198,11 +4215,12 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
         """Return an SSH server connection handler"""
 
         return SSHServerConnection(server_factory, loop, server_host_keys,
-                                   authorized_client_keys, kex_algs,
-                                   encryption_algs, mac_algs, compression_algs,
-                                   allow_pty, session_factory,
-                                   session_encoding, sftp_factory, window,
-                                   max_pktsize, rekey_bytes, rekey_seconds)
+                                   passphrase, authorized_client_keys,
+                                   kex_algs, encryption_algs, mac_algs,
+                                   compression_algs, allow_pty,
+                                   session_factory, session_encoding,
+                                   sftp_factory, window, max_pktsize,
+                                   rekey_bytes, rekey_seconds)
 
     return (yield from loop.create_server(conn_factory, host, port,
                                           family=family, flags=flags,

@@ -38,7 +38,7 @@ class _RSAKey(SSHKey):
         # This isn't protected access - both objects are _RSAKey instances
         # pylint: disable=protected-access
 
-        return (isinstance(other, self.__class__) and
+        return (isinstance(other, type(self)) and
                 self._key.n == other._key.n and
                 self._key.e == other._key.e and
                 self._key.d == other._key.d)

@@ -13,7 +13,6 @@
 """A shim around PyCA for elliptic curve keys and key exchange"""
 
 from ...asn1 import der_encode, der_decode
-from ..ec import decode_ec_point, encode_ec_point
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.backends.openssl import backend
@@ -39,11 +38,9 @@ class _ECKey:
                              curve_id.decode()) from None
 
         self._curve_id = curve_id
-        self._keylen = (curve.key_size + 7) // 8
         self._hash_alg = hash_alg
-
-        x, y = decode_ec_point(self._keylen, public_value)
-        self._pub = ec.EllipticCurvePublicNumbers(x, y, curve())
+        self._pub = ec.EllipticCurvePublicNumbers.from_encoded_point(
+            curve(), public_value)
 
         if private_value:
             self._priv = ec.EllipticCurvePrivateNumbers(private_value,
@@ -81,13 +78,17 @@ class _ECKey:
     def public_value(self):
         """Return the EC public point value encoded as a byte string"""
 
-        return encode_ec_point(self._keylen, self.x, self.y)
+        return self._pub.encode_point()
 
     @property
     def private_value(self):
         """Return the EC private value encoded as a byte string"""
 
-        return self.d.to_bytes(self._keylen, 'big') if self.d else None
+        if self._priv:
+            keylen = (self._pub.curve.key_size + 7) // 8
+            return self._priv.private_value.to_bytes(keylen, 'big')
+        else:
+            return None
 
 
 class ECDSAPrivateKey(_ECKey):
@@ -116,3 +117,32 @@ class ECDSAPublicKey(_ECKey):
             return True
         except InvalidSignature:
             return False
+
+
+class ECDH:
+    """A shim around PyCA for ECDH key exchange"""
+
+    def __init__(self, curve_id):
+        try:
+            curve, _ = _curves[curve_id]
+        except KeyError: # pragma: no cover, other curves not registered
+            raise ValueError('Unknown EC curve %s' %
+                             curve_id.decode()) from None
+
+        self._priv_key = ec.generate_private_key(curve, backend)
+
+    def get_public(self):
+        """Return the public key to send in the handshake"""
+
+        pub = self._priv_key.private_numbers().public_numbers
+        return pub.encode_point()
+
+    def get_shared(self, peer_public):
+        """Return the shared key from the peer's public key"""
+
+        peer_key = ec.EllipticCurvePublicNumbers.from_encoded_point(
+            self._priv_key.curve, peer_public).public_key(backend)
+
+        shared_key = self._priv_key.exchange(ec.ECDH(), peer_key)
+
+        return int.from_bytes(shared_key, 'big')

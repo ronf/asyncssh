@@ -87,7 +87,7 @@ class _Record:
             setattr(self, k, v)
 
     def __repr__(self):
-        return '%s(%s)' % (self.__class__.__name__,
+        return '%s(%s)' % (type(self).__name__,
                            ', '.join('%s=%r' % (k, getattr(self, k))
                                      for k in self.__slots__))
 

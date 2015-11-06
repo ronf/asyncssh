@@ -157,6 +157,9 @@ class SSHAuthorizedKeys:
             else:
                 self._user_entries.append(entry)
 
+        if not self._user_entries and not self._ca_entries:
+            raise ValueError('No valid keys found')
+
     def validate(self, key, client_addr, cert_principals=None, ca=False):
         """Return whether a public key or CA is valid for authentication"""
 

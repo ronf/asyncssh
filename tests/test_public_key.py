@@ -18,10 +18,9 @@
 """
 
 import binascii
-import importlib.util
 import os
 
-from .util import TempDirTestCase, run
+from .util import bcrypt_available, libnacl_available, TempDirTestCase, run
 
 from asyncssh import import_private_key, import_public_key, import_certificate
 from asyncssh import read_private_key, read_public_key, read_certificate
@@ -35,9 +34,6 @@ from asyncssh.pbe import pkcs1_decrypt
 from asyncssh.public_key import CERT_TYPE_USER, CERT_TYPE_HOST, SSHKey
 from asyncssh.public_key import get_public_key_algs, get_certificate_algs
 
-
-bcrypt_available = importlib.util.find_spec('bcrypt')
-libnacl_available = importlib.util.find_spec('libnacl')
 
 _ES1_SHA1_DES = ObjectIdentifier('1.2.840.113549.1.5.10')
 _P12_RC4_40 = ObjectIdentifier('1.2.840.113549.1.12.1.2')
@@ -82,6 +78,18 @@ openssh_ciphers = ('aes128-cbc', 'aes192-cbc', 'aes256-cbc',
                    'arcfour', 'arcfour128', 'arcfour256',
                    'blowfish-cbc', 'cast128-cbc', '3des-cbc')
 
+# pylint: enable=bad-whitespace
+
+if run('ssh -V') >= b'OpenSSH_6.9': # pragma: no branch
+    # GCM & Chacha tests require OpenSSH 6.9 due to a bug in earlier versions:
+    #     https://bugzilla.mindrot.org/show_bug.cgi?id=2366
+
+    openssh_ciphers += ('aes128-gcm@openssh.com', 'aes256-gcm@openssh.com')
+
+    # Only test Chacha if libnacl is installed
+    if libnacl_available: # pragma: no branch
+        openssh_ciphers += ('chacha20-poly1305@openssh.com',)
+
 
 def select_passphrase(cipher, pbe_version=0):
     """Randomize between string and bytes version of passphrase"""
@@ -95,15 +103,6 @@ def select_passphrase(cipher, pbe_version=0):
         return 'passphrase'.encode('utf-16-be')
     else:
         return 'passphrase'.encode('utf-8')
-
-# pylint: enable=bad-whitespace
-
-if run('ssh -V') >= b'OpenSSH_6.9': # pragma: no branch
-    # GCM & Chacha tests require OpenSSH 6.9 due to a bug in earlier versions:
-    #     https://bugzilla.mindrot.org/show_bug.cgi?id=2366
-    openssh_ciphers = openssh_ciphers + ('aes128-gcm@openssh.com',
-                                         'aes256-gcm@openssh.com',
-                                         'chacha20-poly1305@openssh.com')
 
 
 class _TestPublicKey(TempDirTestCase):
@@ -396,7 +395,8 @@ class _TestPublicKey(TempDirTestCase):
                     self.privkey.export_private_key('pkcs8-pem', 'x',
                                                     'aes128-cbc', 'sha1', 3)
 
-        if 'openssh' in self.private_formats: # pragma: no branch
+        if ('openssh' in self.private_formats and # pragma: no branch
+                bcrypt_available):
             with self.subTest('Encode with unknown openssh cipher'):
                 with self.assertRaises(KeyEncryptionError):
                     self.privkey.export_private_key('openssh', 'x', 'xxx')
