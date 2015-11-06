@@ -3,6 +3,36 @@
 Change Log
 ==========
 
+Release 1.3.1 (6 Nov 2015)
+--------------------------
+
+* Updated AsyncSSH to depend on version 1.1 or later of PyCA and added
+  support for using its new Elliptic Curve Diffie Hellman (ECDH)
+  implementation, replacing the the previous AsyncSSH native Python
+  version.
+
+* Added support for specifying a passphrase in the create_connection,
+  create_server, connect, and listen functions to allow file names
+  or byte strings containing encrypted client and server host keys
+  to be specified in those calls.
+
+* Fixed handling of cancellation in a few AsyncSSH calls, so it is
+  now possible to make calls to things like stream read or drain which
+  time out.
+
+* Fixed a bug in keyboard-interactive fallback to password auth which
+  was introduced when support was added for auth functions optionally
+  being coroutines.
+
+* Move bcrypt check in encrypted key handling until it is needed so
+  better errors can be returned if a passphrase is not specified or the
+  key derivation function used in a key is unknown.
+
+* Added unit tests for the auth_keys module.
+
+* Updated unit tests to better handle bcrypt or libnacl not being
+  installed.
+
 Release 1.3.0 (10 Oct 2015)
 ---------------------------
 
