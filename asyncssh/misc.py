@@ -32,23 +32,6 @@ def all_ints(seq):
     return all(isinstance(i, int) for i in seq)
 
 
-def mod_inverse(x, m):
-    """Compute the modular inverse (x^-1) modulo m"""
-
-    # pylint: disable=invalid-name
-
-    a, b, c, d = m, x % m, 0, 1
-
-    while b:
-        q, r = divmod(a, b)
-        a, b, c, d = b, r, d, c - q*d
-
-    if a == 1:
-        return c if c >= 0 else c + m
-    else:
-        raise ValueError('%d has no inverse mod %d' % (x, m))
-
-
 def _normalize_scoped_ip(addr):
     """Normalize scoped IP address
 
