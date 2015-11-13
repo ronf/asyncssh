@@ -15,8 +15,6 @@
 import ctypes
 import os
 
-_found = None
-
 try:
     from libnacl import nacl
 
