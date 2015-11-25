@@ -492,36 +492,6 @@ class SSHCertificate:
             raise ValueError('Certificate principal mismatch')
 
 
-class SSHCertificateV00(SSHCertificate):
-    """Decoder class for version 00 SSH certificates"""
-
-    _user_critical_options = {
-        b'force-command':           SSHCertificate._parse_force_command,
-        b'permit-X11-forwarding':   True,
-        b'permit-agent-forwarding': True,
-        b'permit-port-forwarding':  True,
-        b'permit-pty':              True,
-        b'permit-user-rc':          True,
-        b'source-address':          SSHCertificate._parse_source_address
-    }
-
-    def __init__(self, packet, algorithm, key_handler):
-        key_params = key_handler.decode_ssh_public(packet)
-
-        cert_type = packet.get_uint32()
-        key_id = packet.get_string()
-        valid_principals = packet.get_string()
-        valid_after = packet.get_uint64()
-        valid_before = packet.get_uint64()
-        options = packet.get_string()
-        _ = packet.get_string()                     # nonce
-        _ = packet.get_string()                     # reserved
-
-        super().__init__(packet, algorithm, key_handler, key_params, 0,
-                         cert_type, key_id, valid_principals, valid_after,
-                         valid_before, options, b'')
-
-
 class SSHCertificateV01(SSHCertificate):
     """Decoder class for version 01 SSH certificates"""
 

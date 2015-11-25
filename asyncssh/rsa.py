@@ -16,7 +16,7 @@ from .asn1 import ASN1DecodeError, ObjectIdentifier, der_encode, der_decode
 from .crypto import RSAPrivateKey, RSAPublicKey
 from .misc import all_ints
 from .packet import MPInt, String, PacketDecodeError, SSHPacket
-from .public_key import SSHKey, SSHCertificateV00, SSHCertificateV01
+from .public_key import SSHKey, SSHCertificateV01
 from .public_key import KeyExportError
 from .public_key import register_public_key_alg, register_certificate_alg
 
@@ -198,5 +198,3 @@ register_public_key_alg(b'ssh-rsa', _RSAKey)
 
 register_certificate_alg(b'ssh-rsa-cert-v01@openssh.com',
                          _RSAKey, SSHCertificateV01)
-register_certificate_alg(b'ssh-rsa-cert-v00@openssh.com',
-                         _RSAKey, SSHCertificateV00)
