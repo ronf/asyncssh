@@ -114,7 +114,6 @@ class _TestPublicKey(TempDirTestCase):
     private_formats = ()
     public_formats = ()
     default_cert_version = ''
-    cert_versions = ()
 
     def __init__(self, methodName='runTest'):
         super().__init__(methodName)
@@ -871,22 +870,18 @@ class _TestPublicKey(TempDirTestCase):
         with self.subTest('Export RFC4716 public'):
             self.export_rfc4716_public()
 
-    def check_certificate(self, cert_type, version, fmt):
+    def check_certificate(self, cert_type, fmt):
         """Check SSH certificate import"""
 
         with self.subTest('Import certificate'):
             typearg = '-h ' if cert_type == CERT_TYPE_HOST else ''
-
-            if version:
-                version = '-t ' + version + ' '
 
             if cert_type == CERT_TYPE_USER:
                 options = '-O force-command=xxx -O source-address=127.0.0.1 '
             else:
                 options = ''
 
-            run('ssh-keygen -s privca %s%s%s-I name sshpub' %
-                (typearg, version, options))
+            run('ssh-keygen -s privca %s%s-I name sshpub' % (typearg, options))
 
             if fmt == 'openssh':
                 run('mv sshpub-cert.pub cert')
@@ -1060,11 +1055,9 @@ class _TestPublicKey(TempDirTestCase):
                     self.check_rfc4716_public()
 
                 for cert_type in (CERT_TYPE_USER, CERT_TYPE_HOST):
-                    for version in self.cert_versions:
-                        for fmt in ('openssh', 'rfc4716'):
-                            with self.subTest(cert_type=cert_type,
-                                              version=version, fmt=fmt):
-                                self.check_certificate(cert_type, version, fmt)
+                    for fmt in ('openssh', 'rfc4716'):
+                        with self.subTest(cert_type=cert_type, fmt=fmt):
+                            self.check_certificate(cert_type, fmt)
 
                     self.check_certificate_errors(cert_type)
 
@@ -1077,7 +1070,6 @@ class TestDSA(_TestPublicKey):
     private_formats = ('pkcs1', 'pkcs8', 'openssh')
     public_formats = ('pkcs1', 'pkcs8', 'openssh', 'rfc4716')
     default_cert_version = 'ssh-dss-cert-v01@openssh.com'
-    cert_versions = ('ssh-dss-cert-v00@openssh.com', '')
 
     def make_keypair(self, privfile, pubfile, keytype):
         """Make a DSA key pair"""
@@ -1096,7 +1088,6 @@ class TestRSA(_TestPublicKey):
     private_formats = ('pkcs1', 'pkcs8', 'openssh')
     public_formats = ('pkcs1', 'pkcs8', 'openssh', 'rfc4716')
     default_cert_version = 'ssh-rsa-cert-v01@openssh.com'
-    cert_versions = ('ssh-rsa-cert-v00@openssh.com', '')
 
     def make_keypair(self, privfile, pubfile, keytype):
         """Make an RSA key pair"""
@@ -1114,7 +1105,6 @@ class TestEC(_TestPublicKey):
     base_format = 'pkcs8'
     private_formats = ('pkcs1', 'pkcs8', 'openssh')
     public_formats = ('pkcs8', 'openssh', 'rfc4716')
-    cert_versions = ('',)
 
     @property
     def default_cert_version(self):
@@ -1141,7 +1131,6 @@ if libnacl_available: # pragma: no branch
         private_formats = ('openssh')
         public_formats = ('openssh', 'rfc4716')
         default_cert_version = 'ssh-ed25519-cert-v01@openssh.com'
-        cert_versions = ('',)
 
         def make_keypair(self, privfile, pubfile, keytype):
             """Make an Ed25519 key pair"""
@@ -1171,10 +1160,12 @@ class _TestPublicKeyTopLevel(TempDirTestCase):
     def test_ec_explicit(self):
         """Test EC certificate with explcit parameters"""
 
-        with self.subTest('Import EC key with explicit parameters'):
-            run('openssl ecparam -out priv -noout -genkey -name secp256r1 '
-                '-param_enc explicit')
-            read_private_key('priv')
+        for curve in ('secp256r1', 'secp384r1', 'secp521r1'):
+            with self.subTest('Import EC key with explicit parameters',
+                              curve=curve):
+                run('openssl ecparam -out priv -noout -genkey -name %s '
+                    '-param_enc explicit' % curve)
+                read_private_key('priv')
 
         with self.subTest('Import EC key with unknown explicit parameters'):
             run('openssl ecparam -out priv -noout -genkey -name secp112r1 '
