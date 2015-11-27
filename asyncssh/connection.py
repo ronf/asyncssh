@@ -102,6 +102,9 @@ _DEFAULT_KEY_FILES = ('id_ed25519', 'id_ecdsa', 'id_rsa', 'id_dsa')
 _DEFAULT_REKEY_BYTES = 1 << 30      # 1 GiB
 _DEFAULT_REKEY_SECONDS = 3600       # 1 hour
 
+# Default login timeout
+_DEFAULT_LOGIN_TIMEOUT = 120        # 2 minutes
+
 # Default channel parameters
 _DEFAULT_WINDOW = 2*1024*1024       # 2 MiB
 _DEFAULT_MAX_PKTSIZE = 32768        # 32 kiB
@@ -968,6 +971,10 @@ class SSHConnection(SSHPacketHandler):
         self._auth_complete = True
         self._extra.update(username=self._username)
         self._send_deferred_packets()
+
+        # This method is only in SSHServerConnection
+        # pylint: disable=no-member
+        self._cancel_login_timer()
 
     def send_channel_open_confirmation(self, send_chan, recv_chan,
                                        recv_window, recv_pktsize,
@@ -2477,7 +2484,7 @@ class SSHServerConnection(SSHConnection):
                  authorized_client_keys, kex_algs, encryption_algs, mac_algs,
                  compression_algs, allow_pty, session_factory,
                  session_encoding, sftp_factory, window, max_pktsize,
-                 rekey_bytes, rekey_seconds):
+                 rekey_bytes, rekey_seconds, login_timeout):
         super().__init__(server_factory, loop, kex_algs, encryption_algs,
                          mac_algs, compression_algs, rekey_bytes,
                          rekey_seconds, server=True)
@@ -2488,6 +2495,12 @@ class SSHServerConnection(SSHConnection):
         self._sftp_factory = sftp_factory
         self._window = window
         self._max_pktsize = max_pktsize
+
+        if login_timeout:
+            self._login_timer = loop.call_later(login_timeout,
+                                                self._login_timer_callback)
+        else:
+            self._login_timer = None
 
         server_host_keys = _load_private_key_list(server_host_keys, passphrase)
 
@@ -2519,6 +2532,28 @@ class SSHServerConnection(SSHConnection):
         self._key_options = {}
         self._cert_options = None
         self._kbdint_password_auth = False
+
+    def _cleanup(self, exc):
+        """Clean up this server connection"""
+
+        self._cancel_login_timer()
+        super()._cleanup(exc)
+
+    def _cancel_login_timer(self):
+        """Cancel the login timer"""
+
+        if self._login_timer:
+            self._login_timer.cancel()
+            self._login_timer = None
+
+    def _login_timer_callback(self):
+        """Close the connection if authentication hasn't completed yet"""
+
+        self._login_timer = None
+
+        if not self._auth_complete:
+            self.connection_lost(DisconnectError(DISC_CONNECTION_LOST,
+                                                 'Login timeout expired'))
 
     def _connection_made(self):
         """Handle the opening of a new connection"""
@@ -4190,13 +4225,14 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
                   session_encoding='utf-8', sftp_factory=None,
                   window=_DEFAULT_WINDOW, max_pktsize=_DEFAULT_MAX_PKTSIZE,
                   rekey_bytes=_DEFAULT_REKEY_BYTES,
-                  rekey_seconds=_DEFAULT_REKEY_SECONDS):
+                  rekey_seconds=_DEFAULT_REKEY_SECONDS,
+                  login_timeout=_DEFAULT_LOGIN_TIMEOUT):
     """Create an SSH server
 
        This function is a coroutine which can be run to create an SSH server
-       bound to the specified host and port. The return value is an
-       ``AbstractServer`` object which can be used later to shut down the
-       server.
+       bound to the specified host and port. The return value is an object
+       derived from :class:`asyncio.AbstractServer` which can be used to
+       later shut down the server.
 
        :param callable server_factory:
            A callable which returns an :class:`SSHServer` object that will
@@ -4279,6 +4315,9 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
        :param integer rekey_seconds: (optional)
            The maximum time in seconds before the SSH session key is
            renegotiated, defaulting to 1 hour
+       :param integer login_timeout: (optional)
+           The maximum time in seconds allowed for authentication to
+           complete, defaulting to 2 minutes
        :type family: ``socket.AF_UNSPEC``, ``socket.AF_INET``, or
                      ``socket.AF_INET6``
        :type flags: flags to pass to :meth:`getaddrinfo() <socket.getaddrinfo>`
@@ -4289,7 +4328,7 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
        :type mac_algs: list of strings
        :type compression_algs: list of strings
 
-       :returns: ``AbstractServer``
+       :returns: :class:`asyncio.AbstractServer`
 
     """
 
@@ -4311,7 +4350,7 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
                                    compression_algs, allow_pty,
                                    session_factory, session_encoding,
                                    sftp_factory, window, max_pktsize,
-                                   rekey_bytes, rekey_seconds)
+                                   rekey_bytes, rekey_seconds, login_timeout)
 
     return (yield from loop.create_server(conn_factory, host, port,
                                           family=family, flags=flags,
