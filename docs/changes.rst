@@ -3,6 +3,22 @@
 Change Log
 ==========
 
+Release 1.3.2 (26 Nov 2015)
+---------------------------
+
+* Added server-side support for handling password changes during password
+  authentication, and fixed a few other auth-related bugs.
+
+* Added the ability to override the automatic support for keyboard-interactive
+  authentication when password authentication is supported.
+
+* Fixed a race condition in unblocking streams.
+
+* Removed support for OpenSSH v00 certificates now that OpenSSH no longer
+  supports them.
+
+* Added unit tests for auth module.
+
 Release 1.3.1 (6 Nov 2015)
 --------------------------
 
