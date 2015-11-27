@@ -231,14 +231,14 @@ class SSHStreamSession:
 
         waiter = self._read_waiter[datatype]
         if waiter:
-            if not waiter.cancelled():
+            if not waiter.done():
                 waiter.set_result(None)
 
     def _unblock_drain(self):
         """Signal that more data can be written on the stream"""
 
         for waiter in self._drain_waiters:
-            if not waiter.cancelled():
+            if not waiter.done():
                 waiter.set_result(None)
 
     def connection_made(self, chan):
