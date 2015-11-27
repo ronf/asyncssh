@@ -181,6 +181,7 @@ SSHServer
    ======================================= =
    .. automethod:: password_auth_supported
    .. automethod:: validate_password
+   .. automethod:: change_password
    ======================================= =
 
    ============================================ =
@@ -962,6 +963,11 @@ read_authorized_keys
 
 Exceptions
 ==========
+
+PasswordChangeRequired
+----------------------
+
+.. autoexception:: PasswordChangeRequired
 
 BreakReceived
 -------------

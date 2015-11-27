@@ -15,7 +15,7 @@
 import asyncio
 
 from .constants import DISC_PROTOCOL_ERROR
-from .misc import DisconnectError
+from .misc import DisconnectError, PasswordChangeRequired
 from .packet import Boolean, Byte, String, UInt32, SSHPacketHandler
 from .saslprep import saslprep, SASLPrepError
 
@@ -42,8 +42,26 @@ _server_auth_handlers = {}
 class _Auth(SSHPacketHandler):
     """Parent class for authentication"""
 
-    def __init__(self):
+    def __init__(self, conn, coro):
+        self._conn = conn
         self._coro = None
+
+        self.create_task(coro)
+
+    def create_task(self, coro):
+        """Create an asynchronous auth task"""
+
+        self.cancel()
+        self._coro = asyncio.async(self.run_task(coro))
+
+    @asyncio.coroutine
+    def run_task(self, coro):
+        """Run an async auth task, catching disconnect errors"""
+
+        try:
+            yield from coro
+        except DisconnectError as exc:
+            self._conn.connection_lost(exc)
 
     def cancel(self):
         """Cancel any authentication in progress"""
@@ -52,15 +70,14 @@ class _Auth(SSHPacketHandler):
             self._coro.cancel()
             self._coro = None
 
+
 class _ClientAuth(_Auth):
     """Parent class for client authentication"""
 
     def __init__(self, conn, method):
-        super().__init__()
-
-        self._conn = conn
         self._method = method
-        self._coro = asyncio.async(self._start())
+
+        super().__init__(conn, self._start())
 
     @asyncio.coroutine
     def _start(self):
@@ -89,8 +106,6 @@ class _ClientNullAuth(_ClientAuth):
         """Start client null authentication"""
 
         self.send_request()
-
-    packet_handlers = {}
 
 
 class _ClientPublicKeyAuth(_ClientAuth):
@@ -193,9 +208,8 @@ class _ClientKbdIntAuth(_ClientAuth):
 
             prompts.append((prompt, echo))
 
-        self.cancel()
-        self._coro = asyncio.async(self._receive_challenge(name, instruction,
-                                                           lang, prompts))
+        self.create_task(self._receive_challenge(name, instruction,
+                                                 lang, prompts))
 
         return True
 
@@ -225,10 +239,10 @@ class _ClientPasswordAuth(_ClientAuth):
         self.send_request(Boolean(False), String(password))
 
     @asyncio.coroutine
-    def _change_password(self):
+    def _change_password(self, prompt, lang):
         """Start password change"""
 
-        result = yield from self._conn.password_change_requested()
+        result = yield from self._conn.password_change_requested(prompt, lang)
 
         if result == NotImplemented:
             # Password change not supported - move on to the next auth method
@@ -268,8 +282,8 @@ class _ClientPasswordAuth(_ClientAuth):
             raise DisconnectError(DISC_PROTOCOL_ERROR,
                                   'Invalid password change request') from None
 
-        self.cancel()
-        self._coro = asyncio.async(self._change_password())
+        self.auth_failed()
+        self.create_task(self._change_password(prompt, lang))
 
         return True
 
@@ -282,11 +296,9 @@ class _ServerAuth(_Auth):
     """Parent class for server authentication"""
 
     def __init__(self, conn, username, packet):
-        super().__init__()
-
-        self._conn = conn
         self._username = username
-        self._coro = asyncio.async(self._start(packet))
+
+        super().__init__(conn, self._start(packet))
 
     @asyncio.coroutine
     def _start(self, packet):
@@ -437,8 +449,7 @@ class _ServerKbdIntAuth(_ServerAuth):
 
         packet.check_end()
 
-        self.cancel()
-        self._coro = asyncio.async(self._validate_response(responses))
+        self.create_task(self._validate_response(responses))
 
     packet_handlers = {
         MSG_USERAUTH_INFO_RESPONSE: _process_info_response
@@ -470,12 +481,23 @@ class _ServerPasswordAuth(_ServerAuth):
             raise DisconnectError(DISC_PROTOCOL_ERROR, 'Invalid password auth '
                                   'request') from None
 
-        # TODO: Handle password change request
+        try:
+            if password_change:
+                result = yield from self._conn.change_password(self._username,
+                                                               password,
+                                                               new_password)
+            else:
+                result = \
+                    yield from self._conn.validate_password(self._username,
+                                                            password)
 
-        if (yield from self._conn.validate_password(self._username, password)):
-            self.send_success()
-        else:
-            self.send_failure()
+            if result:
+                self.send_success()
+            else:
+                self.send_failure()
+        except PasswordChangeRequired as exc:
+            self._conn.send_packet(Byte(MSG_USERAUTH_PASSWD_CHANGEREQ),
+                                   String(exc.prompt), String(exc.lang))
 
 
 def register_auth_method(alg, client_handler, server_handler):

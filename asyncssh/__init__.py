@@ -34,6 +34,7 @@ from .listener import SSHListener
 from .logging import logger
 
 from .misc import Error, DisconnectError, ChannelOpenError
+from .misc import PasswordChangeRequired
 from .misc import BreakReceived, SignalReceived, TerminalSizeChanged
 
 from .pbe import KeyEncryptionError

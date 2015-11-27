@@ -120,6 +120,27 @@ class ChannelOpenError(Error):
         super().__init__('Channel Open', code, reason, lang)
 
 
+class PasswordChangeRequired(Exception):
+    """SSH password change required
+
+       This exception is raised during password validation on the
+       server to indicate that a password change is required. It
+       shouuld be raised when the password provided is valid but
+       expired, to trigger the client to provide a new password.
+
+       :param string prompt:
+           The prompt requesting that the user enter a new password
+       :param string lang:
+           The language that the prompt is in
+
+    """
+
+    def __init__(self, prompt, lang=DEFAULT_LANG):
+        super().__init__('Password change required: %s' % prompt)
+        self.prompt = prompt
+        self.lang = lang
+
+
 class BreakReceived(Exception):
     """SSH break request received
 

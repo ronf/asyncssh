@@ -65,7 +65,8 @@ from .listener import SSHClientListener, SSHForwardListener
 
 from .mac import get_mac_algs, get_mac_params, get_mac
 
-from .misc import ChannelOpenError, DisconnectError, ip_address
+from .misc import ChannelOpenError, DisconnectError, PasswordChangeRequired
+from .misc import ip_address
 
 from .packet import Boolean, Byte, NameList, String, UInt32, UInt64
 from .packet import PacketDecodeError, SSHPacket, SSHPacketHandler
@@ -1322,7 +1323,8 @@ class SSHConnection(SSHPacketHandler):
         packet.check_end()
 
         if self.is_client() and self._auth:
-            if partial_success:
+            if partial_success: # pragma: no cover
+                # Partial success not implemented yet
                 self._auth.auth_succeeded()
             else:
                 self._auth.auth_failed()
@@ -1342,6 +1344,7 @@ class SSHConnection(SSHPacketHandler):
         packet.check_end()
 
         if self.is_client() and self._auth:
+            self._auth.auth_succeeded()
             self._auth.cancel()
             self._auth = None
             self._auth_in_progress = False
@@ -1904,10 +1907,10 @@ class SSHClientConnection(SSHConnection):
         return result
 
     @asyncio.coroutine
-    def password_change_requested(self):
+    def password_change_requested(self, prompt, lang):
         """Return a password to authenticate with and what to change it to"""
 
-        result = self._owner.password_change_requested()
+        result = self._owner.password_change_requested(prompt, lang)
 
         if asyncio.iscoroutine(result):
             result = yield from result
@@ -2263,6 +2266,13 @@ class SSHClientConnection(SSHConnection):
                 listen_port = packet.get_uint32()
                 dynamic = True
             else:
+                # OpenSSH 6.8 introduced a bug which causes the reply
+                # to contain an extra uint32 value of 0 when non-dynamic
+                # ports are requested, causing the check_end() call below
+                # to fail. This check works around this problem.
+                if len(packet.get_remaining_payload()) == 4:
+                    packet.get_uint32()
+
                 dynamic = False
 
             packet.check_end()
@@ -2663,13 +2673,28 @@ class SSHServerConnection(SSHConnection):
 
         return result
 
+    @asyncio.coroutine
+    def change_password(self, username, old_password, new_password):
+        """Handle a password change request for a user"""
+
+        result = self._owner.change_password(username, old_password,
+                                             new_password)
+
+        if asyncio.iscoroutine(result):
+            result = yield from result
+
+        return result
+
     def kbdint_auth_supported(self):
         """Return whether or not keyboard-interactive authentication
            is supported"""
 
-        if self._owner.kbdint_auth_supported():
+        result = self._owner.kbdint_auth_supported()
+
+        if result is True:
             return True
-        elif self._owner.password_auth_supported():
+        elif (result is NotImplemented and
+              self._owner.password_auth_supported()):
             self._kbdint_password_auth = True
             return True
         else:
@@ -2699,12 +2724,20 @@ class SSHServerConnection(SSHConnection):
             if len(responses) != 1:
                 return False
 
-            result = self._owner.validate_password(username, responses[0])
+            try:
+                result = self._owner.validate_password(username, responses[0])
+
+                if asyncio.iscoroutine(result):
+                    result = yield from result
+            except PasswordChangeRequired:
+                # Don't support password change requests for now in
+                # keyboard-interactive auth
+                result = False
         else:
             result = self._owner.validate_kbdint_response(username, responses)
 
-        if asyncio.iscoroutine(result):
-            result = yield from result
+            if asyncio.iscoroutine(result):
+                result = yield from result
 
         return result
 
@@ -3358,7 +3391,7 @@ class SSHClient:
            :param string prompt:
                The prompt requesting that the user enter a new password
            :param string lang:
-               the language that the prompt is in
+               The language that the prompt is in
 
            :returns: A tuple of two strings containing the old and new
                      passwords or ``NotImplemented`` if password changes
@@ -3672,6 +3705,13 @@ class SSHServer:
            be overridden by applications wishing to support password
            authentication.
 
+           If the password provided is valid but expired, this method
+           may raise :exc:`PasswordChangeRequired` to request that the
+           client provide a new password before authentication is
+           allowed to complete. In this case, the application must
+           override :meth:`change_password` to handle the password
+           change request.
+
            This method may be called multiple times with different
            passwords provided by the client. Applications may wish
            to limit the number of attempts which are allowed. This
@@ -3693,6 +3733,50 @@ class SSHServer:
            :returns: A boolean indicating if the specified password is
                      valid for the user being authenticated
 
+           :raises: :exc:`PasswordChangeRequired` if the password
+                    provided is expired and needs to be changed
+
+        """
+
+        return False
+
+    def change_password(self, username, old_password, new_password):
+        """Handle a request to change a user's password
+
+           This method is called when a user makes a request to
+           change their password. It should first validate that
+           the old password provided is correct and then attempt
+           to change the user's password to the new value.
+
+           If the old password provided is valid and the change to
+           the new password is successful, this method should
+           return ``True``. If the old password is not valid or
+           password changes are not supported, it should return
+           ``False``. It may also raise :exc:`PasswordChangeRequired`
+           to request that the client try again if the new password
+           is not acceptable for some reason.
+
+           If blocking operations need to be performed to determine the
+           validity of the old password or to change to the new password,
+           this method may be defined as a coroutine.
+
+           By default, this method returns ``False``, rejecting all
+           password changes.
+
+           :param string username:
+               The user whose password should be changed
+           :param string old_password:
+               The user's current password
+           :param string new_password:
+               The new password being requested
+
+           :returns: A boolean indicating if the password change
+                     is successful or not
+
+           :raises: :exc:`PasswordChangeRequired` if the new password
+                    is not acceptable and the client should be asked
+                    to provide another
+
         """
 
         return False
@@ -3708,12 +3792,19 @@ class SSHServer:
            to generate the apporiate challenges and validate the responses
            for the user being authenticated.
 
+           By default, this method returns ``NotImplemented`` tying
+           this authentication to password authentication. If the
+           application implements password authentication and this
+           method is not overridden, keyboard-interactive authentication
+           will be supported by prompting for a password and passing
+           that to the password authentication callbacks.
+
            :returns: A boolean indicating if keyboard-interactive
                      authentication is supported or not
 
         """
 
-        return False
+        return NotImplemented
 
     def get_kbdint_challenge(self, username, lang, submethods):
         """Return a keyboard-interactive auth challenge

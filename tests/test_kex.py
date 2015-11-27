@@ -12,9 +12,11 @@
 
 """Unit tests for key exchange"""
 
+import asyncio
+
 from hashlib import sha1
 
-from .util import TempDirTestCase, run
+from .util import asynctest, run, ConnectionStub, TempDirTestCase
 
 from asyncssh.dh import MSG_KEXDH_INIT, MSG_KEXDH_REPLY
 from asyncssh.dh import _KexDHGex, MSG_KEX_DH_GEX_GROUP
@@ -29,35 +31,22 @@ from asyncssh.public_key import decode_ssh_public_key, read_private_key
 # pylint: disable=invalid-name
 
 
-class _Conn:
-    """Stub class for connection object"""
-
-    _packets = []
-
-    @classmethod
-    def process_packets(cls):
-        """Process queued packets"""
-
-        while cls._packets:
-            peer, data = cls._packets.pop(0)
-            peer.process_packet(data)
+class _KexConnectionStub(ConnectionStub):
+    """Connection stub class to test key exchange"""
 
     def __init__(self, alg, peer, server):
-        self._peer = peer
-        self._server = server
-        self._key = None
+        super().__init__(peer, server)
+
+        self._key_future = asyncio.Future()
 
         self._kex = get_kex(self, alg)
 
-    def is_client(self):
-        """Return if this is a client connection"""
+    def process_packet(self, data):
+        """Process an incoming packet"""
 
-        return not self._server
-
-    def is_server(self):
-        """Return if this is a server connection"""
-
-        return self._server
+        packet = SSHPacket(data)
+        pkttype = packet.get_byte()
+        self._kex.process_packet(pkttype, packet)
 
     def get_hash_prefix(self):
         """Return the bytes used in calculating unique connection hashes"""
@@ -66,34 +55,15 @@ class _Conn:
 
         return b'prefix'
 
-    def process_packet(self, data):
-        """Handle an incoming SSH packet"""
-
-        packet = SSHPacket(data)
-        pkttype = packet.get_byte()
-
-        self._kex.process_packet(pkttype, packet)
-
-    def send_packet(self, *args):
-        """Handle a request to send an SSH packet"""
-
-        self._packets.append((self._peer, b''.join(args)))
-
     def send_newkeys(self, k, h):
         """Handle a request to send a new keys message"""
 
-        # TODO
-        self._key = self._kex.compute_key(k, h, b'A', h, 128)
+        self._key_future.set_result(self._kex.compute_key(k, h, b'A', h, 128))
 
     def get_key(self):
         """Return generated key data"""
 
-        return self._key
-
-    def get_peer(self):
-        """Return peer"""
-
-        return self._peer
+        return (yield from self._key_future)
 
     def simulate_dh_init(self, e):
         """Simulate receiving a DH init packet"""
@@ -137,11 +107,19 @@ class _Conn:
                                       String(server_pub), String(sig))))
 
 
-class _ClientConn(_Conn):
+class _KexClientStub(_KexConnectionStub):
     """Stub class for client connection"""
 
+    @classmethod
+    def make_pair(cls, alg):
+        """Make a client and server connection pair to test key exchange"""
+
+        client_conn = cls(alg)
+
+        return client_conn, client_conn.get_peer()
+
     def __init__(self, alg):
-        super().__init__(alg, _ServerConn(alg, self), False)
+        super().__init__(alg, _KexServerStub(alg, self), False)
 
     def validate_server_host_key(self, host_key_data):
         """Validate and return the server's host key"""
@@ -151,11 +129,11 @@ class _ClientConn(_Conn):
         return decode_ssh_public_key(host_key_data)
 
 
-class _ServerConn(_Conn):
+class _KexServerStub(_KexConnectionStub):
     """Stub class for server connection"""
 
-    def __init__(self, alg, client_conn):
-        super().__init__(alg, client_conn, True)
+    def __init__(self, alg, peer):
+        super().__init__(alg, peer, True)
 
         run('openssl genrsa -out priv 2048')
         priv_key = read_private_key('priv')
@@ -171,18 +149,17 @@ class _ServerConn(_Conn):
 class _TestKex(TempDirTestCase):
     """Unit tests for kex module"""
 
+    @asynctest
     def test_key_exchange_algs(self):
         """Unit test kex exchange algorithms"""
 
         for alg in get_kex_algs():
             with self.subTest(alg=alg):
-                client_conn = _ClientConn(alg)
-                server_conn = client_conn.get_peer()
+                client_conn, server_conn = _KexClientStub.make_pair(alg)
 
                 with self.subTest('Check matching keys'):
-                    _Conn.process_packets()
-                    self.assertEqual(client_conn.get_key(),
-                                     server_conn.get_key())
+                    self.assertEqual((yield from client_conn.get_key()),
+                                     (yield from server_conn.get_key()))
 
                 with self.subTest('Check bad init msg'):
                     with self.assertRaises(DisconnectError):
@@ -192,6 +169,10 @@ class _TestKex(TempDirTestCase):
                     with self.assertRaises(DisconnectError):
                         server_conn.process_packet(Byte(MSG_KEXDH_REPLY))
 
+                client_conn.close()
+                server_conn.close()
+
+    @asynctest
     def test_dh_gex_old(self):
         """Unit test old DH group exchange request"""
 
@@ -203,16 +184,21 @@ class _TestKex(TempDirTestCase):
         for size in (b'1024', b'2048'):
             with self.subTest('Old DH group exchange', size=size):
                 alg = b'diffie-hellman-group-exchange-sha1-' + size
-                client_conn = _ClientConn(alg)
-                server_conn = client_conn.get_peer()
-                _Conn.process_packets()
-                self.assertEqual(client_conn.get_key(), server_conn.get_key())
 
+                client_conn, server_conn = _KexClientStub.make_pair(alg)
+
+                self.assertEqual((yield from client_conn.get_key()),
+                                 (yield from server_conn.get_key()))
+
+                client_conn.close()
+                server_conn.close()
+
+    @asynctest
     def test_dh_errors(self):
         """Unit test error conditions in DH key exchange"""
 
-        client_conn = _ClientConn(b'diffie-hellman-group14-sha1')
-        server_conn = client_conn.get_peer()
+        client_conn, server_conn = \
+            _KexClientStub.make_pair(b'diffie-hellman-group14-sha1')
 
         with self.subTest('Invalid e value'):
             with self.assertRaises(DisconnectError):
@@ -227,11 +213,15 @@ class _TestKex(TempDirTestCase):
                 _, host_key_data = server_conn.get_server_host_key()
                 client_conn.simulate_dh_reply(host_key_data, 1, b'')
 
+        client_conn.close()
+        server_conn.close()
+
+    @asynctest
     def test_dh_gex_errors(self):
         """Unit test error conditions in DH group and key exchange"""
 
-        client_conn = _ClientConn(b'diffie-hellman-group-exchange-sha1')
-        server_conn = client_conn.get_peer()
+        client_conn, server_conn = \
+            _KexClientStub.make_pair(b'diffie-hellman-group-exchange-sha1')
 
         with self.subTest('Group sent to server'):
             with self.assertRaises(DisconnectError):
@@ -253,6 +243,10 @@ class _TestKex(TempDirTestCase):
             with self.assertRaises(DisconnectError):
                 client_conn.simulate_dh_gex_reply(b'', 1, b'')
 
+        client_conn.close()
+        server_conn.close()
+
+    @asynctest
     def test_ecdh_errors(self):
         """Unit test error conditions in ECDH key exchange"""
 
@@ -261,8 +255,8 @@ class _TestKex(TempDirTestCase):
         except ImportError: # pragma: no cover
             return
 
-        client_conn = _ClientConn(b'ecdh-sha2-nistp256')
-        server_conn = client_conn.get_peer()
+        client_conn, server_conn = \
+            _KexClientStub.make_pair(b'ecdh-sha2-nistp256')
 
         with self.subTest('Init sent to client'):
             with self.assertRaises(DisconnectError):
@@ -291,6 +285,10 @@ class _TestKex(TempDirTestCase):
                 server_pub = ECDH(b'nistp256').get_public()
                 client_conn.simulate_ecdh_reply(host_key_data, server_pub, b'')
 
+        client_conn.close()
+        server_conn.close()
+
+    @asynctest
     def test_curve25519dh_errors(self):
         """Unit test error conditions in Curve25519DH key exchange"""
 
@@ -299,8 +297,8 @@ class _TestKex(TempDirTestCase):
         except ImportError: # pragma: no cover
             return
 
-        client_conn = _ClientConn(b'curve25519-sha256@libssh.org')
-        server_conn = client_conn.get_peer()
+        client_conn, server_conn = \
+            _KexClientStub.make_pair(b'curve25519-sha256@libssh.org')
 
         with self.subTest('Invalid client public key'):
             with self.assertRaises(DisconnectError):
@@ -316,3 +314,6 @@ class _TestKex(TempDirTestCase):
                 _, host_key_data = server_conn.get_server_host_key()
                 server_pub = Curve25519DH().get_public()
                 client_conn.simulate_ecdh_reply(host_key_data, server_pub, b'')
+
+        client_conn.close()
+        server_conn.close()
