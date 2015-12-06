@@ -776,13 +776,13 @@ class SSHClientChannel(SSHChannel):
         if term_type:
             term_type = term_type.encode('ascii')
 
-            if len(term_size) == 4:
-                width, height, pixwidth, pixheight = term_size
+            if not term_size:
+                width = height = pixwidth = pixheight = 0
             elif len(term_size) == 2:
                 width, height = term_size
                 pixwidth = pixheight = 0
-            elif not term_size:
-                width = height = pixwidth = pixheight = 0
+            elif len(term_size) == 4:
+                width, height, pixwidth, pixheight = term_size
             else:
                 raise ValueError('If set, terminal size must be a tuple of '
                                  '2 or 4 integers')
