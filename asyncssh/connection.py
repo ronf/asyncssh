@@ -1956,9 +1956,12 @@ class SSHClientConnection(SSHConnection):
         if asyncio.iscoroutine(result):
             result = yield from result
 
-        if result is None and self._password is not None:
-            self._kbdint_password_auth = True
-            result = ''
+        if result is NotImplemented:
+            if self._password is not None and not self._kbdint_password_auth:
+                self._kbdint_password_auth = True
+                result = ''
+            else:
+                result = None
 
         return result
 
@@ -3484,7 +3487,7 @@ class SSHClient:
 
         """
 
-        return None
+        return NotImplemented
 
     def kbdint_challenge_received(self, name, instruction, lang, prompts):
         """A keyboard-interactive auth challenge has been received
