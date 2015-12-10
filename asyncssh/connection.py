@@ -16,6 +16,7 @@ import asyncio
 import getpass
 import os
 import socket
+import sys
 import time
 
 from collections import OrderedDict
@@ -62,6 +63,8 @@ from .kex import get_kex_algs, get_kex
 from .known_hosts import match_known_hosts
 
 from .listener import SSHClientListener, SSHForwardListener
+
+from .logging import logger
 
 from .mac import get_mac_algs, get_mac_params, get_mac
 
@@ -462,6 +465,8 @@ class SSHConnection(SSHPacketHandler):
             self._send_version()
         except DisconnectError as exc:
             self._loop.call_soon(self.connection_lost, exc)
+        except: # pylint: disable=bare-except
+            self._loop.call_soon(self.internal_error, sys.exc_info())
 
     def connection_lost(self, exc=None):
         """Handle the closing of a connection"""
@@ -470,6 +475,17 @@ class SSHConnection(SSHPacketHandler):
             exc = DisconnectError(DISC_CONNECTION_LOST, 'Connection lost')
 
         self._force_close(exc)
+
+    def internal_error(self, exc_info=None):
+        """Handle a fatal error in connection processing"""
+
+        if not exc_info:
+            exc_info = sys.exc_info()
+
+        logger.debug('Uncaught exception', exc_info=exc_info)
+        self.disconnect(DISC_BY_APPLICATION,
+                        'Uncaught exception: %s' % str(exc_info[1]))
+        self._loop.call_soon(self._cleanup, exc_info[1])
 
     def data_received(self, data):
         """Handle incoming data on the connection"""
@@ -482,6 +498,8 @@ class SSHConnection(SSHPacketHandler):
                     pass
             except DisconnectError as exc:
                 self._force_close(exc)
+            except: # pylint: disable=bare-except
+                self.internal_error()
 
     def eof_received(self):
         """Handle an incoming end of file on the connection"""
@@ -2919,6 +2937,9 @@ class SSHServerConnection(SSHConnection):
                 listener = yield from listener
             except OSError:
                 listener = None
+            except: # pylint: disable=bare-except
+                self.internal_error()
+                return
 
         if listener:
             if listen_port == 0:

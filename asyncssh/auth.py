@@ -56,12 +56,14 @@ class _Auth(SSHPacketHandler):
 
     @asyncio.coroutine
     def run_task(self, coro):
-        """Run an async auth task, catching disconnect errors"""
+        """Run an async auth task, reporting errors back to the connection"""
 
         try:
             yield from coro
         except DisconnectError as exc:
             self._conn.connection_lost(exc)
+        except: # pylint: disable=bare-except
+            self._conn.internal_error()
 
     def cancel(self):
         """Cancel any authentication in progress"""

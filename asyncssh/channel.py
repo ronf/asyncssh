@@ -298,6 +298,8 @@ class SSHChannel(SSHPacketHandler):
             self._conn.send_channel_open_failure(self._send_chan, exc.code,
                                                  exc.reason, exc.lang)
             self._loop.call_soon(self._cleanup)
+        except: # pylint: disable=bare-except
+            self._conn.internal_error()
 
     def process_open_confirmation(self, send_chan, send_window,
                                   send_pktsize, packet):
