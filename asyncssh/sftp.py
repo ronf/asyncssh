@@ -2866,6 +2866,7 @@ class SFTPServerSession(SFTPSession, SSHServerSession):
         while True:
             pkttype, pktid, packet = yield from self._packet_queue.get()
 
+            # pylint: disable=broad-except
             try:
                 if pkttype == FXP_EXTENDED:
                     pkttype = packet.get_string()
@@ -2910,6 +2911,11 @@ class SFTPServerSession(SFTPSession, SSHServerSession):
                 return_type = FXP_STATUS
                 result = (UInt32(exc.code) + String(exc.reason) +
                           String(exc.lang))
+            except Exception as exc: # pragma: no cover
+                return_type = FXP_STATUS
+                result = (UInt32(FX_FAILURE) +
+                          String('Uncaught exception: %s' % str(exc)) +
+                          String(DEFAULT_LANG))
 
             self.send_packet(Byte(return_type), UInt32(pktid), result)
 
