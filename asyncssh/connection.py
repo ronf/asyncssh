@@ -459,13 +459,14 @@ class SSHConnection(SSHPacketHandler):
         self._owner = self._protocol_factory()
         self._protocol_factory = None
 
+        # pylint: disable=bare-except
         try:
             self._connection_made()
             self._owner.connection_made(self)
             self._send_version()
         except DisconnectError as exc:
             self._loop.call_soon(self.connection_lost, exc)
-        except: # pylint: disable=bare-except
+        except: # pragma: no cover
             self._loop.call_soon(self.internal_error, sys.exc_info())
 
     def connection_lost(self, exc=None):
@@ -493,12 +494,13 @@ class SSHConnection(SSHPacketHandler):
         if data:
             self._inpbuf += data
 
+            # pylint: disable=bare-except
             try:
                 while self._inpbuf and self._recv_handler():
                     pass
             except DisconnectError as exc:
                 self._force_close(exc)
-            except: # pylint: disable=bare-except
+            except: # pragma: no cover
                 self.internal_error()
 
     def eof_received(self):
@@ -2933,11 +2935,12 @@ class SSHServerConnection(SSHConnection):
         """Finish processing a port forwarding request"""
 
         if asyncio.iscoroutine(listener):
+            # pylint: disable=bare-except
             try:
                 listener = yield from listener
             except OSError:
                 listener = None
-            except: # pylint: disable=bare-except
+            except: # pragma: no cover
                 self.internal_error()
                 return
 
@@ -3376,8 +3379,6 @@ class SSHClient:
            coming from the server.
 
         """
-
-        # pylint: disable=no-self-use
 
     def public_key_auth_requested(self):
         """Public key authentication has been requested

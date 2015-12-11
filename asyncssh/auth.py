@@ -58,11 +58,12 @@ class _Auth(SSHPacketHandler):
     def run_task(self, coro):
         """Run an async auth task, reporting errors back to the connection"""
 
+        # pylint: disable=bare-except
         try:
             yield from coro
         except DisconnectError as exc:
             self._conn.connection_lost(exc)
-        except: # pylint: disable=bare-except
+        except: # pragma: no cover
             self._conn.internal_error()
 
     def cancel(self):
