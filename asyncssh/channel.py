@@ -333,6 +333,7 @@ class SSHChannel(SSHPacketHandler):
             self._open_waiter.set_exception(
                 ChannelOpenError(code, reason, lang))
 
+        self._send_state = 'closed'
         self._open_waiter = None
         self._loop.call_soon(self._cleanup)
 
