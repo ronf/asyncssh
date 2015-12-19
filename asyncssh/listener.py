@@ -93,6 +93,20 @@ class SSHClientListener(SSHListener):
         self._max_pktsize = max_pktsize
         self._waiters = []
 
+    @asyncio.coroutine
+    def _close(self):
+        """Close this listener and wake up anything calling wait_closed"""
+
+        yield from self._conn.close_client_listener(self, self._listen_host,
+                                                    self._listen_port)
+
+        for waiter in self._waiters:
+            if not waiter.done():
+                waiter.set_result(None)
+
+        self._waiters = []
+        self._conn = None
+
     def process_connection(self, orig_host, orig_port):
         """Process a forwarded TCP connection"""
 
@@ -105,20 +119,20 @@ class SSHClientListener(SSHListener):
         return chan, self._session_factory(orig_host, orig_port)
 
     def get_port(self):
+        """Return the port number being listened on"""
+
         return self._listen_port
 
     def close(self):
-        asyncio.async(self._conn.close_client_listener(self, self._listen_host,
-                                                       self._listen_port),
-                      loop=self._loop)
-        self._conn = None
+        """Close this listener asynchronously"""
 
-        for waiter in self._waiters:
-            if not waiter.cancelled():
-                waiter.set_result(None)
+        if self._conn:
+            asyncio.async(self._close(), loop=self._loop)
 
     @asyncio.coroutine
     def wait_closed(self):
+        """Wait for this listener to finish closing"""
+
         if self._conn:
             waiter = asyncio.Future(loop=self._loop)
             self._waiters.append(waiter)
