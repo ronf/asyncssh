@@ -401,6 +401,11 @@ class SSHConnection(SSHPacketHandler):
                 listener.close()
             self._local_listeners = {}
 
+        if self._global_request_waiters:
+            for waiter in self._global_request_waiters:
+                if not waiter.cancelled():
+                    waiter.set_result((MSG_REQUEST_FAILURE, SSHPacket(b'')))
+
         if self._owner:
             self._owner.connection_lost(exc)
             self._owner = None
@@ -2070,10 +2075,11 @@ class SSHClientConnection(SSHConnection):
             b'cancel-tcpip-forward', String(listen_host.encode('utf-8')),
             UInt32(listen_port))
 
-        if self._dynamic_remote_listeners[listen_host] == listener:
+        if self._dynamic_remote_listeners.get(listen_host) == listener:
             del self._dynamic_remote_listeners[listen_host]
 
-        del self._remote_listeners[listen_host, listen_port]
+        if (listen_host, listen_port) in self._remote_listeners:
+            del self._remote_listeners[listen_host, listen_port]
 
     @asyncio.coroutine
     def create_session(self, session_factory, command=None, *, subsystem=None,
@@ -2975,6 +2981,8 @@ class SSHServerConnection(SSHConnection):
             raise DisconnectError(DISC_PROTOCOL_ERROR, 'No such listener')
 
         listener.close()
+
+        self._report_global_response(True)
 
     def send_auth_banner(self, msg, lang=DEFAULT_LANG):
         """Send an authentication banner to the client
