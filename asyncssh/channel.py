@@ -138,6 +138,20 @@ class SSHChannel(SSHPacketHandler):
         self._send_state = 'closed'
         self._recv_state = 'closed'
 
+    def _close(self):
+        """Close the channel for sending, and clean up if close received"""
+
+        # Flush any unsent data
+        self._send_buf = []
+        self._send_buf_len = 0
+
+        if self._send_state not in {'close_sent', 'closed'}:
+            self._send_packet(MSG_CHANNEL_CLOSE)
+            self._send_state = 'close_sent'
+
+        if self._recv_state == 'close_received':
+            self._loop.call_soon(self._cleanup)
+
     def _pause_resume_writing(self):
         """Pause or resume writing based on send buffer low/high water marks"""
 
@@ -180,8 +194,7 @@ class SSHChannel(SSHPacketHandler):
                 self._send_packet(MSG_CHANNEL_EOF)
                 self._send_state = 'eof_sent'
             elif self._send_state == 'close_pending':
-                self._send_packet(MSG_CHANNEL_CLOSE)
-                self._send_state = 'close_sent'
+                self._close()
 
     def _deliver_data(self, data, datatype):
         """Deliver incoming data to the session"""
@@ -268,7 +281,6 @@ class SSHChannel(SSHPacketHandler):
         if self._recv_state != 'closed':
             raise DisconnectError(DISC_PROTOCOL_ERROR, 'Channel already open')
 
-        self._send_state = 'open_received'
         self._send_chan = send_chan
         self._send_window = send_window
         self._send_pktsize = send_pktsize
@@ -408,16 +420,8 @@ class SSHChannel(SSHPacketHandler):
 
         packet.check_end()
 
-        # Flush any unsent data
-        self._send_buf = []
-        self._send_buf_len = 0
-
-        # If we haven't yet sent a close, send one now
-        if self._send_state not in {'close_sent', 'closed'}:
-            self._send_packet(MSG_CHANNEL_CLOSE)
-            self._send_state = 'close_sent'
-
-        self._loop.call_soon(self._cleanup)
+        self._recv_state = 'close_received'
+        self._close()
 
     def _process_request(self, pkttype, packet):
         """Process an incoming channel request"""
@@ -456,12 +460,6 @@ class SSHChannel(SSHPacketHandler):
     def _process_response(self, pkttype, packet):
         """Process a success or failure response"""
 
-        # pylint: disable=unused-argument
-
-        if self._send_state not in {'open', 'eof_pending', 'eof_sent',
-                                    'close_pending', 'close_sent'}:
-            raise DisconnectError(DISC_PROTOCOL_ERROR, 'Channel not open')
-
         packet.check_end()
 
         if self._request_waiters:
@@ -497,7 +495,6 @@ class SSHChannel(SSHPacketHandler):
                                UInt32(self._recv_window),
                                UInt32(self._recv_pktsize), *args)
 
-        self._send_state = 'open_sent'
         return (yield from self._open_waiter)
 
     def _send_packet(self, pkttype, *args):
@@ -532,9 +529,7 @@ class SSHChannel(SSHPacketHandler):
 
         """
 
-        if self._send_state not in {'close_sent', 'closed'}:
-            self._send_packet(MSG_CHANNEL_CLOSE)
-            self._send_state = 'close_sent'
+        self._close()
 
     def close(self):
         """Cleanly close the channel
@@ -705,11 +700,9 @@ class SSHChannel(SSHPacketHandler):
 
         """
 
-        if self._send_state != 'open':
-            raise BrokenPipeError('Channel not open for sending')
-
-        self._send_state = 'eof_pending'
-        self._flush_send_buf()
+        if self._send_state == 'open':
+            self._send_state = 'eof_pending'
+            self._flush_send_buf()
 
     def pause_reading(self):
         """Pause delivery of incoming data
