@@ -13,8 +13,10 @@
 """SSH listeners"""
 
 import asyncio
+import socket
 
 from .channel import SSHTCPChannel
+from .forward import SSHLocalPortForwarder
 
 
 class SSHListener(asyncio.AbstractServer):
@@ -54,28 +56,6 @@ class SSHListener(asyncio.AbstractServer):
         """
 
         raise NotImplementedError
-
-
-class SSHForwardListener(SSHListener):
-    """A TCP listener used when forwarding traffic fromm local ports"""
-
-    def __init__(self, listen_port, servers):
-        self._listen_port = listen_port
-        self._servers = servers
-
-    def get_port(self):
-        return self._listen_port
-
-    def close(self):
-        for server in self._servers:
-            server.close()
-
-        self._servers = []
-
-    @asyncio.coroutine
-    def wait_closed(self):
-        for server in self._servers:
-            yield from server.wait_closed()
 
 
 class SSHClientListener(SSHListener):
@@ -127,7 +107,7 @@ class SSHClientListener(SSHListener):
         """Close this listener asynchronously"""
 
         if self._conn:
-            asyncio.async(self._close(), loop=self._loop)
+            self._loop.create_task(self._close())
 
     @asyncio.coroutine
     def wait_closed(self):
@@ -137,3 +117,85 @@ class SSHClientListener(SSHListener):
             waiter = asyncio.Future(loop=self._loop)
             self._waiters.append(waiter)
             yield from waiter
+
+
+class SSHForwardListener(SSHListener):
+    """A TCP listener used when forwarding traffic from local ports"""
+
+    def __init__(self, listen_port, servers):
+        self._listen_port = listen_port
+        self._servers = servers
+
+    def get_port(self):
+        """Return the port number being listened on"""
+
+        return self._listen_port
+
+    def close(self):
+        """Close this listener"""
+
+        for server in self._servers:
+            server.close()
+
+        self._servers = []
+
+    @asyncio.coroutine
+    def wait_closed(self):
+        """Wait for this listener to finish closing"""
+
+        for server in self._servers:
+            yield from server.wait_closed()
+
+
+@asyncio.coroutine
+def create_forward_listener(loop, coro, listen_host, listen_port):
+    """Create a listener to forward traffic from local ports over SSH"""
+
+    def protocol_factory():
+        """Start a port forwarder for each new local connection"""
+
+        return SSHLocalPortForwarder(loop, coro)
+
+    if listen_host == '':
+        listen_host = None
+
+    addrinfo = yield from loop.getaddrinfo(listen_host, listen_port,
+                                           family=socket.AF_UNSPEC,
+                                           type=socket.SOCK_STREAM,
+                                           flags=socket.AI_PASSIVE)
+
+    if not addrinfo:
+        raise OSError('getaddrinfo() returned empty list')
+
+    servers = []
+
+    for family, socktype, proto, _, sa in addrinfo:
+        try:
+            sock = socket.socket(family, socktype, proto)
+        except OSError:
+            continue
+
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, True)
+
+        if family == socket.AF_INET6:
+            sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, True)
+
+        if sa[1] == 0:
+            sa = sa[:1] + (listen_port,) + sa[2:]
+
+        try:
+            sock.bind(sa)
+        except OSError as exc:
+            for server in servers:
+                server.close()
+
+            raise OSError(exc.errno, 'error while attempting to bind on '
+                          'address %r: %s' % (sa, exc.strerror)) from None
+
+        if listen_port == 0:
+            listen_port = sock.getsockname()[1]
+
+        server = yield from loop.create_server(protocol_factory, sock=sock)
+        servers.append(server)
+
+    return SSHForwardListener(listen_port, servers)

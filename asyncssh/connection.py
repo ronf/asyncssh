@@ -55,14 +55,13 @@ from .constants import MSG_REQUEST_FAILURE
 from .constants import OPEN_ADMINISTRATIVELY_PROHIBITED, OPEN_CONNECT_FAILED
 from .constants import OPEN_UNKNOWN_CHANNEL_TYPE
 
-from .forward import SSHPortForwarder, SSHLocalPortForwarder
-from .forward import SSHRemotePortForwarder
+from .forward import SSHPortForwarder
 
 from .kex import get_kex_algs, get_kex
 
 from .known_hosts import match_known_hosts
 
-from .listener import SSHClientListener, SSHForwardListener
+from .listener import SSHClientListener, create_forward_listener
 
 from .logging import logger
 
@@ -1056,65 +1055,6 @@ class SSHConnection(SSHPacketHandler):
         else:
             self._report_global_response(False)
 
-    @asyncio.coroutine
-    def _create_tcp_listener(self, listen_host, listen_port):
-        """Create a listener for TCP/IP port forwarding"""
-
-        if listen_host == '':
-            listen_host = None
-
-        addrinfo = yield from self._loop.getaddrinfo(listen_host, listen_port,
-                                                     family=socket.AF_UNSPEC,
-                                                     type=socket.SOCK_STREAM,
-                                                     flags=socket.AI_PASSIVE)
-
-        if not addrinfo:
-            raise OSError('getaddrinfo() returned empty list')
-
-        sockets = []
-
-        for family, socktype, proto, _, sa in addrinfo:
-            try:
-                sock = socket.socket(family, socktype, proto)
-            except OSError:
-                continue
-
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, True)
-
-            if family == socket.AF_INET6:
-                sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, True)
-
-            if sa[1] == 0:
-                sa = sa[:1] + (listen_port,) + sa[2:]
-
-            try:
-                sock.bind(sa)
-            except OSError as exc:
-                for sock in sockets:
-                    sock.close()
-
-                raise OSError(exc.errno, 'error while attempting to bind on '
-                              'address %r: %s' % (sa, exc.strerror)) from None
-
-            if listen_port == 0:
-                listen_port = sock.getsockname()[1]
-
-            sockets.append(sock)
-
-        return listen_port, sockets
-
-    @asyncio.coroutine
-    def _create_forward_listener(self, listen_port, sockets, factory):
-        """Create an SSHForwardListener for a set of listening sockets"""
-
-        servers = []
-
-        for sock in sockets:
-            server = yield from self._loop.create_server(factory, sock=sock)
-            servers.append(server)
-
-        return SSHForwardListener(listen_port, servers)
-
     def _connection_made(self):
         """Handle the opening of a new connection"""
 
@@ -1676,6 +1616,15 @@ class SSHConnection(SSHPacketHandler):
                          String(msg), String(lang))
 
     @asyncio.coroutine
+    def create_connection(self, session_factory, remote_host, remote_port,
+                          orig_host='', orig_port=0, *, encoding=None,
+                          window=_DEFAULT_WINDOW,
+                          max_pktsize=_DEFAULT_MAX_PKTSIZE):
+        """Create an SSH direct or forwarded TCP connection"""
+
+        raise NotImplementedError
+
+    @asyncio.coroutine
     def forward_connection(self, dest_host, dest_port):
         """Forward a tunneled SSH connection
 
@@ -1688,23 +1637,56 @@ class SSHConnection(SSHPacketHandler):
            :param integer dest_port:
                The port number to forward the connections to
 
-           :returns: coroutine that returns an :class:`SSHTCPSession`
+           :returns: :class:`SSHTCPSession`
 
         """
 
         try:
-            def protocol_factory():
-                """Return an SSH port forwarder tied to this connection"""
-
-                return SSHPortForwarder(self, self._loop)
-
-            _, peer = yield from self._loop.create_connection(protocol_factory,
+            _, peer = yield from self._loop.create_connection(SSHPortForwarder,
                                                               dest_host,
                                                               dest_port)
         except OSError as exc:
             raise ChannelOpenError(OPEN_CONNECT_FAILED, str(exc)) from None
 
-        return SSHRemotePortForwarder(self, self._loop, peer)
+        return SSHPortForwarder(peer)
+
+    @asyncio.coroutine
+    def forward_local_port(self, listen_host, listen_port,
+                           dest_host, dest_port):
+        """Set up local port forwarding
+
+           This method is a coroutine which attempts to set up port
+           forwarding from a local listening port to a remote host and port
+           via the SSH connection. If the request is successful, the
+           return value is an :class:`SSHListener` object which can be used
+           later to shut down the port forwarding.
+
+           :param string listen_host:
+               The hostname or address on the local host to listen on
+           :param integer listen_port:
+               The port number on the local host to listen on
+           :param string dest_host:
+               The hostname or address to forward the connections to
+           :param integer dest_port:
+               The port number to forward the connections to
+
+           :returns: :class:`SSHListener`
+
+           :raises: :exc:`OSError` if the listener can't be opened
+
+        """
+
+        @asyncio.coroutine
+        def tunnel_connection(session_factory, orig_host, orig_port):
+            """Forward a local connection over SSH"""
+
+            return (yield from self.create_connection(session_factory,
+                                                      dest_host, dest_port,
+                                                      orig_host, orig_port))
+
+        return (yield from create_forward_listener(self._loop,
+                                                   tunnel_connection,
+                                                   listen_host, listen_port))
 
 
 class SSHClientConnection(SSHConnection):
@@ -2174,7 +2156,7 @@ class SSHClientConnection(SSHConnection):
                 SSHReader(session, chan, EXTENDED_DATA_STDERR))
 
     @asyncio.coroutine
-    def create_connection(self, session_factory, dest_host, dest_port,
+    def create_connection(self, session_factory, remote_host, remote_port,
                           orig_host='', orig_port=0, *, encoding=None,
                           window=_DEFAULT_WINDOW,
                           max_pktsize=_DEFAULT_MAX_PKTSIZE):
@@ -2200,10 +2182,10 @@ class SSHClientConnection(SSHConnection):
            :param callable session_factory:
                A callable which returns an :class:`SSHClientSession` object
                that will be created to handle activity on this session
-           :param string dest_host:
-               The hostname or address to connect to
-           :param integer dest_port:
-               The port number to connect to
+           :param string remote_host:
+               The remote hostname or address to connect to
+           :param integer remote_port:
+               The remote port number to connect to
            :param string orig_host: (optional)
                The hostname or address of the client requesting the connection
            :param integer orig_port: (optional)
@@ -2223,8 +2205,8 @@ class SSHClientConnection(SSHConnection):
 
         chan = SSHTCPChannel(self, self._loop, encoding, window, max_pktsize)
 
-        return (yield from chan.connect(session_factory, dest_host, dest_port,
-                                        orig_host, orig_port))
+        return (yield from chan.connect(session_factory, remote_host,
+                                        remote_port, orig_host, orig_port))
 
     @asyncio.coroutine
     def open_connection(self, *args, **kwargs):
@@ -2368,45 +2350,6 @@ class SSHClientConnection(SSHConnection):
                                               *args, **kwargs))
 
     @asyncio.coroutine
-    def forward_local_port(self, listen_host, listen_port,
-                           dest_host, dest_port):
-        """Set up local port forwarding
-
-           This method is a coroutine which attempts to set up port
-           forwarding from a local listening port to a remote host and port
-           via the SSH connection. If the request is successful, the
-           return value is an :class:`SSHListener` object which can be used
-           later to shut down the port forwarding.
-
-           :param string listen_host:
-               The hostname or address on the local host to listen on
-           :param integer listen_port:
-               The port number on the local host to listen on
-           :param string dest_host:
-               The hostname or address to forward the connections to
-           :param integer dest_port:
-               The port number to forward the connections to
-
-           :returns: :class:`SSHListener`
-
-           :raises: :exc:`OSError` if the listener can't be opened
-
-        """
-
-        def factory():
-            """Return a local port forwarder"""
-
-            return SSHLocalPortForwarder(self, self._loop,
-                                         self.create_connection,
-                                         dest_host, dest_port)
-
-        listen_port, sockets = \
-            yield from self._create_tcp_listener(listen_host, listen_port)
-
-        return (yield from self._create_forward_listener(listen_port, sockets,
-                                                         factory))
-
-    @asyncio.coroutine
     def forward_remote_port(self, listen_host, listen_port,
                             dest_host, dest_port):
         """Set up remote port forwarding
@@ -2433,7 +2376,7 @@ class SSHClientConnection(SSHConnection):
         """
 
         def session_factory(orig_host, orig_port):
-            """Return an SSHTCPConnection used to do remote port forwarding"""
+            """Return an SSHTCPSession used to do remote port forwarding"""
 
             # pylint: disable=unused-argument
             return self.forward_connection(dest_host, dest_port)
@@ -2914,27 +2857,11 @@ class SSHServerConnection(SSHConnection):
             return
 
         if result is True:
-            result = self._create_default_forwarder(listen_host, listen_port)
+            result = self.forward_local_port(listen_host, listen_port,
+                                             listen_host, listen_port)
 
-        asyncio.async(self._finish_forward(result, listen_host, listen_port),
-                      loop=self._loop)
-
-    @asyncio.coroutine
-    def _create_default_forwarder(self, listen_host, listen_port):
-        """Create a TCP listener which does port forwarding"""
-
-        def factory():
-            """Return a local port forwarder"""
-
-            return SSHLocalPortForwarder(self, self._loop,
-                                         self.create_connection,
-                                         listen_host, listen_port)
-
-        listen_port, sockets = \
-            yield from self._create_tcp_listener(listen_host, listen_port)
-
-        return (yield from self._create_forward_listener(listen_port, sockets,
-                                                         factory))
+        self._loop.create_task(self._finish_forward(result, listen_host,
+                                                    listen_port))
 
     @asyncio.coroutine
     def _finish_forward(self, listener, listen_host, listen_port):
@@ -3209,7 +3136,7 @@ class SSHServerConnection(SSHConnection):
         return SSHTCPChannel(self, self._loop, encoding, window, max_pktsize)
 
     @asyncio.coroutine
-    def create_connection(self, session_factory, listen_host, listen_port,
+    def create_connection(self, session_factory, remote_host, remote_port,
                           orig_host='', orig_port=0, *, encoding=None,
                           window=_DEFAULT_WINDOW,
                           max_pktsize=_DEFAULT_MAX_PKTSIZE):
@@ -3217,7 +3144,7 @@ class SSHServerConnection(SSHConnection):
 
            This method is a coroutine which can be called to notify the
            client about a new inbound TCP connection arriving on the
-           specified listening host and port. If the connection is successfully
+           specified remote host and port. If the connection is successfully
            opened, a new SSH channel will be opened with data being handled
            by a :class:`SSHTCPSession` object created by ``session_factory``.
 
@@ -3235,10 +3162,10 @@ class SSHServerConnection(SSHConnection):
            :param callable session_factory:
                A callable which returns an :class:`SSHClientSession` object
                that will be created to handle activity on this session
-           :param string listen_host:
-               The hostname or address of the listener receiving the connection
-           :param integer listen_port:
-               The port number of the listener receiving the connection
+           :param string remote_host:
+               The hostname or address the connection was received on
+           :param integer remote_port:
+               The port number the connection was received on
            :param string orig_host: (optional)
                The hostname or address of the client requesting the connection
            :param integer orig_port: (optional)
@@ -3256,8 +3183,8 @@ class SSHServerConnection(SSHConnection):
 
         chan = SSHTCPChannel(self, self._loop, encoding, window, max_pktsize)
 
-        return (yield from chan.accept(session_factory, listen_host,
-                                       listen_port, orig_host, orig_port))
+        return (yield from chan.accept(session_factory, remote_host,
+                                       remote_port, orig_host, orig_port))
 
     @asyncio.coroutine
     def open_connection(self, handler_factory, *args, **kwargs):
