@@ -72,12 +72,13 @@ class _KexECDH(Kex):
             raise DisconnectError(DISC_PROTOCOL_ERROR,
                                   'Invalid kex init msg') from None
 
-        host_key, host_key_data = self._conn.get_server_host_key()
+        host_key = self._conn.get_server_host_key()
 
-        h = self._compute_hash(host_key_data, k)
+        h = self._compute_hash(host_key.public_data, k)
         sig = host_key.sign(h)
 
-        self._conn.send_packet(Byte(MSG_KEX_ECDH_REPLY), String(host_key_data),
+        self._conn.send_packet(Byte(MSG_KEX_ECDH_REPLY),
+                               String(host_key.public_data),
                                String(self._server_pub), String(sig))
 
         self._conn.send_newkeys(k, h)

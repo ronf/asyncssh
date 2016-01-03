@@ -52,19 +52,7 @@ class _Auth(SSHPacketHandler):
         """Create an asynchronous auth task"""
 
         self.cancel()
-        self._coro = asyncio.async(self.run_task(coro))
-
-    @asyncio.coroutine
-    def run_task(self, coro):
-        """Run an async auth task, reporting errors back to the connection"""
-
-        # pylint: disable=bare-except
-        try:
-            yield from coro
-        except DisconnectError as exc:
-            self._conn.connection_lost(exc)
-        except: # pragma: no cover
-            self._conn.internal_error()
+        self._coro = self._conn.create_task(coro)
 
     def cancel(self):
         """Cancel any authentication in progress"""
@@ -95,10 +83,12 @@ class _ClientAuth(_Auth):
     def auth_failed(self):
         """Callback when auth fails"""
 
+    @asyncio.coroutine
     def send_request(self, *args, key=None):
         """Send a user authentication request"""
 
-        self._conn.send_userauth_request(self._method, *args, key=key)
+        yield from self._conn.send_userauth_request(self._method,
+                                                    *args, key=key)
 
 
 class _ClientNullAuth(_ClientAuth):
@@ -108,7 +98,7 @@ class _ClientNullAuth(_ClientAuth):
     def _start(self):
         """Start client null authentication"""
 
-        self.send_request()
+        yield from self.send_request()
 
 
 class _ClientPublicKeyAuth(_ClientAuth):
@@ -118,15 +108,24 @@ class _ClientPublicKeyAuth(_ClientAuth):
     def _start(self):
         """Start client public key authentication"""
 
-        self._alg, self._key, self._key_data = \
-            yield from self._conn.public_key_auth_requested()
+        self._keypair = yield from self._conn.public_key_auth_requested()
 
-        if self._alg is None:
+        if self._keypair is None:
             self._conn.try_next_auth()
             return
 
-        self.send_request(Boolean(False), String(self._alg),
-                          String(self._key_data))
+        yield from self.send_request(Boolean(False),
+                                     String(self._keypair.algorithm),
+                                     String(self._keypair.public_data))
+
+    @asyncio.coroutine
+    def _send_signed_request(self):
+        """Send signed public key request"""
+
+        yield from self.send_request(Boolean(True),
+                                     String(self._keypair.algorithm),
+                                     String(self._keypair.public_data),
+                                     key=self._keypair)
 
     def _process_public_key_ok(self, pkttype, packet):
         """Process a public key ok response"""
@@ -137,11 +136,11 @@ class _ClientPublicKeyAuth(_ClientAuth):
         key_data = packet.get_string()
         packet.check_end()
 
-        if algorithm != self._alg or key_data != self._key_data:
+        if (algorithm != self._keypair.algorithm or
+                key_data != self._keypair.public_data):
             raise DisconnectError(DISC_PROTOCOL_ERROR, 'Key mismatch')
 
-        self.send_request(Boolean(True), String(algorithm),
-                          String(key_data), key=self._key)
+        self.create_task(self._send_signed_request())
         return True
 
     packet_handlers = {
@@ -162,7 +161,7 @@ class _ClientKbdIntAuth(_ClientAuth):
             self._conn.try_next_auth()
             return
 
-        self.send_request(String(''), String(submethods))
+        yield from self.send_request(String(''), String(submethods))
 
     @asyncio.coroutine
     def _receive_challenge(self, name, instruction, lang, prompts):
@@ -239,7 +238,7 @@ class _ClientPasswordAuth(_ClientAuth):
             self._conn.try_next_auth()
             return
 
-        self.send_request(Boolean(False), String(password))
+        yield from self.send_request(Boolean(False), String(password))
 
     @asyncio.coroutine
     def _change_password(self, prompt, lang):
@@ -256,9 +255,9 @@ class _ClientPasswordAuth(_ClientAuth):
 
         self._password_change = True
 
-        self.send_request(Boolean(True),
-                          String(old_password.encode('utf-8')),
-                          String(new_password.encode('utf-8')))
+        yield from self.send_request(Boolean(True),
+                                     String(old_password.encode('utf-8')),
+                                     String(new_password.encode('utf-8')))
 
     def auth_succeeded(self):
         if self._password_change:

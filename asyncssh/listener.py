@@ -107,7 +107,7 @@ class SSHClientListener(SSHListener):
         """Close this listener asynchronously"""
 
         if self._conn:
-            self._loop.create_task(self._close())
+            self._conn.create_task(self._close())
 
     @asyncio.coroutine
     def wait_closed(self):
@@ -148,13 +148,13 @@ class SSHForwardListener(SSHListener):
 
 
 @asyncio.coroutine
-def create_forward_listener(loop, coro, listen_host, listen_port):
+def create_forward_listener(conn, loop, coro, listen_host, listen_port):
     """Create a listener to forward traffic from local ports over SSH"""
 
     def protocol_factory():
         """Start a port forwarder for each new local connection"""
 
-        return SSHLocalPortForwarder(loop, coro)
+        return SSHLocalPortForwarder(conn, coro)
 
     if listen_host == '':
         listen_host = None

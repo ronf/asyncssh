@@ -16,7 +16,7 @@ import asyncio
 
 from hashlib import sha1
 
-from .util import asynctest, run, ConnectionStub, TempDirTestCase
+from .util import asynctest, run, ConnectionStub, AsyncTestCase
 
 from asyncssh.dh import MSG_KEXDH_INIT, MSG_KEXDH_REPLY
 from asyncssh.dh import _KexDHGex, MSG_KEX_DH_GEX_GROUP
@@ -26,6 +26,7 @@ from asyncssh.kex import register_kex_alg, get_kex_algs, get_kex
 from asyncssh.misc import DisconnectError
 from asyncssh.packet import SSHPacket, Byte, MPInt, String
 from asyncssh.public_key import decode_ssh_public_key, read_private_key
+from asyncssh.public_key import SSHKeyPair
 
 # Short variable names are used here, matching names in the specs
 # pylint: disable=invalid-name
@@ -137,8 +138,7 @@ class _KexServerStub(_KexConnectionStub):
 
         run('openssl genrsa -out priv 2048')
         priv_key = read_private_key('priv')
-        self._server_host_key = (priv_key, String(priv_key.algorithm) +
-                                 priv_key.encode_ssh_public())
+        self._server_host_key = SSHKeyPair(priv_key)
 
     def get_server_host_key(self):
         """Return the server host key"""
@@ -146,7 +146,7 @@ class _KexServerStub(_KexConnectionStub):
         return self._server_host_key
 
 
-class _TestKex(TempDirTestCase):
+class _TestKex(AsyncTestCase):
     """Unit tests for kex module"""
 
     @asynctest
@@ -210,8 +210,8 @@ class _TestKex(TempDirTestCase):
 
         with self.subTest('Invalid signature'):
             with self.assertRaises(DisconnectError):
-                _, host_key_data = server_conn.get_server_host_key()
-                client_conn.simulate_dh_reply(host_key_data, 1, b'')
+                host_key = server_conn.get_server_host_key()
+                client_conn.simulate_dh_reply(host_key.public_data, 1, b'')
 
         client_conn.close()
         server_conn.close()
@@ -276,14 +276,15 @@ class _TestKex(TempDirTestCase):
 
         with self.subTest('Invalid server public key'):
             with self.assertRaises(DisconnectError):
-                _, host_key_data = server_conn.get_server_host_key()
-                client_conn.simulate_ecdh_reply(host_key_data, b'', b'')
+                host_key = server_conn.get_server_host_key()
+                client_conn.simulate_ecdh_reply(host_key.public_data, b'', b'')
 
         with self.subTest('Invalid signature'):
             with self.assertRaises(DisconnectError):
-                _, host_key_data = server_conn.get_server_host_key()
+                host_key = server_conn.get_server_host_key()
                 server_pub = ECDH(b'nistp256').get_public()
-                client_conn.simulate_ecdh_reply(host_key_data, server_pub, b'')
+                client_conn.simulate_ecdh_reply(host_key.public_data,
+                                                server_pub, b'')
 
         client_conn.close()
         server_conn.close()
@@ -306,14 +307,15 @@ class _TestKex(TempDirTestCase):
 
         with self.subTest('Invalid server public key'):
             with self.assertRaises(DisconnectError):
-                _, host_key_data = server_conn.get_server_host_key()
-                client_conn.simulate_ecdh_reply(host_key_data, b'', b'')
+                host_key = server_conn.get_server_host_key()
+                client_conn.simulate_ecdh_reply(host_key.public_data, b'', b'')
 
         with self.subTest('Invalid signature'):
             with self.assertRaises(DisconnectError):
-                _, host_key_data = server_conn.get_server_host_key()
+                host_key = server_conn.get_server_host_key()
                 server_pub = Curve25519DH().get_public()
-                client_conn.simulate_ecdh_reply(host_key_data, server_pub, b'')
+                client_conn.simulate_ecdh_reply(host_key.public_data,
+                                                server_pub, b'')
 
         client_conn.close()
         server_conn.close()

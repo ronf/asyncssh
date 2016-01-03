@@ -14,7 +14,7 @@
 
 import asyncio
 
-from .util import asynctest, run, ConnectionStub, TempDirTestCase
+from .util import asynctest, run, ConnectionStub, AsyncTestCase
 
 from asyncssh.auth import MSG_USERAUTH_PK_OK, lookup_client_auth
 from asyncssh.auth import get_server_auth_methods, lookup_server_auth
@@ -22,11 +22,30 @@ from asyncssh.constants import MSG_USERAUTH_REQUEST, MSG_USERAUTH_FAILURE
 from asyncssh.constants import MSG_USERAUTH_SUCCESS
 from asyncssh.misc import DisconnectError, PasswordChangeRequired
 from asyncssh.packet import SSHPacket, Boolean, Byte, NameList, String
-from asyncssh.public_key import read_private_key, read_certificate
+from asyncssh.public_key import read_private_key, read_certificate, SSHKeyPair
 
 
 class _AuthConnectionStub(ConnectionStub):
     """Connection stub class to test authentication"""
+
+    @asyncio.coroutine
+    def _run_task(self, coro):
+        """Run an asynchronous task"""
+
+        try:
+            yield from coro
+        except DisconnectError as exc:
+            self.connection_lost(exc)
+
+    def create_task(self, coro):
+        """Create an asynchronous task"""
+
+        return asyncio.async(self._run_task(coro))
+
+    def connection_lost(self, exc):
+        """Handle the closing of a connection"""
+
+        raise NotImplementedError
 
     def process_packet(self, data):
         """Process an incoming packet"""
@@ -124,6 +143,7 @@ class _AuthClientStub(_AuthConnectionStub):
         self._auth = None
         self._auth_waiter = None
 
+    @asyncio.coroutine
     def send_userauth_request(self, method, *args, key=None):
         """Send a user authentication request"""
 
@@ -131,7 +151,12 @@ class _AuthClientStub(_AuthConnectionStub):
                            String(b'service'), String(method)) + args)
 
         if key:
-            packet += String(key.sign(String('') + packet))
+            sig = key.sign(String('') + packet)
+
+            if asyncio.iscoroutine(sig):
+                sig = yield from sig
+
+            packet += String(sig)
 
         self.send_packet(packet)
 
@@ -139,14 +164,10 @@ class _AuthClientStub(_AuthConnectionStub):
     def public_key_auth_requested(self):
         """Return key to use for public key authentication"""
 
-        if self._client_cert:
-            return (self._client_cert.algorithm, self._client_key,
-                    self._client_cert.data)
-        elif self._client_key:
-            return (self._client_key.algorithm, self._client_key,
-                    self._client_key.get_ssh_public_key())
+        if self._client_key:
+            return SSHKeyPair(self._client_key, self._client_cert)
         else:
-            return None, None, None
+            return None
 
     @asyncio.coroutine
     def password_auth_requested(self):
@@ -322,7 +343,7 @@ class _AuthServerStub(_AuthConnectionStub):
         return self._success
 
 
-class _TestAuth(TempDirTestCase):
+class _TestAuth(AsyncTestCase):
     """Unit tests for auth module"""
 
     @asyncio.coroutine
@@ -380,33 +401,30 @@ class _TestAuth(TempDirTestCase):
     def test_publickey_auth(self):
         """Unit test public key authentication"""
 
-        run('openssl genrsa -out priv 2048')
-        run('chmod 600 priv')
-        run('openssl rsa -pubout -in priv -out pub')
-        run('ssh-keygen -i -f pub -m pkcs8 > sshpub')
-        run('ssh-keygen -s priv -I name sshpub')
-        run('mv sshpub-cert.pub cert')
+        run('ssh-keygen -q -b 2048 -t rsa -N "" -f ckey')
+        run('ssh-keygen -s ckey -I name ckey')
 
         with self.subTest('Public key auth not available'):
             yield from self.check_auth(b'publickey', (False, None))
 
         with self.subTest('Untrusted key'):
             yield from self.check_auth(b'publickey', (False, None),
-                                       client_key='priv')
+                                       client_key='ckey')
 
         with self.subTest('Trusted key'):
             yield from self.check_auth(b'publickey', (True, None),
-                                       client_key='priv', success=True)
+                                       client_key='ckey', success=True)
 
         with self.subTest('Trusted certificate'):
             yield from self.check_auth(b'publickey', (True, None),
-                                       client_key='priv', client_cert='cert',
+                                       client_key='ckey',
+                                       client_cert='ckey-cert.pub',
                                        success=True)
 
         with self.subTest('Invalid PK_OK message'):
             with self.assertRaises(DisconnectError):
                 yield from self.check_auth(b'publickey', (False, None),
-                                           client_key='priv',
+                                           client_key='ckey',
                                            override_pk_ok=True)
 
     @asynctest

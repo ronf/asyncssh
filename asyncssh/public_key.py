@@ -526,6 +526,31 @@ class SSHCertificateV01(SSHCertificate):
                          valid_before, options, extensions)
 
 
+class SSHKeyPair:
+    """Class which holds an SSH key pair
+
+       This class holds a private key and associated public data
+       which can either be the matching public key or a certificate
+       which has signed that public key.
+
+    """
+
+    def __init__(self, key, cert=None):
+        self._key = key
+
+        if cert:
+            self.algorithm = cert.algorithm
+            self.public_data = cert.data
+        else:
+            self.algorithm = key.algorithm
+            self.public_data = key.get_ssh_public_key()
+
+    def sign(self, data):
+        """Return a signature of the specified data using this key"""
+
+        return self._key.sign(data)
+
+
 def _decode_pkcs1_private(pem_name, key_data):
     """Decode a PKCS#1 format private key"""
 

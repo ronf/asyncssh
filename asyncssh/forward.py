@@ -115,9 +115,9 @@ class SSHPortForwarder(SSHTCPSession):
 class SSHLocalPortForwarder(SSHPortForwarder):
     """SSH local port forwarding connection handler"""
 
-    def __init__(self, loop, coro):
+    def __init__(self, conn, coro):
         super().__init__()
-        self._loop = loop
+        self._conn = conn
         self._coro = coro
 
     @asyncio.coroutine
@@ -145,4 +145,4 @@ class SSHLocalPortForwarder(SSHPortForwarder):
         super().connection_made(transport)
 
         orig_host, orig_port = transport.get_extra_info('peername')[:2]
-        self._loop.create_task(self._forward(orig_host, orig_port))
+        self._conn.create_task(self._forward(orig_host, orig_port))

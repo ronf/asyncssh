@@ -38,17 +38,14 @@ except (ImportError, OSError, AttributeError): # pragma: no cover
 
 
 def asynctest(func):
-    """Decorator for async tests"""
+    """Decorator for async tests, for use with AsyncTestCase"""
 
     @functools.wraps(func)
-    def async_wrapper(*args, **kwargs):
+    def async_wrapper(self, *args, **kwargs):
         """Run a function as a coroutine and wait for it to finish"""
 
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        wrapped_func = asyncio.coroutine(func)(*args, **kwargs)
-        loop.run_until_complete(wrapped_func)
-        loop.close()
+        wrapped_func = asyncio.coroutine(func)(self, *args, **kwargs)
+        return self.loop.run_until_complete(wrapped_func)
 
     return async_wrapper
 
@@ -132,9 +129,66 @@ class TempDirTestCase(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.tempdir = tempfile.TemporaryDirectory()
-        os.chdir(cls.tempdir.name)
+        """Create temporary directory and set it as current directory"""
+
+        cls._tempdir = tempfile.TemporaryDirectory()
+        os.chdir(cls._tempdir.name)
 
     @classmethod
     def tearDownClass(cls):
-        cls.tempdir.cleanup()
+        """Clean up temporary directory"""
+
+        cls._tempdir.cleanup()
+
+
+class AsyncTestCase(TempDirTestCase):
+    """Unit test class which supports tests using asyncio"""
+
+    loop = None
+
+    @classmethod
+    def setUpClass(cls):
+        """Set up event loop to run async tests and run async class setup"""
+
+        super().setUpClass()
+
+        cls.loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(cls.loop)
+
+        try:
+            # pylint: disable=no-member
+            cls.loop.run_until_complete(cls.asyncSetUpClass())
+        except AttributeError:
+            pass
+
+    @classmethod
+    def tearDownClass(cls):
+        """Run async class teardown and close event loop"""
+
+        try:
+            # pylint: disable=no-member
+            cls.loop.run_until_complete(cls.asyncTearDownClass())
+        except AttributeError:
+            pass
+
+        cls.loop.close()
+
+        super().tearDownClass()
+
+    def setUp(self):
+        """Run async setup if any"""
+
+        try:
+            # pylint: disable=no-member
+            self.loop.run_until_complete(self.asyncSetUp())
+        except AttributeError:
+            pass
+
+    def tearDown(self):
+        """Run async teardown if any"""
+
+        try:
+            # pylint: disable=no-member
+            self.loop.run_until_complete(self.asyncTearDown())
+        except AttributeError:
+            pass
