@@ -26,7 +26,7 @@ from asyncssh.kex import register_kex_alg, get_kex_algs, get_kex
 from asyncssh.misc import DisconnectError
 from asyncssh.packet import SSHPacket, Byte, MPInt, String
 from asyncssh.public_key import decode_ssh_public_key, read_private_key
-from asyncssh.public_key import SSHKeyPair
+from asyncssh.public_key import SSHLocalKeyPair
 
 # Short variable names are used here, matching names in the specs
 # pylint: disable=invalid-name
@@ -138,7 +138,7 @@ class _KexServerStub(_KexConnectionStub):
 
         run('openssl genrsa -out priv 2048')
         priv_key = read_private_key('priv')
-        self._server_host_key = SSHKeyPair(priv_key)
+        self._server_host_key = SSHLocalKeyPair(priv_key)
 
     def get_server_host_key(self):
         """Return the server host key"""

@@ -557,7 +557,7 @@ Listener Classes
 SSHListener
 -----------
 
-.. autoclass:: SSHListener
+.. autoclass:: SSHListener()
 
    =========================== =
    .. automethod:: get_port
@@ -571,7 +571,7 @@ Stream Classes
 SSHReader
 ---------
 
-.. autoclass:: SSHReader
+.. autoclass:: SSHReader()
 
    ============================== =
    .. autoattribute:: channel
@@ -585,7 +585,7 @@ SSHReader
 SSHWriter
 ---------
 
-.. autoclass:: SSHWriter
+.. autoclass:: SSHWriter()
 
    ============================== =
    .. autoattribute:: channel
@@ -755,7 +755,7 @@ SFTPName
 
 .. autoclass:: SFTPName()
 
-.. index:: Public key support
+.. index:: Public key functions
 .. _PublicKeyFunctions:
 
 Public Key Support
@@ -814,7 +814,7 @@ Encrypted private keys can be loaded by making an explicit call to
 correct passphrase. The resulting :class:`SSHKey` objects can then
 be included in thie list, each with an optional matching certificate.
 
-.. index:: Specifying private keys
+.. index:: Specifying public keys
 .. _SpecifyingPublicKeys:
 
 Specifying public keys
@@ -841,6 +841,13 @@ SSHKey
    .. automethod:: write_private_key
    .. automethod:: write_public_key
    ================================== =
+
+SSHKeyPair
+----------
+
+.. autoclass:: SSHKeyPair()
+
+   .. automethod:: sign
 
 SSHCertificate
 --------------
@@ -894,10 +901,27 @@ read_certificate_list
 
 .. autofunction:: read_certificate_list
 
-.. index:: Exceptions
-.. _Exceptions:
+.. index:: SSH agent support
 
-Known hosts
+SSH Agent Support
+=================
+
+SSHAgentClient
+--------------
+
+.. autoclass:: SSHAgentClient()
+
+   ======================== =
+   .. automethod:: get_keys
+   .. automethod:: close
+   ======================== =
+
+connect_agent
+-------------
+
+.. autofunction:: connect_agent
+
+Known Hosts
 ===========
 
 .. index:: Specifying known hosts
@@ -920,7 +944,7 @@ keys, and revoked keys which should no longer be trusted.
 See :ref:`SpecifyingPublicKeys` for the allowed form of each of
 these values.
 
-Authorized keys
+Authorized Keys
 ===============
 
 AsyncSSH supports OpenSSH-style authorized_keys files, including the
@@ -960,6 +984,9 @@ read_authorized_keys
 --------------------
 
 .. autofunction:: read_authorized_keys
+
+.. index:: Exceptions
+.. _Exceptions:
 
 Exceptions
 ==========

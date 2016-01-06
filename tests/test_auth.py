@@ -22,7 +22,8 @@ from asyncssh.constants import MSG_USERAUTH_REQUEST, MSG_USERAUTH_FAILURE
 from asyncssh.constants import MSG_USERAUTH_SUCCESS
 from asyncssh.misc import DisconnectError, PasswordChangeRequired
 from asyncssh.packet import SSHPacket, Boolean, Byte, NameList, String
-from asyncssh.public_key import read_private_key, read_certificate, SSHKeyPair
+from asyncssh.public_key import read_private_key, read_certificate
+from asyncssh.public_key import SSHLocalKeyPair
 
 
 class _AuthConnectionStub(ConnectionStub):
@@ -165,7 +166,7 @@ class _AuthClientStub(_AuthConnectionStub):
         """Return key to use for public key authentication"""
 
         if self._client_key:
-            return SSHKeyPair(self._client_key, self._client_cert)
+            return SSHLocalKeyPair(self._client_key, self._client_cert)
         else:
             return None
 

@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2015 by Ron Frederick <ronf@timeheart.net>.
+# Copyright (c) 2013-2016 by Ron Frederick <ronf@timeheart.net>.
 # All rights reserved.
 #
 # This program and the accompanying materials are made available under
@@ -20,6 +20,8 @@ from .constants import *
 
 # pylint: enable=wildcard-import
 
+from .agent import SSHAgentClient, connect_agent
+
 from .auth_keys import SSHAuthorizedKeys
 from .auth_keys import import_authorized_keys, read_authorized_keys
 
@@ -39,7 +41,8 @@ from .misc import BreakReceived, SignalReceived, TerminalSizeChanged
 
 from .pbe import KeyEncryptionError
 
-from .public_key import SSHKey, SSHCertificate, KeyImportError, KeyExportError
+from .public_key import SSHKey, SSHKeyPair, SSHCertificate
+from .public_key import KeyImportError, KeyExportError
 from .public_key import import_private_key, import_public_key
 from .public_key import import_certificate
 from .public_key import read_private_key, read_public_key, read_certificate

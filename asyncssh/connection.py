@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2015 by Ron Frederick <ronf@timeheart.net>.
+# Copyright (c) 2013-2016 by Ron Frederick <ronf@timeheart.net>.
 # All rights reserved.
 #
 # This program and the accompanying materials are made available under
@@ -82,7 +82,7 @@ from .public_key import import_private_key, import_public_key
 from .public_key import read_private_key, read_public_key
 from .public_key import read_private_key_list, read_public_key_list
 from .public_key import import_certificate, read_certificate
-from .public_key import SSHKeyPair, KeyImportError
+from .public_key import SSHKeyPair, SSHLocalKeyPair, KeyImportError
 
 from .saslprep import saslprep, SASLPrepError
 
@@ -173,6 +173,61 @@ def _load_private_key(key, passphrase=None):
     return key, cert
 
 
+def _load_private_keypair(key, passphrase=None):
+    """Load an SSH key pair
+
+       This function loads an SSH key pair. The key argument can be
+       either an already loaded :class:`SSHKeyPair`, a reference
+       to a key and optional certificate as described in
+       :func:`_load_private_key`, or ``None``.
+
+       It returns an :class:`SSHKeyPair` or ``None``.
+
+    """
+
+    if isinstance(key, SSHKeyPair):
+        return key
+    elif key:
+        return SSHLocalKeyPair(_load_private_key(key, passphrase))
+    else:
+        return None
+
+
+def _load_private_keypair_list(keylist, passphrase=None):
+    """Load list of SSH key pairs
+
+       This function loads a collection of SSH key pairs. The keylist
+       argument can be either a filename to load private keys from
+       (without any certificates) or a list of values representing
+       key pairs as described in ::func::`_load_private_keypair`.
+
+       In cases where a private key is provided with a certificate,
+       the private key is added to the list both with and without
+       the certificate.
+
+       This function returns a list of :class:`SSHKeyPair` objects.
+
+    """
+
+    if isinstance(keylist, str):
+        keys = read_private_key_list(keylist, passphrase)
+        return [SSHLocalKeyPair(key) for key in keys]
+    else:
+        result = []
+
+        for key in keylist:
+            if isinstance(key, SSHKeyPair):
+                result.append(key)
+            else:
+                key, cert = _load_private_key(key, passphrase)
+
+                if cert:
+                    result.append(SSHLocalKeyPair(key, cert))
+
+                result.append(SSHLocalKeyPair(key))
+
+        return result
+
 def _load_public_key(key):
     """Load a public key
 
@@ -190,38 +245,6 @@ def _load_public_key(key):
 
     return key
 
-
-def _load_private_key_list(keylist, passphrase=None):
-    """Load list of private keys and optional associated certificates
-
-       This function loads a collection of private keys, each with
-       an optional certificate. The keylist argument can be either
-       a filename to load private keys from (without any certificates)
-       or a list of values representing keys and certificates as
-       described in ::func::`_load_private_key`.
-
-       In cases where a certificate is present, the private key is
-       added to the list both with and without the certificate.
-
-       This function returns a list of :class:`SSHKeyPair` objects.
-
-    """
-
-    if isinstance(keylist, str):
-        keys = read_private_key_list(keylist, passphrase)
-        return [SSHKeyPair(key) for key in keys]
-    else:
-        result = []
-
-        for key in keylist:
-            key, cert = _load_private_key(key, passphrase)
-
-            if cert:
-                result.append(SSHKeyPair(key, cert))
-
-            result.append(SSHKeyPair(key))
-
-        return result
 
 def _load_public_key_list(keylist):
     """Load public key list
@@ -311,7 +334,6 @@ class SSHConnection(SSHPacketHandler):
         self._compress_after_auth = False
         self._deferred_packets = []
 
-        self._recv_enabled = False
         self._recv_handler = self._recv_version
         self._recv_seq = 0
         self._recv_cipher = None
@@ -499,7 +521,15 @@ class SSHConnection(SSHPacketHandler):
         self._owner = self._protocol_factory()
         self._protocol_factory = None
 
-        self.create_task(self._connection_made())
+        # pylint: disable=bare-except
+        try:
+            self._connection_made()
+            self._owner.connection_made(self)
+            self._send_version()
+        except DisconnectError as exc:
+            self._loop.call_soon(self.connection_lost, exc)
+        except: # pragma: no cover
+            self._loop.call_soon(self.internal_error)
 
     def connection_lost(self, exc=None):
         """Handle the closing of a connection"""
@@ -525,7 +555,15 @@ class SSHConnection(SSHPacketHandler):
 
         if data:
             self._inpbuf += data
-            self._recv()
+
+            # pylint: disable=bare-except
+            try:
+                while self._inpbuf and self._recv_handler():
+                    pass
+            except DisconnectError as exc:
+                self._force_close(exc)
+            except: # pragma: no cover
+                self.internal_error()
 
     def eof_received(self):
         """Handle an incoming end of file on the connection"""
@@ -602,19 +640,6 @@ class SSHConnection(SSHPacketHandler):
             self._extra.update(server_version=version.decode('ascii'))
 
         self._send(version + b'\r\n')
-
-    def _recv(self):
-        """Process received  data from the SSH connection"""
-
-        if self._recv_enabled:
-            # pylint: disable=bare-except
-            try:
-                while self._inpbuf and self._recv_handler():
-                    pass
-            except DisconnectError as exc:
-                self._force_close(exc)
-            except: # pragma: no cover
-                self.internal_error()
 
     def _recv_version(self):
         """Receive and parse the remote SSH version"""
@@ -1094,19 +1119,10 @@ class SSHConnection(SSHPacketHandler):
         else:
             self._report_global_response(False)
 
-    @asyncio.coroutine
     def _connection_made(self):
         """Handle the opening of a new connection"""
 
-        result = self._owner.connection_made(self)
-
-        if asyncio.iscoroutine(result):
-            yield from result
-
-        self._send_version()
-
-        self._recv_enabled = True
-        self._recv()
+        raise NotImplementedError
 
     def _process_disconnect(self, pkttype, packet):
         """Process a disconnect message"""
@@ -1762,9 +1778,9 @@ class SSHClientConnection(SSHConnection):
     """
 
     def __init__(self, client_factory, loop, host, port, known_hosts,
-                 username, password, client_keys, passphrase, agent_path,
-                 kex_algs, encryption_algs, mac_algs, compression_algs,
-                 rekey_bytes, rekey_seconds, auth_waiter):
+                 username, password, client_keys, agent, kex_algs,
+                 encryption_algs, mac_algs, compression_algs, rekey_bytes,
+                 rekey_seconds, auth_waiter):
         super().__init__(client_factory, loop, kex_algs, encryption_algs,
                          mac_algs, compression_algs, rekey_bytes,
                          rekey_seconds, server=False)
@@ -1772,28 +1788,22 @@ class SSHClientConnection(SSHConnection):
         self._host = host
         self._port = port if port != _DEFAULT_PORT else None
         self._known_hosts = known_hosts
+        self._username = saslprep(username)
+        self._password = password
+        self._client_keys = client_keys
+        self._agent = agent
+
         self._server_host_keys = set()
         self._server_ca_keys = set()
         self._revoked_server_keys = set()
 
-        if username is None:
-            username = getpass.getuser()
-
-        self._username = saslprep(username)
-
-        self._password = password
         self._kbdint_password_auth = False
-
-        self._client_keys = client_keys
-        self._passphrase = passphrase
-        self._agent_path = agent_path
 
         self._remote_listeners = {}
         self._dynamic_remote_listeners = {}
 
         self._auth_waiter = auth_waiter
 
-    @asyncio.coroutine
     def _connection_made(self):
         """Handle the opening of a new connection"""
 
@@ -1838,33 +1848,6 @@ class SSHClientConnection(SSHConnection):
         if not self._server_host_key_algs:
             raise DisconnectError(DISC_HOST_KEY_NOT_VERIFYABLE,
                                   'No trusted server host keys available')
-
-        if self._client_keys:
-            self._client_keys = _load_private_key_list(self._client_keys,
-                                                       self._passphrase)
-        elif self._client_keys is not None:
-            self._agent = yield from connect_agent(self._agent_path)
-
-            if self._agent:
-                self._client_keys = yield from self._agent.get_keys()
-            elif self._client_keys is ():
-                for file in _DEFAULT_KEY_FILES:
-                    try:
-                        file = os.path.join(os.environ['HOME'], '.ssh', file)
-                        key, cert = _load_private_key(file, self._passphrase)
-
-                        if cert:
-                            self._client_keys.append(SSHKeyPair(key, cert))
-
-                        self._client_keys.append(SSHKeyPair(key))
-                    except OSError:
-                        pass
-
-        del self._known_hosts
-        del self._agent_path
-        del self._passphrase
-
-        yield from super()._connection_made()
 
     def _cleanup(self, exc):
         """Clean up this client connection"""
@@ -1963,8 +1946,7 @@ class SSHClientConnection(SSHConnection):
             if asyncio.iscoroutine(result):
                 result = yield from result
 
-            key, cert = _load_private_key(result)
-            return SSHKeyPair(key, cert) if key else None
+            return _load_private_keypair(result)
 
     @asyncio.coroutine
     def password_auth_requested(self):
@@ -2542,7 +2524,8 @@ class SSHServerConnection(SSHConnection):
         else:
             self._login_timer = None
 
-        server_host_keys = _load_private_key_list(server_host_keys, passphrase)
+        server_host_keys = _load_private_keypair_list(server_host_keys,
+                                                      passphrase)
 
         self._server_host_keys = OrderedDict()
 
@@ -2586,6 +2569,11 @@ class SSHServerConnection(SSHConnection):
         if not self._auth_complete:
             self.connection_lost(DisconnectError(DISC_CONNECTION_LOST,
                                                  'Login timeout expired'))
+
+    def _connection_made(self):
+        """Handle the opening of a new connection"""
+
+        pass
 
     def _choose_server_host_key(self, peer_host_key_algs):
         """Choose the server host key to use
@@ -4212,8 +4200,8 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
 
         return SSHClientConnection(client_factory, loop, host, port,
                                    known_hosts, username, password,
-                                   client_keys, passphrase, agent_path,
-                                   kex_algs, encryption_algs, mac_algs,
+                                   client_keys, agent, kex_algs,
+                                   encryption_algs, mac_algs,
                                    compression_algs, rekey_bytes,
                                    rekey_seconds, auth_waiter)
 
@@ -4222,6 +4210,30 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
 
     if not loop:
         loop = asyncio.get_event_loop()
+
+    if username is None:
+        username = getpass.getuser()
+
+    agent = None
+
+    if client_keys:
+        client_keys = _load_private_keypair_list(client_keys, passphrase)
+    elif client_keys is not None:
+        if agent_path is not None:
+            agent = yield from connect_agent(agent_path)
+
+        if agent:
+            client_keys = yield from agent.get_keys()
+        elif client_keys is ():
+            client_keys = []
+
+            for file in _DEFAULT_KEY_FILES:
+                try:
+                    file = os.path.join(os.environ['HOME'], '.ssh', file)
+                    key = _load_private_keypair_list([file], passphrase)
+                    client_keys.extend(key)
+                except OSError:
+                    pass
 
     auth_waiter = asyncio.Future(loop=loop)
 

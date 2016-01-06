@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2015 by Ron Frederick <ronf@timeheart.net>.
+# Copyright (c) 2013-2016 by Ron Frederick <ronf@timeheart.net>.
 # All rights reserved.
 #
 # This program and the accompanying materials are made available under
@@ -527,7 +527,40 @@ class SSHCertificateV01(SSHCertificate):
 
 
 class SSHKeyPair:
-    """Class which holds an SSH key pair
+    """Parent class which represents an asymmetric key pair
+
+       This is an abstract class which provides a method to sign data
+       with a private key and members to access the corresponding
+       algorithm and public key or certificate information needed to
+       identify what key was used for signing.
+
+       .. attribute:: algorithm
+
+          The public key or certificate algorithm associated with this
+          key pair.
+
+       .. attribute:: public_data
+
+          The public key associated with this key pair in OpenSSH binary
+          format.
+
+    """
+
+    def sign(self, data):
+        """Sign a block of data with this private key
+
+           :param string data:
+               The data to be signed.
+
+           :returns: A byte string containing the signature.
+
+        """
+
+        raise NotImplementedError
+
+
+class SSHLocalKeyPair(SSHKeyPair):
+    """Class which holds a local asymmetric key pair
 
        This class holds a private key and associated public data
        which can either be the matching public key or a certificate
@@ -546,7 +579,7 @@ class SSHKeyPair:
             self.public_data = key.get_ssh_public_key()
 
     def sign(self, data):
-        """Return a signature of the specified data using this key"""
+        """Sign a block of data with this private key"""
 
         return self._key.sign(data)
 

@@ -25,7 +25,8 @@ asyncio framework.
   asyncio.get_event_loop().run_until_complete(run_client())
 
 Check out the `examples`__ to get started!
-  __ http://asyncssh.readthedocs.org/en/stable/#client-examples
+
+__ http://asyncssh.readthedocs.org/en/stable/#client-examples
 
 Features
 --------
@@ -48,6 +49,7 @@ Features
 
 * Password, public key, and keyboard-interactive user authentication methods
 * Many types and formats of `public keys and certificates`__
+* Support for accessing keys managed by `ssh-agent`__
 * OpenSSH-style `known_hosts file`__ support
 * OpenSSH-style `authorized_keys file`__ support
 * Compatibility with OpenSSH "Encrypt then MAC" option for better security
@@ -55,12 +57,21 @@ Features
 * Designed to be easy to extend to support new forms of key exchange,
   authentication, encryption, and compression algorithms
 
+__ http://asyncssh.readthedocs.org/en/stable/api.html#key-exchange-algorithms
+__ http://asyncssh.readthedocs.org/en/stable/api.html#encryption-algorithms
+__ http://asyncssh.readthedocs.org/en/stable/api.html#mac-algorithms
+__ http://asyncssh.readthedocs.org/en/stable/api.html#compression-algorithms
+__ http://asyncssh.readthedocs.org/en/stable/api.html#public-key-support
+__ http://asyncssh.readthedocs.org/en/stable/api.html#ssh-agent-support
+__ http://asyncssh.readthedocs.org/en/stable/api.html#known-hosts
+__ http://asyncssh.readthedocs.org/en/stable/api.html#authorized-keys
+
 License
 -------
 
 This package is released under the following terms:
 
-  Copyright (c) 2013-2015 by Ron Frederick <ronf@timeheart.net>.
+  Copyright (c) 2013-2016 by Ron Frederick <ronf@timeheart.net>.
   All rights reserved.
 
   This program and the accompanying materials are made available under
@@ -129,13 +140,6 @@ Three mailing lists are available for AsyncSSH:
 * `asyncssh-dev@googlegroups.com`__: Development discussions
 * `asyncssh-users@googlegroups.com`__: End-user discussions
 
-__ http://asyncssh.readthedocs.org/en/stable/api.html#key-exchange-algorithms
-__ http://asyncssh.readthedocs.org/en/stable/api.html#encryption-algorithms
-__ http://asyncssh.readthedocs.org/en/stable/api.html#mac-algorithms
-__ http://asyncssh.readthedocs.org/en/stable/api.html#compression-algorithms
-__ http://asyncssh.readthedocs.org/en/stable/api.html#public-key-support
-__ http://asyncssh.readthedocs.org/en/stable/api.html#known-hosts
-__ http://asyncssh.readthedocs.org/en/stable/api.html#authorized-keys
 __ http://groups.google.com/d/forum/asyncssh-announce
 __ http://groups.google.com/d/forum/asyncssh-dev
 __ http://groups.google.com/d/forum/asyncssh-users
