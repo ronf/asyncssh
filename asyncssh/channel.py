@@ -117,16 +117,16 @@ class SSHChannel(SSHPacketHandler):
 
             self._request_waiters = []
 
+        if self._session:
+            self._session.connection_lost(exc)
+            self._session = None
+
         if self._close_waiters:
             for waiter in self._close_waiters:
                 if not waiter.cancelled():
                     waiter.set_result(None)
 
             self._close_waiters = []
-
-        if self._session:
-            self._session.connection_lost(exc)
-            self._session = None
 
         if self._conn:
             if self._recv_chan:
