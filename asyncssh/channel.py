@@ -73,7 +73,8 @@ class SSHChannel(SSHPacketHandler):
 
         self._open_waiter = None
         self._request_waiters = []
-        self._close_waiters = []
+
+        self._close_event = asyncio.Event()
 
         self.set_write_buffer_limits()
 
@@ -121,12 +122,7 @@ class SSHChannel(SSHPacketHandler):
             self._session.connection_lost(exc)
             self._session = None
 
-        if self._close_waiters:
-            for waiter in self._close_waiters:
-                if not waiter.cancelled():
-                    waiter.set_result(None)
-
-            self._close_waiters = []
+        self._close_event.set()
 
         if self._conn:
             if self._recv_chan:
@@ -554,10 +550,7 @@ class SSHChannel(SSHPacketHandler):
 
         """
 
-        if self._session:
-            waiter = asyncio.Future(loop=self._loop)
-            self._close_waiters.append(waiter)
-            yield from waiter
+        yield from self._close_event.wait()
 
     def get_extra_info(self, name, default=None):
         """Get additional information about the channel

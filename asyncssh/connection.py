@@ -388,7 +388,7 @@ class SSHConnection(SSHPacketHandler):
 
         self._local_listeners = {}
 
-        self._close_waiters = []
+        self._close_event = asyncio.Event()
 
         self._kex_algs = _select_algs('key exchange', kex_algs, get_kex_algs())
         self._enc_algs = _select_algs('encryption', encryption_algs,
@@ -446,12 +446,7 @@ class SSHConnection(SSHPacketHandler):
             self._owner.connection_lost(exc)
             self._owner = None
 
-        if self._close_waiters:
-            for waiter in self._close_waiters:
-                if not waiter.cancelled():
-                    waiter.set_result(None)
-
-            self._close_waiters = []
+        self._close_event.set()
 
         self._inpbuf = b''
         self._recv_handler = None
@@ -1620,10 +1615,7 @@ class SSHConnection(SSHPacketHandler):
 
         """
 
-        if self._owner:
-            waiter = asyncio.Future(loop=self._loop)
-            self._close_waiters.append(waiter)
-            yield from waiter
+        yield from self._close_event.wait()
 
     def disconnect(self, code, reason, lang=DEFAULT_LANG):
         """Disconnect the SSH connection
