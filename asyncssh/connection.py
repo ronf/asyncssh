@@ -388,7 +388,7 @@ class SSHConnection(SSHPacketHandler):
 
         self._local_listeners = {}
 
-        self._disconnected = False
+        self._close_waiters = []
 
         self._kex_algs = _select_algs('key exchange', kex_algs, get_kex_algs())
         self._enc_algs = _select_algs('encryption', encryption_algs,
@@ -445,6 +445,13 @@ class SSHConnection(SSHPacketHandler):
         if self._owner:
             self._owner.connection_lost(exc)
             self._owner = None
+
+        if self._close_waiters:
+            for waiter in self._close_waiters:
+                if not waiter.cancelled():
+                    waiter.set_result(None)
+
+            self._close_waiters = []
 
         self._inpbuf = b''
         self._recv_handler = None
@@ -1604,6 +1611,20 @@ class SSHConnection(SSHPacketHandler):
 
         self.disconnect(DISC_BY_APPLICATION, 'Disconnected by application')
 
+    @asyncio.coroutine
+    def wait_closed(self):
+        """Wait for this connection to close
+
+           This method is a coroutine which can be called to block until
+           this connection has finished closing.
+
+        """
+
+        if self._owner:
+            waiter = asyncio.Future(loop=self._loop)
+            self._close_waiters.append(waiter)
+            yield from waiter
+
     def disconnect(self, code, reason, lang=DEFAULT_LANG):
         """Disconnect the SSH connection
 
@@ -1637,6 +1658,8 @@ class SSHConnection(SSHPacketHandler):
 
         self._transport.close()
         self._transport = None
+
+        self._loop.call_soon(self._cleanup, None)
 
     def get_extra_info(self, name, default=None):
         """Get additional information about the connection

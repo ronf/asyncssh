@@ -235,13 +235,14 @@ SSHClientConnection
    .. automethod:: forward_remote_port
    =================================== =
 
-   ========================== =
+   =========================== =
    Connection close methods
-   ========================== =
+   =========================== =
    .. automethod:: abort
    .. automethod:: close
    .. automethod:: disconnect
-   ========================== =
+   .. automethod:: wait_closed
+   =========================== =
 
 SSHServerConnection
 -------------------
@@ -286,13 +287,14 @@ SSHServerConnection
    .. automethod:: create_tcp_channel
    ===================================== =
 
-   ========================== =
+   =========================== =
    Connection close methods
-   ========================== =
+   =========================== =
    .. automethod:: abort
    .. automethod:: close
    .. automethod:: disconnect
-   ========================== =
+   .. automethod:: wait_closed
+   =========================== =
 
 Session Classes
 ===============
