@@ -548,9 +548,7 @@ class SSHConnection(SSHPacketHandler):
             exc_info = sys.exc_info()
 
         logger.debug('Uncaught exception', exc_info=exc_info)
-        self.disconnect(DISC_BY_APPLICATION,
-                        'Uncaught exception: %s' % str(exc_info[1]))
-        self._loop.call_soon(self._cleanup, exc_info[1])
+        self._force_close(exc_info[1])
 
     def data_received(self, data):
         """Handle incoming data on the connection"""
