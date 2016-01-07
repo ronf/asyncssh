@@ -47,7 +47,7 @@ class _SSHAgentKeyPair(SSHKeyPair):
 
     @asyncio.coroutine
     def sign(self, data):
-        """Return a signature of the specified data using this key"""
+        """Sign a block of data with this private key"""
 
         return (yield from self._agent.sign(self.public_data, data))
 
@@ -55,125 +55,68 @@ class _SSHAgentKeyPair(SSHKeyPair):
 class SSHAgentClient:
     """SSH agent client"""
 
-    def __init__(self, loop):
+    def __init__(self, loop, agent_path):
         self._loop = loop
-        self._transport = None
-        self._inpbuf = b''
-        self._msglen = 0
-        self._recv_handler = self._recv_msghdr
-        self._waiters = []
-        self._exc = None
+        self._agent_path = agent_path
+        self._reader = None
+        self._writer = None
+        self._lock = asyncio.Lock()
 
-    def _cleanup(self, exc):
+    def _cleanup(self):
         """Clean up this SSH agent client"""
 
-        if not exc:
-            exc = BrokenPipeError('Agent connection closed')
+        if self._writer:
+            self._writer.close()
+            self._reader = None
+            self._writer = None
 
-        self._exc = exc
+    @asyncio.coroutine
+    def connect(self):
+        """Connect to the SSH agent"""
 
-        if self._waiters:
-            for waiter in self._waiters:
-                if waiter and not waiter.done():
-                    waiter.set_exception(exc)
-
-            self._waiters = []
-
-        if self._transport:
-            self._transport.close()
-            self._transport = None
-
-    def _recv_msghdr(self):
-        """Receive and parse an SSH agent message header"""
-
-        if len(self._inpbuf) < 4:
-            return False
-
-        self._msglen = int.from_bytes(self._inpbuf[:4], 'big')
-        self._inpbuf = self._inpbuf[4:]
-
-        self._recv_handler = self._recv_msg
-        return True
-
-    def _recv_msg(self):
-        """Receive the rest of an SSH agent message and process it"""
-
-        if len(self._inpbuf) < self._msglen:
-            return False
-
-        msg = SSHPacket(self._inpbuf[:self._msglen])
-        self._inpbuf = self._inpbuf[self._msglen:]
-
-        if self._waiters:
-            waiter = self._waiters.pop(0)
-
-            try:
-                msgtype = msg.get_byte()
-            except PacketDecodeError as exc:
-                self._cleanup(exc)
-            else:
-                waiter.set_result((msgtype, msg))
-        else:
-            self._cleanup(ValueError('Unexpected agent response'))
-
-        self._recv_handler = self._recv_msghdr
-        return True
-
-    def connection_made(self, transport):
-        """Handle a newly opened SSH agent connection"""
-
-        self._transport = transport
-
-    def connection_lost(self, exc):
-        """Handle an SSH agent connection close"""
-
-        self._cleanup(exc)
-
-    def data_received(self, data):
-        """Handle incoming data"""
-
-        if data:
-            self._inpbuf += data
-
-            while self._inpbuf and self._recv_handler():
-                pass
-
-    def eof_received(self):
-        """Handle an incoming end of file"""
-
-        self.connection_lost(None)
+        # pylint doesn't think open_unix_connection exists
+        # pylint: disable=no-member
+        self._reader, self._writer = \
+            yield from asyncio.open_unix_connection(self._agent_path,
+                                                    loop=self._loop)
 
     @asyncio.coroutine
     def _make_request(self, msgtype, *args):
         """Send an SSH agent request"""
 
-        if self._exc:
-            raise self._exc    # pylint: disable=raising-bad-type
+        with (yield from self._lock):
+            if not self._writer:
+                yield from self.connect()
 
-        waiter = asyncio.Future(loop=self._loop)
-        self._waiters.append(waiter)
+            payload = Byte(msgtype) + b''.join(args)
+            self._writer.write(UInt32(len(payload)) + payload)
 
-        payload = Byte(msgtype) + b''.join(args)
-        self._transport.write(UInt32(len(payload)) + payload)
+            resplen = yield from self._reader.readexactly(4)
+            resplen = int.from_bytes(resplen, 'big')
 
-        return (yield from waiter)
+            resp = yield from self._reader.readexactly(resplen)
+            resp = SSHPacket(resp)
+
+            resptype = resp.get_byte()
+
+            return resptype, resp
 
     @asyncio.coroutine
     def get_keys(self):
         """Request the available client keys
 
-           This method returna a list of client keys available in the
-           ssh-agent.
+           This method is a coroutine which returns a list of client keys
+           available in the ssh-agent.
 
            :returns: A list of :class:`SSHKeyPair` objects
 
         """
 
-        resp_type, resp = \
-            yield from self._make_request(SSH2_AGENTC_REQUEST_IDENTITIES)
+        try:
+            resptype, resp = \
+                yield from self._make_request(SSH2_AGENTC_REQUEST_IDENTITIES)
 
-        if resp_type == SSH2_AGENT_IDENTITIES_ANSWER:
-            try:
+            if resptype == SSH2_AGENT_IDENTITIES_ANSWER:
                 result = []
 
                 num_keys = resp.get_uint32()
@@ -185,31 +128,33 @@ class SSHAgentClient:
 
                 resp.check_end()
                 return result
-            except PacketDecodeError as exc:
-                raise ValueError(str(exc)) from None
-        else:
-            raise ValueError('Unknown SSH agent response: %d' % resp_type)
+            else:
+                raise ValueError('Unknown SSH agent response: %d' % resptype)
+        except (OSError, EOFError, PacketDecodeError) as exc:
+            self._cleanup()
+            raise ValueError(str(exc)) from None
 
     @asyncio.coroutine
     def sign(self, key_blob, data):
         """Sign a block of data with this private key"""
 
-        resp_type, resp = \
-            yield from self._make_request(SSH2_AGENTC_SIGN_REQUEST,
-                                          String(key_blob), String(data),
-                                          UInt32(0))
+        try:
+            resptype, resp = \
+                yield from self._make_request(SSH2_AGENTC_SIGN_REQUEST,
+                                              String(key_blob), String(data),
+                                              UInt32(0))
 
-        if resp_type == SSH2_AGENT_SIGN_RESPONSE:
-            try:
+            if resptype == SSH2_AGENT_SIGN_RESPONSE:
                 sig = resp.get_string()
                 resp.check_end()
                 return sig
-            except PacketDecodeError as exc:
-                raise ValueError(str(exc)) from None
-        elif resp_type == SSH_AGENT_FAILURE:
-            raise ValueError('Unknown key passed to SSH agent')
-        else:
-            raise ValueError('Unknown SSH agent response: %d' % resp_type)
+            elif resptype == SSH_AGENT_FAILURE:
+                raise ValueError('Unknown key passed to SSH agent')
+            else:
+                raise ValueError('Unknown SSH agent response: %d' % resptype)
+        except (OSError, EOFError, PacketDecodeError) as exc:
+            self._cleanup()
+            raise ValueError(str(exc)) from None
 
     def close(self):
         """Close the SSH agent connection
@@ -220,7 +165,7 @@ class SSHAgentClient:
 
         """
 
-        self._cleanup(None)
+        self._cleanup()
 
 
 @asyncio.coroutine
@@ -257,15 +202,10 @@ def connect_agent(agent_path=None, *, loop=None):
         if not agent_path:
             return None
 
-    def agent_factory():
-        """Return an SSH agent client"""
-
-        return SSHAgentClient(loop)
+    agent = SSHAgentClient(loop, agent_path)
 
     try:
-        _, agent = yield from loop.create_unix_connection(agent_factory,
-                                                          agent_path)
+        yield from agent.connect()
+        return agent
     except OSError:
-        agent = None
-
-    return agent
+        return None
