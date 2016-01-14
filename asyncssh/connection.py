@@ -86,7 +86,7 @@ from .public_key import SSHKeyPair, SSHLocalKeyPair, KeyImportError
 
 from .saslprep import saslprep, SASLPrepError
 
-from .sftp import SFTPClient, SFTPServer, SFTPClientSession
+from .sftp import SFTPClient, SFTPServer, SFTPClientHandler
 
 from .stream import SSHClientStreamSession, SSHServerStreamSession
 from .stream import SSHTCPStreamSession, SSHReader, SSHWriter
@@ -466,6 +466,8 @@ class SSHConnection(SSHPacketHandler):
     def _run_task(self, coro):
         """Run an async task, catching and reporting any errors"""
 
+        task = asyncio.Task.current_task(self._loop)
+
         # pylint: disable=bare-except
         try:
             yield from coro
@@ -473,8 +475,8 @@ class SSHConnection(SSHPacketHandler):
             self._force_close(exc)
         except: # pragma: no cover
             self.internal_error()
-        finally:
-            self._tasks.remove(asyncio.Task.current_task(self._loop))
+
+        self._tasks.remove(task)
 
     def create_task(self, coro):
         """Create an asynchronous task which catches and reports errors"""
@@ -1615,6 +1617,8 @@ class SSHConnection(SSHPacketHandler):
 
         yield from self._close_event.wait()
 
+        yield from asyncio.gather(*self._tasks, return_exceptions=True)
+
     def disconnect(self, code, reason, lang=DEFAULT_LANG):
         """Disconnect the SSH connection
 
@@ -2473,20 +2477,16 @@ class SSHClientConnection(SSHConnection):
 
         """
 
-        def session_factory():
-            """Return an SFTP client session handler"""
+        chan, session = yield from self.create_session(SSHClientStreamSession,
+                                                       subsystem='sftp',
+                                                       encoding=None)
 
-            return SFTPClientSession(self._loop, version_waiter)
+        handler = SFTPClientHandler(self, self._loop, SSHReader(session, chan),
+                                    SSHWriter(session, chan))
 
-        version_waiter = asyncio.Future(loop=self._loop)
+        yield from handler.start()
 
-        _, session = yield from self.create_session(session_factory,
-                                                    subsystem='sftp',
-                                                    encoding=None)
-
-        yield from version_waiter
-
-        return SFTPClient(session, path_encoding, path_errors)
+        return SFTPClient(handler, path_encoding, path_errors)
 
 
 class SSHServerConnection(SSHConnection):
@@ -4334,7 +4334,7 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
        :param callable session_factory: (optional)
            A callable or coroutine handler function which takes AsyncSSH
            stream objects for stdin, stdout, and stderr that will be called
-           each time a new shell, exec, or subsytem other than SFTP is
+           each time a new shell, exec, or subsystem other than SFTP is
            requested by the client. If not specified, sessions are rejected
            by default unless the :meth:`session_requested()
            <SSHServer.session_requested>` method is overridden on the

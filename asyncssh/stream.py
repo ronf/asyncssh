@@ -17,6 +17,7 @@ import asyncio
 from .constants import EXTENDED_DATA_STDERR
 from .misc import BreakReceived, SignalReceived, TerminalSizeChanged
 from .session import SSHClientSession, SSHServerSession, SSHTCPSession
+from .sftp import SFTPServerHandler
 
 
 class SSHReader:
@@ -200,6 +201,7 @@ class SSHStreamSession:
 
     def __init__(self):
         self._chan = None
+        self._conn = None
         self._loop = None
         self._limit = None
         self._exception = None
@@ -245,6 +247,7 @@ class SSHStreamSession:
         """Handle a newly opened channel"""
 
         self._chan = chan
+        self._conn = chan.get_connection()
         self._loop = chan.get_loop()
         self._limit = self._chan.get_recv_window()
 
@@ -447,15 +450,19 @@ class SSHServerStreamSession(SSHStreamSession, SSHServerSession):
         """Start a session for this newly opened server channel"""
 
         if self._chan.get_subsystem() == 'sftp':
-            self._chan.start_sftp_server(self._sftp_factory)
+            self._chan.set_encoding(None)
+
+            handler = SFTPServerHandler(self._sftp_factory, self._conn,
+                                        SSHReader(self, self._chan),
+                                        SSHWriter(self, self._chan)).start()
         else:
             handler = self._session_factory(SSHReader(self, self._chan),
                                             SSHWriter(self, self._chan),
                                             SSHWriter(self, self._chan,
                                                       EXTENDED_DATA_STDERR))
 
-            if asyncio.iscoroutine(handler):
-                asyncio.async(handler)
+        if asyncio.iscoroutine(handler):
+            self._conn.create_task(handler)
 
     def break_received(self, msec):
         """Handle an incoming break on the channel"""
@@ -493,4 +500,4 @@ class SSHTCPStreamSession(SSHStreamSession, SSHTCPSession):
                                             SSHWriter(self, self._chan))
 
             if asyncio.iscoroutine(handler):
-                asyncio.async(handler)
+                self._conn.create_task(handler)

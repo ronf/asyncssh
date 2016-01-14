@@ -23,7 +23,6 @@ from .constants import OPEN_CONNECT_FAILED, PTY_OP_RESERVED, PTY_OP_END
 from .constants import OPEN_REQUEST_PTY_FAILED, OPEN_REQUEST_SESSION_FAILED
 from .misc import ChannelOpenError, DisconnectError
 from .packet import Boolean, Byte, String, UInt32, SSHPacketHandler
-from .sftp import SFTPServerSession
 
 
 _EOF = object()
@@ -80,6 +79,11 @@ class SSHChannel(SSHPacketHandler):
 
         self._recv_chan = conn.add_channel(self)
 
+    def get_connection(self):
+        """Return the connection used by this channel"""
+
+        return self._conn
+
     def get_loop(self):
         """Return the event loop used by this channel"""
 
@@ -89,6 +93,11 @@ class SSHChannel(SSHPacketHandler):
         """Return the encoding used by this channel"""
 
         return self._encoding
+
+    def set_encoding(self, encoding):
+        """Set the encoding on this channel"""
+
+        self._encoding = encoding
 
     def get_recv_window(self):
         """Return the configured receive window for this channel"""
@@ -281,7 +290,7 @@ class SSHChannel(SSHPacketHandler):
         self._send_window = send_window
         self._send_pktsize = send_pktsize
 
-        asyncio.async(self._finish_open_request(session), loop=self._loop)
+        self._conn.create_task(self._finish_open_request(session))
 
     @asyncio.coroutine
     def _finish_open_request(self, session):
@@ -1133,36 +1142,6 @@ class SSHServerChannel(SSHChannel):
         packet.check_end()
 
         return self._session.break_received(msec)
-
-    def start_sftp_server(self, sftp_factory):
-        """Start an SFTP server for this session
-
-           This method can be used by an existing :class:`SSHServerSession`
-           to replace itself with an SFTP server session. Calls to this
-           method should be made from  :meth:`session_started
-           <SSHServerSession.session_started>` before any data is read
-           or written.  Once called, no further calls will be made on the
-           original session.
-
-             .. note:: The :meth:`connection_lost
-                       <SSHServerSession.connection_lost>` method will not
-                       be called on the original server session when this
-                       is used.
-
-           :param callable sftp_server:
-               A callable which returns an :class:`SFTPServer` object
-               that will be created to handle SFTP requests on this
-               channel.
-
-        """
-
-        # Reset the encoding to allow the transfer of binary data
-        self._encoding = None
-
-        # Replace the session with an SFTPServerSession
-        self._session = SFTPServerSession(sftp_factory(self._conn))
-        self._session.connection_made(self)
-        self._session.session_started()
 
     def get_environment(self):
         """Return the environment for this session
