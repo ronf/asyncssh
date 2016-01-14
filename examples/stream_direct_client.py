@@ -27,6 +27,8 @@ def run_client():
         response = yield from reader.read()
         sys.stdout.buffer.write(response)
 
+    yield from conn.wait_closed()
+
 try:
     asyncio.get_event_loop().run_until_complete(run_client())
 except (OSError, asyncssh.Error) as exc:

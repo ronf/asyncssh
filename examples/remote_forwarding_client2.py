@@ -32,6 +32,8 @@ def run_client():
         listener = yield from conn.create_server(connection_requested, '', 8080)
         yield from listener.wait_closed()
 
+    yield from conn.wait_closed()
+
 try:
     asyncio.get_event_loop().run_until_complete(run_client())
 except (OSError, asyncssh.Error) as exc:

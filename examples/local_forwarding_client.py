@@ -20,6 +20,8 @@ def run_client():
         listener = yield from conn.forward_local_port('', 8080, 'www.google.com', 80)
         yield from listener.wait_closed()
 
+    yield from conn.wait_closed()
+
 try:
     asyncio.get_event_loop().run_until_complete(run_client())
 except (OSError, asyncssh.Error) as exc:

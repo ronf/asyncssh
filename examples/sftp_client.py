@@ -20,6 +20,8 @@ def run_client():
         with (yield from conn.start_sftp_client()) as sftp:
             yield from sftp.get('example.txt')
 
+    yield from conn.wait_closed()
+
 try:
     asyncio.get_event_loop().run_until_complete(run_client())
 except (OSError, asyncssh.Error) as exc:
