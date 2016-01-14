@@ -85,21 +85,25 @@ class SSHAgentClient:
         """Send an SSH agent request"""
 
         with (yield from self._lock):
-            if not self._writer:
-                yield from self.connect()
+            try:
+                if not self._writer:
+                    yield from self.connect()
 
-            payload = Byte(msgtype) + b''.join(args)
-            self._writer.write(UInt32(len(payload)) + payload)
+                payload = Byte(msgtype) + b''.join(args)
+                self._writer.write(UInt32(len(payload)) + payload)
 
-            resplen = yield from self._reader.readexactly(4)
-            resplen = int.from_bytes(resplen, 'big')
+                resplen = yield from self._reader.readexactly(4)
+                resplen = int.from_bytes(resplen, 'big')
 
-            resp = yield from self._reader.readexactly(resplen)
-            resp = SSHPacket(resp)
+                resp = yield from self._reader.readexactly(resplen)
+                resp = SSHPacket(resp)
 
-            resptype = resp.get_byte()
+                resptype = resp.get_byte()
 
-            return resptype, resp
+                return resptype, resp
+            except (OSError, EOFError, PacketDecodeError) as exc:
+                self._cleanup()
+                raise ValueError(str(exc)) from None
 
     @asyncio.coroutine
     def get_keys(self):
@@ -112,49 +116,41 @@ class SSHAgentClient:
 
         """
 
-        try:
-            resptype, resp = \
-                yield from self._make_request(SSH2_AGENTC_REQUEST_IDENTITIES)
+        resptype, resp = \
+            yield from self._make_request(SSH2_AGENTC_REQUEST_IDENTITIES)
 
-            if resptype == SSH2_AGENT_IDENTITIES_ANSWER:
-                result = []
+        if resptype == SSH2_AGENT_IDENTITIES_ANSWER:
+            result = []
 
-                num_keys = resp.get_uint32()
-                for _ in range(num_keys):
-                    key_blob = resp.get_string()
-                    comment = resp.get_string()
+            num_keys = resp.get_uint32()
+            for _ in range(num_keys):
+                key_blob = resp.get_string()
+                comment = resp.get_string()
 
-                    result.append(_SSHAgentKeyPair(self, key_blob, comment))
+                result.append(_SSHAgentKeyPair(self, key_blob, comment))
 
-                resp.check_end()
-                return result
-            else:
-                raise ValueError('Unknown SSH agent response: %d' % resptype)
-        except (OSError, EOFError, PacketDecodeError) as exc:
-            self._cleanup()
-            raise ValueError(str(exc)) from None
+            resp.check_end()
+            return result
+        else:
+            raise ValueError('Unknown SSH agent response: %d' % resptype)
 
     @asyncio.coroutine
     def sign(self, key_blob, data):
         """Sign a block of data with this private key"""
 
-        try:
-            resptype, resp = \
-                yield from self._make_request(SSH2_AGENTC_SIGN_REQUEST,
-                                              String(key_blob), String(data),
-                                              UInt32(0))
+        resptype, resp = \
+            yield from self._make_request(SSH2_AGENTC_SIGN_REQUEST,
+                                          String(key_blob), String(data),
+                                          UInt32(0))
 
-            if resptype == SSH2_AGENT_SIGN_RESPONSE:
-                sig = resp.get_string()
-                resp.check_end()
-                return sig
-            elif resptype == SSH_AGENT_FAILURE:
-                raise ValueError('Unknown key passed to SSH agent')
-            else:
-                raise ValueError('Unknown SSH agent response: %d' % resptype)
-        except (OSError, EOFError, PacketDecodeError) as exc:
-            self._cleanup()
-            raise ValueError(str(exc)) from None
+        if resptype == SSH2_AGENT_SIGN_RESPONSE:
+            sig = resp.get_string()
+            resp.check_end()
+            return sig
+        elif resptype == SSH_AGENT_FAILURE:
+            raise ValueError('Unknown key passed to SSH agent')
+        else:
+            raise ValueError('Unknown SSH agent response: %d' % resptype)
 
     def close(self):
         """Close the SSH agent connection
