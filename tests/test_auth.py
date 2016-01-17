@@ -152,12 +152,7 @@ class _AuthClientStub(_AuthConnectionStub):
                            String(b'service'), String(method)) + args)
 
         if key:
-            sig = key.sign(String('') + packet)
-
-            if asyncio.iscoroutine(sig):
-                sig = yield from sig
-
-            packet += String(sig)
+            packet += String(key.sign(String('') + packet))
 
         self.send_packet(packet)
 
