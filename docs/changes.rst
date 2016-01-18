@@ -3,6 +3,46 @@
 Change Log
 ==========
 
+Release 1.4.0 (17 Jan 2016)
+---------------------------
+
+* Added ssh-agent client support, automatically using it when SSH_AUTH_SOCK
+  is set and client private keys aren't explicitly provided.
+
+* Added new wait_closed() API on SSHConnection to allow applications to wait
+  for a connection to be fully closed and updated examples to use it.
+
+* Added a new login_timeout argument when create an SSH server.
+
+* Added a missing acknowledgement response when canceling port forwarding
+  and fixed a few other issues related to cleaning up port forwarding
+  listeners.
+
+* Added handlers to improve the catching and reporting of exceptions that
+  are raised in asynchronous tasks.
+
+* Reworked channel state machine to perform clean up on a channel only
+  after a close is both sent and received.
+
+* Fixed SSHChannel to run the connection_lost() handler on the SSHSession
+  before unblocking callers of wait_closed().
+
+* Fixed wait_closed() on SSHListener to wait for the acknowledgement from
+  the SSH server before returning.
+
+* Fixed a race condition in port forwarding code.
+
+* Fixed a bug related to sending a close on a channel which got a failure
+  when being opened.
+
+* Fixed a bug related to handling term_type being set without term_size.
+
+* Fixed some issues related to the automatic conversion of client
+  keyboard-interactive auth to password auth. With this change, automatic
+  conversion will only occur if the application doesn't override the
+  kbdint_challenge_received() method and it will only attempt to
+  authenticate once with the password provided.
+
 Release 1.3.2 (26 Nov 2015)
 ---------------------------
 
