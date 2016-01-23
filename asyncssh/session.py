@@ -48,8 +48,8 @@ class SSHSession:
            This method is called when a session has started up. For
            client and server sessions, this will be called once a
            shell, exec, or subsystem request has been successfully
-           completed. For TCP sessions, it will be called immediately
-           after the connection is opened.
+           completed. For TCP and UNIX domain socket sessions, it will
+           be called immediately after the connection is opened.
 
         """
 
@@ -371,7 +371,7 @@ class SSHServerSession(SSHSession):
 
 
 class SSHTCPSession(SSHSession):
-    """SSH TCP connection session handler
+    """SSH TCP session handler
 
        Applications should subclass this when implementing a handler for
        SSH direct or forwarded TCP connections.
@@ -391,6 +391,39 @@ class SSHTCPSession(SSHSession):
        <SSHServer.server_requested>` on their :class:`SSHServer` object
        and call :meth:`create_connection()
        <SSHServerConnection.create_connection>` on their
+       :class:`SSHServerConnection` for each new connection, passing it a
+       factory which returns instances of this class.
+
+       When a connection is successfully opened, :meth:`session_started`
+       will be called, after which the application can begin sending data.
+       Received data will be passed to the :meth:`data_received` method.
+
+    """
+
+
+class SSHUNIXSession(SSHSession):
+    """SSH UNIX domain socket session handler
+
+       Applications should subclass this when implementing a handler for
+       SSH direct or forwarded UNIX domain socket connections.
+
+       SSH client applications wishing to open a direct connection should call
+       :meth:`create_unix_connection()
+       <SSHClientConnection.create_unix_connection>` on their
+       :class:`SSHClientConnection`, passing in a factory which returns
+       instances of this class.
+
+       Server applications wishing to allow direct connections should
+       implement the coroutine :meth:`unix_connection_requested()
+       <SSHServer.unix_connection_requested>` on their :class:`SSHServer`
+       object and have it return instances of this class.
+
+       Server applications wishing to allow connection forwarding back
+       to the client should implement the coroutine
+       :meth:`unix_server_requested() <SSHServer.unix_server_requested>`
+       on their :class:`SSHServer` object and call
+       :meth:`create_unix_connection()
+       <SSHServerConnection.create_unix_connection>` on their
        :class:`SSHServerConnection` for each new connection, passing it a
        factory which returns instances of this class.
 

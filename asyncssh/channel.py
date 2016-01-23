@@ -573,6 +573,12 @@ class SSHChannel(SSHPacketHandler):
            ``'remote_peername'`` are added to return the local and remote
            host and port information for the tunneled TCP connection.
 
+           For UNIX channels, the values ``'local_peername'`` and
+           ``'remote_peername'`` are added to return the local and remote
+           path information for the tunneled UNIX domain socket connection.
+           Since UNIX domain sockets provide no "source" address, only
+           one of these will be filled in.
+
            See :meth:`get_extra_info() <SSHClientConnection.get_extra_info>`
            on :class:`SSHClientConnection` for more information.
 
@@ -1422,3 +1428,60 @@ class SSHTCPChannel(SSHChannel):
 
         self._extra['local_peername'] = (dest_host, dest_port)
         self._extra['remote_peername'] = (orig_host, orig_port)
+
+class SSHUNIXChannel(SSHChannel):
+    """SSH UNIX domain socket channel"""
+
+    @asyncio.coroutine
+    def _finish_open_request(self, session):
+        """Finish processing a TCP channel open request"""
+
+        yield from super()._finish_open_request(session)
+
+        if self._session:
+            self._session.session_started()
+            self.resume_reading()
+
+    @asyncio.coroutine
+    def _open_unix(self, session_factory, chantype, path, *args):
+        """Open a UNIX domain socket channel"""
+
+        self._extra['local_peername'] = ''
+        self._extra['remote_peername'] = path
+
+        packet = yield from super()._open(chantype, String(path), *args)
+
+        # UNIX sessions should have no extra data in the open confirmation
+        packet.check_end()
+
+        self._session = session_factory()
+        self._session.connection_made(self)
+        self._session.session_started()
+        self.resume_reading()
+
+        return self, self._session
+
+    @asyncio.coroutine
+    def connect(self, session_factory, path):
+        """Create a new outbound UNIX domain socket session"""
+
+        # OpenSSH appears to have a bug which requires an originator
+        # host and port to be sent after the path name to connect to
+        # when opening a direct streamlocal channel.
+        return (yield from self._open_unix(session_factory,
+                                           b'direct-streamlocal@openssh.com',
+                                           path, String(''), UInt32(0)))
+
+    @asyncio.coroutine
+    def accept(self, session_factory, path):
+        """Create a new forwarded UNIX domain socket session"""
+
+        return (yield from self._open_unix(session_factory,
+                                           b'forwarded-streamlocal@openssh.com',
+                                           path, String('')))
+
+    def set_inbound_peer_names(self, dest_path):
+        """Set local and remote peer names for inbound connections"""
+
+        self._extra['local_peername'] = dest_path
+        self._extra['remote_peername'] = ''

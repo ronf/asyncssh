@@ -49,7 +49,8 @@ from .public_key import read_private_key, read_public_key, read_certificate
 from .public_key import read_private_key_list, read_public_key_list
 from .public_key import read_certificate_list
 
-from .session import SSHClientSession, SSHServerSession, SSHTCPSession
+from .session import SSHClientSession, SSHServerSession
+from .session import SSHTCPSession, SSHUNIXSession
 
 from .sftp import SFTPClient, SFTPServer, SFTPFile, SFTPError
 from .sftp import SFTPAttrs, SFTPVFSAttrs, SFTPName

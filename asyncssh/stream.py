@@ -16,7 +16,8 @@ import asyncio
 
 from .constants import EXTENDED_DATA_STDERR
 from .misc import BreakReceived, SignalReceived, TerminalSizeChanged
-from .session import SSHClientSession, SSHServerSession, SSHTCPSession
+from .session import SSHClientSession, SSHServerSession
+from .session import SSHTCPSession, SSHUNIXSession
 from .sftp import SFTPServerHandler
 
 
@@ -484,8 +485,8 @@ class SSHServerStreamSession(SSHStreamSession, SSHServerSession):
         self._unblock_read(None)
 
 
-class SSHTCPStreamSession(SSHStreamSession, SSHTCPSession):
-    """SSH TCP stream session handler"""
+class SSHSocketStreamSession(SSHStreamSession):
+    """Socket stream session handler"""
 
     def __init__(self, handler_factory=None):
         super().__init__()
@@ -493,7 +494,7 @@ class SSHTCPStreamSession(SSHStreamSession, SSHTCPSession):
         self._handler_factory = handler_factory
 
     def session_started(self):
-        """Start a session for this newly opened TCP channel"""
+        """Start a session for this newly opened socket channel"""
 
         if self._handler_factory:
             handler = self._handler_factory(SSHReader(self, self._chan),
@@ -501,3 +502,11 @@ class SSHTCPStreamSession(SSHStreamSession, SSHTCPSession):
 
             if asyncio.iscoroutine(handler):
                 self._conn.create_task(handler)
+
+
+class SSHTCPStreamSession(SSHSocketStreamSession, SSHTCPSession):
+    """TCP stream session handler"""
+
+
+class SSHUNIXStreamSession(SSHSocketStreamSession, SSHUNIXSession):
+    """UNIX stream session handler"""
