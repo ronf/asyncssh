@@ -762,7 +762,7 @@ class SSHClientChannel(SSHChannel):
 
     @asyncio.coroutine
     def create(self, session_factory, command, subsystem, env,
-               term_type, term_size, term_modes):
+               term_type, term_size, term_modes, agent_forwarding):
         """Create an SSH client session"""
 
         packet = yield from self._open(b'session')
@@ -811,6 +811,9 @@ class SSHClientChannel(SSHChannel):
                 self.close()
                 raise ChannelOpenError(OPEN_REQUEST_PTY_FAILED,
                                        'PTY request failed')
+
+        if agent_forwarding:
+            self._send_request(b'auth-agent-req@openssh.com')
 
         if command:
             result = yield from self._make_request(b'exec', String(command))

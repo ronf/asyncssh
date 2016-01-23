@@ -548,7 +548,7 @@ class SSHConnection(SSHPacketHandler):
         except DisconnectError as exc:
             self._loop.call_soon(self.connection_lost, exc)
         except: # pragma: no cover
-            self._loop.call_soon(self.internal_error)
+            self._loop.call_soon(self.internal_error, sys.exc_info())
 
     def connection_lost(self, exc=None):
         """Handle the closing of a connection"""
@@ -1933,9 +1933,9 @@ class SSHClientConnection(SSHConnection):
     """
 
     def __init__(self, client_factory, loop, host, port, known_hosts,
-                 username, password, client_keys, agent, kex_algs,
-                 encryption_algs, mac_algs, compression_algs, rekey_bytes,
-                 rekey_seconds, auth_waiter):
+                 username, password, client_keys, agent, agent_path,
+                 kex_algs, encryption_algs, mac_algs, compression_algs,
+                 rekey_bytes, rekey_seconds, auth_waiter):
         super().__init__(client_factory, loop, kex_algs, encryption_algs,
                          mac_algs, compression_algs, rekey_bytes,
                          rekey_seconds, server=False)
@@ -1947,6 +1947,7 @@ class SSHClientConnection(SSHConnection):
         self._password = password
         self._client_keys = client_keys
         self._agent = agent
+        self._agent_path = agent_path
 
         self._server_host_keys = set()
         self._server_ca_keys = set()
@@ -2314,6 +2315,18 @@ class SSHClientConnection(SSHConnection):
         if listen_path in self._remote_listeners:
             del self._remote_listeners[listen_path]
 
+    def _process_auth_agent_at_openssh_dot_com_open(self, packet):
+        """Process an inbound auth agent channel open request"""
+
+        packet.check_end()
+
+        if self._agent_path:
+            return (self.create_unix_channel(),
+                    self.forward_unix_connection(self._agent_path))
+        else:
+            raise ChannelOpenError(OPEN_CONNECT_FAILED,
+                                   'Auth agent forwarding disabled')
+
     @asyncio.coroutine
     def create_session(self, session_factory, command=None, *, subsystem=None,
                        env={}, term_type=None, term_size=None, term_modes={},
@@ -2382,7 +2395,8 @@ class SSHClientConnection(SSHConnection):
                                 window, max_pktsize)
 
         return (yield from chan.create(session_factory, command, subsystem,
-                                       env, term_type, term_size, term_modes))
+                                       env, term_type, term_size, term_modes,
+                                       bool(self._agent_path)))
 
     @asyncio.coroutine
     def open_session(self, *args, **kwargs):
@@ -4708,8 +4722,9 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
                       loop=None, family=0, flags=0, local_addr=None,
                       known_hosts=(), username=None, password=None,
                       client_keys=(), passphrase=None, agent_path=(),
-                      kex_algs=(), encryption_algs=(), mac_algs=(),
-                      compression_algs=(), rekey_bytes=_DEFAULT_REKEY_BYTES,
+                      agent_forwarding=False, kex_algs=(), encryption_algs=(),
+                      mac_algs=(), compression_algs=(),
+                      rekey_bytes=_DEFAULT_REKEY_BYTES,
                       rekey_seconds=_DEFAULT_REKEY_SECONDS):
     """Create an SSH client connection
 
@@ -4800,6 +4815,10 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
            be used as the path. If ``client_keys`` is specified or this
            argument is explicitly set to ``None``, an ssh-agent will not
            be used.
+       :param bool agent_forwarding: (optional)
+           Whether or not to allow forwarding of ssh-agent requests from
+           processes running on the server. By default, ssh-agent forwarding
+           is disabled.
        :param kex_algs: (optional)
            A list of allowed key exchange algorithms in the SSH handshake,
            taken from :ref:`key exchange algorithms <KexAlgs>`
@@ -4839,8 +4858,8 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
 
         return SSHClientConnection(client_factory, loop, host, port,
                                    known_hosts, username, password,
-                                   client_keys, agent, kex_algs,
-                                   encryption_algs, mac_algs,
+                                   client_keys, agent, agent_path,
+                                   kex_algs, encryption_algs, mac_algs,
                                    compression_algs, rekey_bytes,
                                    rekey_seconds, auth_waiter)
 
@@ -4859,10 +4878,16 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
         client_keys = _load_private_keypair_list(client_keys, passphrase)
     elif client_keys is ():
         if agent_path is not None:
-            agent = yield from connect_agent(agent_path)
+            if not agent_path:
+                agent_path = os.environ.get('SSH_AUTH_SOCK', None)
 
-            if agent:
-                client_keys = yield from agent.get_keys()
+            if agent_path:
+                agent = yield from connect_agent(agent_path)
+
+                if agent:
+                    client_keys = yield from agent.get_keys()
+                else:
+                    agent_path = None
 
         if not client_keys:
             client_keys = []
@@ -4874,6 +4899,9 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
                     client_keys.extend(key)
                 except OSError:
                     pass
+
+    if not agent_forwarding:
+        agent_path = None
 
     auth_waiter = asyncio.Future(loop=loop)
 
