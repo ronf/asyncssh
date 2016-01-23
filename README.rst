@@ -50,6 +50,7 @@ Features
 * Password, public key, and keyboard-interactive user authentication methods
 * Many types and formats of `public keys and certificates`__
 * Support for accessing keys managed by `ssh-agent`__
+* OpenSSH-style ssh-agent forwarding support
 * OpenSSH-style `known_hosts file`__ support
 * OpenSSH-style `authorized_keys file`__ support
 * Compatibility with OpenSSH "Encrypt then MAC" option for better security
