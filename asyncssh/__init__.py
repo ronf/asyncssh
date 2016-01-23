@@ -25,7 +25,8 @@ from .agent import SSHAgentClient, connect_agent
 from .auth_keys import SSHAuthorizedKeys
 from .auth_keys import import_authorized_keys, read_authorized_keys
 
-from .channel import SSHClientChannel, SSHServerChannel, SSHTCPChannel
+from .channel import SSHClientChannel, SSHServerChannel
+from .channel import SSHTCPChannel, SSHUNIXChannel
 
 from .connection import SSHClient, SSHServer
 from .connection import SSHClientConnection, SSHServerConnection
