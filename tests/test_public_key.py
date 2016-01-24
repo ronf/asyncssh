@@ -58,14 +58,6 @@ pkcs8_ciphers = (('des-cbc',      'md5',    1, '-v1 PBE-MD5-DES'),
                  ('rc4-40',       'sha1',   1, '-v1 PBE-SHA1-RC4-40'),
                  ('rc4-128',      'sha1',   1, '-v1 PBE-SHA1-RC4-128'),
                  ('aes128-cbc',   'sha1',   2, '-v2 aes-128-cbc'),
-                 ('aes128-cbc',   'sha224', 2, '-v2 aes-128-cbc '
-                                               '-v2prf hmacWithSHA224'),
-                 ('aes128-cbc',   'sha256', 2, '-v2 aes-128-cbc '
-                                               '-v2prf hmacWithSHA256'),
-                 ('aes128-cbc',   'sha384', 2, '-v2 aes-128-cbc '
-                                               '-v2prf hmacWithSHA384'),
-                 ('aes128-cbc',   'sha512', 2, '-v2 aes-128-cbc '
-                                               '-v2prf hmacWithSHA512'),
                  ('aes192-cbc',   'sha1',   2, '-v2 aes-192-cbc'),
                  ('aes256-cbc',   'sha1',   2, '-v2 aes-256-cbc'),
                  ('blowfish-cbc', 'sha1',   2, '-v2 bf-cbc'),
@@ -79,6 +71,22 @@ openssh_ciphers = ('aes128-cbc', 'aes192-cbc', 'aes256-cbc',
                    'blowfish-cbc', 'cast128-cbc', '3des-cbc')
 
 # pylint: enable=bad-whitespace
+
+_openssl_version = run('openssl version')
+
+_pkcs1_public_supported = _openssl_version >= b'OpenSSL 1.0.0'
+
+if _openssl_version >= b'OpenSSL 1.0.2': # pragma: no branch
+    pkcs8_ciphers += (
+         ('aes128-cbc',   'sha224', 2, '-v2 aes-128-cbc '
+                                       '-v2prf hmacWithSHA224'),
+         ('aes128-cbc',   'sha256', 2, '-v2 aes-128-cbc '
+                                       '-v2prf hmacWithSHA256'),
+         ('aes128-cbc',   'sha384', 2, '-v2 aes-128-cbc '
+                                       '-v2prf hmacWithSHA384'),
+         ('aes128-cbc',   'sha512', 2, '-v2 aes-128-cbc '
+                                       '-v2prf hmacWithSHA512')
+    )
 
 if run('ssh -V') >= b'OpenSSH_6.9': # pragma: no branch
     # GCM & Chacha tests require OpenSSH 6.9 due to a bug in earlier versions:
@@ -1036,7 +1044,7 @@ class _TestPublicKey(TempDirTestCase):
                 if 'pkcs1' in self.private_formats:
                     self.check_pkcs1_private()
 
-                if 'pkcs1' in self.public_formats:
+                if 'pkcs1' in self.public_formats and _pkcs1_public_supported:
                     self.check_pkcs1_public()
 
                 if 'pkcs8' in self.private_formats:
