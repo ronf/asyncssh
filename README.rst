@@ -132,6 +132,16 @@ listed above for libnacl to work correctly. Unfortunately, since
 libsodium is not a Python package, it cannot be directly installed using
 pip.
 
+Installing the development branch
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+If you would like to install the development branch of asyncssh directly
+from Github, you can use the following command to do this:
+
+  ::
+
+      pip install git+https://github.com/ronf/asyncssh@develop
+
 Mailing Lists
 -------------
 
