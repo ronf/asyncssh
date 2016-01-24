@@ -3,6 +3,18 @@
 Change Log
 ==========
 
+Release 1.4.1 (23 Jan 2016)
+---------------------------
+
+* Fixed a bug in SFTP introduced in 1.4.0 related to handling of
+  responses to non-blocking file closes.
+
+* Updated code to avoid calling asyncio.async(), deprecated in
+  Python 3.4.4.
+
+* Updated unit tests to avoid errors on systems with an older version
+  of OpenSSL installed.
+
 Release 1.4.0 (17 Jan 2016)
 ---------------------------
 
