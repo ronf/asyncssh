@@ -12,12 +12,12 @@
 
 """A shim around PyCA for elliptic curve keys and key exchange"""
 
-from ...asn1 import der_encode, der_decode
-
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.backends.openssl import backend
 from cryptography.hazmat.primitives.hashes import SHA256, SHA384, SHA512
 from cryptography.hazmat.primitives.asymmetric import ec
+
+from ...asn1 import der_encode, der_decode
 
 # Short variable names are used here, matching names in the spec
 # pylint: disable=invalid-name

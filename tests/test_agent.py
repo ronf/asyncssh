@@ -12,12 +12,13 @@
 
 """Unit tests for AsyncSSH ssh-agent client"""
 
-from .util import asynctest, run, AsyncTestCase
-
 import asyncio
-import asyncssh
 import os
 import signal
+
+import asyncssh
+
+from .util import asynctest, run, AsyncTestCase
 
 
 class _Agent:

@@ -22,6 +22,7 @@ import pwd
 import stat
 import time
 
+# pylint: disable=ungrouped-imports
 from collections import OrderedDict
 from fnmatch import fnmatch
 from os import SEEK_SET, SEEK_CUR, SEEK_END
@@ -281,6 +282,8 @@ class _LocalFile:
 
         names = os.listdir(path)
 
+        # This pylint error appears to be a false positive
+        # pylint: disable=not-an-iterable
         return [SFTPName(filename=name, attrs=(yield from cls.stat(name)))
                 for name in names]
 
@@ -1499,7 +1502,8 @@ class SFTPClient:
             if self._path_encoding:
                 path = path.encode(self._path_encoding, self._path_errors)
             else:
-                raise SFTPError('Path must be bytes when encoding is not set')
+                raise SFTPError(FX_BAD_MESSAGE, 'Path must be bytes when '
+                                'encoding is not set')
 
         return path
 

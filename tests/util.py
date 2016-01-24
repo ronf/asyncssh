@@ -124,6 +124,8 @@ class ConnectionStub:
         """Close the connection, stopping processing of incoming packets"""
 
         if self._queue_task:
+            # This is a pylint false positive
+            # pylint: disable=no-member
             self._queue_task.cancel()
             self._queue_task = None
 

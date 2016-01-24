@@ -116,6 +116,7 @@ class _Chacha20Poly1305Cipher:
         return plaintext
 
 try:
+    # pylint: disable=wrong-import-position,wrong-import-order
     from libnacl import nacl
 
     _CHACHA20_KEYBYTES = nacl.crypto_stream_chacha20_keybytes()

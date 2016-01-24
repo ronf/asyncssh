@@ -500,7 +500,11 @@ class SSHConnection(SSHPacketHandler):
         if platform.python_version_tuple() >= ('3', '4', '2'):
             task = self._loop.create_task(self._run_task(coro))
         else:
-            task = asyncio.async(self._run_task(coro), loop=self._loop)
+            # Pylint is annoying here - it's not smart enough to see the
+            # version check, and the disable MUST be on the same line as
+            # the call, leading to ugly line breaking
+            task = asyncio.async(    # pylint: disable=deprecated-method
+                self._run_task(coro), loop=self._loop)
 
         self._tasks.add(task)
         return task

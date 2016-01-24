@@ -12,12 +12,12 @@
 
 """A shim around PyCA for DSA public and private keys"""
 
-from ...asn1 import der_encode, der_decode
-
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.hashes import SHA1
 from cryptography.hazmat.primitives.asymmetric import dsa
+
+from ...asn1 import der_encode, der_decode
 
 # Short variable names are used here, matching names in the spec
 # pylint: disable=invalid-name
