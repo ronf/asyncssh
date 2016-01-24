@@ -15,6 +15,7 @@
 import asyncio
 import getpass
 import os
+import platform
 import socket
 import sys
 import time
@@ -496,7 +497,11 @@ class SSHConnection(SSHPacketHandler):
     def create_task(self, coro):
         """Create an asynchronous task which catches and reports errors"""
 
-        task = asyncio.async(self._run_task(coro), loop=self._loop)
+        if platform.python_version_tuple() >= ('3', '4', '2'):
+            task = self._loop.create_task(self._run_task(coro))
+        else:
+            task = asyncio.async(self._run_task(coro), loop=self._loop)
+
         self._tasks.add(task)
         return task
 
