@@ -743,7 +743,7 @@ class SFTPClientHandler(SFTPHandler):
         """Clean up this SFTP client session"""
 
         for waiter in self._requests.values():
-            if not waiter.cancelled():
+            if waiter and not waiter.cancelled():
                 waiter.set_exception(exc)
 
         self._requests = {}
