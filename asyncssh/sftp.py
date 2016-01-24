@@ -759,10 +759,10 @@ class SFTPClientHandler(SFTPHandler):
         except KeyError:
             self._cleanup(SFTPError(FX_BAD_MESSAGE, 'Invalid response id'))
         else:
-            if not waiter.cancelled():
+            if waiter and not waiter.cancelled():
                 waiter.set_result((pkttype, packet))
 
-    def _send_request(self, pkttype, *args):
+    def _send_request(self, pkttype, *args, waiter=None):
         """Send an SFTP request"""
 
         if not self._writer:
@@ -771,6 +771,8 @@ class SFTPClientHandler(SFTPHandler):
         pktid = self._next_pktid
         self._next_pktid = (self._next_pktid + 1) & 0xffffffff
 
+        self._requests[pktid] = waiter
+
         if isinstance(pkttype, bytes):
             hdr = Byte(FXP_EXTENDED) + UInt32(pktid) + String(pkttype)
         else:
@@ -778,16 +780,12 @@ class SFTPClientHandler(SFTPHandler):
 
         self.send_packet(hdr, *args)
 
-        return pktid
-
     @asyncio.coroutine
     def _make_request(self, pkttype, *args):
         """Make an SFTP request and wait for a response"""
 
-        pktid = self._send_request(pkttype, *args)
-
         waiter = asyncio.Future(loop=self._loop)
-        self._requests[pktid] = waiter
+        self._send_request(pkttype, *args, waiter=waiter)
         resptype, resp = yield from waiter
 
         return_type = self._return_types.get(pkttype)
