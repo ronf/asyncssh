@@ -13,8 +13,11 @@ asyncio framework.
   def run_client():
       with (yield from asyncssh.connect('localhost')) as conn:
           stdin, stdout, stderr = yield from conn.open_session('echo "Hello!"')
+
           output = yield from stdout.read()
           print(output, end='')
+
+          yield from stdout.channel.wait_closed()
 
           status = stdout.channel.get_exit_status()
           if status:
