@@ -191,7 +191,7 @@ def connect_agent(agent_path=None, *, loop=None):
        :param loop: (optional)
            The event loop to use when creating the connection. If not
            specified, the default event loop is used.
-       :type agent_path: string or :class:`SSHServerConnection`
+       :type agent_path: str or :class:`SSHServerConnection`
 
        :returns: An :class:`SSHAgentClient` or ``None``
 

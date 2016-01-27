@@ -108,7 +108,7 @@ class _LocalFile:
     def encode(cls, path):
         """Encode path name using filesystem native encoding
 
-           This method has no effect if the path is already a byte string.
+           This method has no effect if the path is already bytes.
 
         """
 
@@ -394,12 +394,12 @@ class SFTPError(Error):
        an SFTP request. Exception codes should be taken from
        :ref:`SFTP error codes <SFTPErrorCodes>`.
 
-       :param integer code:
+       :param int code:
            Disconnect reason, taken from :ref:`disconnect reason
            codes <DisconnectReasons>`
-       :param string reason:
+       :param str reason:
            A human-readable reason for the disconnect
-       :param string lang:
+       :param str lang:
            The language the reason is in
 
     """
@@ -599,8 +599,8 @@ class SFTPName(_Record):
          ========= ================================== ==================
          Field     Description                        Type
          ========= ================================== ==================
-         filename  Filename                           string or bytes
-         longname  Expanded form of filename & attrs  string or bytes
+         filename  Filename                           str or bytes
+         longname  Expanded form of filename & attrs  str or bytes
          attrs     File attributes                    :class:`SFTPAttrs`
          ========= ================================== ==================
 
@@ -1151,12 +1151,12 @@ class SFTPFile:
 
            An empty string or bytes object is returned when at EOF.
 
-           :param integer size:
+           :param int size:
                The number of bytes to read
-           :param integer offset: (optional)
+           :param int offset: (optional)
                The offset from the beginning of the file to begin reading
 
-           :returns: data read from the file, as a string or bytes
+           :returns: data read from the file, as a str or bytes
 
            :raises: | :exc:`ValueError` if the file has been closed
                     | :exc:`UnicodeDecodeError` if the data can't be
@@ -1216,9 +1216,9 @@ class SFTPFile:
 
            :param data:
                The data to write to the file
-           :param integer offset: (optional)
+           :param int offset: (optional)
                The offset from the beginning of the file to begin writing
-           :type data: string or bytes
+           :type data: str or bytes
 
            If offset is specified, the write will be performed starting
            at that offset rather than the current file position. This
@@ -1261,9 +1261,9 @@ class SFTPFile:
            set to ``SEEK_CUR``, or relative to the end of the file
            if it is set to ``SEEK_END``.
 
-           :param integer offset:
+           :param int offset:
                The amount to seek
-           :param integer from_what: (optional)
+           :param int from_what: (optional)
                The reference point to use (SEEK_SET, SEEK_CUR, or SEEK_END)
 
            :returns: The new byte offset from the beginning of the file
@@ -1364,7 +1364,7 @@ class SFTPFile:
            value. If a size is not provided, the current file position
            is used.
 
-           :param integer size: (optional)
+           :param int size: (optional)
                The desired size of the file, in bytes
 
            :raises: :exc:`SFTPError` if the server returns an error
@@ -1383,9 +1383,9 @@ class SFTPFile:
            This method changes the user and group id of the
            currently open file.
 
-           :param integer uid:
+           :param int uid:
                The new user id to assign to the file
-           :param integer gid:
+           :param int gid:
                The new group id to assign to the file
 
            :raises: :exc:`SFTPError` if the server returns an error
@@ -1401,8 +1401,8 @@ class SFTPFile:
            This method changes the permissions of the currently
            open file.
 
-           :param integer mode:
-               The new file permissions, expressed as an integer
+           :param int mode:
+               The new file permissions, expressed as an int
 
            :raises: :exc:`SFTPError` if the server returns an error
 
@@ -1421,7 +1421,7 @@ class SFTPFile:
            :param times: (optional)
                The new access and modify times, as seconds relative to
                the UNIX epoch
-           :type times: tuple of two integer or float values
+           :type times: tuple of two int or float values
 
            :raises: :exc:`SFTPError` if the server returns an error
 
@@ -1494,7 +1494,7 @@ class SFTPClient:
     def encode(self, path):
         """Encode path name using configured path encoding
 
-           This method has no effect if the path is already a byte string.
+           This method has no effect if the path is already bytes.
 
         """
 
@@ -1749,7 +1749,7 @@ class SFTPClient:
 
            :param remotepaths:
                The paths of the remote files or directories to download
-           :param string localpath: (optional)
+           :param str localpath: (optional)
                The path of the local file or directory to download into
            :param bool preserve: (optional)
                Whether or not to preserve the original file attributes
@@ -1759,7 +1759,7 @@ class SFTPClient:
                Whether or not to follow symbolic links
            :param callable error_handler: (optional)
                The function to call when an error occurs
-           :type remotepaths: string or bytes, or a sequence of these
+           :type remotepaths: str or bytes, or a sequence of these
 
            :raises: | :exc:`OSError` if a local file I/O error occurs
                     | :exc:`SFTPError` if the server returns an error
@@ -1827,8 +1827,8 @@ class SFTPClient:
                Whether or not to follow symbolic links
            :param callable error_handler: (optional)
                The function to call when an error occurs
-           :type localpaths: string or bytes, or a sequence of these
-           :type remotepath: string or bytes
+           :type localpaths: str or bytes, or a sequence of these
+           :type remotepath: str or bytes
 
            :raises: | :exc:`OSError` if a local file I/O error occurs
                     | :exc:`SFTPError` if the server returns an error
@@ -1896,8 +1896,8 @@ class SFTPClient:
                Whether or not to follow symbolic links
            :param callable error_handler: (optional)
                The function to call when an error occurs
-           :type srcpaths: string or bytes, or a sequence of these
-           :type dstpath: string or bytes
+           :type srcpaths: str or bytes, or a sequence of these
+           :type dstpath: str or bytes
 
            :raises: | :exc:`OSError` if a local file I/O error occurs
                     | :exc:`SFTPError` if the server returns an error
@@ -1994,7 +1994,7 @@ class SFTPClient:
                Glob patterns to try and match remote files against
            :param callable error_handler: (optional)
                The function to call when an error occurs
-           :type patterns: string or bytes, or a sequence of these
+           :type patterns: str or bytes, or a sequence of these
 
            :raises: :exc:`SFTPError` if the server returns an error
                     or no match is found
@@ -2012,8 +2012,8 @@ class SFTPClient:
            object which can be used to read and write data and get and set
            file attributes.
 
-           The path can be either a string or bytes value. If it is a
-           string, it will be encoded using the file encoding specified
+           The path can be either a str or bytes value. If it is a
+           str, it will be encoded using the file encoding specified
            when the :class:`SFTPClient` was started.
 
            The following open mode flags are supported:
@@ -2070,15 +2070,15 @@ class SFTPClient:
                The access mode to use for the remote file (see above)
            :param attrs: (optional)
                File attributes to use if the file needs to be created
-           :param string encoding: (optional)
+           :param str encoding: (optional)
                The Unicode encoding to use for data read and written
                to the remote file
-           :param string errors: (optional)
+           :param str errors: (optional)
                The error-handling mode if an invalid Unicode byte
                sequence is detected, defaulting to 'strict' which
                raises an exception
-           :type path: string or bytes
-           :type pflags_or_mode: integer or string
+           :type path: str or bytes
+           :type pflags_or_mode: int or str
            :type attrs: :class:`SFTPAttrs`
 
            :returns: An :class:`SFTPFile` to use to access the file
@@ -2120,7 +2120,7 @@ class SFTPClient:
 
            :param path:
                The path of the remote file or directory to get attributes for
-           :type path: string or bytes
+           :type path: str or bytes
 
            :returns: An :class:`SFTPAttrs` containing the file attributes
 
@@ -2143,7 +2143,7 @@ class SFTPClient:
            :param path:
                The path of the remote file, directory, or link to get
                attributes for
-           :type path: string or bytes
+           :type path: str or bytes
 
            :returns: An :class:`SFTPAttrs` containing the file attributes
 
@@ -2168,7 +2168,7 @@ class SFTPClient:
                The path of the remote file or directory to set attributes for
            :param attrs:
                File attributes to set
-           :type path: string or bytes
+           :type path: str or bytes
            :type attrs: :class:`SFTPAttrs`
 
            :raises: :exc:`SFTPError` if the server returns an error
@@ -2187,7 +2187,7 @@ class SFTPClient:
 
            :param path:
                The path of the remote file system to get attributes for
-           :type path: string or bytes
+           :type path: str or bytes
 
            :returns: An :class:`SFTPVFSAttrs` containing the file system
                      attributes
@@ -2210,9 +2210,9 @@ class SFTPClient:
 
            :param path:
                The path of the remote file to be truncated
-           :param integer size:
+           :param int size:
                The desired size of the file, in bytes
-           :type path: string or bytes
+           :type path: str or bytes
 
            :raises: :exc:`SFTPError` if the server returns an error
 
@@ -2230,11 +2230,11 @@ class SFTPClient:
 
            :param path:
                The path of the remote file to change
-           :param integer uid:
+           :param int uid:
                The new user id to assign to the file
-           :param integer gid:
+           :param int gid:
                The new group id to assign to the file
-           :type path: string or bytes
+           :type path: str or bytes
 
            :raises: :exc:`SFTPError` if the server returns an error
 
@@ -2252,9 +2252,9 @@ class SFTPClient:
 
            :param path:
                The path of the remote file to change
-           :param integer mode:
-               The new file permissions, expressed as an integer
-           :type path: string or bytes
+           :param int mode:
+               The new file permissions, expressed as an int
+           :type path: str or bytes
 
            :raises: :exc:`SFTPError` if the server returns an error
 
@@ -2277,8 +2277,8 @@ class SFTPClient:
            :param times: (optional)
                The new access and modify times, as seconds relative to
                the UNIX epoch
-           :type path: string or bytes
-           :type times: tuple of two integer or float values
+           :type path: str or bytes
+           :type times: tuple of two int or float values
 
            :raises: :exc:`SFTPError` if the server returns an error
 
@@ -2298,7 +2298,7 @@ class SFTPClient:
 
            :param path:
                The remote path to check
-           :type path: string or bytes
+           :type path: str or bytes
 
            :raises: :exc:`SFTPError` if the server returns an error
 
@@ -2312,7 +2312,7 @@ class SFTPClient:
 
            :param path:
                The remote path to check
-           :type path: string or bytes
+           :type path: str or bytes
 
            :raises: :exc:`SFTPError` if the server returns an error
 
@@ -2326,7 +2326,7 @@ class SFTPClient:
 
            :param path:
                The remote path to check
-           :type path: string or bytes
+           :type path: str or bytes
 
            :raises: :exc:`SFTPError` if the server returns an error
 
@@ -2340,7 +2340,7 @@ class SFTPClient:
 
            :param path:
                The remote path to check
-           :type path: string or bytes
+           :type path: str or bytes
 
            :raises: :exc:`SFTPError` if the server returns an error
 
@@ -2354,7 +2354,7 @@ class SFTPClient:
 
            :param path:
                The remote path to check
-           :type path: string or bytes
+           :type path: str or bytes
 
            :raises: :exc:`SFTPError` if the server returns an error
 
@@ -2368,7 +2368,7 @@ class SFTPClient:
 
            :param path:
                The remote path to check
-           :type path: string or bytes
+           :type path: str or bytes
 
            :raises: :exc:`SFTPError` if the server returns an error
 
@@ -2382,7 +2382,7 @@ class SFTPClient:
 
            :param path:
                The remote path to check
-           :type path: string or bytes
+           :type path: str or bytes
 
            :raises: :exc:`SFTPError` if the server returns an error
 
@@ -2396,7 +2396,7 @@ class SFTPClient:
 
            :param path:
                The remote path to check
-           :type path: string or bytes
+           :type path: str or bytes
 
            :raises: :exc:`SFTPError` if the server returns an error
 
@@ -2412,7 +2412,7 @@ class SFTPClient:
 
            :param path:
                The path of the remote file or link to remove
-           :type path: string or bytes
+           :type path: str or bytes
 
            :raises: :exc:`SFTPError` if the server returns an error
 
@@ -2443,8 +2443,8 @@ class SFTPClient:
                The path of the remote file, directory, or link to rename
            :param newpath:
                The new name for this file, directory, or link
-           :type oldpath: string or bytes
-           :type newpath: string or bytes
+           :type oldpath: str or bytes
+           :type newpath: str or bytes
 
            :raises: :exc:`SFTPError` if the server returns an error
 
@@ -2467,8 +2467,8 @@ class SFTPClient:
                The path of the remote file, directory, or link to rename
            :param newpath:
                The new name for this file, directory, or link
-           :type oldpath: string or bytes
-           :type newpath: string or bytes
+           :type oldpath: str or bytes
+           :type newpath: str or bytes
 
            :raises: :exc:`SFTPError` if the server doesn't support this
                     extension or returns an error
@@ -2490,7 +2490,7 @@ class SFTPClient:
 
            :param path: (optional)
                The path of the remote directory to read
-           :type path: string or bytes
+           :type path: str or bytes
 
            :returns: A list of :class:`SFTPName` entries, with path
                      names matching the type used to pass in the path
@@ -2530,7 +2530,7 @@ class SFTPClient:
 
            :param path: (optional)
                The path of the remote directory to read
-           :type path: string or bytes
+           :type path: str or bytes
 
            :returns: A list of file/subdirectory names, matching the
                      type used to pass in the path
@@ -2553,7 +2553,7 @@ class SFTPClient:
                The path of where the new remote directory should be created
            :param attrs: (optional)
                The file attributes to use when creating the directory
-           :type path: string or bytes
+           :type path: str or bytes
            :type attrs: :class:`SFTPAttrs`
 
            :raises: :exc:`SFTPError` if the server returns an error
@@ -2572,7 +2572,7 @@ class SFTPClient:
 
            :param path:
                The path of the remote directory to remove
-           :type path: string or bytes
+           :type path: str or bytes
 
            :raises: :exc:`SFTPError` if the server returns an error
 
@@ -2589,9 +2589,9 @@ class SFTPClient:
 
            :param path: (optional)
                The path of the remote directory to canonicalize
-           :type path: string or bytes
+           :type path: str or bytes
 
-           :returns: The canonical path as a string or bytes, matching
+           :returns: The canonical path as a str or bytes, matching
                      the type used to pass in the path
 
            :raises: :exc:`SFTPError` if the server returns an error
@@ -2627,7 +2627,7 @@ class SFTPClient:
         """Change the current remote working directory
 
            :param path: The path to set as the new remote working directory
-           :type path: string or bytes
+           :type path: str or bytes
 
            :raises: :exc:`SFTPError` if the server returns an error
 
@@ -2643,9 +2643,9 @@ class SFTPClient:
 
            :param path:
                The path of the remote symbolic link to follow
-           :type path: string or bytes
+           :type path: str or bytes
 
-           :returns: The target path of the link as a string or bytes
+           :returns: The target path of the link as a str or bytes
 
            :raises: :exc:`SFTPError` if the server returns an error
 
@@ -2674,8 +2674,8 @@ class SFTPClient:
                The path the link should point to
            :param newpath:
                The path of where to create the remote symbolic link
-           :type oldpath: string or bytes
-           :type newpath: string or bytes
+           :type oldpath: str or bytes
+           :type newpath: str or bytes
 
            :raises: :exc:`SFTPError` if the server returns an error
 
@@ -2698,8 +2698,8 @@ class SFTPClient:
                The path of the remote file the hard link should point to
            :param newpath:
                The path of where to create the remote hard link
-           :type oldpath: string or bytes
-           :type newpath: string or bytes
+           :type oldpath: str or bytes
+           :type newpath: str or bytes
 
            :raises: :exc:`SFTPError` if the server doesn't support this
                     extension or returns an error
@@ -3398,7 +3398,7 @@ class SFTPServer:
            :param bytes path:
                The path name to map
 
-           :returns: A byte string containing he local path name to operate on
+           :returns: bytes containing he local path name to operate on
 
         """
 
@@ -3419,8 +3419,7 @@ class SFTPServer:
            :param bytes path:
                The local path name to reverse map
 
-           :returns: A byte string containing the path name to report to
-                     the client
+           :returns: bytes containing the path name to report to the client
 
         """
 
@@ -3464,7 +3463,7 @@ class SFTPServer:
 
            :param bytes path:
                The name of the file to open
-           :param integer pflags:
+           :param int pflags:
                The access mode to use for the file (see above)
            :param attrs:
                File attributes to use if the file needs to be created
@@ -3528,9 +3527,9 @@ class SFTPServer:
 
            :param file file_obj:
                The file to read from
-           :param integer offset:
+           :param int offset:
                The offset from the beginning of the file to begin reading
-           :param integer size:
+           :param int size:
                The number of bytes to read
 
            :returns: bytes read from the file
@@ -3547,7 +3546,7 @@ class SFTPServer:
 
            :param file file_obj:
                The file to write to
-           :param integer offset:
+           :param int offset:
                The offset from the beginning of the file to begin writing
            :param bytes data:
                The data to write to the file
@@ -3692,7 +3691,7 @@ class SFTPServer:
            :param bytes path:
                The path of the directory to canonicalize
 
-           :returns: A byte string containing the canonical path
+           :returns: bytes containing the canonical path
 
            :raises: :exc:`SFTPError` to return an error to the client
 
@@ -3754,7 +3753,7 @@ class SFTPServer:
            :param bytes path:
                The path of the symbolic link to follow
 
-           :returns: A byte string containing the target path of the link
+           :returns: bytes containing the target path of the link
 
            :raises: :exc:`SFTPError` to return an error to the client
 

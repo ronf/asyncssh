@@ -164,17 +164,17 @@ class SSHKey:
            hash is sha256 and default version is PBES2. In openssh format,
            the default number of rounds is 16.
 
-           :param string format_name:
+           :param str format_name:
                The format to export the key in.
-           :param string passphrase: (optional)
+           :param str passphrase: (optional)
                A passphrase to encrypt the private key with.
-           :param string cipher_name: (optional)
+           :param str cipher_name: (optional)
                The cipher to use for private key encryption.
-           :param string hash_name: (optional)
+           :param str hash_name: (optional)
                The hash to use for private key encryption.
-           :param integer pbe_version: (optional)
+           :param int pbe_version: (optional)
                The PBE version to use for private key encryption.
-           :param integer rounds: (optional)
+           :param int rounds: (optional)
                The number of KDF rounds to apply to the passphrase.
 
         """
@@ -295,7 +295,7 @@ class SSHKey:
 
                pkcs1-der, pkcs1-pem, pkcs8-der, pkcs8-pem, openssh, rfc4716
 
-           :param string format:
+           :param str format:
                The format to export the key in.
 
         """
@@ -340,7 +340,7 @@ class SSHKey:
            This function is a simple wrapper around export_private_key
            which writes the exported key data to a file.
 
-           :param string filename:
+           :param str filename:
                The filename to write the private key to.
            :param \\*args,\\ \\*\\*kwargs:
                Additional arguments to pass through to
@@ -357,7 +357,7 @@ class SSHKey:
            This function is a simple wrapper around export_public_key
            which writes the exported key data to a file.
 
-           :param string filename:
+           :param str filename:
                The filename to write the public key to.
            :param \\*args,\\ \\*\\*kwargs:
                Additional arguments to pass through to
@@ -468,9 +468,9 @@ class SSHCertificate:
            period, and that the principal being authenticated is one of
            the certificate's valid principals.
 
-           :param integer cert_type:
+           :param int cert_type:
                The expected :ref:`certificate type <CertificateTypes>`.
-           :param string principal:
+           :param str principal:
                The principal being authenticated.
 
            :raises: :exc:`ValueError` if any of the validity checks fail
@@ -549,10 +549,10 @@ class SSHKeyPair:
     def sign(self, data):
         """Sign a block of data with this private key
 
-           :param string data:
+           :param str data:
                The data to be signed.
 
-           :returns: A byte string containing the signature.
+           :returns: bytes containing the signature.
 
         """
 
@@ -1079,7 +1079,7 @@ def import_private_key(data, passphrase=None):
 
        :param data:
            The data to import.
-       :param string passphrase: (optional)
+       :param str passphrase: (optional)
            The passphrase to use to decrypt the key.
        :type data: bytes or ASCII string
 
@@ -1175,9 +1175,9 @@ def read_private_key(filename, passphrase=None):
        :func:`import_private_key` for information about the formats
        supported.
 
-       :param string filename:
+       :param str filename:
            The file to read the key from.
-       :param string passphrase: (optional)
+       :param str passphrase: (optional)
            The passphrase to use to decrypt the key.
 
        :returns: An :class:`SSHKey` private key
@@ -1195,7 +1195,7 @@ def read_public_key(filename):
        :func:`import_public_key` for information about the formats
        supported.
 
-       :param string filename:
+       :param str filename:
            The file to read the key from.
 
        :returns: An :class:`SSHKey` public key
@@ -1213,7 +1213,7 @@ def read_certificate(filename):
        function :func:`import_certificate` for information about the
        formats supported.
 
-       :param string filename:
+       :param str filename:
            The file to read the certificate from.
 
        :returns: An :class:`SSHCertificate` certificate
@@ -1232,9 +1232,9 @@ def read_private_key_list(filename, passphrase=None):
        formats supported. If any of the keys are encrypted, they must
        all be encrypted with the same passphrase.
 
-       :param string filename:
+       :param str filename:
            The file to read the keys from.
-       :param string passphrase: (optional)
+       :param str passphrase: (optional)
            The passphrase to use to decrypt the keys.
 
        :returns: A list of :class:`SSHKey` private keys
@@ -1269,7 +1269,7 @@ def read_public_key_list(filename):
        function :func:`import_public_key` for information about the
        formats supported.
 
-       :param string filename:
+       :param str filename:
            The file to read the keys from.
 
        :returns: A list of :class:`SSHKey` public keys
@@ -1313,7 +1313,7 @@ def read_certificate_list(filename):
        the function :func:`import_certificate` for information about
        the formats supported.
 
-       :param string filename:
+       :param str filename:
            The file to read the certificates from.
 
        :returns: A list of :class:`SSHCertificate` certificates

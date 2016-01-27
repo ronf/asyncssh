@@ -67,7 +67,7 @@ class SSHSession:
            :param datatype:
                The extended data type of the data, from :ref:`extended
                data types <ExtendedDataTypes>`
-           :type data: string or bytes
+           :type data: str or bytes
 
         """
 
@@ -136,7 +136,7 @@ class SSHClientSession(SSHSession):
 
            By default, this message is ignored.
 
-           :param boolean client_can_do:
+           :param bool client_can_do:
                Whether or not to enable XON/XOFF flow control
 
         """
@@ -152,7 +152,7 @@ class SSHClientSession(SSHSession):
 
            By default, the exit status is ignored.
 
-           :param integer status:
+           :param int status:
                The exit status returned by the remote process
 
         """
@@ -168,9 +168,9 @@ class SSHClientSession(SSHSession):
 
            By default, exit signals are ignored.
 
-           :param string signal:
+           :param str signal:
                The signal which caused the remote process to exit
-           :param boolean core_dumped:
+           :param bool core_dumped:
                Whether or not the remote process dumped core
            :param msg:
                Details about what error occurred
@@ -219,7 +219,7 @@ class SSHServerSession(SSHSession):
            on the :class:`SSHServerChannel` to get the information they need
            after a shell, command, or subsystem is started.
 
-           :param string term:
+           :param str term_type:
                Terminal type to set for this session
            :param tuple term_size:
                Terminal size to set for this session provided as a
@@ -231,7 +231,7 @@ class SSHServerSession(SSHSession):
                are taken from :ref:`POSIX terminal modes <PTYModes>` with
                values defined in section 8 of :rfc:`4254#section-8`.
 
-           :returns: A boolean indicating if the request for a
+           :returns: A bool indicating if the request for a
                      pseudo-terminal was allowed or not
 
         """
@@ -250,13 +250,13 @@ class SSHServerSession(SSHSession):
            wishing to use the terminal size can implement this method
            to get notified whenever it changes.
 
-           :param integer width:
+           :param int width:
                The width of the terminal in characters
-           :param integer height:
+           :param int height:
                The height of the terminal in characters
-           :param integer pixwidth: (optional)
+           :param int pixwidth: (optional)
                The width of the terminal in pixels
-           :param integer pixheight: (optional)
+           :param int pixheight: (optional)
                The height of the terminal in pixels
 
         """
@@ -277,7 +277,7 @@ class SSHServerSession(SSHSession):
 
            By default this method returns ``False`` to reject all requests.
 
-           :returns: A boolean indicating if the shell request was
+           :returns: A bool indicating if the shell request was
                      allowed or not
 
         """
@@ -299,10 +299,10 @@ class SSHServerSession(SSHSession):
 
            By default this method returns ``False`` to reject all requests.
 
-           :param string command:
+           :param str command:
                The command the client has requested to execute
 
-           :returns: A boolean indicating if the exec request was
+           :returns: A bool indicating if the exec request was
                      allowed or not
 
         """
@@ -324,10 +324,10 @@ class SSHServerSession(SSHSession):
 
            By default this method returns ``False`` to reject all requests.
 
-           :param string subsystem:
+           :param str subsystem:
                The subsystem to start
 
-           :returns: A boolean indicating if the request to open the
+           :returns: A bool indicating if the request to open the
                      subsystem was allowed or not
 
         """
@@ -346,10 +346,10 @@ class SSHServerSession(SSHSession):
            By default, this method returns ``False`` indicating that
            no break was performed.
 
-           :param integer msec:
+           :param int msec:
                The duration of the break in milliseconds
 
-           :returns: A boolean to indicate if the break operation was
+           :returns: A bool to indicate if the break operation was
                      performed or not
 
         """

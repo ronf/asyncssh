@@ -56,11 +56,11 @@ class SSHReader:
            received on the stream.
 
            If EOF was received and the receive buffer is empty, an
-           empty ``bytes`` or ``string`` object is returned.
+           empty bytes or str object is returned.
 
            .. note:: Unlike traditional ``asyncio`` stream readers,
                      the data will be delivered as either bytes or
-                     a string depending on whether an encoding was
+                     a str depending on whether an encoding was
                      specified when the underlying channel was opened.
 
         """
@@ -75,7 +75,7 @@ class SSHReader:
 
            If EOF was received before ``'\\n'`` was found, the partial
            line is returned. If EOF was received and the receive buffer
-           is empty, an empty ``bytes`` or ``string`` object is returned.
+           is empty, an empty bytes or str object is returned.
 
         """
 
@@ -169,7 +169,7 @@ class SSHWriter:
 
            .. note:: Unlike traditional ``asyncio`` stream writers,
                      the data must be supplied as either bytes or
-                     a string depending on whether an encoding was
+                     a str depending on whether an encoding was
                      specified when the underlying channel was opened.
 
         """

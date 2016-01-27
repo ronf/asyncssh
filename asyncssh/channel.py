@@ -646,10 +646,10 @@ class SSHChannel(SSHPacketHandler):
 
            :param data:
                The data to send on the channel
-           :param integer datatype: (optional)
+           :param int datatype: (optional)
                The extended data type of the data, from :ref:`extended
                data types <ExtendedDataTypes>`
-           :type data: string or bytes
+           :type data: str or bytes
 
            :raises: :exc:`OSError` if the channel isn't open for sending
                     or the extended data type is not valid for this type
@@ -682,10 +682,10 @@ class SSHChannel(SSHPacketHandler):
 
            :param list_of_data:
                The data to send on the channel
-           :param integer datatype: (optional)
+           :param int datatype: (optional)
                The extended data type of the data, from :ref:`extended
                data types <ExtendedDataTypes>`
-           :type list_of_data: iterable of ``string`` or ``bytes`` objects
+           :type list_of_data: iterable of str or bytes objects
 
            :raises: :exc:`OSError` if the channel isn't open for sending
                     or the extended data type is not valid for this type
@@ -915,13 +915,13 @@ class SSHClientChannel(SSHChannel):
            This method changes the width and height of the terminal
            associated with this session.
 
-           :param integer width:
+           :param int width:
                The width of the terminal in characters
-           :param integer height:
+           :param int height:
                The height of the terminal in characters
-           :param integer pixwidth: (optional)
+           :param int pixwidth: (optional)
                The width of the terminal in pixels
-           :param integer pixheight: (optional)
+           :param int pixheight: (optional)
                The height of the terminal in pixels
 
         """
@@ -936,7 +936,7 @@ class SSHClientChannel(SSHChannel):
            operation on the remote process or service as described in
            :rfc:`4335`.
 
-           :param integer msec:
+           :param int msec:
                The duration of the break in milliseconds
 
            :raises: :exc:`OSError` if the channel is not open
@@ -952,7 +952,7 @@ class SSHClientChannel(SSHChannel):
            process or service. Signal names should be as described in
            section 6.10 of :rfc:`4254#section-6.10`.
 
-           :param string signal:
+           :param str signal:
                The signal to deliver
 
            :raises: :exc:`OSError` if the channel is not open
@@ -1229,7 +1229,7 @@ class SSHServerChannel(SSHChannel):
            calls to this can be made at any time after the handler
            function has started up.
 
-           :returns: A string containing the terminal type or ``None`` if
+           :returns: A str containing the terminal type or ``None`` if
                      no pseudo-terminal was requested
 
         """
@@ -1274,11 +1274,11 @@ class SSHServerChannel(SSHChannel):
            calls to this can be made at any time after the handler
            function has started up.
 
-           :param integer mode:
+           :param int mode:
                POSIX terminal mode taken from :ref:`POSIX terminal modes
                <PTYModes>` to look up
 
-           :returns: An integer containing the value of the requested
+           :returns: An int containing the value of the requested
                      POSIX terminal mode or ``None`` if the requested
                      mode was not set
 
@@ -1297,7 +1297,7 @@ class SSHServerChannel(SSHChannel):
            enable this functionality or to ``False`` to tell the client
            to forward Control-S and Control-Q through as normal input.
 
-           :param boolean client_can_do:
+           :param bool client_can_do:
                Whether or not the client should enable XON/XOFF flow control
 
         """
@@ -1315,7 +1315,7 @@ class SSHServerChannel(SSHChannel):
 
            :param data:
                The data to send to stderr
-           :type data: string or bytes
+           :type data: str or bytes
 
            :raises: :exc:`OSError` if the channel isn't open for sending
 
@@ -1343,7 +1343,7 @@ class SSHServerChannel(SSHChannel):
            successful. After reporting the status, the channel is
            closed.
 
-           :param integer status:
+           :param int status:
                The exit status to report to the client
 
            :raises: :exc:`OSError` if the channel isn't open
@@ -1366,13 +1366,13 @@ class SSHServerChannel(SSHChannel):
            of whether or not the process dumped core. After
            reporting the signal, the channel is closed.
 
-           :param string signal:
+           :param str signal:
                The signal which caused the process to exit
-           :param boolean core_dumped: (optional)
+           :param bool core_dumped: (optional)
                Whether or not the process dumped core
-           :param msg: (optional)
+           :param str msg: (optional)
                Details about what error occurred
-           :param lang: (optional)
+           :param str lang: (optional)
                The language the error message is in
 
            :raises: :exc:`OSError` if the channel isn't open
@@ -1396,7 +1396,7 @@ class SSHForwardChannel(SSHChannel):
 
     @asyncio.coroutine
     def _finish_open_request(self, session):
-        """Finish processing a forwarding channel open request"""
+        """Finish processing a forward channel open request"""
 
         yield from super()._finish_open_request(session)
 
@@ -1406,11 +1406,11 @@ class SSHForwardChannel(SSHChannel):
 
     @asyncio.coroutine
     def _open(self, session_factory, chantype, *args):
-        """Open a forwarding channel"""
+        """Open a forward channel"""
 
         packet = yield from super()._open(chantype, *args)
 
-        # Forwarded channels should have no extra data in the open confirmation
+        # Forward channels should have no extra data in the open confirmation
         packet.check_end()
 
         self._session = session_factory()

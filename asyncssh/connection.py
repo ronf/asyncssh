@@ -1641,12 +1641,12 @@ class SSHConnection(SSHPacketHandler):
            on the associated :class:`SSHClient` or :class:`SSHServer` object
            will be called with the value ``None``.
 
-           :param integer code:
+           :param int code:
                The reason for the disconnect, from
                :ref:`disconnect reason codes <DisconnectReasons>`
-           :param string reason:
+           :param str reason:
                A human readable reason for the disconnect
-           :param string lang:
+           :param str lang:
                The language the reason is in
 
         """
@@ -1699,11 +1699,11 @@ class SSHConnection(SSHPacketHandler):
            This method can be called to send a debug message to the
            other end of the connection.
 
-           :param string msg:
+           :param str msg:
                The debug message to send
-           :param string lang:
+           :param str lang:
                The language the message is in
-           :param boolean always_display:
+           :param bool always_display:
                Whether or not to display the message
 
         """
@@ -1722,13 +1722,13 @@ class SSHConnection(SSHPacketHandler):
            :class:`SSHTCPChannel` with the desired encoding, window, and
            max packet size for a newly created SSH direct connection.
 
-           :param string encoding: (optional)
+           :param str encoding: (optional)
                The Unicode encoding to use for data exchanged on the
                connection. This defaults to ``None``, allowing the
                application to send and receive raw bytes.
-           :param integer window: (optional)
+           :param int window: (optional)
                The receive window size for this session
-           :param integer max_pktsize: (optional)
+           :param int max_pktsize: (optional)
                The maximum packet size for this session
 
            :returns: :class:`SSHTCPChannel`
@@ -1747,13 +1747,13 @@ class SSHConnection(SSHPacketHandler):
            max packet size for a newly created SSH direct UNIX domain
            socket connection.
 
-           :param string encoding: (optional)
+           :param str encoding: (optional)
                The Unicode encoding to use for data exchanged on the
                connection. This defaults to ``None``, allowing the
                application to send and receive raw bytes.
-           :param integer window: (optional)
+           :param int window: (optional)
                The receive window size for this session
-           :param integer max_pktsize: (optional)
+           :param int max_pktsize: (optional)
                The maximum packet size for this session
 
            :returns: :class:`SSHUNIXChannel`
@@ -1787,9 +1787,9 @@ class SSHConnection(SSHPacketHandler):
            ``session_factory`` to forward connections tunneled over
            SSH to the specified destination host and port.
 
-           :param string dest_host:
+           :param str dest_host:
                The hostname or address to forward the connections to
-           :param integer dest_port:
+           :param int dest_port:
                The port number to forward the connections to
 
            :returns: :class:`SSHTCPSession`
@@ -1813,7 +1813,7 @@ class SSHConnection(SSHPacketHandler):
            ``session_factory`` to forward connections tunneled over
            SSH to the specified destination path.
 
-           :param string dest_path:
+           :param str dest_path:
                The path to forward the connection to
 
            :returns: :class:`SSHUNIXSession`
@@ -1840,13 +1840,13 @@ class SSHConnection(SSHPacketHandler):
            return value is an :class:`SSHListener` object which can be used
            later to shut down the port forwarding.
 
-           :param string listen_host:
+           :param str listen_host:
                The hostname or address on the local host to listen on
-           :param integer listen_port:
+           :param int listen_port:
                The port number on the local host to listen on
-           :param string dest_host:
+           :param str dest_host:
                The hostname or address to forward the connections to
-           :param integer dest_port:
+           :param int dest_port:
                The port number to forward the connections to
 
            :returns: :class:`SSHListener`
@@ -1878,9 +1878,9 @@ class SSHConnection(SSHPacketHandler):
            return value is an :class:`SSHListener` object which can be used
            later to shut down the UNIX domain socket forwarding.
 
-           :param string listen_path:
+           :param str listen_path:
                The path on the local host to listen on
-           :param string dest_path:
+           :param str dest_path:
                The path on the remote host to forward the connections to
 
            :returns: :class:`SSHListener`
@@ -2350,10 +2350,10 @@ class SSHClientConnection(SSHConnection):
            :param callable session_factory:
                A callable which returns an :class:`SSHClientSession` object
                that will be created to handle activity on this session
-           :param string command: (optional)
+           :param str command: (optional)
                The remote command to execute. By default, an interactive
                shell is started if no command or subsystem is provided.
-           :param string subsystem: (optional)
+           :param str subsystem: (optional)
                The name of a remote subsystem to start up
            :param dictionary env: (optional)
                The set of environment variables to set for this session.
@@ -2366,7 +2366,7 @@ class SSHClientConnection(SSHConnection):
                          server's configuration may need to be edited
                          before environment variables can be
                          successfully set in the remote environment.
-           :param string term_type: (optional)
+           :param str term_type: (optional)
                The terminal type to set for this session. If this is not set,
                a pseudo-terminal will not be requested for this session.
            :param term_size: (optional)
@@ -2376,11 +2376,11 @@ class SSHClientConnection(SSHConnection):
                POSIX terminal modes to set for this session, where keys
                are taken from :ref:`POSIX terminal modes <PTYModes>` with
                values defined in section 8 of :rfc:`4254#section-8`.
-           :param string encoding: (optional)
+           :param str encoding: (optional)
                The Unicode encoding to use for data exchanged on the connection
-           :param integer window: (optional)
+           :param int window: (optional)
                The receive window size for this session
-           :param integer max_pktsize: (optional)
+           :param int max_pktsize: (optional)
                The maximum packet size for this session
            :type term_size: *tuple of 2 or 4 integers*
 
@@ -2444,19 +2444,19 @@ class SSHClientConnection(SSHConnection):
            :param callable session_factory:
                A callable which returns an :class:`SSHClientSession` object
                that will be created to handle activity on this session
-           :param string remote_host:
+           :param str remote_host:
                The remote hostname or address to connect to
-           :param integer remote_port:
+           :param int remote_port:
                The remote port number to connect to
-           :param string orig_host: (optional)
+           :param str orig_host: (optional)
                The hostname or address of the client requesting the connection
-           :param integer orig_port: (optional)
+           :param int orig_port: (optional)
                The port number of the client requesting the connection
-           :param string encoding: (optional)
+           :param str encoding: (optional)
                The Unicode encoding to use for data exchanged on the connection
-           :param integer window: (optional)
+           :param int window: (optional)
                The receive window size for this session
-           :param integer max_pktsize: (optional)
+           :param int max_pktsize: (optional)
                The maximum packet size for this session
 
            :returns: an :class:`SSHTCPChannel` and :class:`SSHTCPSession`
@@ -2519,15 +2519,15 @@ class SSHClientConnection(SSHConnection):
                object used to handle activity on that connection or raising
                :exc:`ChannelOpenError` to indicate that the connection
                should not be accepted
-           :param string listen_host:
+           :param str listen_host:
                The hostname or address on the remote host to listen on
-           :param integer listen_port:
+           :param int listen_port:
                The port number on the remote host to listen on
-           :param string encoding: (optional)
+           :param str encoding: (optional)
                The Unicode encoding to use for data exchanged on the connection
-           :param integer window: (optional)
+           :param int window: (optional)
                The receive window size for this session
-           :param integer max_pktsize: (optional)
+           :param int max_pktsize: (optional)
                The maximum packet size for this session
            :type session_factory: callable or coroutine
 
@@ -2635,13 +2635,13 @@ class SSHClientConnection(SSHConnection):
            :param callable session_factory:
                A callable which returns an :class:`SSHClientSession` object
                that will be created to handle activity on this session
-           :param string remote_path:
+           :param str remote_path:
                The remote path to connect to
-           :param string encoding: (optional)
+           :param str encoding: (optional)
                The Unicode encoding to use for data exchanged on the connection
-           :param integer window: (optional)
+           :param int window: (optional)
                The receive window size for this session
-           :param integer max_pktsize: (optional)
+           :param int max_pktsize: (optional)
                The maximum packet size for this session
 
            :returns: an :class:`SSHUNIXChannel` and :class:`SSHUNIXSession`
@@ -2704,13 +2704,13 @@ class SSHClientConnection(SSHConnection):
                object used to handle activity on that connection or raising
                :exc:`ChannelOpenError` to indicate that the connection
                should not be accepted
-           :param string listen_path:
+           :param str listen_path:
                The path on the remote host to listen on
-           :param string encoding: (optional)
+           :param str encoding: (optional)
                The Unicode encoding to use for data exchanged on the connection
-           :param integer window: (optional)
+           :param int window: (optional)
                The receive window size for this session
-           :param integer max_pktsize: (optional)
+           :param int max_pktsize: (optional)
                The maximum packet size for this session
            :type session_factory: callable or coroutine
 
@@ -2790,13 +2790,13 @@ class SSHClientConnection(SSHConnection):
            used later to shut down the port forwarding. If the request
            fails, ``None`` is returned.
 
-           :param string listen_host:
+           :param str listen_host:
                The hostname or address on the remote host to listen on
-           :param integer listen_port:
+           :param int listen_port:
                The port number on the remote host to listen on
-           :param string dest_host:
+           :param str dest_host:
                The hostname or address to forward connections to
-           :param integer dest_port:
+           :param int dest_port:
                The port number to forward connections to
 
            :returns: :class:`SSHListener` or ``None`` if the listener can't
@@ -2824,9 +2824,9 @@ class SSHClientConnection(SSHConnection):
            used later to shut down the port forwarding. If the request
            fails, ``None`` is returned.
 
-           :param string listen_path:
+           :param str listen_path:
                The path on the remote host to listen on
-           :param string dest_path:
+           :param str dest_path:
                The path on the local host to forward connections to
 
            :returns: :class:`SSHListener` or ``None`` if the listener can't
@@ -2857,10 +2857,10 @@ class SSHClientConnection(SSHConnection):
            will be left as bytes rather than being converted to & from
            strings.
 
-           :param string path_encoding:
+           :param str path_encoding:
                The Unicode encoding to apply when sending and receiving
                remote pathnames
-           :param string path_errors:
+           :param str path_errors:
                The error handling strategy to apply on encode/decode errors
 
            :returns: :class:`SFTPClient`
@@ -3486,9 +3486,9 @@ class SSHServerConnection(SSHConnection):
            in progress. It is an error to call this method after the
            authentication is complete.
 
-           :param string msg:
+           :param str msg:
                The message to display
-           :param string lang:
+           :param str lang:
                The language the message is in
 
            :raises: :exc:`OSError` if authentication is already completed
@@ -3542,7 +3542,7 @@ class SSHServerConnection(SSHConnection):
            with each occurrence of that option name. If the option is
            not present, the specified default value is returned.
 
-           :param string option:
+           :param str option:
                The name of the option to look up.
            :param default:
                The default value to return if the option is not present.
@@ -3581,10 +3581,10 @@ class SSHServerConnection(SSHConnection):
            Non-standard permissions can also be checked, as long as the
            option follows the convention of starting with 'no-'.
 
-           :param string permission:
+           :param str permission:
                The name of the permission to check (without the 'no-').
 
-           :returns: A boolean indicating if the permission is granted.
+           :returns: A bool indicating if the permission is granted.
 
         """
 
@@ -3606,7 +3606,7 @@ class SSHServerConnection(SSHConnection):
                | force-command (string)
                | source-address (list of CIDR-style IP network addresses)
 
-           :param string option:
+           :param str option:
                The name of the option to look up.
            :param default:
                The default value to return if the option is not present.
@@ -3640,10 +3640,10 @@ class SSHServerConnection(SSHConnection):
            but ignores the other values since it does not implement those
            features.
 
-           :param string permission:
+           :param str permission:
                The name of the permission to check (without the 'permit-').
 
-           :returns: A boolean indicating if the permission is granted.
+           :returns: A bool indicating if the permission is granted.
 
         """
 
@@ -3661,14 +3661,14 @@ class SSHServerConnection(SSHConnection):
            :class:`SSHServerChannel` with the desired encoding, window,
            and max packet size for a newly created SSH server session.
 
-           :param string encoding: (optional)
+           :param str encoding: (optional)
                The Unicode encoding to use for data exchanged on the
                session, defaulting to UTF-8 (ISO 10646) format. If ``None``
                is passed in, the application can send and receive raw
                bytes.
-           :param integer window: (optional)
+           :param int window: (optional)
                The receive window size for this session
-           :param integer max_pktsize: (optional)
+           :param int max_pktsize: (optional)
                The maximum packet size for this session
 
            :returns: :class:`SSHServerChannel`
@@ -3711,19 +3711,19 @@ class SSHServerConnection(SSHConnection):
            :param callable session_factory:
                A callable which returns an :class:`SSHClientSession` object
                that will be created to handle activity on this session
-           :param string remote_host:
+           :param str remote_host:
                The hostname or address the connection was received on
-           :param integer remote_port:
+           :param int remote_port:
                The port number the connection was received on
-           :param string orig_host: (optional)
+           :param str orig_host: (optional)
                The hostname or address of the client requesting the connection
-           :param integer orig_port: (optional)
+           :param int orig_port: (optional)
                The port number of the client requesting the connection
-           :param string encoding: (optional)
+           :param str encoding: (optional)
                The Unicode encoding to use for data exchanged on the connection
-           :param integer window: (optional)
+           :param int window: (optional)
                The receive window size for this session
-           :param integer max_pktsize: (optional)
+           :param int max_pktsize: (optional)
                The maximum packet size for this session
 
            :returns: an :class:`SSHTCPChannel` and :class:`SSHTCPSession`
@@ -3785,13 +3785,13 @@ class SSHServerConnection(SSHConnection):
            :param callable session_factory:
                A callable which returns an :class:`SSHClientSession` object
                that will be created to handle activity on this session
-           :param string remote_path:
+           :param str remote_path:
                The path the connection was received on
-           :param string encoding: (optional)
+           :param str encoding: (optional)
                The Unicode encoding to use for data exchanged on the connection
-           :param integer window: (optional)
+           :param int window: (optional)
                The receive window size for this session
-           :param integer max_pktsize: (optional)
+           :param int max_pktsize: (optional)
                The maximum packet size for this session
 
            :returns: an :class:`SSHTCPChannel` and :class:`SSHUNIXSession`
@@ -3910,11 +3910,11 @@ class SSHClient:
            a debug message. Applications should implement this method if
            they wish to process these debug messages.
 
-           :param string msg:
+           :param str msg:
                The debug message sent
-           :param string lang:
+           :param str lang:
                The language the message is in
-           :param boolean always_display:
+           :param bool always_display:
                Whether or not to display the message
 
         """
@@ -3926,9 +3926,9 @@ class SSHClient:
            during authentication. Applications should implement this method
            if they wish to do something with the banner.
 
-           :param string msg:
+           :param str msg:
                The message the server wanted to display
-           :param string lang:
+           :param str lang:
                The language the message is in
 
         """
@@ -4012,9 +4012,9 @@ class SSHClient:
 
            By default, this method returns ``NotImplemented``.
 
-           :param string prompt:
+           :param str prompt:
                The prompt requesting that the user enter a new password
-           :param string lang:
+           :param str lang:
                The language that the prompt is in
 
            :returns: A tuple of two strings containing the old and new
@@ -4098,16 +4098,16 @@ class SSHClient:
            cause this method to return ``None`` to move on to another
            authentication method.
 
-           :param string name:
+           :param str name:
                The name of the challenge
-           :param string instruction:
+           :param str instruction:
                Instructions to the user about how to respond to the challenge
-           :param string lang:
+           :param str lang:
                The language the challenge is in
            :param prompts:
                The challenges the user should respond to and whether or
                not the responses should be echoed when they are entered
-           :type prompts: list of tuples of string and boolean
+           :type prompts: list of tuples of str and bool
 
            :returns: List of string responses to the challenge or ``None``
                      to move on to another authentication method
@@ -4162,11 +4162,11 @@ class SSHServer:
            a debug message. Applications should implement this method if
            they wish to process these debug messages.
 
-           :param string msg:
+           :param str msg:
                The debug message sent
-           :param string lang:
+           :param str lang:
                The language the message is in
-           :param boolean always_display:
+           :param bool always_display:
                Whether or not to display the message
 
         """
@@ -4183,10 +4183,10 @@ class SSHServer:
            succeed. Otherwise, it should return ``True`` to indicate that
            authentication should proceed.
 
-           :param string username:
+           :param str username:
                The name of the user being authenticated
 
-           :returns: A boolean indicating whether authentication is required
+           :returns: A bool indicating whether authentication is required
 
         """
 
@@ -4204,7 +4204,7 @@ class SSHServer:
            By default, it returns ``False`` indicating the client public
            key authentication is not supported.
 
-           :returns: A boolean indicating if public key authentication is
+           :returns: A bool indicating if public key authentication is
                      supported or not
 
         """
@@ -4242,13 +4242,13 @@ class SSHServer:
                          client possesses the corresponding private key
                          before allowing the authentication to succeed.
 
-           :param string username:
+           :param str username:
                The user being authenticated
            :param key:
                The public key sent by the client
            :type key: :class:`SSHKey` *public key*
 
-           :returns: A boolean indicating if the specified key is a valid
+           :returns: A bool indicating if the specified key is a valid
                      client key for the user being authenticated
 
         """
@@ -4290,13 +4290,13 @@ class SSHServer:
                          corresponding to the public key in the certificate
                          before allowing the authentication to succeed.
 
-           :param string username:
+           :param str username:
                The user being authenticated
            :param key:
                The public key which signed the certificate sent by the client
            :type key: :class:`SSHKey` *public key*
 
-           :returns: A boolean indicating if the specified key is a valid
+           :returns: A bool indicating if the specified key is a valid
                      CA key for the user being authenticated
 
         """
@@ -4315,7 +4315,7 @@ class SSHServer:
            By default, this method returns ``False`` indicating that
            password authentication is not supported.
 
-           :returns: A boolean indicating if password authentication is
+           :returns: A bool indicating if password authentication is
                      supported or not
 
         """
@@ -4350,12 +4350,12 @@ class SSHServer:
 
            By default, this method returns ``False`` for all passwords.
 
-           :param string username:
+           :param str username:
                The user being authenticated
-           :param string password:
+           :param str password:
                The password sent by the client
 
-           :returns: A boolean indicating if the specified password is
+           :returns: A bool indicating if the specified password is
                      valid for the user being authenticated
 
            :raises: :exc:`PasswordChangeRequired` if the password
@@ -4388,14 +4388,14 @@ class SSHServer:
            By default, this method returns ``False``, rejecting all
            password changes.
 
-           :param string username:
+           :param str username:
                The user whose password should be changed
-           :param string old_password:
+           :param str old_password:
                The user's current password
-           :param string new_password:
+           :param str new_password:
                The new password being requested
 
-           :returns: A boolean indicating if the password change
+           :returns: A bool indicating if the password change
                      is successful or not
 
            :raises: :exc:`PasswordChangeRequired` if the new password
@@ -4424,7 +4424,7 @@ class SSHServer:
            will be supported by prompting for a password and passing
            that to the password authentication callbacks.
 
-           :returns: A boolean indicating if keyboard-interactive
+           :returns: A bool indicating if keyboard-interactive
                      authentication is supported or not
 
         """
@@ -4445,11 +4445,11 @@ class SSHServer:
            If blocking operations need to be performed to determine the
            challenge to issue, this method may be defined as a coroutine.
 
-           :param string username:
+           :param str username:
                The user being authenticated
-           :param string lang:
+           :param str lang:
                The language requested by the client for the challenge
-           :param string submethods:
+           :param str submethods:
                A comma-separated list of the types of challenges the client
                can support, or the empty string if the server should choose
 
@@ -4478,11 +4478,11 @@ class SSHServer:
            validity of the response or the next challenge to issue, this
            method may be defined as a coroutine.
 
-           :param string username:
+           :param str username:
                The user being authenticated
            :param responses:
                A list of responses to the last challenge
-           :type responses: list of strings
+           :type responses: list of str
 
            :returns: ``True``, ``False``, or the next challenge
 
@@ -4578,13 +4578,13 @@ class SSHServer:
 
            By default, all connection requests are rejected.
 
-           :param string dest_host:
+           :param str dest_host:
                The address the client wishes to connect to
-           :param integer dest_port:
+           :param int dest_port:
                The port the client wishes to connect to
-           :param string orig_host:
+           :param str orig_host:
                The address the connection was originated from
-           :param integer orig_port:
+           :param int orig_port:
                The port the connection was originated from
 
            :returns: One of the following:
@@ -4636,9 +4636,9 @@ class SSHServer:
 
            By default, this method rejects all server requests.
 
-           :param string listen_host:
+           :param str listen_host:
                The address the server should listen on
-           :param integer listen_port:
+           :param int listen_port:
                The port the server should listen on, or the value ``0``
                to request that the server dynamically allocate a port
 
@@ -4687,7 +4687,7 @@ class SSHServer:
 
            By default, all connection requests are rejected.
 
-           :param string dest_path:
+           :param str dest_path:
                The path the client wishes to connect to
 
            :returns: One of the following:
@@ -4738,7 +4738,7 @@ class SSHServer:
 
            By default, this method rejects all server requests.
 
-           :param string listen_path:
+           :param str listen_path:
                The path the server should listen on
 
            :returns: One of the following:
@@ -4798,9 +4798,9 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
        :param callable client_factory:
            A callable which returns an :class:`SSHClient` object that will
            be tied to the connection
-       :param string host:
+       :param str host:
            The hostname or address to connect to
-       :param integer port: (optional)
+       :param int port: (optional)
            The port number to connect to. If not specified, the default
            SSH port is used.
        :param loop: (optional)
@@ -4819,10 +4819,10 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
            the keys will be looked up in the file :file:`.ssh/known_hosts`.
            If this is explicitly set to ``None``, server host key validation
            will be disabled.
-       :param string username: (optional)
+       :param str username: (optional)
            Username to authenticate as on the server. If not specified,
            the currently logged in user on the local machine will be used.
-       :param string password: (optional)
+       :param str password: (optional)
            The password to use for client password authentication or
            keyboard-interactive authentication which prompts for a password.
            If this is not specified, client password authentication will
@@ -4839,7 +4839,7 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
            :file:`.ssh/id_rsa-cert.pub`, and :file:`.ssh/id_dsa-cert.pub`.
            If this argument is explicitly set to ``None``, client public
            key authentication will not be performed.
-       :param string passphrase: (optional)
+       :param str passphrase: (optional)
            The passphrase to use to decrypt client keys when loading them,
            if they are encrypted. If this is not specified, only unencrypted
            client keys can be loaded. If the keys passed into client_keys
@@ -4870,23 +4870,23 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
            A list of compression algorithms to use during the SSH handshake,
            taken from :ref:`compression algorithms <CompressionAlgs>`, or
            ``None`` to disable compression
-       :param integer rekey_bytes: (optional)
+       :param int rekey_bytes: (optional)
            The number of bytes which can be sent before the SSH session
            key is renegotiated. This defaults to 1 GB.
-       :param integer rekey_seconds: (optional)
+       :param int rekey_seconds: (optional)
            The maximum time in seconds before the SSH session key is
            renegotiated. This defaults to 1 hour.
        :type family: ``socket.AF_UNSPEC``, ``socket.AF_INET``, or
                      ``socket.AF_INET6``
        :type flags: flags to pass to :meth:`getaddrinfo() <socket.getaddrinfo>`
-       :type local_addr: tuple of string and integer
+       :type local_addr: tuple of str and int
        :type known_hosts: *see* :ref:`SpecifyingKnownHosts`
        :type client_keys: *see* :ref:`SpecifyingPrivateKeys`
-       :type agent_path: string or :class:`SSHServerConnection`
-       :type kex_algs: list of strings
-       :type encryption_algs: list of strings
-       :type mac_algs: list of strings
-       :type compression_algs: list of strings
+       :type agent_path: str or :class:`SSHServerConnection`
+       :type kex_algs: list of str
+       :type encryption_algs: list of str
+       :type mac_algs: list of str
+       :type compression_algs: list of str
 
        :returns: An :class:`SSHClientConnection` and :class:`SSHClient`
 
@@ -4975,10 +4975,10 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
        :param callable server_factory:
            A callable which returns an :class:`SSHServer` object that will
            be created for each new inbound connection
-       :param string host: (optional)
+       :param str host: (optional)
            The hostname or address to listen on. If not specified, listeners
            are created for all addresses.
-       :param integer port: (optional)
+       :param int port: (optional)
            The port number to listen on. If not specified, the default
            SSH port is used.
        :param loop: (optional)
@@ -4989,9 +4989,9 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
            the address families are automatically selected based on the host.
        :param flags: (optional)
            The flags to pass to getaddrinfo() when looking up the host
-       :param integer backlog: (optional)
+       :param int backlog: (optional)
            The maximum number of queued connections allowed on listeners
-       :param boolean reuse_address: (optional)
+       :param bool reuse_address: (optional)
            Whether or not to reuse a local socket in the TIME_WAIT state
            without waiting for its natural timeout to expire. If not
            specified, this will be automatically set to ``True`` on UNIX.
@@ -4999,7 +4999,7 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
            A list of private keys and optional certificates which can be
            used by the server as a host key. This argument must be
            specified.
-       :param string passphrase: (optional)
+       :param str passphrase: (optional)
            The passphrase to use to decrypt server host keys when loading
            them, if they are encrypted. If this is not specified, only
            unencrypted server host keys can be loaded. If the keys passed
@@ -5021,10 +5021,10 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
            A list of compression algorithms to use during the SSH handshake,
            taken from :ref:`compression algorithms <CompressionAlgs>`, or
            ``None`` to disable compression
-       :param boolean allow_pty: (optional)
+       :param bool allow_pty: (optional)
            Whether or not to allow allocation of a pseudo-tty in sessions,
            defaulting to ``True``
-       :param boolean agent_forwarding: (optional)
+       :param bool agent_forwarding: (optional)
            Whether or not to allow forwarding of ssh-agent requests back
            to the client when the client supports it, defaulting to ``True``
        :param callable session_factory: (optional)
@@ -5036,7 +5036,7 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
            <SSHServer.session_requested>` method is overridden on the
            :class:`SSHServer` object returned by ``server_factory`` to make
            this decision.
-       :param string session_encoding: (optional)
+       :param str session_encoding: (optional)
            The Unicode encoding to use for data exchanged on sessions on
            this server, defaulting to UTF-8 (ISO 10646) format. If ``None``
            is passed in, the application can send and receive raw bytes.
@@ -5046,17 +5046,17 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
            client, or ``True`` to use the base :class:`SFTPServer` class
            to handle SFTP requests. If not specified, SFTP sessions are
            rejected by default.
-       :param integer window: (optional)
+       :param int window: (optional)
            The receive window size for sessions on this server
-       :param integer max_pktsize: (optional)
+       :param int max_pktsize: (optional)
            The maximum packet size for sessions on this server
-       :param integer rekey_bytes: (optional)
+       :param int rekey_bytes: (optional)
            The number of bytes which can be sent before the SSH session
            key is renegotiated, defaulting to 1 GB
-       :param integer rekey_seconds: (optional)
+       :param int rekey_seconds: (optional)
            The maximum time in seconds before the SSH session key is
            renegotiated, defaulting to 1 hour
-       :param integer login_timeout: (optional)
+       :param int login_timeout: (optional)
            The maximum time in seconds allowed for authentication to
            complete, defaulting to 2 minutes
        :type family: ``socket.AF_UNSPEC``, ``socket.AF_INET``, or
@@ -5064,10 +5064,10 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
        :type flags: flags to pass to :meth:`getaddrinfo() <socket.getaddrinfo>`
        :type server_host_keys: *see* :ref:`SpecifyingPrivateKeys`
        :type authorized_client_keys: *see* :ref:`SpecifyingAuthorizedKeys`
-       :type kex_algs: list of strings
-       :type encryption_algs: list of strings
-       :type mac_algs: list of strings
-       :type compression_algs: list of strings
+       :type kex_algs: list of str
+       :type encryption_algs: list of str
+       :type mac_algs: list of str
+       :type compression_algs: list of str
 
        :returns: :class:`asyncio.AbstractServer`
 
