@@ -30,7 +30,7 @@ from .auth import get_server_auth_methods, lookup_server_auth
 from .auth_keys import read_authorized_keys
 
 from .channel import SSHClientChannel, SSHServerChannel
-from .channel import SSHTCPChannel, SSHUNIXChannel
+from .channel import SSHTCPChannel, SSHUNIXChannel, SSHAgentChannel
 
 from .cipher import get_encryption_algs, get_encryption_params, get_cipher
 
@@ -73,7 +73,7 @@ from .logging import logger
 from .mac import get_mac_algs, get_mac_params, get_mac
 
 from .misc import ChannelOpenError, DisconnectError, PasswordChangeRequired
-from .misc import ip_address
+from .misc import ip_address, map_handler_name
 
 from .packet import Boolean, Byte, NameList, String, UInt32, UInt64
 from .packet import PacketDecodeError, SSHPacket, SSHPacketHandler
@@ -116,18 +116,6 @@ _DEFAULT_LOGIN_TIMEOUT = 120        # 2 minutes
 # Default channel parameters
 _DEFAULT_WINDOW = 2*1024*1024       # 2 MiB
 _DEFAULT_MAX_PKTSIZE = 32768        # 32 kiB
-
-# Punctuation to map when creating handler names
-_HANDLER_PUNCTUATION = (('@', '_at_'), ('.', '_dot_'), ('-', '_'))
-
-
-def _map_handler_name(name):
-    """Map punctuation in a name so it can be used as a handler name"""
-
-    for old, new in _HANDLER_PUNCTUATION:
-        name = name.replace(old, new)
-
-    return name
 
 
 def _load_private_key(key, passphrase=None):
@@ -1466,7 +1454,7 @@ class SSHConnection(SSHPacketHandler):
             raise DisconnectError(DISC_PROTOCOL_ERROR,
                                   'Invalid global request') from None
 
-        name = '_process_' + _map_handler_name(request) + '_global_request'
+        name = '_process_' + map_handler_name(request) + '_global_request'
         handler = getattr(self, name, None)
 
         self._global_request_queue.append((handler, packet, want_reply))
@@ -1503,7 +1491,7 @@ class SSHConnection(SSHPacketHandler):
                                   'Invalid channel open request') from None
 
         try:
-            name = '_process_' + _map_handler_name(chantype) + '_open'
+            name = '_process_' + map_handler_name(chantype) + '_open'
             handler = getattr(self, name, None)
             if callable(handler):
                 chan, session = handler(packet)
@@ -2479,8 +2467,10 @@ class SSHClientConnection(SSHConnection):
 
         chan = self.create_tcp_channel(encoding, window, max_pktsize)
 
-        return (yield from chan.connect(session_factory, remote_host,
-                                        remote_port, orig_host, orig_port))
+        session = yield from chan.connect(session_factory, remote_host,
+                                          remote_port, orig_host, orig_port)
+
+        return chan, session
 
     @asyncio.coroutine
     def open_connection(self, *args, **kwargs):
@@ -2662,7 +2652,9 @@ class SSHClientConnection(SSHConnection):
 
         chan = self.create_unix_channel(encoding, window, max_pktsize)
 
-        return (yield from chan.connect(session_factory, remote_path))
+        session = yield from chan.connect(session_factory, remote_path)
+
+        return chan, session
 
     @asyncio.coroutine
     def open_unix_connection(self, *args, **kwargs):
@@ -2925,14 +2917,16 @@ class SSHServerConnection(SSHConnection):
 
     def __init__(self, server_factory, loop, server_host_keys, passphrase,
                  authorized_client_keys, kex_algs, encryption_algs, mac_algs,
-                 compression_algs, allow_pty, session_factory,
-                 session_encoding, sftp_factory, window, max_pktsize,
-                 rekey_bytes, rekey_seconds, login_timeout):
+                 compression_algs, allow_pty, agent_forwarding,
+                 session_factory, session_encoding, sftp_factory, window,
+                 max_pktsize, rekey_bytes, rekey_seconds, login_timeout):
         super().__init__(server_factory, loop, kex_algs, encryption_algs,
                          mac_algs, compression_algs, rekey_bytes,
                          rekey_seconds, server=True)
 
         self._allow_pty = allow_pty
+        self._agent_forwarding = agent_forwarding
+        self._agent_forwarding_enabled = False
         self._session_factory = session_factory
         self._session_encoding = session_encoding
         self._sftp_factory = sftp_factory
@@ -3220,8 +3214,7 @@ class SSHServerConnection(SSHConnection):
         if self._session_factory or self._sftp_factory:
             chan = self.create_server_channel(self._session_encoding,
                                               self._window, self._max_pktsize)
-            session = SSHServerStreamSession(self._allow_pty,
-                                             self._session_factory,
+            session = SSHServerStreamSession(self._session_factory,
                                              self._sftp_factory)
         else:
             result = self._owner.session_requested()
@@ -3237,7 +3230,7 @@ class SSHServerConnection(SSHConnection):
                                                   self._max_pktsize)
 
             if callable(result):
-                session = SSHServerStreamSession(self._allow_pty, result, None)
+                session = SSHServerStreamSession(result, None)
             else:
                 session = result
 
@@ -3390,6 +3383,11 @@ class SSHServerConnection(SSHConnection):
             raise DisconnectError(DISC_PROTOCOL_ERROR, 'Invalid direct UNIX '
                                   'domain channel open request') from None
 
+        if not self.check_key_permission('port-forwarding') or \
+           not self.check_certificate_permission('port-forwarding'):
+            raise ChannelOpenError(OPEN_ADMINISTRATIVELY_PROHIBITED,
+                                   'Port forwarding not permitted')
+
         result = self._owner.unix_connection_requested(dest_path)
 
         if not result:
@@ -3424,6 +3422,11 @@ class SSHServerConnection(SSHConnection):
         except UnicodeDecodeError:
             raise DisconnectError(DISC_PROTOCOL_ERROR, 'Invalid UNIX domain '
                                   'socket forward request') from None
+
+        if not self.check_key_permission('port-forwarding') or \
+           not self.check_certificate_permission('port-forwarding'):
+            self._report_global_response(False)
+            return
 
         result = self._owner.unix_server_requested(listen_path)
 
@@ -3571,8 +3574,8 @@ class SSHServerConnection(SSHConnection):
                | pty
                | user-rc
 
-           AsyncSSH internally enforces port-forwarding and pty
-           permissions but ignores the other values since it does
+           AsyncSSH internally enforces agent-forwarding, port-forwarding
+           and pty permissions but ignores the other values since it does
            not implement those features.
 
            Non-standard permissions can also be checked, as long as the
@@ -3672,8 +3675,14 @@ class SSHServerConnection(SSHConnection):
 
         """
 
-        return SSHServerChannel(self, self._loop, encoding,
+        return SSHServerChannel(self, self._loop, self._allow_pty,
+                                self._agent_forwarding, encoding,
                                 window, max_pktsize)
+
+    def agent_forwarding_enabled(self):
+        """Enable ssh-agent forwarding to the client"""
+
+        self._agent_forwarding_enabled = True
 
     @asyncio.coroutine
     def create_connection(self, session_factory, remote_host, remote_port,
@@ -3723,8 +3732,10 @@ class SSHServerConnection(SSHConnection):
 
         chan = self.create_tcp_channel(encoding, window, max_pktsize)
 
-        return (yield from chan.accept(session_factory, remote_host,
-                                       remote_port, orig_host, orig_port))
+        session = yield from chan.accept(session_factory, remote_host,
+                                         remote_port, orig_host, orig_port)
+
+        return chan, session
 
     @asyncio.coroutine
     def open_connection(self, *args, **kwargs):
@@ -3789,7 +3800,9 @@ class SSHServerConnection(SSHConnection):
 
         chan = self.create_unix_channel(encoding, window, max_pktsize)
 
-        return (yield from chan.accept(session_factory, remote_path))
+        session = yield from chan.accept(session_factory, remote_path)
+
+        return chan, session
 
     @asyncio.coroutine
     def open_unix_connection(self, *args, **kwargs):
@@ -3814,6 +3827,21 @@ class SSHServerConnection(SSHConnection):
         chan, session = \
             yield from self.create_unix_connection(SSHUNIXStreamSession,
                                                    *args, **kwargs)
+
+        return SSHReader(session, chan), SSHWriter(session, chan)
+
+    @asyncio.coroutine
+    def open_agent_connection(self):
+        """Open a forwarded ssh-agent connection back to the client"""
+
+        if not self._agent_forwarding_enabled:
+            raise ChannelOpenError(OPEN_ADMINISTRATIVELY_PROHIBITED,
+                                   'Agent forwarding not permitted')
+
+        chan = SSHAgentChannel(self, self._loop, None, _DEFAULT_WINDOW,
+                               _DEFAULT_MAX_PKTSIZE)
+
+        session = yield from chan.open(SSHUNIXStreamSession)
 
         return SSHReader(session, chan), SSHWriter(session, chan)
 
@@ -4816,18 +4844,19 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
            if they are encrypted. If this is not specified, only unencrypted
            client keys can be loaded. If the keys passed into client_keys
            are already loaded, this argument is ignored.
-       :param string agent_path: (optional)
+       :param agent_path: (optional)
            The path of a UNIX domain socket to use to contact an ssh-agent
            process which will perform the operations needed for client
-           public key authentication. If this is not specified and the
-           environment variable ``SSH_AUTH_SOCK`` is set, its value will
-           be used as the path. If ``client_keys`` is specified or this
-           argument is explicitly set to ``None``, an ssh-agent will not
-           be used.
+           public key authentication, or the :class:`SSHServerConnection`
+           to use to forward ssh-agent requests over. If this is not
+           specified and the environment variable ``SSH_AUTH_SOCK`` is
+           set, its value will be used as the path.  If ``client_keys``
+           is specified or this argument is explicitly set to ``None``,
+           an ssh-agent will not be used.
        :param bool agent_forwarding: (optional)
            Whether or not to allow forwarding of ssh-agent requests from
            processes running on the server. By default, ssh-agent forwarding
-           is disabled.
+           requests from the server are not allowed.
        :param kex_algs: (optional)
            A list of allowed key exchange algorithms in the SSH handshake,
            taken from :ref:`key exchange algorithms <KexAlgs>`
@@ -4853,6 +4882,7 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
        :type local_addr: tuple of string and integer
        :type known_hosts: *see* :ref:`SpecifyingKnownHosts`
        :type client_keys: *see* :ref:`SpecifyingPrivateKeys`
+       :type agent_path: string or :class:`SSHServerConnection`
        :type kex_algs: list of strings
        :type encryption_algs: list of strings
        :type mac_algs: list of strings
@@ -4929,7 +4959,7 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
                   reuse_address=None, server_host_keys, passphrase=None,
                   authorized_client_keys=None, kex_algs=(),
                   encryption_algs=(), mac_algs=(), compression_algs=(),
-                  allow_pty=True, session_factory=None,
+                  allow_pty=True, agent_forwarding=True, session_factory=None,
                   session_encoding='utf-8', sftp_factory=None,
                   window=_DEFAULT_WINDOW, max_pktsize=_DEFAULT_MAX_PKTSIZE,
                   rekey_bytes=_DEFAULT_REKEY_BYTES,
@@ -4994,6 +5024,9 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
        :param boolean allow_pty: (optional)
            Whether or not to allow allocation of a pseudo-tty in sessions,
            defaulting to ``True``
+       :param boolean agent_forwarding: (optional)
+           Whether or not to allow forwarding of ssh-agent requests back
+           to the client when the client supports it, defaulting to ``True``
        :param callable session_factory: (optional)
            A callable or coroutine handler function which takes AsyncSSH
            stream objects for stdin, stdout, and stderr that will be called
@@ -5056,9 +5089,10 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
                                    passphrase, authorized_client_keys,
                                    kex_algs, encryption_algs, mac_algs,
                                    compression_algs, allow_pty,
-                                   session_factory, session_encoding,
-                                   sftp_factory, window, max_pktsize,
-                                   rekey_bytes, rekey_seconds, login_timeout)
+                                   agent_forwarding, session_factory,
+                                   session_encoding, sftp_factory, window,
+                                   max_pktsize, rekey_bytes, rekey_seconds,
+                                   login_timeout)
 
     return (yield from loop.create_server(conn_factory, host, port,
                                           family=family, flags=flags,

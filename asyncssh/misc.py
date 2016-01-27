@@ -32,6 +32,18 @@ def all_ints(seq):
     return all(isinstance(i, int) for i in seq)
 
 
+# Punctuation to map when creating handler names
+_HANDLER_PUNCTUATION = (('@', '_at_'), ('.', '_dot_'), ('-', '_'))
+
+def map_handler_name(name):
+    """Map punctuation so a string can be used as a handler name"""
+
+    for old, new in _HANDLER_PUNCTUATION:
+        name = name.replace(old, new)
+
+    return name
+
+
 def _normalize_scoped_ip(addr):
     """Normalize scoped IP address
 

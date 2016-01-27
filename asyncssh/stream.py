@@ -417,17 +417,11 @@ class SSHClientStreamSession(SSHStreamSession, SSHClientSession):
 class SSHServerStreamSession(SSHStreamSession, SSHServerSession):
     """SSH server stream session handler"""
 
-    def __init__(self, allow_pty, session_factory, sftp_factory):
+    def __init__(self, session_factory, sftp_factory):
         super().__init__()
 
-        self._allow_pty = allow_pty
         self._session_factory = session_factory
         self._sftp_factory = sftp_factory
-
-    def pty_requested(self, term_type, term_size, term_modes):
-        """Return whether a pseudo-tty can be requested"""
-
-        return self._allow_pty
 
     def shell_requested(self):
         """Return whether a shell can be requested"""
