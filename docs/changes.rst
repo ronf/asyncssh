@@ -18,9 +18,6 @@ Release 1.5.0 (27 Jan 2016)
 * Fixed wait_closed() on SSHForwardListener to work properly when a
   close is in progress at the time of the call.
 
-* Improved public key unit tests to skip unit tests which don't work
-  correctly when an older version of OpenSSL is installed.
-
 Release 1.4.1 (23 Jan 2016)
 ---------------------------
 
