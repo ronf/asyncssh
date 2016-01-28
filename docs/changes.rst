@@ -3,6 +3,24 @@
 Change Log
 ==========
 
+Release 1.5.0 (27 Jan 2016)
+---------------------------
+
+* Added support for OpenSSH-compatible direct and forwarded UNIX domain
+  socket channels and local and remote UNIX domain socket forwarding.
+
+* Added support for client and server side ssh-agent forwarding.
+
+* Fixed the open_connection() method on SSHServerConnection to not include
+  a handler_factory argument. This should only have been present on the
+  start_server() method.
+
+* Fixed wait_closed() on SSHForwardListener to work properly when a
+  close is in progress at the time of the call.
+
+* Improved public key unit tests to skip unit tests which don't work
+  correctly when an older version of OpenSSL is installed.
+
 Release 1.4.1 (23 Jan 2016)
 ---------------------------
 
