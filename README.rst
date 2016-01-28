@@ -39,7 +39,9 @@ Features
   * Shell, command, and subsystem channels
   * Environment variables, terminal type, and window size
   * Direct and forwarded TCP/IP channels
+  * OpenSSH-compatible direct and forwarded UNIX domain socket channels
   * Local and remote TCP/IP port forwarding
+  * Local and remote UNIX domain socket forwarding
   * SFTP protocol version 3 with OpenSSH extensions
 
 * Multiple simultaneous sessions on a single SSH connection
