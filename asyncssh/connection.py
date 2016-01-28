@@ -29,7 +29,8 @@ from .auth import get_server_auth_methods, lookup_server_auth
 
 from .auth_keys import read_authorized_keys
 
-from .channel import SSHClientChannel, SSHServerChannel, SSHTCPChannel
+from .channel import SSHClientChannel, SSHServerChannel
+from .channel import SSHTCPChannel, SSHUNIXChannel, SSHAgentChannel
 
 from .cipher import get_encryption_algs, get_encryption_params, get_cipher
 
@@ -58,20 +59,21 @@ from .constants import MSG_REQUEST_FAILURE
 from .constants import OPEN_ADMINISTRATIVELY_PROHIBITED, OPEN_CONNECT_FAILED
 from .constants import OPEN_UNKNOWN_CHANNEL_TYPE
 
-from .forward import SSHPortForwarder
+from .forward import SSHForwarder
 
 from .kex import get_kex_algs, get_kex
 
 from .known_hosts import match_known_hosts
 
-from .listener import SSHClientListener, create_forward_listener
+from .listener import SSHTCPClientListener, create_tcp_forward_listener
+from .listener import SSHUNIXClientListener, create_unix_forward_listener
 
 from .logging import logger
 
 from .mac import get_mac_algs, get_mac_params, get_mac
 
 from .misc import ChannelOpenError, DisconnectError, PasswordChangeRequired
-from .misc import ip_address
+from .misc import ip_address, map_handler_name
 
 from .packet import Boolean, Byte, NameList, String, UInt32, UInt64
 from .packet import PacketDecodeError, SSHPacket, SSHPacketHandler
@@ -90,7 +92,8 @@ from .saslprep import saslprep, SASLPrepError
 from .sftp import SFTPClient, SFTPServer, SFTPClientHandler
 
 from .stream import SSHClientStreamSession, SSHServerStreamSession
-from .stream import SSHTCPStreamSession, SSHReader, SSHWriter
+from .stream import SSHTCPStreamSession, SSHUNIXStreamSession
+from .stream import SSHReader, SSHWriter
 
 
 # SSH default port
@@ -127,7 +130,7 @@ def _load_private_key(key, passphrase=None):
        key from, a byte string to import as a private key, or an
        already loaded :class:`SSHKey` private key.
 
-       Certificate references can  be the name of a file to load the
+       Certificate references can be the name of a file to load the
        certificate from, a byte string to import as a certificate,
        an already loaded :class:`SSHCertificate`, or ``None`` if
        no certificate should be associated with the key.
@@ -485,7 +488,11 @@ class SSHConnection(SSHPacketHandler):
         if platform.python_version_tuple() >= ('3', '4', '2'):
             task = self._loop.create_task(self._run_task(coro))
         else:
-            task = asyncio.async(self._run_task(coro), loop=self._loop)
+            # Pylint is annoying here - it's not smart enough to see the
+            # version check, and the disable MUST be on the same line as
+            # the call, leading to ugly line breaking
+            task = asyncio.async(    # pylint: disable=deprecated-method
+                self._run_task(coro), loop=self._loop)
 
         self._tasks.add(task)
         return task
@@ -538,7 +545,7 @@ class SSHConnection(SSHPacketHandler):
         except DisconnectError as exc:
             self._loop.call_soon(self.connection_lost, exc)
         except: # pragma: no cover
-            self._loop.call_soon(self.internal_error)
+            self._loop.call_soon(self.internal_error, sys.exc_info())
 
     def connection_lost(self, exc=None):
         """Handle the closing of a connection"""
@@ -792,7 +799,7 @@ class SSHConnection(SSHPacketHandler):
             else:
                 processed = self.process_packet(pkttype, packet)
         except PacketDecodeError as exc:
-            raise DisconnectError(DISC_PROTOCOL_ERROR, str(exc))
+            raise DisconnectError(DISC_PROTOCOL_ERROR, str(exc)) from None
 
         if not processed:
             self.send_packet(Byte(MSG_UNIMPLEMENTED), UInt32(self._recv_seq))
@@ -1447,7 +1454,7 @@ class SSHConnection(SSHPacketHandler):
             raise DisconnectError(DISC_PROTOCOL_ERROR,
                                   'Invalid global request') from None
 
-        name = '_process_' + request.replace('-', '_') + '_global_request'
+        name = '_process_' + map_handler_name(request) + '_global_request'
         handler = getattr(self, name, None)
 
         self._global_request_queue.append((handler, packet, want_reply))
@@ -1484,7 +1491,7 @@ class SSHConnection(SSHPacketHandler):
                                   'Invalid channel open request') from None
 
         try:
-            name = '_process_' + chantype.replace('-', '_') + '_open'
+            name = '_process_' + map_handler_name(chantype) + '_open'
             handler = getattr(self, name, None)
             if callable(handler):
                 chan, session = handler(packet)
@@ -1634,12 +1641,12 @@ class SSHConnection(SSHPacketHandler):
            on the associated :class:`SSHClient` or :class:`SSHServer` object
            will be called with the value ``None``.
 
-           :param integer code:
+           :param int code:
                The reason for the disconnect, from
                :ref:`disconnect reason codes <DisconnectReasons>`
-           :param string reason:
+           :param str reason:
                A human readable reason for the disconnect
-           :param string lang:
+           :param str lang:
                The language the reason is in
 
         """
@@ -1692,11 +1699,11 @@ class SSHConnection(SSHPacketHandler):
            This method can be called to send a debug message to the
            other end of the connection.
 
-           :param string msg:
+           :param str msg:
                The debug message to send
-           :param string lang:
+           :param str lang:
                The language the message is in
-           :param boolean always_display:
+           :param bool always_display:
                Whether or not to display the message
 
         """
@@ -1705,6 +1712,55 @@ class SSHConnection(SSHPacketHandler):
         lang = lang.encode('ascii')
         self.send_packet(Byte(MSG_DEBUG), Boolean(always_display),
                          String(msg), String(lang))
+
+    def create_tcp_channel(self, encoding=None, window=_DEFAULT_WINDOW,
+                           max_pktsize=_DEFAULT_MAX_PKTSIZE):
+        """Create an SSH TCP channel for a new direct TCP connection
+
+           This method can be called by :meth:`connection_requested()
+           <SSHServer.connection_requested>` to create an
+           :class:`SSHTCPChannel` with the desired encoding, window, and
+           max packet size for a newly created SSH direct connection.
+
+           :param str encoding: (optional)
+               The Unicode encoding to use for data exchanged on the
+               connection. This defaults to ``None``, allowing the
+               application to send and receive raw bytes.
+           :param int window: (optional)
+               The receive window size for this session
+           :param int max_pktsize: (optional)
+               The maximum packet size for this session
+
+           :returns: :class:`SSHTCPChannel`
+
+        """
+
+        return SSHTCPChannel(self, self._loop, encoding, window, max_pktsize)
+
+    def create_unix_channel(self, encoding=None, window=_DEFAULT_WINDOW,
+                            max_pktsize=_DEFAULT_MAX_PKTSIZE):
+        """Create an SSH UNIX channel for a new direct UNIX domain connection
+
+           This method can be called by :meth:`unix_connection_requested()
+           <SSHServer.unix_connection_requested>` to create an
+           :class:`SSHUNIXChannel` with the desired encoding, window, and
+           max packet size for a newly created SSH direct UNIX domain
+           socket connection.
+
+           :param str encoding: (optional)
+               The Unicode encoding to use for data exchanged on the
+               connection. This defaults to ``None``, allowing the
+               application to send and receive raw bytes.
+           :param int window: (optional)
+               The receive window size for this session
+           :param int max_pktsize: (optional)
+               The maximum packet size for this session
+
+           :returns: :class:`SSHUNIXChannel`
+
+        """
+
+        return SSHUNIXChannel(self, self._loop, encoding, window, max_pktsize)
 
     @asyncio.coroutine
     def create_connection(self, session_factory, remote_host, remote_port,
@@ -1716,16 +1772,24 @@ class SSHConnection(SSHPacketHandler):
         raise NotImplementedError
 
     @asyncio.coroutine
+    def create_unix_connection(self, session_factory, remote_path, *,
+                               encoding=None, window=_DEFAULT_WINDOW,
+                               max_pktsize=_DEFAULT_MAX_PKTSIZE):
+        """Create an SSH direct or forwarded UNIX domain socket connection"""
+
+        raise NotImplementedError
+
+    @asyncio.coroutine
     def forward_connection(self, dest_host, dest_port):
-        """Forward a tunneled SSH connection
+        """Forward a tunneled TCP connection
 
            This method is a coroutine which can be returned by a
            ``session_factory`` to forward connections tunneled over
            SSH to the specified destination host and port.
 
-           :param string dest_host:
+           :param str dest_host:
                The hostname or address to forward the connections to
-           :param integer dest_port:
+           :param int dest_port:
                The port number to forward the connections to
 
            :returns: :class:`SSHTCPSession`
@@ -1733,13 +1797,37 @@ class SSHConnection(SSHPacketHandler):
         """
 
         try:
-            _, peer = yield from self._loop.create_connection(SSHPortForwarder,
+            _, peer = yield from self._loop.create_connection(SSHForwarder,
                                                               dest_host,
                                                               dest_port)
         except OSError as exc:
             raise ChannelOpenError(OPEN_CONNECT_FAILED, str(exc)) from None
 
-        return SSHPortForwarder(peer)
+        return SSHForwarder(peer)
+
+    @asyncio.coroutine
+    def forward_unix_connection(self, dest_path):
+        """Forward a tunneled UNIX domain socket connection
+
+           This method is a coroutine which can be returned by a
+           ``session_factory`` to forward connections tunneled over
+           SSH to the specified destination path.
+
+           :param str dest_path:
+               The path to forward the connection to
+
+           :returns: :class:`SSHUNIXSession`
+
+        """
+
+        try:
+            _, peer = \
+                yield from self._loop.create_unix_connection(SSHForwarder,
+                                                             dest_path)
+        except OSError as exc:
+            raise ChannelOpenError(OPEN_CONNECT_FAILED, str(exc)) from None
+
+        return SSHForwarder(peer)
 
     @asyncio.coroutine
     def forward_local_port(self, listen_host, listen_port,
@@ -1752,13 +1840,13 @@ class SSHConnection(SSHPacketHandler):
            return value is an :class:`SSHListener` object which can be used
            later to shut down the port forwarding.
 
-           :param string listen_host:
+           :param str listen_host:
                The hostname or address on the local host to listen on
-           :param integer listen_port:
+           :param int listen_port:
                The port number on the local host to listen on
-           :param string dest_host:
+           :param str dest_host:
                The hostname or address to forward the connections to
-           :param integer dest_port:
+           :param int dest_port:
                The port number to forward the connections to
 
            :returns: :class:`SSHListener`
@@ -1775,9 +1863,42 @@ class SSHConnection(SSHPacketHandler):
                                                       dest_host, dest_port,
                                                       orig_host, orig_port))
 
-        return (yield from create_forward_listener(self, self._loop,
-                                                   tunnel_connection,
-                                                   listen_host, listen_port))
+        return (yield from create_tcp_forward_listener(self, self._loop,
+                                                       tunnel_connection,
+                                                       listen_host,
+                                                       listen_port))
+
+    @asyncio.coroutine
+    def forward_local_path(self, listen_path, dest_path):
+        """Set up local UNIX domain socket forwarding
+
+           This method is a coroutine which attempts to set up UNIX domain
+           socket forwarding from a local listening path to a remote path
+           via the SSH connection. If the request is successful, the
+           return value is an :class:`SSHListener` object which can be used
+           later to shut down the UNIX domain socket forwarding.
+
+           :param str listen_path:
+               The path on the local host to listen on
+           :param str dest_path:
+               The path on the remote host to forward the connections to
+
+           :returns: :class:`SSHListener`
+
+           :raises: :exc:`OSError` if the listener can't be opened
+
+        """
+
+        @asyncio.coroutine
+        def tunnel_connection(session_factory):
+            """Forward a local connection over SSH"""
+
+            return (yield from self.create_unix_connection(session_factory,
+                                                           dest_path))
+
+        return (yield from create_unix_forward_listener(self, self._loop,
+                                                        tunnel_connection,
+                                                        listen_path))
 
 
 class SSHClientConnection(SSHConnection):
@@ -1794,15 +1915,24 @@ class SSHClientConnection(SSHConnection):
        Remote listeners for forwarded TCP connections can be opened by
        calling :meth:`create_server`.
 
+       Direct UNIX domain socket connections can be opened by calling
+       :meth:`create_unix_connection`.
+
+       Remote listeners for forwarded UNIX domain socket connections
+       can be opened by calling :meth:`create_unix_server`.
+
        TCP port forwarding can be set up by calling :meth:`forward_local_port`
        or :meth:`forward_remote_port`.
+
+       UNIX domain socket forwarding can be set up by calling
+       :meth:`forward_local_path` or :meth:`forward_remote_path`.
 
     """
 
     def __init__(self, client_factory, loop, host, port, known_hosts,
-                 username, password, client_keys, agent, kex_algs,
-                 encryption_algs, mac_algs, compression_algs, rekey_bytes,
-                 rekey_seconds, auth_waiter):
+                 username, password, client_keys, agent, agent_path,
+                 kex_algs, encryption_algs, mac_algs, compression_algs,
+                 rekey_bytes, rekey_seconds, auth_waiter):
         super().__init__(client_factory, loop, kex_algs, encryption_algs,
                          mac_algs, compression_algs, rekey_bytes,
                          rekey_seconds, server=False)
@@ -1814,6 +1944,7 @@ class SSHClientConnection(SSHConnection):
         self._password = password
         self._client_keys = client_keys
         self._agent = agent
+        self._agent_path = agent_path
 
         self._server_host_keys = set()
         self._server_ca_keys = set()
@@ -2107,8 +2238,8 @@ class SSHClientConnection(SSHConnection):
             dest_host = dest_host.decode('utf-8')
             orig_host = orig_host.decode('utf-8')
         except UnicodeDecodeError:
-            raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Invalid channel open request') from None
+            raise DisconnectError(DISC_PROTOCOL_ERROR, 'Invalid forwarded '
+                                  'TCP/IP channel open request') from None
 
         # Some buggy servers send back a port of ``0`` instead of the actual
         # listening port when reporting connections which arrive on a listener
@@ -2122,18 +2253,76 @@ class SSHClientConnection(SSHConnection):
             raise ChannelOpenError(OPEN_CONNECT_FAILED, 'No such listener')
 
     @asyncio.coroutine
-    def close_client_listener(self, listener, listen_host, listen_port):
+    def close_client_tcp_listener(self, listen_host, listen_port):
         """Close a remote TCP/IP listener"""
 
         yield from self._make_global_request(
             b'cancel-tcpip-forward', String(listen_host.encode('utf-8')),
             UInt32(listen_port))
 
+        listener = self._remote_listeners.get((listen_host, listen_port))
+
         if self._dynamic_remote_listeners.get(listen_host) == listener:
             del self._dynamic_remote_listeners[listen_host]
 
-        if (listen_host, listen_port) in self._remote_listeners:
+        if listener:
             del self._remote_listeners[listen_host, listen_port]
+
+    def _process_direct_streamlocal_at_openssh_dot_com_open(self, packet):
+        """Process an inbound direct UNIX domain channel open request
+
+           These requests are disallowed on an SSH client.
+
+        """
+
+        # pylint: disable=no-self-use,unused-argument
+
+        raise ChannelOpenError(OPEN_ADMINISTRATIVELY_PROHIBITED,
+                               'Direct UNIX domain socket open '
+                               'forbidden on client')
+
+    def _process_forwarded_streamlocal_at_openssh_dot_com_open(self, packet):
+        """Process an inbound forwarded UNIX domain channel open request"""
+
+        dest_path = packet.get_string()
+        _ = packet.get_string()                         # reserved
+        packet.check_end()
+
+        try:
+            dest_path = dest_path.decode('utf-8')
+        except UnicodeDecodeError:
+            raise DisconnectError(DISC_PROTOCOL_ERROR, 'Invalid forwarded '
+                                  'UNIX domain channel open request') from None
+
+        listener = self._remote_listeners.get(dest_path)
+
+        if listener:
+            return listener.process_connection()
+        else:
+            raise ChannelOpenError(OPEN_CONNECT_FAILED, 'No such listener')
+
+    @asyncio.coroutine
+    def close_client_unix_listener(self, listen_path):
+        """Close a remote UNIX domain socket listener"""
+
+        yield from self._make_global_request(
+            b'cancel-streamlocal-forward@openssh.com',
+            String(listen_path.encode('utf-8')))
+
+        if listen_path in self._remote_listeners:
+            del self._remote_listeners[listen_path]
+
+    def _process_auth_agent_at_openssh_dot_com_open(self, packet):
+        """Process an inbound auth agent channel open request"""
+
+        packet.check_end()
+
+        if self._agent_path:
+            return (self.create_unix_channel(),
+                    self.forward_unix_connection(self._agent_path))
+        else:
+            raise ChannelOpenError(OPEN_CONNECT_FAILED,
+                                   'Auth agent forwarding disabled')
 
     @asyncio.coroutine
     def create_session(self, session_factory, command=None, *, subsystem=None,
@@ -2161,10 +2350,10 @@ class SSHClientConnection(SSHConnection):
            :param callable session_factory:
                A callable which returns an :class:`SSHClientSession` object
                that will be created to handle activity on this session
-           :param string command: (optional)
+           :param str command: (optional)
                The remote command to execute. By default, an interactive
                shell is started if no command or subsystem is provided.
-           :param string subsystem: (optional)
+           :param str subsystem: (optional)
                The name of a remote subsystem to start up
            :param dictionary env: (optional)
                The set of environment variables to set for this session.
@@ -2177,7 +2366,7 @@ class SSHClientConnection(SSHConnection):
                          server's configuration may need to be edited
                          before environment variables can be
                          successfully set in the remote environment.
-           :param string term_type: (optional)
+           :param str term_type: (optional)
                The terminal type to set for this session. If this is not set,
                a pseudo-terminal will not be requested for this session.
            :param term_size: (optional)
@@ -2187,11 +2376,11 @@ class SSHClientConnection(SSHConnection):
                POSIX terminal modes to set for this session, where keys
                are taken from :ref:`POSIX terminal modes <PTYModes>` with
                values defined in section 8 of :rfc:`4254#section-8`.
-           :param string encoding: (optional)
+           :param str encoding: (optional)
                The Unicode encoding to use for data exchanged on the connection
-           :param integer window: (optional)
+           :param int window: (optional)
                The receive window size for this session
-           :param integer max_pktsize: (optional)
+           :param int max_pktsize: (optional)
                The maximum packet size for this session
            :type term_size: *tuple of 2 or 4 integers*
 
@@ -2203,7 +2392,8 @@ class SSHClientConnection(SSHConnection):
                                 window, max_pktsize)
 
         return (yield from chan.create(session_factory, command, subsystem,
-                                       env, term_type, term_size, term_modes))
+                                       env, term_type, term_size, term_modes,
+                                       bool(self._agent_path)))
 
     @asyncio.coroutine
     def open_session(self, *args, **kwargs):
@@ -2254,19 +2444,19 @@ class SSHClientConnection(SSHConnection):
            :param callable session_factory:
                A callable which returns an :class:`SSHClientSession` object
                that will be created to handle activity on this session
-           :param string remote_host:
+           :param str remote_host:
                The remote hostname or address to connect to
-           :param integer remote_port:
+           :param int remote_port:
                The remote port number to connect to
-           :param string orig_host: (optional)
+           :param str orig_host: (optional)
                The hostname or address of the client requesting the connection
-           :param integer orig_port: (optional)
+           :param int orig_port: (optional)
                The port number of the client requesting the connection
-           :param string encoding: (optional)
+           :param str encoding: (optional)
                The Unicode encoding to use for data exchanged on the connection
-           :param integer window: (optional)
+           :param int window: (optional)
                The receive window size for this session
-           :param integer max_pktsize: (optional)
+           :param int max_pktsize: (optional)
                The maximum packet size for this session
 
            :returns: an :class:`SSHTCPChannel` and :class:`SSHTCPSession`
@@ -2275,10 +2465,12 @@ class SSHClientConnection(SSHConnection):
 
         """
 
-        chan = SSHTCPChannel(self, self._loop, encoding, window, max_pktsize)
+        chan = self.create_tcp_channel(encoding, window, max_pktsize)
 
-        return (yield from chan.connect(session_factory, remote_host,
-                                        remote_port, orig_host, orig_port))
+        session = yield from chan.connect(session_factory, remote_host,
+                                          remote_port, orig_host, orig_port)
+
+        return chan, session
 
     @asyncio.coroutine
     def open_connection(self, *args, **kwargs):
@@ -2327,15 +2519,15 @@ class SSHClientConnection(SSHConnection):
                object used to handle activity on that connection or raising
                :exc:`ChannelOpenError` to indicate that the connection
                should not be accepted
-           :param string listen_host:
+           :param str listen_host:
                The hostname or address on the remote host to listen on
-           :param integer listen_port:
+           :param int listen_port:
                The port number on the remote host to listen on
-           :param string encoding: (optional)
+           :param str encoding: (optional)
                The Unicode encoding to use for data exchanged on the connection
-           :param integer window: (optional)
+           :param int window: (optional)
                The receive window size for this session
-           :param integer max_pktsize: (optional)
+           :param int max_pktsize: (optional)
                The maximum packet size for this session
            :type session_factory: callable or coroutine
 
@@ -2346,10 +2538,9 @@ class SSHClientConnection(SSHConnection):
 
         listen_host = listen_host.lower()
 
-        pkttype, packet = \
-            yield from self._make_global_request(
-                b'tcpip-forward', String(listen_host.encode('utf-8')),
-                UInt32(listen_port))
+        pkttype, packet = yield from self._make_global_request(
+            b'tcpip-forward', String(listen_host.encode('utf-8')),
+            UInt32(listen_port))
 
         if pkttype == MSG_REQUEST_SUCCESS:
             if listen_port == 0:
@@ -2367,9 +2558,9 @@ class SSHClientConnection(SSHConnection):
 
             packet.check_end()
 
-            listener = SSHClientListener(self, self._loop, session_factory,
-                                         listen_host, listen_port, encoding,
-                                         window, max_pktsize)
+            listener = SSHTCPClientListener(self, session_factory,
+                                            listen_host, listen_port,
+                                            encoding, window, max_pktsize)
 
             if dynamic:
                 self._dynamic_remote_listeners[listen_host] = listener
@@ -2422,6 +2613,172 @@ class SSHClientConnection(SSHConnection):
                                               *args, **kwargs))
 
     @asyncio.coroutine
+    def create_unix_connection(self, session_factory, remote_path, *,
+                               encoding=None, window=_DEFAULT_WINDOW,
+                               max_pktsize=_DEFAULT_MAX_PKTSIZE):
+        """Create an SSH UNIX domain socket direct connection
+
+           This method is a coroutine which can be called to request that
+           the server open a new outbound UNIX domain socket connection to
+           the specified destination path. If the connection is successfully
+           opened, a new SSH channel will be opened with data being handled
+           by a :class:`SSHUNIXSession` object created by ``session_factory``.
+
+           By default, this class expects data to be sent and received as
+           raw bytes. However, an optional encoding argument can be
+           passed in to select the encoding to use, allowing the
+           application send and receive string data.
+
+           Other optional arguments include the SSH receive window size and
+           max packet size which default to 2 MB and 32 KB, respectively.
+
+           :param callable session_factory:
+               A callable which returns an :class:`SSHClientSession` object
+               that will be created to handle activity on this session
+           :param str remote_path:
+               The remote path to connect to
+           :param str encoding: (optional)
+               The Unicode encoding to use for data exchanged on the connection
+           :param int window: (optional)
+               The receive window size for this session
+           :param int max_pktsize: (optional)
+               The maximum packet size for this session
+
+           :returns: an :class:`SSHUNIXChannel` and :class:`SSHUNIXSession`
+
+           :raises: :exc:`ChannelOpenError` if the connection can't be opened
+
+        """
+
+        chan = self.create_unix_channel(encoding, window, max_pktsize)
+
+        session = yield from chan.connect(session_factory, remote_path)
+
+        return chan, session
+
+    @asyncio.coroutine
+    def open_unix_connection(self, *args, **kwargs):
+        """Open an SSH UNIX domain socket direct connection
+
+           This method is a coroutine wrapper around
+           :meth:`create_unix_connection` designed to provide a "high-level"
+           stream interface for creating an SSH UNIX domain socket direct
+           connection. Instead of taking a ``session_factory`` argument for
+           constructing an object which will handle activity on the session
+           via callbacks, it returns :class:`SSHReader` and :class:`SSHWriter`
+           objects which can be used to perform I/O on the connection.
+
+           With the exception of ``session_factory``, all of the arguments
+           to :meth:`create_unix_connection` are supported and have the same
+           meaning here.
+
+           :returns: an :class:`SSHReader` and :class:`SSHWriter`
+
+           :raises: :exc:`ChannelOpenError` if the connection can't be opened
+
+        """
+
+        chan, session = \
+            yield from self.create_unix_connection(SSHUNIXStreamSession,
+                                                   *args, **kwargs)
+
+        return SSHReader(session, chan), SSHWriter(session, chan)
+
+    @asyncio.coroutine
+    def create_unix_server(self, session_factory, listen_path, *,
+                           encoding=None, window=_DEFAULT_WINDOW,
+                           max_pktsize=_DEFAULT_MAX_PKTSIZE):
+        """Create a remote SSH UNIX domain socket listener
+
+           This method is a coroutine which can be called to request that
+           the server listen on the specified remote path for incoming UNIX
+           domain socket connections. If the request is successful, the
+           return value is an :class:`SSHListener` object which can be
+           used later to shut down the listener. If the request fails,
+           ``None`` is returned.
+
+           :param session_factory:
+               A callable or coroutine which takes arguments of the original
+               host and port of the client and decides whether to accept the
+               connection or not, either returning an :class:`SSHUNIXSession`
+               object used to handle activity on that connection or raising
+               :exc:`ChannelOpenError` to indicate that the connection
+               should not be accepted
+           :param str listen_path:
+               The path on the remote host to listen on
+           :param str encoding: (optional)
+               The Unicode encoding to use for data exchanged on the connection
+           :param int window: (optional)
+               The receive window size for this session
+           :param int max_pktsize: (optional)
+               The maximum packet size for this session
+           :type session_factory: callable or coroutine
+
+           :returns: :class:`SSHListener` or ``None`` if the listener can't
+                     be opened
+
+        """
+
+        pkttype, packet = yield from self._make_global_request(
+            b'streamlocal-forward@openssh.com',
+            String(listen_path.encode('utf-8')))
+
+        packet.check_end()
+
+        if pkttype == MSG_REQUEST_SUCCESS:
+            listener = SSHUNIXClientListener(self, session_factory,
+                                             listen_path, encoding,
+                                             window, max_pktsize)
+
+            self._remote_listeners[listen_path] = listener
+            return listener
+        else:
+            return None
+
+    @asyncio.coroutine
+    def start_unix_server(self, handler_factory, *args, **kwargs):
+        """Start a remote SSH UNIX domain socket listener
+
+           This method is a coroutine wrapper around :meth:`create_unix_server`
+           designed to provide a "high-level" stream interface for creating
+           remote SSH UNIX domain socket listeners. Instead of taking a
+           ``session_factory`` argument for constructing an object which
+           will handle activity on the session via callbacks, it takes a
+           ``handler_factory`` which returns a callable or coroutine that
+           will be passed :class:`SSHReader` and :class:`SSHWriter` objects
+           which can be used to perform I/O on each new connection which
+           arrives. Like :meth:`create_unix_server`, ``handler_factory``
+           can also raise :exc:`ChannelOpenError` if the connection should
+           not be accepted.
+
+           With the exception of ``handler_factory`` replacing
+           ``session_factory``, all of the arguments to
+           :meth:`create_unix_server` are supported and have the same
+           meaning here.
+
+           :param handler_factory:
+               A callable or coroutine which takes arguments of the original
+               host and port of the client and decides whether to accept the
+               connection or not, either returning a callback or coroutine
+               used to handle activity on that connection or raising
+               :exc:`ChannelOpenError` to indicate that the connection
+               should not be accepted
+           :type handler_factory: callable or coroutine
+
+           :returns: :class:`SSHListener` or ``None`` if the listener can't
+                     be opened
+
+        """
+
+        def session_factory():
+            """Return a UNIX domain socket stream session handler"""
+
+            return SSHUNIXStreamSession(handler_factory())
+
+        return (yield from self.create_unix_server(session_factory,
+                                                   *args, **kwargs))
+
+    @asyncio.coroutine
     def forward_remote_port(self, listen_host, listen_port,
                             dest_host, dest_port):
         """Set up remote port forwarding
@@ -2433,13 +2790,13 @@ class SSHClientConnection(SSHConnection):
            used later to shut down the port forwarding. If the request
            fails, ``None`` is returned.
 
-           :param string listen_host:
+           :param str listen_host:
                The hostname or address on the remote host to listen on
-           :param integer listen_port:
+           :param int listen_port:
                The port number on the remote host to listen on
-           :param string dest_host:
+           :param str dest_host:
                The hostname or address to forward connections to
-           :param integer dest_port:
+           :param int dest_port:
                The port number to forward connections to
 
            :returns: :class:`SSHListener` or ``None`` if the listener can't
@@ -2453,7 +2810,37 @@ class SSHClientConnection(SSHConnection):
             # pylint: disable=unused-argument
             return self.forward_connection(dest_host, dest_port)
 
-        return self.create_server(session_factory, listen_host, listen_port)
+        return (yield from self.create_server(session_factory, listen_host,
+                                              listen_port))
+
+    @asyncio.coroutine
+    def forward_remote_path(self, listen_path, dest_path):
+        """Set up remote UNIX domain socket forwarding
+
+           This method is a coroutine which attempts to set up UNIX domain
+           socket forwarding from a remote listening path to a local path
+           via the SSH connection. If the request is successful, the
+           return value is an :class:`SSHListener` object which can be
+           used later to shut down the port forwarding. If the request
+           fails, ``None`` is returned.
+
+           :param str listen_path:
+               The path on the remote host to listen on
+           :param str dest_path:
+               The path on the local host to forward connections to
+
+           :returns: :class:`SSHListener` or ``None`` if the listener can't
+                     be opened
+
+        """
+
+        def session_factory():
+            """Return an SSHUNIXSession used to do remote path forwarding"""
+
+            return self.forward_unix_connection(dest_path)
+
+        return (yield from self.create_unix_server(session_factory,
+                                                   listen_path))
 
     @asyncio.coroutine
     def start_sftp_client(self, path_encoding='utf-8', path_errors='strict'):
@@ -2470,10 +2857,10 @@ class SSHClientConnection(SSHConnection):
            will be left as bytes rather than being converted to & from
            strings.
 
-           :param string path_encoding:
+           :param str path_encoding:
                The Unicode encoding to apply when sending and receiving
                remote pathnames
-           :param string path_errors:
+           :param str path_errors:
                The error handling strategy to apply on encode/decode errors
 
            :returns: :class:`SFTPClient`
@@ -2518,18 +2905,28 @@ class SSHServerConnection(SSHConnection):
        an :class:`SSHTCPSession` object or a coroutine which returns an
        :class:`SSHTCPSession`.
 
+       :class:`SSHServer` objects wishing to create UNIX domain socket
+       connection objects with non-default channel properties can call
+       :meth:`create_unix_channel` from the :meth:`unix_connection_requested()
+       <SSHServer.unix_connection_requested>' method and return a tuple of
+       the :class:`SSHUNIXChannel` object returned from that and either
+       an :class:`SSHUNIXSession` object or a coroutine which returns an
+       :class:`SSHUNIXSession`.
+
     """
 
     def __init__(self, server_factory, loop, server_host_keys, passphrase,
                  authorized_client_keys, kex_algs, encryption_algs, mac_algs,
-                 compression_algs, allow_pty, session_factory,
-                 session_encoding, sftp_factory, window, max_pktsize,
-                 rekey_bytes, rekey_seconds, login_timeout):
+                 compression_algs, allow_pty, agent_forwarding,
+                 session_factory, session_encoding, sftp_factory, window,
+                 max_pktsize, rekey_bytes, rekey_seconds, login_timeout):
         super().__init__(server_factory, loop, kex_algs, encryption_algs,
                          mac_algs, compression_algs, rekey_bytes,
                          rekey_seconds, server=True)
 
         self._allow_pty = allow_pty
+        self._agent_forwarding = agent_forwarding
+        self._agent_forwarding_enabled = False
         self._session_factory = session_factory
         self._session_encoding = session_encoding
         self._sftp_factory = sftp_factory
@@ -2817,8 +3214,7 @@ class SSHServerConnection(SSHConnection):
         if self._session_factory or self._sftp_factory:
             chan = self.create_server_channel(self._session_encoding,
                                               self._window, self._max_pktsize)
-            session = SSHServerStreamSession(self._allow_pty,
-                                             self._session_factory,
+            session = SSHServerStreamSession(self._session_factory,
                                              self._sftp_factory)
         else:
             result = self._owner.session_requested()
@@ -2834,7 +3230,7 @@ class SSHServerConnection(SSHConnection):
                                                   self._max_pktsize)
 
             if callable(result):
-                session = SSHServerStreamSession(self._allow_pty, result, None)
+                session = SSHServerStreamSession(result, None)
             else:
                 session = result
 
@@ -2853,8 +3249,8 @@ class SSHServerConnection(SSHConnection):
             dest_host = dest_host.decode('utf-8')
             orig_host = orig_host.decode('utf-8')
         except UnicodeDecodeError:
-            raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Invalid channel open request') from None
+            raise DisconnectError(DISC_PROTOCOL_ERROR, 'Invalid direct '
+                                  'TCP/IP channel open request') from None
 
         if not self.check_key_permission('port-forwarding') or \
            not self.check_certificate_permission('port-forwarding'):
@@ -2903,8 +3299,8 @@ class SSHServerConnection(SSHConnection):
         try:
             listen_host = listen_host.decode('utf-8').lower()
         except UnicodeDecodeError:
-            raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Invalid TCP forward request') from None
+            raise DisconnectError(DISC_PROTOCOL_ERROR, 'Invalid TCP/IP port '
+                                  'forward request') from None
 
         if not self.check_key_permission('port-forwarding') or \
            not self.check_certificate_permission('port-forwarding'):
@@ -2921,12 +3317,12 @@ class SSHServerConnection(SSHConnection):
             result = self.forward_local_port(listen_host, listen_port,
                                              listen_host, listen_port)
 
-        self.create_task(self._finish_forward(result, listen_host,
-                                              listen_port))
+        self.create_task(self._finish_port_forward(result, listen_host,
+                                                   listen_port))
 
     @asyncio.coroutine
-    def _finish_forward(self, listener, listen_host, listen_port):
-        """Finish processing a port forwarding request"""
+    def _finish_port_forward(self, listener, listen_host, listen_port):
+        """Finish processing a TCP/IP port forwarding request"""
 
         if asyncio.iscoroutine(listener):
             try:
@@ -2957,12 +3353,126 @@ class SSHServerConnection(SSHConnection):
         try:
             listen_host = listen_host.decode('utf-8').lower()
         except UnicodeDecodeError:
-            raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Invalid TCP forward request') from None
+            raise DisconnectError(DISC_PROTOCOL_ERROR, 'Invalid TCP/IP cancel '
+                                  'forward request') from None
 
-        listener = self._local_listeners.pop((listen_host, listen_port))
-        if not listener:
-            raise DisconnectError(DISC_PROTOCOL_ERROR, 'No such listener')
+        try:
+            listener = self._local_listeners.pop((listen_host, listen_port))
+        except KeyError:
+            raise DisconnectError(DISC_PROTOCOL_ERROR, 'TCP/IP listener '
+                                  'not found') from None
+
+        listener.close()
+
+        self._report_global_response(True)
+
+    def _process_direct_streamlocal_at_openssh_dot_com_open(self, packet):
+        """Process an incoming direct UNIX domain socket open request"""
+
+        dest_path = packet.get_string()
+
+        # OpenSSH appears to have a bug which sends this extra data
+        _ = packet.get_string()                         # originator
+        _ = packet.get_uint32()                         # originator_port
+
+        packet.check_end()
+
+        try:
+            dest_path = dest_path.decode('utf-8')
+        except UnicodeDecodeError:
+            raise DisconnectError(DISC_PROTOCOL_ERROR, 'Invalid direct UNIX '
+                                  'domain channel open request') from None
+
+        if not self.check_key_permission('port-forwarding') or \
+           not self.check_certificate_permission('port-forwarding'):
+            raise ChannelOpenError(OPEN_ADMINISTRATIVELY_PROHIBITED,
+                                   'Port forwarding not permitted')
+
+        result = self._owner.unix_connection_requested(dest_path)
+
+        if not result:
+            raise ChannelOpenError(OPEN_CONNECT_FAILED, 'Connection refused')
+
+        if result is True:
+            result = self.forward_unix_connection(dest_path)
+
+        if isinstance(result, tuple):
+            chan, result = result
+        else:
+            chan = self.create_unix_channel()
+
+        if callable(result):
+            session = SSHUNIXStreamSession(result)
+        else:
+            session = result
+
+        chan.set_inbound_peer_names(dest_path)
+
+        return chan, session
+
+    def _process_streamlocal_forward_at_openssh_dot_com_global_request(self,
+                                                                       packet):
+        """Process an incoming UNIX domain socket forwarding request"""
+
+        listen_path = packet.get_string()
+        packet.check_end()
+
+        try:
+            listen_path = listen_path.decode('utf-8')
+        except UnicodeDecodeError:
+            raise DisconnectError(DISC_PROTOCOL_ERROR, 'Invalid UNIX domain '
+                                  'socket forward request') from None
+
+        if not self.check_key_permission('port-forwarding') or \
+           not self.check_certificate_permission('port-forwarding'):
+            self._report_global_response(False)
+            return
+
+        result = self._owner.unix_server_requested(listen_path)
+
+        if not result:
+            self._report_global_response(False)
+            return
+
+        if result is True:
+            result = self.forward_local_path(listen_path, listen_path)
+
+        self.create_task(self._finish_path_forward(result, listen_path))
+
+    @asyncio.coroutine
+    def _finish_path_forward(self, listener, listen_path):
+        """Finish processing a UNIX domain socket forwarding request"""
+
+        if asyncio.iscoroutine(listener):
+            try:
+                listener = yield from listener
+            except OSError:
+                listener = None
+
+        if listener:
+            self._local_listeners[listen_path] = listener
+            self._report_global_response(True)
+        else:
+            self._report_global_response(False)
+
+    def _process_cancel_streamlocal_forward_at_openssh_dot_com_global_request(
+            self, packet):
+        """Process a request to cancel UNIX domain socket forwarding"""
+
+        listen_path = packet.get_string()
+        packet.check_end()
+
+        try:
+            listen_path = listen_path.decode('utf-8')
+        except UnicodeDecodeError:
+            raise DisconnectError(DISC_PROTOCOL_ERROR, 'Invalid UNIX domain '
+                                  'cancel forward request') from None
+
+        try:
+            listener = self._local_listeners.pop(listen_path)
+        except KeyError:
+            raise DisconnectError(DISC_PROTOCOL_ERROR, 'UNIX domain listener '
+                                  'not found') from None
 
         listener.close()
 
@@ -2976,9 +3486,9 @@ class SSHServerConnection(SSHConnection):
            in progress. It is an error to call this method after the
            authentication is complete.
 
-           :param string msg:
+           :param str msg:
                The message to display
-           :param string lang:
+           :param str lang:
                The language the message is in
 
            :raises: :exc:`OSError` if authentication is already completed
@@ -3032,7 +3542,7 @@ class SSHServerConnection(SSHConnection):
            with each occurrence of that option name. If the option is
            not present, the specified default value is returned.
 
-           :param string option:
+           :param str option:
                The name of the option to look up.
            :param default:
                The default value to return if the option is not present.
@@ -3064,17 +3574,17 @@ class SSHServerConnection(SSHConnection):
                | pty
                | user-rc
 
-           AsyncSSH internally enforces port-forwarding and pty
-           permissions but ignores the other values since it does
+           AsyncSSH internally enforces agent-forwarding, port-forwarding
+           and pty permissions but ignores the other values since it does
            not implement those features.
 
            Non-standard permissions can also be checked, as long as the
            option follows the convention of starting with 'no-'.
 
-           :param string permission:
+           :param str permission:
                The name of the permission to check (without the 'no-').
 
-           :returns: A boolean indicating if the permission is granted.
+           :returns: A bool indicating if the permission is granted.
 
         """
 
@@ -3096,7 +3606,7 @@ class SSHServerConnection(SSHConnection):
                | force-command (string)
                | source-address (list of CIDR-style IP network addresses)
 
-           :param string option:
+           :param str option:
                The name of the option to look up.
            :param default:
                The default value to return if the option is not present.
@@ -3130,10 +3640,10 @@ class SSHServerConnection(SSHConnection):
            but ignores the other values since it does not implement those
            features.
 
-           :param string permission:
+           :param str permission:
                The name of the permission to check (without the 'permit-').
 
-           :returns: A boolean indicating if the permission is granted.
+           :returns: A bool indicating if the permission is granted.
 
         """
 
@@ -3151,46 +3661,28 @@ class SSHServerConnection(SSHConnection):
            :class:`SSHServerChannel` with the desired encoding, window,
            and max packet size for a newly created SSH server session.
 
-           :param string encoding: (optional)
+           :param str encoding: (optional)
                The Unicode encoding to use for data exchanged on the
                session, defaulting to UTF-8 (ISO 10646) format. If ``None``
                is passed in, the application can send and receive raw
                bytes.
-           :param integer window: (optional)
+           :param int window: (optional)
                The receive window size for this session
-           :param integer max_pktsize: (optional)
+           :param int max_pktsize: (optional)
                The maximum packet size for this session
 
            :returns: :class:`SSHServerChannel`
 
         """
 
-        return SSHServerChannel(self, self._loop, encoding,
+        return SSHServerChannel(self, self._loop, self._allow_pty,
+                                self._agent_forwarding, encoding,
                                 window, max_pktsize)
 
-    def create_tcp_channel(self, encoding=None, window=_DEFAULT_WINDOW,
-                           max_pktsize=_DEFAULT_MAX_PKTSIZE):
-        """Create an SSH TCP channel for a new direct TCP connection
+    def agent_forwarding_enabled(self):
+        """Enable ssh-agent forwarding to the client"""
 
-           This method can be called by :meth:`connection_requested()
-           <SSHServer.connection_requested>` to create an
-           :class:`SSHTCPChannel` with the desired encoding, window, and
-           max packet size for a newly created SSH direct connection.
-
-           :param string encoding: (optional)
-               The Unicode encoding to use for data exchanged on the
-               connection. This defaults to ``None``, allowing the
-               application to send and receive raw bytes.
-           :param integer window: (optional)
-               The receive window size for this session
-           :param integer max_pktsize: (optional)
-               The maximum packet size for this session
-
-           :returns: :class:`SSHTCPChannel`
-
-        """
-
-        return SSHTCPChannel(self, self._loop, encoding, window, max_pktsize)
+        self._agent_forwarding_enabled = True
 
     @asyncio.coroutine
     def create_connection(self, session_factory, remote_host, remote_port,
@@ -3219,32 +3711,34 @@ class SSHServerConnection(SSHConnection):
            :param callable session_factory:
                A callable which returns an :class:`SSHClientSession` object
                that will be created to handle activity on this session
-           :param string remote_host:
+           :param str remote_host:
                The hostname or address the connection was received on
-           :param integer remote_port:
+           :param int remote_port:
                The port number the connection was received on
-           :param string orig_host: (optional)
+           :param str orig_host: (optional)
                The hostname or address of the client requesting the connection
-           :param integer orig_port: (optional)
+           :param int orig_port: (optional)
                The port number of the client requesting the connection
-           :param string encoding: (optional)
+           :param str encoding: (optional)
                The Unicode encoding to use for data exchanged on the connection
-           :param integer window: (optional)
+           :param int window: (optional)
                The receive window size for this session
-           :param integer max_pktsize: (optional)
+           :param int max_pktsize: (optional)
                The maximum packet size for this session
 
            :returns: an :class:`SSHTCPChannel` and :class:`SSHTCPSession`
 
         """
 
-        chan = SSHTCPChannel(self, self._loop, encoding, window, max_pktsize)
+        chan = self.create_tcp_channel(encoding, window, max_pktsize)
 
-        return (yield from chan.accept(session_factory, remote_host,
-                                       remote_port, orig_host, orig_port))
+        session = yield from chan.accept(session_factory, remote_host,
+                                         remote_port, orig_host, orig_port)
+
+        return chan, session
 
     @asyncio.coroutine
-    def open_connection(self, handler_factory, *args, **kwargs):
+    def open_connection(self, *args, **kwargs):
         """Open an SSH TCP forwarded connection
 
            This method is a coroutine wrapper around :meth:`create_connection`
@@ -3263,13 +3757,91 @@ class SSHServerConnection(SSHConnection):
 
         """
 
-        def session_factory():
-            """Return a TCP stream session handler"""
-
-            return SSHTCPStreamSession(handler_factory)
-
-        chan, session = yield from self.create_connection(session_factory,
+        chan, session = yield from self.create_connection(SSHTCPStreamSession,
                                                           *args, **kwargs)
+
+        return SSHReader(session, chan), SSHWriter(session, chan)
+
+    @asyncio.coroutine
+    def create_unix_connection(self, session_factory, remote_path, *,
+                               encoding=None, window=_DEFAULT_WINDOW,
+                               max_pktsize=_DEFAULT_MAX_PKTSIZE):
+        """Create an SSH UNIX domain socket forwarded connection
+
+           This method is a coroutine which can be called to notify the
+           client about a new inbound UNIX domain socket connection arriving
+           on the specified remote path. If the connection is successfully
+           opened, a new SSH channel will be opened with data being handled
+           by a :class:`SSHUNIXSession` object created by ``session_factory``.
+
+           By default, this class expects data to be sent and received as
+           raw bytes. However, an optional encoding argument can be
+           passed in to select the encoding to use, allowing the
+           application send and receive string data.
+
+           Other optional arguments include the SSH receive window size and
+           max packet size which default to 2 MB and 32 KB, respectively.
+
+           :param callable session_factory:
+               A callable which returns an :class:`SSHClientSession` object
+               that will be created to handle activity on this session
+           :param str remote_path:
+               The path the connection was received on
+           :param str encoding: (optional)
+               The Unicode encoding to use for data exchanged on the connection
+           :param int window: (optional)
+               The receive window size for this session
+           :param int max_pktsize: (optional)
+               The maximum packet size for this session
+
+           :returns: an :class:`SSHTCPChannel` and :class:`SSHUNIXSession`
+
+        """
+
+        chan = self.create_unix_channel(encoding, window, max_pktsize)
+
+        session = yield from chan.accept(session_factory, remote_path)
+
+        return chan, session
+
+    @asyncio.coroutine
+    def open_unix_connection(self, *args, **kwargs):
+        """Open an SSH UNIX domain socket forwarded connection
+
+           This method is a coroutine wrapper around
+           :meth:`create_unix_connection` designed to provide a "high-level"
+           stream interface for creating an SSH UNIX domain socket forwarded
+           connection. Instead of taking a ``session_factory`` argument for
+           constructing an object which will handle activity on the session
+           via callbacks, it returns :class:`SSHReader` and :class:`SSHWriter`
+           objects which can be used to perform I/O on the connection.
+
+           With the exception of ``session_factory``, all of the arguments
+           to :meth:`create_unix_connection` are supported and have the same
+           meaning here.
+
+           :returns: an :class:`SSHReader` and :class:`SSHWriter`
+
+        """
+
+        chan, session = \
+            yield from self.create_unix_connection(SSHUNIXStreamSession,
+                                                   *args, **kwargs)
+
+        return SSHReader(session, chan), SSHWriter(session, chan)
+
+    @asyncio.coroutine
+    def open_agent_connection(self):
+        """Open a forwarded ssh-agent connection back to the client"""
+
+        if not self._agent_forwarding_enabled:
+            raise ChannelOpenError(OPEN_ADMINISTRATIVELY_PROHIBITED,
+                                   'Agent forwarding not permitted')
+
+        chan = SSHAgentChannel(self, self._loop, None, _DEFAULT_WINDOW,
+                               _DEFAULT_MAX_PKTSIZE)
+
+        session = yield from chan.open(SSHUNIXStreamSession)
 
         return SSHReader(session, chan), SSHWriter(session, chan)
 
@@ -3338,11 +3910,11 @@ class SSHClient:
            a debug message. Applications should implement this method if
            they wish to process these debug messages.
 
-           :param string msg:
+           :param str msg:
                The debug message sent
-           :param string lang:
+           :param str lang:
                The language the message is in
-           :param boolean always_display:
+           :param bool always_display:
                Whether or not to display the message
 
         """
@@ -3354,9 +3926,9 @@ class SSHClient:
            during authentication. Applications should implement this method
            if they wish to do something with the banner.
 
-           :param string msg:
+           :param str msg:
                The message the server wanted to display
-           :param string lang:
+           :param str lang:
                The language the message is in
 
         """
@@ -3366,9 +3938,9 @@ class SSHClient:
 
            This method is called when authentication has completed
            succesfully. Applications may use this method to create
-           whatever client sessions and direct TCP/IP connections are
-           needed and/or set up listeners for incoming TCP/IP connections
-           coming from the server.
+           whatever client sessions and direct TCP/IP or UNIX domain
+           connections are needed and/or set up listeners for incoming
+           TCP/IP or UNIX domain connections coming from the server.
 
         """
 
@@ -3440,9 +4012,9 @@ class SSHClient:
 
            By default, this method returns ``NotImplemented``.
 
-           :param string prompt:
+           :param str prompt:
                The prompt requesting that the user enter a new password
-           :param string lang:
+           :param str lang:
                The language that the prompt is in
 
            :returns: A tuple of two strings containing the old and new
@@ -3526,16 +4098,16 @@ class SSHClient:
            cause this method to return ``None`` to move on to another
            authentication method.
 
-           :param string name:
+           :param str name:
                The name of the challenge
-           :param string instruction:
+           :param str instruction:
                Instructions to the user about how to respond to the challenge
-           :param string lang:
+           :param str lang:
                The language the challenge is in
            :param prompts:
                The challenges the user should respond to and whether or
                not the responses should be echoed when they are entered
-           :type prompts: list of tuples of string and boolean
+           :type prompts: list of tuples of str and bool
 
            :returns: List of string responses to the challenge or ``None``
                      to move on to another authentication method
@@ -3555,10 +4127,11 @@ class SSHServer:
        authentication is required.
 
        In addition, one or more of the :meth:`session_requested`,
-       :meth:`connection_requested`, or :meth:`server_requested` methods
-       will need to be overridden to handle requests to open sessions or
-       direct TCP/IP connections or set up listeners for forwarded
-       TCP/IP connections.
+       :meth:`connection_requested`, :meth:`server_requested`,
+       :meth:`unix_connection_requested`, or :meth:`unix_server_requested`
+       methods will need to be overridden to handle requests to open
+       sessions or direct connections or set up listeners for forwarded
+       connections.
 
     """
 
@@ -3589,11 +4162,11 @@ class SSHServer:
            a debug message. Applications should implement this method if
            they wish to process these debug messages.
 
-           :param string msg:
+           :param str msg:
                The debug message sent
-           :param string lang:
+           :param str lang:
                The language the message is in
-           :param boolean always_display:
+           :param bool always_display:
                Whether or not to display the message
 
         """
@@ -3610,10 +4183,10 @@ class SSHServer:
            succeed. Otherwise, it should return ``True`` to indicate that
            authentication should proceed.
 
-           :param string username:
+           :param str username:
                The name of the user being authenticated
 
-           :returns: A boolean indicating whether authentication is required
+           :returns: A bool indicating whether authentication is required
 
         """
 
@@ -3631,7 +4204,7 @@ class SSHServer:
            By default, it returns ``False`` indicating the client public
            key authentication is not supported.
 
-           :returns: A boolean indicating if public key authentication is
+           :returns: A bool indicating if public key authentication is
                      supported or not
 
         """
@@ -3669,13 +4242,13 @@ class SSHServer:
                          client possesses the corresponding private key
                          before allowing the authentication to succeed.
 
-           :param string username:
+           :param str username:
                The user being authenticated
            :param key:
                The public key sent by the client
            :type key: :class:`SSHKey` *public key*
 
-           :returns: A boolean indicating if the specified key is a valid
+           :returns: A bool indicating if the specified key is a valid
                      client key for the user being authenticated
 
         """
@@ -3717,13 +4290,13 @@ class SSHServer:
                          corresponding to the public key in the certificate
                          before allowing the authentication to succeed.
 
-           :param string username:
+           :param str username:
                The user being authenticated
            :param key:
                The public key which signed the certificate sent by the client
            :type key: :class:`SSHKey` *public key*
 
-           :returns: A boolean indicating if the specified key is a valid
+           :returns: A bool indicating if the specified key is a valid
                      CA key for the user being authenticated
 
         """
@@ -3742,7 +4315,7 @@ class SSHServer:
            By default, this method returns ``False`` indicating that
            password authentication is not supported.
 
-           :returns: A boolean indicating if password authentication is
+           :returns: A bool indicating if password authentication is
                      supported or not
 
         """
@@ -3777,12 +4350,12 @@ class SSHServer:
 
            By default, this method returns ``False`` for all passwords.
 
-           :param string username:
+           :param str username:
                The user being authenticated
-           :param string password:
+           :param str password:
                The password sent by the client
 
-           :returns: A boolean indicating if the specified password is
+           :returns: A bool indicating if the specified password is
                      valid for the user being authenticated
 
            :raises: :exc:`PasswordChangeRequired` if the password
@@ -3815,14 +4388,14 @@ class SSHServer:
            By default, this method returns ``False``, rejecting all
            password changes.
 
-           :param string username:
+           :param str username:
                The user whose password should be changed
-           :param string old_password:
+           :param str old_password:
                The user's current password
-           :param string new_password:
+           :param str new_password:
                The new password being requested
 
-           :returns: A boolean indicating if the password change
+           :returns: A bool indicating if the password change
                      is successful or not
 
            :raises: :exc:`PasswordChangeRequired` if the new password
@@ -3851,7 +4424,7 @@ class SSHServer:
            will be supported by prompting for a password and passing
            that to the password authentication callbacks.
 
-           :returns: A boolean indicating if keyboard-interactive
+           :returns: A bool indicating if keyboard-interactive
                      authentication is supported or not
 
         """
@@ -3872,11 +4445,11 @@ class SSHServer:
            If blocking operations need to be performed to determine the
            challenge to issue, this method may be defined as a coroutine.
 
-           :param string username:
+           :param str username:
                The user being authenticated
-           :param string lang:
+           :param str lang:
                The language requested by the client for the challenge
-           :param string submethods:
+           :param str submethods:
                A comma-separated list of the types of challenges the client
                can support, or the empty string if the server should choose
 
@@ -3905,11 +4478,11 @@ class SSHServer:
            validity of the response or the next challenge to issue, this
            method may be defined as a coroutine.
 
-           :param string username:
+           :param str username:
                The user being authenticated
            :param responses:
                A list of responses to the last challenge
-           :type responses: list of strings
+           :type responses: list of str
 
            :returns: ``True``, ``False``, or the next challenge
 
@@ -4005,13 +4578,13 @@ class SSHServer:
 
            By default, all connection requests are rejected.
 
-           :param string dest_host:
+           :param str dest_host:
                The address the client wishes to connect to
-           :param integer dest_port:
+           :param int dest_port:
                The port the client wishes to connect to
-           :param string orig_host:
+           :param str orig_host:
                The address the connection was originated from
-           :param integer orig_port:
+           :param int orig_port:
                The port the connection was originated from
 
            :returns: One of the following:
@@ -4021,8 +4594,8 @@ class SSHServer:
                      * A tuple consisting of an :class:`SSHTCPChannel`
                        and the above
                      * A callable or coroutine handler function which
-                       takes AsyncSSH stream objects for reading and
-                       writing to the connection
+                       takes AsyncSSH stream objects for reading from
+                       and writing to the connection
                      * A tuple consisting of an :class:`SSHTCPChannel`
                        and the above
                      * ``True`` to request standard port forwarding
@@ -4063,9 +4636,9 @@ class SSHServer:
 
            By default, this method rejects all server requests.
 
-           :param string listen_host:
+           :param str listen_host:
                The address the server should listen on
-           :param integer listen_port:
+           :param int listen_port:
                The port the server should listen on, or the value ``0``
                to request that the server dynamically allocate a port
 
@@ -4081,14 +4654,114 @@ class SSHServer:
 
         return False
 
+    def unix_connection_requested(self, dest_path):
+        """Handle a direct UNIX domain socket connection request
+
+           This method is called when a direct UNIX domain socket connection
+           request is received by the server. Applications wishing to accept
+           such connections must override this method.
+
+           To allow standard path forwarding of data on the connection to the
+           requested destination path, this method should return ``True``.
+
+           To reject this request, this method should return ``False``
+           to send back a "Connection refused" response or raise an
+           :exc:`ChannelOpenError` exception with the reason for
+           the failure.
+
+           If the application wishes to process the data on the
+           connection itself, this method should return either an
+           :class:`SSHUNIXSession` object which can be used to process the
+           data received on the channel or a tuple consisting of of an
+           :class:`SSHUNIXChannel` object created with
+           :meth:`create_unix_channel()
+           <SSHServerConnection.create_unix_channel>` and an
+           :class:`SSHUNIXSession`, if the application wishes
+           to pass non-default arguments when creating the channel.
+
+           If blocking operations need to be performed before the session
+           can be created, a coroutine which returns an
+           :class:`SSHUNIXSession` object can be returned instead of
+           the session iself. This can be either returned directly or as
+           a part of a tuple with an :class:`SSHUNIXChannel` object.
+
+           By default, all connection requests are rejected.
+
+           :param str dest_path:
+               The path the client wishes to connect to
+
+           :returns: One of the following:
+
+                     * An :class:`SSHUNIXSession` object or a coroutine
+                       which returns an :class:`SSHUNIXSession`
+                     * A tuple consisting of an :class:`SSHUNIXChannel`
+                       and the above
+                     * A callable or coroutine handler function which
+                       takes AsyncSSH stream objects for reading from
+                       and writing to the connection
+                     * A tuple consisting of an :class:`SSHUNIXChannel`
+                       and the above
+                     * ``True`` to request standard path forwarding
+                     * ``False`` to refuse the connection
+
+           :raises: :exc:`ChannelOpenError` if the connection shouldn't
+                    be accepted
+
+        """
+
+        return False
+
+    def unix_server_requested(self, listen_path):
+        """Handle a request to listen on a UNIX domain socket
+
+           This method is called when a client makes a request to
+           listen on a path for incoming UNIX domain socket connections.
+           Applications wishing to allow UNIX domain socket forwarding
+           must override this method.
+
+           To set up standard path forwarding of connections received
+           on this path, this method should return ``True``.
+
+           If the application wishes to manage listening for incoming
+           connections itself, this method should return an
+           :class:`SSHListener` object that listens for new connections
+           and calls :meth:`create_unix_connection
+           <SSHServerConnection.create_unix_connection>` on each of them to
+           forward them back to the client or returns ``None`` if the
+           listener can't be set up.
+
+           If blocking operations need to be performed to set up the
+           listener, a coroutine which returns an :class:`SSHListener`
+           can be returned instead of the listener itself.
+
+           To reject this request, this method should return ``False``.
+
+           By default, this method rejects all server requests.
+
+           :param str listen_path:
+               The path the server should listen on
+
+           :returns: One of the following:
+
+                     * An :class:`SSHListener` object or a coroutine
+                       which returns an :class:`SSHListener` or ``False``
+                       if the listener can't be opened
+                     * ``True`` to set up standard path forwarding
+                     * ``False`` to reject the request
+
+        """
+
+        return False
+
 
 @asyncio.coroutine
 def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
                       loop=None, family=0, flags=0, local_addr=None,
                       known_hosts=(), username=None, password=None,
                       client_keys=(), passphrase=None, agent_path=(),
-                      kex_algs=(), encryption_algs=(), mac_algs=(),
-                      compression_algs=(), rekey_bytes=_DEFAULT_REKEY_BYTES,
+                      agent_forwarding=False, kex_algs=(), encryption_algs=(),
+                      mac_algs=(), compression_algs=(),
+                      rekey_bytes=_DEFAULT_REKEY_BYTES,
                       rekey_seconds=_DEFAULT_REKEY_SECONDS):
     """Create an SSH client connection
 
@@ -4125,9 +4798,9 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
        :param callable client_factory:
            A callable which returns an :class:`SSHClient` object that will
            be tied to the connection
-       :param string host:
+       :param str host:
            The hostname or address to connect to
-       :param integer port: (optional)
+       :param int port: (optional)
            The port number to connect to. If not specified, the default
            SSH port is used.
        :param loop: (optional)
@@ -4146,10 +4819,10 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
            the keys will be looked up in the file :file:`.ssh/known_hosts`.
            If this is explicitly set to ``None``, server host key validation
            will be disabled.
-       :param string username: (optional)
+       :param str username: (optional)
            Username to authenticate as on the server. If not specified,
            the currently logged in user on the local machine will be used.
-       :param string password: (optional)
+       :param str password: (optional)
            The password to use for client password authentication or
            keyboard-interactive authentication which prompts for a password.
            If this is not specified, client password authentication will
@@ -4166,19 +4839,24 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
            :file:`.ssh/id_rsa-cert.pub`, and :file:`.ssh/id_dsa-cert.pub`.
            If this argument is explicitly set to ``None``, client public
            key authentication will not be performed.
-       :param string passphrase: (optional)
+       :param str passphrase: (optional)
            The passphrase to use to decrypt client keys when loading them,
            if they are encrypted. If this is not specified, only unencrypted
            client keys can be loaded. If the keys passed into client_keys
            are already loaded, this argument is ignored.
-       :param string agent_path: (optional)
+       :param agent_path: (optional)
            The path of a UNIX domain socket to use to contact an ssh-agent
            process which will perform the operations needed for client
-           public key authentication. If this is not specified and the
-           environment variable ``SSH_AUTH_SOCK`` is set, its value will
-           be used as the path. If ``client_keys`` is specified or this
-           argument is explicitly set to ``None``, an ssh-agent will not
-           be used.
+           public key authentication, or the :class:`SSHServerConnection`
+           to use to forward ssh-agent requests over. If this is not
+           specified and the environment variable ``SSH_AUTH_SOCK`` is
+           set, its value will be used as the path.  If ``client_keys``
+           is specified or this argument is explicitly set to ``None``,
+           an ssh-agent will not be used.
+       :param bool agent_forwarding: (optional)
+           Whether or not to allow forwarding of ssh-agent requests from
+           processes running on the server. By default, ssh-agent forwarding
+           requests from the server are not allowed.
        :param kex_algs: (optional)
            A list of allowed key exchange algorithms in the SSH handshake,
            taken from :ref:`key exchange algorithms <KexAlgs>`
@@ -4192,22 +4870,23 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
            A list of compression algorithms to use during the SSH handshake,
            taken from :ref:`compression algorithms <CompressionAlgs>`, or
            ``None`` to disable compression
-       :param integer rekey_bytes: (optional)
+       :param int rekey_bytes: (optional)
            The number of bytes which can be sent before the SSH session
            key is renegotiated. This defaults to 1 GB.
-       :param integer rekey_seconds: (optional)
+       :param int rekey_seconds: (optional)
            The maximum time in seconds before the SSH session key is
            renegotiated. This defaults to 1 hour.
        :type family: ``socket.AF_UNSPEC``, ``socket.AF_INET``, or
                      ``socket.AF_INET6``
        :type flags: flags to pass to :meth:`getaddrinfo() <socket.getaddrinfo>`
-       :type local_addr: tuple of string and integer
+       :type local_addr: tuple of str and int
        :type known_hosts: *see* :ref:`SpecifyingKnownHosts`
        :type client_keys: *see* :ref:`SpecifyingPrivateKeys`
-       :type kex_algs: list of strings
-       :type encryption_algs: list of strings
-       :type mac_algs: list of strings
-       :type compression_algs: list of strings
+       :type agent_path: str or :class:`SSHServerConnection`
+       :type kex_algs: list of str
+       :type encryption_algs: list of str
+       :type mac_algs: list of str
+       :type compression_algs: list of str
 
        :returns: An :class:`SSHClientConnection` and :class:`SSHClient`
 
@@ -4218,8 +4897,8 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
 
         return SSHClientConnection(client_factory, loop, host, port,
                                    known_hosts, username, password,
-                                   client_keys, agent, kex_algs,
-                                   encryption_algs, mac_algs,
+                                   client_keys, agent, agent_path,
+                                   kex_algs, encryption_algs, mac_algs,
                                    compression_algs, rekey_bytes,
                                    rekey_seconds, auth_waiter)
 
@@ -4238,10 +4917,16 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
         client_keys = _load_private_keypair_list(client_keys, passphrase)
     elif client_keys is ():
         if agent_path is not None:
-            agent = yield from connect_agent(agent_path)
+            if not agent_path:
+                agent_path = os.environ.get('SSH_AUTH_SOCK', None)
 
-            if agent:
-                client_keys = yield from agent.get_keys()
+            if agent_path:
+                agent = yield from connect_agent(agent_path)
+
+                if agent:
+                    client_keys = yield from agent.get_keys()
+                else:
+                    agent_path = None
 
         if not client_keys:
             client_keys = []
@@ -4253,6 +4938,9 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
                     client_keys.extend(key)
                 except OSError:
                     pass
+
+    if not agent_forwarding:
+        agent_path = None
 
     auth_waiter = asyncio.Future(loop=loop)
 
@@ -4271,7 +4959,7 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
                   reuse_address=None, server_host_keys, passphrase=None,
                   authorized_client_keys=None, kex_algs=(),
                   encryption_algs=(), mac_algs=(), compression_algs=(),
-                  allow_pty=True, session_factory=None,
+                  allow_pty=True, agent_forwarding=True, session_factory=None,
                   session_encoding='utf-8', sftp_factory=None,
                   window=_DEFAULT_WINDOW, max_pktsize=_DEFAULT_MAX_PKTSIZE,
                   rekey_bytes=_DEFAULT_REKEY_BYTES,
@@ -4287,10 +4975,10 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
        :param callable server_factory:
            A callable which returns an :class:`SSHServer` object that will
            be created for each new inbound connection
-       :param string host: (optional)
+       :param str host: (optional)
            The hostname or address to listen on. If not specified, listeners
            are created for all addresses.
-       :param integer port: (optional)
+       :param int port: (optional)
            The port number to listen on. If not specified, the default
            SSH port is used.
        :param loop: (optional)
@@ -4301,9 +4989,9 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
            the address families are automatically selected based on the host.
        :param flags: (optional)
            The flags to pass to getaddrinfo() when looking up the host
-       :param integer backlog: (optional)
+       :param int backlog: (optional)
            The maximum number of queued connections allowed on listeners
-       :param boolean reuse_address: (optional)
+       :param bool reuse_address: (optional)
            Whether or not to reuse a local socket in the TIME_WAIT state
            without waiting for its natural timeout to expire. If not
            specified, this will be automatically set to ``True`` on UNIX.
@@ -4311,7 +4999,7 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
            A list of private keys and optional certificates which can be
            used by the server as a host key. This argument must be
            specified.
-       :param string passphrase: (optional)
+       :param str passphrase: (optional)
            The passphrase to use to decrypt server host keys when loading
            them, if they are encrypted. If this is not specified, only
            unencrypted server host keys can be loaded. If the keys passed
@@ -4333,9 +5021,12 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
            A list of compression algorithms to use during the SSH handshake,
            taken from :ref:`compression algorithms <CompressionAlgs>`, or
            ``None`` to disable compression
-       :param boolean allow_pty: (optional)
+       :param bool allow_pty: (optional)
            Whether or not to allow allocation of a pseudo-tty in sessions,
            defaulting to ``True``
+       :param bool agent_forwarding: (optional)
+           Whether or not to allow forwarding of ssh-agent requests back
+           to the client when the client supports it, defaulting to ``True``
        :param callable session_factory: (optional)
            A callable or coroutine handler function which takes AsyncSSH
            stream objects for stdin, stdout, and stderr that will be called
@@ -4345,7 +5036,7 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
            <SSHServer.session_requested>` method is overridden on the
            :class:`SSHServer` object returned by ``server_factory`` to make
            this decision.
-       :param string session_encoding: (optional)
+       :param str session_encoding: (optional)
            The Unicode encoding to use for data exchanged on sessions on
            this server, defaulting to UTF-8 (ISO 10646) format. If ``None``
            is passed in, the application can send and receive raw bytes.
@@ -4355,17 +5046,17 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
            client, or ``True`` to use the base :class:`SFTPServer` class
            to handle SFTP requests. If not specified, SFTP sessions are
            rejected by default.
-       :param integer window: (optional)
+       :param int window: (optional)
            The receive window size for sessions on this server
-       :param integer max_pktsize: (optional)
+       :param int max_pktsize: (optional)
            The maximum packet size for sessions on this server
-       :param integer rekey_bytes: (optional)
+       :param int rekey_bytes: (optional)
            The number of bytes which can be sent before the SSH session
            key is renegotiated, defaulting to 1 GB
-       :param integer rekey_seconds: (optional)
+       :param int rekey_seconds: (optional)
            The maximum time in seconds before the SSH session key is
            renegotiated, defaulting to 1 hour
-       :param integer login_timeout: (optional)
+       :param int login_timeout: (optional)
            The maximum time in seconds allowed for authentication to
            complete, defaulting to 2 minutes
        :type family: ``socket.AF_UNSPEC``, ``socket.AF_INET``, or
@@ -4373,10 +5064,10 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
        :type flags: flags to pass to :meth:`getaddrinfo() <socket.getaddrinfo>`
        :type server_host_keys: *see* :ref:`SpecifyingPrivateKeys`
        :type authorized_client_keys: *see* :ref:`SpecifyingAuthorizedKeys`
-       :type kex_algs: list of strings
-       :type encryption_algs: list of strings
-       :type mac_algs: list of strings
-       :type compression_algs: list of strings
+       :type kex_algs: list of str
+       :type encryption_algs: list of str
+       :type mac_algs: list of str
+       :type compression_algs: list of str
 
        :returns: :class:`asyncio.AbstractServer`
 
@@ -4398,9 +5089,10 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
                                    passphrase, authorized_client_keys,
                                    kex_algs, encryption_algs, mac_algs,
                                    compression_algs, allow_pty,
-                                   session_factory, session_encoding,
-                                   sftp_factory, window, max_pktsize,
-                                   rekey_bytes, rekey_seconds, login_timeout)
+                                   agent_forwarding, session_factory,
+                                   session_encoding, sftp_factory, window,
+                                   max_pktsize, rekey_bytes, rekey_seconds,
+                                   login_timeout)
 
     return (yield from loop.create_server(conn_factory, host, port,
                                           family=family, flags=flags,

@@ -16,7 +16,8 @@ import asyncio
 
 from .constants import EXTENDED_DATA_STDERR
 from .misc import BreakReceived, SignalReceived, TerminalSizeChanged
-from .session import SSHClientSession, SSHServerSession, SSHTCPSession
+from .session import SSHClientSession, SSHServerSession
+from .session import SSHTCPSession, SSHUNIXSession
 from .sftp import SFTPServerHandler
 
 
@@ -55,11 +56,11 @@ class SSHReader:
            received on the stream.
 
            If EOF was received and the receive buffer is empty, an
-           empty ``bytes`` or ``string`` object is returned.
+           empty bytes or str object is returned.
 
            .. note:: Unlike traditional ``asyncio`` stream readers,
                      the data will be delivered as either bytes or
-                     a string depending on whether an encoding was
+                     a str depending on whether an encoding was
                      specified when the underlying channel was opened.
 
         """
@@ -74,7 +75,7 @@ class SSHReader:
 
            If EOF was received before ``'\\n'`` was found, the partial
            line is returned. If EOF was received and the receive buffer
-           is empty, an empty ``bytes`` or ``string`` object is returned.
+           is empty, an empty bytes or str object is returned.
 
         """
 
@@ -168,7 +169,7 @@ class SSHWriter:
 
            .. note:: Unlike traditional ``asyncio`` stream writers,
                      the data must be supplied as either bytes or
-                     a string depending on whether an encoding was
+                     a str depending on whether an encoding was
                      specified when the underlying channel was opened.
 
         """
@@ -416,17 +417,11 @@ class SSHClientStreamSession(SSHStreamSession, SSHClientSession):
 class SSHServerStreamSession(SSHStreamSession, SSHServerSession):
     """SSH server stream session handler"""
 
-    def __init__(self, allow_pty, session_factory, sftp_factory):
+    def __init__(self, session_factory, sftp_factory):
         super().__init__()
 
-        self._allow_pty = allow_pty
         self._session_factory = session_factory
         self._sftp_factory = sftp_factory
-
-    def pty_requested(self, term_type, term_size, term_modes):
-        """Return whether a pseudo-tty can be requested"""
-
-        return self._allow_pty
 
     def shell_requested(self):
         """Return whether a shell can be requested"""
@@ -484,8 +479,8 @@ class SSHServerStreamSession(SSHStreamSession, SSHServerSession):
         self._unblock_read(None)
 
 
-class SSHTCPStreamSession(SSHStreamSession, SSHTCPSession):
-    """SSH TCP stream session handler"""
+class SSHSocketStreamSession(SSHStreamSession):
+    """Socket stream session handler"""
 
     def __init__(self, handler_factory=None):
         super().__init__()
@@ -493,7 +488,7 @@ class SSHTCPStreamSession(SSHStreamSession, SSHTCPSession):
         self._handler_factory = handler_factory
 
     def session_started(self):
-        """Start a session for this newly opened TCP channel"""
+        """Start a session for this newly opened socket channel"""
 
         if self._handler_factory:
             handler = self._handler_factory(SSHReader(self, self._chan),
@@ -501,3 +496,11 @@ class SSHTCPStreamSession(SSHStreamSession, SSHTCPSession):
 
             if asyncio.iscoroutine(handler):
                 self._conn.create_task(handler)
+
+
+class SSHTCPStreamSession(SSHSocketStreamSession, SSHTCPSession):
+    """TCP stream session handler"""
+
+
+class SSHUNIXStreamSession(SSHSocketStreamSession, SSHUNIXSession):
+    """UNIX stream session handler"""

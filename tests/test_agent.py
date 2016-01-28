@@ -12,36 +12,33 @@
 
 """Unit tests for AsyncSSH ssh-agent client"""
 
-from .util import asynctest, run, AsyncTestCase
-
 import asyncio
-import asyncssh
 import os
 import signal
+
+import asyncssh
+
+from .util import asynctest, run, AsyncTestCase
 
 
 class _Agent:
     """Mock SSH agent for testing error cases"""
 
-    _seq = 0
-
     def __init__(self, failmode):
         self._failmode = failmode
+        self._path = None
         self._server = None
 
     @asyncio.coroutine
-    def start(self):
+    def start(self, path):
         """Start a new mock SSH agent"""
 
-        _Agent._seq += 1
-        path = 'bad_agent_' + str(_Agent._seq)
+        self._path = path
 
         # pylint doesn't think start_unix_server exists
         # pylint: disable=no-member
         self._server = \
             yield from asyncio.start_unix_server(self.process_request, path)
-
-        return path
 
     @asyncio.coroutine
     def process_request(self, _, writer):
@@ -61,6 +58,7 @@ class _Agent:
         self._server.close()
         yield from self._server.wait_closed()
 
+        os.remove(self._path)
 
 class _TestAPI(AsyncTestCase):
     """Unit tests for AsyncSSH API"""
@@ -102,9 +100,9 @@ class _TestAPI(AsyncTestCase):
         """Test getting invalid responses from SSH agent"""
 
         mock_agent = _Agent(failmode)
-        path = yield from mock_agent.start()
+        yield from mock_agent.start('bad_agent')
 
-        agent = yield from asyncssh.connect_agent(path)
+        agent = yield from asyncssh.connect_agent('bad_agent')
 
         with self.assertRaises(ValueError):
             if request == 'sign':

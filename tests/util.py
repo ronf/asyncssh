@@ -15,6 +15,7 @@
 import asyncio
 import functools
 import os
+import platform
 import subprocess
 import tempfile
 import unittest
@@ -36,6 +37,11 @@ except (ImportError, OSError, AttributeError): # pragma: no cover
 
 # pylint: enable=unused-import
 
+
+if platform.python_version_tuple() >= ('3', '4', '4'):
+    create_task = asyncio.ensure_future
+else:
+    create_task = asyncio.async
 
 def asynctest(func):
     """Decorator for async tests, for use with AsyncTestCase"""
@@ -70,7 +76,7 @@ class ConnectionStub:
 
         if peer:
             self._packet_queue = asyncio.queues.Queue()
-            self._queue_task = asyncio.async(self._process_packets())
+            self._queue_task = create_task(self._process_packets())
         else:
             self._packet_queue = None
             self._queue_task = None
@@ -118,6 +124,8 @@ class ConnectionStub:
         """Close the connection, stopping processing of incoming packets"""
 
         if self._queue_task:
+            # This is a pylint false positive
+            # pylint: disable=no-member
             self._queue_task.cancel()
             self._queue_task = None
 

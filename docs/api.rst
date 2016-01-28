@@ -36,34 +36,43 @@ credentials provided by clients.
 Once an SSH client connection is established and authentication is successful,
 multiple simultaneous channels can be opened on it.  This is accomplished
 calling methods such as :meth:`create_session()
-<SSHClientConnection.create_session>` or :meth:`create_connection()
-<SSHClientConnection.create_connection>` on the :class:`SSHClientConnection`
-object. The client can also set up listeners on remote TCP ports by calling
-:meth:`create_server() <SSHClientConnection.create_server>`. All of these
-methods take ``session_factory`` arguments that return
-:class:`SSHClientSession` or :class:`SSHTCPSession` objects used to manage
+<SSHClientConnection.create_session>`, :meth:`create_connection()
+<SSHClientConnection.create_connection>`, and :meth:`create_unix_connection()
+<SSHClientConnection.create_unix_connection>` on the
+:class:`SSHClientConnection` object. The client can also set up listeners on
+remote TCP ports and UNIX domain sockets by calling :meth:`create_server()
+<SSHClientConnection.create_server>` and :meth:`create_unix_server()
+<SSHClientConnection.create_unix_server>`. All of these methods take
+``session_factory`` arguments that return :class:`SSHClientSession`,
+:class:`SSHTCPSession`, or :class:`SSHUNIXSession` objects used to manage
 the channels once they are open. Alternately, channels can be opened using
-:meth:`open_session() <SSHClientConnection.open_session>` or
-:meth:`open_connection() <SSHClientConnection.open_connection>`, which
-return :class:`SSHReader` and :class:`SSHWriter` objects which can be used
-to perform I/O on the channel. The method :meth:`start_server()
-<SSHClientConnection.start_server>` can be used to set up listeners on
-remote TCP ports and get back these :class:`SSHReader` and :class:`SSHWriter`
-objects in a callback when new connections are opened.
+:meth:`open_session() <SSHClientConnection.open_session>`,
+:meth:`open_connection() <SSHClientConnection.open_connection>`, or
+:meth:`open_unix_connection() <SSHClientConnection.open_unix_connection>`,
+which return :class:`SSHReader` and :class:`SSHWriter` objects that can be
+used to perform I/O on the channel. The methods :meth:`start_server()
+<SSHClientConnection.start_server>` and :meth:`start_unix_server()
+<SSHClientConnection.start_unix_server>`can be used to set up listeners on
+remote TCP ports or UNIX domain sockets and get back these :class:`SSHReader`
+and :class:`SSHWriter` objects in a callback when new connections are opened.
 
 The client can also set up TCP port forwarding by calling
 :meth:`forward_local_port() <SSHClientConnection.forward_local_port>` or
-:meth:`forward_remote_port() <SSHClientConnection.forward_remote_port>`. In
-these cases, data transfer on the channels is managed automatically by
-AsyncSSH whenever new connections are opened, so custom session objects are
-not required.
+:meth:`forward_remote_port() <SSHClientConnection.forward_remote_port>` and
+UNIX domain socket forwarding by calling :meth:`forward_local_path()
+<SSHClientSession.forward_local_path>` or :meth:`forward_remote_path()
+<SSHClientSession.forward_remote_path>`. In these cases, data transfer on
+the channels is managed automatically by AsyncSSH whenever new connections
+are opened, so custom session objects are not required.
 
 When an SSH server receives a new connection and authentication is successful,
 handlers such as :meth:`session_requested() <SSHServer.session_requested>`,
-:meth:`connection_requested() <SSHServer.connection_requested>`, and
-:meth:`server_requested() <SSHServer.server_requested>` on the associated
-:class:`SSHServer` object will be called when clients attempt to open
-channels or set up listeners. These methods return coroutines which can
+:meth:`connection_requested() <SSHServer.connection_requested>`,
+:meth:`unix_connection_requested() <SSHServer.unix_connection_requested>`,
+:meth:`server_requested() <SSHServer.server_requested>`, and
+:meth:`unix_server_requested() <SSHServer.unix_server_requested>` on the
+associated :class:`SSHServer` object will be called when clients attempt to
+open channels or set up listeners. These methods return coroutines which can
 set up the requested sessions or connections, returning
 :class:`SSHServerSession` or :class:`SSHTCPSession` objects or handler
 functions that accept :class:`SSHReader` and :class:`SSHWriter` objects
@@ -192,13 +201,15 @@ SSHServer
    .. automethod:: validate_kbdint_response
    ============================================ =
 
-   ==================================== =
+   ========================================= =
    Channel session open handlers
-   ==================================== =
+   ========================================= =
    .. automethod:: session_requested
    .. automethod:: connection_requested
+   .. automethod:: unix_connection_requested
    .. automethod:: server_requested
-   ==================================== =
+   .. automethod:: unix_server_requested
+   ========================================= =
 
 Connection Classes
 ==================
@@ -215,24 +226,30 @@ SSHClientConnection
    .. automethod:: send_debug
    ============================== =
 
-   ================================= =
+   ====================================== =
    Client session open methods
-   ================================= =
+   ====================================== =
    .. automethod:: create_session
    .. automethod:: open_session
    .. automethod:: create_connection
    .. automethod:: open_connection
    .. automethod:: create_server
    .. automethod:: start_server
+   .. automethod:: create_unix_connection
+   .. automethod:: open_unix_connection
+   .. automethod:: create_unix_server
+   .. automethod:: start_unix_server
    .. automethod:: start_sftp_client
-   ================================= =
+   ====================================== =
 
    =================================== =
    Client forwarding methods
    =================================== =
    .. automethod:: forward_connection
    .. automethod:: forward_local_port
+   .. automethod:: forward_local_path
    .. automethod:: forward_remote_port
+   .. automethod:: forward_remote_path
    =================================== =
 
    =========================== =
@@ -267,24 +284,28 @@ SSHServerConnection
    .. automethod:: check_certificate_permission
    ============================================ =
 
-   ================================== =
+   ====================================== =
    Server connection open methods
-   ================================== =
+   ====================================== =
    .. automethod:: create_connection
    .. automethod:: open_connection
-   ================================== =
+   .. automethod:: create_unix_connection
+   .. automethod:: open_unix_connection
+   ====================================== =
 
-   ================================== =
+   ======================================= =
    Server forwarding methods
-   ================================== =
+   ======================================= =
    .. automethod:: forward_connection
-   ================================== =
+   .. automethod:: forward_unix_connection
+   ======================================= =
 
    ===================================== =
    Server channel creation methods
    ===================================== =
    .. automethod:: create_server_channel
    .. automethod:: create_tcp_channel
+   .. automethod:: create_unix_channel
    ===================================== =
 
    =========================== =
@@ -382,6 +403,33 @@ SSHTCPSession
 -------------
 
 .. autoclass:: SSHTCPSession
+
+   =============================== =
+   General session handlers
+   =============================== =
+   .. automethod:: connection_made
+   .. automethod:: connection_lost
+   .. automethod:: session_started
+   =============================== =
+
+   ============================= =
+   General session read handlers
+   ============================= =
+   .. automethod:: data_received
+   .. automethod:: eof_received
+   ============================= =
+
+   ============================== =
+   General session write handlers
+   ============================== =
+   .. automethod:: pause_writing
+   .. automethod:: resume_writing
+   ============================== =
+
+SSHUNIXSession
+--------------
+
+.. autoclass:: SSHUNIXSession
 
    =============================== =
    General session handlers
@@ -519,6 +567,43 @@ SSHTCPChannel
 -------------
 
 .. autoclass:: SSHTCPChannel()
+
+   ============================== =
+   General channel methods
+   ============================== =
+   .. automethod:: get_extra_info
+   ============================== =
+
+   ============================== =
+   General channel read methods
+   ============================== =
+   .. automethod:: pause_reading
+   .. automethod:: resume_reading
+   ============================== =
+
+   ======================================= =
+   General channel write methods
+   ======================================= =
+   .. automethod:: can_write_eof
+   .. automethod:: get_write_buffer_size
+   .. automethod:: set_write_buffer_limits
+   .. automethod:: write
+   .. automethod:: writelines
+   .. automethod:: write_eof
+   ======================================= =
+
+   ============================= =
+   General channel close methods
+   ============================= =
+   .. automethod:: abort
+   .. automethod:: close
+   .. automethod:: wait_closed
+   ============================= =
+
+SSHUNIXChannel
+--------------
+
+.. autoclass:: SSHUNIXChannel()
 
    ============================== =
    General channel methods

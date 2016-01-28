@@ -108,6 +108,7 @@ class _Ed25519Key(SSHKey):
 
 
 try:
+    # pylint: disable=wrong-import-position,wrong-import-order
     import libnacl
 except (ImportError, OSError): # pragma: no cover
     pass

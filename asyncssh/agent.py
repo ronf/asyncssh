@@ -15,6 +15,7 @@
 import asyncio
 import os
 
+from .misc import ChannelOpenError
 from .packet import Byte, String, UInt32, PacketDecodeError, SSHPacket
 from .public_key import SSHKeyPair
 
@@ -74,11 +75,15 @@ class SSHAgentClient:
     def connect(self):
         """Connect to the SSH agent"""
 
-        # pylint doesn't think open_unix_connection exists
-        # pylint: disable=no-member
-        self._reader, self._writer = \
-            yield from asyncio.open_unix_connection(self._agent_path,
-                                                    loop=self._loop)
+        if isinstance(self._agent_path, str):
+            # pylint doesn't think open_unix_connection exists
+            # pylint: disable=no-member
+            self._reader, self._writer = \
+                yield from asyncio.open_unix_connection(self._agent_path,
+                                                        loop=self._loop)
+        else:
+            self._reader, self._writer = \
+                yield from self._agent_path.open_agent_connection()
 
     @asyncio.coroutine
     def _make_request(self, msgtype, *args):
@@ -179,11 +184,14 @@ def connect_agent(agent_path=None, *, loop=None):
        is not set or the connection to the agent fails, this function
        returns ``None``.
 
-       :param string agent_path: (optional)
-           The path to use to contact the ssh-agent process.
+       :param agent_path: (optional)
+           The path to use to contact the ssh-agent process, or the
+           :class:`SSHServerConnection` to forward the agent request
+           over.
        :param loop: (optional)
            The event loop to use when creating the connection. If not
            specified, the default event loop is used.
+       :type agent_path: str or :class:`SSHServerConnection`
 
        :returns: An :class:`SSHAgentClient` or ``None``
 
@@ -203,5 +211,5 @@ def connect_agent(agent_path=None, *, loop=None):
     try:
         yield from agent.connect()
         return agent
-    except OSError:
+    except (OSError, ChannelOpenError):
         return None

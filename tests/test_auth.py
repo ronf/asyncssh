@@ -14,7 +14,7 @@
 
 import asyncio
 
-from .util import asynctest, run, ConnectionStub, AsyncTestCase
+from .util import asynctest, create_task, run, AsyncTestCase, ConnectionStub
 
 from asyncssh.auth import MSG_USERAUTH_PK_OK, lookup_client_auth
 from asyncssh.auth import get_server_auth_methods, lookup_server_auth
@@ -41,7 +41,7 @@ class _AuthConnectionStub(ConnectionStub):
     def create_task(self, coro):
         """Create an asynchronous task"""
 
-        return asyncio.async(self._run_task(coro))
+        return create_task(self._run_task(coro))
 
     def connection_lost(self, exc):
         """Handle the closing of a connection"""

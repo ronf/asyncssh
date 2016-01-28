@@ -21,7 +21,7 @@ from .constants import MSG_CHANNEL_EOF, MSG_CHANNEL_CLOSE, MSG_CHANNEL_REQUEST
 from .constants import MSG_CHANNEL_SUCCESS, MSG_CHANNEL_FAILURE
 from .constants import OPEN_CONNECT_FAILED, PTY_OP_RESERVED, PTY_OP_END
 from .constants import OPEN_REQUEST_PTY_FAILED, OPEN_REQUEST_SESSION_FAILED
-from .misc import ChannelOpenError, DisconnectError
+from .misc import ChannelOpenError, DisconnectError, map_handler_name
 from .packet import Boolean, Byte, String, UInt32, SSHPacketHandler
 
 
@@ -448,7 +448,7 @@ class SSHChannel(SSHPacketHandler):
             raise DisconnectError(DISC_PROTOCOL_ERROR,
                                   'Invalid channel request') from None
 
-        name = '_process_' + request.replace('-', '_') + '_request'
+        name = '_process_' + map_handler_name(request) + '_request'
         handler = getattr(self, name, None)
         result = handler(packet) if callable(handler) else False
 
@@ -573,6 +573,12 @@ class SSHChannel(SSHPacketHandler):
            ``'remote_peername'`` are added to return the local and remote
            host and port information for the tunneled TCP connection.
 
+           For UNIX channels, the values ``'local_peername'`` and
+           ``'remote_peername'`` are added to return the local and remote
+           path information for the tunneled UNIX domain socket connection.
+           Since UNIX domain sockets provide no "source" address, only
+           one of these will be filled in.
+
            See :meth:`get_extra_info() <SSHClientConnection.get_extra_info>`
            on :class:`SSHClientConnection` for more information.
 
@@ -640,10 +646,10 @@ class SSHChannel(SSHPacketHandler):
 
            :param data:
                The data to send on the channel
-           :param integer datatype: (optional)
+           :param int datatype: (optional)
                The extended data type of the data, from :ref:`extended
                data types <ExtendedDataTypes>`
-           :type data: string or bytes
+           :type data: str or bytes
 
            :raises: :exc:`OSError` if the channel isn't open for sending
                     or the extended data type is not valid for this type
@@ -676,10 +682,10 @@ class SSHChannel(SSHPacketHandler):
 
            :param list_of_data:
                The data to send on the channel
-           :param integer datatype: (optional)
+           :param int datatype: (optional)
                The extended data type of the data, from :ref:`extended
                data types <ExtendedDataTypes>`
-           :type list_of_data: iterable of ``string`` or ``bytes`` objects
+           :type list_of_data: iterable of str or bytes objects
 
            :raises: :exc:`OSError` if the channel isn't open for sending
                     or the extended data type is not valid for this type
@@ -756,7 +762,7 @@ class SSHClientChannel(SSHChannel):
 
     @asyncio.coroutine
     def create(self, session_factory, command, subsystem, env,
-               term_type, term_size, term_modes):
+               term_type, term_size, term_modes, agent_forwarding):
         """Create an SSH client session"""
 
         packet = yield from self._open(b'session')
@@ -805,6 +811,9 @@ class SSHClientChannel(SSHChannel):
                 self.close()
                 raise ChannelOpenError(OPEN_REQUEST_PTY_FAILED,
                                        'PTY request failed')
+
+        if agent_forwarding:
+            self._send_request(b'auth-agent-req@openssh.com')
 
         if command:
             result = yield from self._make_request(b'exec', String(command))
@@ -906,13 +915,13 @@ class SSHClientChannel(SSHChannel):
            This method changes the width and height of the terminal
            associated with this session.
 
-           :param integer width:
+           :param int width:
                The width of the terminal in characters
-           :param integer height:
+           :param int height:
                The height of the terminal in characters
-           :param integer pixwidth: (optional)
+           :param int pixwidth: (optional)
                The width of the terminal in pixels
-           :param integer pixheight: (optional)
+           :param int pixheight: (optional)
                The height of the terminal in pixels
 
         """
@@ -927,7 +936,7 @@ class SSHClientChannel(SSHChannel):
            operation on the remote process or service as described in
            :rfc:`4335`.
 
-           :param integer msec:
+           :param int msec:
                The duration of the break in milliseconds
 
            :raises: :exc:`OSError` if the channel is not open
@@ -943,7 +952,7 @@ class SSHClientChannel(SSHChannel):
            process or service. Signal names should be as described in
            section 6.10 of :rfc:`4254#section-6.10`.
 
-           :param string signal:
+           :param str signal:
                The signal to deliver
 
            :raises: :exc:`OSError` if the channel is not open
@@ -984,11 +993,14 @@ class SSHServerChannel(SSHChannel):
 
     _write_datatypes = {EXTENDED_DATA_STDERR}
 
-    def __init__(self, conn, loop, encoding, window, max_pktsize):
+    def __init__(self, conn, loop, allow_pty, agent_forwarding,
+                 encoding, window, max_pktsize):
         """Initialize an SSH server channel"""
 
         super().__init__(conn, loop, encoding, window, max_pktsize)
 
+        self._allow_pty = allow_pty
+        self._agent_forwarding = agent_forwarding
         self._env = self._conn.get_key_option('environment', {})
         self._command = None
         self._subsystem = None
@@ -1013,7 +1025,8 @@ class SSHServerChannel(SSHChannel):
             raise DisconnectError(DISC_PROTOCOL_ERROR,
                                   'Invalid pty request') from None
 
-        if not self._conn.check_key_permission('pty') or \
+        if not self._allow_pty or \
+           not self._conn.check_key_permission('pty') or \
            not self._conn.check_certificate_permission('pty'):
             return False
 
@@ -1036,6 +1049,19 @@ class SSHServerChannel(SSHChannel):
 
         return self._session.pty_requested(self._term_type, self._term_size,
                                            self._term_modes)
+
+    def _process_auth_agent_req_at_openssh_dot_com_request(self, packet):
+        """Process a request to enable ssh-agent forwarding"""
+
+        packet.check_end()
+
+        if not self._agent_forwarding or \
+           not self._conn.check_key_permission('agent-forwarding') or \
+           not self._conn.check_certificate_permission('agent-forwarding'):
+            return False
+
+        self._conn.agent_forwarding_enabled()
+        return True
 
     def _process_env_request(self, packet):
         """Process a request to set an environment variable"""
@@ -1203,7 +1229,7 @@ class SSHServerChannel(SSHChannel):
            calls to this can be made at any time after the handler
            function has started up.
 
-           :returns: A string containing the terminal type or ``None`` if
+           :returns: A str containing the terminal type or ``None`` if
                      no pseudo-terminal was requested
 
         """
@@ -1248,11 +1274,11 @@ class SSHServerChannel(SSHChannel):
            calls to this can be made at any time after the handler
            function has started up.
 
-           :param integer mode:
+           :param int mode:
                POSIX terminal mode taken from :ref:`POSIX terminal modes
                <PTYModes>` to look up
 
-           :returns: An integer containing the value of the requested
+           :returns: An int containing the value of the requested
                      POSIX terminal mode or ``None`` if the requested
                      mode was not set
 
@@ -1271,7 +1297,7 @@ class SSHServerChannel(SSHChannel):
            enable this functionality or to ``False`` to tell the client
            to forward Control-S and Control-Q through as normal input.
 
-           :param boolean client_can_do:
+           :param bool client_can_do:
                Whether or not the client should enable XON/XOFF flow control
 
         """
@@ -1289,7 +1315,7 @@ class SSHServerChannel(SSHChannel):
 
            :param data:
                The data to send to stderr
-           :type data: string or bytes
+           :type data: str or bytes
 
            :raises: :exc:`OSError` if the channel isn't open for sending
 
@@ -1317,7 +1343,7 @@ class SSHServerChannel(SSHChannel):
            successful. After reporting the status, the channel is
            closed.
 
-           :param integer status:
+           :param int status:
                The exit status to report to the client
 
            :raises: :exc:`OSError` if the channel isn't open
@@ -1340,13 +1366,13 @@ class SSHServerChannel(SSHChannel):
            of whether or not the process dumped core. After
            reporting the signal, the channel is closed.
 
-           :param string signal:
+           :param str signal:
                The signal which caused the process to exit
-           :param boolean core_dumped: (optional)
+           :param bool core_dumped: (optional)
                Whether or not the process dumped core
-           :param msg: (optional)
+           :param str msg: (optional)
                Details about what error occurred
-           :param lang: (optional)
+           :param str lang: (optional)
                The language the error message is in
 
            :raises: :exc:`OSError` if the channel isn't open
@@ -1365,18 +1391,38 @@ class SSHServerChannel(SSHChannel):
         self.close()
 
 
-class SSHTCPChannel(SSHChannel):
-    """SSH TCP channel"""
+class SSHForwardChannel(SSHChannel):
+    """SSH channel for forwarding TCP and UNIX domain connections"""
 
     @asyncio.coroutine
     def _finish_open_request(self, session):
-        """Finish processing a TCP channel open request"""
+        """Finish processing a forward channel open request"""
 
         yield from super()._finish_open_request(session)
 
         if self._session:
             self._session.session_started()
             self.resume_reading()
+
+    @asyncio.coroutine
+    def _open(self, session_factory, chantype, *args):
+        """Open a forward channel"""
+
+        packet = yield from super()._open(chantype, *args)
+
+        # Forward channels should have no extra data in the open confirmation
+        packet.check_end()
+
+        self._session = session_factory()
+        self._session.connection_made(self)
+        self._session.session_started()
+        self.resume_reading()
+
+        return self._session
+
+
+class SSHTCPChannel(SSHForwardChannel):
+    """SSH TCP channel"""
 
     @asyncio.coroutine
     def _open_tcp(self, session_factory, chantype, host, port,
@@ -1389,18 +1435,9 @@ class SSHTCPChannel(SSHChannel):
         host = host.encode('utf-8')
         orig_host = orig_host.encode('utf-8')
 
-        packet = yield from super()._open(chantype, String(host), UInt32(port),
-                                          String(orig_host), UInt32(orig_port))
-
-        # TCP sessions should have no extra data in the open confirmation
-        packet.check_end()
-
-        self._session = session_factory()
-        self._session.connection_made(self)
-        self._session.session_started()
-        self.resume_reading()
-
-        return self, self._session
+        return (yield from super()._open(session_factory, chantype,
+                                         String(host), UInt32(port),
+                                         String(orig_host), UInt32(orig_port)))
 
     @asyncio.coroutine
     def connect(self, session_factory, host, port, orig_host, orig_port):
@@ -1422,3 +1459,52 @@ class SSHTCPChannel(SSHChannel):
 
         self._extra['local_peername'] = (dest_host, dest_port)
         self._extra['remote_peername'] = (orig_host, orig_port)
+
+
+class SSHUNIXChannel(SSHForwardChannel):
+    """SSH UNIX channel"""
+
+    @asyncio.coroutine
+    def _open_unix(self, session_factory, chantype, path, *args):
+        """Open a UNIX channel"""
+
+        self._extra['local_peername'] = ''
+        self._extra['remote_peername'] = path
+
+        return (yield from super()._open(session_factory, chantype,
+                                         String(path), *args))
+
+    @asyncio.coroutine
+    def connect(self, session_factory, path):
+        """Create a new outbound UNIX session"""
+
+        # OpenSSH appears to have a bug which requires an originator
+        # host and port to be sent after the path name to connect to
+        # when opening a direct streamlocal channel.
+        return (yield from self._open_unix(session_factory,
+                                           b'direct-streamlocal@openssh.com',
+                                           path, String(''), UInt32(0)))
+
+    @asyncio.coroutine
+    def accept(self, session_factory, path):
+        """Create a new forwarded UNIX session"""
+
+        return (yield from self._open_unix(session_factory,
+                                           b'forwarded-streamlocal@openssh.com',
+                                           path, String('')))
+
+    def set_inbound_peer_names(self, dest_path):
+        """Set local and remote peer names for inbound connections"""
+
+        self._extra['local_peername'] = dest_path
+        self._extra['remote_peername'] = ''
+
+class SSHAgentChannel(SSHForwardChannel):
+    """SSH agent channel"""
+
+    @asyncio.coroutine
+    def open(self, session_factory):
+        """Open an SSH agent channel"""
+
+        return (yield from self._open(session_factory,
+                                      b'auth-agent@openssh.com'))

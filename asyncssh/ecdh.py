@@ -119,6 +119,7 @@ class _KexECDH(Kex):
 
 
 try:
+    # pylint: disable=wrong-import-position
     from .crypto import ECDH
 except ImportError: # pragma: no cover
     pass
@@ -130,6 +131,7 @@ else:
                          _hash_alg, ECDH, _curve_id)
 
 try:
+    # pylint: disable=wrong-import-position
     from .crypto import Curve25519DH
 except ImportError: # pragma: no cover
     pass

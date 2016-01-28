@@ -77,15 +77,17 @@ _openssl_version = run('openssl version')
 _pkcs1_public_supported = _openssl_version >= b'OpenSSL 1.0.0'
 
 if _openssl_version >= b'OpenSSL 1.0.2': # pragma: no branch
+    # pylint: disable=bad-whitespace
+
     pkcs8_ciphers += (
-         ('aes128-cbc',   'sha224', 2, '-v2 aes-128-cbc '
-                                       '-v2prf hmacWithSHA224'),
-         ('aes128-cbc',   'sha256', 2, '-v2 aes-128-cbc '
-                                       '-v2prf hmacWithSHA256'),
-         ('aes128-cbc',   'sha384', 2, '-v2 aes-128-cbc '
-                                       '-v2prf hmacWithSHA384'),
-         ('aes128-cbc',   'sha512', 2, '-v2 aes-128-cbc '
-                                       '-v2prf hmacWithSHA512')
+        ('aes128-cbc',   'sha224', 2, '-v2 aes-128-cbc '
+                                      '-v2prf hmacWithSHA224'),
+        ('aes128-cbc',   'sha256', 2, '-v2 aes-128-cbc '
+                                      '-v2prf hmacWithSHA256'),
+        ('aes128-cbc',   'sha384', 2, '-v2 aes-128-cbc '
+                                      '-v2prf hmacWithSHA384'),
+        ('aes128-cbc',   'sha512', 2, '-v2 aes-128-cbc '
+                                      '-v2prf hmacWithSHA512')
     )
 
 if run('ssh -V') >= b'OpenSSH_6.9': # pragma: no branch

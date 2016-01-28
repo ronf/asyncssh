@@ -15,10 +15,9 @@
 import asyncio
 
 from .misc import ChannelOpenError
-from .session import SSHTCPSession
 
 
-class SSHPortForwarder(SSHTCPSession):
+class SSHForwarder:
     """SSH port forwarding connection handler"""
 
     def __init__(self, peer=None):
@@ -68,10 +67,16 @@ class SSHPortForwarder(SSHTCPSession):
     def connection_lost(self, exc):
         """Handle an incoming connection close"""
 
+        # pylint: disable=unused-argument
         self.close()
+
+    def session_started(self):
+        """Handle session start"""
 
     def data_received(self, data, datatype=None):
         """Handle incoming data from the transport"""
+
+        # pylint: disable=unused-argument
 
         if self._peer:
             self._peer.write(data)
@@ -112,8 +117,8 @@ class SSHPortForwarder(SSHTCPSession):
             peer.close()
 
 
-class SSHLocalPortForwarder(SSHPortForwarder):
-    """SSH local port forwarding connection handler"""
+class SSHLocalForwarder(SSHForwarder):
+    """Local forwarding connection handler"""
 
     def __init__(self, conn, coro):
         super().__init__()
@@ -121,16 +126,16 @@ class SSHLocalPortForwarder(SSHPortForwarder):
         self._coro = coro
 
     @asyncio.coroutine
-    def _forward(self, orig_host, orig_port):
-        """Set up a port forwarding for a local port"""
+    def _forward(self, *args):
+        """Begin local forwarding"""
 
         def session_factory():
-            """Return an SSH port forwarder"""
+            """Return an SSH forwarder"""
 
-            return SSHPortForwarder(self)
+            return SSHForwarder(self)
 
         try:
-            yield from self._coro(session_factory, orig_host, orig_port)
+            yield from self._coro(session_factory, *args)
         except ChannelOpenError:
             self.close()
             return
@@ -139,6 +144,10 @@ class SSHLocalPortForwarder(SSHPortForwarder):
             self.data_received(self._inpbuf)
             self._inpbuf = b''
 
+
+class SSHLocalPortForwarder(SSHLocalForwarder):
+    """Local TCP port forwarding connection handler"""
+
     def connection_made(self, transport):
         """Handle a newly opened connection"""
 
@@ -146,3 +155,14 @@ class SSHLocalPortForwarder(SSHPortForwarder):
 
         orig_host, orig_port = transport.get_extra_info('peername')[:2]
         self._conn.create_task(self._forward(orig_host, orig_port))
+
+
+class SSHLocalPathForwarder(SSHLocalForwarder):
+    """Local UNIX domain socket forwarding connection handler"""
+
+    def connection_made(self, transport):
+        """Handle a newly opened connection"""
+
+        super().connection_made(transport)
+
+        self._conn.create_task(self._forward())

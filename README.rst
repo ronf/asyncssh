@@ -13,8 +13,11 @@ asyncio framework.
   def run_client():
       with (yield from asyncssh.connect('localhost')) as conn:
           stdin, stdout, stderr = yield from conn.open_session('echo "Hello!"')
+
           output = yield from stdout.read()
           print(output, end='')
+
+          yield from stdout.channel.wait_closed()
 
           status = stdout.channel.get_exit_status()
           if status:
@@ -36,7 +39,9 @@ Features
   * Shell, command, and subsystem channels
   * Environment variables, terminal type, and window size
   * Direct and forwarded TCP/IP channels
+  * OpenSSH-compatible direct and forwarded UNIX domain socket channels
   * Local and remote TCP/IP port forwarding
+  * Local and remote UNIX domain socket forwarding
   * SFTP protocol version 3 with OpenSSH extensions
 
 * Multiple simultaneous sessions on a single SSH connection
@@ -50,6 +55,7 @@ Features
 * Password, public key, and keyboard-interactive user authentication methods
 * Many types and formats of `public keys and certificates`__
 * Support for accessing keys managed by `ssh-agent`__
+* OpenSSH-style ssh-agent forwarding support
 * OpenSSH-style `known_hosts file`__ support
 * OpenSSH-style `authorized_keys file`__ support
 * Compatibility with OpenSSH "Encrypt then MAC" option for better security
@@ -130,6 +136,16 @@ Note that you will still need to manually install the libsodium library
 listed above for libnacl to work correctly. Unfortunately, since
 libsodium is not a Python package, it cannot be directly installed using
 pip.
+
+Installing the development branch
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+If you would like to install the development branch of asyncssh directly
+from Github, you can use the following command to do this:
+
+  ::
+
+      pip install git+https://github.com/ronf/asyncssh@develop
 
 Mailing Lists
 -------------

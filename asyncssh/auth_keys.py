@@ -195,7 +195,7 @@ def import_authorized_keys(data):
        This function imports public keys and associated options in
        OpenSSH authorized keys format.
 
-       :param string data:
+       :param str data:
            The key data to import.
 
        :returns: An :class:`SSHAuthorizedKeys` object
@@ -211,7 +211,7 @@ def read_authorized_keys(filename):
        This function reads public keys and associated options in
        OpenSSH authorized_keys format from a file.
 
-       :param string filename:
+       :param str filename:
            The file to read the keys from.
 
        :returns: An :class:`SSHAuthorizedKeys` object
