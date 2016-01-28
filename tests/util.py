@@ -40,7 +40,7 @@ except (ImportError, OSError, AttributeError): # pragma: no cover
 
 if platform.python_version_tuple() >= ('3', '4', '4'):
     create_task = asyncio.ensure_future
-else:
+else: # pragma: no cover
     create_task = asyncio.async
 
 def asynctest(func):
