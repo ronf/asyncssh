@@ -15,10 +15,8 @@
 """SFTP handlers"""
 
 import asyncio
-import grp
 import os
 import posixpath
-import pwd
 import stat
 import time
 
@@ -51,8 +49,40 @@ from .constants import FX_CONNECTION_LOST, FX_OP_UNSUPPORTED
 from .misc import Error
 from .packet import Byte, String, UInt32, UInt64, PacketDecodeError, SSHPacket
 
+# pylint: enable=ungrouped-imports
+
 _SFTP_VERSION = 3
 _SFTP_BLOCK_SIZE = 8192
+
+
+def _get_user_name(uid):
+    """Return the user name associated with a uid"""
+
+    if uid is not None:
+        try:
+            import pwd
+            user = pwd.getpwuid(uid).pw_name
+        except (ImportError, KeyError):
+            user = str(uid)
+    else:
+        user = ''
+
+    return user
+
+
+def _get_group_name(gid):
+    """Return the group name associated with a gid"""
+
+    if gid is not None:
+        try:
+            import grp
+            group = grp.getgrgid(gid).gr_name
+        except (ImportError, KeyError):
+            group = str(gid)
+    else:
+        group = ''
+
+    return group
 
 
 def _setstat(path, attrs):
@@ -3351,21 +3381,8 @@ class SFTPServer:
 
         nlink = str(name.attrs.nlink) if name.attrs.nlink else ''
 
-        if name.attrs.uid is not None:
-            try:
-                user = pwd.getpwuid(name.attrs.uid).pw_name
-            except KeyError:
-                user = str(name.attrs.uid)
-        else:
-            user = ''
-
-        if name.attrs.gid is not None:
-            try:
-                group = grp.getgrgid(name.attrs.gid).gr_name
-            except KeyError:
-                group = str(name.attrs.gid)
-        else:
-            group = ''
+        user = _get_user_name(name.attrs.uid)
+        group = _get_group_name(name.attrs.gid)
 
         size = str(name.attrs.size) if name.attrs.size is not None else ''
 

@@ -1968,8 +1968,8 @@ class SSHClientConnection(SSHConnection):
                                           get_certificate_algs())
         else:
             if not self._known_hosts:
-                self._known_hosts = os.path.join(os.environ['HOME'], '.ssh',
-                                                 'known_hosts')
+                self._known_hosts = os.path.join(os.path.expanduser('~'),
+                                                 '.ssh', 'known_hosts')
 
             if isinstance(self._known_hosts, (str, bytes)):
                 server_host_keys, server_ca_keys, revoked_server_keys = \
@@ -4933,7 +4933,7 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
 
             for file in _DEFAULT_KEY_FILES:
                 try:
-                    file = os.path.join(os.environ['HOME'], '.ssh', file)
+                    file = os.path.join(os.path.expanduser('~'), '.ssh', file)
                     key = _load_private_keypair_list([file], passphrase)
                     client_keys.extend(key)
                 except OSError:
