@@ -41,7 +41,7 @@ def UInt64(value):
 
 
 def String(value):
-    """Encode a UTF-8 string value"""
+    """Encode a byte string or UTF-8 string value"""
 
     if isinstance(value, str):
         value = value.encode('utf-8', errors='strict')
@@ -53,7 +53,9 @@ def MPInt(value):
     """Encode a multiple precision integer value"""
 
     l = value.bit_length()
-    l = l // 8 + 1 if value != 0 and l % 8 == 0 else (l + 7) // 8
+    l += (l % 8 == 0 and value != 0 and value != -1 << (l - 1))
+    l = (l + 7) // 8
+
     return l.to_bytes(4, 'big') + value.to_bytes(l, 'big', signed=True)
 
 
@@ -128,7 +130,7 @@ class SSHPacket:
     def get_mpint(self):
         """Extract a multiple precision integer from the packet"""
 
-        return int.from_bytes(self.get_string(), 'big')
+        return int.from_bytes(self.get_string(), 'big', signed=True)
 
     def get_namelist(self):
         """Extract a comma-separated list of byte strings from the packet"""
