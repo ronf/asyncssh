@@ -26,6 +26,7 @@ from .packet import Boolean, Byte, String, UInt32, SSHPacketHandler
 
 
 _EOF = object()
+_CLOSE = object()
 
 
 class SSHChannel(SSHPacketHandler):
@@ -134,28 +135,35 @@ class SSHChannel(SSHPacketHandler):
         self._close_event.set()
 
         if self._conn:
-            if self._recv_chan:
+            if self._recv_chan is not None:
                 self._conn.remove_channel(self._recv_chan)
                 self._recv_chan = None
 
             self._conn = None
 
-        self._send_state = 'closed'
-        self._recv_state = 'closed'
-
-    def _close(self):
+    def _send_close(self):
         """Close the channel for sending, and clean up if close received"""
 
-        # Flush any unsent data
+        # Discard unsent data
         self._send_buf = []
         self._send_buf_len = 0
 
-        if self._send_state not in {'close_sent', 'closed'}:
+        if self._send_state != 'closed':
             self._send_packet(MSG_CHANNEL_CLOSE)
-            self._send_state = 'close_sent'
+            self._send_state = 'closed'
 
-        if self._recv_state == 'close_received':
+        if self._recv_state == 'closed':
+            print('send_close calling cleanup', self)
             self._loop.call_soon(self._cleanup)
+
+    def _recv_close(self):
+        """Close the channel for receiving"""
+
+        # Discard unreceived data
+        self._recv_buf = []
+
+        if self._recv_state == 'close_pending':
+            self._recv_state = 'closed'
 
     def _pause_resume_writing(self):
         """Pause or resume writing based on send buffer low/high water marks"""
@@ -197,9 +205,9 @@ class SSHChannel(SSHPacketHandler):
         if not self._send_buf:
             if self._send_state == 'eof_pending':
                 self._send_packet(MSG_CHANNEL_EOF)
-                self._send_state = 'eof_sent'
+                self._send_state = 'eof'
             elif self._send_state == 'close_pending':
-                self._close()
+                self._send_close()
 
     def _deliver_data(self, data, datatype):
         """Deliver incoming data to the session"""
@@ -209,8 +217,16 @@ class SSHChannel(SSHPacketHandler):
                 raise DisconnectError(DISC_PROTOCOL_ERROR,
                                       'Unicode decode error')
 
+            self._recv_state = 'eof'
+
             if not self._session.eof_received() and self._send_state == 'open':
                 self.write_eof()
+        elif data == _CLOSE:
+            self._recv_state = 'closed'
+
+            if self._send_state == 'closed':
+                print('deliver_data calling cleanup', self)
+                self._loop.call_soon(self._cleanup)
         else:
             self._recv_window -= len(data)
 
@@ -264,10 +280,10 @@ class SSHChannel(SSHPacketHandler):
         if not data:
             return
 
-        if self._send_state in {'close_pending', 'close_sent', 'closed'}:
+        if data != _CLOSE and self._send_state in {'close_pending', 'closed'}:
             return
 
-        if data != _EOF and len(data) > self._recv_window:
+        if data not in {_EOF, _CLOSE}  and len(data) > self._recv_window:
             raise DisconnectError(DISC_PROTOCOL_ERROR, 'Window exceeded')
 
         if self._recv_paused:
@@ -278,7 +294,16 @@ class SSHChannel(SSHPacketHandler):
     def process_connection_close(self, exc):
         """Process the SSH connection closing"""
 
-        self._cleanup(exc)
+        if self._send_state != 'closed':
+            self._send_state = 'closed'
+
+        if self._recv_state not in {'close_pending', 'closed'}:
+            self._recv_state = 'close_pending'
+            self._accept_data(_CLOSE)
+
+        if self._recv_state == 'closed':
+            print('connection_close calling cleanup', exc, self)
+            self._loop.call_soon(self._cleanup, exc)
 
     def process_open(self, send_chan, send_window, send_pktsize, session):
         """Process a channel open request"""
@@ -315,6 +340,7 @@ class SSHChannel(SSHPacketHandler):
         except ChannelOpenError as exc:
             self._conn.send_channel_open_failure(self._send_chan, exc.code,
                                                  exc.reason, exc.lang)
+            print('finish_open_request calling cleanup', self)
             self._loop.call_soon(self._cleanup)
         except: # pragma: no cover
             self._conn.internal_error()
@@ -350,8 +376,8 @@ class SSHChannel(SSHPacketHandler):
             self._open_waiter.set_exception(
                 ChannelOpenError(code, reason, lang))
 
-        self._send_state = 'closed'
         self._open_waiter = None
+        print('process_open_failure calling cleanup', self)
         self._loop.call_soon(self._cleanup)
 
     def _process_window_adjust(self, pkttype, packet):
@@ -359,7 +385,7 @@ class SSHChannel(SSHPacketHandler):
 
         # pylint: disable=unused-argument
 
-        if self._recv_state not in {'open', 'eof_received'}:
+        if self._recv_state not in {'open', 'eof_pending', 'eof'}:
             raise DisconnectError(DISC_PROTOCOL_ERROR, 'Channel not open')
 
         adjust = packet.get_uint32()
@@ -412,7 +438,7 @@ class SSHChannel(SSHPacketHandler):
 
         packet.check_end()
 
-        self._recv_state = 'eof_received'
+        self._recv_state = 'eof_pending'
         self._accept_data(_EOF)
 
     def _process_close(self, pkttype, packet):
@@ -420,23 +446,25 @@ class SSHChannel(SSHPacketHandler):
 
         # pylint: disable=unused-argument
 
-        if self._recv_state not in {'open', 'eof_received'}:
+        if self._recv_state not in {'open', 'eof_pending', 'eof'}:
             raise DisconnectError(DISC_PROTOCOL_ERROR, 'Channel not open')
 
         packet.check_end()
 
-        self._recv_state = 'close_received'
-        self._close()
+        self._recv_state = 'close_pending'
+        self._accept_data(_CLOSE)
+
+        self._send_close()
 
     def _process_request(self, pkttype, packet):
         """Process an incoming channel request"""
 
         # pylint: disable=unused-argument
 
-        if self._recv_state not in {'open', 'eof_received'}:
+        if self._recv_state not in {'open', 'eof_pending', 'eof'}:
             raise DisconnectError(DISC_PROTOCOL_ERROR, 'Channel not open')
 
-        if self._send_state in {'close_pending', 'close_sent', 'closed'}:
+        if self._send_state in {'close_pending', 'closed'}:
             return
 
         request = packet.get_string()
@@ -458,7 +486,7 @@ class SSHChannel(SSHPacketHandler):
             else:
                 self._send_packet(MSG_CHANNEL_FAILURE)
 
-        if result and request in ('shell', 'exec', 'subsystem'):
+        if result and request in {'shell', 'exec', 'subsystem'}:
             self._session.session_started()
             self.resume_reading()
 
@@ -534,7 +562,11 @@ class SSHChannel(SSHPacketHandler):
 
         """
 
-        self._close()
+        # Discard unreceived data
+        self._recv_close()
+
+        # Send an immediate close, discarding unsent data
+        self._send_close()
 
     def close(self):
         """Cleanly close the channel
@@ -546,7 +578,11 @@ class SSHChannel(SSHPacketHandler):
 
         """
 
-        if self._send_state not in {'close_pending', 'close_sent', 'closed'}:
+        # Discard unreceived data
+        self._recv_close()
+
+        # If not already closing, queue up a close after sending unsent data
+        if self._send_state not in {'close_pending', 'closed'}:
             self._send_state = 'close_pending'
             self._flush_send_buf()
 
@@ -1350,7 +1386,7 @@ class SSHServerChannel(SSHChannel):
 
         """
 
-        if self._send_state not in {'open', 'eof_pending', 'eof_sent'}:
+        if self._send_state not in {'open', 'eof_pending', 'eof'}:
             raise OSError('Channel not open')
 
         self._send_request(b'exit-status', UInt32(status & 0xff))
@@ -1379,7 +1415,7 @@ class SSHServerChannel(SSHChannel):
 
         """
 
-        if self._send_state not in {'open', 'eof_pending', 'eof_sent'}:
+        if self._send_state not in {'open', 'eof_pending', 'eof'}:
             raise OSError('Channel not open')
 
         signal = signal.encode('ascii')
