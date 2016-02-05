@@ -434,12 +434,10 @@ class SSHConnection(SSHPacketHandler):
         if self._channels:
             for chan in list(self._channels.values()):
                 chan.process_connection_close(exc)
-            self._channels = {}
 
         if self._local_listeners:
             for listener in self._local_listeners.values():
                 listener.close()
-            self._local_listeners = {}
 
         if self._global_request_waiters:
             for waiter in self._global_request_waiters:
