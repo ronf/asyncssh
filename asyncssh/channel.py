@@ -153,7 +153,6 @@ class SSHChannel(SSHPacketHandler):
             self._send_state = 'closed'
 
         if self._recv_state == 'closed':
-            print('send_close calling cleanup', self)
             self._loop.call_soon(self._cleanup)
 
     def _recv_close(self):
@@ -225,7 +224,6 @@ class SSHChannel(SSHPacketHandler):
             self._recv_state = 'closed'
 
             if self._send_state == 'closed':
-                print('deliver_data calling cleanup', self)
                 self._loop.call_soon(self._cleanup)
         else:
             self._recv_window -= len(data)
@@ -302,7 +300,6 @@ class SSHChannel(SSHPacketHandler):
             self._accept_data(_CLOSE)
 
         if self._recv_state == 'closed':
-            print('connection_close calling cleanup', exc, self)
             self._loop.call_soon(self._cleanup, exc)
 
     def process_open(self, send_chan, send_window, send_pktsize, session):
@@ -340,7 +337,6 @@ class SSHChannel(SSHPacketHandler):
         except ChannelOpenError as exc:
             self._conn.send_channel_open_failure(self._send_chan, exc.code,
                                                  exc.reason, exc.lang)
-            print('finish_open_request calling cleanup', self)
             self._loop.call_soon(self._cleanup)
         except: # pragma: no cover
             self._conn.internal_error()
@@ -377,7 +373,6 @@ class SSHChannel(SSHPacketHandler):
                 ChannelOpenError(code, reason, lang))
 
         self._open_waiter = None
-        print('process_open_failure calling cleanup', self)
         self._loop.call_soon(self._cleanup)
 
     def _process_window_adjust(self, pkttype, packet):
