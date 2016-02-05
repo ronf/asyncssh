@@ -740,7 +740,7 @@ class SFTPHandler:
         """Receive and process SFTP packets"""
 
         try:
-            while True:
+            while self._reader:
                 packet = yield from self.recv_packet()
 
                 pkttype = packet.get_byte()
