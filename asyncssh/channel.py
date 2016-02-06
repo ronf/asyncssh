@@ -152,8 +152,8 @@ class SSHChannel(SSHPacketHandler):
             self._send_packet(MSG_CHANNEL_CLOSE)
             self._send_state = 'closed'
 
-        if self._recv_state == 'closed':
-            self._loop.call_soon(self._cleanup)
+            if self._recv_state == 'closed':
+                self._loop.call_soon(self._cleanup)
 
     def _recv_close(self):
         """Close the channel for receiving"""
@@ -161,8 +161,11 @@ class SSHChannel(SSHPacketHandler):
         # Discard unreceived data
         self._recv_buf = []
 
-        if self._recv_state == 'close_pending':
+        if self._recv_state != 'closed':
             self._recv_state = 'closed'
+
+            if self._send_state == 'closed':
+                self._loop.call_soon(self._cleanup)
 
     def _pause_resume_writing(self):
         """Pause or resume writing based on send buffer low/high water marks"""
@@ -222,9 +225,6 @@ class SSHChannel(SSHPacketHandler):
                 self.write_eof()
         elif data == _CLOSE:
             self._recv_state = 'closed'
-
-            if self._send_state == 'closed':
-                self._loop.call_soon(self._cleanup)
         else:
             self._recv_window -= len(data)
 
@@ -778,6 +778,9 @@ class SSHChannel(SSHPacketHandler):
 
             while self._recv_buf and not self._recv_paused:
                 self._deliver_data(*self._recv_buf.pop(0))
+
+            if self._send_state == 'closed' and self._recv_state == 'closed':
+                self._loop.call_soon(self._cleanup)
 
 
 class SSHClientChannel(SSHChannel):
