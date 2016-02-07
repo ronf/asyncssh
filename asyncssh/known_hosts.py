@@ -113,7 +113,7 @@ def _parse_entries(known_hosts):
     return entries
 
 
-def _match_entries(entries, host, addr, port=None):
+def match_known_hosts_entries(entries, host, addr, port=None):
     """Return matching keys in a known_hosts file"""
 
     ip = ip_address(addr) if addr else None
@@ -135,7 +135,21 @@ def _match_entries(entries, host, addr, port=None):
             else:
                 host_keys.append(entry.key)
 
+    if port and not (host_keys or ca_keys):
+        return match_known_hosts_entries(entries, host, addr)
+
     return host_keys, ca_keys, revoked_keys
+
+
+def parse_known_hosts(known_hosts):
+    """Parse a known_hosts files and return an array of the entries"""
+    if isinstance(known_hosts, str):
+        with open(known_hosts, 'r') as f:
+            known_hosts = f.read()
+    else:
+        known_hosts = known_hosts.decode()
+
+    return _parse_entries(known_hosts)
 
 
 def match_known_hosts(known_hosts, host, addr, port):
@@ -150,18 +164,5 @@ def match_known_hosts(known_hosts, host, addr, port):
 
     """
 
-    if isinstance(known_hosts, str):
-        with open(known_hosts, 'r') as f:
-            known_hosts = f.read()
-    else:
-        known_hosts = known_hosts.decode()
-
-    entries = _parse_entries(known_hosts)
-
-    host_keys, ca_keys, revoked_keys = _match_entries(entries, host,
-                                                      addr, port)
-
-    if port and not (host_keys or ca_keys):
-        host_keys, ca_keys, revoked_keys = _match_entries(entries, host, addr)
-
-    return host_keys, ca_keys, revoked_keys
+    entries = parse_known_hosts(known_hosts)
+    return match_known_hosts_entries(entries, host, addr, port)
