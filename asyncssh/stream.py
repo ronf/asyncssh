@@ -241,7 +241,7 @@ class SSHStreamSession:
         """Signal that more data can be written on the stream"""
 
         for waiter in self._drain_waiters:
-            if not waiter.done():
+            if not waiter.done(): # pragma: no branch
                 waiter.set_result(None)
 
     def connection_made(self, chan):
@@ -380,8 +380,7 @@ class SSHStreamSession:
                 data.append(recv_buf.pop(0))
                 self._recv_buf_len -= l
 
-            if self._recv_buf_len < self._limit:
-                self._chan.resume_reading()
+            self._chan.resume_reading()
 
             if self._eof_received:
                 return buf.join(data)
