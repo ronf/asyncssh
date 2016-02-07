@@ -27,6 +27,7 @@ class SSHSession:
            :type chan: :class:`SSHClientChannel`
 
         """
+        pass # pragma: no cover
 
     def connection_lost(self, exc):
         """Called when a channel is closed
@@ -42,6 +43,8 @@ class SSHSession:
 
         """
 
+        pass # pragma: no cover
+
     def session_started(self):
         """Called when the session is started
 
@@ -52,6 +55,8 @@ class SSHSession:
            be called immediately after the connection is opened.
 
         """
+
+        pass # pragma: no cover
 
     def data_received(self, data, datatype):
         """Called when data is received on the channel
@@ -71,6 +76,8 @@ class SSHSession:
 
         """
 
+        pass # pragma: no cover
+
     def eof_received(self):
         """Called when EOF is received on the channel
 
@@ -81,6 +88,8 @@ class SSHSession:
            after this method returns. This is the default behavior.
 
         """
+
+        pass # pragma: no cover
 
     def pause_writing(self):
         """Called when the write buffer becomes full
@@ -93,6 +102,8 @@ class SSHSession:
 
         """
 
+        pass # pragma: no cover
+
     def resume_writing(self):
         """Called when the write buffer has sufficiently drained
 
@@ -101,6 +112,8 @@ class SSHSession:
            application to produce more data.
 
         """
+
+        pass # pragma: no cover
 
 
 class SSHClientSession(SSHSession):
@@ -141,6 +154,8 @@ class SSHClientSession(SSHSession):
 
         """
 
+        pass # pragma: no cover
+
     def exit_status_received(self, status):
         """A remote exit status has been received for this session
 
@@ -156,6 +171,8 @@ class SSHClientSession(SSHSession):
                The exit status returned by the remote process
 
         """
+
+        pass # pragma: no cover
 
     def exit_signal_received(self, signal, core_dumped, msg, lang):
         """A remote exit signal has been received for this session
@@ -178,6 +195,8 @@ class SSHClientSession(SSHSession):
                The language the error message is in
 
         """
+
+        pass # pragma: no cover
 
 
 class SSHServerSession(SSHSession):
@@ -237,7 +256,8 @@ class SSHServerSession(SSHSession):
         """
 
         # pylint: disable=no-self-use,unused-argument
-        return True
+
+        return True # pragma: no cover
 
     def terminal_size_changed(self, width, height, pixwidth, pixheight):
         """The terminal size has changed
@@ -263,6 +283,8 @@ class SSHServerSession(SSHSession):
 
         # pylint: disable=no-self-use,unused-argument
 
+        pass # pragma: no cover
+
     def shell_requested(self):
         """The client has requested a shell
 
@@ -283,7 +305,8 @@ class SSHServerSession(SSHSession):
         """
 
         # pylint: disable=no-self-use,unused-argument
-        return False
+
+        return False # pragma: no cover
 
     def exec_requested(self, command):
         """The client has requested to execute a command
@@ -308,7 +331,8 @@ class SSHServerSession(SSHSession):
         """
 
         # pylint: disable=no-self-use,unused-argument
-        return False
+
+        return False # pragma: no cover
 
     def subsystem_requested(self, subsystem):
         """The client has requested to start a subsystem
@@ -333,7 +357,8 @@ class SSHServerSession(SSHSession):
         """
 
         # pylint: disable=no-self-use,unused-argument
-        return False
+
+        return False # pragma: no cover
 
     def break_received(self, msec):
         """The client has sent a break
@@ -355,7 +380,8 @@ class SSHServerSession(SSHSession):
         """
 
         # pylint: disable=no-self-use,unused-argument
-        return False
+
+        return False # pragma: no cover
 
     def signal_received(self, signal):
         """The client has sent a signal
@@ -368,6 +394,8 @@ class SSHServerSession(SSHSession):
         """
 
         # pylint: disable=no-self-use,unused-argument
+
+        pass # pragma: no cover
 
 
 class SSHTCPSession(SSHSession):
