@@ -11,6 +11,8 @@
 #     Ron Frederick - initial implementation, API, and documentation
 #     Alexander Travov - proposed changes to add negated patterns, hashed
 #                        entries, and support for the revoked marker
+#     Josh Yudaken - proposed change to split parsing and matching to avoid
+#                    parsing large known_hosts lists multiple times
 
 """Parser for SSH known_hosts files"""
 
@@ -23,7 +25,7 @@ from .pattern import HostPatternList
 from .public_key import KeyImportError, import_public_key
 
 
-class PlainHost:
+class _PlainHost:
     """A plain host entry in a known_hosts file"""
 
     def __init__(self, pattern, marker, key):
@@ -37,7 +39,7 @@ class PlainHost:
         return self._pattern.matches(host, addr, ip)
 
 
-class HashedHost:
+class _HashedHost:
     """A hashed host entry in a known_hosts file"""
 
     _HMAC_SHA1_MAGIC = '1'
@@ -73,95 +75,159 @@ class HashedHost:
         return (host and self._match(host)) or (addr and self._match(addr))
 
 
-def _parse_entries(known_hosts):
-    """Parse the entries in a known hosts file"""
+class SSHKnownHosts:
+    """An SSH known hosts list"""
 
-    entries = []
+    def __init__(self, known_hosts):
+        self._entries = []
 
-    for line in known_hosts.splitlines():
-        line = line.strip()
-        if not line or line.startswith('#'):
-            continue
+        for line in known_hosts.splitlines():
+            line = line.strip()
+            if not line or line.startswith('#'):
+                continue
 
-        try:
-            if line.startswith('@'):
-                marker, pattern, key = line[1:].split(None, 2)
+            try:
+                if line.startswith('@'):
+                    marker, pattern, key = line[1:].split(None, 2)
+                else:
+                    marker = None
+                    pattern, key = line.split(None, 1)
+            except ValueError:
+                raise ValueError('Invalid known hosts entry: %s' %
+                                 line) from None
+
+            if marker not in (None, 'cert-authority', 'revoked'):
+                raise ValueError('Invalid known hosts marker: %s' %
+                                 marker) from None
+
+            try:
+                key = import_public_key(key)
+            except KeyImportError:
+                # Ignore keys in the file that we're unable to parse
+                continue
+
+            if pattern.startswith('|'):
+                entry = _HashedHost(pattern, marker, key)
             else:
-                marker = None
-                pattern, key = line.split(None, 1)
-        except ValueError:
-            raise ValueError('Invalid known hosts entry: %s' %
-                             line) from None
+                entry = _PlainHost(pattern, marker, key)
 
-        if marker not in (None, 'cert-authority', 'revoked'):
-            raise ValueError('Invalid known hosts marker: %s' %
-                             marker) from None
+            self._entries.append(entry)
 
-        try:
-            key = import_public_key(key)
-        except KeyImportError:
-            # Ignore keys in the file that we're unable to parse
-            continue
+    def _match(self, host, addr, port=None):
+        """Find host keys matching specified host, address, and port"""
 
-        if pattern.startswith('|'):
-            entry = HashedHost(pattern, marker, key)
-        else:
-            entry = PlainHost(pattern, marker, key)
+        ip = ip_address(addr) if addr else None
 
-        entries.append(entry)
+        if port:
+            host = '[{}]:{}'.format(host, port) if host else None
+            addr = '[{}]:{}'.format(addr, port) if addr else None
 
-    return entries
+        host_keys = []
+        ca_keys = []
+        revoked_keys = []
+
+        for entry in self._entries:
+            if entry.matches(host, addr, ip):
+                if entry.marker == 'revoked':
+                    revoked_keys.append(entry.key)
+                elif entry.marker == 'cert-authority':
+                    ca_keys.append(entry.key)
+                else:
+                    host_keys.append(entry.key)
+
+        return host_keys, ca_keys, revoked_keys
+
+    def match(self, host, addr, port):
+        """Match a host, IP address, and port against known_hosts patterns
+
+           If the port is not the default port and no match is found
+           for it, the lookup is attempted again without a port number.
+
+           :param str host:
+               The hostname of the target host
+           :param str addr:
+               The IP address of the target host
+           :param int port:
+               The port number on the target host, or ``None`` for the default
 
 
-def _match_entries(entries, host, addr, port=None):
-    """Return matching keys in a known_hosts file"""
+           :returns: A tuple of matching host keys, CA keys, and revoked keys
 
-    ip = ip_address(addr) if addr else None
+        """
 
-    if port:
-        host = '[{}]:{}'.format(host, port) if host else None
-        addr = '[{}]:{}'.format(addr, port) if addr else None
+        host_keys, ca_keys, revoked_keys = self._match(host, addr, port)
 
-    host_keys = []
-    ca_keys = []
-    revoked_keys = []
+        if port and not (host_keys or ca_keys):
+            host_keys, ca_keys, revoked_keys = self._match(host, addr)
 
-    for entry in entries:
-        if entry.matches(host, addr, ip):
-            if entry.marker == 'revoked':
-                revoked_keys.append(entry.key)
-            elif entry.marker == 'cert-authority':
-                ca_keys.append(entry.key)
-            else:
-                host_keys.append(entry.key)
+        return host_keys, ca_keys, revoked_keys
 
-    return host_keys, ca_keys, revoked_keys
+
+def import_known_hosts(data):
+    """Import SSH known hosts
+
+       This function imports known host patterns and keys in
+       OpenSSH known hosts format.
+
+       :param str data:
+           The known hosts data to import
+
+       :returns: An :class:`SSHKnownHosts` object
+
+    """
+
+    return SSHKnownHosts(data)
+
+def read_known_hosts(filename):
+    """Read SSH known hosts from a file
+
+       This function reads known host patterns and keys in
+       OpenSSH known hosts format from a file.
+
+       :param str filename:
+           The file to read the known hosts from
+
+       :returns: An :class:`SSHKnownHosts` object
+
+    """
+
+    with open(filename, 'r') as f:
+        return import_known_hosts(f.read())
 
 
 def match_known_hosts(known_hosts, host, addr, port):
-    """Match a host, IP address, and port against a known_hosts file
+    """Match a host, IP address, and port against a known_hosts list
 
-       This function looks up a host, IP address, and port in a file
-       in OpenSSH ``known_hosts`` format and returns the host keys,
-       CA keys, and revoked keys which match.
+       This function looks up a host, IP address, and port in a list of
+       host patterns in OpenSSH ``known_hosts`` format and returns the
+       host keys, CA keys, and revoked keys which match.
+
+       The ``known_hosts`` argument can be a string containing the
+       filename to load the host patterns from, a byte string containing
+       host pattern data, or an already loaded :class:`SSHKnownHosts`
+       object.
 
        If the port is not the default port and no match is found
        for it, the lookup is attempted again without a port number.
 
+       :param known_hosts:
+           The host patterns to match against
+       :param str host:
+           The hostname of the target host
+       :param str addr:
+           The IP address of the target host
+       :param int port:
+           The port number on the target host, or ``None`` for the default
+       :type known_hosts: str or bytes or :class:`SSHKnownHosts`
+
+
+       :returns: A tuple of matching host keys, CA keys, and revoked keys
+
     """
 
     if isinstance(known_hosts, str):
-        with open(known_hosts, 'r') as f:
-            known_hosts = f.read()
-    else:
-        known_hosts = known_hosts.decode()
+        known_hosts = read_known_hosts(known_hosts)
+    elif isinstance(known_hosts, bytes):
+        known_hosts = import_known_hosts(known_hosts.decode())
 
-    entries = _parse_entries(known_hosts)
-
-    host_keys, ca_keys, revoked_keys = _match_entries(entries, host,
-                                                      addr, port)
-
-    if port and not (host_keys or ca_keys):
-        host_keys, ca_keys, revoked_keys = _match_entries(entries, host, addr)
-
-    return host_keys, ca_keys, revoked_keys
+    return known_hosts.match(host, addr, port)

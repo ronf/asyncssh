@@ -23,7 +23,7 @@ import hmac
 import os
 
 from asyncssh import import_public_key
-from asyncssh.known_hosts import match_known_hosts
+from asyncssh.known_hosts import import_known_hosts, match_known_hosts
 
 from .util import TempDirTestCase, run
 
@@ -75,8 +75,8 @@ class _TestKnownHosts(TempDirTestCase):
         matches = match_known_hosts(known_hosts, host, addr, port)
         self.assertEqual(matches, results)
 
-    def check_hosts(self, patlists, results=None, host='host',
-                    addr='1.2.3.4', port=22, from_file=False):
+    def check_hosts(self, patlists, results=None, host='host', addr='1.2.3.4',
+                    port=22, from_file=False, from_bytes=False):
         """Check a known_hosts file built from the specified patterns"""
 
         prefixes = ('', '@cert-authority ', '@revoked ')
@@ -91,8 +91,10 @@ class _TestKnownHosts(TempDirTestCase):
                 f.write(known_hosts)
 
             known_hosts = 'known_hosts'
-        else:
+        elif from_bytes:
             known_hosts = known_hosts.encode()
+        else:
+            known_hosts = import_known_hosts(known_hosts)
 
         return self.check_match(known_hosts, results, host, addr, port)
 
@@ -188,3 +190,8 @@ class _TestKnownHosts(TempDirTestCase):
         """Test match against file"""
 
         self.check_hosts((['host'], [], []), ([0], [], []), from_file=True)
+
+    def test_bytes(self):
+        """Test match against byte string"""
+
+        self.check_hosts((['host'], [], []), ([0], [], []), from_bytes=True)

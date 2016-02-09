@@ -1010,6 +1010,12 @@ connect_agent
 Known Hosts
 ===========
 
+AsyncSSH supports OpenSSH-style known_hosts files, including both
+plain and hashed host entries. Regular and negated host patterns are
+supported in plain entries. AsyncSSH also supports the ``@cert_authority``
+marker to indicate certificate authority keys and the ``@revoked`` marker
+to indicate revoked keys which should no longer be trusted.
+
 .. index:: Specifying known hosts
 .. _SpecifyingKnownHosts:
 
@@ -1017,18 +1023,42 @@ Specifying known hosts
 ----------------------
 
 Known hosts may be passed into AsyncSSH via the ``known_hosts``
-argument to :func:`create_connection`. This value can be provided
-in a couple of different forms. The simplest option is to pass the
-name of a file containing a list of known hosts in OpenSSH known
-hosts format. AsyncSSH supports both plain and hashed host entries
-and both regular and negated host patterns in plain entries. It also
-supports the ``@cert-authority`` and ``@revoked`` markers on entries.
+argument to :func:`create_connection`. This can be the name of a
+file containing a list of known hosts or an :class:`SSHKnownHosts`
+object which was previously imported from a string by calling
+:func:`import_known_hosts` or read from a file by calling
+:func:`read_known_hosts`.
 
 Alternately, known hosts can be passed into AsyncSSH as a sequence
 of three public key lists containing trusted host keys, trusted CA
 keys, and revoked keys which should no longer be trusted.
 See :ref:`SpecifyingPublicKeys` for the allowed form of each of
 these values.
+
+SSHKnownHosts
+-------------
+
+.. autoclass:: SSHKnownHosts()
+
+   ===================== =
+   .. automethod:: match
+   ===================== =
+
+import_known_hosts
+------------------
+
+.. autofunction:: import_known_hosts
+
+read_known_hosts
+----------------
+
+.. autofunction:: read_known_hosts
+
+
+match_known_hosts
+-----------------
+
+.. autofunction:: match_known_hosts
 
 Authorized Keys
 ===============

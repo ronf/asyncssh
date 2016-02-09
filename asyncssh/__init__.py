@@ -32,6 +32,10 @@ from .connection import SSHClient, SSHServer
 from .connection import SSHClientConnection, SSHServerConnection
 from .connection import create_connection, create_server, connect, listen
 
+from .known_hosts import SSHKnownHosts
+from .known_hosts import import_known_hosts, read_known_hosts
+from .known_hosts import match_known_hosts
+
 from .listener import SSHListener
 
 from .logging import logger
