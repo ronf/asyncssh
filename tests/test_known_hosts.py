@@ -107,6 +107,7 @@ class _TestKnownHosts(TempDirTestCase):
             ('Exact host', (['host'], [], []), ([0], [], [])),
             ('Exact host CA', ([], ['host'], []), ([], [0], [])),
             ('Exact host revoked', ([], [], ['host']), ([], [], [0])),
+            ('Multiple exact', (['host'], ['host'], []), ([0], [0], [])),
             ('Wildcard host', (['hos*'], [], []), ([0], [], [])),
             ('Mismatched port', (['[host]:23'], [], []), ([], [], [])),
             ('Negative host', (['hos*,!host'], [], []), ([], [], [])),

@@ -28,10 +28,8 @@ from .public_key import KeyImportError, import_public_key
 class _PlainHost:
     """A plain host entry in a known_hosts file"""
 
-    def __init__(self, pattern, marker, key):
+    def __init__(self, pattern):
         self._pattern = HostPatternList(pattern)
-        self.marker = marker
-        self.key = key
 
     def matches(self, host, addr, ip):
         """Return whether a host or address matches this host pattern list"""
@@ -44,10 +42,7 @@ class _HashedHost:
 
     _HMAC_SHA1_MAGIC = '1'
 
-    def __init__(self, pattern, marker, key):
-        self.marker = marker
-        self.key = key
-
+    def __init__(self, pattern):
         try:
             magic, salt, hosthash = pattern[1:].split('|')
             self._salt = binascii.a2b_base64(salt)
@@ -79,7 +74,8 @@ class SSHKnownHosts:
     """An SSH known hosts list"""
 
     def __init__(self, known_hosts):
-        self._entries = []
+        self._exact_entries = {}
+        self._pattern_entries = []
 
         for line in known_hosts.splitlines():
             line = line.strip()
@@ -106,12 +102,29 @@ class SSHKnownHosts:
                 # Ignore keys in the file that we're unable to parse
                 continue
 
-            if pattern.startswith('|'):
-                entry = _HashedHost(pattern, marker, key)
+            if any(c in pattern for c in '*?|/!'):
+                self._add_pattern(marker, pattern, key)
             else:
-                entry = _PlainHost(pattern, marker, key)
+                self._add_exact(marker, pattern, key)
 
-            self._entries.append(entry)
+    def _add_exact(self, marker, pattern, key):
+        """Add an exact match entry"""
+
+        for entry in pattern.split(','):
+            if entry not in self._exact_entries:
+                self._exact_entries[entry] = []
+
+            self._exact_entries[entry].append((marker, key))
+
+    def _add_pattern(self, marker, pattern, key):
+        """Add a pattern match entry"""
+
+        if pattern.startswith('|'):
+            entry = _HashedHost(pattern)
+        else:
+            entry = _PlainHost(pattern)
+
+        self._pattern_entries.append((entry, (marker, key)))
 
     def _match(self, host, addr, port=None):
         """Find host keys matching specified host, address, and port"""
@@ -122,18 +135,23 @@ class SSHKnownHosts:
             host = '[{}]:{}'.format(host, port) if host else None
             addr = '[{}]:{}'.format(addr, port) if addr else None
 
+        matches = []
+        matches += self._exact_entries.get(host, [])
+        matches += self._exact_entries.get(addr, [])
+        matches += (match for (entry, match) in self._pattern_entries
+                    if entry.matches(host, addr, ip))
+
         host_keys = []
         ca_keys = []
         revoked_keys = []
 
-        for entry in self._entries:
-            if entry.matches(host, addr, ip):
-                if entry.marker == 'revoked':
-                    revoked_keys.append(entry.key)
-                elif entry.marker == 'cert-authority':
-                    ca_keys.append(entry.key)
-                else:
-                    host_keys.append(entry.key)
+        for marker, key in matches:
+            if marker == 'revoked':
+                revoked_keys.append(key)
+            elif marker == 'cert-authority':
+                ca_keys.append(key)
+            else:
+                host_keys.append(key)
 
         return host_keys, ca_keys, revoked_keys
 
