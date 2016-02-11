@@ -3886,6 +3886,8 @@ class SSHClient:
 
         """
 
+        pass # pragma: no cover
+
     def connection_lost(self, exc):
         """Called when a connection is lost or closed
 
@@ -3900,6 +3902,8 @@ class SSHClient:
            :type exc: :class:`Exception`
 
         """
+
+        pass # pragma: no cover
 
     def debug_msg_received(self, msg, lang, always_display):
         """A debug message was received on this connection
@@ -3917,6 +3921,8 @@ class SSHClient:
 
         """
 
+        pass # pragma: no cover
+
     def auth_banner_received(self, msg, lang):
         """An incoming authentication banner was received
 
@@ -3931,6 +3937,8 @@ class SSHClient:
 
         """
 
+        pass # pragma: no cover
+
     def auth_completed(self):
         """Authentication was completed successfully
 
@@ -3941,6 +3949,8 @@ class SSHClient:
            TCP/IP or UNIX domain connections coming from the server.
 
         """
+
+        pass # pragma: no cover
 
     def public_key_auth_requested(self):
         """Public key authentication has been requested
@@ -3966,7 +3976,7 @@ class SSHClient:
 
         """
 
-        return None
+        return None # pragma: no cover
 
     def password_auth_requested(self):
         """Password authentication has been requested
@@ -3993,7 +4003,7 @@ class SSHClient:
 
         """
 
-        return None
+        return None # pragma: no cover
 
     def password_change_requested(self, prompt, lang):
         """A password change has been requested
@@ -4021,7 +4031,7 @@ class SSHClient:
 
         """
 
-        return NotImplemented
+        return NotImplemented # pragma: no cover
 
     def password_changed(self):
         """The requested password change was successful
@@ -4033,6 +4043,8 @@ class SSHClient:
 
         """
 
+        pass # pragma: no cover
+
     def password_change_failed(self):
         """The requested password change has failed
 
@@ -4043,6 +4055,8 @@ class SSHClient:
            will automatically be attempted.
 
         """
+
+        pass # pragma: no cover
 
     def kbdint_auth_requested(self):
         """Keyboard-interactive authentication has been requested
@@ -4071,7 +4085,7 @@ class SSHClient:
 
         """
 
-        return NotImplemented
+        return NotImplemented # pragma: no cover
 
     def kbdint_challenge_received(self, name, instruction, lang, prompts):
         """A keyboard-interactive auth challenge has been received
@@ -4112,7 +4126,7 @@ class SSHClient:
 
         """
 
-        return None
+        return None # pragma: no cover
 
 
 class SSHServer:
@@ -4143,6 +4157,8 @@ class SSHServer:
 
         """
 
+        pass # pragma: no cover
+
     def connection_lost(self, exc):
         """Called when a connection is lost or closed
 
@@ -4152,6 +4168,8 @@ class SSHServer:
            the disconnect.
 
         """
+
+        pass # pragma: no cover
 
     def debug_msg_received(self, msg, lang, always_display):
         """A debug message was received on this connection
@@ -4168,6 +4186,8 @@ class SSHServer:
                Whether or not to display the message
 
         """
+
+        pass # pragma: no cover
 
     def begin_auth(self, username):
         """Authentication has been requested by the client
@@ -4188,7 +4208,7 @@ class SSHServer:
 
         """
 
-        return True
+        return True # pragma: no cover
 
     def public_key_auth_supported(self):
         """Return whether or not public key authentication is supported
@@ -4207,7 +4227,7 @@ class SSHServer:
 
         """
 
-        return False
+        return False # pragma: no cover
 
     def validate_public_key(self, username, key):
         """Return whether key is an authorized client key for this user
@@ -4251,7 +4271,7 @@ class SSHServer:
 
         """
 
-        return False
+        return False # pragma: no cover
 
     def validate_ca_key(self, username, key):
         """Return whether key is an authorized CA key for this user
@@ -4299,7 +4319,7 @@ class SSHServer:
 
         """
 
-        return False
+        return False # pragma: no cover
 
     def password_auth_supported(self):
         """Return whether or not password authentication is supported
@@ -4318,7 +4338,7 @@ class SSHServer:
 
         """
 
-        return False
+        return False # pragma: no cover
 
     def validate_password(self, username, password):
         """Return whether password is valid for this user
@@ -4361,7 +4381,7 @@ class SSHServer:
 
         """
 
-        return False
+        return False # pragma: no cover
 
     def change_password(self, username, old_password, new_password):
         """Handle a request to change a user's password
@@ -4402,7 +4422,7 @@ class SSHServer:
 
         """
 
-        return False
+        return False # pragma: no cover
 
     def kbdint_auth_supported(self):
         """Return whether or not keyboard-interactive authentication
@@ -4427,7 +4447,7 @@ class SSHServer:
 
         """
 
-        return NotImplemented
+        return NotImplemented # pragma: no cover
 
     def get_kbdint_challenge(self, username, lang, submethods):
         """Return a keyboard-interactive auth challenge
@@ -4455,7 +4475,7 @@ class SSHServer:
 
         """
 
-        return False
+        return False # pragma: no cover
 
     def validate_kbdint_response(self, username, responses):
         """Return whether the keyboard-interactive response is valid
@@ -4486,7 +4506,7 @@ class SSHServer:
 
         """
 
-        return False
+        return False # pragma: no cover
 
     def session_requested(self):
         """Handle an incoming session request
@@ -4540,7 +4560,7 @@ class SSHServer:
 
         """
 
-        return False
+        return False # pragma: no cover
 
     def connection_requested(self, dest_host, dest_port, orig_host, orig_port):
         """Handle a direct TCP/IP connection request
@@ -4604,7 +4624,7 @@ class SSHServer:
 
         """
 
-        return False
+        return False # pragma: no cover
 
     def server_requested(self, listen_host, listen_port):
         """Handle a request to listen on a TCP/IP address and port
@@ -4650,7 +4670,7 @@ class SSHServer:
 
         """
 
-        return False
+        return False # pragma: no cover
 
     def unix_connection_requested(self, dest_path):
         """Handle a direct UNIX domain socket connection request
@@ -4707,7 +4727,7 @@ class SSHServer:
 
         """
 
-        return False
+        return False # pragma: no cover
 
     def unix_server_requested(self, listen_path):
         """Handle a request to listen on a UNIX domain socket
@@ -4749,7 +4769,7 @@ class SSHServer:
 
         """
 
-        return False
+        return False # pragma: no cover
 
 
 @asyncio.coroutine
