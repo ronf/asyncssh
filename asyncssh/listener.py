@@ -80,7 +80,7 @@ class SSHTCPClientListener(SSHListener):
     def _close(self):
         """Close this listener and wake up anything calling wait_closed"""
 
-        if self._conn:
+        if self._conn: # pragma: no branch
             yield from self._conn.close_client_tcp_listener(self._listen_host,
                                                             self._listen_port)
 
@@ -130,10 +130,11 @@ class SSHUNIXClientListener(SSHListener):
     def _close(self):
         """Close this listener and wake up anything calling wait_closed"""
 
-        yield from self._conn.close_client_unix_listener(self._listen_path)
+        if self._conn: # pragma: no branch
+            yield from self._conn.close_client_unix_listener(self._listen_path)
 
-        self._close_event.set()
-        self._conn = None
+            self._close_event.set()
+            self._conn = None
 
     def process_connection(self):
         """Process a forwarded UNIX connection"""
@@ -199,7 +200,7 @@ def create_tcp_forward_listener(conn, loop, coro, listen_host, listen_port):
                                            type=socket.SOCK_STREAM,
                                            flags=socket.AI_PASSIVE)
 
-    if not addrinfo:
+    if not addrinfo: # pragma: no cover
         raise OSError('getaddrinfo() returned empty list')
 
     servers = []
@@ -207,7 +208,7 @@ def create_tcp_forward_listener(conn, loop, coro, listen_host, listen_port):
     for family, socktype, proto, _, sa in addrinfo:
         try:
             sock = socket.socket(family, socktype, proto)
-        except OSError:
+        except OSError: # pragma: no cover
             continue
 
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, True)
@@ -221,6 +222,8 @@ def create_tcp_forward_listener(conn, loop, coro, listen_host, listen_port):
         try:
             sock.bind(sa)
         except OSError as exc:
+            sock.close()
+
             for server in servers:
                 server.close()
 
