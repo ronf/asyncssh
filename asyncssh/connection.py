@@ -2260,10 +2260,10 @@ class SSHClientConnection(SSHConnection):
 
         listener = self._remote_listeners.get((listen_host, listen_port))
 
-        if self._dynamic_remote_listeners.get(listen_host) == listener:
-            del self._dynamic_remote_listeners[listen_host]
-
         if listener:
+            if self._dynamic_remote_listeners.get(listen_host) == listener:
+                del self._dynamic_remote_listeners[listen_host]
+
             del self._remote_listeners[listen_host, listen_port]
 
     def _process_direct_streamlocal_at_openssh_dot_com_open(self, packet):
