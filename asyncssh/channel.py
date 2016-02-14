@@ -155,18 +155,6 @@ class SSHChannel(SSHPacketHandler):
             if self._recv_state == 'closed':
                 self._loop.call_soon(self._cleanup)
 
-    def _recv_close(self):
-        """Close the channel for receiving"""
-
-        # Discard unreceived data
-        self._recv_buf = []
-
-        if self._recv_state != 'closed':
-            self._recv_state = 'closed'
-
-            if self._send_state == 'closed':
-                self._loop.call_soon(self._cleanup)
-
     def _pause_resume_writing(self):
         """Pause or resume writing based on send buffer low/high water marks"""
 
@@ -557,11 +545,12 @@ class SSHChannel(SSHPacketHandler):
 
         """
 
-        # Discard unreceived data
-        self._recv_close()
+        if self._send_state not in {'close_pending', 'closed'}:
+            # Send an immediate close, discarding unsent data
+            self._send_close()
 
-        # Send an immediate close, discarding unsent data
-        self._send_close()
+            # Discard unreceived data
+            self._recv_buf = []
 
     def close(self):
         """Cleanly close the channel
@@ -573,13 +562,13 @@ class SSHChannel(SSHPacketHandler):
 
         """
 
-        # Discard unreceived data
-        self._recv_close()
-
-        # If not already closing, queue up a close after sending unsent data
         if self._send_state not in {'close_pending', 'closed'}:
+            # Send a close only after sending unsent data
             self._send_state = 'close_pending'
             self._flush_send_buf()
+
+            # Discard unreceived data
+            self._recv_buf = []
 
     @asyncio.coroutine
     def wait_closed(self):
