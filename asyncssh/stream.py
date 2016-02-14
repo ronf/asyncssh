@@ -211,6 +211,7 @@ class SSHStreamSession:
         self._recv_buf = {None: []}
         self._recv_buf_len = 0
         self._read_waiter = {None: None}
+        self._read_paused = False
         self._write_paused = False
         self._drain_waiters = []
 
@@ -280,6 +281,7 @@ class SSHStreamSession:
         self._unblock_read(datatype)
 
         if self._recv_buf_len >= self._limit:
+            self._read_paused = True
             self._chan.pause_reading()
 
     def eof_received(self):
@@ -335,8 +337,10 @@ class SSHStreamSession:
                 self._recv_buf_len -= l
                 n -= l
 
-            if self._recv_buf_len < self._limit:
+            if self._read_paused and self._recv_buf_len < self._limit:
+                self._read_paused = False
                 self._chan.resume_reading()
+                continue
 
             if n == 0 or (n > 0 and data and not exact) or self._eof_received:
                 break
@@ -371,7 +375,8 @@ class SSHStreamSession:
                     recv_buf[0] = recv_buf[0][idx:]
                     self._recv_buf_len -= idx
 
-                    if self._recv_buf_len < self._limit:
+                    if self._read_paused and self._recv_buf_len < self._limit:
+                        self._read_paused = False
                         self._chan.resume_reading()
 
                     return buf.join(data)
@@ -380,7 +385,10 @@ class SSHStreamSession:
                 data.append(recv_buf.pop(0))
                 self._recv_buf_len -= l
 
-            self._chan.resume_reading()
+            if self._read_paused:
+                self._read_paused = False
+                self._chan.resume_reading()
+                continue
 
             if self._eof_received:
                 return buf.join(data)
