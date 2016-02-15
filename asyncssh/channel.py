@@ -1373,11 +1373,9 @@ class SSHServerChannel(SSHChannel):
 
         """
 
-        if self._send_state not in {'open', 'eof_pending', 'eof'}:
-            raise OSError('Channel not open')
-
-        self._send_request(b'exit-status', UInt32(status & 0xff))
-        self.close()
+        if self._send_state not in {'close_pending', 'closed'}:
+            self._send_request(b'exit-status', UInt32(status & 0xff))
+            self.close()
 
     def exit_with_signal(self, signal, core_dumped=False,
                          msg='', lang=DEFAULT_LANG):
@@ -1402,16 +1400,14 @@ class SSHServerChannel(SSHChannel):
 
         """
 
-        if self._send_state not in {'open', 'eof_pending', 'eof'}:
-            raise OSError('Channel not open')
+        if self._send_state not in {'close_pending', 'closed'}:
+            signal = signal.encode('ascii')
+            msg = msg.encode('utf-8')
+            lang = lang.encode('ascii')
 
-        signal = signal.encode('ascii')
-        msg = msg.encode('utf-8')
-        lang = lang.encode('ascii')
-
-        self._send_request(b'exit-signal', String(signal),
-                           Boolean(core_dumped), String(msg), String(lang))
-        self.close()
+            self._send_request(b'exit-signal', String(signal),
+                               Boolean(core_dumped), String(msg), String(lang))
+            self.close()
 
 
 class SSHForwardChannel(SSHChannel):
