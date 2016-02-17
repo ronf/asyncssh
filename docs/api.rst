@@ -52,7 +52,7 @@ the channels once they are open. Alternately, channels can be opened using
 which return :class:`SSHReader` and :class:`SSHWriter` objects that can be
 used to perform I/O on the channel. The methods :meth:`start_server()
 <SSHClientConnection.start_server>` and :meth:`start_unix_server()
-<SSHClientConnection.start_unix_server>`can be used to set up listeners on
+<SSHClientConnection.start_unix_server>` can be used to set up listeners on
 remote TCP ports or UNIX domain sockets and get back these :class:`SSHReader`
 and :class:`SSHWriter` objects in a callback when new connections are opened.
 
