@@ -4931,20 +4931,19 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
 
     agent = None
 
+    if agent_path is ():
+        agent_path = os.environ.get('SSH_AUTH_SOCK', None)
+
     if client_keys:
         client_keys = _load_private_keypair_list(client_keys, passphrase)
     elif client_keys is ():
-        if agent_path is not None:
-            if not agent_path:
-                agent_path = os.environ.get('SSH_AUTH_SOCK', None)
+        if agent_path:
+            agent = yield from connect_agent(agent_path)
 
-            if agent_path:
-                agent = yield from connect_agent(agent_path)
-
-                if agent:
-                    client_keys = yield from agent.get_keys()
-                else:
-                    agent_path = None
+            if agent:
+                client_keys = yield from agent.get_keys()
+            else:
+                agent_path = None
 
         if not client_keys:
             client_keys = []
