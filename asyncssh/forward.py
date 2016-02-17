@@ -68,6 +68,7 @@ class SSHForwarder:
         """Handle an incoming connection close"""
 
         # pylint: disable=unused-argument
+
         self.close()
 
     def session_started(self):
@@ -79,7 +80,10 @@ class SSHForwarder:
         # pylint: disable=unused-argument
 
         if self._peer:
-            self._peer.write(data)
+            try:
+                self._peer.write(data)
+            except OSError: # pragma: no cover
+                pass
         else:
             self._inpbuf += data
 
@@ -89,7 +93,11 @@ class SSHForwarder:
         self._eof_received = True
 
         if self._peer:
-            self._peer.write_eof()
+            try:
+                self._peer.write_eof()
+            except OSError: # pragma: no cover
+                pass
+
             return not self._peer.was_eof_received()
         else:
             return False
