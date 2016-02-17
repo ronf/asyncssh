@@ -797,9 +797,7 @@ class SSHClientChannel(SSHChannel):
         self._session.connection_made(self)
 
         for name, value in env.items():
-            name = str(name).encode('utf-8')
-            value = str(value).encode('utf-8')
-            self._send_request(b'env', String(name), String(value))
+            self._send_request(b'env', String(str(name)), String(str(value)))
 
         if term_type:
             term_type = term_type.encode('ascii')
