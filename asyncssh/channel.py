@@ -54,6 +54,7 @@ class SSHChannel(SSHPacketHandler):
         self._session = None
         self._encoding = encoding
         self._extra = {'connection': conn}
+        self._started = False
 
         self._send_state = 'closed'
         self._send_chan = None
@@ -269,7 +270,7 @@ class SSHChannel(SSHPacketHandler):
         if data != _CLOSE and self._send_state in {'close_pending', 'closed'}:
             return
 
-        if data not in {_EOF, _CLOSE}  and len(data) > self._recv_window:
+        if data not in {_EOF, _CLOSE} and len(data) > self._recv_window:
             raise DisconnectError(DISC_PROTOCOL_ERROR, 'Window exceeded')
 
         if self._recv_paused:
@@ -284,8 +285,11 @@ class SSHChannel(SSHPacketHandler):
             self._send_state = 'closed'
 
         if self._recv_state not in {'close_pending', 'closed'}:
-            self._recv_state = 'close_pending'
-            self._accept_data(_CLOSE)
+            if self._started:
+                self._recv_state = 'close_pending'
+                self._accept_data(_CLOSE)
+            else:
+                self._recv_state = 'closed'
 
         if self._recv_state == 'closed':
             self._loop.call_soon(self._cleanup, exc)
@@ -434,8 +438,11 @@ class SSHChannel(SSHPacketHandler):
 
         packet.check_end()
 
-        self._recv_state = 'close_pending'
-        self._accept_data(_CLOSE)
+        if self._started:
+            self._recv_state = 'close_pending'
+            self._accept_data(_CLOSE)
+        else:
+            self._recv_state = 'closed'
 
         self._send_close()
 
@@ -470,6 +477,7 @@ class SSHChannel(SSHPacketHandler):
                 self._send_packet(MSG_CHANNEL_FAILURE)
 
         if result and request in {'shell', 'exec', 'subsystem'}:
+            self._started = True
             self._session.session_started()
             self.resume_reading()
 
@@ -757,7 +765,7 @@ class SSHChannel(SSHPacketHandler):
            This method can be called to resume delivery of incoming data
            which was suspended by a call to :meth:`pause_reading`. As soon
            as this method is called, any buffered data will be delivered
-           immediately.  A pending end-of-file notication may also be
+           immediately. A pending end-of-file notication may also be
            delivered if one was queued while reading was paused.
 
         """
@@ -853,6 +861,7 @@ class SSHClientChannel(SSHChannel):
             raise ChannelOpenError(OPEN_REQUEST_SESSION_FAILED,
                                    'Channel closed during session startup')
 
+        self._started = True
         self._session.session_started()
         self.resume_reading()
 
@@ -999,7 +1008,7 @@ class SSHClientChannel(SSHChannel):
     def kill(self):
         """Forcibly kill the remote process
 
-           This method can be called to forcibly stop  the remote process
+           This method can be called to forcibly stop the remote process
            or service by sending it a ``KILL`` signal.
 
            :raises: :exc:`OSError` if the channel is not open
@@ -1418,6 +1427,7 @@ class SSHForwardChannel(SSHChannel):
         yield from super()._finish_open_request(session)
 
         if self._session:
+            self._started = True
             self._session.session_started()
             self.resume_reading()
 
@@ -1432,6 +1442,8 @@ class SSHForwardChannel(SSHChannel):
 
         self._session = session_factory()
         self._session.connection_made(self)
+
+        self._started = True
         self._session.session_started()
         self.resume_reading()
 
