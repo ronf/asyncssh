@@ -474,6 +474,7 @@ class SSHConnection(SSHPacketHandler):
         try:
             yield from coro
         except DisconnectError as exc:
+            self._send_disconnect(exc.code, exc.reason, exc.lang)
             self._force_close(exc)
         except: # pragma: no cover
             self.internal_error()
@@ -573,6 +574,7 @@ class SSHConnection(SSHPacketHandler):
                 while self._inpbuf and self._recv_handler():
                     pass
             except DisconnectError as exc:
+                self._send_disconnect(exc.code, exc.reason, exc.lang)
                 self._force_close(exc)
             except: # pragma: no cover
                 self.internal_error()
@@ -891,6 +893,14 @@ class SSHConnection(SSHPacketHandler):
 
         for packet in deferred_packets:
             self.send_packet(packet)
+
+    def _send_disconnect(self, code, reason, lang):
+        """Send a disconnect packet"""
+
+        reason = reason.encode('utf-8')
+        lang = lang.encode('ascii')
+        self.send_packet(Byte(MSG_DISCONNECT), UInt32(code),
+                         String(reason), String(lang))
 
     def _send_kexinit(self):
         """Start a key exchange"""
@@ -1655,10 +1665,7 @@ class SSHConnection(SSHPacketHandler):
         for chan in list(self._channels.values()):
             chan.close()
 
-        reason = reason.encode('utf-8')
-        lang = lang.encode('ascii')
-        self.send_packet(Byte(MSG_DISCONNECT), UInt32(code),
-                         String(reason), String(lang))
+        self._send_disconnect(code, reason, lang)
 
         self._transport.close()
         self._transport = None
