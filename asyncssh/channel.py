@@ -25,10 +25,6 @@ from .misc import ChannelOpenError, DisconnectError, map_handler_name
 from .packet import Boolean, Byte, String, UInt32, SSHPacketHandler
 
 
-_EOF = object()
-_CLOSE = object()
-
-
 class SSHChannel(SSHPacketHandler):
     """Parent class for SSH channels"""
 
@@ -54,7 +50,6 @@ class SSHChannel(SSHPacketHandler):
         self._session = None
         self._encoding = encoding
         self._extra = {'connection': conn}
-        self._started = False
 
         self._send_state = 'closed'
         self._send_chan = None
@@ -142,7 +137,7 @@ class SSHChannel(SSHPacketHandler):
 
             self._conn = None
 
-    def _send_close(self):
+    def _close_send(self):
         """Close the channel for sending, and clean up if close received"""
 
         # Discard unsent data
@@ -151,10 +146,24 @@ class SSHChannel(SSHPacketHandler):
 
         if self._send_state != 'closed':
             self._send_packet(MSG_CHANNEL_CLOSE)
+            self._send_chan = None
             self._send_state = 'closed'
 
             if self._recv_state == 'closed':
                 self._loop.call_soon(self._cleanup)
+
+    def _close_recv(self, exc=None):
+        """Close the channel for receiving and clean up if close sent"""
+
+        # Discard unreceived data
+        self._recv_buf = []
+        self._recv_paused = False
+
+        if self._recv_state == 'close_pending':
+            self._recv_state = 'closed'
+
+            if self._send_state == 'closed':
+                self._loop.call_soon(self._cleanup, exc)
 
     def _pause_resume_writing(self):
         """Pause or resume writing based on send buffer low/high water marks"""
@@ -198,59 +207,67 @@ class SSHChannel(SSHPacketHandler):
                 self._send_packet(MSG_CHANNEL_EOF)
                 self._send_state = 'eof'
             elif self._send_state == 'close_pending':
-                self._send_close()
+                self._close_send()
+
+    def _flush_recv_buf(self, exc=None):
+        """Flush as much data in the recv buffer as the application allows"""
+
+        while self._recv_buf and not self._recv_paused:
+            self._deliver_data(*self._recv_buf.pop(0))
+
+        if not self._recv_buf:
+            if self._recv_state == 'eof_pending':
+                if self._recv_partial:
+                    raise DisconnectError(DISC_PROTOCOL_ERROR,
+                                          'Unicode decode error')
+
+                self._recv_state = 'eof'
+
+                if (not self._session.eof_received() and
+                        self._send_state == 'open'):
+                    self.write_eof()
+            elif self._recv_state == 'close_pending':
+                self._close_recv(exc)
 
     def _deliver_data(self, data, datatype):
         """Deliver incoming data to the session"""
 
-        if data == _EOF:
+        self._recv_window -= len(data)
+
+        if self._recv_window < self._init_recv_window / 2:
+            self._send_packet(MSG_CHANNEL_WINDOW_ADJUST,
+                              UInt32(self._init_recv_window -
+                                     self._recv_window))
+            self._recv_window = self._init_recv_window
+
+        if self._encoding:
             if datatype in self._recv_partial:
-                raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                      'Unicode decode error')
-
-            self._recv_state = 'eof'
-
-            if not self._session.eof_received() and self._send_state == 'open':
-                self.write_eof()
-        elif data == _CLOSE:
-            self._recv_state = 'closed'
-        else:
-            self._recv_window -= len(data)
-
-            if self._recv_window < self._init_recv_window / 2:
-                self._send_packet(MSG_CHANNEL_WINDOW_ADJUST,
-                                  UInt32(self._init_recv_window -
-                                         self._recv_window))
-                self._recv_window = self._init_recv_window
-
-            if self._encoding:
-                if datatype in self._recv_partial:
-                    encdata = self._recv_partial.pop(datatype) + data
-                else:
-                    encdata = data
-
-                while encdata:
-                    try:
-                        data = encdata.decode(self._encoding)
-                        encdata = b''
-                    except UnicodeDecodeError as exc:
-                        if exc.start > 0:
-                            # Avoid pylint false positive
-                            # pylint: disable=invalid-slice-index
-                            data = encdata[:exc.start].decode()
-                            encdata = encdata[exc.start:]
-                        elif exc.reason == 'unexpected end of data':
-                            break
-                        else:
-                            raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                                  'Unicode decode error')
-
-                    self._session.data_received(data, datatype)
-
-                if encdata:
-                    self._recv_partial[datatype] = encdata
+                encdata = self._recv_partial.pop(datatype) + data
             else:
+                encdata = data
+
+            while encdata:
+                try:
+                    data = encdata.decode(self._encoding)
+                    encdata = b''
+                except UnicodeDecodeError as exc:
+                    if exc.start > 0:
+                        # Avoid pylint false positive
+                        # pylint: disable=invalid-slice-index
+                        data = encdata[:exc.start].decode()
+                        encdata = encdata[exc.start:]
+                    elif exc.reason == 'unexpected end of data':
+                        break
+                    else:
+                        raise DisconnectError(DISC_PROTOCOL_ERROR,
+                                              'Unicode decode error')
+
                 self._session.data_received(data, datatype)
+
+            if encdata:
+                self._recv_partial[datatype] = encdata
+        else:
+            self._session.data_received(data, datatype)
 
     def _accept_data(self, data, datatype=None):
         """Accept new data on the channel
@@ -267,10 +284,10 @@ class SSHChannel(SSHPacketHandler):
         if not data:
             return
 
-        if data != _CLOSE and self._send_state in {'close_pending', 'closed'}:
+        if self._send_state in {'close_pending', 'closed'}:
             return
 
-        if data not in {_EOF, _CLOSE} and len(data) > self._recv_window:
+        if len(data) > self._recv_window:
             raise DisconnectError(DISC_PROTOCOL_ERROR, 'Window exceeded')
 
         if self._recv_paused:
@@ -285,13 +302,9 @@ class SSHChannel(SSHPacketHandler):
             self._send_state = 'closed'
 
         if self._recv_state not in {'close_pending', 'closed'}:
-            if self._started:
-                self._recv_state = 'close_pending'
-                self._accept_data(_CLOSE)
-            else:
-                self._recv_state = 'closed'
-
-        if self._recv_state == 'closed':
+            self._recv_state = 'close_pending'
+            self._flush_recv_buf(exc)
+        elif self._recv_state == 'closed':
             self._loop.call_soon(self._cleanup, exc)
 
     def process_open(self, send_chan, send_window, send_pktsize, session):
@@ -426,7 +439,7 @@ class SSHChannel(SSHPacketHandler):
         packet.check_end()
 
         self._recv_state = 'eof_pending'
-        self._accept_data(_EOF)
+        self._flush_recv_buf()
 
     def _process_close(self, pkttype, packet):
         """Process an incoming channel close"""
@@ -438,13 +451,10 @@ class SSHChannel(SSHPacketHandler):
 
         packet.check_end()
 
-        if self._started:
-            self._recv_state = 'close_pending'
-            self._accept_data(_CLOSE)
-        else:
-            self._recv_state = 'closed'
+        self._recv_state = 'close_pending'
+        self._flush_recv_buf()
 
-        self._send_close()
+        self._close_send()
 
     def _process_request(self, pkttype, packet):
         """Process an incoming channel request"""
@@ -477,7 +487,6 @@ class SSHChannel(SSHPacketHandler):
                 self._send_packet(MSG_CHANNEL_FAILURE)
 
         if result and request in {'shell', 'exec', 'subsystem'}:
-            self._started = True
             self._session.session_started()
             self.resume_reading()
 
@@ -555,10 +564,10 @@ class SSHChannel(SSHPacketHandler):
 
         if self._send_state not in {'close_pending', 'closed'}:
             # Send an immediate close, discarding unsent data
-            self._send_close()
+            self._close_send()
 
             # Discard unreceived data
-            self._recv_buf = []
+            self._close_recv()
 
     def close(self):
         """Cleanly close the channel
@@ -576,7 +585,7 @@ class SSHChannel(SSHPacketHandler):
             self._flush_send_buf()
 
             # Discard unreceived data
-            self._recv_buf = []
+            self._close_recv()
 
     @asyncio.coroutine
     def wait_closed(self):
@@ -772,12 +781,7 @@ class SSHChannel(SSHPacketHandler):
 
         if self._recv_paused:
             self._recv_paused = False
-
-            while self._recv_buf and not self._recv_paused:
-                self._deliver_data(*self._recv_buf.pop(0))
-
-            if self._send_state == 'closed' and self._recv_state == 'closed':
-                self._loop.call_soon(self._cleanup)
+            self._flush_recv_buf()
 
 
 class SSHClientChannel(SSHChannel):
@@ -857,11 +861,6 @@ class SSHClientChannel(SSHChannel):
             raise ChannelOpenError(OPEN_REQUEST_SESSION_FAILED,
                                    'Session request failed')
 
-        if not self._session:
-            raise ChannelOpenError(OPEN_REQUEST_SESSION_FAILED,
-                                   'Channel closed during session startup')
-
-        self._started = True
         self._session.session_started()
         self.resume_reading()
 
@@ -1427,7 +1426,6 @@ class SSHForwardChannel(SSHChannel):
         yield from super()._finish_open_request(session)
 
         if self._session:
-            self._started = True
             self._session.session_started()
             self.resume_reading()
 
@@ -1443,7 +1441,6 @@ class SSHForwardChannel(SSHChannel):
         self._session = session_factory()
         self._session.connection_made(self)
 
-        self._started = True
         self._session.session_started()
         self.resume_reading()
 
