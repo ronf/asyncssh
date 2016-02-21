@@ -110,7 +110,7 @@ class SSHChannel(SSHPacketHandler):
         """Clean up this channel"""
 
         if self._open_waiter:
-            if not self._open_waiter.cancelled():
+            if not self._open_waiter.cancelled(): # pragma: no branch
                 self._open_waiter.set_exception(
                     ChannelOpenError(OPEN_CONNECT_FAILED,
                                      'SSH connection closed'))
@@ -119,7 +119,7 @@ class SSHChannel(SSHPacketHandler):
 
         if self._request_waiters:
             for waiter in self._request_waiters:
-                if not waiter.cancelled():
+                if not waiter.cancelled(): # pragma: no branch
                     waiter.set_exception(exc)
 
             self._request_waiters = []
@@ -323,7 +323,7 @@ class SSHChannel(SSHPacketHandler):
     def _finish_open_request(self, session):
         """Finish processing a channel open request"""
 
-        # pylint: disable=bare-except
+        # pylint: disable=broad-except
         try:
             if asyncio.iscoroutine(session):
                 session = yield from session
@@ -343,7 +343,7 @@ class SSHChannel(SSHPacketHandler):
             self._conn.send_channel_open_failure(self._send_chan, exc.code,
                                                  exc.reason, exc.lang)
             self._loop.call_soon(self._cleanup)
-        except: # pragma: no cover
+        except Exception: # pragma: no cover
             self._conn.internal_error()
 
     def process_open_confirmation(self, send_chan, send_window,
@@ -361,7 +361,7 @@ class SSHChannel(SSHPacketHandler):
         self._send_state = 'open'
         self._recv_state = 'open'
 
-        if not self._open_waiter.cancelled():
+        if not self._open_waiter.cancelled(): # pragma: no branch
             self._open_waiter.set_result(packet)
 
         self._open_waiter = None
@@ -373,7 +373,7 @@ class SSHChannel(SSHPacketHandler):
             raise DisconnectError(DISC_PROTOCOL_ERROR,
                                   'Channel not being opened')
 
-        if not self._open_waiter.cancelled():
+        if not self._open_waiter.cancelled(): # pragma: no branch
             self._open_waiter.set_exception(
                 ChannelOpenError(code, reason, lang))
 
@@ -480,7 +480,7 @@ class SSHChannel(SSHPacketHandler):
         handler = getattr(self, name, None)
         result = handler(packet) if callable(handler) else False
 
-        if want_reply:
+        if want_reply and self._send_state not in {'close_pending', 'closed'}:
             if result:
                 self._send_packet(MSG_CHANNEL_SUCCESS)
             else:
@@ -497,7 +497,7 @@ class SSHChannel(SSHPacketHandler):
 
         if self._request_waiters:
             waiter = self._request_waiters.pop(0)
-            if not waiter.cancelled():
+            if not waiter.cancelled(): # pragma: no branch
                 waiter.set_result(pkttype == MSG_CHANNEL_SUCCESS)
         else:
             raise DisconnectError(DISC_PROTOCOL_ERROR,

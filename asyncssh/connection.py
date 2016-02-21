@@ -470,13 +470,13 @@ class SSHConnection(SSHPacketHandler):
 
         task = asyncio.Task.current_task(self._loop)
 
-        # pylint: disable=bare-except
+        # pylint: disable=broad-except
         try:
             yield from coro
         except DisconnectError as exc:
             self._send_disconnect(exc.code, exc.reason, exc.lang)
             self._force_close(exc)
-        except: # pragma: no cover
+        except Exception: # pragma: no cover
             self.internal_error()
 
         self._tasks.remove(task)
@@ -536,14 +536,14 @@ class SSHConnection(SSHPacketHandler):
         self._owner = self._protocol_factory()
         self._protocol_factory = None
 
-        # pylint: disable=bare-except
+        # pylint: disable=broad-except
         try:
             self._connection_made()
             self._owner.connection_made(self)
             self._send_version()
         except DisconnectError as exc:
             self._loop.call_soon(self.connection_lost, exc)
-        except: # pragma: no cover
+        except Exception: # pragma: no cover
             self._loop.call_soon(self.internal_error, sys.exc_info())
 
     def connection_lost(self, exc=None):
@@ -569,14 +569,14 @@ class SSHConnection(SSHPacketHandler):
         if data:
             self._inpbuf += data
 
-            # pylint: disable=bare-except
+            # pylint: disable=broad-except
             try:
                 while self._inpbuf and self._recv_handler():
                     pass
             except DisconnectError as exc:
                 self._send_disconnect(exc.code, exc.reason, exc.lang)
                 self._force_close(exc)
-            except: # pragma: no cover
+            except Exception: # pragma: no cover
                 self.internal_error()
 
     def eof_received(self):
