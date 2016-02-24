@@ -1,4 +1,4 @@
-# Copyright (c) 2015 by Ron Frederick <ronf@timeheart.net>.
+# Copyright (c) 2015-2016 by Ron Frederick <ronf@timeheart.net>.
 # All rights reserved.
 #
 # This program and the accompanying materials are made available under
@@ -13,13 +13,13 @@
 """Utility functions for unit tests"""
 
 import asyncio
+import binascii
 import functools
 import os
 import platform
 import subprocess
 import tempfile
 import unittest
-
 
 # pylint: disable=unused-import
 
@@ -37,11 +37,14 @@ except (ImportError, OSError, AttributeError): # pragma: no cover
 
 # pylint: enable=unused-import
 
+from asyncssh.packet import String, UInt32, UInt64
+
 
 if platform.python_version_tuple() >= ('3', '4', '4'):
     create_task = asyncio.ensure_future
 else: # pragma: no cover
     create_task = asyncio.async
+
 
 def asynctest(func):
     """Decorator for async tests, for use with AsyncTestCase"""
@@ -54,6 +57,65 @@ def asynctest(func):
         return self.loop.run_until_complete(wrapped_func)
 
     return async_wrapper
+
+
+@asyncio.coroutine
+def echo(stdin, stdout, stderr=None):
+    """Echo data from stdin back to stdout and stderr (if open)"""
+
+    try:
+        while not stdin.at_eof():
+            data = yield from stdin.read(65536)
+
+            if data:
+                stdout.write(data)
+
+                if stderr:
+                    stderr.write(data)
+
+        yield from stdout.drain()
+
+        if stderr:
+            yield from stderr.drain()
+
+        stdout.write_eof()
+    except OSError:
+        pass
+
+    stdout.close()
+
+
+def _encode_options(options):
+    """Encode SSH certificate critical options and extensions"""
+
+    return b''.join((String(k) + String(v) for k, v in options.items()))
+
+
+def make_certificate(cert_version, cert_type, key, signing_key, principals,
+                     valid_after=0, valid_before=0xffffffffffffffff,
+                     options=None, extensions=None, bad_signature=False):
+    """Construct an SSH certificate"""
+
+    keydata = key.encode_ssh_public()
+    principals = b''.join((String(p) for p in principals))
+    options = _encode_options(options) if options else b''
+    extensions = _encode_options(extensions) if extensions else b''
+    signing_keydata = b''.join((String(signing_key.algorithm),
+                                signing_key.encode_ssh_public()))
+
+    data = b''.join((String(cert_version), String(os.urandom(8)), keydata,
+                     UInt64(0), UInt32(cert_type), String(''),
+                     String(principals), UInt64(valid_after),
+                     UInt64(valid_before), String(options),
+                     String(extensions), String(''), String(signing_keydata)))
+
+    if bad_signature:
+        data += String('')
+    else:
+        data += String(signing_key.sign(data))
+
+    return b''.join((cert_version.encode('ascii'), b' ',
+                     binascii.b2a_base64(data)))
 
 
 def run(cmd):

@@ -20,7 +20,8 @@
 import binascii
 import os
 
-from .util import bcrypt_available, libnacl_available, TempDirTestCase, run
+from .util import bcrypt_available, libnacl_available
+from .util import make_certificate, run, TempDirTestCase
 
 from asyncssh import import_private_key, import_public_key, import_certificate
 from asyncssh import read_private_key, read_public_key, read_certificate
@@ -29,7 +30,7 @@ from asyncssh import read_certificate_list
 from asyncssh import KeyImportError, KeyExportError, KeyEncryptionError
 from asyncssh.asn1 import der_encode, BitString, ObjectIdentifier
 from asyncssh.asn1 import TaggedDERObject
-from asyncssh.packet import MPInt, String, UInt32, UInt64
+from asyncssh.packet import MPInt, String, UInt32
 from asyncssh.pbe import pkcs1_decrypt
 from asyncssh.public_key import CERT_TYPE_USER, CERT_TYPE_HOST, SSHKey
 from asyncssh.public_key import get_public_key_algs, get_certificate_algs
@@ -138,39 +139,10 @@ class _TestPublicKey(TempDirTestCase):
 
         raise NotImplementedError
 
-    def encode_options(self, options):
-        """Encode SSH certificate critical options and extensions"""
-
-        # pylint: disable=no-self-use
-
-        return b''.join((String(k) + String(v) for k, v in options.items()))
-
-    def make_certificate(self, cert_type, key, signing_key, principals,
-                         valid_after=0, valid_before=0xffffffffffffffff,
-                         options=None, extensions=None, bad_signature=False):
+    def make_certificate(self, *args, **kwargs):
         """Construct an SSH certificate"""
 
-        keydata = key.encode_ssh_public()
-        principals = b''.join((String(p) for p in principals))
-        options = self.encode_options(options) if options else b''
-        extensions = self.encode_options(extensions) if extensions else b''
-        signing_keydata = b''.join((String(signing_key.algorithm),
-                                    signing_key.encode_ssh_public()))
-
-        data = b''.join((String(self.default_cert_version),
-                         String(os.urandom(8)), keydata, UInt64(0),
-                         UInt32(cert_type), String(''), String(principals),
-                         UInt64(valid_after), UInt64(valid_before),
-                         String(options), String(extensions), String(''),
-                         String(signing_keydata)))
-
-        if bad_signature:
-            data += String('')
-        else:
-            data += String(signing_key.sign(data))
-
-        return b''.join((self.default_cert_version.encode('ascii'), b' ',
-                         binascii.b2a_base64(data)))
+        return make_certificate(self.default_cert_version, *args, **kwargs)
 
     def check_private(self, passphrase=None):
         """Check for a private key match"""
