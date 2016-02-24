@@ -214,7 +214,10 @@ def create_tcp_forward_listener(conn, loop, coro, listen_host, listen_port):
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, True)
 
         if family == socket.AF_INET6:
-            sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, True)
+            try:
+                sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, True)
+            except AttributeError:
+                pass
 
         if sa[1] == 0:
             sa = sa[:1] + (listen_port,) + sa[2:]
