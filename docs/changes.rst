@@ -3,6 +3,43 @@
 Change Log
 ==========
 
+Release 1.5.1 (23 Feb 2016)
+---------------------------
+
+* Added basic support for running AsyncSSH on Windows. Some functionality
+  such as UNIX domain sockets will not work there, and the test suite will
+  not run there yet, but basic functionality has been tested and seems
+  to work. This includes features like bcrypt and support for newer
+  ciphers provided by libnacl when these optional packages are installed.
+
+* Greatly improved the performance of known_hosts matching on exact
+  hostnames and addresses. Full wildcard pattern matching is still
+  supported, but entries involving exact hostnames or addresses are
+  now matched thousands of times faster.
+
+* Split known_hosts parsing and matching into separate calls so that a
+  known_hosts file can be parsed once and used to make connections to
+  several different hosts. Thanks go to Josh Yudaken for suggesting
+  this and providing a sample implementation.
+
+* Updated AsyncSSH to allow SSH agent forwarding when it is requested
+  even when local client keys are used to perform SSH authentication.
+
+* Updaded channel state machine to better handle close being received
+  while the channel is paused for reading. Previously, some data would
+  not be delivered in this case.
+
+* Set TCP_NODELAY on sockets to avoid latency problems caused by TCP
+  delayed ACK.
+
+* Fixed a bug where exceptions were not always returned properly when
+  attempting to drain writes on a stream.
+
+* Fixed a bug which could leak a socket object after an error opening
+  a local TCP listening socket.
+
+* Fixed a number of race conditions uncovered during unit testing.
+
 Release 1.5.0 (27 Jan 2016)
 ---------------------------
 
