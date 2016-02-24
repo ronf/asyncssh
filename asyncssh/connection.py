@@ -530,6 +530,9 @@ class SSHConnection(SSHPacketHandler):
 
         self._transport = transport
 
+        sock = transport.get_extra_info('socket')
+        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+
         peername = transport.get_extra_info('peername')
         self._peer_addr = peername[0] if peername else None
 

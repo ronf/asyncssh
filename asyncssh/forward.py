@@ -13,6 +13,7 @@
 """SSH port forwarding handlers"""
 
 import asyncio
+import socket
 
 from .misc import ChannelOpenError
 
@@ -63,6 +64,9 @@ class SSHForwarder:
         """Handle a newly opened connection"""
 
         self._transport = transport
+
+        sock = transport.get_extra_info('socket')
+        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 
     def connection_lost(self, exc):
         """Handle an incoming connection close"""
