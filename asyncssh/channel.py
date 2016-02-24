@@ -310,9 +310,6 @@ class SSHChannel(SSHPacketHandler):
     def process_open(self, send_chan, send_window, send_pktsize, session):
         """Process a channel open request"""
 
-        if self._recv_state != 'closed':
-            raise DisconnectError(DISC_PROTOCOL_ERROR, 'Channel already open')
-
         self._send_chan = send_chan
         self._send_window = send_window
         self._send_pktsize = send_pktsize
@@ -463,9 +460,6 @@ class SSHChannel(SSHPacketHandler):
 
         if self._recv_state not in {'open', 'eof_pending', 'eof'}:
             raise DisconnectError(DISC_PROTOCOL_ERROR, 'Channel not open')
-
-        if self._send_state in {'close_pending', 'closed'}:
-            return
 
         request = packet.get_string()
         want_reply = packet.get_boolean()
