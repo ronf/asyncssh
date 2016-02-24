@@ -66,7 +66,8 @@ class SSHForwarder:
         self._transport = transport
 
         sock = transport.get_extra_info('socket')
-        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        if sock.family in {socket.AF_INET, socket.AF_INET6}:
+            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 
     def connection_lost(self, exc):
         """Handle an incoming connection close"""
