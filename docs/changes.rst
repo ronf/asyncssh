@@ -3,6 +3,21 @@
 Change Log
 ==========
 
+Release 1.5.2 (25 Feb 2016)
+---------------------------
+
+* Fix a bug in UNIX domain socket forwarding introduced in 1.5.1 by the
+  TCP_NODELAY change.
+
+* Fix channel code to report when a channel is closed with incomplete
+  Unicode data in the receive buffer. This was previously reported
+  correctly when EOF was received on a channel, but not when it was
+  closed without sending EOF.
+
+* Added unit tests for channel, forward, and stream modules, partial
+  unit tests for the connection module, and a placeholder for unit
+  tests for the sftp module.
+
 Release 1.5.1 (23 Feb 2016)
 ---------------------------
 

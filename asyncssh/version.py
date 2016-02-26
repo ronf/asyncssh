@@ -18,4 +18,4 @@ __author_email__ = 'ronf@timeheart.net'
 
 __url__ = 'http://asyncssh.timeheart.net'
 
-__version__ = '1.5.1'
+__version__ = '1.5.2'
