@@ -214,7 +214,7 @@ class SSHChannel(SSHPacketHandler):
             self._deliver_data(*self._recv_buf.pop(0))
 
         if not self._recv_buf:
-            if self._recv_state != 'open' and self._recv_partial and not exc:
+            if self._recv_state != 'open' and self._recv_partial:
                 raise DisconnectError(DISC_PROTOCOL_ERROR,
                                       'Unicode decode error')
 
@@ -301,7 +301,12 @@ class SSHChannel(SSHPacketHandler):
 
         if self._recv_state not in {'close_pending', 'closed'}:
             self._recv_state = 'close_pending'
-            self._flush_recv_buf(exc)
+
+            try:
+                self._flush_recv_buf(exc)
+            except DisconnectError: # pragma: no cover
+                # Don't raise unicode error on abrupt connection close
+                pass
         elif self._recv_state == 'closed':
             self._loop.call_soon(self._cleanup, exc)
 
