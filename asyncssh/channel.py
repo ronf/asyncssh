@@ -214,7 +214,7 @@ class SSHChannel(SSHPacketHandler):
             self._deliver_data(*self._recv_buf.pop(0))
 
         if not self._recv_buf:
-            if self._recv_state != 'open' and self._recv_partial:
+            if self._recv_state != 'open' and self._recv_partial and not exc:
                 raise DisconnectError(DISC_PROTOCOL_ERROR,
                                       'Unicode decode error')
 
