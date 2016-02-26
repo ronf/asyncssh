@@ -130,11 +130,9 @@ class SSHChannel(SSHPacketHandler):
 
         self._close_event.set()
 
-        if self._conn:
-            if self._recv_chan is not None:
-                self._conn.remove_channel(self._recv_chan)
-                self._recv_chan = None
-
+        if self._conn: # pragma: no branch
+            self._conn.remove_channel(self._recv_chan)
+            self._recv_chan = None
             self._conn = None
 
     def _close_send(self):
@@ -216,11 +214,11 @@ class SSHChannel(SSHPacketHandler):
             self._deliver_data(*self._recv_buf.pop(0))
 
         if not self._recv_buf:
-            if self._recv_state == 'eof_pending':
-                if self._recv_partial:
-                    raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                          'Unicode decode error')
+            if self._recv_state != 'open' and self._recv_partial:
+                raise DisconnectError(DISC_PROTOCOL_ERROR,
+                                      'Unicode decode error')
 
+            if self._recv_state == 'eof_pending':
                 self._recv_state = 'eof'
 
                 if (not self._session.eof_received() and
@@ -527,7 +525,7 @@ class SSHChannel(SSHPacketHandler):
     def _send_packet(self, pkttype, *args):
         """Send a packet on the channel"""
 
-        if self._send_chan is None:
+        if self._send_chan is None: # pragma: no cover
             raise OSError('Channel not open')
 
         self._conn.send_packet(Byte(pkttype), UInt32(self._send_chan), *args)

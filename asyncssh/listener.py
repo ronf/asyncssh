@@ -216,7 +216,7 @@ def create_tcp_forward_listener(conn, loop, coro, listen_host, listen_port):
         if family == socket.AF_INET6:
             try:
                 sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, True)
-            except AttributeError:
+            except AttributeError: # pragma: no cover
                 pass
 
         if sa[1] == 0:
