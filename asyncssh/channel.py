@@ -136,7 +136,7 @@ class SSHChannel(SSHPacketHandler):
             self._conn = None
 
     def _close_send(self):
-        """Close the channel for sending, and clean up if close received"""
+        """Discard unsent data and close the channel for sending"""
 
         # Discard unsent data
         self._send_buf = []
@@ -147,21 +147,17 @@ class SSHChannel(SSHPacketHandler):
             self._send_chan = None
             self._send_state = 'closed'
 
-            if self._recv_state == 'closed':
-                self._loop.call_soon(self._cleanup)
-
-    def _close_recv(self, exc=None):
-        """Close the channel for receiving and clean up if close sent"""
+    def _discard_recv(self):
+        """Discard unreceived data and clean up if close received"""
 
         # Discard unreceived data
         self._recv_buf = []
         self._recv_paused = False
 
+        # If recv is close_pending, we know send is already closed
         if self._recv_state == 'close_pending':
             self._recv_state = 'closed'
-
-            if self._send_state == 'closed':
-                self._loop.call_soon(self._cleanup, exc)
+            self._loop.call_soon(self._cleanup)
 
     def _pause_resume_writing(self):
         """Pause or resume writing based on send buffer low/high water marks"""
@@ -214,10 +210,6 @@ class SSHChannel(SSHPacketHandler):
             self._deliver_data(*self._recv_buf.pop(0))
 
         if not self._recv_buf:
-            if self._recv_state != 'open' and self._recv_partial:
-                raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                      'Unicode decode error')
-
             if self._recv_state == 'eof_pending':
                 self._recv_state = 'eof'
 
@@ -225,7 +217,13 @@ class SSHChannel(SSHPacketHandler):
                         self._send_state == 'open'):
                     self.write_eof()
             elif self._recv_state == 'close_pending':
-                self._close_recv(exc)
+                self._recv_state = 'closed'
+
+                if self._recv_partial and not exc:
+                    exc = DisconnectError(DISC_PROTOCOL_ERROR,
+                                          'Unicode decode error')
+
+                self._loop.call_soon(self._cleanup, exc)
 
     def _deliver_data(self, data, datatype):
         """Deliver incoming data to the session"""
@@ -301,12 +299,7 @@ class SSHChannel(SSHPacketHandler):
 
         if self._recv_state not in {'close_pending', 'closed'}:
             self._recv_state = 'close_pending'
-
-            try:
-                self._flush_recv_buf(exc)
-            except DisconnectError: # pragma: no cover
-                # Don't raise unicode error on abrupt connection close
-                pass
+            self._flush_recv_buf(exc)
         elif self._recv_state == 'closed':
             self._loop.call_soon(self._cleanup, exc)
 
@@ -451,10 +444,10 @@ class SSHChannel(SSHPacketHandler):
 
         packet.check_end()
 
+        self._close_send()
+
         self._recv_state = 'close_pending'
         self._flush_recv_buf()
-
-        self._close_send()
 
     def _process_request(self, pkttype, packet):
         """Process an incoming channel request"""
@@ -531,7 +524,7 @@ class SSHChannel(SSHPacketHandler):
         """Send a packet on the channel"""
 
         if self._send_chan is None: # pragma: no cover
-            raise OSError('Channel not open')
+            return
 
         self._conn.send_packet(Byte(pkttype), UInt32(self._send_chan), *args)
 
@@ -544,6 +537,9 @@ class SSHChannel(SSHPacketHandler):
     @asyncio.coroutine
     def _make_request(self, request, *args):
         """Make a channel request and wait for the response"""
+
+        if self._send_chan is None:
+            return False
 
         waiter = asyncio.Future(loop=self._loop)
         self._request_waiters.append(waiter)
@@ -563,8 +559,9 @@ class SSHChannel(SSHPacketHandler):
             # Send an immediate close, discarding unsent data
             self._close_send()
 
+        if self._recv_state != 'closed':
             # Discard unreceived data
-            self._close_recv()
+            self._discard_recv()
 
     def close(self):
         """Cleanly close the channel
@@ -581,8 +578,9 @@ class SSHChannel(SSHPacketHandler):
             self._send_state = 'close_pending'
             self._flush_send_buf()
 
+        if self._recv_state != 'closed':
             # Discard unreceived data
-            self._close_recv()
+            self._discard_recv()
 
     @asyncio.coroutine
     def wait_closed(self):

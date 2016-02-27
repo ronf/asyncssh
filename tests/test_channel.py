@@ -69,6 +69,7 @@ class _ClientSession:
         self.xon_xoff = None
         self.exit_status = None
         self.exit_signal_msg = None
+        self.exc = None
 
     def connection_made(self, chan):
         """Handle connection open"""
@@ -78,8 +79,7 @@ class _ClientSession:
     def connection_lost(self, exc):
         """Handle connection close"""
 
-        # pylint: disable=unused-argument
-
+        self.exc = exc
         self._chan = None
 
     def session_started(self):
@@ -270,6 +270,16 @@ class _TestChannel(ServerTestCase):
         yield from conn.wait_closed()
 
     @asynctest
+    def test_conn_close_during_startup(self):
+        """Test connection close during channel startup"""
+
+        with (yield from self.connect(username='conn_close')) as conn:
+            with self.assertRaises(asyncssh.ChannelOpenError):
+                yield from _create_session(conn)
+
+        yield from conn.wait_closed()
+
+    @asynctest
     def test_close_during_startup(self):
         """Test channel close during startup"""
 
@@ -280,8 +290,26 @@ class _TestChannel(ServerTestCase):
         yield from conn.wait_closed()
 
     @asynctest
-    def test_close_while_paused(self):
-        """Test channel close while reading is paused"""
+    def test_inbound_conn_close_while_read_paused(self):
+        """Test inbound connection close while reading is paused"""
+
+        with (yield from self.connect()) as conn:
+            chan, _ = yield from _create_session(conn, 'conn_close')
+
+            chan.pause_reading()
+            chan.write('\n')
+            yield from asyncio.sleep(0.1)
+            conn.close()
+            yield from asyncio.sleep(0.1)
+            chan.resume_reading()
+
+            yield from chan.wait_closed()
+
+        yield from conn.wait_closed()
+
+    @asynctest
+    def test_outbound_conn_close_while_read_paused(self):
+        """Test outbound connection close while reading is paused"""
 
         with (yield from self.connect()) as conn:
             chan, _ = yield from _create_session(conn, 'close')
@@ -830,8 +858,11 @@ class _TestChannel(ServerTestCase):
         """Test receiving partial Unicode data and then EOF"""
 
         with (yield from self.connect()) as conn:
-            with self.assertRaises(asyncssh.DisconnectError):
-                yield from _create_session(conn, 'partial_unicode_at_eof')
+            chan, session = yield from _create_session(
+                conn, 'partial_unicode_at_eof')
+
+            yield from chan.wait_closed()
+            self.assertIsInstance(session.exc, asyncssh.DisconnectError)
 
         yield from conn.wait_closed()
 
