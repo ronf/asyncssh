@@ -105,6 +105,8 @@ class _Server(asyncssh.SSHServer):
     def _begin_session(self, stdin, stdout, stderr):
         """Begin processing a new session"""
 
+        # pylint: disable=too-many-statements
+
         action = stdin.channel.get_command() or stdin.channel.get_subsystem()
         if not action:
             action = 'echo'
