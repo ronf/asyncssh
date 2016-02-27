@@ -358,6 +358,8 @@ class _TestForwarding(ServerTestCase):
                                                            listen_port)
 
             writer.close()
+            yield from asyncio.sleep(0.1)
+
             listener.close()
             yield from listener.wait_closed()
 

@@ -602,6 +602,10 @@ class SSHConnection(SSHPacketHandler):
     def add_channel(self, chan):
         """Add a new channel, returning its channel number"""
 
+        if not self._transport:
+            raise ChannelOpenError(OPEN_CONNECT_FAILED,
+                                   'SSH connection closed')
+
         while self._next_recv_chan in self._channels:
             self._next_recv_chan = (self._next_recv_chan + 1) & 0xffffffff
 
