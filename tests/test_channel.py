@@ -188,6 +188,16 @@ class _TestChannel(ServerTestCase):
         yield from conn.wait_closed()
 
     @asynctest
+    def test_shell_internal_error(self):
+        """Test internal error in callback to start a shell"""
+
+        with (yield from self.connect(username='task_error')) as conn:
+            with self.assertRaises(asyncssh.DisconnectError):
+                yield from _create_session(conn)
+
+        yield from conn.wait_closed()
+
+    @asynctest
     def test_shell_large_block(self):
         """Test starting a shell and sending a large block of data"""
 

@@ -413,7 +413,7 @@ class SSHConnection(SSHPacketHandler):
 
         try:
             self.close()
-        except RuntimeError as exc:
+        except RuntimeError as exc: # pragma: no cover
             # There's a race in some cases between the close call here
             # and the code which shuts down the event loop. Since the
             # loop.is_closed() method is only in Python 3.4.2 and later,
@@ -441,7 +441,7 @@ class SSHConnection(SSHPacketHandler):
 
         if self._global_request_waiters:
             for waiter in self._global_request_waiters:
-                if not waiter.cancelled():
+                if not waiter.cancelled(): # pragma: no branch
                     waiter.set_result((MSG_REQUEST_FAILURE, SSHPacket(b'')))
 
         if self._owner:
@@ -476,7 +476,7 @@ class SSHConnection(SSHPacketHandler):
         except DisconnectError as exc:
             self._send_disconnect(exc.code, exc.reason, exc.lang)
             self._force_close(exc)
-        except Exception: # pragma: no cover
+        except Exception:
             self.internal_error()
 
         self._tasks.remove(task)
@@ -486,7 +486,7 @@ class SSHConnection(SSHPacketHandler):
 
         if platform.python_version_tuple() >= ('3', '4', '2'):
             task = self._loop.create_task(self._run_task(coro))
-        else:
+        else: # pragma: no cover
             # Pylint is annoying here - it's not smart enough to see the
             # version check, and the disable MUST be on the same line as
             # the call, leading to ugly line breaking
@@ -546,7 +546,7 @@ class SSHConnection(SSHPacketHandler):
             self._send_version()
         except DisconnectError as exc:
             self._loop.call_soon(self.connection_lost, exc)
-        except Exception: # pragma: no cover
+        except Exception:
             self._loop.call_soon(self.internal_error, sys.exc_info())
 
     def connection_lost(self, exc=None):
@@ -579,7 +579,7 @@ class SSHConnection(SSHPacketHandler):
             except DisconnectError as exc:
                 self._send_disconnect(exc.code, exc.reason, exc.lang)
                 self._force_close(exc)
-            except Exception: # pragma: no cover
+            except Exception:
                 self.internal_error()
 
     def eof_received(self):
@@ -1425,7 +1425,7 @@ class SSHConnection(SSHPacketHandler):
             self._owner.auth_completed()
 
             if self._auth_waiter:
-                if not self._auth_waiter.cancelled():
+                if not self._auth_waiter.cancelled(): # pragma: no branch
                     self._auth_waiter.set_result(None)
 
                 self._auth_waiter = None
@@ -1483,7 +1483,7 @@ class SSHConnection(SSHPacketHandler):
 
         if self._global_request_waiters:
             waiter = self._global_request_waiters.pop(0)
-            if not waiter.cancelled():
+            if not waiter.cancelled(): # pragma: no branch
                 waiter.set_result((pkttype, packet))
         else:
             raise DisconnectError(DISC_PROTOCOL_ERROR,
@@ -2029,7 +2029,7 @@ class SSHClientConnection(SSHConnection):
             self._dynamic_remote_listeners = {}
 
         if self._auth_waiter:
-            if not self._auth_waiter.cancelled():
+            if not self._auth_waiter.cancelled(): # pragma: no branch
                 self._auth_waiter.set_exception(exc)
 
             self._auth_waiter = None

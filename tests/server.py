@@ -63,8 +63,12 @@ class _EchoSession(asyncssh.SSHServerSession):
 
         self._chan = chan
 
-        if self._chan.get_extra_info('username') == 'close':
+        username = self._chan.get_extra_info('username')
+
+        if username == 'close':
             self._chan.close()
+        elif username == 'task_error':
+            raise RuntimeError('Exception handler test')
 
     def shell_requested(self):
         """Handle shell request"""
@@ -234,8 +238,11 @@ class _Server(asyncssh.SSHServer):
         self._conn.send_auth_banner('auth banner')
         self._conn.send_debug('debug')
 
+        if username == 'error':
+            raise RuntimeError('Exception handler test')
+
         return username not in ('guest', 'conn_close', 'close',
-                                'echo', 'no_channels')
+                                'echo', 'no_channels', 'task_error')
 
     def password_auth_supported(self):
         """Enable password authentication"""
@@ -285,7 +292,7 @@ class _Server(asyncssh.SSHServer):
             if username == 'conn_close':
                 self._conn.close()
                 return False
-            elif username in {'close', 'echo'}:
+            elif username in {'close', 'echo', 'task_error'}:
                 return (channel, _EchoSession())
             elif username == 'non_async':
                 return (channel, self._begin_session_non_async)

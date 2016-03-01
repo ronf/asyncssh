@@ -21,6 +21,17 @@ from .server import ServerTestCase
 from .util import asynctest
 
 
+class _InternalErrorClient(asyncssh.SSHClient):
+    """Test of internal error exception handler"""
+
+    def connection_made(self, conn):
+        """Raise an error when a new connection is opened"""
+
+        # pylint: disable=unused-argument
+
+        raise RuntimeError('Exception handler test')
+
+
 class _PWChangeClient(asyncssh.SSHClient):
     """Test client password change"""
 
@@ -173,3 +184,17 @@ class _TestConnection(ServerTestCase):
             conn.send_debug('debug')
 
         yield from conn.wait_closed()
+
+    @asynctest
+    def test_internal_error(self):
+        """Test internal error in client callback"""
+
+        with self.assertRaises(RuntimeError):
+            yield from self.create_connection(_InternalErrorClient)
+
+    @asynctest
+    def test_server_internal_error(self):
+        """Test internal error in server callback"""
+
+        with self.assertRaises(asyncssh.DisconnectError):
+            yield from self.connect(username='error')
