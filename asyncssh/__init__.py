@@ -28,7 +28,8 @@ from .auth_keys import import_authorized_keys, read_authorized_keys
 from .channel import SSHClientChannel, SSHServerChannel
 from .channel import SSHTCPChannel, SSHUNIXChannel
 
-from .connection import SSHClient, SSHServer
+from .client import SSHClient
+
 from .connection import SSHClientConnection, SSHServerConnection
 from .connection import create_connection, create_server, connect, listen
 
@@ -56,6 +57,8 @@ from .public_key import read_certificate_list
 
 from .session import SSHClientSession, SSHServerSession
 from .session import SSHTCPSession, SSHUNIXSession
+
+from .server import SSHServer
 
 from .sftp import SFTPClient, SFTPServer, SFTPFile, SFTPError
 from .sftp import SFTPAttrs, SFTPVFSAttrs, SFTPName
