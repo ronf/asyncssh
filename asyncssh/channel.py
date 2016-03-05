@@ -805,8 +805,6 @@ class SSHClientChannel(SSHChannel):
             self._send_request(b'env', String(str(name)), String(str(value)))
 
         if term_type:
-            term_type = term_type.encode('ascii')
-
             if not term_size:
                 width = height = pixwidth = pixheight = 0
             elif len(term_size) == 2:
@@ -980,8 +978,6 @@ class SSHClientChannel(SSHChannel):
            :raises: :exc:`OSError` if the channel is not open
 
         """
-
-        signal = signal.encode('ascii')
 
         self._send_request(b'signal', String(signal))
 
@@ -1400,10 +1396,6 @@ class SSHServerChannel(SSHChannel):
         """
 
         if self._send_state not in {'close_pending', 'closed'}:
-            signal = signal.encode('ascii')
-            msg = msg.encode('utf-8')
-            lang = lang.encode('ascii')
-
             self._send_request(b'exit-signal', String(signal),
                                Boolean(core_dumped), String(msg), String(lang))
             self.close()
@@ -1450,9 +1442,6 @@ class SSHTCPChannel(SSHForwardChannel):
 
         self._extra['local_peername'] = (orig_host, orig_port)
         self._extra['remote_peername'] = (host, port)
-
-        host = host.encode('utf-8')
-        orig_host = orig_host.encode('utf-8')
 
         return (yield from super()._open(session_factory, chantype,
                                          String(host), UInt32(port),

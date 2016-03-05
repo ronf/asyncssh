@@ -908,8 +908,6 @@ class SSHConnection(SSHPacketHandler):
     def _send_disconnect(self, code, reason, lang):
         """Send a disconnect packet"""
 
-        reason = reason.encode('utf-8')
-        lang = lang.encode('ascii')
         self.send_packet(Byte(MSG_DISCONNECT), UInt32(code),
                          String(reason), String(lang))
 
@@ -1109,9 +1107,6 @@ class SSHConnection(SSHPacketHandler):
 
     def send_channel_open_failure(self, send_chan, code, reason, lang):
         """Send a channel open failure"""
-
-        reason = reason.encode('utf-8')
-        lang = lang.encode('ascii')
 
         self.send_packet(Byte(MSG_CHANNEL_OPEN_FAILURE), UInt32(send_chan),
                          UInt32(code), String(reason), String(lang))
@@ -1724,8 +1719,6 @@ class SSHConnection(SSHPacketHandler):
 
         """
 
-        msg = msg.encode('utf-8')
-        lang = lang.encode('ascii')
         self.send_packet(Byte(MSG_DEBUG), Boolean(always_display),
                          String(msg), String(lang))
 
@@ -2273,8 +2266,7 @@ class SSHClientConnection(SSHConnection):
         """Close a remote TCP/IP listener"""
 
         yield from self._make_global_request(
-            b'cancel-tcpip-forward', String(listen_host.encode('utf-8')),
-            UInt32(listen_port))
+            b'cancel-tcpip-forward', String(listen_host), UInt32(listen_port))
 
         listener = self._remote_listeners.get((listen_host, listen_port))
 
@@ -2322,8 +2314,7 @@ class SSHClientConnection(SSHConnection):
         """Close a remote UNIX domain socket listener"""
 
         yield from self._make_global_request(
-            b'cancel-streamlocal-forward@openssh.com',
-            String(listen_path.encode('utf-8')))
+            b'cancel-streamlocal-forward@openssh.com', String(listen_path))
 
         if listen_path in self._remote_listeners:
             del self._remote_listeners[listen_path]
@@ -2555,8 +2546,7 @@ class SSHClientConnection(SSHConnection):
         listen_host = listen_host.lower()
 
         pkttype, packet = yield from self._make_global_request(
-            b'tcpip-forward', String(listen_host.encode('utf-8')),
-            UInt32(listen_port))
+            b'tcpip-forward', String(listen_host), UInt32(listen_port))
 
         if pkttype == MSG_REQUEST_SUCCESS:
             if listen_port == 0:
@@ -2567,7 +2557,7 @@ class SSHClientConnection(SSHConnection):
                 # to contain an extra uint32 value of 0 when non-dynamic
                 # ports are requested, causing the check_end() call below
                 # to fail. This check works around this problem.
-                if len(packet.get_remaining_payload()) == 4:
+                if len(packet.get_remaining_payload()) == 4: # pragma: no cover
                     packet.get_uint32()
 
                 dynamic = False
@@ -2736,8 +2726,7 @@ class SSHClientConnection(SSHConnection):
         """
 
         pkttype, packet = yield from self._make_global_request(
-            b'streamlocal-forward@openssh.com',
-            String(listen_path.encode('utf-8')))
+            b'streamlocal-forward@openssh.com', String(listen_path))
 
         packet.check_end()
 
@@ -3514,8 +3503,6 @@ class SSHServerConnection(SSHConnection):
         if self._auth_complete:
             raise OSError('Authentication already completed')
 
-        msg = msg.encode('utf-8')
-        lang = lang.encode('ascii')
         self.send_packet(Byte(MSG_USERAUTH_BANNER), String(msg), String(lang))
 
     def set_authorized_keys(self, authorized_keys):
@@ -3567,10 +3554,7 @@ class SSHServerConnection(SSHConnection):
 
         """
 
-        if self._key_options is not None:
-            return self._key_options.get(option, default)
-        else:
-            return default
+        return self._key_options.get(option, default)
 
     def check_key_permission(self, permission):
         """Check permissions in authorized_keys
@@ -3604,10 +3588,7 @@ class SSHServerConnection(SSHConnection):
 
         """
 
-        if self._key_options is not None:
-            return not self._key_options.get('no-' + permission, False)
-        else:
-            return True
+        return not self._key_options.get('no-' + permission, False)
 
     def get_certificate_option(self, option, default=None):
         """Return option from user certificate
@@ -3652,9 +3633,9 @@ class SSHServerConnection(SSHConnection):
                | pty
                | user-rc
 
-           AsyncSSH internally enforces port-forwarding and pty permissions
-           but ignores the other values since it does not implement those
-           features.
+           AsyncSSH internally enforces agent-forwarding, port-forwarding
+           and pty permissions but ignores the other values since it does
+           not implement those features.
 
            :param str permission:
                The name of the permission to check (without the 'permit-').
@@ -4051,9 +4032,16 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
 
     auth_waiter = asyncio.Future(loop=loop)
 
-    _, conn = yield from loop.create_connection(conn_factory, host, port,
-                                                family=family, flags=flags,
-                                                local_addr=local_addr)
+    # pylint: disable=broad-except
+    try:
+        _, conn = yield from loop.create_connection(conn_factory, host, port,
+                                                    family=family, flags=flags,
+                                                    local_addr=local_addr)
+    except Exception:
+        if agent:
+            agent.close()
+
+        raise
 
     yield from auth_waiter
 
