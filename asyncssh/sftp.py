@@ -960,16 +960,18 @@ class SFTPClientHandler(SFTPHandler):
 
         self.create_task(self.recv_packets())
 
+    @asyncio.coroutine
     def open(self, filename, pflags, attrs):
         """Make an SFTP open request"""
 
-        return self._make_request(FXP_OPEN, String(filename),
-                                  UInt32(pflags), attrs.encode())
+        return (yield from self._make_request(FXP_OPEN, String(filename),
+                                              UInt32(pflags), attrs.encode()))
 
+    @asyncio.coroutine
     def close(self, handle):
         """Make an SFTP close request"""
 
-        return self._make_request(FXP_CLOSE, String(handle))
+        return (yield from self._make_request(FXP_CLOSE, String(handle)))
 
     def nonblocking_close(self, handle):
         """Send an SFTP close request without blocking on the response"""
@@ -977,42 +979,51 @@ class SFTPClientHandler(SFTPHandler):
         # Used by context managers, since they can't block to wait for a reply
         self._send_request(FXP_CLOSE, String(handle))
 
+    @asyncio.coroutine
     def read(self, handle, offset, length):
         """Make an SFTP read request"""
 
-        return self._make_request(FXP_READ, String(handle),
-                                  UInt64(offset), UInt32(length))
+        return (yield from self._make_request(FXP_READ, String(handle),
+                                              UInt64(offset), UInt32(length)))
 
+    @asyncio.coroutine
     def write(self, handle, offset, data):
         """Make an SFTP write request"""
 
-        return self._make_request(FXP_WRITE, String(handle),
-                                  UInt64(offset), String(data))
+        return (yield from self._make_request(FXP_WRITE, String(handle),
+                                              UInt64(offset), String(data)))
 
+    @asyncio.coroutine
     def stat(self, path):
         """Make an SFTP stat request"""
 
-        return self._make_request(FXP_STAT, String(path))
+        return (yield from self._make_request(FXP_STAT, String(path)))
 
+    @asyncio.coroutine
     def lstat(self, path):
         """Make an SFTP lstat request"""
 
-        return self._make_request(FXP_LSTAT, String(path))
+        return (yield from self._make_request(FXP_LSTAT, String(path)))
 
+    @asyncio.coroutine
     def fstat(self, handle):
         """Make an SFTP fstat request"""
 
-        return self._make_request(FXP_FSTAT, String(handle))
+        return (yield from self._make_request(FXP_FSTAT, String(handle)))
 
+    @asyncio.coroutine
     def setstat(self, path, attrs):
         """Make an SFTP setstat request"""
 
-        return self._make_request(FXP_SETSTAT, String(path), attrs.encode())
+        return (yield from self._make_request(FXP_SETSTAT, String(path),
+                                              attrs.encode()))
 
+    @asyncio.coroutine
     def fsetstat(self, handle, attrs):
         """Make an SFTP fsetstat request"""
 
-        return self._make_request(FXP_FSETSTAT, String(handle), attrs.encode())
+        return (yield from self._make_request(FXP_FSETSTAT, String(handle),
+                                              attrs.encode()))
 
     @asyncio.coroutine
     def statvfs(self, path):
@@ -1042,55 +1053,68 @@ class SFTPClientHandler(SFTPHandler):
         else:
             raise SFTPError(FX_OP_UNSUPPORTED, 'fstatvfs not supported')
 
+    @asyncio.coroutine
     def remove(self, path):
         """Make an SFTP remove request"""
 
-        return self._make_request(FXP_REMOVE, String(path))
+        return (yield from self._make_request(FXP_REMOVE, String(path)))
 
+    @asyncio.coroutine
     def rename(self, oldpath, newpath):
         """Make an SFTP rename request"""
 
-        return self._make_request(FXP_RENAME, String(oldpath), String(newpath))
+        return (yield from self._make_request(FXP_RENAME, String(oldpath),
+                                              String(newpath)))
 
+    @asyncio.coroutine
     def posix_rename(self, oldpath, newpath):
         """Make an SFTP POSIX rename request"""
 
         if self._supports_posix_rename:
-            return self._make_request(b'posix-rename@openssh.com',
-                                      String(oldpath), String(newpath))
+            return (yield from self._make_request(b'posix-rename@openssh.com',
+                                                  String(oldpath),
+                                                  String(newpath)))
         else:
             raise SFTPError(FX_OP_UNSUPPORTED, 'POSIX rename not supported')
 
+    @asyncio.coroutine
     def opendir(self, path):
         """Make an SFTP opendir request"""
 
-        return self._make_request(FXP_OPENDIR, String(path))
+        return (yield from self._make_request(FXP_OPENDIR, String(path)))
 
+    @asyncio.coroutine
     def readdir(self, handle):
         """Make an SFTP readdir request"""
 
-        return self._make_request(FXP_READDIR, String(handle))
+        return (yield from self._make_request(FXP_READDIR, String(handle)))
 
+    @asyncio.coroutine
     def mkdir(self, path, attrs):
         """Make an SFTP mkdir request"""
 
-        return self._make_request(FXP_MKDIR, String(path), attrs.encode())
+        return (yield from self._make_request(FXP_MKDIR, String(path),
+                                              attrs.encode()))
 
+    @asyncio.coroutine
     def rmdir(self, path):
         """Make an SFTP rmdir request"""
 
-        return self._make_request(FXP_RMDIR, String(path))
+        return (yield from self._make_request(FXP_RMDIR, String(path)))
 
+    @asyncio.coroutine
     def realpath(self, path):
         """Make an SFTP realpath request"""
 
-        return self._make_request(FXP_REALPATH, String(path))
+        return (yield from self._make_request(FXP_REALPATH, String(path)))
 
+    @asyncio.coroutine
     def readlink(self, path):
         """Make an SFTP readlink request"""
 
-        return self._make_request(FXP_READLINK, String(path))
+        return (yield from self._make_request(FXP_READLINK, String(path)))
 
+    @asyncio.coroutine
     def symlink(self, oldpath, newpath):
         """Make an SFTP symlink request"""
 
@@ -1099,22 +1123,26 @@ class SFTPClientHandler(SFTPHandler):
         else:
             args = String(newpath) + String(oldpath)
 
-        return self._make_request(FXP_SYMLINK, args)
+        return (yield from self._make_request(FXP_SYMLINK, args))
 
+    @asyncio.coroutine
     def link(self, oldpath, newpath):
         """Make an SFTP link request"""
 
         if self._supports_hardlink:
-            return self._make_request(b'hardlink@openssh.com',
-                                      String(oldpath), String(newpath))
+            return (yield from self._make_request(b'hardlink@openssh.com',
+                                                  String(oldpath),
+                                                  String(newpath)))
         else:
             raise SFTPError(FX_OP_UNSUPPORTED, 'link not supported')
 
+    @asyncio.coroutine
     def fsync(self, handle):
         """Make an SFTP fsync request"""
 
         if self._supports_fsync:
-            return self._make_request(b'fsync@openssh.com', String(handle))
+            return (yield from self._make_request(b'fsync@openssh.com',
+                                                  String(handle)))
         else:
             raise SFTPError(FX_OP_UNSUPPORTED, 'fsync not supported')
 
@@ -2484,6 +2512,7 @@ class SFTPClient:
         newpath = self.compose_path(newpath)
         yield from self._handler.rename(oldpath, newpath)
 
+    @asyncio.coroutine
     def posix_rename(self, oldpath, newpath):
         """Rename a remote file, directory, or link with POSIX semantics
 
