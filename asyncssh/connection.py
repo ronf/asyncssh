@@ -309,6 +309,18 @@ def _select_algs(alg_type, algs, possible_algs, none_value=None):
         raise ValueError('No %s algorithms selected' % alg_type)
 
 
+def _validate_algs(kex_algs, enc_algs, mac_algs, cmp_algs):
+    """Validate requested algorithms"""
+
+    kex_algs = _select_algs('key exchange', kex_algs, get_kex_algs())
+    enc_algs = _select_algs('encryption', enc_algs, get_encryption_algs())
+    mac_algs = _select_algs('MAC', mac_algs, get_mac_algs())
+    cmp_algs = _select_algs('compression', cmp_algs,
+                            get_compression_algs(), b'none')
+
+    return kex_algs, enc_algs, mac_algs, cmp_algs
+
+
 class SSHConnection(SSHPacketHandler):
     """Parent class for SSH connections"""
 
@@ -359,6 +371,11 @@ class SSHConnection(SSHPacketHandler):
         self._next_decompressor = None
         self._next_decompress_after_auth = None
 
+        self._kex_algs = kex_algs
+        self._enc_algs = encryption_algs
+        self._mac_algs = mac_algs
+        self._cmp_algs = compression_algs
+
         self._kex = None
         self._kexinit_sent = False
         self._kex_complete = False
@@ -397,13 +414,6 @@ class SSHConnection(SSHPacketHandler):
         self._local_listeners = {}
 
         self._close_event = asyncio.Event()
-
-        self._kex_algs = _select_algs('key exchange', kex_algs, get_kex_algs())
-        self._enc_algs = _select_algs('encryption', encryption_algs,
-                                      get_encryption_algs())
-        self._mac_algs = _select_algs('MAC', mac_algs, get_mac_algs())
-        self._cmp_algs = _select_algs('compression', compression_algs,
-                                      get_compression_algs(), b'none')
 
         self._server_host_key_algs = []
 
@@ -3991,6 +4001,9 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
                                    compression_algs, rekey_bytes,
                                    rekey_seconds, auth_waiter)
 
+    kex_algs, encryption_algs, mac_algs, compression_algs = \
+        _validate_algs(kex_algs, encryption_algs, mac_algs, compression_algs)
+
     if not client_factory:
         client_factory = SSHClient
 
@@ -4168,15 +4181,6 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
 
     """
 
-    if not server_factory:
-        server_factory = SSHServer
-
-    if sftp_factory is True:
-        sftp_factory = SFTPServer
-
-    if not loop:
-        loop = asyncio.get_event_loop()
-
     def conn_factory():
         """Return an SSH server connection handler"""
 
@@ -4188,6 +4192,18 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
                                    session_encoding, sftp_factory, window,
                                    max_pktsize, rekey_bytes, rekey_seconds,
                                    login_timeout)
+
+    kex_algs, encryption_algs, mac_algs, compression_algs = \
+        _validate_algs(kex_algs, encryption_algs, mac_algs, compression_algs)
+
+    if not server_factory:
+        server_factory = SSHServer
+
+    if sftp_factory is True:
+        sftp_factory = SFTPServer
+
+    if not loop:
+        loop = asyncio.get_event_loop()
 
     return (yield from loop.create_server(conn_factory, host, port,
                                           family=family, flags=flags,
