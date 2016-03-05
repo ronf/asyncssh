@@ -196,7 +196,7 @@ def _load_private_keypair(key, passphrase=None):
     if isinstance(key, SSHKeyPair):
         return key
     elif key:
-        return SSHLocalKeyPair(_load_private_key(key, passphrase))
+        return SSHLocalKeyPair(*_load_private_key(key, passphrase))
     else:
         return None
 
