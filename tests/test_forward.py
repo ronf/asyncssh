@@ -309,13 +309,12 @@ class _TestForwarding(ServerTestCase):
         with (yield from self.connect()) as conn:
             waiter = asyncio.Future(loop=self.loop)
 
-            listener = yield from conn.start_server(handler_factory, 'open', 0)
+            yield from conn.start_server(handler_factory, 'open', 0)
 
             reader, writer = yield from waiter
             yield from self._check_echo_line(reader, writer)
 
-            listener.close()
-            yield from listener.wait_closed()
+            # Clean up the listener during connection close
 
         yield from conn.wait_closed()
 

@@ -445,20 +445,16 @@ class SSHConnection(SSHPacketHandler):
             self._auth.cancel()
             self._auth = None
 
-        if self._channels:
-            for chan in list(self._channels.values()):
-                chan.process_connection_close(exc)
+        for chan in list(self._channels.values()):
+            chan.process_connection_close(exc)
 
-        if self._local_listeners:
-            for listener in self._local_listeners.values():
-                listener.close()
+        for listener in self._local_listeners.values():
+            listener.close()
 
-        if self._global_request_waiters:
-            for waiter in self._global_request_waiters:
-                if not waiter.cancelled(): # pragma: no branch
-                    waiter.set_result((MSG_REQUEST_FAILURE, SSHPacket(b'')))
+        while self._global_request_waiters:
+            self._process_global_response(MSG_REQUEST_FAILURE, SSHPacket(b''))
 
-        if self._owner:
+        if self._owner: # pragma: no branch
             self._owner.connection_lost(exc)
             self._owner = None
 
@@ -583,18 +579,17 @@ class SSHConnection(SSHPacketHandler):
     def data_received(self, data):
         """Handle incoming data on the connection"""
 
-        if data:
-            self._inpbuf += data
+        self._inpbuf += data
 
-            # pylint: disable=broad-except
-            try:
-                while self._inpbuf and self._recv_handler():
-                    pass
-            except DisconnectError as exc:
-                self._send_disconnect(exc.code, exc.reason, exc.lang)
-                self._force_close(exc)
-            except Exception:
-                self.internal_error()
+        # pylint: disable=broad-except
+        try:
+            while self._inpbuf and self._recv_handler():
+                pass
+        except DisconnectError as exc:
+            self._send_disconnect(exc.code, exc.reason, exc.lang)
+            self._force_close(exc)
+        except Exception:
+            self.internal_error()
 
     def eof_received(self):
         """Handle an incoming end of file on the connection"""
@@ -1124,6 +1119,9 @@ class SSHConnection(SSHPacketHandler):
     @asyncio.coroutine
     def _make_global_request(self, request, *args):
         """Send a global request and wait for the response"""
+
+        if not self._transport:
+            return MSG_REQUEST_FAILURE, SSHPacket(b'')
 
         waiter = asyncio.Future(loop=self._loop)
         self._global_request_waiters.append(waiter)

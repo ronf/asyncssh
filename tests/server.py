@@ -90,7 +90,7 @@ class _EchoSession(asyncssh.SSHServerSession):
         self._chan.close()
 
 
-class _EchoPortListener:
+class _EchoPortListener(asyncssh.SSHListener):
     """A TCP listener which opens a connection that echoes data"""
 
     def __init__(self, conn):
@@ -106,20 +106,19 @@ class _EchoPortListener:
         reader, writer = yield from self._conn.open_connection('open', 65535)
         yield from echo(reader, writer)
 
-    def get_port(self):
-        """Return the port number being listened on"""
-
-        # pylint: disable=no-self-use
-
-        return 65535
-
     def close(self):
         """Stop listening for new connections"""
 
         pass
 
+    @asyncio.coroutine
+    def wait_closed(self):
+        """Wait for the listener to close"""
 
-class _EchoPathListener:
+        pass # pragma: no cover
+
+
+class _EchoPathListener(asyncssh.SSHListener):
     """A UNIX domain listener which opens a connection that echoes data"""
 
     def __init__(self, conn):
@@ -139,6 +138,12 @@ class _EchoPathListener:
         """Stop listening for new connections"""
 
         pass
+
+    @asyncio.coroutine
+    def wait_closed(self):
+        """Wait for the listener to close"""
+
+        pass # pragma: no cover
 
 
 @asyncio.coroutine
