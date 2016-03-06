@@ -40,15 +40,10 @@ class _ClientChannel(asyncssh.SSHClientChannel):
         if request == b'env' and args[1] == String('invalid'):
             args = args[:1] + (String(b'\xff'),)
         elif request == b'pty-req':
-            if args[0] == String('invalid'):
-                args = (String(b'\xff'),) + args[1:]
-
             if args[5][-6:-5] == Byte(PTY_OP_PARTIAL):
                 args = args[:5] + (String(args[5][4:-5]),)
             elif args[5][-6:-5] == Byte(PTY_OP_NO_END):
                 args = args[:5] + (String(args[5][4:-6]),)
-        elif request == b'signal' and args[0] == String('invalid'):
-            args = (String(b'\xff'),)
 
         super()._send_request(request, *args, want_reply=want_reply)
 
@@ -574,7 +569,7 @@ class _TestChannel(ServerTestCase):
         with patch('asyncssh.connection.SSHClientChannel', _ClientChannel):
             with (yield from self.connect()) as conn:
                 with self.assertRaises(asyncssh.DisconnectError):
-                    yield from _create_session(conn, term_type='invalid')
+                    yield from _create_session(conn, term_type=b'\xff')
 
             yield from conn.wait_closed()
 
@@ -726,7 +721,7 @@ class _TestChannel(ServerTestCase):
             with (yield from self.connect()) as conn:
                 chan, session = yield from _create_session(conn, 'signals')
 
-                chan.send_signal('invalid')
+                chan.send_signal(b'\xff')
                 chan.write('\n')
                 yield from chan.wait_closed()
                 self.assertEqual(session.exit_status, None)
@@ -974,6 +969,19 @@ class _TestChannel(ServerTestCase):
             chan, _ = yield from _create_session(conn, 'request_after_close')
 
             yield from chan.wait_closed()
+
+        yield from conn.wait_closed()
+
+    @asynctest
+    def test_late_auth_banner(self):
+        """Test server sending authentication banner after auth completes"""
+
+        with (yield from self.connect()) as conn:
+            chan, session = yield from _create_session(conn,
+                                                       'late_auth_banner')
+
+            yield from chan.wait_closed()
+            self.assertEqual(session.exit_status, 1)
 
         yield from conn.wait_closed()
 

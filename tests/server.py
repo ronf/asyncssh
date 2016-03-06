@@ -90,6 +90,57 @@ class _EchoSession(asyncssh.SSHServerSession):
         self._chan.close()
 
 
+class _EchoPortListener:
+    """A TCP listener which opens a connection that echoes data"""
+
+    def __init__(self, conn):
+        self._conn = conn
+
+        conn.create_task(self._open_connection())
+
+    @asyncio.coroutine
+    def _open_connection(self):
+        """Open a forwarded connection that echoes data"""
+
+        yield from asyncio.sleep(0.1)
+        reader, writer = yield from self._conn.open_connection('open', 65535)
+        yield from echo(reader, writer)
+
+    def get_port(self):
+        """Return the port number being listened on"""
+
+        # pylint: disable=no-self-use
+
+        return 65535
+
+    def close(self):
+        """Stop listening for new connections"""
+
+        pass
+
+
+class _EchoPathListener:
+    """A UNIX domain listener which opens a connection that echoes data"""
+
+    def __init__(self, conn):
+        self._conn = conn
+
+        conn.create_task(self._open_connection())
+
+    @asyncio.coroutine
+    def _open_connection(self):
+        """Open a forwarded connection that echoes data"""
+
+        yield from asyncio.sleep(0.1)
+        reader, writer = yield from self._conn.open_unix_connection('open')
+        yield from echo(reader, writer)
+
+    def close(self):
+        """Stop listening for new connections"""
+
+        pass
+
+
 @asyncio.coroutine
 def _pause(reader, writer):
     """Sleep to allow buffered data to build up and trigger a pause"""
@@ -121,6 +172,7 @@ class _Server(asyncssh.SSHServer):
                 stdout.write(str(len((yield from agent.get_keys()))) + '\n')
             else:
                 stdout.write('fail\n')
+            agent.close()
         elif action == 'conn_close':
             yield from stdin.read(1)
             stdout.write('\n')
@@ -133,6 +185,11 @@ class _Server(asyncssh.SSHServer):
 
             raise asyncssh.DisconnectError(asyncssh.DISC_CONNECTION_LOST,
                                            'Connection lost')
+        elif action == 'late_auth_banner':
+            try:
+                self._conn.send_auth_banner('auth banner')
+            except OSError:
+                stdin.channel.exit(1)
         elif action == 'echo':
             yield from echo(stdin, stdout, stderr)
         elif action == 'invalid_open_confirm':
@@ -238,6 +295,8 @@ class _Server(asyncssh.SSHServer):
         self._conn.send_auth_banner('auth banner')
         self._conn.send_debug('debug')
 
+        self._conn.set_authorized_keys('authorized_keys')
+
         if username == 'error':
             raise RuntimeError('Exception handler test')
 
@@ -295,7 +354,7 @@ class _Server(asyncssh.SSHServer):
             elif username in {'close', 'echo', 'task_error'}:
                 return (channel, _EchoSession())
             elif username == 'non_async':
-                return (channel, self._begin_session_non_async)
+                return self._begin_session_non_async
             elif username != 'no_channels':
                 return (channel, self._begin_session)
             else:
@@ -307,7 +366,7 @@ class _Server(asyncssh.SSHServer):
         if dest_port == 0:
             return True
         elif dest_port == 7:
-            return echo
+            return (self._conn.create_tcp_channel(), echo)
         elif dest_port == 8:
             return _pause
         else:
@@ -316,20 +375,28 @@ class _Server(asyncssh.SSHServer):
     def unix_connection_requested(self, dest_path):
         """Handle a request to create a new UNIX domain connection"""
 
-        if dest_path == '/echo':
-            return echo
+        if dest_path == '':
+            return True
+        elif dest_path == '/echo':
+            return (self._conn.create_unix_channel(), echo)
         else:
             return False
 
     def server_requested(self, listen_host, listen_port):
         """Handle a request to create a new socket listener"""
 
-        return listen_host != 'fail'
+        if listen_host == 'open':
+            return _EchoPortListener(self._conn)
+        else:
+            return listen_host != 'fail'
 
     def unix_server_requested(self, listen_path):
         """Handle a request to create a new UNIX domain listener"""
 
-        return listen_path != 'fail'
+        if listen_path == 'open':
+            return _EchoPathListener(self._conn)
+        else:
+            return listen_path != 'fail'
 
 
 class ServerTestCase(AsyncTestCase):
@@ -351,8 +418,7 @@ class ServerTestCase(AsyncTestCase):
         """Start an SSH server for the tests to use"""
 
         return (yield from asyncssh.create_server(
-            _Server, '', 0, loop=cls.loop, server_host_keys=['skey'],
-            authorized_client_keys='authorized_keys'))
+            _Server, '', 0, server_host_keys=['skey']))
 
     @classmethod
     @asyncio.coroutine
@@ -366,7 +432,8 @@ class ServerTestCase(AsyncTestCase):
         run('chmod 700 .ssh')
         run('cp ckey .ssh/id_rsa')
         run('cp ckey.pub .ssh/id_rsa.pub')
-        run('cp ckey.pub authorized_keys')
+        run('printf "permitopen=\":*\" " > authorized_keys')
+        run('cat ckey.pub >> authorized_keys')
         run('printf "cert-authority " >> authorized_keys')
         run('cat ckey.pub >> authorized_keys')
 
@@ -412,7 +479,7 @@ class ServerTestCase(AsyncTestCase):
                                                       **kwargs))
 
     @asyncio.coroutine
-    def connect(self, known_hosts=(['skey.pub'], [], []), **kwargs):
+    def connect(self, known_hosts=('skey.pub', [], []), **kwargs):
         """Open a connection to the test server"""
 
         return (yield from asyncssh.connect(self._server_addr,

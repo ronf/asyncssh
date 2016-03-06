@@ -16,9 +16,14 @@ import asyncio
 import os
 
 import asyncssh
+from asyncssh.cipher import get_encryption_algs
+from asyncssh.compression import get_compression_algs
+from asyncssh.kex import get_kex_algs
+from asyncssh.mac import get_mac_algs
+from asyncssh.public_key import CERT_TYPE_USER
 
 from .server import ServerTestCase
-from .util import asynctest
+from .util import asynctest, make_certificate
 
 
 class _InternalErrorClient(asyncssh.SSHClient):
@@ -30,6 +35,18 @@ class _InternalErrorClient(asyncssh.SSHClient):
         # pylint: disable=unused-argument
 
         raise RuntimeError('Exception handler test')
+
+
+class _PublicKeyClient(asyncssh.SSHClient):
+    """Test public key client auth"""
+
+    def __init__(self, keylist):
+        self._keylist = keylist
+
+    def public_key_auth_requested(self):
+        """Return a public key to authenticate with"""
+
+        return self._keylist.pop(0) if self._keylist else None
 
 
 class _PWChangeClient(asyncssh.SSHClient):
@@ -45,6 +62,21 @@ class _TestConnection(ServerTestCase):
     """Unit tests for AsyncSSH connection API"""
 
     @asyncio.coroutine
+    def _connect_publickey(self, keylist):
+        """Open a connection to test public key auth"""
+
+        def client_factory():
+            """Return an SSHClient to use to do public key auth"""
+
+            return _PublicKeyClient(keylist)
+
+        conn, _ = yield from self.create_connection(client_factory,
+                                                    username='ckey',
+                                                    client_keys=None)
+
+        return conn
+
+    @asyncio.coroutine
     def _connect_pwchange(self, username, password):
         """Open a connection to test password change"""
 
@@ -54,6 +86,20 @@ class _TestConnection(ServerTestCase):
                                                     client_keys=None)
 
         return conn
+
+    @asynctest
+    def test_connect_failure(self):
+        """Test failure connecting"""
+
+        with self.assertRaises(OSError):
+            yield from asyncssh.connect('0.0.0.1')
+
+    @asynctest
+    def test_connect_failure_without_agent(self):
+        """Test failure connecting with SSH agent disabled"""
+
+        with self.assertRaises(OSError):
+            yield from asyncssh.connect('0.0.0.1', agent_path=None)
 
     @asynctest
     def test_no_auth(self):
@@ -102,7 +148,7 @@ class _TestConnection(ServerTestCase):
         """Test connecting with public key authentication"""
 
         with (yield from self.connect(username='ckey',
-                                      client_keys=['ckey'])) as conn:
+                                      client_keys='ckey')) as conn:
             pass
 
         yield from conn.wait_closed()
@@ -116,6 +162,105 @@ class _TestConnection(ServerTestCase):
             pass
 
         yield from conn.wait_closed()
+
+    @asynctest
+    def test_public_key_auth_sshkeypair(self):
+        """Test client keys passed in as a list of SSHKeyPairs"""
+
+        agent = yield from asyncssh.connect_agent()
+        keylist = yield from agent.get_keys()
+
+        with (yield from self.connect(username='ckey',
+                                      client_keys=keylist)) as conn:
+            pass
+
+        yield from conn.wait_closed()
+
+        agent.close()
+
+    @asynctest
+    def test_public_key_auth_callback(self):
+        """Test connecting with public key authentication using callback"""
+
+        with (yield from self._connect_publickey(['ckey'])) as conn:
+            pass
+
+        yield from conn.wait_closed()
+
+    @asynctest
+    def test_public_key_auth_callback_sshkeypair(self):
+        """Test client key passed in as an SSHKeyPair by callback"""
+
+        agent = yield from asyncssh.connect_agent()
+        keylist = yield from agent.get_keys()
+
+        with (yield from self._connect_publickey(keylist)) as conn:
+            pass
+
+        yield from conn.wait_closed()
+
+        agent.close()
+
+    @asynctest
+    def test_public_key_auth_bytes(self):
+        """Test client key passed in as bytes"""
+
+        with open('ckey', 'rb') as f:
+            ckey = f.read()
+
+        with (yield from self.connect(username='ckey',
+                                      client_keys=[ckey])) as conn:
+            pass
+
+        yield from conn.wait_closed()
+
+    @asynctest
+    def test_public_key_auth_sshkey(self):
+        """Test client key passed in as an SSHKey"""
+
+        ckey = asyncssh.read_private_key('ckey')
+
+        with (yield from self.connect(username='ckey',
+                                      client_keys=[ckey])) as conn:
+            pass
+
+        yield from conn.wait_closed()
+
+    @asynctest
+    def test_public_key_auth_cert(self):
+        """Test client key with certificate"""
+
+        ckey = asyncssh.read_private_key('ckey')
+
+        cert = make_certificate('ssh-rsa-cert-v01@openssh.com',
+                                CERT_TYPE_USER, ckey, ckey, ['ckey'])
+
+        with (yield from self.connect(username='ckey',
+                                      client_keys=[(ckey, cert)])) as conn:
+            pass
+
+        yield from conn.wait_closed()
+
+    @asynctest
+    def test_public_key_auth_missing_cert(self):
+        """Test missing client key"""
+
+        with self.assertRaises(OSError):
+            yield from self.connect(username='ckey',
+                                    client_keys=[('ckey', 'xxx')])
+
+    @asynctest
+    def test_public_key_auth_mismatched_cert(self):
+        """Test client key with mismatched certificate"""
+
+        skey = asyncssh.read_private_key('skey')
+
+        cert = make_certificate('ssh-rsa-cert-v01@openssh.com',
+                                CERT_TYPE_USER, skey, skey, ['skey'])
+
+        with self.assertRaises(ValueError):
+            yield from self.connect(username='ckey',
+                                    client_keys=[('ckey', cert)])
 
     @asynctest
     def test_password_auth(self):
@@ -170,11 +315,147 @@ class _TestConnection(ServerTestCase):
                                     client_keys=None)
 
     @asynctest
+    def test_known_hosts_bytes(self):
+        """Test connecting with known hosts passed in as bytes"""
+
+        with open('skey.pub', 'rb') as f:
+            skey = f.read()
+
+        with (yield from self.connect(username='guest',
+                                      known_hosts=([skey], [], []))) as conn:
+            pass
+
+        yield from conn.wait_closed()
+
+    @asynctest
+    def test_known_hosts_sshkeys(self):
+        """Test connecting with known hosts passed in as SSHKeys"""
+
+        keylist = asyncssh.read_public_key_list('skey.pub')
+
+        with (yield from self.connect(username='guest',
+                                      known_hosts=(keylist, [], []))) as conn:
+            pass
+
+        yield from conn.wait_closed()
+
+    @asynctest
     def test_known_hosts_failure(self):
         """Test failure to match known hosts"""
 
         with self.assertRaises(asyncssh.DisconnectError):
             yield from self.connect(known_hosts=([], [], []))
+
+    @asynctest
+    def test_kex_algs(self):
+        """Test connecting with different key exchange algorithms"""
+
+        for kex in get_kex_algs():
+            kex = kex.decode('ascii')
+            with self.subTest(kex_alg=kex):
+                with (yield from self.connect(username='guest',
+                                              kex_algs=[kex])) as conn:
+                    pass
+
+                yield from conn.wait_closed()
+
+    @asynctest
+    def test_empty_kex_algs(self):
+        """Test connecting with an empty list of key exchange algorithms"""
+
+        with self.assertRaises(ValueError):
+            yield from self.connect(username='guest', kex_algs=[])
+
+    @asynctest
+    def test_invalid_kex_alg(self):
+        """Test connecting with invalid key exchange algorithm"""
+
+        with self.assertRaises(ValueError):
+            yield from self.connect(username='guest', kex_algs=['xxx'])
+
+    @asynctest
+    def test_encryption_algs(self):
+        """Test connecting with different encryption algorithms"""
+
+        for enc in get_encryption_algs():
+            enc = enc.decode('ascii')
+            with self.subTest(encryption_alg=enc):
+                with (yield from self.connect(username='guest',
+                                              encryption_algs=[enc])) as conn:
+                    pass
+
+                yield from conn.wait_closed()
+
+    @asynctest
+    def test_empty_encryption_algs(self):
+        """Test connecting with an empty list of encryption algorithms"""
+
+        with self.assertRaises(ValueError):
+            yield from self.connect(username='guest', encryption_algs=[])
+
+    @asynctest
+    def test_invalid_encryption_alg(self):
+        """Test connecting with invalid encryption algorithm"""
+
+        with self.assertRaises(ValueError):
+            yield from self.connect(username='guest', encryption_algs=['xxx'])
+
+    @asynctest
+    def test_mac_algs(self):
+        """Test connecting with different MAC algorithms"""
+
+        for mac in get_mac_algs():
+            mac = mac.decode('ascii')
+            with self.subTest(mac_alg=mac):
+                with (yield from self.connect(username='guest',
+                                              mac_algs=[mac])) as conn:
+                    pass
+
+                yield from conn.wait_closed()
+
+    @asynctest
+    def test_empty_mac_algs(self):
+        """Test connecting with an empty list of MAC algorithms"""
+
+        with self.assertRaises(ValueError):
+            yield from self.connect(username='guest', mac_algs=[])
+
+    @asynctest
+    def test_invalid_mac_alg(self):
+        """Test connecting with invalid MAC algorithm"""
+
+        with self.assertRaises(ValueError):
+            yield from self.connect(username='guest', mac_algs=['xxx'])
+
+    @asynctest
+    def test_compression_algs(self):
+        """Test connecting with different compression algorithms"""
+
+        for cmp in get_compression_algs():
+            cmp = cmp.decode('ascii')
+            with self.subTest(cmp_alg=cmp):
+                with (yield from self.connect(username='guest',
+                                              compression_algs=[cmp])) as conn:
+                    pass
+
+                yield from conn.wait_closed()
+
+    @asynctest
+    def test_no_compression(self):
+        """Test connecting with compression disabled"""
+
+        with (yield from self.connect(username='guest',
+                                      compression_algs=None)) as conn:
+            pass
+
+        yield from conn.wait_closed()
+
+    @asynctest
+    def test_invalid_cmp_alg(self):
+        """Test connecting with invalid compression algorithm"""
+
+        with self.assertRaises(ValueError):
+            yield from self.connect(username='guest', compression_algs=['xxx'])
 
     @asynctest
     def test_debug(self):

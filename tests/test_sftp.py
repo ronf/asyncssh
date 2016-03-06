@@ -27,6 +27,7 @@ class _TestSFTP(ServerTestCase):
     def start_server(cls):
         """Start an SSH server for the tests to use"""
 
+        # Pass loop explicitly to get coverage on non-default event loops
         return (yield from asyncssh.listen(
             '', 0, loop=cls.loop, server_host_keys=['skey'],
             authorized_client_keys='authorized_keys', sftp_factory=True))
