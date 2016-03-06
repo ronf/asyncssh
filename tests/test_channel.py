@@ -28,9 +28,6 @@ from .util import asynctest, make_certificate
 PTY_OP_PARTIAL = 158
 PTY_OP_NO_END = 159
 
-#import logging
-#logging.basicConfig(level='DEBUG')
-
 class _ClientChannel(asyncssh.SSHClientChannel):
     """Patched SSH client channel for unit testing"""
 
