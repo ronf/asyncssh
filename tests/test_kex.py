@@ -179,7 +179,7 @@ class _TestKex(AsyncTestCase):
         register_kex_alg(b'diffie-hellman-group-exchange-sha1-1024',
                          _KexDHGex, sha1, True, 1024)
         register_kex_alg(b'diffie-hellman-group-exchange-sha1-2048',
-                         _KexDHGex, sha1, True, 1024)
+                         _KexDHGex, sha1, True, 2048)
 
         for size in (b'1024', b'2048'):
             with self.subTest('Old DH group exchange', size=size):
