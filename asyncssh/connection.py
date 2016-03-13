@@ -600,13 +600,13 @@ class SSHConnection(SSHPacketHandler):
         """Handle a request from the transport to pause writing data"""
 
         # Do nothing with this for now
-        pass
+        pass # pragma: no cover
 
     def resume_writing(self):
         """Handle a request from the transport to resume writing data"""
 
         # Do nothing with this for now
-        pass
+        pass # pragma: no cover
 
     def add_channel(self, chan):
         """Add a new channel, returning its channel number"""
@@ -615,7 +615,7 @@ class SSHConnection(SSHPacketHandler):
             raise ChannelOpenError(OPEN_CONNECT_FAILED,
                                    'SSH connection closed')
 
-        while self._next_recv_chan in self._channels:
+        while self._next_recv_chan in self._channels: # pragma: no cover
             self._next_recv_chan = (self._next_recv_chan + 1) & 0xffffffff
 
         recv_chan = self._next_recv_chan
@@ -719,7 +719,7 @@ class SSHConnection(SSHPacketHandler):
 
         pktlen = self._packet[:4]
 
-        if self._recv_cipher:
+        if self._recv_cipher: # pragma: no branch
             if self._recv_mode == 'chacha':
                 nonce = UInt64(self._recv_seq)
                 pktlen = self._recv_cipher.crypt_len(pktlen, nonce)
@@ -741,59 +741,50 @@ class SSHConnection(SSHPacketHandler):
         rest = self._inpbuf[:rem-self._recv_macsize]
 
         if self._recv_mode in ('chacha', 'gcm'):
-            self._packet += rest
+            packet = self._packet + rest
             mac = self._inpbuf[rem-self._recv_macsize:rem]
 
-            hdr = self._packet[:4]
-            self._packet = self._packet[4:]
+            hdr = packet[:4]
+            packet = packet[4:]
 
             if self._recv_mode == 'chacha':
                 nonce = UInt64(self._recv_seq)
-                self._packet = \
-                    self._recv_cipher.verify_and_decrypt(hdr, self._packet,
-                                                         nonce, mac)
+                packet = self._recv_cipher.verify_and_decrypt(hdr, packet,
+                                                              nonce, mac)
             else:
-                self._packet = \
-                    self._recv_cipher.verify_and_decrypt(hdr, self._packet,
-                                                         mac)
+                packet = self._recv_cipher.verify_and_decrypt(hdr, packet, mac)
 
-            if not self._packet:
+            if not packet:
+                raise DisconnectError(DISC_MAC_ERROR,
+                                      'MAC verification failed')
+        elif self._recv_mode == 'etm':
+            packet = self._packet + rest
+            mac = self._inpbuf[rem-self._recv_macsize:rem]
+
+            if not self._recv_mac.verify(UInt32(self._recv_seq) + packet, mac):
                 raise DisconnectError(DISC_MAC_ERROR,
                                       'MAC verification failed')
 
-            payload = self._packet[1:-self._packet[0]]
-        elif self._recv_mode == 'etm':
-            self._packet += rest
-            mac = self._inpbuf[rem-self._recv_macsize:rem]
-
-            if self._recv_mac:
-                if not self._recv_mac.verify(UInt32(self._recv_seq) +
-                                             self._packet, mac):
-                    raise DisconnectError(DISC_MAC_ERROR,
-                                          'MAC verification failed')
-
-            self._packet = self._packet[4:]
-
-            if self._recv_cipher:
-                self._packet = self._recv_cipher.decrypt(self._packet)
-
-            payload = self._packet[1:-self._packet[0]]
+            packet = self._recv_cipher.decrypt(packet[4:])
         else:
             if self._recv_cipher:
                 rest = self._recv_cipher.decrypt(rest)
 
-            self._packet += rest
+            packet = self._packet + rest
             mac = self._inpbuf[rem-self._recv_macsize:rem]
 
             if self._recv_mac:
                 if not self._recv_mac.verify(UInt32(self._recv_seq) +
-                                             self._packet, mac):
+                                             packet, mac):
                     raise DisconnectError(DISC_MAC_ERROR,
                                           'MAC verification failed')
 
-            payload = self._packet[5:-self._packet[4]]
+            packet = packet[4:]
 
         self._inpbuf = self._inpbuf[rem:]
+        self._packet = b''
+
+        payload = packet[1:-packet[0]]
 
         if self._decompressor and (self._auth_complete or
                                    not self._decompress_after_auth):
@@ -804,7 +795,7 @@ class SSHConnection(SSHPacketHandler):
             pkttype = packet.get_byte()
 
             if self._kex and MSG_KEX_FIRST <= pkttype <= MSG_KEX_LAST:
-                if self._ignore_first_kex:
+                if self._ignore_first_kex: # pragma: no cover
                     self._ignore_first_kex = False
                     processed = True
                 else:
@@ -875,15 +866,8 @@ class SSHConnection(SSHPacketHandler):
             packet, mac = self._send_cipher.encrypt_and_sign(hdr, packet)
             packet = hdr + packet
         elif self._send_mode == 'etm':
-            if self._send_cipher:
-                packet = self._send_cipher.encrypt(packet)
-
-            packet = hdr + packet
-
-            if self._send_mac:
-                mac = self._send_mac.sign(UInt32(self._send_seq) + packet)
-            else:
-                mac = b''
+            packet = hdr + self._send_cipher.encrypt(packet)
+            mac = self._send_mac.sign(UInt32(self._send_seq) + packet)
         else:
             packet = hdr + packet
 
