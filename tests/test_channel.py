@@ -970,6 +970,16 @@ class _TestChannel(ServerTestCase):
         yield from conn.wait_closed()
 
     @asynctest
+    def test_add_channel_after_close(self):
+        """Test opening a connection after a close"""
+
+        with (yield from self.connect()) as conn:
+            with self.assertRaises(asyncssh.ChannelOpenError):
+                yield from conn.open_connection('localhost', 9)
+
+        yield from conn.wait_closed()
+
+    @asynctest
     def test_late_auth_banner(self):
         """Test server sending authentication banner after auth completes"""
 

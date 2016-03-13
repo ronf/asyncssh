@@ -374,6 +374,9 @@ class _Server(asyncssh.SSHServer):
             return (self._conn.create_tcp_channel(), echo)
         elif dest_port == 8:
             return _pause
+        elif dest_port == 9:
+            self._conn.close()
+            return (self._conn.create_tcp_channel(), echo)
         else:
             return False
 
@@ -472,7 +475,7 @@ class ServerTestCase(AsyncTestCase):
     # pylint: enable=invalid-name
 
     @asyncio.coroutine
-    def create_connection(self, client_factory,
+    def create_connection(self, client_factory, username='guest',
                           known_hosts=(['skey.pub'], [], []), **kwargs):
         """Create a connection to the test server"""
 
@@ -480,13 +483,14 @@ class ServerTestCase(AsyncTestCase):
                                                       self._server_addr,
                                                       self._server_port,
                                                       loop=self.loop,
+                                                      username=username,
                                                       known_hosts=known_hosts,
                                                       **kwargs))
 
     @asyncio.coroutine
-    def connect(self, known_hosts=('skey.pub', [], []), **kwargs):
+    def connect(self, **kwargs):
         """Open a connection to the test server"""
 
-        return (yield from asyncssh.connect(self._server_addr,
-                                            self._server_port, loop=self.loop,
-                                            known_hosts=known_hosts, **kwargs))
+        conn, _ = yield from self.create_connection(None, **kwargs)
+
+        return conn
