@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2015 by Ron Frederick <ronf@timeheart.net>.
+# Copyright (c) 2013-2016 by Ron Frederick <ronf@timeheart.net>.
 # All rights reserved.
 #
 # This program and the accompanying materials are made available under
@@ -22,10 +22,10 @@ def register_prime_curve(curve_id, p, a, b, point, n):
     """Register an elliptic curve prime domain
 
        This function registers an elliptic curve prime domain by
-       specifying the SSH identifier for the curve, the OID used to
-       identify the curve in PKCS#1 and PKCS#8 private and public keys,
-       and the set of parameters describing the curve, generator point,
-       and order.
+       specifying the SSH identifier for the curve and the set of
+       parameters describing the curve, generator point, and order.
+       This allows EC keys encoded with explicit parameters to be
+       mapped back into their SSH curve IDs.
 
     """
 
