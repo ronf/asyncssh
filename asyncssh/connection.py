@@ -832,7 +832,7 @@ class SSHConnection(SSHPacketHandler):
         if (((pkttype in {MSG_SERVICE_REQUEST, MSG_SERVICE_ACCEPT} or
               pkttype > MSG_KEX_LAST) and not self._kex_complete) or
                 (pkttype == MSG_USERAUTH_BANNER and
-                 not self._auth_in_progress) or
+                 not (self._auth_in_progress or self._auth_complete)) or
                 (pkttype > MSG_USERAUTH_LAST and not self._auth_complete)):
             self._deferred_packets.append(payload)
             return
@@ -1120,7 +1120,7 @@ class SSHConnection(SSHPacketHandler):
 
         _, _, want_reply = self._global_request_queue.pop(0)
 
-        if want_reply:
+        if want_reply: # pragma: no branch
             if result:
                 response = b'' if result is True else result
                 self.send_packet(Byte(MSG_REQUEST_SUCCESS), response)
@@ -1219,7 +1219,8 @@ class SSHConnection(SSHPacketHandler):
             self._next_service = None
             self.send_packet(Byte(MSG_SERVICE_ACCEPT), String(service))
 
-            if self.is_server() and service == _USERAUTH_SERVICE:
+            if (self.is_server() and               # pragma: no branch
+                    service == _USERAUTH_SERVICE):
                 self._auth_in_progress = True
                 self._send_deferred_packets()
         else:
@@ -1237,7 +1238,8 @@ class SSHConnection(SSHPacketHandler):
         if service == self._next_service:
             self._next_service = None
 
-            if self.is_client() and service == _USERAUTH_SERVICE:
+            if (self.is_client() and               # pragma: no branch
+                    service == _USERAUTH_SERVICE):
                 self._auth_in_progress = True
 
                 # This method is only in SSHClientConnection
@@ -1415,11 +1417,10 @@ class SSHConnection(SSHPacketHandler):
 
             self._owner.auth_completed()
 
-            if self._auth_waiter:
-                if not self._auth_waiter.cancelled(): # pragma: no branch
-                    self._auth_waiter.set_result(None)
+            if not self._auth_waiter.cancelled(): # pragma: no branch
+                self._auth_waiter.set_result(None)
 
-                self._auth_waiter = None
+            self._auth_waiter = None
         else:
             raise DisconnectError(DISC_PROTOCOL_ERROR,
                                   'Unexpected userauth response')
@@ -1930,10 +1931,10 @@ class SSHClientConnection(SSHConnection):
 
     """
 
-    def __init__(self, client_factory, loop, host, port, known_hosts,
-                 username, password, client_keys, agent, agent_path,
-                 kex_algs, encryption_algs, mac_algs, compression_algs,
-                 rekey_bytes, rekey_seconds, auth_waiter):
+    def __init__(self, client_factory, loop, kex_algs, encryption_algs,
+                 mac_algs, compression_algs, rekey_bytes, rekey_seconds,
+                 host, port, known_hosts, username, password, client_keys,
+                 agent, agent_path, auth_waiter):
         super().__init__(client_factory, loop, kex_algs, encryption_algs,
                          mac_algs, compression_algs, rekey_bytes,
                          rekey_seconds, server=False)
@@ -1946,6 +1947,7 @@ class SSHClientConnection(SSHConnection):
         self._client_keys = client_keys
         self._agent = agent
         self._agent_path = agent_path
+        self._auth_waiter = auth_waiter
 
         self._server_host_keys = set()
         self._server_ca_keys = set()
@@ -1955,8 +1957,6 @@ class SSHClientConnection(SSHConnection):
 
         self._remote_listeners = {}
         self._dynamic_remote_listeners = {}
-
-        self._auth_waiter = auth_waiter
 
     def _connection_made(self):
         """Handle the opening of a new connection"""
@@ -2107,11 +2107,12 @@ class SSHClientConnection(SSHConnection):
         """Return a password to authenticate with"""
 
         # Only allow password auth if the connection supports encryption
-        # and a MAC.
-        if (not self._send_cipher or
-                (not self._send_mac and
-                 self._send_mode not in ('chacha', 'gcm'))):
-            return None
+        # and a MAC -- Disable this for now: we don't allow null ciphers/macs
+        #
+        # if (not self._send_cipher or
+        #         (not self._send_mac and
+        #          self._send_mode not in ('chacha', 'gcm'))):
+        #     return None
 
         if self._password:
             result = self._password
@@ -2155,12 +2156,13 @@ class SSHClientConnection(SSHConnection):
 
         """
 
-        # Only allow keyboard interactive auth if the connection supports
-        # encryption and a MAC.
-        if (not self._send_cipher or
-                (not self._send_mac and
-                 self._send_mode not in ('chacha', 'gcm'))):
-            return None
+        # Only allow password auth if the connection supports encryption
+        # and a MAC -- Disable this for now: we don't allow null ciphers/macs
+        #
+        # if (not self._send_cipher or
+        #         (not self._send_mac and
+        #          self._send_mode not in ('chacha', 'gcm'))):
+        #     return None
 
         result = self._owner.kbdint_auth_requested()
 
@@ -2185,10 +2187,7 @@ class SSHClientConnection(SSHConnection):
                 # Silently drop any empty challenges used to print messages
                 result = []
             elif len(prompts) == 1 and 'password' in prompts[0][0].lower():
-                password = self.password_auth_requested()
-
-                if asyncio.iscoroutine(password):
-                    password = yield from password
+                password = yield from self.password_auth_requested()
 
                 result = [password] if password is not None else None
             else:
@@ -2912,15 +2911,18 @@ class SSHServerConnection(SSHConnection):
 
     """
 
-    def __init__(self, server_factory, loop, server_host_keys, passphrase,
-                 authorized_client_keys, kex_algs, encryption_algs, mac_algs,
-                 compression_algs, allow_pty, agent_forwarding,
-                 session_factory, session_encoding, sftp_factory, window,
-                 max_pktsize, rekey_bytes, rekey_seconds, login_timeout):
+    def __init__(self, server_factory, loop, kex_algs, encryption_algs,
+                 mac_algs, compression_algs, rekey_bytes, rekey_seconds,
+                 server_host_keys, authorized_client_keys, allow_pty,
+                 agent_forwarding, session_factory, session_encoding,
+                 sftp_factory, window, max_pktsize, login_timeout):
         super().__init__(server_factory, loop, kex_algs, encryption_algs,
                          mac_algs, compression_algs, rekey_bytes,
                          rekey_seconds, server=True)
 
+        self._server_host_keys = server_host_keys
+        self._server_host_key_algs = server_host_keys.keys()
+        self._client_keys = authorized_client_keys
         self._allow_pty = allow_pty
         self._agent_forwarding = agent_forwarding
         self._agent_forwarding_enabled = False
@@ -2935,25 +2937,6 @@ class SSHServerConnection(SSHConnection):
                                                 self._login_timer_callback)
         else:
             self._login_timer = None
-
-        server_host_keys = _load_private_keypair_list(server_host_keys,
-                                                      passphrase)
-
-        self._server_host_keys = OrderedDict()
-
-        for keypair in server_host_keys:
-            if keypair.algorithm in self._server_host_keys:
-                raise ValueError('Multiple keys of type %s found' %
-                                 keypair.algorithm.decode('ascii'))
-
-            self._server_host_keys[keypair.algorithm] = keypair
-
-        if not self._server_host_keys:
-            raise ValueError('No server host keys provided')
-
-        self._server_host_key_algs = self._server_host_keys.keys()
-
-        self._client_keys = _load_authorized_keys(authorized_client_keys)
 
         self._server_host_key = None
         self._key_options = {}
@@ -2978,9 +2961,8 @@ class SSHServerConnection(SSHConnection):
 
         self._login_timer = None
 
-        if not self._auth_complete:
-            self.connection_lost(DisconnectError(DISC_CONNECTION_LOST,
-                                                 'Login timeout expired'))
+        self.connection_lost(DisconnectError(DISC_CONNECTION_LOST,
+                                             'Login timeout expired'))
 
     def _connection_made(self):
         """Handle the opening of a new connection"""
@@ -3976,21 +3958,20 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
     def conn_factory():
         """Return an SSH client connection handler"""
 
-        return SSHClientConnection(client_factory, loop, host, port,
+        return SSHClientConnection(client_factory, loop, kex_algs,
+                                   encryption_algs, mac_algs, compression_algs,
+                                   rekey_bytes, rekey_seconds, host, port,
                                    known_hosts, username, password,
-                                   client_keys, agent, agent_path,
-                                   kex_algs, encryption_algs, mac_algs,
-                                   compression_algs, rekey_bytes,
-                                   rekey_seconds, auth_waiter)
-
-    kex_algs, encryption_algs, mac_algs, compression_algs = \
-        _validate_algs(kex_algs, encryption_algs, mac_algs, compression_algs)
+                                   client_keys, agent, agent_path, auth_waiter)
 
     if not client_factory:
         client_factory = SSHClient
 
     if not loop:
         loop = asyncio.get_event_loop()
+
+    kex_algs, encryption_algs, mac_algs, compression_algs = \
+        _validate_algs(kex_algs, encryption_algs, mac_algs, compression_algs)
 
     if username is None:
         username = getpass.getuser()
@@ -4166,17 +4147,14 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
     def conn_factory():
         """Return an SSH server connection handler"""
 
-        return SSHServerConnection(server_factory, loop, server_host_keys,
-                                   passphrase, authorized_client_keys,
-                                   kex_algs, encryption_algs, mac_algs,
-                                   compression_algs, allow_pty,
-                                   agent_forwarding, session_factory,
-                                   session_encoding, sftp_factory, window,
-                                   max_pktsize, rekey_bytes, rekey_seconds,
+        return SSHServerConnection(server_factory, loop, kex_algs,
+                                   encryption_algs, mac_algs, compression_algs,
+                                   rekey_bytes, rekey_seconds,
+                                   server_host_keys, authorized_client_keys,
+                                   allow_pty, agent_forwarding,
+                                   session_factory, session_encoding,
+                                   sftp_factory, window, max_pktsize,
                                    login_timeout)
-
-    kex_algs, encryption_algs, mac_algs, compression_algs = \
-        _validate_algs(kex_algs, encryption_algs, mac_algs, compression_algs)
 
     if not server_factory:
         server_factory = SSHServer
@@ -4186,6 +4164,25 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
 
     if not loop:
         loop = asyncio.get_event_loop()
+
+    kex_algs, encryption_algs, mac_algs, compression_algs = \
+        _validate_algs(kex_algs, encryption_algs, mac_algs, compression_algs)
+
+    server_keys = _load_private_keypair_list(server_host_keys, passphrase)
+
+    if not server_keys:
+        raise ValueError('No server host keys provided')
+
+    server_host_keys = OrderedDict()
+
+    for keypair in server_keys:
+        if keypair.algorithm in server_host_keys:
+            raise ValueError('Multiple keys of type %s found' %
+                             keypair.algorithm.decode('ascii'))
+
+        server_host_keys[keypair.algorithm] = keypair
+
+    authorized_client_keys = _load_authorized_keys(authorized_client_keys)
 
     return (yield from loop.create_server(conn_factory, host, port,
                                           family=family, flags=flags,
@@ -4224,7 +4221,7 @@ def connect(host, port=_DEFAULT_PORT, **kwargs):
 
 
 @asyncio.coroutine
-def listen(host, port=_DEFAULT_PORT, *, server_host_keys, **kwargs):
+def listen(host=None, port=_DEFAULT_PORT, *, server_host_keys, **kwargs):
     """Start an SSH server
 
        This function is a coroutine wrapper around :func:`create_server`
