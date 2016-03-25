@@ -21,6 +21,7 @@ import stat
 import time
 
 # pylint: disable=ungrouped-imports
+from asyncio import FIRST_COMPLETED
 from collections import OrderedDict
 from fnmatch import fnmatch
 from os import SEEK_SET, SEEK_CUR, SEEK_END
@@ -52,7 +53,8 @@ from .packet import Byte, String, UInt32, UInt64, PacketDecodeError, SSHPacket
 # pylint: enable=ungrouped-imports
 
 _SFTP_VERSION = 3
-_SFTP_BLOCK_SIZE = 8192
+_SFTP_BLOCK_SIZE = 16384
+_MAX_SFTP_REQUESTS = 128
 
 
 def _get_user_name(uid):
@@ -415,6 +417,63 @@ class _LocalFile:
         """Close the local file"""
 
         self._file.close()
+
+
+class _SFTPFileCopier:
+    """SFTP file copier
+
+       This class parforms an SFTP file copy, initiating multiple
+       read and write requests to copy chunks of the file in parallel.
+
+    """
+
+    def __init__(self):
+        self._src = None
+        self._dst = None
+        self._bytes_left = 0
+        self._offset = 0
+        self._pending = set()
+
+    @asyncio.coroutine
+    def _copy_block(self, offset, size):
+        """Copy the next block of the file"""
+
+        data = yield from self._src.read(size, offset=offset)
+        if not data:
+            return
+
+        yield from self._dst.write(data, offset=offset)
+
+    def _copy_blocks(self):
+        """Create parallel requests to copy blocks from one file to another"""
+
+        while self._bytes_left and len(self._pending) < _MAX_SFTP_REQUESTS:
+            size = min(self._bytes_left, _SFTP_BLOCK_SIZE)
+
+            task = asyncio.Task(self._copy_block(self._offset, size))
+            self._pending.add(task)
+
+            self._offset += size
+            self._bytes_left -= size
+
+    @asyncio.coroutine
+    def copy(self, srcfs, dstfs, srcpath, dstpath, size):
+        """Copy a file"""
+
+        with (yield from srcfs.open(srcpath, 'rb')) as self._src:
+            with (yield from dstfs.open(dstpath, 'wb')) as self._dst:
+                self._bytes_left = size
+                self._copy_blocks()
+
+                try:
+                    while self._pending:
+                        _, self._pending = yield from asyncio.wait(
+                            self._pending, return_when=FIRST_COMPLETED)
+
+                        self._copy_blocks()
+                finally:
+                    for task in self._pending:
+                        task.cancel()
 
 
 class SFTPError(Error):
@@ -1708,14 +1767,8 @@ class SFTPClient:
                 targetpath = yield from srcfs.readlink(srcpath)
                 yield from dstfs.symlink(targetpath, dstpath)
             else:
-                with (yield from srcfs.open(srcpath, 'rb')) as src:
-                    with (yield from dstfs.open(dstpath, 'wb')) as dst:
-                        while True:
-                            data = yield from src.read(_SFTP_BLOCK_SIZE)
-                            if not data:
-                                break
-
-                            yield from dst.write(data)
+                yield from _SFTPFileCopier().copy(srcfs, dstfs, srcpath,
+                                                  dstpath, srcattrs.size)
 
             if preserve:
                 yield from dstfs.setstat(
