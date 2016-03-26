@@ -1440,6 +1440,7 @@ class SSHTCPChannel(SSHForwardChannel):
                   orig_host, orig_port):
         """Open a TCP channel"""
 
+        self._extra['peername'] = None
         self._extra['local_peername'] = (orig_host, orig_port)
         self._extra['remote_peername'] = (host, port)
 
