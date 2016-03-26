@@ -576,7 +576,12 @@ class SSHConnection(SSHPacketHandler):
         logger.debug('Uncaught exception', exc_info=exc_info)
         self._force_close(exc_info[1])
 
-    def data_received(self, data):
+    def session_started(self):
+        """Handle session start when opening tunneled SSH connection"""
+
+        pass
+
+    def data_received(self, data, datatype=None):
         """Handle incoming data on the connection"""
 
         self._inpbuf += data
@@ -3819,11 +3824,11 @@ class SSHServerConnection(SSHConnection):
 
 @asyncio.coroutine
 def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
-                      loop=None, family=0, flags=0, local_addr=None,
-                      known_hosts=(), username=None, password=None,
-                      client_keys=(), passphrase=None, agent_path=(),
-                      agent_forwarding=False, kex_algs=(), encryption_algs=(),
-                      mac_algs=(), compression_algs=(),
+                      loop=None, tunnel=None, family=0, flags=0,
+                      local_addr=None, known_hosts=(), username=None,
+                      password=None, client_keys=(), passphrase=None,
+                      agent_path=(), agent_forwarding=False, kex_algs=(),
+                      encryption_algs=(), mac_algs=(), compression_algs=(),
                       rekey_bytes=_DEFAULT_REKEY_BYTES,
                       rekey_seconds=_DEFAULT_REKEY_SECONDS):
     """Create an SSH client connection
@@ -3869,6 +3874,11 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
        :param loop: (optional)
            The event loop to use when creating the connection. If not
            specified, the default event loop is used.
+       :param tunnel: (optional)
+           An existing SSH client connection that this new connection should
+           be tunneled over. If set, a direct TCP/IP tunnel will be opened
+           over this connection to the requested host and port rather than
+           connecting directly via TCP.
        :param family: (optional)
            The address family to use when creating the socket. By default,
            the address family is automatically selected based on the host.
@@ -3939,6 +3949,7 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
        :param int rekey_seconds: (optional)
            The maximum time in seconds before the SSH session key is
            renegotiated. This defaults to 1 hour.
+       :type tunnel: :class:`SSHClientConnection`
        :type family: ``socket.AF_UNSPEC``, ``socket.AF_INET``, or
                      ``socket.AF_INET6``
        :type flags: flags to pass to :meth:`getaddrinfo() <socket.getaddrinfo>`
@@ -4010,9 +4021,14 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
 
     # pylint: disable=broad-except
     try:
-        _, conn = yield from loop.create_connection(conn_factory, host, port,
-                                                    family=family, flags=flags,
-                                                    local_addr=local_addr)
+        if tunnel:
+            _, conn = yield from tunnel.create_connection(conn_factory, host,
+                                                          port)
+        else:
+            _, conn = yield from loop.create_connection(conn_factory, host,
+                                                        port, family=family,
+                                                        flags=flags,
+                                                        local_addr=local_addr)
     except Exception:
         if agent:
             agent.close()
