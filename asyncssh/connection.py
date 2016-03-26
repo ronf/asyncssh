@@ -584,6 +584,8 @@ class SSHConnection(SSHPacketHandler):
     def data_received(self, data, datatype=None):
         """Handle incoming data on the connection"""
 
+        # pylint: disable=unused-argument
+
         self._inpbuf += data
 
         # pylint: disable=broad-except
