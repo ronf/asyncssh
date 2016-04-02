@@ -2782,6 +2782,37 @@ class SSHClientConnection(SSHConnection):
                                                    *args, **kwargs))
 
     @asyncio.coroutine
+    def create_ssh_connection(self, client_factory, host, port=_DEFAULT_PORT,
+                              *args, **kwargs):
+        """Create a tunneled SSH client connection
+
+           This method is a coroutine which can be called to open an
+           SSH client connection to the requested host and port tunneled
+           inside this already established connection. It takes all the
+           same arguments as :func:`create_connection` but requests
+           that the upstream SSH server open the connection rather than
+           connecting directly.
+
+        """
+
+        return (yield from create_connection(client_factory, host, port,
+                                             *args, tunnel=self, **kwargs))
+
+    @asyncio.coroutine
+    def connect_ssh(self, host, port=_DEFAULT_PORT, *args, **kwargs):
+        """Make a tunneled SSH client connection
+
+           This method is a coroutine which can be called to open an
+           SSH client connection to the requested host and port tunneled
+           inside this already established connection. It takes all the
+           same arguments as :func:`connect` but requests that the upstream
+           SSH server open the connection rather than connecting directly.
+
+        """
+
+        return (yield from connect(host, port, *args, tunnel=self, **kwargs))
+
+    @asyncio.coroutine
     def forward_remote_port(self, listen_host, listen_port,
                             dest_host, dest_port):
         """Set up remote port forwarding

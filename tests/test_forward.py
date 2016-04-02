@@ -260,11 +260,27 @@ class _TestTCPForwarding(_CheckForwarding):
         yield from self._check_echo_line(reader, writer, delay=delay)
 
     @asynctest
-    def test_ssh_tunnel(self):
-        """Test opening a tunneled SSH connection"""
+    def test_ssh_create_tunnel(self):
+        """Test creating a tunneled SSH connection"""
 
         with (yield from self.connect()) as conn:
-            with (yield from self.connect(tunnel=conn)) as conn2:
+            conn2, _ = yield from conn.create_ssh_connection(
+                None, self._server_addr, self._server_port)
+
+            with conn2:
+                yield from self._check_connection(conn2)
+
+            yield from conn2.wait_closed()
+
+        yield from conn.wait_closed()
+
+    @asynctest
+    def test_ssh_connect_tunnel(self):
+        """Test connecting a tunneled SSH connection"""
+
+        with (yield from self.connect()) as conn:
+            with (yield from conn.connect_ssh(self._server_addr,
+                                              self._server_port)) as conn2:
                 yield from self._check_connection(conn2)
 
             yield from conn2.wait_closed()

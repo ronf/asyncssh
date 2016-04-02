@@ -239,6 +239,8 @@ SSHClientConnection
    .. automethod:: open_unix_connection
    .. automethod:: create_unix_server
    .. automethod:: start_unix_server
+   .. automethod:: create_ssh_connection
+   .. automethod:: connect_ssh
    .. automethod:: start_sftp_client
    ====================================== =
 
