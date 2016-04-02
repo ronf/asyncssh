@@ -18,12 +18,22 @@ from unittest.mock import patch
 
 import asyncssh
 
-from asyncssh.constants import DEFAULT_LANG
-from asyncssh.packet import Byte, String
+from asyncssh.channel import SSHAgentChannel, SSHClientChannel
+from asyncssh.constants import DEFAULT_LANG, MSG_USERAUTH_REQUEST
+from asyncssh.constants import MSG_CHANNEL_OPEN_CONFIRMATION
+from asyncssh.constants import MSG_CHANNEL_OPEN_FAILURE
+from asyncssh.constants import MSG_CHANNEL_WINDOW_ADJUST
+from asyncssh.constants import MSG_CHANNEL_DATA
+from asyncssh.constants import MSG_CHANNEL_EXTENDED_DATA
+from asyncssh.constants import MSG_CHANNEL_EOF, MSG_CHANNEL_CLOSE
+from asyncssh.constants import MSG_CHANNEL_SUCCESS
+from asyncssh.packet import Byte, String, UInt32
 from asyncssh.public_key import CERT_TYPE_USER
+from asyncssh.stream import SSHClientStreamSession
+from asyncssh.stream import SSHTCPStreamSession, SSHUNIXStreamSession
 
-from .server import ServerTestCase
-from .util import asynctest, make_certificate
+from .server import Server, ServerTestCase
+from .util import asynctest, echo, make_certificate
 
 PTY_OP_PARTIAL = 158
 PTY_OP_NO_END = 159
@@ -51,7 +61,7 @@ class _ClientChannel(asyncssh.SSHClientChannel):
         yield from self._make_request(request, *args)
 
 
-class _ClientSession:
+class _ClientSession(asyncssh.SSHClientSession):
     """Unit test SSH client session"""
 
     def __init__(self):
@@ -74,30 +84,10 @@ class _ClientSession:
         self.exc = exc
         self._chan = None
 
-    def session_started(self):
-        """Handle the start of a new session"""
-
-        pass
-
     def data_received(self, data, datatype):
         """Handle data from the channel"""
 
         self.recv_buf[datatype].append(data)
-
-    def eof_received(self):
-        """Handle EOF on the channel"""
-
-        pass
-
-    def pause_writing(self):
-        """Handle a request to stop writing to the channel"""
-
-        pass
-
-    def resume_writing(self):
-        """Handle a request to resume writing to the channel"""
-
-        pass
 
     def xon_xoff_requested(self, client_can_do):
         """Handle request to enable/disable XON/XOFF flow control"""
@@ -127,10 +117,299 @@ def _create_session(conn, command=None, *, subsystem=None, **kwargs):
                                            subsystem=subsystem, **kwargs))
 
 
+class _ServerChannel(asyncssh.SSHServerChannel):
+    """Patched SSH server channel class for unit testing"""
+
+    def _send_request(self, request, *args, want_reply=False):
+        """Send a channel request"""
+
+        if request == b'exit-signal':
+            if args[0] == String('invalid'):
+                args = (String(b'\xff'),) + args[1:]
+
+            if args[3] == String('invalid'):
+                args = args[:3] + (String(b'\xff'),)
+
+        super()._send_request(request, *args, want_reply=want_reply)
+
+    def send_packet(self, pkttype, *args):
+        """Send a packet for unit testing (bypassing state checks)"""
+
+        self._send_packet(pkttype, *args)
+
+
+class _EchoServerSession(asyncssh.SSHServerSession):
+    """A shell session which echos data from stdin to stdout/stderr"""
+
+    def __init__(self):
+        self._chan = None
+
+    def connection_made(self, chan):
+        """Handle session open"""
+
+        self._chan = chan
+
+        username = self._chan.get_extra_info('username')
+
+        if username == 'close':
+            self._chan.close()
+        elif username == 'task_error':
+            raise RuntimeError('Exception handler test')
+
+    def shell_requested(self):
+        """Handle shell request"""
+
+        return True
+
+    def data_received(self, data, datatype):
+        """Handle data from the channel"""
+
+        self._chan.write(data[:1])
+        self._chan.writelines([data[1:]])
+        self._chan.write_stderr(data[:1])
+        self._chan.writelines_stderr([data[1:]])
+
+    def eof_received(self):
+        """Handle EOF on the channel"""
+
+        self._chan.write_eof()
+        self._chan.close()
+
+
+class _ChannelServer(Server):
+    """Server for testing the AsyncSSH channel API"""
+
+    def _begin_session(self, stdin, stdout, stderr):
+        """Begin processing a new session"""
+
+        # pylint: disable=too-many-statements
+
+        action = stdin.channel.get_command() or stdin.channel.get_subsystem()
+        if not action:
+            action = 'echo'
+
+        if action == 'echo':
+            yield from echo(stdin, stdout, stderr)
+        elif action == 'conn_close':
+            yield from stdin.read(1)
+            stdout.write('\n')
+            self._conn.close()
+        elif action == 'close':
+            yield from stdin.read(1)
+            stdout.write('\n')
+        elif action == 'agent':
+            agent = yield from asyncssh.connect_agent(self._conn)
+            if agent:
+                stdout.write(str(len((yield from agent.get_keys()))) + '\n')
+                agent.close()
+            else:
+                stdout.channel.exit(1)
+        elif action == 'rejected_agent':
+            chan = SSHAgentChannel(self._conn, asyncio.get_event_loop(),
+                                   None, 1, 32768)
+
+            try:
+                yield from chan.open(SSHUNIXStreamSession)
+            except asyncssh.ChannelOpenError:
+                stdout.channel.exit(1)
+        elif action == 'rejected_session':
+            chan = SSHClientChannel(self._conn, asyncio.get_event_loop(),
+                                    None, 1, 32768)
+
+            try:
+                yield from chan.create(SSHClientStreamSession, None, None,
+                                       {}, None, None, None, False)
+            except asyncssh.ChannelOpenError:
+                stdout.channel.exit(1)
+        elif action == 'rejected_tcpip_direct':
+            chan = self._conn.create_tcp_channel()
+
+            try:
+                yield from chan.connect(SSHTCPStreamSession, '', 0, '', 0)
+            except asyncssh.ChannelOpenError:
+                stdout.channel.exit(1)
+        elif action == 'unknown_tcpip_listener':
+            chan = self._conn.create_tcp_channel()
+
+            try:
+                yield from chan.accept(SSHTCPStreamSession, 'xxx', 0, '', 0)
+            except asyncssh.ChannelOpenError:
+                stdout.channel.exit(1)
+        elif action == 'invalid_tcpip_listener':
+            chan = self._conn.create_tcp_channel()
+
+            try:
+                yield from chan.accept(SSHTCPStreamSession, b'\xff', 0, '', 0)
+            except asyncssh.ChannelOpenError:
+                stdout.channel.exit(1)
+        elif action == 'rejected_unix_direct':
+            chan = self._conn.create_unix_channel()
+
+            try:
+                yield from chan.connect(SSHUNIXStreamSession, '')
+            except asyncssh.ChannelOpenError:
+                stdout.channel.exit(1)
+        elif action == 'unknown_unix_listener':
+            chan = self._conn.create_unix_channel()
+
+            try:
+                yield from chan.accept(SSHUNIXStreamSession, 'xxx')
+            except asyncssh.ChannelOpenError:
+                stdout.channel.exit(1)
+        elif action == 'invalid_unix_listener':
+            chan = self._conn.create_unix_channel()
+
+            try:
+                yield from chan.accept(SSHUNIXStreamSession, b'\xff')
+            except asyncssh.ChannelOpenError:
+                stdout.channel.exit(1)
+        elif action == 'late_auth_banner':
+            try:
+                self._conn.send_auth_banner('auth banner')
+            except OSError:
+                stdin.channel.exit(1)
+        elif action == 'invalid_open_confirm':
+            stdin.channel.send_packet(MSG_CHANNEL_OPEN_CONFIRMATION,
+                                      UInt32(0), UInt32(0), UInt32(0))
+        elif action == 'invalid_open_failure':
+            stdin.channel.send_packet(MSG_CHANNEL_OPEN_FAILURE,
+                                      UInt32(0), String(''), String(''))
+        elif action == 'env':
+            value = stdin.channel.get_environment().get('TEST', '')
+            stdout.write(value + '\n')
+        elif action == 'term':
+            chan = stdin.channel
+            info = str((chan.get_terminal_type(), chan.get_terminal_size(),
+                        chan.get_terminal_mode(asyncssh.PTY_OP_OSPEED)))
+            stdout.write(info + '\n')
+        elif action == 'xon_xoff':
+            stdin.channel.set_xon_xoff(True)
+        elif action == 'no_xon_xoff':
+            stdin.channel.set_xon_xoff(False)
+        elif action == 'signals':
+            try:
+                yield from stdin.readline()
+            except asyncssh.BreakReceived as exc:
+                stdin.channel.exit_with_signal('ABRT', False, str(exc.msec))
+            except asyncssh.SignalReceived as exc:
+                stdin.channel.exit_with_signal('ABRT', False, exc.signal)
+            except asyncssh.TerminalSizeChanged as exc:
+                size = (exc.width, exc.height, exc.pixwidth, exc.pixheight)
+                stdin.channel.exit_with_signal('ABRT', False, str(size))
+        elif action == 'exit_status':
+            stdin.channel.exit(1)
+        elif action == 'closed_status':
+            stdin.channel.close()
+            stdin.channel.exit(1)
+        elif action == 'exit_signal':
+            stdin.channel.exit_with_signal('ABRT', False, 'exit_signal')
+        elif action == 'closed_signal':
+            stdin.channel.close()
+            stdin.channel.exit_with_signal('ABRT', False, 'closed_signal')
+        elif action == 'invalid_exit_signal':
+            stdin.channel.exit_with_signal('invalid')
+        elif action == 'invalid_exit_lang':
+            stdin.channel.exit_with_signal('ABRT', False, '', 'invalid')
+        elif action == 'window_after_close':
+            stdin.channel.send_packet(MSG_CHANNEL_CLOSE)
+            stdin.channel.send_packet(MSG_CHANNEL_WINDOW_ADJUST, UInt32(0))
+        elif action == 'empty_data':
+            stdin.channel.send_packet(MSG_CHANNEL_DATA, String(''))
+        elif action == 'partial_unicode':
+            data = '\xff\xff'.encode('utf-8')
+            stdin.channel.send_packet(MSG_CHANNEL_DATA, String(data[:3]))
+            stdin.channel.send_packet(MSG_CHANNEL_DATA, String(data[3:]))
+        elif action == 'partial_unicode_at_eof':
+            data = '\xff\xff'.encode('utf-8')
+            stdin.channel.send_packet(MSG_CHANNEL_DATA, String(data[:3]))
+        elif action == 'unicode_error':
+            stdin.channel.send_packet(MSG_CHANNEL_DATA, String(b'\xff'))
+        elif action == 'data_past_window':
+            stdin.channel.send_packet(MSG_CHANNEL_DATA,
+                                      String(2*1025*1024*'\0'))
+        elif action == 'data_after_eof':
+            stdin.channel.send_packet(MSG_CHANNEL_EOF)
+            stdout.write('xxx')
+        elif action == 'data_after_close':
+            yield from asyncio.sleep(0.1)
+            stdout.write('xxx')
+        elif action == 'ext_data_after_eof':
+            stdin.channel.send_packet(MSG_CHANNEL_EOF)
+            stdin.channel.write_stderr('xxx')
+        elif action == 'invalid_datatype':
+            stdin.channel.send_packet(MSG_CHANNEL_EXTENDED_DATA,
+                                      UInt32(255), String(''))
+        elif action == 'double_eof':
+            stdin.channel.send_packet(MSG_CHANNEL_EOF)
+            stdin.channel.write_eof()
+        elif action == 'double_close':
+            yield from asyncio.sleep(0.1)
+            stdout.write('xxx')
+            stdin.channel.send_packet(MSG_CHANNEL_CLOSE)
+        elif action == 'request_after_close':
+            stdin.channel.send_packet(MSG_CHANNEL_CLOSE)
+            stdin.channel.exit(1)
+        elif action == 'unexpected_auth':
+            self._conn.send_packet(Byte(MSG_USERAUTH_REQUEST), String('guest'),
+                                   String('ssh-connection'), String('none'))
+        elif action == 'invalid_response':
+            stdin.channel.send_packet(MSG_CHANNEL_SUCCESS)
+        else:
+            stdin.channel.exit(255)
+
+        stdin.channel.close()
+        yield from stdin.channel.wait_closed()
+
+    def begin_auth(self, username):
+        """Handle client authentication request"""
+
+        return username not in {'guest', 'conn_close', 'close',
+                                'echo', 'no_channels', 'task_error'}
+
+    def session_requested(self):
+        """Handle a request to create a new session"""
+
+        username = self._conn.get_extra_info('username')
+
+        with patch('asyncssh.connection.SSHServerChannel', _ServerChannel):
+            channel = self._conn.create_server_channel()
+
+            if username == 'conn_close':
+                self._conn.close()
+                return False
+            elif username in {'close', 'echo', 'task_error'}:
+                return (channel, _EchoServerSession())
+            elif username != 'no_channels':
+                return (channel, self._begin_session)
+            else:
+                return False
+
+
 class _TestChannel(ServerTestCase):
     """Unit tests for AsyncSSH channel API"""
 
     # pylint: disable=too-many-public-methods
+
+    @classmethod
+    @asyncio.coroutine
+    def start_server(cls):
+        """Start an SSH server for the tests to use"""
+
+        return (yield from cls.create_server(
+            _ChannelServer, authorized_client_keys='authorized_keys'))
+
+    @asyncio.coroutine
+    def _check_action(self, command, expected_result):
+        """Run a command on a remote session and check for a specific result"""
+
+        with (yield from self.connect()) as conn:
+            chan, session = yield from _create_session(conn, command)
+
+            yield from chan.wait_closed()
+
+            self.assertEqual(session.exit_status, expected_result)
+
+        yield from conn.wait_closed()
 
     @asyncio.coroutine
     def _check_session(self, conn, command=None, *, subsystem=None,
@@ -459,6 +738,48 @@ class _TestChannel(ServerTestCase):
         yield from conn.wait_closed()
 
     @asynctest
+    def test_rejected_session(self):
+        """Test receiving inbound session request"""
+
+        yield from self._check_action('rejected_session', 1)
+
+    @asynctest
+    def test_rejected_tcpip_direct(self):
+        """Test receiving inbound direct TCP/IP connection"""
+
+        yield from self._check_action('rejected_tcpip_direct', 1)
+
+    @asynctest
+    def test_unknown_tcpip_listener(self):
+        """Test receiving connection on unknown TCP/IP listener"""
+
+        yield from self._check_action('unknown_tcpip_listener', 1)
+
+    @asynctest
+    def test_invalid_tcpip_listener(self):
+        """Test receiving connection on invalid TCP/IP listener path"""
+
+        yield from self._check_action('invalid_tcpip_listener', None)
+
+    @asynctest
+    def test_rejected_unix_direct(self):
+        """Test receiving inbound direct UNIX connection"""
+
+        yield from self._check_action('rejected_unix_direct', 1)
+
+    @asynctest
+    def test_unknown_unix_listener(self):
+        """Test receiving connection on unknown UNIX listener"""
+
+        yield from self._check_action('unknown_unix_listener', 1)
+
+    @asynctest
+    def test_invalid_unix_listener(self):
+        """Test receiving connection on invalid UNIX listener path"""
+
+        yield from self._check_action('invalid_unix_listener', None)
+
+    @asynctest
     def test_agent_forwarding_failure(self):
         """Test failure of SSH agent forwarding"""
 
@@ -474,8 +795,33 @@ class _TestChannel(ServerTestCase):
 
             yield from chan.wait_closed()
 
-            result = ''.join(session.recv_buf[None])
-            self.assertEqual(result, 'fail\n')
+            self.assertEqual(session.exit_status, 1)
+
+        yield from conn.wait_closed()
+
+    @asynctest
+    def test_agent_forwarding_not_offered(self):
+        """Test SSH agent forwarding not offered by client"""
+
+        with (yield from self.connect()) as conn:
+            chan, session = yield from _create_session(conn, 'agent')
+
+            yield from chan.wait_closed()
+
+            self.assertEqual(session.exit_status, 1)
+
+        yield from conn.wait_closed()
+
+    @asynctest
+    def test_agent_forwarding_rejected(self):
+        """Test rejection of SSH agent forwarding by client"""
+
+        with (yield from self.connect()) as conn:
+            chan, session = yield from _create_session(conn, 'rejected_agent')
+
+            yield from chan.wait_closed()
+
+            self.assertEqual(session.exit_status, 1)
 
         yield from conn.wait_closed()
 
@@ -953,6 +1299,9 @@ class _TestChannel(ServerTestCase):
 
         with (yield from self.connect()) as conn:
             chan, _ = yield from _create_session(conn, 'double_close')
+            chan.pause_reading()
+            yield from asyncio.sleep(0.2)
+            chan.resume_reading()
 
             yield from chan.wait_closed()
 
@@ -970,16 +1319,6 @@ class _TestChannel(ServerTestCase):
         yield from conn.wait_closed()
 
     @asynctest
-    def test_add_channel_after_close(self):
-        """Test opening a connection after a close"""
-
-        with (yield from self.connect()) as conn:
-            with self.assertRaises(asyncssh.ChannelOpenError):
-                yield from conn.open_connection('localhost', 9)
-
-        yield from conn.wait_closed()
-
-    @asynctest
     def test_late_auth_banner(self):
         """Test server sending authentication banner after auth completes"""
 
@@ -989,6 +1328,17 @@ class _TestChannel(ServerTestCase):
 
             yield from chan.wait_closed()
             self.assertEqual(session.exit_status, 1)
+
+        yield from conn.wait_closed()
+
+    @asynctest
+    def test_unexpected_userauth_request(self):
+        """Test userauth request sent to client"""
+
+        with (yield from self.connect()) as conn:
+            chan, _ = yield from _create_session(conn, 'unexpected_auth')
+
+            yield from chan.wait_closed()
 
         yield from conn.wait_closed()
 

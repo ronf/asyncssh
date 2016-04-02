@@ -16,20 +16,76 @@ import asyncio
 
 import asyncssh
 
-from .server import ServerTestCase
-from .util import asynctest
+from .server import Server, ServerTestCase
+from .util import asynctest, echo
+
+
+class _StreamServer(Server):
+    """Server for testing the AsyncSSH stream API"""
+
+    def _begin_session(self, stdin, stdout, stderr):
+        """Begin processing a new session"""
+
+        # pylint: disable=no-self-use
+
+        action = stdin.channel.get_command()
+        if not action:
+            action = 'echo'
+
+        if action == 'echo':
+            yield from echo(stdin, stdout, stderr)
+        elif action == 'close':
+            yield from stdin.read(1)
+            stdout.write('\n')
+        elif action == 'disconnect':
+            stdout.write((yield from stdin.read(1)))
+
+            raise asyncssh.DisconnectError(asyncssh.DISC_CONNECTION_LOST,
+                                           'Connection lost')
+        else:
+            stdin.channel.exit(255)
+
+        stdin.channel.close()
+        yield from stdin.channel.wait_closed()
+
+    def _begin_session_non_async(self, stdin, stdout, stderr):
+        """Non-async version of session handler"""
+
+        self._conn.create_task(self._begin_session(stdin, stdout, stderr))
+
+    def begin_auth(self, username):
+        """Handle client authentication request"""
+
+        return False
+
+    def session_requested(self):
+        """Handle a request to create a new session"""
+
+        username = self._conn.get_extra_info('username')
+
+        if username == 'non_async':
+            return self._begin_session_non_async
+        elif username != 'no_channels':
+            return self._begin_session
+        else:
+            return False
 
 
 class _TestStream(ServerTestCase):
     """Unit tests for AsyncSSH stream API"""
 
+    @classmethod
     @asyncio.coroutine
-    def _check_session(self, conn, command=None, *args, subsystem=None,
-                       large_block=False, **kwargs):
+    def start_server(cls):
+        """Start an SSH server for the tests to use"""
+
+        return (yield from cls.create_server(_StreamServer))
+
+    @asyncio.coroutine
+    def _check_session(self, conn, large_block=False):
         """Open a session and test if an input line is echoed back"""
 
-        stdin, stdout, stderr = yield from conn.open_session(
-            command, *args, subsystem=subsystem, **kwargs)
+        stdin, stdout, stderr = yield from conn.open_session()
 
         if large_block:
             data = 4 * [1025*1024*'\0']
@@ -224,5 +280,17 @@ class _TestStream(ServerTestCase):
                              stdout.get_extra_info('connection'))
 
             stdin.close()
+
+        yield from conn.wait_closed()
+
+    @asynctest
+    def test_unknown_action(self):
+        """Test unknown action"""
+
+        with (yield from self.connect()) as conn:
+            stdin, _, _ = yield from conn.open_session('unknown')
+
+            yield from stdin.channel.wait_closed()
+            self.assertEqual(stdin.channel.get_exit_status(), 255)
 
         yield from conn.wait_closed()

@@ -29,7 +29,7 @@ class _TestSFTP(ServerTestCase):
 
         # Pass loop explicitly to get coverage on non-default event loops
         return (yield from asyncssh.listen(
-            '', 0, loop=cls.loop, server_host_keys=['skey'],
+            port=0, loop=cls.loop, server_host_keys=['skey'],
             authorized_client_keys='authorized_keys', sftp_factory=True))
 
     @asyncio.coroutine
