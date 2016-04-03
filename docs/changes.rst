@@ -3,13 +3,46 @@
 Change Log
 ==========
 
+Release 1.5.3 (2 Apr 2016)
+--------------------------
+
+* Added support for opening tunneled SSH connections, where an SSH
+  connection is opened over another SSH connection's direct TCP/IP
+  channel.
+
+* Improve performance of SFTP over high latency connections by having
+  the internal copy method issue multiple read requests in parallel.
+
+* Reworked SFTP to mark all coroutine functions explicitly, to provide
+  better compatibility with the new Python 3.5 "await" syntax.
+
+* Reworked create_connection() and create_server() functions to do
+  argument checking immediately rather than in the SSHConnection
+  constructors, improving error reporting and avoiding a bug in
+  asyncio which can leak socket objects.
+
+* Fixed a hang which could occur when attempting to close an SSH
+  connection with a listener still active.
+
+* Fixed an error related to passing keys in via public_key_auth_requested().
+
+* Fixed a potential leak of an SSHAgentClient object when an error occurs
+  while opening a client connection.
+
+* Fixed some race conditions related to channel and connection closes.
+
+* Fixed some minor documentation issues.
+
+* Continued to expand unit test coverage, completing coverage of the
+  connection module.
+
 Release 1.5.2 (25 Feb 2016)
 ---------------------------
 
-* Fix a bug in UNIX domain socket forwarding introduced in 1.5.1 by the
+* Fixed a bug in UNIX domain socket forwarding introduced in 1.5.1 by the
   TCP_NODELAY change.
 
-* Fix channel code to report when a channel is closed with incomplete
+* Fixed channel code to report when a channel is closed with incomplete
   Unicode data in the receive buffer. This was previously reported
   correctly when EOF was received on a channel, but not when it was
   closed without sending EOF.
