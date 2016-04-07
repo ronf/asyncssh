@@ -15,6 +15,7 @@
 """SFTP handlers"""
 
 import asyncio
+import errno
 import os
 import posixpath
 import stat
@@ -2923,7 +2924,15 @@ class SFTPServerHandler(SFTPHandler):
                       String(DEFAULT_LANG))
         except OSError as exc:
             return_type = FXP_STATUS
-            result = (UInt32(FX_FAILURE) + String(exc.strerror) +
+
+            if exc.errno == errno.ENOENT:
+                code = FX_NO_SUCH_FILE
+            elif exc.errno == errno.EPERM:
+                code = FX_PERMISSION_DENIED
+            else:
+                code = FX_FAILURE
+
+            result = (UInt32(code) + String(exc.strerror) +
                       String(DEFAULT_LANG))
         except Exception as exc: # pragma: no cover
             return_type = FXP_STATUS
