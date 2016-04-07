@@ -2857,7 +2857,7 @@ class SFTPServerHandler(SFTPHandler):
         """Clean up this SFTP server session"""
 
         if self._server:
-            for file_obj in self._file_handles:
+            for file_obj in self._file_handles.values():
                 self._server.close(file_obj)
 
             self._server.exit()
