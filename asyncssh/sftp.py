@@ -15,17 +15,14 @@
 """SFTP handlers"""
 
 import asyncio
+from collections import OrderedDict
 import errno
+from fnmatch import fnmatch
 import os
+from os import SEEK_SET, SEEK_CUR, SEEK_END
 import posixpath
 import stat
 import time
-
-# pylint: disable=ungrouped-imports
-from asyncio import FIRST_COMPLETED
-from collections import OrderedDict
-from fnmatch import fnmatch
-from os import SEEK_SET, SEEK_CUR, SEEK_END
 
 from .constants import DEFAULT_LANG
 
@@ -50,8 +47,6 @@ from .constants import FX_CONNECTION_LOST, FX_OP_UNSUPPORTED
 
 from .misc import Error
 from .packet import Byte, String, UInt32, UInt64, PacketDecodeError, SSHPacket
-
-# pylint: enable=ungrouped-imports
 
 _SFTP_VERSION = 3
 _SFTP_BLOCK_SIZE = 16384
@@ -439,11 +434,8 @@ class _SFTPFileCopier:
     def _copy_block(self, offset, size):
         """Copy the next block of the file"""
 
-        data = yield from self._src.read(size, offset=offset)
-        if not data:
-            return
-
-        yield from self._dst.write(data, offset=offset)
+        data = yield from self._src.read(size, offset)
+        yield from self._dst.write(data, offset)
 
     def _copy_blocks(self):
         """Create parallel requests to copy blocks from one file to another"""
@@ -466,15 +458,20 @@ class _SFTPFileCopier:
                 self._bytes_left = size
                 self._copy_blocks()
 
-                try:
-                    while self._pending:
-                        _, self._pending = yield from asyncio.wait(
-                            self._pending, return_when=FIRST_COMPLETED)
+                while self._pending:
+                    done, self._pending = yield from asyncio.wait(
+                        self._pending, return_when=asyncio.FIRST_COMPLETED)
 
-                        self._copy_blocks()
-                finally:
-                    for task in self._pending:
-                        task.cancel()
+                    exceptions = [task.exception() for task in done
+                                  if task.exception()]
+
+                    if exceptions:
+                        for task in self._pending:
+                            task.cancel()
+
+                        raise exceptions[0]
+
+                    self._copy_blocks()
 
 
 class SFTPError(Error):
