@@ -53,8 +53,12 @@ class ServerTestCase(AsyncTestCase):
 
     @classmethod
     @asyncio.coroutine
-    def create_server(cls, server_factory=(), server_host_keys=(), **kwargs):
+    def create_server(cls, server_factory=(), *, loop=(),
+                      server_host_keys=(), **kwargs):
         """Create an SSH server for the tests to use"""
+
+        if loop is ():
+            loop = cls.loop
 
         if server_factory is ():
             server_factory = Server
@@ -63,7 +67,7 @@ class ServerTestCase(AsyncTestCase):
             server_host_keys = ['skey']
 
         return (yield from asyncssh.create_server(
-            server_factory, port=0,
+            server_factory, port=0, loop=loop,
             server_host_keys=server_host_keys, **kwargs))
 
     @classmethod
@@ -130,14 +134,16 @@ class ServerTestCase(AsyncTestCase):
     # pylint: enable=invalid-name
 
     @asyncio.coroutine
-    def create_connection(self, client_factory, **kwargs):
+    def create_connection(self, client_factory, loop=(), **kwargs):
         """Create a connection to the test server"""
+
+        if loop is ():
+            loop = self.loop
 
         return (yield from asyncssh.create_connection(client_factory,
                                                       self._server_addr,
                                                       self._server_port,
-                                                      loop=self.loop,
-                                                      **kwargs))
+                                                      loop=loop, **kwargs))
 
     @asyncio.coroutine
     def connect(self, **kwargs):

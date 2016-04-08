@@ -171,6 +171,15 @@ class _TestConnection(ServerTestCase):
             yield from conn.wait_closed()
 
     @asynctest
+    def test_connect_no_loop(self):
+        """Test connecting with loop not specified"""
+
+        with (yield from self.connect(loop=None)) as conn:
+            pass
+
+        yield from conn.wait_closed()
+
+    @asynctest
     def test_connect_failure(self):
         """Test failure connecting"""
 
@@ -233,6 +242,15 @@ class _TestConnection(ServerTestCase):
 
         with self.assertRaises(ValueError):
             yield from asyncssh.listen(server_host_keys=['skey', 'skey'])
+
+    @asynctest
+    def test_known_hosts_none(self):
+        """Test connecting with known hosts checking disabled"""
+
+        with (yield from self.connect(known_hosts=None)) as conn:
+            pass
+
+        yield from conn.wait_closed()
 
     @asynctest
     def test_known_hosts_multiple_keys(self):
@@ -787,6 +805,26 @@ class _TestConnectionAbort(ServerTestCase):
 
         with self.assertRaises(asyncssh.DisconnectError):
             yield from self.connect()
+
+
+class _TestServerNoLoop(ServerTestCase):
+    """Unit test for server with no loop specified"""
+
+    @classmethod
+    @asyncio.coroutine
+    def start_server(cls):
+        """Start an SSH server which raises an error during auth"""
+
+        return (yield from cls.create_server(loop=None))
+
+    @asynctest
+    def test_server_no_loop(self):
+        """Test server with no loop specified"""
+
+        with (yield from self.connect()) as conn:
+            pass
+
+        yield from conn.wait_closed()
 
 
 class _TestServerInternalError(ServerTestCase):
