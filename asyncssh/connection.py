@@ -236,6 +236,7 @@ def _load_private_keypair_list(keylist, passphrase=None):
 
         return result
 
+
 def _load_public_key(key):
     """Load a public key
 
@@ -271,6 +272,7 @@ def _load_public_key_list(keylist):
     else:
         return [_load_public_key(key) for key in keylist]
 
+
 def _load_authorized_keys(authorized_keys):
     """Load authorized keys list
 
@@ -285,6 +287,24 @@ def _load_authorized_keys(authorized_keys):
         return read_authorized_keys(authorized_keys)
     else:
         return authorized_keys
+
+
+def _validate_version(version):
+    """Validate requested SSH version"""
+
+    if version is ():
+        from .version import __version__
+
+        version = b'AsyncSSH_' + __version__.encode('ascii')
+    else:
+        if isinstance(version, str):
+            version = version.encode('ascii')
+
+        if b'\n' in version:
+            raise ValueError('Version string must not contain newline')
+
+    return version
+
 
 def _select_algs(alg_type, algs, possible_algs, none_value=None):
     """Select a set of allowed algorithms"""
@@ -324,9 +344,9 @@ def _validate_algs(kex_algs, enc_algs, mac_algs, cmp_algs):
 class SSHConnection(SSHPacketHandler):
     """Parent class for SSH connections"""
 
-    def __init__(self, protocol_factory, loop, kex_algs, encryption_algs,
-                 mac_algs, compression_algs, rekey_bytes, rekey_seconds,
-                 server):
+    def __init__(self, protocol_factory, loop, version, kex_algs,
+                 encryption_algs, mac_algs, compression_algs, rekey_bytes,
+                 rekey_seconds, server):
         self._protocol_factory = protocol_factory
         self._loop = loop
         self._tasks = set()
@@ -339,6 +359,7 @@ class SSHConnection(SSHPacketHandler):
         self._packet = b''
         self._pktlen = 0
 
+        self._version = version
         self._client_version = b''
         self._server_version = b''
         self._client_kexinit = b''
@@ -665,9 +686,7 @@ class SSHConnection(SSHPacketHandler):
     def _send_version(self):
         """Start the SSH handshake"""
 
-        from .version import __version__
-
-        version = b'SSH-2.0-AsyncSSH_' + __version__.encode('ascii')
+        version = b'SSH-2.0-' + self._version
 
         if self.is_client():
             self._client_version = version
@@ -1938,13 +1957,13 @@ class SSHClientConnection(SSHConnection):
 
     """
 
-    def __init__(self, client_factory, loop, kex_algs, encryption_algs,
-                 mac_algs, compression_algs, rekey_bytes, rekey_seconds,
-                 host, port, known_hosts, username, password, client_keys,
-                 agent, agent_path, auth_waiter):
-        super().__init__(client_factory, loop, kex_algs, encryption_algs,
-                         mac_algs, compression_algs, rekey_bytes,
-                         rekey_seconds, server=False)
+    def __init__(self, client_factory, loop, client_version, kex_algs,
+                 encryption_algs, mac_algs, compression_algs, rekey_bytes,
+                 rekey_seconds, host, port, known_hosts, username, password,
+                 client_keys, agent, agent_path, auth_waiter):
+        super().__init__(client_factory, loop, client_version, kex_algs,
+                         encryption_algs, mac_algs, compression_algs,
+                         rekey_bytes, rekey_seconds, server=False)
 
         self._host = host
         self._port = port if port != _DEFAULT_PORT else None
@@ -2949,14 +2968,15 @@ class SSHServerConnection(SSHConnection):
 
     """
 
-    def __init__(self, server_factory, loop, kex_algs, encryption_algs,
-                 mac_algs, compression_algs, rekey_bytes, rekey_seconds,
-                 server_host_keys, authorized_client_keys, allow_pty,
-                 agent_forwarding, session_factory, session_encoding,
-                 sftp_factory, window, max_pktsize, login_timeout):
-        super().__init__(server_factory, loop, kex_algs, encryption_algs,
-                         mac_algs, compression_algs, rekey_bytes,
-                         rekey_seconds, server=True)
+    def __init__(self, server_factory, loop, server_version, kex_algs,
+                 encryption_algs, mac_algs, compression_algs, rekey_bytes,
+                 rekey_seconds, server_host_keys, authorized_client_keys,
+                 allow_pty, agent_forwarding, session_factory,
+                 session_encoding, sftp_factory, window, max_pktsize,
+                 login_timeout):
+        super().__init__(server_factory, loop, server_version, kex_algs,
+                         encryption_algs, mac_algs, compression_algs,
+                         rekey_bytes, rekey_seconds, server=True)
 
         self._server_host_keys = server_host_keys
         self._server_host_key_algs = server_host_keys.keys()
@@ -3860,8 +3880,9 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
                       loop=None, tunnel=None, family=0, flags=0,
                       local_addr=None, known_hosts=(), username=None,
                       password=None, client_keys=(), passphrase=None,
-                      agent_path=(), agent_forwarding=False, kex_algs=(),
-                      encryption_algs=(), mac_algs=(), compression_algs=(),
+                      agent_path=(), agent_forwarding=False,
+                      client_version=(), kex_algs=(), encryption_algs=(),
+                      mac_algs=(), compression_algs=(),
                       rekey_bytes=_DEFAULT_REKEY_BYTES,
                       rekey_seconds=_DEFAULT_REKEY_SECONDS):
     """Create an SSH client connection
@@ -3963,6 +3984,9 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
            Whether or not to allow forwarding of ssh-agent requests from
            processes running on the server. By default, ssh-agent forwarding
            requests from the server are not allowed.
+       :param str client_version: (optional)
+           An ASCII string to advertise to the SSH server as the version of
+           this client, defaulting to ``AsyncSSH`` and its version number.
        :param kex_algs: (optional)
            A list of allowed key exchange algorithms in the SSH handshake,
            taken from :ref:`key exchange algorithms <KexAlgs>`
@@ -4002,17 +4026,20 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
     def conn_factory():
         """Return an SSH client connection handler"""
 
-        return SSHClientConnection(client_factory, loop, kex_algs,
-                                   encryption_algs, mac_algs, compression_algs,
-                                   rekey_bytes, rekey_seconds, host, port,
-                                   known_hosts, username, password,
-                                   client_keys, agent, agent_path, auth_waiter)
+        return SSHClientConnection(client_factory, loop, client_version,
+                                   kex_algs, encryption_algs, mac_algs,
+                                   compression_algs, rekey_bytes,
+                                   rekey_seconds, host, port, known_hosts,
+                                   username, password, client_keys, agent,
+                                   agent_path, auth_waiter)
 
     if not client_factory:
         client_factory = SSHClient
 
     if not loop:
         loop = asyncio.get_event_loop()
+
+    client_version = _validate_version(client_version)
 
     kex_algs, encryption_algs, mac_algs, compression_algs = \
         _validate_algs(kex_algs, encryption_algs, mac_algs, compression_algs)
@@ -4077,7 +4104,7 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
 def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
                   loop=None, family=0, flags=socket.AI_PASSIVE, backlog=100,
                   reuse_address=None, server_host_keys, passphrase=None,
-                  authorized_client_keys=None, kex_algs=(),
+                  authorized_client_keys=None, server_version=(), kex_algs=(),
                   encryption_algs=(), mac_algs=(), compression_algs=(),
                   allow_pty=True, agent_forwarding=True, session_factory=None,
                   session_encoding='utf-8', sftp_factory=None,
@@ -4128,6 +4155,9 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
        :param authorized_client_keys: (optional)
            A list of authorized user and CA public keys which should be
            trusted for certifcate-based client public key authentication.
+       :param str server_version: (optional)
+           An ASCII string to advertise to SSH clients as the version of
+           this server, defaulting to ``AsyncSSH`` and its version number.
        :param kex_algs: (optional)
            A list of allowed key exchange algorithms in the SSH handshake,
            taken from :ref:`key exchange algorithms <KexAlgs>`
@@ -4196,14 +4226,14 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
     def conn_factory():
         """Return an SSH server connection handler"""
 
-        return SSHServerConnection(server_factory, loop, kex_algs,
-                                   encryption_algs, mac_algs, compression_algs,
-                                   rekey_bytes, rekey_seconds,
-                                   server_host_keys, authorized_client_keys,
-                                   allow_pty, agent_forwarding,
-                                   session_factory, session_encoding,
-                                   sftp_factory, window, max_pktsize,
-                                   login_timeout)
+        return SSHServerConnection(server_factory, loop, server_version,
+                                   kex_algs, encryption_algs, mac_algs,
+                                   compression_algs, rekey_bytes,
+                                   rekey_seconds, server_host_keys,
+                                   authorized_client_keys, allow_pty,
+                                   agent_forwarding, session_factory,
+                                   session_encoding, sftp_factory, window,
+                                   max_pktsize, login_timeout)
 
     if not server_factory:
         server_factory = SSHServer
@@ -4213,6 +4243,8 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
 
     if not loop:
         loop = asyncio.get_event_loop()
+
+    server_version = _validate_version(server_version)
 
     kex_algs, encryption_algs, mac_algs, compression_algs = \
         _validate_algs(kex_algs, encryption_algs, mac_algs, compression_algs)
