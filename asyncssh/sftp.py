@@ -3477,10 +3477,17 @@ class SFTPServer:
         if name.attrs.mtime is not None:
             now = time.time()
             mtime = time.localtime(name.attrs.mtime)
+            modtime = time.strftime('%b ', mtime)
+
+            try:
+                modtime += time.strftime('%e', mtime)
+            except ValueError:
+                modtime += time.strftime('%d', mtime)
+
             if now - 365*24*60*60/2 < name.attrs.mtime <= now:
-                modtime = time.strftime('%b %e %H:%M', mtime)
+                modtime += time.strftime(' %H:%M', mtime)
             else:
-                modtime = time.strftime('%b %e  %Y', mtime)
+                modtime += time.strftime('  %Y', mtime)
         else:
             modtime = ''
 
