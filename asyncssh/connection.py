@@ -300,8 +300,13 @@ def _validate_version(version):
         if isinstance(version, str):
             version = version.encode('ascii')
 
-        if b'\n' in version:
-            raise ValueError('Version string must not contain newline')
+        # Version including 'SSH-2.0-' and CRLF must be 255 chars or less
+        if len(version) > 245:
+            raise ValueError('Version string is too long')
+
+        for b in version:
+            if b < 0x20 or b > 0x7e:
+                raise ValueError('Version string must be printable ASCII')
 
     return version
 

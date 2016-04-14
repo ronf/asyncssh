@@ -154,6 +154,29 @@ class _InvalidAuthBannerServer(Server):
         return False
 
 
+class _VersionRecordingClient(asyncssh.SSHClient):
+    """Client for testing custom client version"""
+
+    def __init__(self):
+        self.reported_version = None
+
+    def auth_banner_received(self, msg, lang):
+        """Record the client version reported in the auth banner"""
+
+        self.reported_version = msg
+
+
+class _VersionReportingServer(Server):
+    """Server for testing custom client version"""
+
+    def begin_auth(self, username):
+        """Report the client's version in the auth banner"""
+
+        version = self._conn.get_extra_info('client_version')
+        self._conn.send_auth_banner(version)
+        return False
+
+
 class _TestConnection(ServerTestCase):
     """Unit tests for AsyncSSH connection API"""
 
@@ -879,3 +902,88 @@ class _TestExpiredServerHostCertificate(ServerTestCase):
 
         with self.assertRaises(asyncssh.DisconnectError):
             yield from self.connect(known_hosts=([], ['skey.pub'], []))
+
+
+class _TestCustomClientVersion(ServerTestCase):
+    """Unit test for custom SSH client version"""
+
+    @classmethod
+    @asyncio.coroutine
+    def start_server(cls):
+        """Start an SSH server which sends client version in auth banner"""
+
+        return (yield from cls.create_server(_VersionReportingServer))
+
+    @asyncio.coroutine
+    def _check_client_version(self, version):
+        """Check custom client version"""
+
+        conn, client = \
+            yield from self.create_connection(_VersionRecordingClient,
+                                              client_version=version)
+
+        with conn:
+            self.assertEqual(client.reported_version, 'SSH-2.0-custom')
+
+        yield from conn.wait_closed()
+
+    @asynctest
+    def test_custom_client_version(self):
+        """Test custom client version"""
+
+        yield from self._check_client_version('custom')
+
+    @asynctest
+    def test_custom_client_version_bytes(self):
+        """Test custom client version set as bytes"""
+
+        yield from self._check_client_version(b'custom')
+
+    @asynctest
+    def test_long_client_version(self):
+        """Test client version which is too long"""
+
+        with self.assertRaises(ValueError):
+            yield from self.connect(client_version=246*'a')
+
+    @asynctest
+    def test_nonprintable_client_version(self):
+        """Test client version with non-printable character"""
+
+        with self.assertRaises(ValueError):
+            yield from self.connect(client_version='xxx\0')
+
+
+class _TestCustomServerVersion(ServerTestCase):
+    """Unit test for custom SSH server version"""
+
+    @classmethod
+    @asyncio.coroutine
+    def start_server(cls):
+        """Start an SSH server which sends a custom version"""
+
+        return (yield from cls.create_server(server_version='custom'))
+
+    @asynctest
+    def test_custom_server_version(self):
+        """Test custom server version"""
+
+        with (yield from self.connect()) as conn:
+            version = conn.get_extra_info('server_version')
+            self.assertEqual(version, 'SSH-2.0-custom')
+
+        yield from conn.wait_closed()
+
+    @asynctest
+    def test_long_server_version(self):
+        """Test server version which is too long"""
+
+        with self.assertRaises(ValueError):
+            yield from self.create_server(server_version=246*'a')
+
+    @asynctest
+    def test_nonprintable_server_version(self):
+        """Test server version with non-printable character"""
+
+        with self.assertRaises(ValueError):
+            yield from self.create_server(server_version='xxx\0')
