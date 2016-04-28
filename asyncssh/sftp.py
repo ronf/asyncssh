@@ -129,7 +129,7 @@ class _LocalFile:
     def __enter__(self):
         return self
 
-    def __exit__(self, *excinfo):
+    def __exit__(self, *exc_info):
         self._file.close()
 
     @classmethod
@@ -140,10 +140,7 @@ class _LocalFile:
 
         """
 
-        if isinstance(path, str):
-            path = os.fsencode(path)
-
-        return path
+        return os.fsencode(path)
 
     @classmethod
     def decode(cls, path, want_string=True):
@@ -200,120 +197,10 @@ class _LocalFile:
 
     @classmethod
     @asyncio.coroutine
-    def truncate(cls, path):
-        """Truncate a local file to the specified size"""
-
-        os.truncate(path)
-
-    @classmethod
-    @asyncio.coroutine
-    def chown(cls, path, uid, gid):
-        """Change the owner user and group id of a local file or directory"""
-
-        os.chown(path, uid, gid)
-
-    @classmethod
-    @asyncio.coroutine
-    def chmod(cls, path, mode):
-        """Change the file permissions of a local file or directory"""
-
-        os.chmod(path, mode)
-
-    @classmethod
-    @asyncio.coroutine
-    def utime(cls, path, times=None):
-        """Change the access and modify times of a local file or directory"""
-
-        os.utime(path, times)
-
-    @classmethod
-    @asyncio.coroutine
-    def exists(cls, path):
-        """Return if the local path exists and isn't a broken symbolic link"""
-
-        return os.path.exists(path)
-
-    @classmethod
-    @asyncio.coroutine
-    def lexists(cls, path):
-        """Return if the local path exists, without following symbolic links"""
-
-        return os.path.lexists(path)
-
-    @classmethod
-    @asyncio.coroutine
-    def getatime(cls, path):
-        """Return the last access time of a local file or directory"""
-
-        return os.path.getatime(path)
-
-    @classmethod
-    @asyncio.coroutine
-    def getmtime(cls, path):
-        """Return the last modification time of a local file or directory"""
-
-        return os.path.getmtime(path)
-
-    @classmethod
-    @asyncio.coroutine
-    def getsize(cls, path):
-        """Return the size of a local file or directory"""
-
-        return os.path.getsize(path)
-
-    @classmethod
-    @asyncio.coroutine
     def isdir(cls, path):
         """Return if the local path refers to a directory"""
 
         return os.path.isdir(path)
-
-    @classmethod
-    @asyncio.coroutine
-    def isfile(cls, path):
-        """Return if the local path refers to a regular file"""
-
-        return os.path.isfile(path)
-
-    @classmethod
-    @asyncio.coroutine
-    def islink(cls, path):
-        """Return if the local path refers to a symbolic link"""
-
-        return os.path.islink(path)
-
-    @classmethod
-    @asyncio.coroutine
-    def remove(cls, path):
-        """Remove a local file"""
-
-        os.remove(path)
-
-    @classmethod
-    @asyncio.coroutine
-    def unlink(cls, path):
-        """Remove a local file (see :meth:`remove`)"""
-
-        os.unlink(path)
-
-    @classmethod
-    @asyncio.coroutine
-    def rename(cls, oldpath, newpath):
-        """Rename a local file, directory, or link"""
-
-        os.rename(oldpath, newpath)
-
-    @classmethod
-    @asyncio.coroutine
-    def readdir(cls, path):
-        """Read the contents of a local directory"""
-
-        names = os.listdir(path)
-
-        # This pylint error appears to be a false positive
-        # pylint: disable=not-an-iterable
-        return [SFTPName(filename=name, attrs=(yield from cls.stat(name)))
-                for name in names]
 
     @classmethod
     @asyncio.coroutine
@@ -331,34 +218,6 @@ class _LocalFile:
 
     @classmethod
     @asyncio.coroutine
-    def rmdir(cls, path):
-        """Remove a local directory"""
-
-        os.rmdir(path)
-
-    @classmethod
-    @asyncio.coroutine
-    def realpath(cls, path):
-        """Return the canonical version of a local path"""
-
-        return os.path.realpath(path)
-
-    @classmethod
-    @asyncio.coroutine
-    def getcwd(cls):
-        """Return the local current working directory"""
-
-        return os.getcwd()
-
-    @classmethod
-    @asyncio.coroutine
-    def chdir(cls, path):
-        """Change the local current working directory"""
-
-        os.chdir(path)
-
-    @classmethod
-    @asyncio.coroutine
     def readlink(cls, path):
         """Return the target of a local symbolic link"""
 
@@ -371,48 +230,19 @@ class _LocalFile:
 
         os.symlink(oldpath, newpath)
 
-    @classmethod
     @asyncio.coroutine
-    def link(cls, oldpath, newpath):
-        """Create a local hard link"""
-
-        os.link(oldpath, newpath)
-
-    @asyncio.coroutine
-    def read(self, size=-1, offset=None):
+    def read(self, size, offset):
         """Read data from the local file"""
 
-        if offset is not None:
-            self._file.seek(offset)
-
+        self._file.seek(offset)
         return self._file.read(size)
 
     @asyncio.coroutine
-    def write(self, data, offset=None):
+    def write(self, data, offset):
         """Write data to the local file"""
 
-        if offset is not None:
-            self._file.seek(offset)
-
+        self._file.seek(offset)
         return self._file.write(data)
-
-    @asyncio.coroutine
-    def seek(self, offset, from_what=SEEK_SET):
-        """Seek to a new position in the local file"""
-
-        return self._file.seek(offset, from_what)
-
-    @asyncio.coroutine
-    def tell(self):
-        """Return the current position in the local file"""
-
-        return self._file.tell()
-
-    @asyncio.coroutine
-    def close(self):
-        """Close the local file"""
-
-        self._file.close()
 
 
 class _SFTPFileCopier:
