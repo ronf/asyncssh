@@ -1529,7 +1529,7 @@ class SFTPClient:
 
         for pattern in patterns:
             if not pattern:
-                return
+                continue
 
             decode = isinstance(pattern, str)
             patlist = self.encode(pattern).split(b'/')
@@ -3585,7 +3585,7 @@ class SFTPServer:
 
         """
 
-        return os.listdir(self.map_path(path))
+        return [b'.', b'..'] + os.listdir(self.map_path(path))
 
     def remove(self, path):
         """Remove a file or symbolic link
