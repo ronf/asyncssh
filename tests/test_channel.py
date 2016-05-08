@@ -463,7 +463,7 @@ class _TestChannel(ServerTestCase):
         """Test internal error in callback to start a shell"""
 
         with (yield from self.connect(username='task_error')) as conn:
-            with self.assertRaises(asyncssh.DisconnectError):
+            with self.assertRaises((OSError, asyncssh.DisconnectError)):
                 yield from _create_session(conn)
 
         yield from conn.wait_closed()
