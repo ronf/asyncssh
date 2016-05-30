@@ -790,7 +790,7 @@ class SSHClientChannel(SSHChannel):
 
     @asyncio.coroutine
     def create(self, session_factory, command, subsystem, env,
-               term_type, term_size, term_modes, agent_forwarding):
+               term_type, term_size, term_modes, agent_forwarding, factory_obj_append):
         """Create an SSH client session"""
 
         packet = yield from self._open(b'session')
@@ -799,6 +799,7 @@ class SSHClientChannel(SSHChannel):
         packet.check_end()
 
         self._session = session_factory()
+        self._session.factory_obj_append = factory_obj_append
         self._session.connection_made(self)
 
         for name, value in env.items():

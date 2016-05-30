@@ -1941,7 +1941,7 @@ class SSHClientConnection(SSHConnection):
     def __init__(self, client_factory, loop, kex_algs, encryption_algs,
                  mac_algs, compression_algs, rekey_bytes, rekey_seconds,
                  host, port, known_hosts, username, password, client_keys,
-                 agent, agent_path, auth_waiter):
+                 agent, agent_path, auth_waiter, factory_obj_append=None):
         super().__init__(client_factory, loop, kex_algs, encryption_algs,
                          mac_algs, compression_algs, rekey_bytes,
                          rekey_seconds, server=False)
@@ -1955,6 +1955,7 @@ class SSHClientConnection(SSHConnection):
         self._agent = agent
         self._agent_path = agent_path
         self._auth_waiter = auth_waiter
+        self._factory_obj_append = factory_obj_append
 
         self._server_host_keys = set()
         self._server_ca_keys = set()
@@ -2398,7 +2399,7 @@ class SSHClientConnection(SSHConnection):
 
         return (yield from chan.create(session_factory, command, subsystem,
                                        env, term_type, term_size, term_modes,
-                                       bool(self._agent_path)))
+                                       bool(self._agent_path), self._factory_obj_append))
 
     @asyncio.coroutine
     def open_session(self, *args, **kwargs):
@@ -3863,7 +3864,7 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
                       agent_path=(), agent_forwarding=False, kex_algs=(),
                       encryption_algs=(), mac_algs=(), compression_algs=(),
                       rekey_bytes=_DEFAULT_REKEY_BYTES,
-                      rekey_seconds=_DEFAULT_REKEY_SECONDS):
+                      rekey_seconds=_DEFAULT_REKEY_SECONDS, factory_obj_append=None):
     """Create an SSH client connection
 
        This function is a coroutine which can be run to create an outbound SSH
@@ -4006,7 +4007,7 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
                                    encryption_algs, mac_algs, compression_algs,
                                    rekey_bytes, rekey_seconds, host, port,
                                    known_hosts, username, password,
-                                   client_keys, agent, agent_path, auth_waiter)
+                                   client_keys, agent, agent_path, auth_waiter, factory_obj_append)
 
     if not client_factory:
         client_factory = SSHClient
