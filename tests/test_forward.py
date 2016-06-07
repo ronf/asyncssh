@@ -255,7 +255,7 @@ class _TestTCPForwarding(_CheckForwarding):
     def _check_local_connection(self, listen_port, delay=None):
         """Open a local connection and test if an input line is echoed back"""
 
-        reader, writer = yield from asyncio.open_connection('', listen_port)
+        reader, writer = yield from asyncio.open_connection(None, listen_port)
 
         yield from self._check_echo_line(reader, writer, delay=delay)
 
@@ -440,7 +440,7 @@ class _TestTCPForwarding(_CheckForwarding):
             listener = yield from conn.forward_local_port('', 0, '', 8)
             listen_port = listener.get_port()
 
-            reader, writer = yield from asyncio.open_connection('',
+            reader, writer = yield from asyncio.open_connection(None,
                                                                 listen_port)
 
             writer.write(4*1024*1024*b'\0')
@@ -461,7 +461,7 @@ class _TestTCPForwarding(_CheckForwarding):
             listener = yield from conn.forward_local_port('', 0, '', 65535)
             listen_port = listener.get_port()
 
-            reader, writer = yield from asyncio.open_connection('',
+            reader, writer = yield from asyncio.open_connection(None,
                                                                 listen_port)
 
             self.assertEqual((yield from reader.read()), b'')
@@ -513,7 +513,7 @@ class _TestTCPForwarding(_CheckForwarding):
             listener = yield from conn.forward_local_port('', 0, '', 0)
             listen_port = listener.get_port()
 
-            reader, writer = yield from asyncio.open_connection('',
+            reader, writer = yield from asyncio.open_connection(None,
                                                                 listen_port)
 
             self.assertEqual((yield from reader.read()), b'')
@@ -532,7 +532,7 @@ class _TestTCPForwarding(_CheckForwarding):
             listener = yield from conn.forward_local_port('', 0, '', 7)
             listen_port = listener.get_port()
 
-            _, writer = yield from asyncio.open_connection('',
+            _, writer = yield from asyncio.open_connection(None,
                                                            listen_port)
 
             writer.close()
