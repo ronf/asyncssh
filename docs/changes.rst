@@ -3,6 +3,23 @@
 Change Log
 ==========
 
+Release 1.5.4 (6 Jun 2016)
+--------------------------
+
+* Added support for setting custom SSH client and server version strings.
+
+* Added unit tests for the sftp module, bringing AsyncSSH up to 100%
+  code coverage under test on all modules.
+
+* Added new wait_closed() method in SFTPClient class to wait for an
+  SFTP client session to be fully closed.
+
+* Fixed an issue with error handling in new parallel SFTP file copy code.
+
+* Fixed some other minor issues in SFTP found during unit tests.
+
+* Fixed some minor documentation issues.
+
 Release 1.5.3 (2 Apr 2016)
 --------------------------
 
