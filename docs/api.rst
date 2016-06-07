@@ -752,6 +752,13 @@ SFTPClient
    .. automethod:: glob
    ============================================== =
 
+   =========================== =
+   Cleanup methods
+   =========================== =
+   .. automethod:: exit
+   .. automethod:: wait_closed
+   =========================== =
+
 SFTPServer
 ----------
 

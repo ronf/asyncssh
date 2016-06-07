@@ -576,12 +576,13 @@ class SFTPHandler:
         self._reader = reader
         self._writer = writer
 
+    @asyncio.coroutine
     def _cleanup(self, exc):
         """Clean up this SFTP session"""
 
         # pylint: disable=unused-argument
 
-        if self._writer:
+        if self._writer: # pragma: no branch
             self._writer.close()
             self._reader = None
             self._writer = None
@@ -605,7 +606,7 @@ class SFTPHandler:
         try:
             self._writer.write(UInt32(len(payload)) + payload)
         except ConnectionError as exc:
-            raise SFTPError(FX_CONNECTION_LOST, str(exc))
+            raise SFTPError(FX_CONNECTION_LOST, str(exc)) from None
 
     @asyncio.coroutine
     def recv_packet(self):
@@ -617,8 +618,8 @@ class SFTPHandler:
 
             packet = yield from self._reader.readexactly(pktlen)
             packet = SSHPacket(packet)
-        except (ConnectionError, EOFError) as exc:
-            raise SFTPError(FX_CONNECTION_LOST, str(exc))
+        except EOFError:
+            raise SFTPError(FX_CONNECTION_LOST, 'Channel closed') from None
 
         return packet
 
@@ -627,7 +628,7 @@ class SFTPHandler:
         """Receive and process SFTP packets"""
 
         try:
-            while self._reader:
+            while self._reader: # pragma: no branch
                 packet = yield from self.recv_packet()
 
                 pkttype = packet.get_byte()
@@ -635,9 +636,9 @@ class SFTPHandler:
 
                 yield from self._process_packet(pkttype, pktid, packet)
         except PacketDecodeError as exc:
-            self._cleanup(SFTPError(FX_BAD_MESSAGE, str(exc)))
-        except SFTPError as exc:
-            self._cleanup(exc)
+            yield from self._cleanup(SFTPError(FX_BAD_MESSAGE, str(exc)))
+        except (OSError, SFTPError) as exc:
+            yield from self._cleanup(exc)
 
 
 class SFTPClientHandler(SFTPHandler):
@@ -659,6 +660,7 @@ class SFTPClientHandler(SFTPHandler):
         self._supports_hardlink = False
         self._supports_fsync = False
 
+    @asyncio.coroutine
     def _cleanup(self, exc):
         """Clean up this SFTP client session"""
 
@@ -668,7 +670,7 @@ class SFTPClientHandler(SFTPHandler):
 
         self._requests = {}
 
-        super()._cleanup(exc)
+        yield from super()._cleanup(exc)
 
     @asyncio.coroutine
     def _process_packet(self, pkttype, pktid, packet):
@@ -677,7 +679,8 @@ class SFTPClientHandler(SFTPHandler):
         try:
             waiter = self._requests.pop(pktid)
         except KeyError:
-            self._cleanup(SFTPError(FX_BAD_MESSAGE, 'Invalid response id'))
+            yield from self._cleanup(SFTPError(FX_BAD_MESSAGE,
+                                               'Invalid response id'))
         else:
             if waiter and not waiter.cancelled():
                 waiter.set_result((pkttype, packet))
@@ -732,7 +735,7 @@ class SFTPClientHandler(SFTPHandler):
             reason = packet.get_string().decode('utf-8')
             lang = packet.get_string().decode('ascii')
         except UnicodeDecodeError:
-            raise SFTPError(FX_BAD_MESSAGE, 'Invalid status message')
+            raise SFTPError(FX_BAD_MESSAGE, 'Invalid status message') from None
 
         packet.check_end()
 
@@ -1034,10 +1037,17 @@ class SFTPClientHandler(SFTPHandler):
             raise SFTPError(FX_OP_UNSUPPORTED, 'fsync not supported')
 
     def exit(self):
-        """Handle a request to close the SFTP connection"""
+        """Handle a request to close the SFTP session"""
 
-        self._cleanup(SFTPError(FX_CONNECTION_LOST,
-                                'Session closed by application'))
+        if self._writer:
+            self._writer.write_eof()
+
+    @asyncio.coroutine
+    def wait_closed(self):
+        """Wait for this SFTP session to close"""
+
+        if self._writer:
+            yield from self._writer.channel.wait_closed()
 
 
 class SFTPFile:
@@ -1224,6 +1234,8 @@ class SFTPFile:
             self._offset += offset
         elif from_what == SEEK_END:
             self._offset = (yield from self._end()) + offset
+        else:
+            raise ValueError('Invalid reference point')
 
         return self._offset
 
@@ -1463,7 +1475,8 @@ class SFTPClient:
             try:
                 path = path.decode(self._path_encoding, self._path_errors)
             except UnicodeDecodeError:
-                raise SFTPError(FX_BAD_MESSAGE, 'Unable to decode name')
+                raise SFTPError(FX_BAD_MESSAGE,
+                                'Unable to decode name') from None
 
         return path
 
@@ -2653,12 +2666,18 @@ class SFTPClient:
     def exit(self):
         """Exit the SFTP client session
 
-           This method exists the SFTP client session, closing the
+           This method exits the SFTP client session, closing the
            corresponding channel opened on the server.
 
         """
 
         self._handler.exit()
+
+    @asyncio.coroutine
+    def wait_closed(self):
+        """Wait for this SFTP client session to close"""
+
+        yield from self._handler.wait_closed()
 
 
 class SFTPServerHandler(SFTPHandler):
@@ -2680,19 +2699,27 @@ class SFTPServerHandler(SFTPHandler):
         self._file_handles = {}
         self._dir_handles = {}
 
+    @asyncio.coroutine
     def _cleanup(self, exc):
         """Clean up this SFTP server session"""
 
-        if self._server:
+        if self._server: # pragma: no branch
             for file_obj in self._file_handles.values():
-                self._server.close(file_obj)
+                result = self._server.close(file_obj)
 
-            self._server.exit()
+                if asyncio.iscoroutine(result):
+                    result = yield from result
+
+            result = self._server.exit()
+
+            if asyncio.iscoroutine(result):
+                result = yield from result
+
             self._server = None
             self._file_handles = []
             self._dir_handles = []
 
-        super()._cleanup(exc)
+        yield from super()._cleanup(exc)
 
     def _get_next_handle(self):
         """Get the next available unique file handle number"""
@@ -2754,7 +2781,7 @@ class SFTPServerHandler(SFTPHandler):
 
             if exc.errno == errno.ENOENT:
                 code = FX_NO_SUCH_FILE
-            elif exc.errno == errno.EPERM:
+            elif exc.errno == errno.EACCES:
                 code = FX_PERMISSION_DENIED
             else:
                 code = FX_FAILURE
@@ -3027,7 +3054,12 @@ class SFTPServerHandler(SFTPHandler):
         path = packet.get_string()
         packet.check_end()
 
-        return [SFTPName(self._server.realpath(path))]
+        result = self._server.realpath(path)
+
+        if asyncio.iscoroutine(result):
+            result = yield from result
+
+        return [SFTPName(result)]
 
     @asyncio.coroutine
     def _process_stat(self, packet):
@@ -3210,13 +3242,15 @@ class SFTPServerHandler(SFTPHandler):
             pkttype = packet.get_byte()
             version = packet.get_uint32()
         except PacketDecodeError as exc:
-            self._cleanup(SFTPError(FX_BAD_MESSAGE, str(exc)))
+            yield from self._cleanup(SFTPError(FX_BAD_MESSAGE, str(exc)))
+            return
         except SFTPError as exc:
-            self._cleanup(exc)
+            yield from self._cleanup(exc)
             return
 
         if pkttype != FXP_INIT:
-            self._cleanup(SFTPError(FX_BAD_MESSAGE, 'Expected init message'))
+            yield from self._cleanup(SFTPError(FX_BAD_MESSAGE,
+                                               'Expected init message'))
             return
 
         version = min(version, _SFTP_VERSION)
@@ -3226,7 +3260,7 @@ class SFTPServerHandler(SFTPHandler):
         try:
             self.send_packet(Byte(FXP_VERSION), UInt32(version), *extensions)
         except SFTPError as exc:
-            self._cleanup(exc)
+            yield from self._cleanup(exc)
             return
 
         if version == 3:
