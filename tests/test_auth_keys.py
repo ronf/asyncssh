@@ -78,7 +78,7 @@ class _TestAuthorizedKeys(TempDirTestCase):
             (('from="1.2.3.0/24,!1.2.3.5"',),
              (('Match subnet', 0, '1.2.3.4', None, True),
               ('Exclude IP', 0, '1.2.3.5', None, False))),
-            (('from="localhost"',),
+            (('from="localhost*"',),
              (('Match host name', 0, '127.0.0.1', None, True),)),
             (('from="1.2.3.*,!1.2.3.5*"',),
              (('Match host pattern', 0, '1.2.3.4', None, True),
