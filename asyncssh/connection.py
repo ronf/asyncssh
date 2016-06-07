@@ -1830,6 +1830,9 @@ class SSHConnection(SSHPacketHandler):
         """
 
         try:
+            if dest_host == '':
+                dest_host = None
+
             _, peer = yield from self._loop.create_connection(SSHForwarder,
                                                               dest_host,
                                                               dest_port)
