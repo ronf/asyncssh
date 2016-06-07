@@ -363,8 +363,8 @@ class _CheckSFTP(ServerTestCase):
 
         self.assertEqual(stat.S_IMODE(attrs1.st_mode),
                          stat.S_IMODE(attrs2.st_mode))
-        self.assertEqual(attrs1.st_atime, attrs2.st_atime)
-        self.assertEqual(attrs1.st_mtime, attrs2.st_mtime)
+        self.assertEqual(int(attrs1.st_atime), int(attrs2.st_atime))
+        self.assertEqual(int(attrs1.st_mtime), int(attrs2.st_mtime))
 
     def _check_file(self, name1, name2, preserve=False, follow_symlinks=False):
         """Check if two files are equal"""
@@ -383,8 +383,8 @@ class _CheckSFTP(ServerTestCase):
         self.assertEqual(sftp_stat.uid, local_stat.st_uid)
         self.assertEqual(sftp_stat.gid, local_stat.st_gid)
         self.assertEqual(sftp_stat.permissions, local_stat.st_mode)
-        self.assertEqual(sftp_stat.atime, local_stat.st_atime)
-        self.assertEqual(sftp_stat.mtime, local_stat.st_mtime)
+        self.assertEqual(sftp_stat.atime, int(local_stat.st_atime))
+        self.assertEqual(sftp_stat.mtime, int(local_stat.st_mtime))
 
     def _check_link(self, link, target):
         """Check if a symlink points to the right target"""
@@ -586,17 +586,17 @@ class _TestSFTP(_CheckSFTP):
             self._create_file('file1')
             self._create_file('filedir/file2')
 
-            self.assertEqual((yield from sftp.glob('file*')),
+            self.assertEqual(sorted((yield from sftp.glob('file*'))),
                              ['file1', 'filedir'])
-            self.assertEqual((yield from sftp.glob('./file*')),
+            self.assertEqual(sorted((yield from sftp.glob('./file*'))),
                              ['./file1', './filedir'])
-            self.assertEqual((yield from sftp.glob(b'file*')),
+            self.assertEqual(sorted((yield from sftp.glob(b'file*'))),
                              [b'file1', b'filedir'])
-            self.assertEqual((yield from sftp.glob(['file*'])),
+            self.assertEqual(sorted((yield from sftp.glob(['file*']))),
                              ['file1', 'filedir'])
-            self.assertEqual((yield from sftp.glob(['', 'file*'])),
+            self.assertEqual((yield from sftp.glob(['', 'file*']))),
                              ['file1', 'filedir'])
-            self.assertEqual((yield from sftp.glob(['file*/*'])),
+            self.assertEqual(sorted((yield from sftp.glob(['file*/*']))),
                              ['filedir/file2'])
         finally:
             run('rm -rf file1 filedir')
@@ -1757,7 +1757,7 @@ class _TestSFTPChroot(_CheckSFTP):
         try:
             self._create_file('chroot/file1')
             self._create_file('chroot/file2')
-            self.assertEqual((yield from sftp.glob('/file*')),
+            self.assertEqual(sorted((yield from sftp.glob('/file*'))),
                              ['/file1', '/file2'])
         finally:
             run('rm -f chroot/file1 chroot/file2')
