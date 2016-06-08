@@ -8,26 +8,20 @@ matrix:
     - os: linux
       sudo: required
       dist: trusty
-      addons:
-        apt:
-          packages:
-            - libsodium
+      before_install:
+        - xbuild libsodium-net.sln
       python: 3.4
     - os: linux
       sudo: required
       dist: trusty
-      addons:
-        apt:
-          packages:
-            - libsodium
+      before_install:
+        - xbuild libsodium-net.sln
       python: 3.5
     - os: linux
       sudo: required
       dist: trusty
-      addons:
-        apt:
-          packages:
-            - libsodium
+      before_install:
+        - xbuild libsodium-net.sln
       python: nightly
     - os: osx
       osx_image: xcode7.3
@@ -35,6 +29,8 @@ matrix:
       before_install:
         - brew update
         - brew install python3
+        - brew install libsodium
+        - pip install virtualenv
         - virtualenv venv -p python3
         - source venv/bin/activate
 
