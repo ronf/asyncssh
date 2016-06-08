@@ -32,7 +32,7 @@ matrix:
       before_install:
         - brew update
         - brew install libffi libsodium openssl python3
-        - pip install virtualenv
+        - pip3 install virtualenv
         - virtualenv venv -p python3
         - source venv/bin/activate
 
