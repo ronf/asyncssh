@@ -22,8 +22,7 @@ matrix:
       language: generic
       before_install:
         - brew update
-        - brew install python3
-        - brew install libsodium
+        - brew install libsodium openssl python3
         - pip3 install virtualenv
         - virtualenv venv -p python3
         - source venv/bin/activate
