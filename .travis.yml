@@ -28,4 +28,4 @@ matrix:
         - virtualenv venv -p python3
         - source venv/bin/activate
 
-script: ./setup.py test
+script: python3 ./setup.py test
