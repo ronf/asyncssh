@@ -8,18 +8,21 @@ matrix:
     - os: linux
       sudo: required
       dist: trusty
+      python: 3.4
       before_install:
         - .travis/build-libsodium.sh
-        - pip3 install libnacl py-bcrypt
-      python: 3.4
     - os: linux
       sudo: required
       dist: trusty
       python: 3.5
+      before_install:
+        - .travis/build-libsodium.sh
     - os: linux
       sudo: required
       dist: trusty
       python: nightly
+      before_install:
+        - .travis/build-libsodium.sh
     - os: osx
       osx_image: xcode7.3
       language: generic
@@ -29,7 +32,7 @@ matrix:
       before_install:
         - brew update
         - brew install libffi libsodium openssl python3
-        - pip3 install libnacl py-bcrypt virtualenv
+        - pip install virtualenv
         - virtualenv venv -p python3
         - source venv/bin/activate
 
