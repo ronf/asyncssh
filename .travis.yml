@@ -4,6 +4,9 @@ install:
   - pip install py-bcrypt libnacl
 
 matrix:
+  allow_failures:
+    - python: nightly
+  fast_finish: true
   include:
     - os: linux
       sudo: required
