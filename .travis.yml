@@ -2,7 +2,13 @@ language: python
 sudo: required
 dist: trusty
 
+os:
+  - linux
+  - osx
+
 python:
-  - "3.4"
+  - 3.4
+  - 3.5
+  - nightly
 
 script: ./setup.py test
