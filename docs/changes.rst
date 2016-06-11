@@ -3,6 +3,17 @@
 Change Log
 ==========
 
+Release 1.5.5 (11 Jun 2016)
+---------------------------
+
+* Updated public_key module to make sure the right version of bcrypt is
+  installed before attempting to use it.
+
+* Updated forward and sftp module unit tests to work better on Linux.
+
+* Changed README links to point at new readthedocs.io domain.
+
+
 Release 1.5.4 (6 Jun 2016)
 --------------------------
 
