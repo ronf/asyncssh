@@ -29,7 +29,7 @@ asyncio framework.
 
 Check out the `examples`__ to get started!
 
-__ http://asyncssh.readthedocs.org/en/stable/#client-examples
+__ http://asyncssh.readthedocs.io/en/stable/#client-examples
 
 Features
 --------
@@ -63,14 +63,14 @@ Features
 * Designed to be easy to extend to support new forms of key exchange,
   authentication, encryption, and compression algorithms
 
-__ http://asyncssh.readthedocs.org/en/stable/api.html#key-exchange-algorithms
-__ http://asyncssh.readthedocs.org/en/stable/api.html#encryption-algorithms
-__ http://asyncssh.readthedocs.org/en/stable/api.html#mac-algorithms
-__ http://asyncssh.readthedocs.org/en/stable/api.html#compression-algorithms
-__ http://asyncssh.readthedocs.org/en/stable/api.html#public-key-support
-__ http://asyncssh.readthedocs.org/en/stable/api.html#ssh-agent-support
-__ http://asyncssh.readthedocs.org/en/stable/api.html#known-hosts
-__ http://asyncssh.readthedocs.org/en/stable/api.html#authorized-keys
+__ http://asyncssh.readthedocs.io/en/stable/api.html#key-exchange-algorithms
+__ http://asyncssh.readthedocs.io/en/stable/api.html#encryption-algorithms
+__ http://asyncssh.readthedocs.io/en/stable/api.html#mac-algorithms
+__ http://asyncssh.readthedocs.io/en/stable/api.html#compression-algorithms
+__ http://asyncssh.readthedocs.io/en/stable/api.html#public-key-support
+__ http://asyncssh.readthedocs.io/en/stable/api.html#ssh-agent-support
+__ http://asyncssh.readthedocs.io/en/stable/api.html#known-hosts
+__ http://asyncssh.readthedocs.io/en/stable/api.html#authorized-keys
 
 License
 -------
