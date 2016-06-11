@@ -18,7 +18,7 @@ import time
 
 try:
     import bcrypt
-    _bcrypt_available = True
+    _bcrypt_available = hasattr(bcrypt, 'kdf')
 except ImportError: # pragma: no cover
     _bcrypt_available = False
 
@@ -241,7 +241,7 @@ class SSHKey:
 
                 if not _bcrypt_available: # pragma: no cover
                     raise KeyExportError('OpenSSH private key encryption '
-                                         'requires bcrypt')
+                                         'requires bcrypt with KDF support')
 
                 kdf = b'bcrypt'
                 salt = os.urandom(_OPENSSH_SALT_LEN)
@@ -699,7 +699,7 @@ def _decode_openssh_private(data, passphrase):
 
             if not _bcrypt_available: # pragma: no cover
                 raise KeyEncryptionError('OpenSSH private key encryption '
-                                         'requires bcrypt')
+                                         'requires bcrypt with KDF support')
 
             packet = SSHPacket(kdf_data)
             salt = packet.get_string()
