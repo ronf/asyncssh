@@ -3,6 +3,25 @@
 Change Log
 ==========
 
+Release 1.5.6 (18 Jun 2016)
+---------------------------
+
+* Added support for Python 3.5 asynchronous context managers in
+  SSHConnection, SFTPClient, and SFTPFile, while still maintaining
+  backward compatibility with older Python 3.4 syntax.
+
+* Updated bcrypt check in test code to only test features that depend
+  on it when the right version is available.
+
+* Switched testing over to using tox to better support testing on
+  multiple versions of Python.
+
+* Added tests of new Python 3.5 async syntax.
+
+* Expanded Travis CI coverage to test both Python 3.4 and 3.5 on MacOS.
+
+* Updated documentation and examples to use Python 3.5 syntax.
+
 Release 1.5.5 (11 Jun 2016)
 ---------------------------
 
