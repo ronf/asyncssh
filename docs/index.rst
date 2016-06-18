@@ -35,8 +35,8 @@ instance is created:
 
    .. code::
 
-     conn, client = yield from asyncssh.create_connection(MySSHClient, 'localhost',
-                                                          known_hosts='my_known_hosts')
+     conn, client = await asyncssh.create_connection(MySSHClient, 'localhost',
+                                                     known_hosts='my_known_hosts')
 
 
 Server host key checking can be disabled by setting the known_hosts
@@ -48,23 +48,23 @@ provided:
 
    .. code::
 
-     conn, client = yield from asyncssh.create_connection(MySSHClient, 'localhost',
-                                                          username='user123')
+     conn, client = await asyncssh.create_connection(MySSHClient, 'localhost',
+                                                     username='user123')
 
 To use a different set of client keys for authentication, they can be
 read and provided in the client_keys argument:
 
    .. code::
 
-     conn, client = yield from asyncssh.create_connection(MySSHClient, 'localhost',
-                                                          client_keys=['my_ssh_key'])
+     conn, client = await asyncssh.create_connection(MySSHClient, 'localhost',
+                                                     client_keys=['my_ssh_key'])
 
 Password authentication can be used by providing a password argument:
 
    .. code::
 
-     conn, client = yield from asyncssh.create_connection(MySSHClient, 'localhost',
-                                                          password='secretpw')
+     conn, client = await asyncssh.create_connection(MySSHClient, 'localhost',
+                                                     password='secretpw')
 
 Any of the arguments above can be combined together as needed. If client
 keys and a password are both provided, either may be used depending
@@ -288,7 +288,7 @@ can be included:
 
    .. code::
 
-      yield from sftp.get('example_dir', preserve=True, recurse=True)
+      await sftp.get('example_dir', preserve=True, recurse=True)
 
 Wild card pattern matching is supported by the :meth:`mget <SFTPClient.mget>`,
 :meth:`mput <SFTPClient.mput>`, and :meth:`mcopy <SFTPClient.mcopy>` methods.
@@ -296,7 +296,7 @@ The following downloads all files with extension "txt":
 
    .. code::
 
-      yield from sftp.mget('*.txt')
+      await sftp.mget('*.txt')
 
 See the :class:`SFTPClient` documentation for the full list of available
 actions.

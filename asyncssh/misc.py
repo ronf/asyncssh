@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2015 by Ron Frederick <ronf@timeheart.net>.
+# Copyright (c) 2013-2016 by Ron Frederick <ronf@timeheart.net>.
 # All rights reserved.
 #
 # This program and the accompanying materials are made available under
@@ -12,12 +12,19 @@
 
 """Miscellaneous utility classes and functions"""
 
+import asyncio
+import functools
 import ipaddress
+import platform
 import socket
 
 from random import SystemRandom
 
 from .constants import DEFAULT_LANG
+
+
+# Provide a global to test if we're on Python 3.5 or later
+python35 = platform.python_version_tuple() >= ('3', '5', '0')
 
 
 # Define a version of randrange which is based on SystemRandom(), so that
@@ -79,6 +86,57 @@ def ip_network(addr):
         mask = ''
 
     return ipaddress.ip_network(_normalize_scoped_ip(addr) + mask)
+
+
+def async_context_manager(coro):
+    """Decorator for methods returning asynchronous context managers
+
+       This function can be used as a decorator for coroutines which
+       return objects intended to be used as Python 3.5 asynchronous
+       context managers. The object returned should implement __aenter__
+       and __aexit__ methods to run when the async context is entered
+       and exited.
+
+       This wrapper also allows non-async context managers to be defined
+       on the returned object, as well as the use of "await" or "yield
+       from" on the function being decorated for backward compatibility
+       with the API defined by older versions of AsyncSSH.
+
+    """
+
+    class AsyncContextManager:
+        """Async context manager wrapper for Python 3.5 and later"""
+
+        def __init__(self, coro):
+            self._coro = coro
+            self._result = None
+
+        def __iter__(self):
+            return (yield from self._coro)
+
+        def __await__(self):
+            return (yield from self._coro)
+
+        @asyncio.coroutine
+        def __aenter__(self):
+            self._result = yield from self._coro
+            return (yield from self._result.__aenter__())
+
+        @asyncio.coroutine
+        def __aexit__(self, *exc_info):
+            yield from self._result.__aexit__(*exc_info)
+            self._result = None
+
+    @functools.wraps(coro)
+    def coro_wrapper(*args, **kwargs):
+        """Return an async context manager wrapper for this coroutine"""
+
+        return AsyncContextManager(asyncio.coroutine(coro)(*args, **kwargs))
+
+    if python35:
+        return coro_wrapper
+    else:
+        return coro
 
 
 class Error(Exception):

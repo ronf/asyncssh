@@ -1,6 +1,6 @@
-#!/usr/bin/env python3.4
+#!/usr/bin/env python3.5
 #
-# Copyright (c) 2013-2015 by Ron Frederick <ronf@timeheart.net>.
+# Copyright (c) 2013-2016 by Ron Frederick <ronf@timeheart.net>.
 # All rights reserved.
 #
 # This program and the accompanying materials are made available under
@@ -37,11 +37,10 @@ class MySSHServer(asyncssh.SSHServer):
                       asyncssh.OPEN_ADMINISTRATIVELY_PROHIBITED,
                       'Only echo connections allowed')
 
-@asyncio.coroutine
-def start_server():
-    yield from asyncssh.create_server(MySSHServer, '', 8022,
-                                      server_host_keys=['ssh_host_key'],
-                                      authorized_client_keys='ssh_user_ca')
+async def start_server():
+    await asyncssh.create_server(MySSHServer, '', 8022,
+                                 server_host_keys=['ssh_host_key'],
+                                 authorized_client_keys='ssh_user_ca')
 
 loop = asyncio.get_event_loop()
 

@@ -75,7 +75,7 @@ from .logging import logger
 from .mac import get_mac_algs, get_mac_params, get_mac
 
 from .misc import ChannelOpenError, DisconnectError, PasswordChangeRequired
-from .misc import ip_address, map_handler_name
+from .misc import async_context_manager, ip_address, map_handler_name
 
 from .packet import Boolean, Byte, NameList, String, UInt32, UInt64
 from .packet import PacketDecodeError, SSHPacket, SSHPacketHandler
@@ -463,6 +463,19 @@ class SSHConnection(SSHPacketHandler):
                 pass
             else:
                 raise
+
+    @asyncio.coroutine
+    def __aenter__(self):
+        """Allow SSHConnection to be used as an async context manager"""
+
+        return self
+
+    @asyncio.coroutine
+    def __aexit__(self, *exc_info):
+        """Wait for connection close when used as an async context manager"""
+
+        self.__exit__()
+        yield from self.wait_closed()
 
     def _cleanup(self, exc):
         """Clean up this connection"""
@@ -2903,7 +2916,7 @@ class SSHClientConnection(SSHConnection):
         return (yield from self.create_unix_server(session_factory,
                                                    listen_path))
 
-    @asyncio.coroutine
+    @async_context_manager
     def start_sftp_client(self, path_encoding='utf-8', path_errors='strict'):
         """Start an SFTP client
 
@@ -4279,7 +4292,7 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
                                           reuse_address=reuse_address))
 
 
-@asyncio.coroutine
+@async_context_manager
 def connect(host, port=_DEFAULT_PORT, **kwargs):
     """Make an SSH client connection
 

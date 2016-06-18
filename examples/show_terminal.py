@@ -1,6 +1,6 @@
-#!/usr/bin/env python3.4
+#!/usr/bin/env python3.5
 #
-# Copyright (c) 2013-2015 by Ron Frederick <ronf@timeheart.net>.
+# Copyright (c) 2013-2016 by Ron Frederick <ronf@timeheart.net>.
 # All rights reserved.
 #
 # This program and the accompanying materials are made available under
@@ -21,8 +21,7 @@
 
 import asyncio, asyncssh, sys
 
-@asyncio.coroutine
-def handle_connection(stdin, stdout, stderr):
+async def handle_connection(stdin, stdout, stderr):
     term_type = stdout.channel.get_terminal_type()
     width, height, pixwidth, pixheight = stdout.channel.get_terminal_size()
 
@@ -33,18 +32,17 @@ def handle_connection(stdin, stdout, stderr):
 
     while not stdin.at_eof():
         try:
-            line = yield from stdin.read()
+            line = await stdin.read()
         except asyncssh.TerminalSizeChanged as exc:
             stdout.write('New window size: %sx%s' % (exc.width, exc.height))
             if exc.pixwidth and exc.pixheight:
                 stdout.write(' (%sx%s pixels)' % (exc.pixwidth, exc.pixheight))
             stdout.write('\r\n')
 
-@asyncio.coroutine
-def start_server():
-    yield from asyncssh.listen('', 8022, server_host_keys=['ssh_host_key'],
-                               authorized_client_keys='ssh_user_ca',
-                               session_factory=handle_connection)
+async def start_server():
+    await asyncssh.listen('', 8022, server_host_keys=['ssh_host_key'],
+                          authorized_client_keys='ssh_user_ca',
+                          session_factory=handle_connection)
 
 loop = asyncio.get_event_loop()
 

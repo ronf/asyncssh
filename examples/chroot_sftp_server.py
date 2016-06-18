@@ -1,6 +1,6 @@
-#!/usr/bin/env python3.4
+#!/usr/bin/env python3.5
 #
-# Copyright (c) 2015 by Ron Frederick <ronf@timeheart.net>.
+# Copyright (c) 2016 by Ron Frederick <ronf@timeheart.net>.
 # All rights reserved.
 #
 # This program and the accompanying materials are made available under
@@ -27,11 +27,10 @@ class MySFTPServer(asyncssh.SFTPServer):
         os.makedirs(root, exist_ok=True)
         super().__init__(conn, chroot=root)
 
-@asyncio.coroutine
-def start_server():
-    yield from asyncssh.listen('', 8022, server_host_keys=['ssh_host_key'],
-                               authorized_client_keys='ssh_user_ca',
-                               sftp_factory=MySFTPServer)
+async def start_server():
+    await asyncssh.listen('', 8022, server_host_keys=['ssh_host_key'],
+                          authorized_client_keys='ssh_user_ca',
+                          sftp_factory=MySFTPServer)
 
 loop = asyncio.get_event_loop()
 

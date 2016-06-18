@@ -1,6 +1,6 @@
-#!/usr/bin/env python3.4
+#!/usr/bin/env python3.5
 #
-# Copyright (c) 2013-2015 by Ron Frederick <ronf@timeheart.net>.
+# Copyright (c) 2013-2016 by Ron Frederick <ronf@timeheart.net>.
 # All rights reserved.
 #
 # This program and the accompanying materials are made available under
@@ -21,14 +21,13 @@
 
 import asyncio, asyncssh, sys
 
-@asyncio.coroutine
-def handle_connection(stdin, stdout, stderr):
+async def handle_connection(stdin, stdout, stderr):
     total = 0
 
     try:
         while not stdin.at_eof():
             try:
-                line = yield from stdin.readline()
+                line = await stdin.readline()
             except (asyncssh.BreakReceived, asyncssh.SignalReceived):
                 # Exit if the client sends a break or signal
                 break
@@ -49,11 +48,10 @@ def handle_connection(stdin, stdout, stderr):
         # The channel is already closed here, so we can't send an exit status
         stdout.close()
 
-@asyncio.coroutine
-def start_server():
-    yield from asyncssh.listen('', 8022, server_host_keys=['ssh_host_key'],
-                               authorized_client_keys='ssh_user_ca',
-                               session_factory=handle_connection)
+async def start_server():
+    await asyncssh.listen('', 8022, server_host_keys=['ssh_host_key'],
+                          authorized_client_keys='ssh_user_ca',
+                          session_factory=handle_connection)
 
 loop = asyncio.get_event_loop()
 

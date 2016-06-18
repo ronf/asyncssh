@@ -1,6 +1,6 @@
-#!/usr/bin/env python3.4
+#!/usr/bin/env python3.5
 #
-# Copyright (c) 2013-2015 by Ron Frederick <ronf@timeheart.net>.
+# Copyright (c) 2013-2016 by Ron Frederick <ronf@timeheart.net>.
 # All rights reserved.
 #
 # This program and the accompanying materials are made available under
@@ -14,14 +14,11 @@
 
 import asyncio, asyncssh, sys
 
-@asyncio.coroutine
-def run_client():
-    with (yield from asyncssh.connect('localhost')) as conn:
-        listener = yield from conn.forward_local_port('', 0, 'www.google.com', 80)
+async def run_client():
+    async with asyncssh.connect('localhost') as conn:
+        listener = await conn.forward_local_port('', 0, 'www.google.com', 80)
         print('Listening on port %s...' % listener.get_port())
-        yield from listener.wait_closed()
-
-    yield from conn.wait_closed()
+        await listener.wait_closed()
 
 try:
     asyncio.get_event_loop().run_until_complete(run_client())

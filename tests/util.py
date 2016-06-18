@@ -59,6 +59,19 @@ def asynctest(func):
     return async_wrapper
 
 
+def asynctest35(func):
+    """Decorator for Python 3.5 async tests, for use with AsyncTestCase"""
+
+    @functools.wraps(func)
+    def async_wrapper(self, *args, **kwargs):
+        """Run a function as a coroutine and wait for it to finish"""
+
+        wrapped_func = func(self, *args, **kwargs)
+        return self.loop.run_until_complete(wrapped_func)
+
+    return async_wrapper
+
+
 @asyncio.coroutine
 def echo(stdin, stdout, stderr=None):
     """Echo data from stdin back to stdout and stderr (if open)"""

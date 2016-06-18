@@ -1,6 +1,6 @@
-#!/usr/bin/env python3.4
+#!/usr/bin/env python3.5
 #
-# Copyright (c) 2013-2015 by Ron Frederick <ronf@timeheart.net>.
+# Copyright (c) 2013-2016 by Ron Frederick <ronf@timeheart.net>.
 # All rights reserved.
 #
 # This program and the accompanying materials are made available under
@@ -14,10 +14,9 @@
 
 import asyncio, asyncssh, sys
 
-@asyncio.coroutine
-def handle_connection(reader, writer):
+async def handle_connection(reader, writer):
     while not reader.at_eof():
-        data = yield from reader.read(8192)
+        data = await reader.read(8192)
         writer.write(data)
 
     writer.close()
@@ -26,14 +25,11 @@ def connection_requested(orig_host, orig_port):
     print('Connection received from %s, port %s' % (orig_host, orig_port))
     return handle_connection
 
-@asyncio.coroutine
-def run_client():
-    with (yield from asyncssh.connect('localhost')) as conn:
-        server = yield from conn.start_server(connection_requested, '', 8888,
-                                              encoding='utf-8')
-        yield from server.wait_closed()
-
-    yield from conn.wait_closed()
+async def run_client():
+    async with asyncssh.connect('localhost') as conn:
+        server = await conn.start_server(connection_requested, '', 8888,
+                                         encoding='utf-8')
+        await server.wait_closed()
 
 try:
     asyncio.get_event_loop().run_until_complete(run_client())

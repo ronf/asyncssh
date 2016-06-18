@@ -17,6 +17,7 @@ import os
 import signal
 
 import asyncssh
+from asyncssh.misc import async_context_manager
 
 from .util import run, AsyncTestCase
 
@@ -145,7 +146,7 @@ class ServerTestCase(AsyncTestCase):
                                                       self._server_port,
                                                       loop=loop, **kwargs))
 
-    @asyncio.coroutine
+    @async_context_manager
     def connect(self, **kwargs):
         """Open a connection to the test server"""
 

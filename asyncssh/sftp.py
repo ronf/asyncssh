@@ -1,4 +1,4 @@
-# Copyright (c) 2015 by Ron Frederick <ronf@timeheart.net>.
+# Copyright (c) 2015-2016 by Ron Frederick <ronf@timeheart.net>.
 # All rights reserved.
 #
 # This program and the accompanying materials are made available under
@@ -45,7 +45,8 @@ from .constants import FX_OK, FX_EOF, FX_NO_SUCH_FILE, FX_PERMISSION_DENIED
 from .constants import FX_FAILURE, FX_BAD_MESSAGE, FX_NO_CONNECTION
 from .constants import FX_CONNECTION_LOST, FX_OP_UNSUPPORTED
 
-from .misc import Error
+from .misc import Error, async_context_manager
+
 from .packet import Byte, String, UInt32, UInt64, PacketDecodeError, SSHPacket
 
 _SFTP_VERSION = 3
@@ -1081,6 +1082,18 @@ class SFTPFile:
             self._handle = None
 
     @asyncio.coroutine
+    def __aenter__(self):
+        """Allow SFTPFile to be used as an async context manager"""
+
+        return self
+
+    @asyncio.coroutine
+    def __aexit__(self, *exc_info):
+        """Wait for file close when used as an async context manager"""
+
+        yield from self.close()
+
+    @asyncio.coroutine
     def _end(self):
         """Return the offset of the end of the file"""
 
@@ -1447,6 +1460,19 @@ class SFTPClient:
         """Automatically close the session when used as a context manager"""
 
         self.exit()
+
+    @asyncio.coroutine
+    def __aenter__(self):
+        """Allow SFTPClient to be used as an async context manager"""
+
+        return self
+
+    @asyncio.coroutine
+    def __aexit__(self, *exc_info):
+        """Wait for client close when used as an async context manager"""
+
+        self.__exit__()
+        yield from self.wait_closed()
 
     def encode(self, path):
         """Encode path name using configured path encoding
@@ -1955,7 +1981,7 @@ class SFTPClient:
 
         return (yield from self._begin_glob(self, patterns, error_handler))
 
-    @asyncio.coroutine
+    @async_context_manager
     def open(self, path, pflags_or_mode=FXF_READ, attrs=SFTPAttrs(),
              encoding='utf-8', errors='strict'):
         """Open a remote file

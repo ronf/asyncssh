@@ -1,6 +1,6 @@
-#!/usr/bin/env python3.4
+#!/usr/bin/env python3.5
 #
-# Copyright (c) 2013-2015 by Ron Frederick <ronf@timeheart.net>.
+# Copyright (c) 2013-2016 by Ron Frederick <ronf@timeheart.net>.
 # All rights reserved.
 #
 # This program and the accompanying materials are made available under
@@ -25,18 +25,15 @@ def connection_requested(orig_host, orig_port):
     print('Connection received from %s, port %s' % (orig_host, orig_port))
     return MySSHTCPSession()
 
-@asyncio.coroutine
-def run_client():
-    with (yield from asyncssh.connect('localhost')) as conn:
-        server = yield from conn.create_server(connection_requested, '', 8888,
-                                               encoding='utf-8')
+async def run_client():
+    async with asyncssh.connect('localhost') as conn:
+        server = await conn.create_server(connection_requested, '', 8888,
+                                          encoding='utf-8')
 
         if server:
-            yield from server.wait_closed()
+            await server.wait_closed()
         else:
             print('Listener couldn''t be opened.', file=sys.stderr)
-
-    yield from conn.wait_closed()
 
 try:
     asyncio.get_event_loop().run_until_complete(run_client())

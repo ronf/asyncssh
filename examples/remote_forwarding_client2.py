@@ -1,6 +1,6 @@
-#!/usr/bin/env python3.4
+#!/usr/bin/env python3.5
 #
-# Copyright (c) 2013-2015 by Ron Frederick <ronf@timeheart.net>.
+# Copyright (c) 2013-2016 by Ron Frederick <ronf@timeheart.net>.
 # All rights reserved.
 #
 # This program and the accompanying materials are made available under
@@ -24,15 +24,12 @@ def connection_requested(orig_host, orig_port):
             asyncssh.OPEN_ADMINISTRATIVELY_PROHIBITED,
             'Connections only allowed from localhost')
 
-@asyncio.coroutine
-def run_client():
+async def run_client():
     global conn
 
-    with (yield from asyncssh.connect('localhost')) as conn:
-        listener = yield from conn.create_server(connection_requested, '', 8080)
-        yield from listener.wait_closed()
-
-    yield from conn.wait_closed()
+    async with asyncssh.connect('localhost') as conn:
+        listener = await conn.create_server(connection_requested, '', 8080)
+        await listener.wait_closed()
 
 try:
     asyncio.get_event_loop().run_until_complete(run_client())

@@ -1,6 +1,6 @@
-#!/usr/bin/env python3.4
+#!/usr/bin/env python3.5
 #
-# Copyright (c) 2013-2015 by Ron Frederick <ronf@timeheart.net>.
+# Copyright (c) 2013-2016 by Ron Frederick <ronf@timeheart.net>.
 # All rights reserved.
 #
 # This program and the accompanying materials are made available under
@@ -29,15 +29,12 @@ class MySSHClient(asyncssh.SSHClient):
     def auth_completed(self):
         print('Authentication successful.')
 
-@asyncio.coroutine
-def run_client():
-    conn, client = yield from asyncssh.create_connection(MySSHClient, 'localhost')
+async def run_client():
+    conn, client = await asyncssh.create_connection(MySSHClient, 'localhost')
 
-    with conn:
-        chan, session = yield from conn.create_session(MySSHClientSession, 'ls abc')
-        yield from chan.wait_closed()
-
-    yield from conn.wait_closed()
+    async with conn:
+        chan, session = await conn.create_session(MySSHClientSession, 'ls abc')
+        await chan.wait_closed()
 
 try:
     asyncio.get_event_loop().run_until_complete(run_client())
