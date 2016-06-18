@@ -45,8 +45,7 @@ matrix:
         - brew update
         - brew install libffi libsodium openssl pyenv pyenv-virtualenv
         - pyenv install 3.4.4
-        - pyenv global 3.4.4
-        - pyenv-virtualenv venv
+        - pyenv virtualenv 3.4.4 venv
         - source venv/bin/activate
     - os: osx
       osx_image: xcode7.3
@@ -62,7 +61,7 @@ matrix:
         - brew install libffi libsodium openssl pyenv pyenv-virtualenv
         - pyenv install 3.5.1
         - pyenv global 3.5.1
-        - pyenv-virtualenv venv
+        - pyenv virtualenv 3.5.1 venv
         - source venv/bin/activate
 
 script: tox
