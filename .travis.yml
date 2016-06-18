@@ -39,6 +39,7 @@ matrix:
         - CPPFLAGS=-I/usr/local/opt/openssl/include
         - LDFLAGS=-L/usr/local/opt/openssl/lib -L/usr/local/opt/libffi/lib
         - PYENV_ROOT=.pyenv
+        - PATH=$PYENV_ROOT/shims:$PYENV_ROOT/bin:$PATH
         - TOXENV=py34
       before_install:
         - brew update
@@ -53,6 +54,8 @@ matrix:
       env:
         - CPPFLAGS=-I/usr/local/opt/openssl/include
         - LDFLAGS=-L/usr/local/opt/openssl/lib -L/usr/local/opt/libffi/lib
+        - PYENV_ROOT=.pyenv
+        - PATH=$PYENV_ROOT/shims:$PYENV_ROOT/bin:$PATH
         - TOXENV=py35
       before_install:
         - brew update
