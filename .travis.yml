@@ -46,7 +46,7 @@ matrix:
         - pyenv install 3.4.4
         - pyenv rehash
         - pyenv virtualenv 3.4.4 venv
-        - source venv/bin/activate
+        - pyenv activate venv
     - os: osx
       osx_image: xcode7.3
       language: generic
@@ -61,6 +61,6 @@ matrix:
         - pyenv install 3.5.1
         - pyenv rehash
         - pyenv virtualenv 3.5.1 venv
-        - source venv/bin/activate
+        - pyenv activate venv
 
 script: tox
