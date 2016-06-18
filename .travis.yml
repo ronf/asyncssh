@@ -1,7 +1,7 @@
 language: python
 
 install:
-  - pip install tox py-bcrypt libnacl
+  - pip install coverage tox py-bcrypt libnacl
 
 matrix:
   allow_failures:
@@ -42,8 +42,8 @@ matrix:
       before_install:
         - brew update
         - brew install libffi libsodium openssl pyenv pyenv-virtualenv
-        - pyenv install 3.4
-        - pyenv global 3.4
+        - pyenv install 3.4.4
+        - pyenv global 3.4.4
     - os: osx
       osx_image: xcode7.3
       language: generic
@@ -54,7 +54,7 @@ matrix:
       before_install:
         - brew update
         - brew install libffi libsodium openssl pyenv pyenv-virtualenv
-        - pyenv install 3.5
-        - pyenv global 3.5
+        - pyenv install 3.5.1
+        - pyenv global 3.5.1
 
 script: tox
