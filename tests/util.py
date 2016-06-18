@@ -25,7 +25,7 @@ import unittest
 
 try:
     import bcrypt
-    bcrypt_available = True
+    bcrypt_available = hasattr(bcrypt, 'kdf')
 except ImportError: # pragma: no cover
     bcrypt_available = False
 
