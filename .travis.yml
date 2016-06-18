@@ -43,6 +43,8 @@ matrix:
       before_install:
         - brew update
         - brew install libffi libsodium openssl pyenv pyenv-virtualenv
+        - eval "$(pyenv init -)"
+        - eval "$(pyenv virtualenv-init -)"
         - pyenv install 3.4.4
         - pyenv rehash
         - pyenv virtualenv 3.4.4 venv
@@ -58,6 +60,8 @@ matrix:
       before_install:
         - brew update
         - brew install libffi libsodium openssl pyenv pyenv-virtualenv
+        - eval "$(pyenv init -)"
+        - eval "$(pyenv virtualenv-init -)"
         - pyenv install 3.5.1
         - pyenv rehash
         - pyenv virtualenv 3.5.1 venv
