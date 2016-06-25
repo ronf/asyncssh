@@ -45,7 +45,7 @@ from .constants import FX_OK, FX_EOF, FX_NO_SUCH_FILE, FX_PERMISSION_DENIED
 from .constants import FX_FAILURE, FX_BAD_MESSAGE, FX_NO_CONNECTION
 from .constants import FX_CONNECTION_LOST, FX_OP_UNSUPPORTED
 
-from .misc import Error, async_context_manager
+from .misc import async_context_manager, Error, Record
 
 from .packet import Byte, String, UInt32, UInt64, PacketDecodeError, SSHPacket
 
@@ -98,27 +98,6 @@ def _setstat(path, attrs):
 
     if attrs.atime is not None and attrs.mtime is not None:
         os.utime(path, times=(attrs.atime, attrs.mtime))
-
-
-class _Record:
-    """General-purpose record type with fixed set of fields"""
-
-    __slots__ = OrderedDict()
-
-    def __init__(self, *args, **kwargs):
-        for k, v in self.__slots__.items():
-            setattr(self, k, v)
-
-        for k, v in zip(self.__slots__, args):
-            setattr(self, k, v)
-
-        for k, v in kwargs.items():
-            setattr(self, k, v)
-
-    def __repr__(self):
-        return '%s(%s)' % (type(self).__name__,
-                           ', '.join('%s=%r' % (k, getattr(self, k))
-                                     for k in self.__slots__))
 
 
 class _LocalFile:
@@ -326,7 +305,7 @@ class SFTPError(Error):
         super().__init__('SFTP', code, reason, lang)
 
 
-class SFTPAttrs(_Record):
+class SFTPAttrs(Record):
     """SFTP file attributes
 
        SFTPAttrs is a simple record class with the following fields:
@@ -438,7 +417,7 @@ class SFTPAttrs(_Record):
                    result.st_nlink)
 
 
-class SFTPVFSAttrs(_Record):
+class SFTPVFSAttrs(Record):
     """SFTP file system attributes
 
        SFTPVFSAttrs is a simple record class with the following fields:
@@ -509,7 +488,7 @@ class SFTPVFSAttrs(_Record):
                    result.f_namemax)
 
 
-class SFTPName(_Record):
+class SFTPName(Record):
     """SFTP file name and attributes
 
        SFTPName is a simple record class with the following fields:

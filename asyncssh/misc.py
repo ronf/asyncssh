@@ -18,6 +18,7 @@ import ipaddress
 import platform
 import socket
 
+from collections import OrderedDict
 from random import SystemRandom
 
 from .constants import DEFAULT_LANG
@@ -137,6 +138,27 @@ def async_context_manager(coro):
         return coro_wrapper
     else:
         return coro
+
+
+class Record:
+    """General-purpose record type with fixed set of fields"""
+
+    __slots__ = OrderedDict()
+
+    def __init__(self, *args, **kwargs):
+        for k, v in self.__slots__.items():
+            setattr(self, k, v)
+
+        for k, v in zip(self.__slots__, args):
+            setattr(self, k, v)
+
+        for k, v in kwargs.items():
+            setattr(self, k, v)
+
+    def __repr__(self):
+        return '%s(%s)' % (type(self).__name__,
+                           ', '.join('%s=%r' % (k, getattr(self, k))
+                                     for k in self.__slots__))
 
 
 class Error(Exception):
