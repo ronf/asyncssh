@@ -15,7 +15,7 @@
 import asyncio
 
 from .constants import EXTENDED_DATA_STDERR
-from .misc import BreakReceived, SignalReceived, TerminalSizeChanged
+from .misc import BreakReceived, SignalReceived, TerminalSizeChanged, python35
 from .session import SSHClientSession, SSHServerSession
 from .session import SSHTCPSession, SSHUNIXSession
 from .sftp import SFTPServerHandler
@@ -28,6 +28,24 @@ class SSHReader:
         self._session = session
         self._chan = chan
         self._datatype = datatype
+
+    if python35:
+        @asyncio.coroutine
+        def __aiter__(self):
+            """Allow SSHReader to be an async iterator"""
+
+            return self
+
+        @asyncio.coroutine
+        def __anext__(self):
+            """Return one line at a time when used as an async iterator"""
+
+            line = yield from self.readline()
+
+            if line:
+                return line
+            else:
+                raise StopAsyncIteration
 
     @property
     def channel(self):
@@ -47,6 +65,7 @@ class SSHReader:
 
         return self._chan.get_extra_info(name, default)
 
+    @asyncio.coroutine
     def read(self, n=-1):
         """Read data from the stream
 
@@ -67,6 +86,7 @@ class SSHReader:
 
         return self._session.read(n, self._datatype, exact=False)
 
+    @asyncio.coroutine
     def readline(self):
         """Read one line from the stream
 
@@ -77,10 +97,15 @@ class SSHReader:
            line is returned. If EOF was received and the receive buffer
            is empty, an empty bytes or str object is returned.
 
+           .. note:: In Python 3.5 and later, :class:`SSHReader` objects
+                     can also be used as async iterators, returning input
+                     data one line at a time.
+
         """
 
         return self._session.readline(self._datatype)
 
+    @asyncio.coroutine
     def readexactly(self, n):
         """Read an exact amount of data from the stream
 
