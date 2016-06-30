@@ -111,7 +111,7 @@ Optional Extras
 There are some optional modules you can install to enable additional
 functionality:
 
-* Install bcrypt from https://code.google.com/p/py-bcrypt
+* Install bcrypt from https://pypi.python.org/pypi/bcrypt
   if you want support for OpenSSH private key encryption.
 
 * Install libsodium from https://github.com/jedisct1/libsodium
@@ -125,7 +125,7 @@ easy to install any or all of these dependencies:
   | bcrypt
   | libnacl
 
-For example, to install all of these, you can run:
+For example, to install both of these, you can run:
 
   ::
 

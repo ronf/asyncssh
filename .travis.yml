@@ -1,7 +1,7 @@
 language: python
 
 install:
-  - pip install tox py-bcrypt libnacl
+  - pip install tox bcrypt libnacl
 
 matrix:
   allow_failures:
