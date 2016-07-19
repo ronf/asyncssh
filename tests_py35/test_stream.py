@@ -28,6 +28,8 @@ class _StreamServer(Server):
 class _TestStream(ServerTestCase):
     """Unit tests for AsyncSSH stream API"""
 
+    # pylint: disable=not-async-context-manager
+
     @classmethod
     async def start_server(cls):
         """Start an SSH server for the tests to use"""
