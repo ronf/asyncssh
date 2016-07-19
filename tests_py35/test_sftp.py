@@ -10,38 +10,10 @@
 # Contributors:
 #     Ron Frederick - initial implementation, API, and documentation
 
-"""Unit tests for Python 3.5 async API"""
+"""Unit tests for AsyncSSH SFTP client and server on Python 3.5 and later"""
 
 from tests.server import ServerTestCase
 from tests.util import asynctest, asynctest35, run
-
-
-class _TestConnection(ServerTestCase):
-    """Unit tests for AsyncSSH connection async context manager"""
-
-    # pylint: disable=not-async-context-manager
-
-    @asynctest35
-    async def test_connect(self):
-        """Test connecting in Python 3.5 with async context manager"""
-
-        async with self.connect():
-            pass
-
-    @asynctest35
-    async def test_connect_await(self):
-        """Test connecting with await and async context manager"""
-
-        conn = await self.connect()
-        async with conn:
-            pass
-
-    @asynctest
-    def test_connect_yield(self):
-        """Test connecting with yield from"""
-
-        with (yield from self.connect()):
-            pass
 
 
 class _TestSFTP(ServerTestCase):
