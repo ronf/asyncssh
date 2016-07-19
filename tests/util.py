@@ -37,6 +37,7 @@ except (ImportError, OSError, AttributeError): # pragma: no cover
 
 # pylint: enable=unused-import
 
+from asyncssh.misc import SignalReceived
 from asyncssh.packet import String, UInt32, UInt64
 
 
@@ -92,6 +93,8 @@ def echo(stdin, stdout, stderr=None):
             yield from stderr.drain()
 
         stdout.write_eof()
+    except SignalReceived as exc:
+        stdin.channel.exit_with_signal(exc.signal)
     except OSError:
         pass
 
