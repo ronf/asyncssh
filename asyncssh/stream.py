@@ -228,6 +228,7 @@ class SSHStreamSession:
     def __init__(self):
         self._chan = None
         self._conn = None
+        self._encoding = None
         self._loop = None
         self._limit = None
         self._exception = None
@@ -275,6 +276,7 @@ class SSHStreamSession:
 
         self._chan = chan
         self._conn = chan.get_connection()
+        self._encoding = chan.get_encoding()
         self._loop = chan.get_loop()
         self._limit = self._chan.get_recv_window()
 
@@ -339,7 +341,7 @@ class SSHStreamSession:
         """Read data from the channel"""
 
         recv_buf = self._recv_buf[datatype]
-        buf = '' if self._chan.get_encoding() else b''
+        buf = '' if self._encoding else b''
         data = []
 
         while True:
@@ -383,7 +385,7 @@ class SSHStreamSession:
         """Read a line from the channel"""
 
         recv_buf = self._recv_buf[datatype]
-        buf, sep = ('', '\n') if self._chan.get_encoding() else (b'', b'\n')
+        buf, sep = ('', '\n') if self._encoding else (b'', b'\n')
         data = []
 
         while True:
@@ -478,6 +480,7 @@ class SSHServerStreamSession(SSHStreamSession, SSHServerSession):
 
         if self._chan.get_subsystem() == 'sftp':
             self._chan.set_encoding(None)
+            self._encoding = None
 
             handler = SFTPServerHandler(self._sftp_factory, self._conn,
                                         SSHReader(self, self._chan),
