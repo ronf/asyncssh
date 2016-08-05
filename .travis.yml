@@ -48,7 +48,7 @@ matrix:
         - pyenv install 3.4.4
         - pyenv rehash
         - pyenv virtualenv 3.4.4 venv
-        - export PYENV_VERSION=venv
+        - pyenv local 3.4.4
     - os: osx
       osx_image: xcode7.3
       language: generic
