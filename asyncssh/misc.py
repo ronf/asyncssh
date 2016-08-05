@@ -25,7 +25,7 @@ from .constants import DEFAULT_LANG
 
 
 # Provide globals to test if we're on various Python versions
-python342 = platform.python_version_tuple() >= ('3', '4', '2')
+python344 = platform.python_version_tuple() >= ('3', '4', '4')
 python35 = platform.python_version_tuple() >= ('3', '5', '0')
 python352 = platform.python_version_tuple() >= ('3', '5', '2')
 
@@ -37,7 +37,7 @@ randrange = _random.randrange
 
 
 # Avoid deprecation warning for asyncio.async()
-if python342:
+if python344:
     ensure_future = asyncio.ensure_future
 else: # pragma: no cover
     ensure_future = asyncio.async    # pylint: disable=deprecated-method
