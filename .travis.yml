@@ -45,10 +45,9 @@ matrix:
         - brew install libffi libsodium openssl pyenv pyenv-virtualenv
         - eval "$(pyenv init -)"
         - eval "$(pyenv virtualenv-init -)"
-        - pyenv install 3.4.4
+        - pyenv install 3.4.5
+        - pyenv local 3.4.5
         - pyenv rehash
-        - pyenv virtualenv 3.4.4 venv
-        - pyenv local 3.4.4
     - os: osx
       osx_image: xcode7.3
       language: generic
@@ -62,9 +61,8 @@ matrix:
         - brew install libffi libsodium openssl pyenv pyenv-virtualenv
         - eval "$(pyenv init -)"
         - eval "$(pyenv virtualenv-init -)"
-        - pyenv install 3.5.1
+        - pyenv install 3.5.2
+        - pyenv local 3.5.2
         - pyenv rehash
-        - pyenv virtualenv 3.5.1 venv
-        - export PYENV_VERSION=venv
 
 script: tox
