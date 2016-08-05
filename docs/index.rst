@@ -25,18 +25,20 @@ The server's host key is checked against the user's SSH known_hosts file and
 the connection will fail if there's no entry for localhost there or if the
 key doesn't match.
 
-   .. include:: ../examples/sample_client.py
+   .. include:: ../examples/simple_client.py
       :literal:
       :start-line: 14
 
+This example only uses the output on stdout, but output on stderr is also
+collected as another attribute in the returned :class:`SSHCompletedProcess`
+object.
+
 To check against a different set of server host keys, they can be read
-and provided in the known_hosts argument when the :class:`SSHClient`
-instance is created:
+and provided in the known_hosts argument when the connection is opened:
 
    .. code::
 
-     conn, client = await asyncssh.create_connection(MySSHClient, 'localhost',
-                                                     known_hosts='my_known_hosts')
+     async with asyncssh.connect('localhost', known_hosts='my_known_hosts') as conn:
 
 
 Server host key checking can be disabled by setting the known_hosts
@@ -48,68 +50,62 @@ provided:
 
    .. code::
 
-     conn, client = await asyncssh.create_connection(MySSHClient, 'localhost',
-                                                     username='user123')
+     async with asyncssh.connect('localhost', username='user123') as conn:
 
 To use a different set of client keys for authentication, they can be
 read and provided in the client_keys argument:
 
    .. code::
 
-     conn, client = await asyncssh.create_connection(MySSHClient, 'localhost',
-                                                     client_keys=['my_ssh_key'])
+     async with asyncssh.connect('localhost', client_keys=['my_ssh_key']) as conn:
 
 Password authentication can be used by providing a password argument:
 
    .. code::
 
-     conn, client = await asyncssh.create_connection(MySSHClient, 'localhost',
-                                                     password='secretpw')
+     async with asyncssh.connect('localhost', password='secretpw') as conn:
 
 Any of the arguments above can be combined together as needed. If client
 keys and a password are both provided, either may be used depending
 on what forms of authentication the server supports and whether the
 authentication with them is successful.
 
+Callback example
+----------------
+
+AsyncSSH also provides APIs that use callbacks rather than "await" and "async
+with". Here's the example above written using custom :class:`SSHClient` and
+:class:`SSHClientSession` subclasses:
+
+   .. include:: ../examples/callback_client.py
+      :literal:
+      :start-line: 14
+
 In cases where you don't need to customize callbacks on the SSHClient class,
 this code can be simplified somewhat to:
 
-   .. include:: ../examples/simple_client.py
+   .. include:: ../examples/callback_client2.py
       :literal:
       :start-line: 14
 
-Handling of stderr
-------------------
+If you need to distinguish output going to stdout vs. stderr, that's easy to
+do with the following change:
 
-The above code doesn't distinguish output going to stdout vs. stderr, but
-that's easy to do with the following change:
-
-   .. include:: ../examples/stderr_client.py
+   .. include:: ../examples/callback_client3.py
       :literal:
       :start-line: 14
 
-Simple client with input
-------------------------
+Interactive input
+-----------------
 
-The following example demonstrates sending input to a remote program.
-It executes the calculator program ``bc`` and performs some basic math
-calculations.
+The following example demonstrates sending interactive input to a remote
+process. It executes the calculator program ``bc`` and performs some basic
+math calculations. Note that it uses the :meth:`create_process
+<SSHClientConnection.create_process>` method rather than the :meth:`run
+<SSHClientConnection.run>` method. This starts the process but doesn't wait
+for it to exit, allowing interaction with it.
 
    .. include:: ../examples/math_client.py
-      :literal:
-      :start-line: 14
-
-Note that input is not sent on the channel  until the :meth:`session_started()
-<SSHClientSession.session_started>` method is called, and :meth:`write_eof()
-<SSHClientChannel.write_eof>` is used to signal the end of input, causing the
-'bc' program to exit.
-
-This example can be simplified by using the higher-level "streams" API. With
-that, callbacks aren't needed. Here's the streams version of the above example,
-using :meth:`open_session <SSHClientConnection.open_session>` instead of
-:meth:`create_session <SSHClientConnection.create_session>`:
-
-   .. include:: ../examples/stream_math_client.py
       :literal:
       :start-line: 14
 
@@ -121,25 +117,54 @@ When run, this program should produce the following output:
       1*2*3*4 = 24
       2^32 = 4294967296
 
+I/O redirection
+---------------
+
+The following example shows how to pass a fixed input string to a remote
+process and redirect the resulting output to the local file '/tmp/stdout'.
+Input lines containing 1, 2, and 3 are passed into the 'tail -r' command
+and the output written to '/tmp/stdout' should contain the reversed lines
+3, 2, and 1:
+
+   .. include:: ../examples/redirect_input.py
+      :literal:
+      :start-line: 14
+
+The ``stdin``, ``stdout``, and ``stderr`` arguments support redirecting
+to a variety of locations include local files, pipes, and sockets as
+well as an :class:`SSHReader` or :class:`SSHWriter` objects associated
+with other remote SSH processes. Here's an example of piping stdout from
+a local process to a remote process:
+
+   .. include:: ../examples/redirect_local_pipe.py
+      :literal:
+      :start-line: 14
+
+Here's an example of piping one remote process to another:
+
+   .. include:: ../examples/redirect_remote_pipe.py
+      :literal:
+      :start-line: 14
+
+Note that in this example both remote processes are actually running on
+the same remote SSH connection.
+
 Checking exit status
 --------------------
 
-The following example is a variation of the simple client which shows how to
-receive the remote program's exit status using the :meth:`exit_status_received
-<SSHClientSession.exit_status_received>` callback.
+The following example shows how to test the exit status of a remote process:
 
    .. include:: ../examples/check_exit_status.py
       :literal:
       :start-line: 14
 
-From servers that support it, exit signals can also be received using
-:meth:`exit_signal_received <SSHClientSession.exit_signal_received>`.
+If an exit signal is received, the exit status will be set to -1 and exit
+signal information is provided in the ``exit_signal`` attribute of the
+returned :class:`SSHCompletedProcess`.
 
-Exit status can be also queried after the channel has closed by using the
-methods :meth:`get_exit_status <SSHClientChannel.get_exit_status>` and
-:meth:`get_exit_signal <SSHClientChannel.get_exit_signal>`. This is
-how it is done when using the streams API, since callbacks aren't available
-there.
+If the ``check`` argument in :meth:`run <SSHClientConnection.run>` is set
+to ``True``, any abnormal exit will raise a :exc:`ProcessError` exception
+instead of returning an :class:`SSHCompletedProcess`.
 
 Setting environment variables
 -----------------------------
@@ -319,8 +344,8 @@ a message when users authenticate successfully and start a shell.
 
 To authenticate with SSH client keys or certificates, the server would
 look something like the following. Client and certificate authority
-keys for each user need to be placed in a file in authorized_keys format
-named based on the username in a directory called ``authorized_keys``.
+keys for each user need to be placed in a file matching the username in
+a directory called ``authorized_keys``.
 
    .. include:: ../examples/simple_keyed_server.py
       :literal:
@@ -329,7 +354,9 @@ named based on the username in a directory called ``authorized_keys``.
 It is also possible to use a single authorized_keys file for all users.
 This is common when using certificates, as AsyncSSH can automatically
 enforce that the certificates presented have a principal in them which
-matches the username. This would look something like the following.
+matches the username. In this case, a custom :class:`SSHServer` subclass
+is no longer required, and so the :func:`listen` function can be used in
+place of :func:`create_server`.
 
    .. include:: ../examples/simple_cert_server.py
       :literal:
@@ -339,28 +366,23 @@ Simple server with input
 ------------------------
 
 The following example demonstrates reading input in a server session.
-It will sum a column of numbers, displaying the total and closing the
+It adds a column of numbers, displaying the total and closing the
 connection when it receives EOF. Note that this is not an interactive
 application, so no echoing of user input is provided. You'll need to
 have the SSH client read from a file or pipe rather than the terminal
 or tell it not to allocate a pty for this to work right.
 
-   .. include:: ../examples/math_server.py
+   .. include:: ../examples/stream_math_server.py
       :literal:
       :start-line: 21
 
-Here's an example of this server written using the streams API. In this
-case, :func:`listen` is used in place of :func:`create_server` since a
-custom subclass of :class:`SSHServer` is not required. The handler
-coroutine to call to handle new sessions is specified using the
-``session_factory`` argument. When a new session is requested, the
-handler coroutine is called with AsyncSSH stream objects representing
-stdin, stdout, and stderr that it can use to perform I/O.
+Callback example
+----------------
 
-This example also shows how to catch exceptions thrown when break messages,
-signals, or terminal size changes are received.
+Here's an example of this server written using callbacks in custom
+:class:`SSHServer` and :class:`SSHServerSession` subclasses.
 
-   .. include:: ../examples/stream_math_server.py
+   .. include:: ../examples/math_server.py
       :literal:
       :start-line: 21
 

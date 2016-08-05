@@ -24,14 +24,23 @@ from random import SystemRandom
 from .constants import DEFAULT_LANG
 
 
-# Provide a global to test if we're on Python 3.5 or later
+# Provide globals to test if we're on various Python versions
+python342 = platform.python_version_tuple() >= ('3', '4', '2')
 python35 = platform.python_version_tuple() >= ('3', '5', '0')
+python352 = platform.python_version_tuple() >= ('3', '5', '2')
 
 
 # Define a version of randrange which is based on SystemRandom(), so that
 # we get back numbers suitable for cryptographic use.
 _random = SystemRandom()
 randrange = _random.randrange
+
+
+# Avoid deprecation warning for asyncio.async()
+if python342:
+    ensure_future = asyncio.ensure_future
+else: # pragma: no cover
+    ensure_future = asyncio.async    # pylint: disable=deprecated-method
 
 
 def all_ints(seq):
@@ -87,6 +96,12 @@ def ip_network(addr):
         mask = ''
 
     return ipaddress.ip_network(_normalize_scoped_ip(addr) + mask)
+
+
+if python352:
+    async_iterator = lambda iter: iter
+else:
+    async_iterator = asyncio.coroutine
 
 
 def async_context_manager(coro):

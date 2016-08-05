@@ -11,20 +11,13 @@ asyncio framework.
 
   async def run_client():
       async with asyncssh.connect('localhost') as conn:
-          stdin, stdout, stderr = await conn.open_session('echo "Hello!"')
+          result = await conn.run('echo "Hello!"', check=True)
+          print(result.stdout, end='')
 
-          output = await stdout.read()
-          print(output, end='')
-
-          await stdout.channel.wait_closed()
-
-          status = stdout.channel.get_exit_status()
-          if status:
-              print('Program exited with status %d' % status, file=sys.stderr)
-          else:
-              print('Program exited successfully')
-
-  asyncio.get_event_loop().run_until_complete(run_client())
+  try:
+      asyncio.get_event_loop().run_until_complete(run_client())
+  except (OSError, asyncssh.Error) as exc:
+      sys.exit('SSH connection failed: ' + str(exc))
 
 Check out the `examples`__ to get started!
 

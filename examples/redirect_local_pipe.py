@@ -12,16 +12,14 @@
 # Contributors:
 #     Ron Frederick - initial implementation, API, and documentation
 
-import asyncio, asyncssh, sys
+import asyncio, asyncssh, subprocess, sys
 
 async def run_client():
     async with asyncssh.connect('localhost') as conn:
-        stdin, stdout, stderr = await conn.open_session('bc')
-
-        for op in ['2+2', '1*2*3*4', '2^32']:
-            stdin.write(op + '\n')
-            result = await stdout.readline()
-            print(op, '=', result, end='')
+        local_proc = subprocess.Popen(r'echo "1\n2\n3"', shell=True,
+                                      stdout=subprocess.PIPE)
+        remote_result = await conn.run('tail -r', stdin=local_proc.stdout)
+        print(remote_result.stdout, end='')
 
 try:
     asyncio.get_event_loop().run_until_complete(run_client())

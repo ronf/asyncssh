@@ -21,7 +21,7 @@
 
 import asyncio, asyncssh, sys
 
-async def handle_connection(stdin, stdout, stderr):
+async def handle_session(stdin, stdout, stderr):
     term_type = stdout.channel.get_terminal_type()
     width, height, pixwidth, pixheight = stdout.channel.get_terminal_size()
 
@@ -32,7 +32,7 @@ async def handle_connection(stdin, stdout, stderr):
 
     while not stdin.at_eof():
         try:
-            line = await stdin.read()
+            await stdin.read()
         except asyncssh.TerminalSizeChanged as exc:
             stdout.write('New window size: %sx%s' % (exc.width, exc.height))
             if exc.pixwidth and exc.pixheight:
@@ -42,7 +42,7 @@ async def handle_connection(stdin, stdout, stderr):
 async def start_server():
     await asyncssh.listen('', 8022, server_host_keys=['ssh_host_key'],
                           authorized_client_keys='ssh_user_ca',
-                          session_factory=handle_connection)
+                          session_factory=handle_session)
 
 loop = asyncio.get_event_loop()
 

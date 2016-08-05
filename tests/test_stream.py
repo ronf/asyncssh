@@ -33,6 +33,8 @@ class _StreamServer(Server):
             action = 'echo'
 
         if action == 'echo':
+            yield from echo(stdin, stdout)
+        elif action == 'echo_stderr':
             yield from echo(stdin, stdout, stderr)
         elif action == 'close':
             yield from stdin.read(1)
@@ -85,7 +87,7 @@ class _TestStream(ServerTestCase):
     def _check_session(self, conn, large_block=False):
         """Open a session and test if an input line is echoed back"""
 
-        stdin, stdout, stderr = yield from conn.open_session()
+        stdin, stdout, stderr = yield from conn.open_session('echo_stderr')
 
         if large_block:
             data = 4 * [1025*1024*'\0']

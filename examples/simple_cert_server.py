@@ -21,26 +21,15 @@
 
 import asyncio, asyncssh, sys
 
-class MySSHServerSession(asyncssh.SSHServerSession):
-    def connection_made(self, chan):
-        self._chan = chan
-
-    def shell_requested(self):
-        return True
-
-    def session_started(self):
-        self._chan.write('Welcome to my SSH server, %s!\r\n' %
-                             self._chan.get_extra_info('username'))
-        self._chan.exit(0)
-
-class MySSHServer(asyncssh.SSHServer):
-    def session_requested(self):
-        return MySSHServerSession()
+def handle_session(stdin, stdout, stderr):
+    stdout.write('Welcome to my SSH server, %s!\r\n' %
+                 stdout.channel.get_extra_info('username'))
+    stdout.channel.exit(0)
 
 async def start_server():
-    await asyncssh.create_server(MySSHServer, '', 8022,
-                                 server_host_keys=['ssh_host_key'],
-                                 authorized_client_keys='ssh_user_ca')
+    await asyncssh.listen('', 8022, server_host_keys=['ssh_host_key'],
+                          authorized_client_keys='ssh_user_ca',
+                          session_factory=handle_session)
 
 loop = asyncio.get_event_loop()
 

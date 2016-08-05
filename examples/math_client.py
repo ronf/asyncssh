@@ -1,6 +1,6 @@
 #!/usr/bin/env python3.5
 #
-# Copyright (c) 2013-2016 by Ron Frederick <ronf@timeheart.net>.
+# Copyright (c) 2016 by Ron Frederick <ronf@timeheart.net>.
 # All rights reserved.
 #
 # This program and the accompanying materials are made available under
@@ -14,36 +14,13 @@
 
 import asyncio, asyncssh, sys
 
-class MySSHClientSession(asyncssh.SSHClientSession):
-    def next_operation(self):
-        if self._operations:
-            operation = self._operations.pop(0)
-            print(operation, '= ', end='')
-            self._chan.write(operation + '\n')
-        else:
-            self._chan.write_eof()
-
-    def connection_made(self, chan):
-        self._chan = chan
-
-    def session_started(self):
-        self._operations = ['2+2', '1*2*3*4', '2^32']
-        self.next_operation()
-
-    def data_received(self, data, datatype):
-        print(data, end='')
-
-        if '\n' in data:
-            self.next_operation()
-
-    def connection_lost(self, exc):
-        if exc:
-            print('SSH session error: ' + str(exc), file=sys.stderr)
-
 async def run_client():
     async with asyncssh.connect('localhost') as conn:
-        chan, session = await conn.create_session(MySSHClientSession, 'bc')
-        await chan.wait_closed()
+        async with conn.create_process('bc') as process:
+            for op in ['2+2', '1*2*3*4', '2^32']:
+                process.stdin.write(op + '\n')
+                result = await process.stdout.readline()
+                print(op, '=', result, end='')
 
 try:
     asyncio.get_event_loop().run_until_complete(run_client())

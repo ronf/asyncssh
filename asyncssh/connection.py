@@ -14,8 +14,8 @@
 
 import asyncio
 import getpass
+import io
 import os
-import platform
 import socket
 import sys
 import time
@@ -75,10 +75,13 @@ from .logging import logger
 from .mac import get_mac_algs, get_mac_params, get_mac
 
 from .misc import ChannelOpenError, DisconnectError, PasswordChangeRequired
-from .misc import async_context_manager, ip_address, map_handler_name
+from .misc import async_context_manager, ensure_future, ip_address
+from .misc import map_handler_name
 
 from .packet import Boolean, Byte, NameList, String, UInt32, UInt64
 from .packet import PacketDecodeError, SSHPacket, SSHPacketHandler
+
+from .process import PIPE, SSHClientProcess
 
 from .public_key import CERT_TYPE_HOST, CERT_TYPE_USER
 from .public_key import get_public_key_algs, get_certificate_algs
@@ -533,15 +536,7 @@ class SSHConnection(SSHPacketHandler):
     def create_task(self, coro):
         """Create an asynchronous task which catches and reports errors"""
 
-        if platform.python_version_tuple() >= ('3', '4', '2'):
-            task = self._loop.create_task(self._run_task(coro))
-        else: # pragma: no cover
-            # Pylint is annoying here - it's not smart enough to see the
-            # version check, and the disable MUST be on the same line as
-            # the call, leading to ugly line breaking
-            task = asyncio.async(    # pylint: disable=deprecated-method
-                self._run_task(coro), loop=self._loop)
-
+        task = ensure_future(self._run_task(coro), loop=self._loop)
         self._tasks.add(task)
         return task
 
@@ -2378,7 +2373,7 @@ class SSHClientConnection(SSHConnection):
 
            This method is a coroutine which can be called to create an SSH
            client session used to execute a command, start a subsystem
-           such as sftp, or if no command or subsystem is specific run an
+           such as sftp, or if no command or subsystem is specified run an
            interactive shell. Optional arguments allow terminal and
            environment information to be provided.
 
@@ -2431,6 +2426,8 @@ class SSHClientConnection(SSHConnection):
 
            :returns: an :class:`SSHClientChannel` and :class:`SSHClientSession`
 
+           :raises: :exc:`ChannelOpenError` if the session can't be opened
+
         """
 
         chan = SSHClientChannel(self, self._loop, encoding,
@@ -2461,6 +2458,103 @@ class SSHClientConnection(SSHConnection):
 
         return (SSHWriter(session, chan), SSHReader(session, chan),
                 SSHReader(session, chan, EXTENDED_DATA_STDERR))
+
+    # pylint: disable=redefined-builtin
+    @async_context_manager
+    def create_process(self, *args, bufsize=io.DEFAULT_BUFFER_SIZE, input=None,
+                       stdin=PIPE, stdout=PIPE, stderr=PIPE, **kwargs):
+        """Create a process on the remote system
+
+           This method is a coroutine wrapper around :meth:`create_session`
+           which can be used to execute a command, start a subsystem,
+           or start an interactive shell, optionally redirecting stdin,
+           stdout, and stderr to and from files or pipes attached to
+           other local and remote processes.
+
+           By default, stdin, stdout, and stderr can be read and written
+           interactively via stream objects which are members of the
+           :class:`SSHClientProcess` object this method returns. However,
+           if other file-like objects are provided as arguments here,
+           input or output will automatically be redirected to them. The
+           special value ``DEVNULL`` can be used to provide no input or
+           discard all output, and the special value ``STDOUT`` can be
+           provided as ``stderr`` to send its output to the same stream
+           as ``stdout``.
+
+           In addition to the arguments below, all arguments to
+           :meth:`create_session` except for ``session_factory`` are
+           supported and have the same meaning.
+
+           :param int bufsize: (optional)
+               Buffer size to use when feeding data from a file to stdin
+           :param input: (optional)
+               Input data to feed to standard input of the remote process.
+               If specified, this argument takes precedence over stdin.
+               Data should be a str if encoding is set, or bytes if not.
+           :param stdin: (optional)
+               A filename, file-like object, file descriptor, socket, or
+               :class:`SSHReader` to feed to standard input of the remote
+               process, or ``DEVNULL`` to provide no input.
+           :param stdout: (optional)
+               A filename, file-like object, file descriptor, socket, or
+               :class:`SSHWriter` to feed standard output of the remote
+               process to, or ``DEVNULL`` to discard this output.
+           :param stderr: (optional)
+               A filename, file-like object, file descriptor, socket, or
+               :class:`SSHWriter` to feed standard error of the remote
+               process to, ``DEVNULL`` to discard this output, or ``STDOUT``
+               to feed standard error to the same place as stdout.
+           :type input:
+               str or bytes
+
+           :returns: :class:`SSHClientProcess`
+
+           :raises: :exc:`ChannelOpenError` if the channel can't be opened
+
+        """
+
+        _, process = yield from self.create_session(SSHClientProcess, *args,
+                                                    **kwargs)
+
+        yield from process.redirect(bufsize, input, stdin, stdout, stderr)
+
+        return process
+    # pylint: enable=redefined-builtin
+
+    @asyncio.coroutine
+    def run(self, *args, check=False, **kwargs):
+        """Run a command on the remote system and collect its output
+
+           This method is a coroutine wrapper around :meth:`create_process`
+           which can be used to run a process to completion when no
+           interactivity is needed. All of the arguments to
+           :meth:`create_process` can be passed in to provide input or
+           redirect stdin, stdout, and stderr, but this method waits until
+           the process exits and returns an :class:`SSHCompletedProcess`
+           object with the exit status or signal information and the
+           output to stdout and stderr (if not redirected).
+
+           If the check argument is set to ``True``, a non-zero exit status
+           from the remote process will trigger the :exc:`ProcessError`
+           exception to be raised.
+
+           In addition to the argument below, all arguments to
+           :meth:`create_process` are supported and have the same meaning.
+
+           :param bool check: (optional)
+               Whether or not to raise :exc:`ProcessError` when a non-zero
+               exit status is returned
+
+           :returns: :class:`SSHCompletedProcess`
+
+           :raises: | :exc:`ChannelOpenError` if the session can't be opened
+                    | :exc:`ProcessError` if checking non-zero exit status
+
+        """
+
+        process = yield from self.create_process(*args, **kwargs)
+
+        return (yield from process.wait(check))
 
     @asyncio.coroutine
     def create_connection(self, session_factory, remote_host, remote_port,

@@ -14,27 +14,16 @@
 
 import asyncio, asyncssh, sys
 
-class MySSHClientSession(asyncssh.SSHClientSession):
-    def data_received(self, data, datatype):
-        if datatype == asyncssh.EXTENDED_DATA_STDERR:
-            print(data, end='', file=sys.stderr)
-        else:
-            print(data, end='')
-
-    def exit_status_received(self, status):
-        if status:
-            print('Program exited with status %d' % status, file=sys.stderr)
-        else:
-            print('Program exited successfully')
-
-    def connection_lost(self, exc):
-        if exc:
-            print('SSH session error: ' + str(exc), file=sys.stderr)
-
 async def run_client():
     async with asyncssh.connect('localhost') as conn:
-        chan, session = await conn.create_session(MySSHClientSession, 'ls abc')
-        await chan.wait_closed()
+        result = await conn.run('ls abc')
+
+        if result.exit_status == 0:
+            print(result.stdout, end='')
+        else:
+            print(result.stderr, end='', file=sys.stderr)
+            print('Program exited with status %d' % result.exit_status,
+                  file=sys.stderr)
 
 try:
     asyncio.get_event_loop().run_until_complete(run_client())

@@ -56,12 +56,25 @@ used to perform I/O on the channel. The methods :meth:`start_server()
 remote TCP ports or UNIX domain sockets and get back these :class:`SSHReader`
 and :class:`SSHWriter` objects in a callback when new connections are opened.
 
+SSH client sessions can also be opened by calling :meth:`create_process()
+<SSHClientConnection.create_process>`. This returns a :class:`SSHClientProcess`
+object which has members ``stdin``, ``stdout``, and ``stderr`` which are
+:class:``SSHReader`` and :class:``SSHWriter`` objects. This API also makes
+it very easy to redirect input and output from the remote process to local
+files, pipes, sockets, or other :class:`SSHReader` and :class:`SSHWriter`
+objects. In cases where you just want to run a remote process to completion
+and get back an object containing captured output and exit status, the
+:meth:`run() <SSHClientConnection.run>` method can be used. It returns an
+:class:`SSHCompletedProcess` with the results of the run, or can be set up
+to raise :class:`ProcessError` if the process exits with a non-zero exit
+status.
+
 The client can also set up TCP port forwarding by calling
 :meth:`forward_local_port() <SSHClientConnection.forward_local_port>` or
 :meth:`forward_remote_port() <SSHClientConnection.forward_remote_port>` and
 UNIX domain socket forwarding by calling :meth:`forward_local_path()
-<SSHClientSession.forward_local_path>` or :meth:`forward_remote_path()
-<SSHClientSession.forward_remote_path>`. In these cases, data transfer on
+<SSHClientConnection.forward_local_path>` or :meth:`forward_remote_path()
+<SSHClientConnection.forward_remote_path>`. In these cases, data transfer on
 the channels is managed automatically by AsyncSSH whenever new connections
 are opened, so custom session objects are not required.
 
@@ -226,11 +239,21 @@ SSHClientConnection
    .. automethod:: send_debug
    ============================== =
 
-   ====================================== =
+   ================================================================================================================================= =
    Client session open methods
-   ====================================== =
+   ================================================================================================================================= =
    .. automethod:: create_session
    .. automethod:: open_session
+   .. automethod:: create_process(*args, bufsize=io.DEFAULT_BUFFER_SIZE, input=None, stdin=PIPE, stdout=PIPE, stderr=PIPE, **kwargs)
+   .. automethod:: run(*args, check=False, **kwargs)
+   .. automethod:: start_sftp_client
+   .. automethod:: create_ssh_connection
+   .. automethod:: connect_ssh
+   ================================================================================================================================= =
+
+   ====================================== =
+   Client connection open methods
+   ====================================== =
    .. automethod:: create_connection
    .. automethod:: open_connection
    .. automethod:: create_server
@@ -239,9 +262,6 @@ SSHClientConnection
    .. automethod:: open_unix_connection
    .. automethod:: create_unix_server
    .. automethod:: start_unix_server
-   .. automethod:: create_ssh_connection
-   .. automethod:: connect_ssh
-   .. automethod:: start_sftp_client
    ====================================== =
 
    =================================== =
@@ -318,6 +338,55 @@ SSHServerConnection
    .. automethod:: disconnect
    .. automethod:: wait_closed
    =========================== =
+
+Process Classes
+===============
+
+SSHClientProcess
+----------------
+
+.. autoclass:: SSHClientProcess
+
+   ============================== =
+   Process attributes
+   ============================== =
+   .. autoattribute:: stdin
+   .. autoattribute:: stdout
+   .. autoattribute:: stderr
+   .. autoattribute:: exit_status
+   .. autoattribute:: exit_signal
+   ============================== =
+
+   =============================== =
+   I/O redirection methods
+   =============================== =
+   .. automethod:: redirect_stdin
+   .. automethod:: redirect_stdout
+   .. automethod:: redirect_stderr
+   =============================== =
+
+   ==================================== =
+   Process communication methods
+   ==================================== =
+   .. automethod:: communicate
+   .. automethod:: change_terminal_size
+   .. automethod:: send_break
+   .. automethod:: send_signal
+   ==================================== =
+
+   ========================= =
+   Process close methods
+   ========================= =
+   .. automethod:: terminate
+   .. automethod:: kill
+   .. automethod:: close
+   .. automethod:: wait
+   ========================= =
+
+SSHCompletedProcess
+-------------------
+
+.. autoclass:: SSHCompletedProcess()
 
 Session Classes
 ===============
@@ -1145,6 +1214,11 @@ ChannelOpenError
 ----------------
 
 .. autoexception:: ChannelOpenError
+
+ProcessError
+------------
+
+.. autoexception:: ProcessError
 
 SFTPError
 ---------

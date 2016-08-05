@@ -16,10 +16,9 @@ import asyncio, asyncssh, sys
 
 async def run_client():
     async with asyncssh.connect('localhost') as conn:
-        result = await conn.run('echo $TERM; stty size',
-                                term_type='xterm-color',
-                                term_size=(80, 24))
-        print(result.stdout, end='')
+        proc1 = await conn.create_process(r'echo "1\n2\n3"')
+        proc2_result = await conn.run('tail -r', stdin=proc1.stdout)
+        print(proc2_result.stdout, end='')
 
 try:
     asyncio.get_event_loop().run_until_complete(run_client())

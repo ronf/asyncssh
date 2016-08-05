@@ -15,7 +15,8 @@
 import asyncio
 
 from .constants import EXTENDED_DATA_STDERR
-from .misc import BreakReceived, SignalReceived, TerminalSizeChanged, python35
+from .misc import BreakReceived, SignalReceived, TerminalSizeChanged
+from .misc import async_iterator, python35
 from .session import SSHClientSession, SSHServerSession
 from .session import SSHTCPSession, SSHUNIXSession
 from .sftp import SFTPServerHandler
@@ -30,7 +31,7 @@ class SSHReader:
         self._datatype = datatype
 
     if python35:
-        @asyncio.coroutine
+        @async_iterator
         def __aiter__(self):
             """Allow SSHReader to be an async iterator"""
 
@@ -131,6 +132,11 @@ class SSHReader:
 
         return self._session.at_eof(self._datatype)
 
+    def get_redirect_info(self):
+        """Get information needed to redirect from this SSHReader"""
+
+        return self._session, self._datatype
+
 
 class SSHWriter:
     """SSH write stream handler"""
@@ -185,7 +191,7 @@ class SSHWriter:
 
         """
 
-        return (yield from self._session.drain())
+        return (yield from self._session.drain(self._datatype))
 
     def write(self, data):
         """Write data to the stream
@@ -220,6 +226,11 @@ class SSHWriter:
         """
 
         return self._chan.write_eof()
+
+    def get_redirect_info(self):
+        """Get information needed to redirect to this SSHWriter"""
+
+        return self._session, self._datatype
 
 
 class SSHStreamSession:
@@ -264,12 +275,44 @@ class SSHStreamSession:
             if not waiter.done():
                 waiter.set_result(None)
 
+    def _should_block_drain(self, datatype):
+        """Return whether output is still being written to the channel"""
+
+        # pylint: disable=unused-argument
+
+        return self._write_paused
+
     def _unblock_drain(self):
         """Signal that more data can be written on the stream"""
 
         for waiter in self._drain_waiters:
             if not waiter.done(): # pragma: no branch
                 waiter.set_result(None)
+
+    def _should_pause_reading(self):
+        """Return whether to pause reading from the channel"""
+
+        return self._limit and self._recv_buf_len >= self._limit
+
+    def _maybe_pause_reading(self):
+        """Pause reading if necessary"""
+
+        if not self._read_paused and self._should_pause_reading():
+            self._read_paused = True
+            self._chan.pause_reading()
+            return True
+        else:
+            return False
+
+    def _maybe_resume_reading(self):
+        """Resume reading if necessary"""
+
+        if self._read_paused and not self._should_pause_reading():
+            self._read_paused = False
+            self._chan.resume_reading()
+            return True
+        else:
+            return False
 
     def connection_made(self, chan):
         """Handle a newly opened channel"""
@@ -306,15 +349,13 @@ class SSHStreamSession:
         self._recv_buf[datatype].append(data)
         self._recv_buf_len += len(data)
         self._unblock_read(datatype)
-
-        if self._recv_buf_len >= self._limit:
-            self._read_paused = True
-            self._chan.pause_reading()
+        self._maybe_pause_reading()
 
     def eof_received(self):
         """Handle an incoming end of file on the channel"""
 
         self._eof_received = True
+
         for datatype in self._read_waiter.keys():
             self._unblock_read(datatype)
 
@@ -364,9 +405,7 @@ class SSHStreamSession:
                 self._recv_buf_len -= l
                 n -= l
 
-            if self._read_paused and self._recv_buf_len < self._limit:
-                self._read_paused = False
-                self._chan.resume_reading()
+            if self._maybe_resume_reading():
                 continue
 
             if n == 0 or (n > 0 and data and not exact) or self._eof_received:
@@ -402,19 +441,14 @@ class SSHStreamSession:
                     recv_buf[0] = recv_buf[0][idx:]
                     self._recv_buf_len -= idx
 
-                    if self._read_paused and self._recv_buf_len < self._limit:
-                        self._read_paused = False
-                        self._chan.resume_reading()
-
+                    self._maybe_resume_reading()
                     return buf.join(data)
 
                 l = len(recv_buf[0])
                 data.append(recv_buf.pop(0))
                 self._recv_buf_len -= l
 
-            if self._read_paused:
-                self._read_paused = False
-                self._chan.resume_reading()
+            if self._maybe_resume_reading():
                 continue
 
             if self._eof_received:
@@ -423,10 +457,10 @@ class SSHStreamSession:
             yield from self._block_read(datatype)
 
     @asyncio.coroutine
-    def drain(self):
+    def drain(self, datatype):
         """Wait for data written to the channel to drain"""
 
-        if self._write_paused and not self._connection_lost:
+        while self._should_block_drain(datatype) and not self._connection_lost:
             try:
                 waiter = asyncio.Future(loop=self._loop)
                 self._drain_waiters.append(waiter)

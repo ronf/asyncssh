@@ -21,37 +21,24 @@
 
 import asyncio, asyncssh, sys
 
-async def handle_connection(stdin, stdout, stderr):
+async def handle_session(stdin, stdout, stderr):
     total = 0
 
-    try:
-        while not stdin.at_eof():
+    async for line in stdin:
+        line = line.rstrip('\n')
+        if line:
             try:
-                line = await stdin.readline()
-            except (asyncssh.BreakReceived, asyncssh.SignalReceived):
-                # Exit if the client sends a break or signal
-                break
-            except asyncssh.TerminalSizeChanged:
-                # Ignore terminal size changes
-                continue
+                total += int(line)
+            except ValueError:
+                stderr.write('Invalid number: %s\r\n' % line)
 
-            line = line.rstrip('\n')
-            if line:
-                try:
-                    total += int(line)
-                except ValueError:
-                    stderr.write('Invalid number: %s\r\n' % line)
-
-        stdout.write('Total = %s\r\n' % total)
-        stdout.channel.exit(0)
-    except BrokenPipeError:
-        # The channel is already closed here, so we can't send an exit status
-        stdout.close()
+    stdout.write('Total = %s\r\n' % total)
+    stdout.channel.exit(0)
 
 async def start_server():
     await asyncssh.listen('', 8022, server_host_keys=['ssh_host_key'],
                           authorized_client_keys='ssh_user_ca',
-                          session_factory=handle_connection)
+                          session_factory=handle_session)
 
 loop = asyncio.get_event_loop()
 
