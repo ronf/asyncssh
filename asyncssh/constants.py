@@ -177,6 +177,7 @@ PTY_IXON                            = 38
 PTY_IXANY                           = 39
 PTY_IXOFF                           = 40
 PTY_IMAXBEL                         = 41
+PTY_IUTF8                           = 42
 PTY_ISIG                            = 50
 PTY_ICANON                          = 51
 PTY_XCASE                           = 52
