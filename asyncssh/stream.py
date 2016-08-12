@@ -441,6 +441,9 @@ class SSHStreamSession:
                     recv_buf[0] = recv_buf[0][idx:]
                     self._recv_buf_len -= idx
 
+                    if not recv_buf[0]:
+                        recv_buf.pop(0)
+
                     self._maybe_resume_reading()
                     return buf.join(data)
 
