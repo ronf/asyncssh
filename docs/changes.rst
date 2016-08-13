@@ -3,6 +3,34 @@
 Change Log
 ==========
 
+Release 1.6.0 (13 Aug 2016)
+---------------------------
+
+* Added new create_process() and run() APIs modeled after the "subprocess"
+  module to simplify redirection of stdin, stdout, and stderr and
+  collection of output from remote SSH processes.
+
+* Added input line editing and echoing capabilities to better support
+  interactive SSH server applications. AsyncSSH server sessions will now
+  automatically perform input echoing and provide basic line editing
+  capabilities to clients which request a pseudo-terminal, avoiding the
+  need for applications to provide this functionality.
+
+* Added the ability to use SSHReader objects as async iterators in
+  Python 3.5, returning input a line at a time.
+
+* Added support for the IUTF8 terminal mode now recognized by OpenSSH 7.3.
+
+* Fixed a bug where an SSHReader read() call could return an empty string
+  when it followed a call to readline() instead of blocking until more
+  input was available.
+
+* Updated AsyncSSH to use the bcrypt package from PyCA, now that it
+  has support for the kdf function.
+
+* Updated the documentation and examples to show how to take advantage
+  of the new features listed here.
+
 Release 1.5.6 (18 Jun 2016)
 ---------------------------
 
