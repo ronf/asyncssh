@@ -22,7 +22,7 @@
 import asyncio, asyncssh, sys
 
 def handle_session(stdin, stdout, stderr):
-    stdout.write('Welcome to my SSH server, %s!\r\n' %
+    stdout.write('Welcome to my SSH server, %s!\n' %
                  stdout.channel.get_extra_info('username'))
     stdout.channel.exit(0)
 

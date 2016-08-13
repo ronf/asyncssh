@@ -28,7 +28,7 @@ async def handle_session(stdin, stdout, stderr):
     stdout.write('Terminal type: %s, size: %sx%s' % (term_type, width, height))
     if pixwidth and pixheight:
         stdout.write(' (%sx%s pixels)' % (pixwidth, pixheight))
-    stdout.write('\r\nTry resizing your window!\r\n')
+    stdout.write('\nTry resizing your window!\n')
 
     while not stdin.at_eof():
         try:
@@ -37,7 +37,7 @@ async def handle_session(stdin, stdout, stderr):
             stdout.write('New window size: %sx%s' % (exc.width, exc.height))
             if exc.pixwidth and exc.pixheight:
                 stdout.write(' (%sx%s pixels)' % (exc.pixwidth, exc.pixheight))
-            stdout.write('\r\n')
+            stdout.write('\n')
 
 async def start_server():
     await asyncssh.listen('', 8022, server_host_keys=['ssh_host_key'],

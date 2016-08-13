@@ -33,6 +33,8 @@ from .client import SSHClient
 from .connection import SSHClientConnection, SSHServerConnection
 from .connection import create_connection, create_server, connect, listen
 
+from .editor import SSHLineEditorChannel
+
 from .known_hosts import SSHKnownHosts
 from .known_hosts import import_known_hosts, read_known_hosts
 from .known_hosts import match_known_hosts

@@ -25,12 +25,12 @@ async def handle_session(stdin, stdout, stderr):
     env = stdout.channel.get_environment()
     if env:
         keywidth = max(map(len, env.keys()))+1
-        stdout.write('Environment:\r\n')
+        stdout.write('Environment:\n')
         for key, value in env.items():
-            stdout.write('  %-*s %s\r\n' % (keywidth, key+':', value))
+            stdout.write('  %-*s %s\n' % (keywidth, key+':', value))
         stdout.channel.exit(0)
     else:
-        stderr.write('No environment sent.\r\n')
+        stderr.write('No environment sent.\n')
         stdout.channel.exit(1)
 
 async def start_server():

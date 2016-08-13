@@ -21,42 +21,29 @@
 
 import asyncio, asyncssh, sys
 
-class MySSHServerSession(asyncssh.SSHServerSession):
-    def __init__(self):
-        self._input = ''
-        self._total = 0
+async def handle_session(stdin, stdout, stderr):
+    stdout.write('Enter numbers one per line, or EOF when done:\n')
 
-    def connection_made(self, chan):
-        self._chan = chan
+    total = 0
 
-    def shell_requested(self):
-        return True
+    try:
+        async for line in stdin:
+            line = line.rstrip('\n')
+            if line:
+                try:
+                    total += int(line)
+                except ValueError:
+                    stderr.write('Invalid number: %s\n' % line)
+    except asyncssh.BreakReceived:
+        pass
 
-    def data_received(self, data, datatype):
-        self._input += data
-
-        lines = self._input.split('\n')
-        for line in lines[:-1]:
-            try:
-                if line:
-                    self._total += int(line)
-            except ValueError:
-                self._chan.write_stderr('Invalid number: %s\r\n' % line)
-
-        self._input = lines[-1]
-
-    def eof_received(self):
-        self._chan.write('Total = %s\r\n' % self._total)
-        self._chan.exit(0)
-
-class MySSHServer(asyncssh.SSHServer):
-    def session_requested(self):
-        return MySSHServerSession()
+    stdout.write('Total = %s\n' % total)
+    stdout.channel.exit(0)
 
 async def start_server():
-    await asyncssh.create_server(MySSHServer, '', 8022,
-                                 server_host_keys=['ssh_host_key'],
-                                 authorized_client_keys='ssh_user_ca')
+    await asyncssh.listen('', 8022, server_host_keys=['ssh_host_key'],
+                          authorized_client_keys='ssh_user_ca',
+                          session_factory=handle_session)
 
 loop = asyncio.get_event_loop()
 

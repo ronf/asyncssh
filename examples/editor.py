@@ -22,17 +22,18 @@
 import asyncio, asyncssh, sys
 
 async def handle_session(stdin, stdout, stderr):
-    total = 0
+    stdout.write('Welcome to my SSH server, %s!\n\n' %
+                 stdout.channel.get_extra_info('username'))
 
-    async for line in stdin:
-        line = line.rstrip('\n')
-        if line:
-            try:
-                total += int(line)
-            except ValueError:
-                stderr.write('Invalid number: %s\r\n' % line)
+    stdin.channel.set_echo(False)
+    stdout.write('Tell me a secret: ')
+    secret = await stdin.readline()
 
-    stdout.write('Total = %s\r\n' % total)
+    stdin.channel.set_line_mode(False)
+    stdout.write('\nYour secret is safe with me! Press any key to exit...')
+    await stdin.read(1)
+
+    stdout.write('\n')
     stdout.channel.exit(0)
 
 async def start_server():

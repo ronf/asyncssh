@@ -91,6 +91,16 @@ set up the requested sessions or connections, returning
 functions that accept :class:`SSHReader` and :class:`SSHWriter` objects
 as arguments which manage the channels once they are open.
 
+To better support interactive server applications, AsyncSSH defaults to
+providing echoing of input and basic line editing capabilities when an
+inbound SSH session requests a psuedo-terminal. This behavior can be
+disabled by setting the ``line_editor`` argument to ``False`` when
+starting up an SSH server. When this feature is enabled, server sessions
+can enable or disable line mode using the :meth:`set_line_mode()
+<SSHLineEditorChannel.set_line_mode>` method of :class:`SSHLineEditorChannel`.
+They can also enable or disable input echoing using the :meth:`set_echo()
+<SSHLineEditorChannel.set_echo>` method.
+
 Each session object also has an associated :class:`SSHClientChannel`,
 :class:`SSHServerChannel`, or :class:`SSHTCPChannel` object passed to it
 which can be used to perform actions on the channel. These channel objects
@@ -632,6 +642,18 @@ SSHServerChannel
    .. automethod:: abort
    .. automethod:: close
    .. automethod:: wait_closed
+   ============================= =
+
+SSHLineEditorChannel
+--------------------
+
+.. autoclass:: SSHLineEditorChannel()
+
+   ============================= =
+   Line editor methods
+   ============================= =
+   .. automethod:: set_line_mode
+   .. automethod:: set_echo
    ============================= =
 
 SSHTCPChannel

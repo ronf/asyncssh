@@ -143,6 +143,7 @@ class _EchoServerSession(asyncssh.SSHServerSession):
 
     def __init__(self):
         self._chan = None
+        self._pty_ok = True
 
     def connection_made(self, chan):
         """Handle session open"""
@@ -153,8 +154,15 @@ class _EchoServerSession(asyncssh.SSHServerSession):
 
         if username == 'close':
             self._chan.close()
+        elif username == 'no_pty':
+            self._pty_ok = False
         elif username == 'task_error':
             raise RuntimeError('Exception handler test')
+
+    def pty_requested(self, term_type, term_size, term_modes):
+        """Handle pseudo-terminal request"""
+
+        return self._pty_ok
 
     def shell_requested(self):
         """Handle shell request"""
@@ -363,8 +371,8 @@ class _ChannelServer(Server):
     def begin_auth(self, username):
         """Handle client authentication request"""
 
-        return username not in {'guest', 'conn_close', 'close',
-                                'echo', 'no_channels', 'task_error'}
+        return username not in {'guest', 'conn_close', 'close', 'echo',
+                                'no_channels', 'no_pty', 'task_error'}
 
     def session_requested(self):
         """Handle a request to create a new session"""
@@ -377,7 +385,7 @@ class _ChannelServer(Server):
             if username == 'conn_close':
                 self._conn.close()
                 return False
-            elif username in {'close', 'echo', 'task_error'}:
+            elif username in {'close', 'echo', 'no_pty', 'task_error'}:
                 return (channel, _EchoServerSession())
             elif username != 'no_channels':
                 return (channel, self._begin_session)
@@ -840,7 +848,7 @@ class _TestChannel(ServerTestCase):
             yield from chan.wait_closed()
 
             result = ''.join(session.recv_buf[None])
-            self.assertEqual(result, "('ansi', (80, 24, 0, 0), 9600)\n")
+            self.assertEqual(result, "('ansi', (80, 24, 0, 0), 9600)\r\n")
 
         yield from conn.wait_closed()
 
@@ -860,7 +868,7 @@ class _TestChannel(ServerTestCase):
             yield from chan.wait_closed()
 
             result = ''.join(session.recv_buf[None])
-            self.assertEqual(result, "('ansi', (80, 24, 480, 240), 9600)\n")
+            self.assertEqual(result, "('ansi', (80, 24, 480, 240), 9600)\r\n")
 
         yield from conn.wait_closed()
 
@@ -889,8 +897,8 @@ class _TestChannel(ServerTestCase):
         yield from conn.wait_closed()
 
     @asynctest
-    def test_pty_disallowed(self):
-        """Test rejection of pty request"""
+    def test_pty_disallowed_by_cert(self):
+        """Test rejection of pty request by certificate"""
 
         ckey = asyncssh.read_private_key('ckey')
         cert = make_certificate('ssh-rsa-cert-v01@openssh.com',
@@ -898,8 +906,17 @@ class _TestChannel(ServerTestCase):
                                 extensions={'no-pty': ''})
 
         with (yield from self.connect(username='ckey',
-                                      client_keys=[(ckey, cert)],
-                                      agent_forwarding=True)) as conn:
+                                      client_keys=[(ckey, cert)])) as conn:
+            with self.assertRaises(asyncssh.ChannelOpenError):
+                yield from _create_session(conn, 'term', term_type='ansi')
+
+        yield from conn.wait_closed()
+
+    @asynctest
+    def test_pty_disallowed_by_session(self):
+        """Test rejection of pty request by session"""
+
+        with (yield from self.connect(username='no_pty')) as conn:
             with self.assertRaises(asyncssh.ChannelOpenError):
                 yield from _create_session(conn, 'term', term_type='ansi')
 
@@ -931,7 +948,7 @@ class _TestChannel(ServerTestCase):
                 yield from chan.wait_closed()
 
                 result = ''.join(session.recv_buf[None])
-                self.assertEqual(result, "('ansi', (0, 0, 0, 0), 9600)\n")
+                self.assertEqual(result, "('ansi', (0, 0, 0, 0), 9600)\r\n")
 
             yield from conn.wait_closed()
 

@@ -366,23 +366,40 @@ Simple server with input
 ------------------------
 
 The following example demonstrates reading input in a server session.
-It adds a column of numbers, displaying the total and closing the
-connection when it receives EOF. Note that this is not an interactive
-application, so no echoing of user input is provided. You'll need to
-have the SSH client read from a file or pipe rather than the terminal
-or tell it not to allocate a pty for this to work right.
+It adds a column of numbers, displaying the total when it receives EOF.
 
-   .. include:: ../examples/stream_math_server.py
+   .. include:: ../examples/math_server.py
+      :literal:
+      :start-line: 21
+
+Line editing
+------------
+
+When SSH clients request a pseudo-terminal, they generally default to
+sending input a character at a time and expect the remote system to
+provide character echo and line editing. To better support interactive
+applications like the one above, AsyncSSH defaults to providing basic
+line editing for server sessions which request a pseudo-terminal.
+
+When thise line editor is enabled, it defaults to delivering input to
+the application a line at a time. Applications can switch between line
+and character at a time input using the :meth:`set_line_mode()
+<SSHLineEditorChannel.set_line_mode>` method. Also, when in line
+mode, applications can enable or disable echoing of input using the
+:meth:`set_echo() <SSHLineEditorChannel.set_echo>` method. The
+following code provides an example of this.
+
+   .. include:: ../examples/editor.py
       :literal:
       :start-line: 21
 
 Callback example
 ----------------
 
-Here's an example of this server written using callbacks in custom
+Here's an example of the server above written using callbacks in custom
 :class:`SSHServer` and :class:`SSHServerSession` subclasses.
 
-   .. include:: ../examples/math_server.py
+   .. include:: ../examples/callback_math_server.py
       :literal:
       :start-line: 21
 

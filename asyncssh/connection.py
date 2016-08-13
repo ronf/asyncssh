@@ -124,6 +124,9 @@ _DEFAULT_LOGIN_TIMEOUT = 120        # 2 minutes
 _DEFAULT_WINDOW = 2*1024*1024       # 2 MiB
 _DEFAULT_MAX_PKTSIZE = 32768        # 32 kiB
 
+# Default line editor parameters
+_DEFAULT_LINE_HISTORY = 1000        # 1000 lines
+
 
 def _load_private_key(key, passphrase=None):
     """Load a private key
@@ -3086,9 +3089,9 @@ class SSHServerConnection(SSHConnection):
     def __init__(self, server_factory, loop, server_version, kex_algs,
                  encryption_algs, mac_algs, compression_algs, rekey_bytes,
                  rekey_seconds, server_host_keys, authorized_client_keys,
-                 allow_pty, agent_forwarding, session_factory,
-                 session_encoding, sftp_factory, window, max_pktsize,
-                 login_timeout):
+                 allow_pty, line_editor, line_history, agent_forwarding,
+                 session_factory, session_encoding, sftp_factory, window,
+                 max_pktsize, login_timeout):
         super().__init__(server_factory, loop, server_version, kex_algs,
                          encryption_algs, mac_algs, compression_algs,
                          rekey_bytes, rekey_seconds, server=True)
@@ -3097,6 +3100,8 @@ class SSHServerConnection(SSHConnection):
         self._server_host_key_algs = server_host_keys.keys()
         self._client_keys = authorized_client_keys
         self._allow_pty = allow_pty
+        self._line_editor = line_editor
+        self._line_history = line_history
         self._agent_forwarding = agent_forwarding
         self._agent_forwarding_enabled = False
         self._session_factory = session_factory
@@ -3820,8 +3825,9 @@ class SSHServerConnection(SSHConnection):
         """
 
         return SSHServerChannel(self, self._loop, self._allow_pty,
-                                self._agent_forwarding, encoding,
-                                window, max_pktsize)
+                                self._line_editor, self._line_history,
+                                self._agent_forwarding, encoding, window,
+                                max_pktsize)
 
     def agent_forwarding_enabled(self):
         """Enable ssh-agent forwarding to the client"""
@@ -4221,9 +4227,11 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
                   reuse_address=None, server_host_keys, passphrase=None,
                   authorized_client_keys=None, server_version=(), kex_algs=(),
                   encryption_algs=(), mac_algs=(), compression_algs=(),
-                  allow_pty=True, agent_forwarding=True, session_factory=None,
-                  session_encoding='utf-8', sftp_factory=None,
-                  window=_DEFAULT_WINDOW, max_pktsize=_DEFAULT_MAX_PKTSIZE,
+                  allow_pty=True, line_editor=True,
+                  line_history=_DEFAULT_LINE_HISTORY, agent_forwarding=True,
+                  session_factory=None, session_encoding='utf-8',
+                  sftp_factory=None, window=_DEFAULT_WINDOW,
+                  max_pktsize=_DEFAULT_MAX_PKTSIZE,
                   rekey_bytes=_DEFAULT_REKEY_BYTES,
                   rekey_seconds=_DEFAULT_REKEY_SECONDS,
                   login_timeout=_DEFAULT_LOGIN_TIMEOUT):
@@ -4289,6 +4297,12 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
        :param bool allow_pty: (optional)
            Whether or not to allow allocation of a pseudo-tty in sessions,
            defaulting to ``True``
+       :param bool line_editor: (optional)
+           Whether or not to enable input line editing on sessions which
+           have a pseudo-tty allocated, defaulting to ``True``
+       :param bool line_history: (int)
+           The number of lines of input line history to store in the
+           line editor when it is enabled, defaulting to 1000
        :param bool agent_forwarding: (optional)
            Whether or not to allow forwarding of ssh-agent requests back
            to the client when the client supports it, defaulting to ``True``
@@ -4346,6 +4360,7 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
                                    compression_algs, rekey_bytes,
                                    rekey_seconds, server_host_keys,
                                    authorized_client_keys, allow_pty,
+                                   line_editor, line_history,
                                    agent_forwarding, session_factory,
                                    session_encoding, sftp_factory, window,
                                    max_pktsize, login_timeout)

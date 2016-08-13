@@ -21,6 +21,7 @@ from .constants import MSG_CHANNEL_EOF, MSG_CHANNEL_CLOSE, MSG_CHANNEL_REQUEST
 from .constants import MSG_CHANNEL_SUCCESS, MSG_CHANNEL_FAILURE
 from .constants import OPEN_CONNECT_FAILED, PTY_OP_RESERVED, PTY_OP_END
 from .constants import OPEN_REQUEST_PTY_FAILED, OPEN_REQUEST_SESSION_FAILED
+from .editor import SSHLineEditorChannel, SSHLineEditorSession
 from .misc import ChannelOpenError, DisconnectError, map_handler_name
 from .packet import Boolean, Byte, String, UInt32, SSHPacketHandler
 
@@ -312,6 +313,12 @@ class SSHChannel(SSHPacketHandler):
 
         self._conn.create_task(self._finish_open_request(session))
 
+    def _wrap_session(self, session):
+        """Hook to optionally wrap channel and session objects"""
+
+        # By default, return the original channel and session objects
+        return self, session
+
     @asyncio.coroutine
     def _finish_open_request(self, session):
         """Finish processing a channel open request"""
@@ -321,7 +328,7 @@ class SSHChannel(SSHPacketHandler):
             if asyncio.iscoroutine(session):
                 session = yield from session
 
-            self._session = session
+            chan, self._session = self._wrap_session(session)
 
             self._conn.send_channel_open_confirmation(self._send_chan,
                                                       self._recv_chan,
@@ -331,7 +338,7 @@ class SSHChannel(SSHPacketHandler):
             self._send_state = 'open'
             self._recv_state = 'open'
 
-            self._session.connection_made(self)
+            self._session.connection_made(chan)
         except ChannelOpenError as exc:
             self._conn.send_channel_open_failure(self._send_chan, exc.code,
                                                  exc.reason, exc.lang)
@@ -1011,13 +1018,15 @@ class SSHServerChannel(SSHChannel):
 
     _write_datatypes = {EXTENDED_DATA_STDERR}
 
-    def __init__(self, conn, loop, allow_pty, agent_forwarding,
-                 encoding, window, max_pktsize):
+    def __init__(self, conn, loop, allow_pty, line_editor, line_history,
+                 agent_forwarding, encoding, window, max_pktsize):
         """Initialize an SSH server channel"""
 
         super().__init__(conn, loop, encoding, window, max_pktsize)
 
         self._allow_pty = allow_pty
+        self._line_editor = line_editor
+        self._line_history = line_history
         self._agent_forwarding = agent_forwarding
         self._env = self._conn.get_key_option('environment', {})
         self._command = None
@@ -1025,6 +1034,17 @@ class SSHServerChannel(SSHChannel):
         self._term_type = None
         self._term_size = (0, 0, 0, 0)
         self._term_modes = {}
+
+    def _wrap_session(self, session):
+        """Wrap a line editor around the session if enabled"""
+
+        if self._line_editor:
+            chan = SSHLineEditorChannel(self, session, self._line_history)
+            session = SSHLineEditorSession(session)
+        else:
+            chan = self
+
+        return chan, session
 
     def _process_pty_req_request(self, packet):
         """Process a request to open a pseudo-terminal"""
@@ -1037,18 +1057,19 @@ class SSHServerChannel(SSHChannel):
         modes = packet.get_string()
         packet.check_end()
 
-        try:
-            self._term_type = term_type.decode('ascii')
-        except UnicodeDecodeError:
-            raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Invalid pty request') from None
-
         if not self._allow_pty or \
            not self._conn.check_key_permission('pty') or \
            not self._conn.check_certificate_permission('pty'):
             return False
 
-        self._term_size = (width, height, pixwidth, pixheight)
+        try:
+            term_type = term_type.decode('ascii')
+        except UnicodeDecodeError:
+            raise DisconnectError(DISC_PROTOCOL_ERROR,
+                                  'Invalid pty request') from None
+
+        term_size = (width, height, pixwidth, pixheight)
+        term_modes = {}
 
         idx = 0
         while idx < len(modes):
@@ -1058,15 +1079,21 @@ class SSHServerChannel(SSHChannel):
                 break
 
             if idx+4 <= len(modes):
-                self._term_modes[mode] = int.from_bytes(modes[idx:idx+4],
-                                                        'big')
+                term_modes[mode] = int.from_bytes(modes[idx:idx+4], 'big')
                 idx += 4
             else:
                 raise DisconnectError(DISC_PROTOCOL_ERROR,
                                       'Invalid pty modes string')
 
-        return self._session.pty_requested(self._term_type, self._term_size,
-                                           self._term_modes)
+        result = self._session.pty_requested(self._term_type, self._term_size,
+                                             self._term_modes)
+
+        if result:
+            self._term_type = term_type
+            self._term_size = term_size
+            self._term_modes = term_modes
+
+        return result
 
     def _process_auth_agent_req_at_openssh_dot_com_request(self, packet):
         """Process a request to enable ssh-agent forwarding"""
