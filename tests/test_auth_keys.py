@@ -17,6 +17,8 @@
 
 """
 
+from unittest.mock import patch
+
 from asyncssh import import_public_key
 from asyncssh.auth_keys import import_authorized_keys, read_authorized_keys
 
@@ -88,13 +90,27 @@ class _TestAuthorizedKeys(TempDirTestCase):
               ('Exclude principal', 1, '1.2.3.4', ['abd'], False)))
         )
 
-        for keys, matches in tests:
-            auth_keys = self.build_keys(keys)
-            for msg, keynum, client_addr, cert_principals, match in matches:
-                with self.subTest(msg):
-                    result = auth_keys.validate(self.imported_keylist[keynum],
-                                                client_addr, cert_principals,
-                                                keynum == 1)
+        def getnameinfo(sockaddr, flags):
+            """Mock reverse DNS lookup of client address"""
+
+            # pylint: disable=unused-argument
+
+            host, port = sockaddr
+
+            if host == '127.0.0.1':
+                return ('localhost', port)
+            else:
+                return sockaddr
+
+        with patch('socket.getnameinfo', getnameinfo):
+            for keys, matches in tests:
+                auth_keys = self.build_keys(keys)
+                for (msg, keynum, client_addr,
+                     cert_principals, match) in matches:
+                    with self.subTest(msg):
+                        result = auth_keys.validate(
+                            self.imported_keylist[keynum], client_addr,
+                            cert_principals, keynum == 1)
 
                     self.assertEqual(result is not None, match)
 
