@@ -1040,7 +1040,7 @@ class SSHServerChannel(SSHChannel):
 
         if self._line_editor:
             chan = SSHLineEditorChannel(self, session, self._line_history)
-            session = SSHLineEditorSession(session)
+            session = SSHLineEditorSession(chan, session)
         else:
             chan = self
 

@@ -529,7 +529,8 @@ class SSHLineEditorChannel:
 class SSHLineEditorSession:
     """Input line editor session wrapper"""
 
-    def __init__(self, orig_session):
+    def __init__(self, chan, orig_session):
+        self._chan = chan
         self._orig_session = orig_session
         self._editor = None
 
