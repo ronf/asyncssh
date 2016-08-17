@@ -85,11 +85,18 @@ class SSHSession:
            on the channel, after which no more data will be received. If this
            method returns ``True``, the channel remains half open and data
            may still be sent. Otherwise, the channel is automatically closed
-           after this method returns. This is the default behavior.
+           after this method returns. This is the default behavior for
+           classes derived directly from :class:`SSHSession`, but not when
+           using the higher-level streams API. Because input is buffered
+           in that case, streaming sessions enable half-open channels to
+           allow applications to respond to input read after an end-of-file
+           indication is received.
 
         """
 
-        pass # pragma: no cover
+        # pylint: disable=no-self-use
+
+        return False # pragma: no cover
 
     def pause_writing(self):
         """Called when the write buffer becomes full
