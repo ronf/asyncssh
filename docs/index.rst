@@ -372,6 +372,17 @@ It adds a column of numbers, displaying the total when it receives EOF.
       :literal:
       :start-line: 21
 
+Serving multiple clients
+------------------------
+
+The following is a slightly more complicated example showing how a
+server can manage multiple simultaneous clients. It implements a
+basic chat service, where clients can send messages to one other.
+
+   .. include:: ../examples/chat_server.py
+      :literal:
+      :start-line: 21
+
 Line editing
 ------------
 
@@ -396,8 +407,8 @@ following code provides an example of this.
 Callback example
 ----------------
 
-Here's an example of the server above written using callbacks in custom
-:class:`SSHServer` and :class:`SSHServerSession` subclasses.
+Here's an example of the math server above written using callbacks in
+custom :class:`SSHServer` and :class:`SSHServerSession` subclasses.
 
    .. include:: ../examples/callback_math_server.py
       :literal:
