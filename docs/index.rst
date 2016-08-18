@@ -146,8 +146,9 @@ Here's an example of piping one remote process to another:
       :literal:
       :start-line: 14
 
-Note that in this example both remote processes are actually running on
-the same remote SSH connection.
+In this example both remote processes are running on the same SSH
+connection, but this redirection can just as easily be used between
+SSH sessions associated with connections going to different servers.
 
 Checking exit status
 --------------------
