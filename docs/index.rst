@@ -167,6 +167,20 @@ If the ``check`` argument in :meth:`run <SSHClientConnection.run>` is set
 to ``True``, any abnormal exit will raise a :exc:`ProcessError` exception
 instead of returning an :class:`SSHCompletedProcess`.
 
+Running multiple clients
+------------------------
+
+The following example shows how to run multiple clients in parallel and
+process the results when all of them have completed:
+
+   .. include:: ../examples/gather_results.py
+      :literal:
+      :start-line: 14
+
+Results could be processed as they became available by setting up a
+loop which repeatedly called :func:`asyncio.wait` instead of calling
+:func:`asyncio.gather`.
+
 Setting environment variables
 -----------------------------
 
@@ -373,6 +387,16 @@ It adds a column of numbers, displaying the total when it receives EOF.
       :literal:
       :start-line: 21
 
+Callback example
+----------------
+
+Here's an example of the server above written using callbacks in
+custom :class:`SSHServer` and :class:`SSHServerSession` subclasses.
+
+   .. include:: ../examples/callback_math_server.py
+      :literal:
+      :start-line: 21
+
 Serving multiple clients
 ------------------------
 
@@ -402,16 +426,6 @@ mode, applications can enable or disable echoing of input using the
 following code provides an example of this.
 
    .. include:: ../examples/editor.py
-      :literal:
-      :start-line: 21
-
-Callback example
-----------------
-
-Here's an example of the math server above written using callbacks in
-custom :class:`SSHServer` and :class:`SSHServerSession` subclasses.
-
-   .. include:: ../examples/callback_math_server.py
       :literal:
       :start-line: 21
 
