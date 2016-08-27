@@ -97,9 +97,8 @@ class ECDSAPrivateKey(_ECKey):
     def sign(self, data):
         """Sign a block of data"""
 
-        signer = self._priv_key.signer(ec.ECDSA(self._hash_alg()))
-        signer.update(data)
-        return der_decode(signer.finalize())
+        return der_decode(self._priv_key.sign(data,
+                                              ec.ECDSA(self._hash_alg())))
 
 
 class ECDSAPublicKey(_ECKey):
@@ -108,12 +107,9 @@ class ECDSAPublicKey(_ECKey):
     def verify(self, data, sig):
         """Verify the signature on a block of data"""
 
-        verifier = self._pub_key.verifier(der_encode(sig),
-                                          ec.ECDSA(self._hash_alg()))
-        verifier.update(data)
-
         try:
-            verifier.verify()
+            self._pub_key.verify(der_encode(sig), data,
+                                 ec.ECDSA(self._hash_alg()))
             return True
         except InvalidSignature:
             return False

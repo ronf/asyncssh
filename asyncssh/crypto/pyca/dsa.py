@@ -74,9 +74,7 @@ class DSAPrivateKey(_DSAKey):
     def sign(self, data):
         """Sign a block of data"""
 
-        signer = self._priv_key.signer(SHA1())
-        signer.update(data)
-        return der_decode(signer.finalize())
+        return der_decode(self._priv_key.sign(data, SHA1()))
 
 
 class DSAPublicKey(_DSAKey):
@@ -85,11 +83,8 @@ class DSAPublicKey(_DSAKey):
     def verify(self, data, sig):
         """Verify the signature on a block of data"""
 
-        verifier = self._pub_key.verifier(der_encode(sig), SHA1())
-        verifier.update(data)
-
         try:
-            verifier.verify()
+            self._pub_key.verify(der_encode(sig), data, SHA1())
             return True
         except InvalidSignature:
             return False

@@ -92,9 +92,7 @@ class RSAPrivateKey(_RSAKey):
     def sign(self, data):
         """Sign a block of data"""
 
-        signer = self._priv_key.signer(PKCS1v15(), SHA1())
-        signer.update(data)
-        return signer.finalize()
+        return self._priv_key.sign(data, PKCS1v15(), SHA1())
 
 
 class RSAPublicKey(_RSAKey):
@@ -103,11 +101,8 @@ class RSAPublicKey(_RSAKey):
     def verify(self, data, sig):
         """Verify the signature on a block of data"""
 
-        verifier = self._pub_key.verifier(sig, PKCS1v15(), SHA1())
-        verifier.update(data)
-
         try:
-            verifier.verify()
+            self._pub_key.verify(sig, data, PKCS1v15(), SHA1())
             return True
         except InvalidSignature:
             return False
