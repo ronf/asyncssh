@@ -28,7 +28,7 @@ from asyncssh import FXP_STATUS, FXP_HANDLE, FXP_DATA
 from asyncssh import FILEXFER_ATTR_UNDEFINED, FX_OK, FX_FAILURE
 
 from asyncssh.packet import SSHPacket, Byte, String, UInt32
-from asyncssh.sftp import SFTPServerHandler
+from asyncssh.sftp import SFTPHandler, SFTPServerHandler
 
 from .server import ServerTestCase
 from .util import asynctest, run
@@ -1460,7 +1460,9 @@ class _TestSFTP(_CheckSFTP):
         def _non_version_response(self):
             """Send a non-version response to init"""
 
+            packet = yield from SFTPHandler.recv_packet(self)
             self.send_packet(Byte(FXP_STATUS))
+            return packet
 
         with patch('asyncssh.sftp.SFTPServerHandler.recv_packet',
                    _non_version_response):
