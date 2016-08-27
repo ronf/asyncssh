@@ -90,19 +90,27 @@ class _ECKey(SSHKey):
         return curve_id
 
     @classmethod
+    def generate(cls, algorithm):
+        """Generate a new EC private key"""
+
+        # Strip 'ecdsa-sha2-' prefix of algorithm to get curve_id
+        return cls(ECDSAPrivateKey.generate(algorithm[11:]))
+
+    @classmethod
     def make_private(cls, curve_id, private_key, public_key):
         """Construct an EC private key"""
 
         if isinstance(private_key, bytes):
             private_key = int.from_bytes(private_key, 'big')
 
-        return cls(ECDSAPrivateKey(curve_id, public_key, private_key))
+        return cls(ECDSAPrivateKey.construct(curve_id, public_key,
+                                             private_key))
 
     @classmethod
     def make_public(cls, curve_id, public_key):
         """Construct an EC public key"""
 
-        return cls(ECDSAPublicKey(curve_id, public_key))
+        return cls(ECDSAPublicKey.construct(curve_id, public_key))
 
     @classmethod
     def decode_pkcs1_private(cls, key_data):

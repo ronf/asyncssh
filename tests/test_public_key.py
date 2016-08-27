@@ -23,16 +23,19 @@ import os
 from .util import bcrypt_available, libnacl_available
 from .util import make_certificate, run, TempDirTestCase
 
-from asyncssh import import_private_key, import_public_key, import_certificate
+from asyncssh import generate_private_key, import_private_key
+from asyncssh import import_public_key, import_certificate
 from asyncssh import read_private_key, read_public_key, read_certificate
 from asyncssh import read_private_key_list, read_public_key_list
 from asyncssh import read_certificate_list
-from asyncssh import KeyImportError, KeyExportError, KeyEncryptionError
+from asyncssh import KeyGenerationError, KeyImportError, KeyExportError
+from asyncssh import KeyEncryptionError
 from asyncssh.asn1 import der_encode, BitString, ObjectIdentifier
 from asyncssh.asn1 import TaggedDERObject
 from asyncssh.packet import MPInt, String, UInt32
 from asyncssh.pbe import pkcs1_decrypt
 from asyncssh.public_key import CERT_TYPE_USER, CERT_TYPE_HOST, SSHKey
+from asyncssh.public_key import decode_ssh_public_key
 from asyncssh.public_key import get_public_key_algs, get_certificate_algs
 
 
@@ -125,6 +128,7 @@ class _TestPublicKey(TempDirTestCase):
     private_formats = ()
     public_formats = ()
     default_cert_version = ''
+    generate_args = ()
 
     def __init__(self, methodName='runTest'):
         super().__init__(methodName)
@@ -708,30 +712,29 @@ class _TestPublicKey(TempDirTestCase):
         """Check key signing and verification"""
 
         with self.subTest('Sign/verify test'):
-            pubkey = read_public_key('pub')
             data = os.urandom(8)
 
             sig = self.privkey.sign(data)
             with self.subTest('Good signature'):
-                self.assertTrue(pubkey.verify(data, sig))
+                self.assertTrue(self.pubkey.verify(data, sig))
 
             badsig = bytearray(sig)
             badsig[-1] ^= 0xff
             badsig = bytes(badsig)
             with self.subTest('Bad signature'):
-                self.assertFalse(pubkey.verify(data, badsig))
+                self.assertFalse(self.pubkey.verify(data, badsig))
 
             with self.subTest('Empty signature'):
-                self.assertFalse(pubkey.verify(data, String(pubkey.algorithm) +
-                                               String(b'')))
+                self.assertFalse(self.pubkey.verify(
+                    data, String(self.pubkey.algorithm) + String(b'')))
 
             badalg = String('xxx')
             with self.subTest('Bad algorithm'):
-                self.assertFalse(pubkey.verify(data, badalg))
+                self.assertFalse(self.pubkey.verify(data, badalg))
 
             with self.subTest('Sign with public key'):
                 with self.assertRaises(ValueError):
-                    pubkey.sign(data)
+                    self.pubkey.sign(data)
 
     def check_pkcs1_private(self):
         """Check PKCS#1 private key format"""
@@ -989,7 +992,17 @@ class _TestPublicKey(TempDirTestCase):
                 cert = import_certificate(cert)
                 cert.validate(cert_type, 'name2')
 
-    def test_key(self):
+    def test_generate(self):
+        """Check private key generation"""
+
+        for alg_name, kwargs in self.generate_args:
+            with self.subTest(alg_name=alg_name, **kwargs):
+                self.privkey = generate_private_key(alg_name, **kwargs)
+                self.pubkey = decode_ssh_public_key(
+                    self.privkey.get_ssh_public_key())
+                self.check_sign_and_verify()
+
+    def test_import_export(self):
         """Check key import and export"""
 
         for keytype in self.keytypes:
@@ -1052,6 +1065,7 @@ class TestDSA(_TestPublicKey):
     private_formats = ('pkcs1', 'pkcs8', 'openssh')
     public_formats = ('pkcs1', 'pkcs8', 'openssh', 'rfc4716')
     default_cert_version = 'ssh-dss-cert-v01@openssh.com'
+    generate_args = (('ssh-dss', {}),)
 
     def make_keypair(self, privfile, pubfile, keytype):
         """Make a DSA key pair"""
@@ -1070,6 +1084,9 @@ class TestRSA(_TestPublicKey):
     private_formats = ('pkcs1', 'pkcs8', 'openssh')
     public_formats = ('pkcs1', 'pkcs8', 'openssh', 'rfc4716')
     default_cert_version = 'ssh-rsa-cert-v01@openssh.com'
+    generate_args = (('ssh-rsa', {}),
+                     ('ssh-rsa', {'key_size': 3072}),
+                     ('ssh-rsa', {'exponent': 3}))
 
     def make_keypair(self, privfile, pubfile, keytype):
         """Make an RSA key pair"""
@@ -1087,6 +1104,9 @@ class TestEC(_TestPublicKey):
     base_format = 'pkcs8'
     private_formats = ('pkcs1', 'pkcs8', 'openssh')
     public_formats = ('pkcs8', 'openssh', 'rfc4716')
+    generate_args = (('ecdsa-sha2-nistp256', {}),
+                     ('ecdsa-sha2-nistp384', {}),
+                     ('ecdsa-sha2-nistp521', {}))
 
     @property
     def default_cert_version(self):
@@ -1113,6 +1133,7 @@ if libnacl_available: # pragma: no branch
         private_formats = ('openssh')
         public_formats = ('openssh', 'rfc4716')
         default_cert_version = 'ssh-ed25519-cert-v01@openssh.com'
+        generate_args = (('ssh-ed25519', {}),)
 
         def make_keypair(self, privfile, pubfile, keytype):
             """Make an Ed25519 key pair"""
@@ -1154,3 +1175,15 @@ class _TestPublicKeyTopLevel(TempDirTestCase):
                 '-param_enc explicit')
             with self.assertRaises(KeyImportError):
                 read_private_key('priv')
+
+    def test_generate_errors(self):
+        """Test errors in private key generation"""
+
+        for alg_name, kwargs in (('xxx', {}),
+                                 ('ssh-dss', {'xxx': 0}),
+                                 ('ssh-rsa', {'xxx': 0}),
+                                 ('ecdsa-sha2-nistp256', {'xxx': 0}),
+                                 ('ssh-ed25519', {'xxx': 0})):
+            with self.subTest(alg_name=alg_name, **kwargs):
+                with self.assertRaises(KeyGenerationError):
+                    generate_private_key(alg_name, **kwargs)

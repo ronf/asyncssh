@@ -53,9 +53,9 @@ from .process import SSHClientProcess, SSHCompletedProcess, ProcessError
 from .process import DEVNULL, PIPE, STDOUT
 
 from .public_key import SSHKey, SSHKeyPair, SSHCertificate
-from .public_key import KeyImportError, KeyExportError
-from .public_key import import_private_key, import_public_key
-from .public_key import import_certificate
+from .public_key import KeyGenerationError, KeyImportError, KeyExportError
+from .public_key import generate_private_key, import_private_key
+from .public_key import import_public_key, import_certificate
 from .public_key import read_private_key, read_public_key, read_certificate
 from .public_key import read_private_key_list, read_public_key_list
 from .public_key import read_certificate_list

@@ -1000,6 +1000,11 @@ Encrypted private keys can be loaded by making an explicit call to
 correct passphrase. The resulting :class:`SSHKey` objects can then
 be included in thie list, each with an optional matching certificate.
 
+New private keys can be generated using the :func:`generate_private_key`
+function. The resulting :class:`SSHKey` objects have methods which can
+then be used to export the generated keys in several formats for
+consumption by other tools.
+
 .. index:: Specifying public keys
 .. _SpecifyingPublicKeys:
 
@@ -1041,6 +1046,11 @@ SSHCertificate
 .. autoclass:: SSHCertificate()
 
    .. automethod:: validate
+
+generate_private_key
+--------------------
+
+.. autofunction:: generate_private_key
 
 import_private_key
 ------------------

@@ -54,6 +54,15 @@ def _wrap_base64(data, wrap=64):
                       for i in range(0, len(data), wrap)) + b'\n'
 
 
+class KeyGenerationError(ValueError):
+    """Key generation error
+
+       This exception is raised by :func:`generate_private_key` when
+       the requested algorithm or parameters are unsupported.
+
+    """
+
+
 class KeyImportError(ValueError):
     """Key import error
 
@@ -1069,6 +1078,54 @@ def decode_ssh_certificate(data):
     except PacketDecodeError:
         raise KeyImportError('Invalid certificate') from None
 
+
+def generate_private_key(alg_name, **kwargs):
+    """Generate a new private key
+
+       This function generates a new private key of a type matching
+       the requested SSH algorithm. Depending on the algorithm, additional
+       parameters can be passed which affect the generated key.
+
+       Available algorithms include:
+
+           ssh-dss, ssh-rsa, ecdsa-sha2-nistp256, ecdsa-sha2-nistp384,
+           ecdsa-sha2-nistp521, ssh-ed25519
+
+       For ssh-dss, no parameters are supported. The key size is fixed at
+       1024 bits due to the use of SHA1 signatures.
+
+       For ssh-rsa, the key size can be specified using the ``key_size``
+       parameter, and the RSA public exponent can be changed using the
+       ``exponent`` parameter. By default, generated keys are 2048 bits
+       with a public exponent of 65537.
+
+       For ecdsa, the curve to use is part of the SSH algorithm name
+       and that determines the key size. No other parameters are supported.
+
+       For ssh-ed25519, no parameters are supported. The key size is fixed
+       by the algorithm at 256 bits.
+
+       :param str alg_name:
+           The SSH algorithm name corresponding to the desired type of key
+       :param int key_size: (optional)
+           The key size in bits for RSA keys.
+       :param int exponent: (optional)
+           The public exponent for RSA keys.
+
+       :returns: An :class:`SSHKey` private key
+
+    """
+
+    algorithm = alg_name.encode('utf-8')
+    handler = _public_key_alg_map.get(algorithm)
+
+    if handler:
+        try:
+            return handler.generate(algorithm, **kwargs)
+        except (TypeError, ValueError) as exc:
+            raise KeyGenerationError(str(exc)) from None
+    else:
+        raise KeyGenerationError('Unknown algorithm: %s' % alg_name)
 
 def import_private_key(data, passphrase=None):
     """Import a private key

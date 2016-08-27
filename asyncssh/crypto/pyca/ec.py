@@ -30,25 +30,20 @@ _curves = {b'nistp256': (ec.SECP256R1, SHA256),
 class _ECKey:
     """Base class for shim around PyCA for EC keys"""
 
-    def __init__(self, curve_id, public_value=None, private_value=None):
+    def __init__(self, curve_id, pub, priv=None):
+        self._curve_id = curve_id
+        self._pub = pub
+        self._priv = priv
+
+    @classmethod
+    def lookup_curve(cls, curve_id):
+        """Look up curve and hash algorithm"""
+
         try:
-            curve, hash_alg = _curves[curve_id]
+            return _curves[curve_id]
         except KeyError: # pragma: no cover, other curves not registered
             raise ValueError('Unknown EC curve %s' %
                              curve_id.decode()) from None
-
-        self._curve_id = curve_id
-        self._hash_alg = hash_alg
-        self._pub = ec.EllipticCurvePublicNumbers.from_encoded_point(
-            curve(), public_value)
-
-        if private_value:
-            self._priv = ec.EllipticCurvePrivateNumbers(private_value,
-                                                        self._pub)
-            self._priv_key = self._priv.private_key(backend)
-        else:
-            self._priv = None
-            self._pub_key = self._pub.public_key(backend)
 
     @property
     def curve_id(self):
@@ -94,6 +89,34 @@ class _ECKey:
 class ECDSAPrivateKey(_ECKey):
     """A shim around PyCA for ECDSA private keys"""
 
+    def __init__(self, curve_id, hash_alg, pub, priv, priv_key):
+        super().__init__(curve_id, pub, priv)
+        self._hash_alg = hash_alg
+        self._priv_key = priv_key
+
+    @classmethod
+    def construct(cls, curve_id, public_value, private_value):
+        """Construct an ECDSA private key"""
+
+        curve, hash_alg = cls.lookup_curve(curve_id)
+        pub = ec.EllipticCurvePublicNumbers.from_encoded_point(curve(),
+                                                               public_value)
+        priv = ec.EllipticCurvePrivateNumbers(private_value, pub)
+        priv_key = priv.private_key(backend)
+
+        return cls(curve_id, hash_alg, pub, priv, priv_key)
+
+    @classmethod
+    def generate(cls, curve_id):
+        """Generate a new ECDSA private key"""
+
+        curve, hash_alg = cls.lookup_curve(curve_id)
+        priv_key = ec.generate_private_key(curve, backend)
+        priv = priv_key.private_numbers()
+        pub = priv.public_numbers
+
+        return cls(curve_id, hash_alg, pub, priv, priv_key)
+
     def sign(self, data):
         """Sign a block of data"""
 
@@ -103,6 +126,22 @@ class ECDSAPrivateKey(_ECKey):
 
 class ECDSAPublicKey(_ECKey):
     """A shim around PyCA for ECDSA public keys"""
+
+    def __init__(self, curve_id, hash_alg, pub, pub_key):
+        super().__init__(curve_id, pub)
+        self._hash_alg = hash_alg
+        self._pub_key = pub_key
+
+    @classmethod
+    def construct(cls, curve_id, public_value):
+        """Construct an ECDSA public key"""
+
+        curve, hash_alg = cls.lookup_curve(curve_id)
+        pub = ec.EllipticCurvePublicNumbers.from_encoded_point(curve(),
+                                                               public_value)
+        pub_key = pub.public_key(backend)
+
+        return cls(curve_id, hash_alg, pub, pub_key)
 
     def verify(self, data, sig):
         """Verify the signature on a block of data"""

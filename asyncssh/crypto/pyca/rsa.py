@@ -25,17 +25,9 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 class _RSAKey:
     """Base class for shum around PyCA for RSA keys"""
 
-    def __init__(self, n, e, d=None, p=None, q=None,
-                 dmp1=None, dmq1=None, iqmp=None):
-        self._pub = rsa.RSAPublicNumbers(e, n)
-
-        if d:
-            self._priv = rsa.RSAPrivateNumbers(p, q, d, dmp1, dmq1,
-                                               iqmp, self._pub)
-            self._priv_key = self._priv.private_key(default_backend())
-        else:
-            self._priv = None
-            self._pub_key = self._pub.public_key(default_backend())
+    def __init__(self, pub, priv=None):
+        self._pub = pub
+        self._priv = priv
 
     @property
     def n(self):
@@ -89,6 +81,31 @@ class _RSAKey:
 class RSAPrivateKey(_RSAKey):
     """A shim around PyCA for RSA private keys"""
 
+    def __init__(self, pub, priv, priv_key):
+        super().__init__(pub, priv)
+        self._priv_key = priv_key
+
+    @classmethod
+    def construct(cls, n, e, d, p, q, dmp1, dmq1, iqmp):
+        """Construct an RSA private key"""
+
+        pub = rsa.RSAPublicNumbers(e, n)
+        priv = rsa.RSAPrivateNumbers(p, q, d, dmp1, dmq1, iqmp, pub)
+        priv_key = priv.private_key(default_backend())
+
+        return cls(pub, priv, priv_key)
+
+    @classmethod
+    def generate(cls, key_size, exponent):
+        """Generate a new RSA private key"""
+
+        priv_key = rsa.generate_private_key(exponent, key_size,
+                                            default_backend())
+        priv = priv_key.private_numbers()
+        pub = priv.public_numbers
+
+        return cls(pub, priv, priv_key)
+
     def sign(self, data):
         """Sign a block of data"""
 
@@ -97,6 +114,19 @@ class RSAPrivateKey(_RSAKey):
 
 class RSAPublicKey(_RSAKey):
     """A shim around PyCA for RSA public keys"""
+
+    def __init__(self, pub, pub_key):
+        super().__init__(pub)
+        self._pub_key = pub_key
+
+    @classmethod
+    def construct(cls, n, e):
+        """Construct an RSA public key"""
+
+        pub = rsa.RSAPublicNumbers(e, n)
+        pub_key = pub.public_key(default_backend())
+
+        return cls(pub, pub_key)
 
     def verify(self, data, sig):
         """Verify the signature on a block of data"""

@@ -26,16 +26,10 @@ from ...asn1 import der_encode, der_decode
 class _DSAKey:
     """Base class for shim around PyCA for DSA keys"""
 
-    def __init__(self, p, q, g, y, x=None):
-        self._params = dsa.DSAParameterNumbers(p, q, g)
-        self._pub = dsa.DSAPublicNumbers(y, self._params)
-
-        if x:
-            self._priv = dsa.DSAPrivateNumbers(x, self._pub)
-            self._priv_key = self._priv.private_key(default_backend())
-        else:
-            self._priv = None
-            self._pub_key = self._pub.public_key(default_backend())
+    def __init__(self, params, pub, priv=None):
+        self._params = params
+        self._pub = pub
+        self._priv = priv
 
     @property
     def p(self):
@@ -71,6 +65,32 @@ class _DSAKey:
 class DSAPrivateKey(_DSAKey):
     """A shim around PyCA for DSA private keys"""
 
+    def __init__(self, params, pub, priv, priv_key):
+        super().__init__(params, pub, priv)
+        self._priv_key = priv_key
+
+    @classmethod
+    def construct(cls, p, q, g, y, x):
+        """Construct a DSA private key"""
+
+        params = dsa.DSAParameterNumbers(p, q, g)
+        pub = dsa.DSAPublicNumbers(y, params)
+        priv = dsa.DSAPrivateNumbers(x, pub)
+        priv_key = priv.private_key(default_backend())
+
+        return cls(params, pub, priv, priv_key)
+
+    @classmethod
+    def generate(cls, key_size):
+        """Generate a new DSA private key"""
+
+        priv_key = dsa.generate_private_key(key_size, default_backend())
+        priv = priv_key.private_numbers()
+        pub = priv.public_numbers
+        params = pub.parameter_numbers
+
+        return cls(params, pub, priv, priv_key)
+
     def sign(self, data):
         """Sign a block of data"""
 
@@ -79,6 +99,20 @@ class DSAPrivateKey(_DSAKey):
 
 class DSAPublicKey(_DSAKey):
     """A shim around PyCA for DSA public keys"""
+
+    def __init__(self, params, pub, pub_key):
+        super().__init__(params, pub)
+        self._pub_key = pub_key
+
+    @classmethod
+    def construct(cls, p, q, g, y):
+        """Construct a DSA public key"""
+
+        params = dsa.DSAParameterNumbers(p, q, g)
+        pub = dsa.DSAPublicNumbers(y, params)
+        pub_key = pub.public_key(default_backend())
+
+        return cls(params, pub, pub_key)
 
     def verify(self, data, sig):
         """Verify the signature on a block of data"""

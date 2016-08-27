@@ -40,6 +40,14 @@ class _Ed25519Key(SSHKey):
         return hash(self._vk)
 
     @classmethod
+    def generate(cls, algorithm):
+        """Generate a new Ed25519 private key"""
+
+        # pylint: disable=unused-argument
+
+        return cls(*libnacl.crypto_sign_keypair())
+
+    @classmethod
     def make_private(cls, vk, sk):
         """Construct an Ed25519 private key"""
 

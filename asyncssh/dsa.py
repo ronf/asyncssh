@@ -50,16 +50,24 @@ class _DSAKey(SSHKey):
                      self._key.y, self._key.x))
 
     @classmethod
+    def generate(cls, algorithm):
+        """Generate a new DSA private key"""
+
+        # pylint: disable=unused-argument
+
+        return cls(DSAPrivateKey.generate(key_size=1024))
+
+    @classmethod
     def make_private(cls, *args):
         """Construct a DSA private key"""
 
-        return cls(DSAPrivateKey(*args))
+        return cls(DSAPrivateKey.construct(*args))
 
     @classmethod
     def make_public(cls, *args):
         """Construct a DSA public key"""
 
-        return cls(DSAPublicKey(*args))
+        return cls(DSAPublicKey.construct(*args))
 
     @classmethod
     def decode_pkcs1_private(cls, key_data):

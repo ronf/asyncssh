@@ -48,16 +48,24 @@ class _RSAKey(SSHKey):
                      self._key.p, self._key.q))
 
     @classmethod
+    def generate(cls, algorithm, *, key_size=2048, exponent=65537):
+        """Generate a new RSA private key"""
+
+        # pylint: disable=unused-argument
+
+        return cls(RSAPrivateKey.generate(key_size, exponent))
+
+    @classmethod
     def make_private(cls, *args):
         """Construct an RSA private key"""
 
-        return cls(RSAPrivateKey(*args))
+        return cls(RSAPrivateKey.construct(*args))
 
     @classmethod
     def make_public(cls, *args):
         """Construct an RSA public key"""
 
-        return cls(RSAPublicKey(*args))
+        return cls(RSAPublicKey.construct(*args))
 
     @classmethod
     def decode_pkcs1_private(cls, key_data):
