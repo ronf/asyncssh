@@ -3,6 +3,29 @@
 Change Log
 ==========
 
+Release 1.6.1 (27 Aug 2016)
+---------------------------
+
+* Added generate_private_key() function to create new DSA, RSA, ECDSA, or
+  Ed25519 private keys which can be used as SSH user and host keys.
+
+* Removed an unintended dependency in the SSHLineEditor on session objects
+  keep a private member which referenced the corresponding channel.
+
+* Fixed a race condition in SFTP unit tests.
+
+* Updated dependencie to require version 1.5 of the cryptography module
+  and started to take advantage of the new one-shot sign and verify
+  APIs it now supports.
+
+* Clarified the documentation of the default return value of eof_received().
+
+* Added new multi-user client and server examples, showing a single
+  process opening multiple SSH connections in parallel.
+
+* Updated development status and Python versions listed in setup.py.
+
+
 Release 1.6.0 (13 Aug 2016)
 ---------------------------
 
