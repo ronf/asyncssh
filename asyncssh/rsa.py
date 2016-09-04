@@ -204,5 +204,5 @@ class _RSAKey(SSHKey):
 
 register_public_key_alg(b'ssh-rsa', _RSAKey)
 
-register_certificate_alg(b'ssh-rsa-cert-v01@openssh.com',
+register_certificate_alg(1, b'ssh-rsa-cert-v01@openssh.com',
                          _RSAKey, SSHCertificateV01)

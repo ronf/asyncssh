@@ -112,8 +112,9 @@ def _encode_options(options):
 
 
 def make_certificate(cert_version, cert_type, key, signing_key, principals,
-                     valid_after=0, valid_before=0xffffffffffffffff,
-                     options=None, extensions=None, bad_signature=False):
+                     key_id='name', valid_after=0,
+                     valid_before=0xffffffffffffffff, options=None,
+                     extensions=None, bad_signature=False):
     """Construct an SSH certificate"""
 
     keydata = key.encode_ssh_public()
@@ -123,8 +124,8 @@ def make_certificate(cert_version, cert_type, key, signing_key, principals,
     signing_keydata = b''.join((String(signing_key.algorithm),
                                 signing_key.encode_ssh_public()))
 
-    data = b''.join((String(cert_version), String(os.urandom(8)), keydata,
-                     UInt64(0), UInt32(cert_type), String(''),
+    data = b''.join((String(cert_version), String(os.urandom(32)), keydata,
+                     UInt64(0), UInt32(cert_type), String(key_id),
                      String(principals), UInt64(valid_after),
                      UInt64(valid_before), String(options),
                      String(extensions), String(''), String(signing_keydata)))

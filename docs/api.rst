@@ -1021,17 +1021,45 @@ to import it from, or an already loaded :class:`SSHKey` public key.
 See the function :func:`import_public_key` for the list of supported
 public key formats.
 
+.. index:: Specifying time values
+.. _SpecifyingTimeValues:
+
+Specifying time values
+----------------------
+
+When generating certificates, an optional validity interval can be
+specified using the ``valid_after`` and ``valid_before`` parameters
+to the :meth:`generate_user_certificate() <SSHKey.generate_user_certificate>`
+and :meth:`generate_host_certificate() <SSHKey.generate_host_certificate>`
+methods. These values can be specified in any of the following ways:
+
+    * An int or float UNIX epoch time, such as what is returned by
+      :func:`time.time`.
+    * A :class:`datetime.datetime` value.
+    * A string value of ``now`` to request the current time.
+    * A string value in the form ``YYYYMMDD`` to specify an absolute date.
+    * A string value in the form ``YYYYMMDDHHMMSS`` to specify an
+      absolute date and time.
+    * A relative time made up of a mix of positive or negative numbers and
+      the letters 'w', 'd', 'h', 'm', and 's', representing an offset from
+      the current time in weeks, days, hours, minutes, or seconds,
+      respectively. Multiple of these values can be included. For
+      instance, '+1w2d3h' means 1 week, 2 days, and 3 hours in the future.
+
 SSHKey
 ------
 
 .. autoclass:: SSHKey()
 
-   ================================== =
+   ========================================= =
+   .. automethod:: convert_to_public
+   .. automethod:: generate_user_certificate
+   .. automethod:: generate_host_certificate
    .. automethod:: export_private_key
    .. automethod:: export_public_key
    .. automethod:: write_private_key
    .. automethod:: write_public_key
-   ================================== =
+   ========================================= =
 
 SSHKeyPair
 ----------
@@ -1045,7 +1073,11 @@ SSHCertificate
 
 .. autoclass:: SSHCertificate()
 
+   ================================== =
+   .. automethod:: export_certificate
+   .. automethod:: write_certificate
    .. automethod:: validate
+   ================================== =
 
 generate_private_key
 --------------------
@@ -1271,6 +1303,11 @@ KeyEncryptionError
 ------------------
 
 .. autoexception:: KeyEncryptionError
+
+KeyGenerationError
+------------------
+
+.. autoexception:: KeyGenerationError
 
 .. index:: Supported algorithms
 .. _SupportedAlgorithms:

@@ -123,5 +123,5 @@ except (ImportError, OSError): # pragma: no cover
 else:
     register_public_key_alg(b'ssh-ed25519', _Ed25519Key)
 
-    register_certificate_alg(b'ssh-ed25519-cert-v01@openssh.com',
+    register_certificate_alg(1, b'ssh-ed25519-cert-v01@openssh.com',
                              _Ed25519Key, SSHCertificateV01)

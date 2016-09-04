@@ -225,5 +225,5 @@ class _DSAKey(SSHKey):
 
 register_public_key_alg(b'ssh-dss', _DSAKey)
 
-register_certificate_alg(b'ssh-dss-cert-v01@openssh.com',
+register_certificate_alg(1, b'ssh-dss-cert-v01@openssh.com',
                          _DSAKey, SSHCertificateV01)

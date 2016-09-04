@@ -18,6 +18,7 @@
 """
 
 import binascii
+from datetime import datetime
 import os
 
 from .util import bcrypt_available, libnacl_available
@@ -35,7 +36,6 @@ from asyncssh.asn1 import TaggedDERObject
 from asyncssh.packet import MPInt, String, UInt32
 from asyncssh.pbe import pkcs1_decrypt
 from asyncssh.public_key import CERT_TYPE_USER, CERT_TYPE_HOST, SSHKey
-from asyncssh.public_key import decode_ssh_public_key
 from asyncssh.public_key import get_public_key_algs, get_certificate_algs
 
 
@@ -876,6 +876,11 @@ class _TestPublicKey(TempDirTestCase):
             cert = read_certificate('cert')
             self.assertEqual(cert.key, self.pubkey)
 
+        with self.subTest('Export certificate'):
+            cert.write_certificate('cert2', fmt)
+            cert2 = read_certificate('cert2')
+            self.assertEqual(cert.key, cert2.key)
+
         with self.subTest('Validate certificate'):
             self.assertIsNone(cert.validate(cert_type, 'name'))
 
@@ -908,21 +913,28 @@ class _TestPublicKey(TempDirTestCase):
         with self.subTest('Invalid certificate critical option'):
             with self.assertRaises(KeyImportError):
                 cert = self.make_certificate(cert_type, self.pubkey,
-                                             self.privca, 'name',
+                                             self.privca, ('name',),
                                              options={b'xxx': b''})
                 import_certificate(cert)
 
         with self.subTest('Ignored certificate extension'):
             cert = self.make_certificate(cert_type, self.pubkey,
-                                         self.privca, 'name',
+                                         self.privca, ('name',),
                                          extensions={b'xxx': b''})
             self.assertIsNotNone(import_certificate(cert))
 
         with self.subTest('Invalid certificate signature'):
             with self.assertRaises(KeyImportError):
                 cert = self.make_certificate(cert_type, self.pubkey,
-                                             self.privca, 'name',
+                                             self.privca, ('name',),
                                              bad_signature=True)
+                import_certificate(cert)
+
+        with self.subTest('Invalid characters in certificate key ID'):
+            with self.assertRaises(KeyImportError):
+                cert = self.make_certificate(cert_type, self.pubkey,
+                                             self.privca, ('name',),
+                                             key_id=b'\xff')
                 import_certificate(cert)
 
         with self.subTest('Invalid characters in certificate principal'):
@@ -992,15 +1004,70 @@ class _TestPublicKey(TempDirTestCase):
                 cert = import_certificate(cert)
                 cert.validate(cert_type, 'name2')
 
+        with self.subTest('Invalid certificate export format'):
+            with self.assertRaises(KeyExportError):
+                cert = self.make_certificate(cert_type, self.pubkey,
+                                             self.privca, ('name',))
+                cert = import_certificate(cert)
+                cert.export_certificate('xxx')
+
+    def check_generated_certificate(self, cert):
+        """Check SSH certificate generation"""
+
+        cert2 = import_certificate(cert.export_certificate('openssh'))
+
+        self.assertEqual(cert.algorithm, cert2.algorithm)
+        self.assertEqual(cert.key, cert2.key)
+        self.assertEqual(cert.data, cert2.data)
+        self.assertEqual(cert.principals, cert2.principals)
+        self.assertEqual(cert.options, cert2.options)
+        self.assertEqual(cert.signing_key, cert2.signing_key)
+
     def test_generate(self):
-        """Check private key generation"""
+        """Check private key and certificate generation"""
 
         for alg_name, kwargs in self.generate_args:
             with self.subTest(alg_name=alg_name, **kwargs):
                 self.privkey = generate_private_key(alg_name, **kwargs)
-                self.pubkey = decode_ssh_public_key(
-                    self.privkey.get_ssh_public_key())
+                self.pubkey = self.privkey.convert_to_public()
                 self.check_sign_and_verify()
+
+                self.privca = generate_private_key(alg_name, **kwargs)
+                self.pubca = self.privkey.convert_to_public()
+
+                cert = self.privca.generate_user_certificate(self.pubkey,
+                                                             'name')
+                self.check_generated_certificate(cert)
+                self.assertIsNone(cert.validate(CERT_TYPE_USER, 'name'))
+
+                cert = self.privca.generate_user_certificate(
+                    self.pubkey, 'name', force_command='command',
+                    source_address=['1.2.3.4'], permit_x11_forwarding=False,
+                    permit_agent_forwarding=False,
+                    permit_port_forwarding=False, permit_pty=False,
+                    permit_user_rc=False)
+
+                self.check_generated_certificate(cert)
+                self.assertIsNone(cert.validate(CERT_TYPE_USER, 'name'))
+
+                cert = self.privca.generate_host_certificate(self.pubkey,
+                                                             'name')
+                self.check_generated_certificate(cert)
+                self.assertIsNone(cert.validate(CERT_TYPE_HOST, 'name'))
+
+                for valid_after, valid_before in ((0, 1.),
+                                                  (datetime.now(), '+1m'),
+                                                  ('20160101', '20160102'),
+                                                  ('20160101000000',
+                                                   '20160102235959'),
+                                                  ('now', '1w2d3h4m5s'),
+                                                  ('-52w', '+52w')):
+
+                    cert = self.privca.generate_host_certificate(
+                        self.pubkey, 'name', valid_after=valid_after,
+                        valid_before=valid_before)
+
+                    self.check_generated_certificate(cert)
 
     def test_import_export(self):
         """Check key import and export"""
@@ -1177,7 +1244,7 @@ class _TestPublicKeyTopLevel(TempDirTestCase):
                 read_private_key('priv')
 
     def test_generate_errors(self):
-        """Test errors in private key generation"""
+        """Test errors in private key and certificate generation"""
 
         for alg_name, kwargs in (('xxx', {}),
                                  ('ssh-dss', {'xxx': 0}),
@@ -1187,3 +1254,20 @@ class _TestPublicKeyTopLevel(TempDirTestCase):
             with self.subTest(alg_name=alg_name, **kwargs):
                 with self.assertRaises(KeyGenerationError):
                     generate_private_key(alg_name, **kwargs)
+
+        privkey = generate_private_key('ssh-rsa')
+        pubkey = privkey.convert_to_public()
+        privca = generate_private_key('ssh-rsa')
+
+        with self.assertRaises(KeyGenerationError):
+            privca.generate_user_certificate(pubkey, 'name', version=0)
+
+        with self.assertRaises(ValueError):
+            privca.generate_user_certificate(pubkey, 'name', valid_after=())
+
+        with self.assertRaises(ValueError):
+            privca.generate_user_certificate(pubkey, 'name', valid_after='xxx')
+
+        with self.assertRaises(ValueError):
+            privca.generate_user_certificate(pubkey, 'name', valid_after='now',
+                                             valid_before='-1m')
