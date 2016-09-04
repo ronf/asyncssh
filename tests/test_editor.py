@@ -34,6 +34,7 @@ def _handle_session(stdin, stdout, stderr):
             data += yield from stdin.readline()
         except asyncssh.BreakReceived:
             break_count += 1
+            stdout.write('B')
 
             if break_count == 1:
                 # Set twice to get coverage of when echo isn't changing
@@ -170,7 +171,7 @@ class _TestEditor(_CheckEditor):
             process = yield from conn.create_process(term_type='ansi')
 
             process.stdin.write('\x03')
-            yield from asyncio.sleep(0.1)
+            yield from process.stdout.readexactly(1)
 
             process.stdin.write('abcd\x08\n')
             process.stdin.write_eof()
@@ -186,12 +187,12 @@ class _TestEditor(_CheckEditor):
             process = yield from conn.create_process(term_type='ansi')
 
             process.stdin.write('\x03')
-            yield from asyncio.sleep(0.1)
+            yield from process.stdout.readexactly(1)
 
             process.stdin.write('abc')
 
             process.stdin.write('\x03')
-            yield from asyncio.sleep(0.1)
+            yield from process.stdout.readexactly(1)
 
             process.stdin.write('\n')
             process.stdin.write_eof()
@@ -207,10 +208,10 @@ class _TestEditor(_CheckEditor):
             process = yield from conn.create_process(term_type='ansi')
 
             process.stdin.write('\x03\x03')
-            yield from asyncio.sleep(0.1)
+            yield from process.stdout.readexactly(2)
 
             process.stdin.write('abc\x03')
-            yield from asyncio.sleep(0.1)
+            yield from process.stdout.readexactly(15)
 
             process.stdin.write('\n')
             process.stdin.write_eof()
