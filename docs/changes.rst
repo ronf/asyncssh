@@ -3,6 +3,18 @@
 Change Log
 ==========
 
+Release 1.6.2 (4 Sep 2016)
+--------------------------
+
+* Added generate_user_certificate() and generate_host_certificate() methods
+  to SSHKey class to generate SSH certificates, and export_certificate()
+  and write_certificate() methods on SSHCertificate class to export
+  certificates for use in other tools.
+
+* Improved editor unit tests to eliminate timing dependency.
+
+* Cleaned up a few minor documentation issues.
+
 Release 1.6.1 (27 Aug 2016)
 ---------------------------
 
