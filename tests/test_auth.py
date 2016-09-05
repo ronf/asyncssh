@@ -14,7 +14,7 @@
 
 import asyncio
 
-from .util import asynctest, create_task, run, AsyncTestCase, ConnectionStub
+import asyncssh
 
 from asyncssh.auth import MSG_USERAUTH_PK_OK, lookup_client_auth
 from asyncssh.auth import get_server_auth_methods, lookup_server_auth
@@ -22,8 +22,9 @@ from asyncssh.constants import MSG_USERAUTH_REQUEST, MSG_USERAUTH_FAILURE
 from asyncssh.constants import MSG_USERAUTH_SUCCESS
 from asyncssh.misc import DisconnectError, PasswordChangeRequired
 from asyncssh.packet import SSHPacket, Boolean, Byte, NameList, String
-from asyncssh.public_key import read_private_key, read_certificate
 from asyncssh.public_key import SSHLocalKeyPair
+
+from .util import asynctest, create_task, AsyncTestCase, ConnectionStub
 
 
 class _AuthConnectionStub(ConnectionStub):
@@ -74,9 +75,8 @@ class _AuthClientStub(_AuthConnectionStub):
                                          kbdint_auth, kbdint_challenge,
                                          success), False)
 
-        self._client_key = read_private_key(client_key) if client_key else None
-        self._client_cert = read_certificate(client_cert) if client_cert \
-                                else None
+        self._client_key = client_key
+        self._client_cert = client_cert
 
         self._password = password
         self._password_change = password_change
@@ -397,30 +397,29 @@ class _TestAuth(AsyncTestCase):
     def test_publickey_auth(self):
         """Unit test public key authentication"""
 
-        run('ssh-keygen -q -b 2048 -t rsa -N "" -f ckey')
-        run('ssh-keygen -s ckey -I name ckey')
+        ckey = asyncssh.generate_private_key('ssh-rsa')
+        cert = ckey.generate_user_certificate(ckey, 'name')
 
         with self.subTest('Public key auth not available'):
             yield from self.check_auth(b'publickey', (False, None))
 
         with self.subTest('Untrusted key'):
             yield from self.check_auth(b'publickey', (False, None),
-                                       client_key='ckey')
+                                       client_key=ckey)
 
         with self.subTest('Trusted key'):
             yield from self.check_auth(b'publickey', (True, None),
-                                       client_key='ckey', success=True)
+                                       client_key=ckey, success=True)
 
         with self.subTest('Trusted certificate'):
             yield from self.check_auth(b'publickey', (True, None),
-                                       client_key='ckey',
-                                       client_cert='ckey-cert.pub',
+                                       client_key=ckey, client_cert=cert,
                                        success=True)
 
         with self.subTest('Invalid PK_OK message'):
             with self.assertRaises(DisconnectError):
                 yield from self.check_auth(b'publickey', (False, None),
-                                           client_key='ckey',
+                                           client_key=ckey,
                                            override_pk_ok=True)
 
     @asynctest
