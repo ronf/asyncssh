@@ -10,22 +10,16 @@
 # Contributors:
 #     Ron Frederick - initial implementation, API, and documentation
 
-"""Unit tests for matching against known_hosts file
-
-   Note: These tests assume that the ssh-keygen command is available on
-         the system and in the user's path.
-
-"""
+"""Unit tests for matching against known_hosts file"""
 
 import binascii
 import hashlib
 import hmac
 import os
 
-from asyncssh import import_public_key
-from asyncssh.known_hosts import import_known_hosts, match_known_hosts
+import asyncssh
 
-from .util import TempDirTestCase, run
+from .util import TempDirTestCase
 
 
 def _hash(host):
@@ -54,14 +48,9 @@ class _TestKnownHosts(TempDirTestCase):
         for keylist, imported_keylist in zip(cls.keylists,
                                              cls.imported_keylists):
             for _ in range(3):
-                run('ssh-keygen -t rsa -N "" -f key')
-
-                with open('key.pub', 'r') as f:
-                    k = f.read()
-                    keylist.append(k)
-                    imported_keylist.append(import_public_key(k))
-
-                run('rm key key.pub')
+                key = asyncssh.generate_private_key('ssh-rsa')
+                keylist.append(key.export_public_key().decode('ascii'))
+                imported_keylist.append(key.convert_to_public())
 
     def check_match(self, known_hosts, results=None, host='host',
                     addr='1.2.3.4', port=22):
@@ -72,7 +61,7 @@ class _TestKnownHosts(TempDirTestCase):
                             for kl, result in zip(self.imported_keylists,
                                                   results))
 
-        matches = match_known_hosts(known_hosts, host, addr, port)
+        matches = asyncssh.match_known_hosts(known_hosts, host, addr, port)
         self.assertEqual(matches, results)
 
     def check_hosts(self, patlists, results=None, host='host', addr='1.2.3.4',
@@ -94,7 +83,7 @@ class _TestKnownHosts(TempDirTestCase):
         elif from_bytes:
             known_hosts = known_hosts.encode()
         else:
-            known_hosts = import_known_hosts(known_hosts)
+            known_hosts = asyncssh.import_known_hosts(known_hosts)
 
         return self.check_match(known_hosts, results, host, addr, port)
 
