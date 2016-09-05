@@ -10,19 +10,13 @@
 # Contributors:
 #     Ron Frederick - initial implementation, API, and documentation
 
-"""Unit tests for matching against authorized_keys file
-
-   Note: These tests assume that the ssh-keygen command is available on
-         the system and in the user's path.
-
-"""
+"""Unit tests for matching against authorized_keys file"""
 
 from unittest.mock import patch
 
-from asyncssh import import_public_key
-from asyncssh.auth_keys import import_authorized_keys, read_authorized_keys
+import asyncssh
 
-from .util import TempDirTestCase, run
+from .util import TempDirTestCase
 
 
 class _TestAuthorizedKeys(TempDirTestCase):
@@ -38,15 +32,9 @@ class _TestAuthorizedKeys(TempDirTestCase):
         super().setUpClass()
 
         for _ in range(3):
-            run('ssh-keygen -t rsa -N "" -f key')
-
-            with open('key.pub', 'r') as f:
-                k = f.read()
-
-            cls.keylist.append(k)
-            cls.imported_keylist.append(import_public_key(k))
-
-            run('rm key key.pub')
+            key = asyncssh.generate_private_key('ssh-rsa')
+            cls.keylist.append(key.export_public_key().decode('ascii'))
+            cls.imported_keylist.append(key.convert_to_public())
 
     def build_keys(self, keys, from_file=False):
         """Build and import a list of authorized keys"""
@@ -63,9 +51,9 @@ class _TestAuthorizedKeys(TempDirTestCase):
             with open('authorized_keys', 'w') as f:
                 f.write(auth_keys)
 
-            return read_authorized_keys('authorized_keys')
+            return asyncssh.read_authorized_keys('authorized_keys')
         else:
-            return import_authorized_keys(auth_keys)
+            return asyncssh.import_authorized_keys(auth_keys)
 
     def test_matches(self):
         """Test authorized keys matching"""
@@ -159,4 +147,4 @@ class _TestAuthorizedKeys(TempDirTestCase):
         for msg, data in tests:
             with self.subTest(msg):
                 with self.assertRaises(ValueError):
-                    import_authorized_keys(data)
+                    asyncssh.import_authorized_keys(data)
