@@ -83,13 +83,24 @@ class ServerTestCase(AsyncTestCase):
     def asyncSetUpClass(cls):
         """Set up keys, an SSH server, and an SSH agent for the tests to use"""
 
-        run('ssh-keygen -q -b 2048 -t rsa -N "" -f ckey')
-        run('ssh-keygen -q -b 2048 -t rsa -N "" -f skey')
-        run('ssh-keygen -q -s skey -h -I skey skey')
+        ckey = asyncssh.generate_private_key('ssh-rsa')
+        ckey.write_private_key('ckey')
+        ckey.write_public_key('ckey.pub')
 
-        run('cp skey exp_skey')
-        run('cp skey.pub exp_skey.pub')
-        run('ssh-keygen -s skey -h -I skey -V -2d:-1d exp_skey')
+        skey = asyncssh.generate_private_key('ssh-rsa')
+        skey.write_private_key('skey')
+        skey.write_public_key('skey.pub')
+
+        cert = skey.generate_host_certificate(skey, 'name')
+        cert.write_certificate('skey-cert.pub')
+
+        exp_cert = skey.generate_host_certificate(skey, 'name',
+                                                  valid_after='-2d',
+                                                  valid_before='-1d')
+        skey.write_private_key('exp_skey')
+        exp_cert.write_certificate('exp_skey-cert.pub')
+
+        run('chmod 600 ckey skey exp_skey')
 
         run('mkdir .ssh')
         run('chmod 700 .ssh')
