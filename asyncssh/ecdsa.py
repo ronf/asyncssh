@@ -290,4 +290,5 @@ for _curve_id, _oid in {(b'nistp521', '1.3.132.0.35'),
     _alg_oid_map[_oid] = _curve_id
 
     register_public_key_alg(_algorithm, _ECKey)
-    register_certificate_alg(1, _cert_algorithm, _ECKey, SSHCertificateV01)
+    register_certificate_alg(1, _algorithm, _cert_algorithm,
+                             _ECKey, SSHCertificateV01)

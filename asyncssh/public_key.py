@@ -139,7 +139,7 @@ class SSHKey:
         """Generate a new SSH certificate"""
 
         try:
-            algorithm, cert_handler = _certificate_version_map[type(key),
+            algorithm, cert_handler = _certificate_version_map[key.algorithm,
                                                                version]
         except KeyError:
             raise KeyGenerationError('Unknown certificate version') from None
@@ -338,7 +338,7 @@ class SSHKey:
                                           principals, valid_after,
                                           valid_before, {})
 
-    def export_private_key(self, format_name, passphrase=None,
+    def export_private_key(self, format_name='openssh', passphrase=None,
                            cipher_name='aes256-cbc', hash_name='sha256',
                            pbe_version=2, rounds=16):
         """Export a private key in the requested format
@@ -350,6 +350,8 @@ class SSHKey:
            Available formats include:
 
                pkcs1-der, pkcs1-pem, pkcs8-der, pkcs8-pem, openssh
+
+           By default, openssh format will be used.
 
            Encryption is supported in pkcs1-pem, pkcs8-der, pkcs8-pem,
            and openssh formats. For pkcs1-pem, only the cipher can be
@@ -381,7 +383,7 @@ class SSHKey:
            hash is sha256 and default version is PBES2. In openssh format,
            the default number of rounds is 16.
 
-           :param str format_name:
+           :param str format_name: (optional)
                The format to export the key in.
            :param str passphrase: (optional)
                A passphrase to encrypt the private key with.
@@ -393,6 +395,8 @@ class SSHKey:
                The PBE version to use for private key encryption.
            :param int rounds: (optional)
                The number of KDF rounds to apply to the passphrase.
+
+           :returns: bytes representing the exported private key
 
         """
 
@@ -504,7 +508,7 @@ class SSHKey:
         else:
             raise KeyExportError('Unknown export format')
 
-    def export_public_key(self, format_name):
+    def export_public_key(self, format_name='openssh'):
         """Export a public key in the requested format
 
            This method returns this object's public key encoded in the
@@ -512,8 +516,12 @@ class SSHKey:
 
                pkcs1-der, pkcs1-pem, pkcs8-der, pkcs8-pem, openssh, rfc4716
 
-           :param str format:
+           By default, openssh format will be used.
+
+           :param str format_name: (optional)
                The format to export the key in.
+
+           :returns: bytes representing the exported public key
 
         """
 
@@ -802,7 +810,7 @@ class SSHCertificate:
 
         return result
 
-    def export_certificate(self, format_name):
+    def export_certificate(self, format_name='openssh'):
         """Export a certificate in the requested format
 
            This function returns this certificate encoded in the requested
@@ -810,8 +818,12 @@ class SSHCertificate:
 
                openssh, rfc4716
 
-           :param str format:
+           By default, openssh format will be used.
+
+           :param str format_name: (optional)
                The format to export the certificate in.
+
+           :returns: bytes representing the exported certificate
 
         """
 
@@ -1423,13 +1435,15 @@ def register_public_key_alg(algorithm, handler):
         _pkcs8_oid_map[handler.pkcs8_oid] = handler
 
 
-def register_certificate_alg(version, algorithm, key_handler, cert_handler):
+def register_certificate_alg(version, algorithm, cert_algorithm,
+                             key_handler, cert_handler):
     """Register a new certificate algorithm"""
 
-    _certificate_alg_map[algorithm] = (key_handler, cert_handler)
-    _certificate_algs.append(algorithm)
+    _certificate_alg_map[cert_algorithm] = (key_handler, cert_handler)
+    _certificate_algs.append(cert_algorithm)
 
-    _certificate_version_map[key_handler, version] = (algorithm, cert_handler)
+    _certificate_version_map[algorithm, version] = \
+        (cert_algorithm, cert_handler)
 
 
 def get_public_key_algs():
