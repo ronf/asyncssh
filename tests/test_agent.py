@@ -76,7 +76,10 @@ class _TestAPI(AsyncTestCase):
     def asyncSetUpClass(cls):
         """Set up keys and an SSH server for the tests to use"""
 
-        run('ssh-keygen -q -b 2048 -t rsa -N "" -f ckey')
+        ckey = asyncssh.generate_private_key('ssh-rsa')
+        ckey.write_private_key('ckey')
+        ckey.write_public_key('ckey.pub')
+        run('chmod 600 ckey')
 
         output = run('ssh-agent -a agent')
         cls._agent_pid = int(output.splitlines()[2].split()[3][:-1])
@@ -84,7 +87,7 @@ class _TestAPI(AsyncTestCase):
         os.environ['SSH_AUTH_SOCK'] = 'agent'
         run('ssh-add ckey')
 
-        cls._public_key = asyncssh.read_public_key('ckey.pub')
+        cls._public_key = ckey.convert_to_public()
 
     @classmethod
     @asyncio.coroutine
