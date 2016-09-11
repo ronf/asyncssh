@@ -156,12 +156,12 @@ class _KexDHBase(Kex):
             raise DisconnectError(DISC_PROTOCOL_ERROR,
                                   'Unexpected kex reply msg')
 
-        host_key = packet.get_string()
+        host_key_data = packet.get_string()
         self._f = packet.get_mpint()
         sig = packet.get_string()
         packet.check_end()
 
-        self._verify_reply(host_key, sig)
+        self._verify_reply(host_key_data, sig)
 
 
 class _KexDH(_KexDHBase):

@@ -1129,6 +1129,26 @@ read_certificate_list
 
 .. autofunction:: read_certificate_list
 
+load_keypair
+------------
+
+.. autofunction:: load_keypair
+
+load_keypair_list
+-----------------
+
+.. autofunction:: load_keypair_list
+
+load_public_key
+---------------
+
+.. autofunction:: load_public_key
+
+load_public_key_list
+--------------------
+
+.. autofunction:: load_public_key_list
+
 .. index:: SSH agent support
 
 SSH Agent Support
@@ -1328,6 +1348,9 @@ The following are the key exchange algorithms currently supported by AsyncSSH:
   | ecdh-sha2-nistp384
   | ecdh-sha2-nistp256
   | diffie-hellman-group-exchange-sha256
+  | diffie-hellman-group16-sha512
+  | diffie-hellman-group18-sha512
+  | diffie-hellman-group14-sha256
   | diffie-hellman-group-exchange-sha1
   | diffie-hellman-group14-sha1
   | diffie-hellman-group1-sha1
@@ -1399,6 +1422,26 @@ The following are the compression algorithms currently supported by AsyncSSH:
   | zlib
   | none
 
+.. index:: Signature algorithms
+.. _SignatureAlgs:
+
+Signature algorithms
+--------------------
+
+Some private keys can support more than one signature algorithm. In these
+cases, an alternate signature algorithm can be selected by providing its
+name when a private key is loaded. See the function :func:`load_keypair`
+for details.
+
+AsyncSSH currently supports the following alternate signature algorithms
+for RSA keys:
+
+  | rsa-sha2-256
+  | rsa-sha2-512
+
+These algorithms use the SHA-256 and SHA-512 hash algorithms rather than
+the SHA-1 algorithm used by default.
+
 .. index:: Public key & certificate algorithms
 .. _PublicKeyAlgs:
 
@@ -1418,6 +1461,8 @@ supported by AsyncSSH:
   | ecdsa-sha2-nistp521
   | ecdsa-sha2-nistp384
   | ecdsa-sha2-nistp256
+  | rsa-sha2-256
+  | rsa-sha2-512
   | ssh-rsa
   | ssh-dss
 

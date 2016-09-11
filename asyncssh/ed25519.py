@@ -24,6 +24,7 @@ class _Ed25519Key(SSHKey):
     """Handler for Ed25519 public key encryption"""
 
     algorithm = b'ssh-ed25519'
+    sig_algorithms = (b'ssh-ed25519',)
 
     def __init__(self, vk, sk):
         self._vk = vk
@@ -89,14 +90,19 @@ class _Ed25519Key(SSHKey):
 
         return String(self._vk)
 
-    def sign(self, data):
+    def sign(self, data, algorithm):
         """Return a signature of the specified data using this key"""
+
+        # pylint: disable=unused-argument
 
         if self._sk is None:
             raise ValueError('Private key needed for signing')
 
+        if algorithm not in self.sig_algorithms:
+            raise ValueError('Unrecognized signature algorithm')
+
         sig = libnacl.crypto_sign(data, self._sk)
-        return b''.join((String(self.algorithm), String(sig[:-len(data)])))
+        return b''.join((String(algorithm), String(sig[:-len(data)])))
 
     def verify(self, data, sig):
         """Verify a signature of the specified data using this key"""
@@ -104,7 +110,7 @@ class _Ed25519Key(SSHKey):
         try:
             packet = SSHPacket(sig)
 
-            if packet.get_string() != self.algorithm:
+            if packet.get_string() not in self.sig_algorithms:
                 return False
 
             sig = packet.get_string()

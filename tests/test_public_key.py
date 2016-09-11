@@ -707,6 +707,15 @@ class _TestPublicKey(TempDirTestCase):
              b'---- END SSH2 PUBLIC KEY ----\n')
         ]
 
+        keypair_errors = [
+            ('Mismatched certificate',
+             (self.privca, self.usercert)),
+            ('Invalid signature algorithm string',
+             (self.privkey, None, 'xxx')),
+            ('Invalid signature algorithm bytes',
+             (self.privkey, None, b'xxx'))
+        ]
+
         for fmt, data in private_errors:
             with self.subTest('Decode private (%s)' % fmt):
                 with self.assertRaises(asyncssh.KeyImportError):
@@ -722,6 +731,11 @@ class _TestPublicKey(TempDirTestCase):
             with self.subTest('Decode public (%s)' % fmt):
                 with self.assertRaises(asyncssh.KeyImportError):
                     asyncssh.import_public_key(data)
+
+        for fmt, key in keypair_errors:
+            with self.subTest('Load keypair (%s)' % fmt):
+                with self.assertRaises(ValueError):
+                    asyncssh.load_keypair(key)
 
     def check_sshkey_base_errors(self):
         """Check SSHKey base class errors"""
@@ -753,27 +767,33 @@ class _TestPublicKey(TempDirTestCase):
         with self.subTest('Sign/verify test'):
             data = os.urandom(8)
 
-            sig = self.privkey.sign(data)
-            with self.subTest('Good signature'):
-                self.assertTrue(self.pubkey.verify(data, sig))
+            for sig_alg in self.privkey.sig_algorithms:
+                with self.subTest('Good signature', sig_alg=sig_alg):
+                    sig = self.privkey.sign(data, sig_alg)
+                    with self.subTest('Good signature'):
+                        self.assertTrue(self.pubkey.verify(data, sig))
 
-            badsig = bytearray(sig)
-            badsig[-1] ^= 0xff
-            badsig = bytes(badsig)
-            with self.subTest('Bad signature'):
-                self.assertFalse(self.pubkey.verify(data, badsig))
+                    badsig = bytearray(sig)
+                    badsig[-1] ^= 0xff
+                    badsig = bytes(badsig)
+                    with self.subTest('Bad signature'):
+                        self.assertFalse(self.pubkey.verify(data, badsig))
 
             with self.subTest('Empty signature'):
                 self.assertFalse(self.pubkey.verify(
                     data, String(self.pubkey.algorithm) + String(b'')))
 
+            with self.subTest('Sign with bad algorithm'):
+                with self.assertRaises(ValueError):
+                    self.privkey.sign(data, 'xxx')
+
             badalg = String('xxx')
-            with self.subTest('Bad algorithm'):
+            with self.subTest('Verify with bad algorithm'):
                 self.assertFalse(self.pubkey.verify(data, badalg))
 
             with self.subTest('Sign with public key'):
                 with self.assertRaises(ValueError):
-                    self.pubkey.sign(data)
+                    self.pubkey.sign(data, self.pubkey.algorithm)
 
     def check_pkcs1_private(self):
         """Check PKCS#1 private key format"""
@@ -1074,6 +1094,19 @@ class _TestPublicKey(TempDirTestCase):
                 cert = asyncssh.import_certificate(cert)
                 cert.export_certificate('xxx')
 
+    def check_signature_algorithms(self):
+        """Test loading a keypair with different signature algorithms"""
+
+        keypairs = asyncssh.load_keypair_list('priv')
+        self.assertEqual(len(keypairs), len(self.privkey.sig_algorithms))
+
+        for sig_alg in self.privkey.sig_algorithms:
+            with self.subTest('Select signature algorithm', sig_alg=sig_alg):
+                keypairs = asyncssh.load_keypair_list([('priv', None,
+                                                        sig_alg)])
+                self.assertEqual(len(keypairs), 1)
+                self.assertEqual(keypairs[0].sig_algorithm, sig_alg)
+
     def test_keys(self):
         """Check keys and certificates"""
 
@@ -1135,6 +1168,8 @@ class _TestPublicKey(TempDirTestCase):
 
                 for cert_type in (CERT_TYPE_USER, CERT_TYPE_HOST):
                     self.check_certificate_errors(cert_type)
+
+                self.check_signature_algorithms()
 
 
 class TestDSA(_TestPublicKey):

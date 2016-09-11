@@ -30,6 +30,7 @@ class _DSAKey(SSHKey):
     algorithm = b'ssh-dss'
     pem_name = b'DSA'
     pkcs8_oid = ObjectIdentifier('1.2.840.10040.4.1')
+    sig_algorithms = (b'ssh-dss',)
 
     def __init__(self, key):
         self._key = key
@@ -189,14 +190,17 @@ class _DSAKey(SSHKey):
         return b''.join((MPInt(self._key.p), MPInt(self._key.q),
                          MPInt(self._key.g), MPInt(self._key.y)))
 
-    def sign(self, data):
+    def sign(self, data, algorithm):
         """Return a signature of the specified data using this key"""
 
         if not self._key.x:
             raise ValueError('Private key needed for signing')
 
+        if algorithm not in self.sig_algorithms:
+            raise ValueError('Unrecognized signature algorithm')
+
         r, s = self._key.sign(data)
-        return b''.join((String(self.algorithm),
+        return b''.join((String(algorithm),
                          String(r.to_bytes(20, 'big') +
                                 s.to_bytes(20, 'big'))))
 
@@ -206,7 +210,7 @@ class _DSAKey(SSHKey):
         try:
             packet = SSHPacket(sig)
 
-            if packet.get_string() != self.algorithm:
+            if packet.get_string() not in self.sig_algorithms:
                 return False
 
             sig = packet.get_string()

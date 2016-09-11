@@ -39,6 +39,7 @@ class _ECKey(SSHKey):
 
     def __init__(self, key):
         self.algorithm = b'ecdsa-sha2-' + key.curve_id
+        self.sig_algorithms = (self.algorithm,)
         self._alg_oid = _alg_oids[key.curve_id]
         self._key = key
 
@@ -247,15 +248,17 @@ class _ECKey(SSHKey):
         return b''.join((String(self._key.curve_id),
                          String(self._key.public_value)))
 
-    def sign(self, data):
+    def sign(self, data, algorithm):
         """Return a signature of the specified data using this key"""
 
         if not self._key.private_value:
             raise ValueError('Private key needed for signing')
 
+        if algorithm not in self.sig_algorithms:
+            raise ValueError('Unrecognized signature algorithm')
+
         r, s = self._key.sign(data)
-        sig = MPInt(r) + MPInt(s)
-        return b''.join((String(self.algorithm), String(sig)))
+        return b''.join((String(algorithm), String(MPInt(r) + MPInt(s))))
 
     def verify(self, data, sig):
         """Verify a signature of the specified data using this key"""
@@ -263,7 +266,7 @@ class _ECKey(SSHKey):
         try:
             packet = SSHPacket(sig)
 
-            if packet.get_string() != self.algorithm:
+            if packet.get_string() not in self.sig_algorithms:
                 return False
 
             sig = packet.get_string()

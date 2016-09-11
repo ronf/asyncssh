@@ -86,11 +86,8 @@ from .process import PIPE, SSHClientProcess
 from .public_key import CERT_TYPE_HOST, CERT_TYPE_USER
 from .public_key import get_public_key_algs, get_certificate_algs
 from .public_key import decode_ssh_public_key, decode_ssh_certificate
-from .public_key import import_private_key, import_public_key
-from .public_key import read_private_key, read_public_key
-from .public_key import read_private_key_list, read_public_key_list
-from .public_key import import_certificate, read_certificate
-from .public_key import SSHKeyPair, SSHLocalKeyPair, KeyImportError
+from .public_key import load_keypair, load_keypair_list, load_public_key_list
+from .public_key import KeyImportError
 
 from .saslprep import saslprep, SASLPrepError
 
@@ -126,173 +123,6 @@ _DEFAULT_MAX_PKTSIZE = 32768        # 32 kiB
 
 # Default line editor parameters
 _DEFAULT_LINE_HISTORY = 1000        # 1000 lines
-
-
-def _load_private_key(key, passphrase=None):
-    """Load a private key
-
-       This function loads a private key and an optional certificate.
-       The key argument can be either a key reference or a tuple
-       with a reference to a key and a reference to a matching
-       certificate.
-
-       Key references can either be the name of a file to load the
-       key from, a byte string to import as a private key, or an
-       already loaded :class:`SSHKey` private key.
-
-       Certificate references can be the name of a file to load the
-       certificate from, a byte string to import as a certificate,
-       an already loaded :class:`SSHCertificate`, or ``None`` if
-       no certificate should be associated with the key.
-
-       When a filename is provided in as a reference outside of a
-       tuple, an attempt is made to load a private key from that
-       file and a certificate from a file constructed by appending
-       '-cert.pub' to the end of the filename.
-
-       This function returns a tuple of a :class:`SSHKey` private
-       key and either an :class:`SSHCertificate` or ``None``
-       depending on whether an associated certificate was loaded.
-
-    """
-
-    if isinstance(key, str):
-        cert = key + '-cert.pub'
-        ignore_missing_cert = True
-    elif isinstance(key, tuple):
-        key, cert = key
-        ignore_missing_cert = False
-    else:
-        cert = None
-
-    if isinstance(key, str):
-        key = read_private_key(key, passphrase)
-    elif isinstance(key, bytes):
-        key = import_private_key(key, passphrase)
-
-    if isinstance(cert, str):
-        try:
-            cert = read_certificate(cert)
-        except OSError:
-            if ignore_missing_cert:
-                cert = None
-            else:
-                raise
-    elif isinstance(cert, bytes):
-        cert = import_certificate(cert)
-
-    if cert and key.get_ssh_public_key() != cert.key.get_ssh_public_key():
-        raise ValueError('Certificate key mismatch')
-
-    return key, cert
-
-
-def _load_private_keypair(key, passphrase=None):
-    """Load an SSH key pair
-
-       This function loads an SSH key pair. The key argument can be
-       either an already loaded :class:`SSHKeyPair`, a reference
-       to a key and optional certificate as described in
-       :func:`_load_private_key`, or ``None``.
-
-       It returns an :class:`SSHKeyPair` or ``None``.
-
-    """
-
-    if isinstance(key, SSHKeyPair):
-        return key
-    elif key:
-        return SSHLocalKeyPair(*_load_private_key(key, passphrase))
-    else:
-        return None
-
-
-def _load_private_keypair_list(keylist, passphrase=None):
-    """Load list of SSH key pairs
-
-       This function loads a collection of SSH key pairs. The keylist
-       argument can be either a filename to load private keys from
-       (without any certificates) or a list of values representing
-       key pairs as described in ::func::`_load_private_keypair`.
-
-       In cases where a private key is provided with a certificate,
-       the private key is added to the list both with and without
-       the certificate.
-
-       This function returns a list of :class:`SSHKeyPair` objects.
-
-    """
-
-    if isinstance(keylist, str):
-        keys = read_private_key_list(keylist, passphrase)
-        return [SSHLocalKeyPair(key) for key in keys]
-    else:
-        result = []
-
-        for key in keylist:
-            if isinstance(key, SSHKeyPair):
-                result.append(key)
-            else:
-                key, cert = _load_private_key(key, passphrase)
-
-                if cert:
-                    result.append(SSHLocalKeyPair(key, cert))
-
-                result.append(SSHLocalKeyPair(key))
-
-        return result
-
-
-def _load_public_key(key):
-    """Load a public key
-
-       This function loads a public key. The key argument can be
-       the name of a file to load the key from, a byte string to
-       import the key from, or an already loaded :class:`SSHKey`
-       public key.
-
-    """
-
-    if isinstance(key, str):
-        key = read_public_key(key)
-    elif isinstance(key, bytes):
-        key = import_public_key(key)
-
-    return key
-
-
-def _load_public_key_list(keylist):
-    """Load public key list
-
-       This function loads a collection of public keys. The keylist
-       argument can be either a filename to load keys from or a
-       list of values representing keys as described in
-       :func:`_load_public_key`.
-
-       It returns a list of loaded :class:`SSHKey` public keys.
-
-    """
-
-    if isinstance(keylist, str):
-        return read_public_key_list(keylist)
-    else:
-        return [_load_public_key(key) for key in keylist]
-
-
-def _load_authorized_keys(authorized_keys):
-    """Load authorized keys list
-
-       This function loads authorized client keys. The authorized_keys
-       argument can be either a filename to load keys from or an
-       already imported :class:`SSHAuthorizedKeys` object
-       containing the authorized keys and their associated options.
-
-    """
-
-    if isinstance(authorized_keys, str):
-        return read_authorized_keys(authorized_keys)
-    else:
-        return authorized_keys
 
 
 def _validate_version(version):
@@ -2025,10 +1855,9 @@ class SSHClientConnection(SSHConnection):
                 server_host_keys, server_ca_keys, revoked_server_keys = \
                     self._known_hosts
 
-                server_host_keys = _load_public_key_list(server_host_keys)
-                server_ca_keys = _load_public_key_list(server_ca_keys)
-                revoked_server_keys = \
-                    _load_public_key_list(revoked_server_keys)
+                server_host_keys = load_public_key_list(server_host_keys)
+                server_ca_keys = load_public_key_list(server_ca_keys)
+                revoked_server_keys = load_public_key_list(revoked_server_keys)
 
             self._server_host_keys = set()
             self._server_host_key_algs = []
@@ -2042,7 +1871,7 @@ class SSHClientConnection(SSHConnection):
             for key in server_host_keys:
                 self._server_host_keys.add(key)
                 if key.algorithm not in self._server_host_key_algs:
-                    self._server_host_key_algs.append(key.algorithm)
+                    self._server_host_key_algs.extend(key.sig_algorithms)
 
         if not self._server_host_key_algs:
             raise DisconnectError(DISC_HOST_KEY_NOT_VERIFYABLE,
@@ -2145,7 +1974,7 @@ class SSHClientConnection(SSHConnection):
             if asyncio.iscoroutine(result):
                 result = yield from result
 
-            return _load_private_keypair(result)
+            return load_keypair(result)
 
     @asyncio.coroutine
     def password_auth_requested(self):
@@ -3166,8 +2995,9 @@ class SSHServerConnection(SSHConnection):
     def get_server_host_key(self):
         """Return the chosen server host key
 
-           This method returns the chosen server host private key and a
-           corresponding public key or certificate which contains it.
+           This method returns a keypair object containing the
+           chosen server host key and a corresponding public key
+           or certificate.
 
         """
 
@@ -3673,7 +3503,10 @@ class SSHServerConnection(SSHConnection):
 
         """
 
-        self._client_keys = _load_authorized_keys(authorized_keys)
+        if isinstance(authorized_keys, str):
+            authorized_keys = read_authorized_keys(authorized_keys)
+
+        self._client_keys = authorized_keys
 
     def get_key_option(self, option, default=None):
         """Return option from authorized_keys
@@ -4174,7 +4007,7 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
         agent_path = os.environ.get('SSH_AUTH_SOCK', None)
 
     if client_keys:
-        client_keys = _load_private_keypair_list(client_keys, passphrase)
+        client_keys = load_keypair_list(client_keys, passphrase)
     elif client_keys is ():
         if agent_path:
             agent = yield from connect_agent(agent_path)
@@ -4190,7 +4023,7 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
             for file in _DEFAULT_KEY_FILES:
                 try:
                     file = os.path.join(os.path.expanduser('~'), '.ssh', file)
-                    key = _load_private_keypair_list([file], passphrase)
+                    key = load_keypair_list([file], passphrase)
                     client_keys.extend(key)
                 except OSError:
                     pass
@@ -4379,7 +4212,7 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
     kex_algs, encryption_algs, mac_algs, compression_algs = \
         _validate_algs(kex_algs, encryption_algs, mac_algs, compression_algs)
 
-    server_keys = _load_private_keypair_list(server_host_keys, passphrase)
+    server_keys = load_keypair_list(server_host_keys, passphrase)
 
     if not server_keys:
         raise ValueError('No server host keys provided')
@@ -4393,7 +4226,8 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
 
         server_host_keys[keypair.algorithm] = keypair
 
-    authorized_client_keys = _load_authorized_keys(authorized_client_keys)
+    if isinstance(authorized_client_keys, str):
+        authorized_client_keys = read_authorized_keys(authorized_client_keys)
 
     return (yield from loop.create_server(conn_factory, host, port,
                                           family=family, flags=flags,

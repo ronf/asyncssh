@@ -59,6 +59,8 @@ from .public_key import import_public_key, import_certificate
 from .public_key import read_private_key, read_public_key, read_certificate
 from .public_key import read_private_key_list, read_public_key_list
 from .public_key import read_certificate_list
+from .public_key import load_keypair, load_keypair_list
+from .public_key import load_public_key, load_public_key_list
 
 from .session import SSHClientSession, SSHServerSession
 from .session import SSHTCPSession, SSHUNIXSession

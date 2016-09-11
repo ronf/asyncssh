@@ -741,7 +741,7 @@ class _TestChannel(ServerTestCase):
             yield from chan.wait_closed()
 
             result = ''.join(session.recv_buf[None])
-            self.assertEqual(result, '1\n')
+            self.assertEqual(result, '3\n')
 
         yield from conn.wait_closed()
 

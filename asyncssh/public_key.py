@@ -130,6 +130,8 @@ class SSHKey:
     """Parent class which holds an asymmetric encryption key"""
 
     algorithm = None
+    sig_algorithm = None
+    sig_algorithms = ()
     pem_name = None
     pkcs8_oid = None
 
@@ -655,7 +657,7 @@ class SSHCertificate:
                                      cert_extensions),
                          String(signing_key.get_ssh_public_key())))
 
-        data += String(signing_key.sign(data))
+        data += String(signing_key.sign(data, signing_key.algorithm))
 
         key = key.convert_to_public()
         signing_key = signing_key.convert_to_public()
@@ -962,6 +964,10 @@ class SSHKeyPair:
           The public key or certificate algorithm associated with this
           key pair.
 
+       .. attribute:: sig_algorithm
+
+          The signature algorithm associated with this key pair.
+
        .. attribute:: public_data
 
           The public key associated with this key pair in OpenSSH binary
@@ -991,20 +997,34 @@ class SSHLocalKeyPair(SSHKeyPair):
 
     """
 
-    def __init__(self, key, cert=None):
+    def __init__(self, key, cert=None, sig_algorithm=None):
         self._key = key
+
+        if cert and key.get_ssh_public_key() != cert.key.get_ssh_public_key():
+            raise ValueError('Certificate key mismatch')
+
+        if sig_algorithm:
+            if isinstance(sig_algorithm, str):
+                sig_algorithm = sig_algorithm.encode('utf-8')
+
+            if sig_algorithm not in key.sig_algorithms:
+                raise ValueError('Unrecognized signature algorithm')
+
+            self.sig_algorithm = sig_algorithm
+        else:
+            self.sig_algorithm = key.algorithm
 
         if cert:
             self.algorithm = cert.algorithm
             self.public_data = cert.data
         else:
-            self.algorithm = key.algorithm
+            self.algorithm = self.sig_algorithm
             self.public_data = key.get_ssh_public_key()
 
     def sign(self, data):
         """Sign a block of data with this private key"""
 
-        return self._key.sign(data)
+        return self._key.sign(data, self.sig_algorithm)
 
 
 def _decode_pkcs1_private(pem_name, key_data):
@@ -1426,7 +1446,7 @@ def register_public_key_alg(algorithm, handler):
     """Register a new public key algorithm"""
 
     _public_key_alg_map[algorithm] = handler
-    _public_key_algs.append(algorithm)
+    _public_key_algs.extend(handler.sig_algorithms)
 
     if handler.pem_name:
         _pem_map[handler.pem_name] = handler
@@ -1814,3 +1834,191 @@ def read_certificate_list(filename):
             certs.append(decode_ssh_certificate(_decode_openssh(line)))
 
     return certs
+
+
+def _load_private_key(key, passphrase=None):
+    """Load a private key and optional certificate"""
+
+    if isinstance(key, str):
+        cert = key + '-cert.pub'
+        ignore_missing_cert = True
+        sig_algorithm = None
+    elif isinstance(key, tuple):
+        if len(key) == 3:
+            key, cert, sig_algorithm = key
+        else:
+            key, cert = key
+            sig_algorithm = None
+
+        ignore_missing_cert = False
+    else:
+        cert = None
+        sig_algorithm = None
+
+    if isinstance(key, str):
+        key = read_private_key(key, passphrase)
+    elif isinstance(key, bytes):
+        key = import_private_key(key, passphrase)
+
+    if isinstance(cert, str):
+        try:
+            cert = read_certificate(cert)
+        except OSError:
+            if ignore_missing_cert:
+                cert = None
+            else:
+                raise
+    elif isinstance(cert, bytes):
+        cert = import_certificate(cert)
+
+    return key, cert, sig_algorithm
+
+
+def load_keypair(key, passphrase=None):
+    """Load an SSH key pair
+
+       This function loads a private SSH key and optional certificate.
+       The key argument can be either a key reference or a tuple
+       with a key reference, an matching cerificate reference or ``None``,
+       and an optional alternate signature algorithm to use.
+
+       Key references can either be the name of a file to load the
+       key from, a byte string to import as a private key, or an
+       already loaded :class:`SSHKey` private key.
+
+       Certificate references can be the name of a file to load the
+       certificate from, a byte string to import as a certificate,
+       an already loaded :class:`SSHCertificate`, or ``None`` if
+       no certificate should be associated with the key.
+
+       If a third element is specified in the tuple, it is taken to be
+       an alternate signature algorithm to use when signing data with
+       this private key. It is currently only supported for RSA keys
+       and can be used to select SHA-2 based signatures rather than
+       the default algorithm of SHA-1. See :ref:`SignatureAlgs` for
+       more information.
+
+       When a filename is provided in as a reference outside of a
+       tuple, an attempt is made to load a private key from that
+       file and a certificate from a file constructed by appending
+       '-cert.pub' to the end of the filename.
+
+       This function returns a tuple of a :class:`SSHKey` private
+       key, either an :class:`SSHCertificate` or ``None``
+       depending on whether an associated certificate was loaded,
+       and a string containing the signature algorithm to use when
+       signing with this key.
+
+       :param key:
+           The key to import.
+       :param str passphrase: (optional)
+           The passphrase to use to decrypt the key.
+
+       :returns: An :class:`SSHKeyPair` or ``None``
+
+    """
+
+    if isinstance(key, SSHKeyPair):
+        return key
+    elif key:
+        key, cert, sig_algorithm = _load_private_key(key, passphrase)
+        return SSHLocalKeyPair(key, cert, sig_algorithm)
+    else:
+        return None
+
+
+def load_keypair_list(keylist, passphrase=None):
+    """Load list of SSH key pairs
+
+       This function loads a collection of SSH key pairs. The keylist
+       argument can be either a filename to load private keys from
+       (without any certificates) or a list of values representing
+       key pairs as described in :func:`load_keypair`.
+
+       In cases where a private key is provided with a certificate,
+       the private key is added to the list both with and without
+       the certificate.
+
+       In cases where a private key supports multiple signature
+       algorithms and a signature algorithm is not specified,
+       the private key is added to the list multiple times, for
+       each of its possible signature algorithms.
+
+       :param keylist:
+           The list of keys to import.
+       :param str passphrase: (optional)
+           The passphrase to use to decrypt the key.
+
+       :returns: A list of :class:`SSHKeyPair` objects
+
+    """
+
+    result = []
+
+    if isinstance(keylist, str):
+        keys = read_private_key_list(keylist, passphrase)
+
+        for key in keys:
+            for sig_algorithm in key.sig_algorithms:
+                result.append(SSHLocalKeyPair(key, None, sig_algorithm))
+    else:
+        for key in keylist:
+            if isinstance(key, SSHKeyPair):
+                result.append(key)
+            else:
+                key, cert, sig_algorithm = _load_private_key(key, passphrase)
+
+                if cert:
+                    result.append(SSHLocalKeyPair(key, cert, sig_algorithm))
+
+                if sig_algorithm:
+                    result.append(SSHLocalKeyPair(key, None, sig_algorithm))
+                else:
+                    for sig_algorithm in key.sig_algorithms:
+                        result.append(SSHLocalKeyPair(key, None,
+                                                      sig_algorithm))
+
+    return result
+
+
+def load_public_key(key):
+    """Load a public key
+
+       This function loads a public key. The key argument can be
+       the name of a file to load the key from, a byte string to
+       import the key from, or an already loaded :class:`SSHKey`
+       public key.
+
+       :param key:
+           The key to import.
+
+       :returns: An :class:`SSHKey` object
+
+    """
+
+    if isinstance(key, str):
+        key = read_public_key(key)
+    elif isinstance(key, bytes):
+        key = import_public_key(key)
+
+    return key
+
+
+def load_public_key_list(keylist):
+    """Load public key list
+
+       This function loads a collection of public keys. The keylist
+       argument can be either a filename to load keys from or a list of
+       values representing keys as described in :func:`load_public_key`.
+
+       :param keylist:
+           The list of keys to import.
+
+       :returns: A list of :class:`SSHKey` objects
+
+    """
+
+    if isinstance(keylist, str):
+        return read_public_key_list(keylist)
+    else:
+        return [load_public_key(key) for key in keylist]

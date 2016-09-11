@@ -30,6 +30,7 @@ class _RSAKey(SSHKey):
     algorithm = b'ssh-rsa'
     pem_name = b'RSA'
     pkcs8_oid = ObjectIdentifier('1.2.840.113549.1.1.1')
+    sig_algorithms = (b'rsa-sha2-256', b'rsa-sha2-512', b'ssh-rsa')
 
     def __init__(self, key):
         self._key = key
@@ -176,14 +177,17 @@ class _RSAKey(SSHKey):
 
         return b''.join((MPInt(self._key.e), MPInt(self._key.n)))
 
-    def sign(self, data):
+    def sign(self, data, algorithm):
         """Return a signature of the specified data using this key"""
 
         if not self._key.d:
             raise ValueError('Private key needed for signing')
 
-        sig = self._key.sign(data)
-        return b''.join((String(self.algorithm), String(sig)))
+        if algorithm not in self.sig_algorithms:
+            raise ValueError('Unrecognized signature algorithm')
+
+        sig = self._key.sign(data, algorithm)
+        return b''.join((String(algorithm), String(sig)))
 
     def verify(self, data, sig):
         """Verify a signature of the specified data using this key"""
@@ -191,13 +195,15 @@ class _RSAKey(SSHKey):
         try:
             packet = SSHPacket(sig)
 
-            if packet.get_string() != self.algorithm:
+            algorithm = packet.get_string()
+
+            if algorithm not in self.sig_algorithms:
                 return False
 
             sig = packet.get_string()
             packet.check_end()
 
-            return self._key.verify(data, sig)
+            return self._key.verify(data, sig, algorithm)
         except PacketDecodeError:
             return False
 

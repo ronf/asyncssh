@@ -31,18 +31,20 @@ SSH2_AGENT_IDENTITIES_ANSWER   = 12
 SSH2_AGENTC_SIGN_REQUEST       = 13
 SSH2_AGENT_SIGN_RESPONSE       = 14
 
+# SSH agent signature flags
+SSH_AGENT_RSA_SHA2_256         = 2
+SSH_AGENT_RSA_SHA2_512         = 4
+
 # pylint: enable=bad-whitespace
 
 
 class _SSHAgentKeyPair(SSHKeyPair):
     """Surrogate for a key managed by the SSH agent"""
 
-    def __init__(self, agent, public_data, comment):
+    def __init__(self, agent, algorithm, sig_algorithm, public_data, comment):
         self._agent = agent
-
-        packet = SSHPacket(public_data)
-        self.algorithm = packet.get_string()
-
+        self.algorithm = algorithm
+        self.sig_algorithm = sig_algorithm
         self.public_data = public_data
         self.comment = comment
 
@@ -50,7 +52,14 @@ class _SSHAgentKeyPair(SSHKeyPair):
     def sign(self, data):
         """Sign a block of data with this private key"""
 
-        return (yield from self._agent.sign(self.public_data, data))
+        flags = 0
+
+        if self.sig_algorithm == b'rsa-sha2-256':
+            flags |= SSH_AGENT_RSA_SHA2_256
+        elif self.sig_algorithm == b'rsa-sha2-512':
+            flags |= SSH_AGENT_RSA_SHA2_512
+
+        return (yield from self._agent.sign(self.public_data, data, flags))
 
 
 class SSHAgentClient:
@@ -132,7 +141,17 @@ class SSHAgentClient:
                 key_blob = resp.get_string()
                 comment = resp.get_string()
 
-                result.append(_SSHAgentKeyPair(self, key_blob, comment))
+                packet = SSHPacket(key_blob)
+                algorithm = packet.get_string()
+
+                result.append(_SSHAgentKeyPair(self, algorithm, algorithm,
+                                               key_blob, comment))
+
+                if algorithm == b'ssh-rsa':
+                    for sig_algorithm in (b'rsa-sha2-256', b'rsa-sha2-512'):
+                        result.append(_SSHAgentKeyPair(self, algorithm,
+                                                       sig_algorithm,
+                                                       key_blob, comment))
 
             resp.check_end()
             return result
@@ -140,13 +159,13 @@ class SSHAgentClient:
             raise ValueError('Unknown SSH agent response: %d' % resptype)
 
     @asyncio.coroutine
-    def sign(self, key_blob, data):
+    def sign(self, key_blob, data, flags=0):
         """Sign a block of data with this private key"""
 
         resptype, resp = \
             yield from self._make_request(SSH2_AGENTC_SIGN_REQUEST,
                                           String(key_blob), String(data),
-                                          UInt32(0))
+                                          UInt32(flags))
 
         if resptype == SSH2_AGENT_SIGN_RESPONSE:
             sig = resp.get_string()

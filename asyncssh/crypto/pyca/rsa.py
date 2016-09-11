@@ -15,7 +15,7 @@
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric.padding import PKCS1v15
-from cryptography.hazmat.primitives.hashes import SHA1
+from cryptography.hazmat.primitives.hashes import SHA1, SHA256, SHA512
 from cryptography.hazmat.primitives.asymmetric import rsa
 
 # Short variable names are used here, matching names in the spec
@@ -28,6 +28,17 @@ class _RSAKey:
     def __init__(self, pub, priv=None):
         self._pub = pub
         self._priv = priv
+
+    @staticmethod
+    def get_hash(algorithm):
+        """Return hash algorithm to use for signature"""
+
+        if algorithm == b'rsa-sha2-512':
+            return SHA512()
+        elif algorithm == b'rsa-sha2-256':
+            return SHA256()
+        else:
+            return SHA1()
 
     @property
     def n(self):
@@ -106,10 +117,10 @@ class RSAPrivateKey(_RSAKey):
 
         return cls(pub, priv, priv_key)
 
-    def sign(self, data):
+    def sign(self, data, algorithm):
         """Sign a block of data"""
 
-        return self._priv_key.sign(data, PKCS1v15(), SHA1())
+        return self._priv_key.sign(data, PKCS1v15(), self.get_hash(algorithm))
 
 
 class RSAPublicKey(_RSAKey):
@@ -128,11 +139,12 @@ class RSAPublicKey(_RSAKey):
 
         return cls(pub, pub_key)
 
-    def verify(self, data, sig):
+    def verify(self, data, sig, algorithm):
         """Verify the signature on a block of data"""
 
         try:
-            self._pub_key.verify(sig, data, PKCS1v15(), SHA1())
+            self._pub_key.verify(sig, data, PKCS1v15(),
+                                 self.get_hash(algorithm))
             return True
         except InvalidSignature:
             return False

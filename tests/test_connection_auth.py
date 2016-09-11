@@ -55,10 +55,10 @@ class _AsyncPublicKeyClient(_PublicKeyClient):
 class _PublicKeyServer(Server):
     """Server for testing public key authentication"""
 
-    def __init__(self, set_keys=False):
+    def __init__(self, authorized_keys=None):
         super().__init__()
         self._client_key = None
-        self._set_keys = set_keys
+        self._authorized_keys = authorized_keys
 
     def connection_made(self, conn):
         """Called when a connection is made"""
@@ -69,10 +69,10 @@ class _PublicKeyServer(Server):
     def begin_auth(self, username):
         """Handle client authentication request"""
 
-        if self._set_keys:
-            self._conn.set_authorized_keys('authorized_keys')
+        if self._authorized_keys:
+            self._conn.set_authorized_keys(self._authorized_keys)
         else:
-            self._client_key = asyncssh.read_public_key('ckey.pub')
+            self._client_key = asyncssh.load_public_key('ckey.pub')
 
         return True
 
@@ -388,15 +388,27 @@ class _TestPublicKeyAuth(ServerTestCase):
         yield from conn.wait_closed()
 
     @asynctest
-    def test_client_key_sshkeypairs(self):
+    def test_client_key_keypairs(self):
+        """Test client keys passed in as a list of SSHKeyPairs"""
+
+
+        for key in asyncssh.load_keypair_list('ckey'):
+            with (yield from self.connect(username='ckey',
+                                          client_keys=[key])) as conn:
+                pass
+
+        yield from conn.wait_closed()
+
+    @asynctest
+    def test_client_key_agent_keypairs(self):
         """Test client keys passed in as a list of SSHKeyPairs"""
 
         agent = yield from asyncssh.connect_agent()
-        keylist = yield from agent.get_keys()
 
-        with (yield from self.connect(username='ckey',
-                                      client_keys=keylist)) as conn:
-            pass
+        for key in (yield from agent.get_keys()):
+            with (yield from self.connect(username='ckey',
+                                          client_keys=[key])) as conn:
+                pass
 
         yield from conn.wait_closed()
 
@@ -543,7 +555,7 @@ class _TestSetAuthorizedKeys(ServerTestCase):
         def server_factory():
             """Return an SSH server which calls set_authorized_keys"""
 
-            return _PublicKeyServer(set_keys=True)
+            return _PublicKeyServer(authorized_keys='authorized_keys')
 
         return (yield from cls.create_server(server_factory))
 
@@ -568,6 +580,33 @@ class _TestSetAuthorizedKeys(ServerTestCase):
 
         with (yield from self.connect(username='ckey',
                                       client_keys=[(ckey, cert)])) as conn:
+            pass
+
+        yield from conn.wait_closed()
+
+
+class _TestPreloadedAuthorizedKeys(ServerTestCase):
+    """Unit tests for authentication with pre-loaded authorized keys"""
+
+    @classmethod
+    @asyncio.coroutine
+    def start_server(cls):
+        """Start an SSH server which supports public key authentication"""
+
+        def server_factory():
+            """Return an SSH server which calls set_authorized_keys"""
+
+            authorized_keys = asyncssh.read_authorized_keys('authorized_keys')
+            return _PublicKeyServer(authorized_keys=authorized_keys)
+
+        return (yield from cls.create_server(server_factory))
+
+    @asynctest
+    def test_pre_loaded_authorized_keys(self):
+        """Test set_authorized_keys with pre-loaded authorized keys"""
+
+        with (yield from self.connect(username='ckey',
+                                      client_keys='ckey')) as conn:
             pass
 
         yield from conn.wait_closed()
