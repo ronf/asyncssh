@@ -1442,11 +1442,14 @@ def _decode_rfc4716(lines):
                              'or certificate') from None
 
 
-def register_public_key_alg(algorithm, handler):
+def register_public_key_alg(algorithm, handler, sig_algorithms=None):
     """Register a new public key algorithm"""
 
+    if not sig_algorithms:
+        sig_algorithms = handler.sig_algorithms
+
     _public_key_alg_map[algorithm] = handler
-    _public_key_algs.extend(handler.sig_algorithms)
+    _public_key_algs.extend(sig_algorithms)
 
     if handler.pem_name:
         _pem_map[handler.pem_name] = handler

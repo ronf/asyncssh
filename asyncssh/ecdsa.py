@@ -282,9 +282,9 @@ class _ECKey(SSHKey):
             return False
 
 
-for _curve_id, _oid in {(b'nistp521', '1.3.132.0.35'),
+for _curve_id, _oid in ((b'nistp521', '1.3.132.0.35'),
                         (b'nistp384', '1.3.132.0.34'),
-                        (b'nistp256', '1.2.840.10045.3.1.7')}:
+                        (b'nistp256', '1.2.840.10045.3.1.7')):
     _algorithm = b'ecdsa-sha2-' + _curve_id
     _cert_algorithm = _algorithm + b'-cert-v01@openssh.com'
 
@@ -292,6 +292,6 @@ for _curve_id, _oid in {(b'nistp521', '1.3.132.0.35'),
     _alg_oids[_curve_id] = _oid
     _alg_oid_map[_oid] = _curve_id
 
-    register_public_key_alg(_algorithm, _ECKey)
+    register_public_key_alg(_algorithm, _ECKey, (_algorithm,))
     register_certificate_alg(1, _algorithm, _cert_algorithm,
                              _ECKey, SSHCertificateV01)
