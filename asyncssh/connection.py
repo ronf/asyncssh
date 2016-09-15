@@ -45,8 +45,8 @@ from .constants import DISC_KEY_EXCHANGE_FAILED, DISC_HOST_KEY_NOT_VERIFYABLE
 from .constants import DISC_MAC_ERROR, DISC_NO_MORE_AUTH_METHODS_AVAILABLE
 from .constants import DISC_PROTOCOL_ERROR, DISC_SERVICE_NOT_AVAILABLE
 from .constants import EXTENDED_DATA_STDERR
-from .constants import MSG_DISCONNECT, MSG_IGNORE, MSG_UNIMPLEMENTED
-from .constants import MSG_DEBUG, MSG_SERVICE_REQUEST, MSG_SERVICE_ACCEPT
+from .constants import MSG_DISCONNECT, MSG_IGNORE, MSG_UNIMPLEMENTED, MSG_DEBUG
+from .constants import MSG_SERVICE_REQUEST, MSG_SERVICE_ACCEPT, MSG_EXT_INFO
 from .constants import MSG_CHANNEL_OPEN, MSG_CHANNEL_OPEN_CONFIRMATION
 from .constants import MSG_CHANNEL_OPEN_FAILURE, MSG_CHANNEL_WINDOW_ADJUST
 from .constants import MSG_CHANNEL_DATA, MSG_CHANNEL_EXTENDED_DATA
@@ -256,6 +256,11 @@ class SSHConnection(SSHPacketHandler):
 
         self._cmp_alg_cs = None
         self._cmp_alg_sc = None
+
+        self._can_send_ext_info = False
+        self._extensions_sent = OrderedDict()
+
+        self._server_sig_algs = ()
 
         self._next_service = None
 
@@ -523,6 +528,11 @@ class SSHConnection(SSHPacketHandler):
         raise DisconnectError(DISC_KEY_EXCHANGE_FAILED,
                               'No matching %s algorithm found' % alg_type)
 
+    def _get_ext_info_kex_alg(self):
+        """Return the kex alg to add if any to request extension info"""
+
+        return [b'ext-info-c'] if self.is_client() else []
+
     def _send(self, data):
         """Send data to the SSH connection"""
 
@@ -780,7 +790,7 @@ class SSHConnection(SSHPacketHandler):
         self._rekey_time = time.monotonic() + self._rekey_seconds
 
         cookie = os.urandom(16)
-        kex_algs = NameList(self._kex_algs)
+        kex_algs = NameList(self._kex_algs + self._get_ext_info_kex_alg())
         host_key_algs = NameList(self._server_host_key_algs)
         enc_algs = NameList(self._enc_algs)
         mac_algs = NameList(self._mac_algs)
@@ -795,6 +805,17 @@ class SSHConnection(SSHPacketHandler):
             self._server_kexinit = packet
         else:
             self._client_kexinit = packet
+
+        self.send_packet(packet)
+
+    def _send_ext_info(self):
+        """Send extension information"""
+
+        packet = b''.join((Byte(MSG_EXT_INFO),
+                           UInt32(len(self._extensions_sent))))
+
+        for name, value in self._extensions_sent.items():
+            packet += String(name) + String(value)
 
         self.send_packet(packet)
 
@@ -907,6 +928,11 @@ class SSHConnection(SSHPacketHandler):
                 recv_compression=self._cmp_alg_cs.decode('ascii'))
 
             self._next_service = _USERAUTH_SERVICE
+
+            if self._can_send_ext_info:
+                self._extensions_sent['server-sig-algs'] = \
+                    b','.join(get_public_key_algs())
+                self._send_ext_info()
 
         self._kex_complete = True
         self._send_deferred_packets()
@@ -1121,6 +1147,25 @@ class SSHConnection(SSHPacketHandler):
             raise DisconnectError(DISC_SERVICE_NOT_AVAILABLE,
                                   'Unexpected service accept received')
 
+    def _process_ext_info(self, pkttype, packet):
+        """Process extension information"""
+
+        # pylint: disable=unused-argument
+
+        extensions = {}
+
+        num_extensions = packet.get_uint32()
+        for _ in range(num_extensions):
+            name = packet.get_string()
+            value = packet.get_string()
+            extensions[name] = value
+
+        packet.check_end()
+
+        if self.is_client():
+            self._server_sig_algs = \
+                extensions.get(b'server-sig-algs').split(b',')
+
     def _process_kexinit(self, pkttype, packet):
         """Process a key exchange request"""
 
@@ -1153,6 +1198,9 @@ class SSHConnection(SSHPacketHandler):
             if not self._choose_server_host_key(server_host_key_algs):
                 raise DisconnectError(DISC_KEY_EXCHANGE_FAILED, 'Unable to '
                                       'find compatible server host key')
+
+            if b'ext-info-c' in kex_algs:
+                self._can_send_ext_info = True
         else:
             self._server_kexinit = packet.get_consumed_payload()
 
@@ -1445,6 +1493,7 @@ class SSHConnection(SSHPacketHandler):
         MSG_DEBUG:                      _process_debug,
         MSG_SERVICE_REQUEST:            _process_service_request,
         MSG_SERVICE_ACCEPT:             _process_service_accept,
+        MSG_EXT_INFO:                   _process_ext_info,
 
         MSG_KEXINIT:                    _process_kexinit,
         MSG_NEWKEYS:                    _process_newkeys,

@@ -96,6 +96,16 @@ class _BadHostKeyServerConnection(asyncssh.SSHServerConnection):
         return result
 
 
+class _ExtInfoServerConnection(asyncssh.SSHServerConnection):
+    """Test adding an unrecognized extension in extension info"""
+
+    def _send_ext_info(self):
+        """Send extension information"""
+
+        self._extensions_sent['xxx'] = b''
+        super()._send_ext_info()
+
+
 class _FailingMAC(_MAC):
     """Test error in MAC validation"""
 
@@ -413,6 +423,52 @@ class _TestConnection(ServerTestCase):
         with patch('asyncssh.connection.get_kex_algs', unsupported_kex_alg):
             with self.assertRaises(asyncssh.DisconnectError):
                 yield from self.connect(kex_algs=['fail'])
+
+    @asynctest
+    def test_skip_ext_info(self):
+        """Test not requesting extension info from the server"""
+
+        def skip_ext_info(self):
+            """Don't request extension information"""
+
+            # pylint: disable=unused-argument
+
+            return []
+
+        with patch('asyncssh.connection.SSHConnection._get_ext_info_kex_alg',
+                   skip_ext_info):
+            with (yield from self.connect()) as conn:
+                pass
+
+        yield from conn.wait_closed()
+
+    @asynctest
+    def test_unknown_ext_info(self):
+        """Test receiving unknown extension information"""
+
+        with patch('asyncssh.connection.SSHServerConnection',
+                   _ExtInfoServerConnection):
+            with (yield from self.connect()) as conn:
+                pass
+
+            yield from conn.wait_closed()
+
+    @asynctest
+    def test_server_ext_info(self):
+        """Test receiving unsolicited extension information on server"""
+
+        def send_newkeys(self, k, h):
+            """Finish a key exchange and send a new keys message"""
+
+            asyncssh.connection.SSHConnection.send_newkeys(self, k, h)
+            self._send_ext_info()
+
+        with patch('asyncssh.connection.SSHClientConnection.send_newkeys',
+                   send_newkeys):
+            with (yield from self.connect()) as conn:
+                pass
+
+            yield from conn.wait_closed()
 
     @asynctest
     def test_encryption_algs(self):

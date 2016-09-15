@@ -24,6 +24,7 @@ MSG_UNIMPLEMENTED                   = 3
 MSG_DEBUG                           = 4
 MSG_SERVICE_REQUEST                 = 5
 MSG_SERVICE_ACCEPT                  = 6
+MSG_EXT_INFO                        = 7
 
 MSG_KEXINIT                         = 20
 MSG_NEWKEYS                         = 21
