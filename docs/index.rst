@@ -316,7 +316,7 @@ SFTP client
 -----------
 
 AsyncSSH also provides SFTP support. The following code shows an example
-of starting an SFTP client and requestng the download of a file:
+of starting an SFTP client and requesting the download of a file:
 
    .. include:: ../examples/sftp_client.py
       :literal:

@@ -26,7 +26,7 @@ Release 1.6.1 (27 Aug 2016)
 
 * Fixed a race condition in SFTP unit tests.
 
-* Updated dependencie to require version 1.5 of the cryptography module
+* Updated dependencies to require version 1.5 of the cryptography module
   and started to take advantage of the new one-shot sign and verify
   APIs it now supports.
 
@@ -286,7 +286,7 @@ Release 1.3.1 (6 Nov 2015)
 
 * Updated AsyncSSH to depend on version 1.1 or later of PyCA and added
   support for using its new Elliptic Curve Diffie Hellman (ECDH)
-  implementation, replacing the the previous AsyncSSH native Python
+  implementation, replacing the previous AsyncSSH native Python
   version.
 
 * Added support for specifying a passphrase in the create_connection,
