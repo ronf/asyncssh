@@ -369,12 +369,12 @@ class _CheckSFTP(ServerTestCase):
     def _check_file(self, name1, name2, preserve=False, follow_symlinks=False):
         """Check if two files are equal"""
 
+        if preserve:
+            self._check_attr(name1, name2, follow_symlinks)
+
         with open(name1, 'r') as file1:
             with open(name2, 'r') as file2:
                 self.assertEqual(file1.read(), file2.read())
-
-        if preserve:
-            self._check_attr(name1, name2, follow_symlinks)
 
     def _check_stat(self, sftp_stat, local_stat):
         """Check if file attributes are equal"""
