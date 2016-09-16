@@ -72,7 +72,7 @@ There are two long-lived branches in AsyncSSH at the moment:
 
 * The master branch is intended to contain the latest stable version
   of the code. All official versions of AsyncSSH are released from
-  this branch, and a each release has a corresponding tag added
+  this branch, and each release has a corresponding tag added
   matching its release number. Bug fixes and simple improvements
   may be checked directly into this branch, but most new features
   will be added to the develop branch first.

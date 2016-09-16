@@ -93,7 +93,7 @@ as arguments which manage the channels once they are open.
 
 To better support interactive server applications, AsyncSSH defaults to
 providing echoing of input and basic line editing capabilities when an
-inbound SSH session requests a psuedo-terminal. This behavior can be
+inbound SSH session requests a pseudo-terminal. This behavior can be
 disabled by setting the ``line_editor`` argument to ``False`` when
 starting up an SSH server. When this feature is enabled, server sessions
 can enable or disable line mode using the :meth:`set_line_mode()
@@ -998,7 +998,7 @@ file constructed by appending '-cert.pub' to the end of the name.
 Encrypted private keys can be loaded by making an explicit call to
 :func:`import_private_key` or :func:`read_private_key` with the
 correct passphrase. The resulting :class:`SSHKey` objects can then
-be included in thie list, each with an optional matching certificate.
+be included in the list, each with an optional matching certificate.
 
 New private keys can be generated using the :func:`generate_private_key`
 function. The resulting :class:`SSHKey` objects have methods which can
