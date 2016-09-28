@@ -57,7 +57,7 @@ class _PublicKeyServer(Server):
 
     def __init__(self, authorized_keys=None):
         super().__init__()
-        self._client_key = None
+        self._client_keys = []
         self._authorized_keys = authorized_keys
 
     def connection_made(self, conn):
@@ -72,7 +72,8 @@ class _PublicKeyServer(Server):
         if self._authorized_keys:
             self._conn.set_authorized_keys(self._authorized_keys)
         else:
-            self._client_key = asyncssh.load_public_key('ckey.pub')
+            self._client_keys = asyncssh.load_public_key_list(['ckey_dsa.pub',
+                                                               'ckey.pub'])
 
         return True
 
@@ -84,12 +85,12 @@ class _PublicKeyServer(Server):
     def validate_public_key(self, username, key):
         """Return whether key is an authorized client key for this user"""
 
-        return key == self._client_key
+        return key in self._client_keys
 
     def validate_ca_key(self, username, key):
         """Return whether key is an authorized CA key for this user"""
 
-        return key == self._client_key
+        return key in self._client_keys
 
 
 class _AsyncPublicKeyServer(_PublicKeyServer):
@@ -325,6 +326,17 @@ class _TestPublicKeyAuth(ServerTestCase):
         yield from conn.wait_closed()
 
     @asynctest
+    def test_agent_signature_algs(self):
+        """Test ssh-agent keys with specific signature algorithms"""
+
+        for alg in ('ssh-rsa', 'rsa-sha2-256', 'rsa-sha2-512'):
+            with (yield from self.connect(username='ckey',
+                                          signature_algs=[alg])) as conn:
+                pass
+
+            yield from conn.wait_closed()
+
+    @asynctest
     def test_agent_auth_failure(self):
         """Test failure connecting with ssh-agent authentication"""
 
@@ -349,6 +361,35 @@ class _TestPublicKeyAuth(ServerTestCase):
         with (yield from self.connect(username='ckey',
                                       client_keys='ckey')) as conn:
             pass
+
+        yield from conn.wait_closed()
+
+    @asynctest
+    def test_public_key_signature_algs(self):
+        """Test public key authentication with specific signature algorithms"""
+
+        for alg in ('ssh-rsa', 'rsa-sha2-256', 'rsa-sha2-512'):
+            with (yield from self.connect(username='ckey', client_keys='ckey',
+                                          signature_algs=[alg])) as conn:
+                pass
+
+            yield from conn.wait_closed()
+
+    @asynctest
+    def test_no_server_signature_algs(self):
+        """Test a server which doesn't advertise signature algorithms"""
+
+        def skip_ext_info(self):
+            """Don't send extension information"""
+
+            # pylint: disable=unused-argument
+
+            return []
+
+        with patch('asyncssh.connection.SSHConnection._get_ext_info_kex_alg',
+                   skip_ext_info):
+            with (yield from self.connect(username='ckey')) as conn:
+                pass
 
         yield from conn.wait_closed()
 
@@ -391,17 +432,17 @@ class _TestPublicKeyAuth(ServerTestCase):
     def test_client_key_keypairs(self):
         """Test client keys passed in as a list of SSHKeyPairs"""
 
+        ckey = asyncssh.load_keypair('ckey')
 
-        for key in asyncssh.load_keypair_list('ckey'):
-            with (yield from self.connect(username='ckey',
-                                          client_keys=[key])) as conn:
-                pass
+        with (yield from self.connect(username='ckey',
+                                      client_keys=[ckey])) as conn:
+            pass
 
         yield from conn.wait_closed()
 
     @asynctest
     def test_client_key_agent_keypairs(self):
-        """Test client keys passed in as a list of SSHKeyPairs"""
+        """Test client keys passed in as a list of SSHAgentKeyPairs"""
 
         agent = yield from asyncssh.connect_agent()
 
@@ -542,6 +583,38 @@ class _TestPublicKeyAsyncServerAuth(_TestPublicKeyAuth):
         """Start an SSH server which supports async public key auth"""
 
         return (yield from cls.create_server(_AsyncPublicKeyServer))
+
+
+class _TestLimitedSignatureAlgs(ServerTestCase):
+    """Unit tests for limited public key signature algorithms"""
+
+    @classmethod
+    @asyncio.coroutine
+    def start_server(cls):
+        """Start an SSH server which supports public key authentication"""
+
+        return (yield from cls.create_server(
+            _PublicKeyServer, authorized_client_keys='authorized_keys',
+            signature_algs=['ssh-rsa', 'rsa-sha2-512']))
+
+    @asynctest
+    def test_mismatched_signature_algs(self):
+        """Test mismatched signature algorithms"""
+
+        with self.assertRaises(asyncssh.DisconnectError):
+            yield from self.connect(username='ckey', client_keys='ckey',
+                                    signature_algs=['rsa-sha2-256'])
+
+    @asynctest
+    def test_signature_alg_fallback(self):
+        """Test fall back to default signature algorithm"""
+
+        with (yield from self.connect(username='ckey', client_keys='ckey',
+                                      signature_algs=['rsa-sha2-256',
+                                                      'ssh-rsa'])) as conn:
+            pass
+
+        yield from conn.wait_closed()
 
 
 class _TestSetAuthorizedKeys(ServerTestCase):

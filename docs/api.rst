@@ -1428,19 +1428,17 @@ The following are the compression algorithms currently supported by AsyncSSH:
 Signature algorithms
 --------------------
 
-Some private keys can support more than one signature algorithm. In these
-cases, an alternate signature algorithm can be selected by providing its
-name when a private key is loaded. See the function :func:`load_keypair`
-for details.
+The following are the public key signature algorithms currently supported by
+AsyncSSH:
 
-AsyncSSH currently supports the following alternate signature algorithms
-for RSA keys:
-
+  | ssh-ed25519
+  | ecdsa-sha2-nistp521
+  | ecdsa-sha2-nistp384
+  | ecdsa-sha2-nistp256
   | rsa-sha2-256
   | rsa-sha2-512
-
-These algorithms use the SHA-256 and SHA-512 hash algorithms rather than
-the SHA-1 algorithm used by default.
+  | ssh-rsa
+  | ssh-dss
 
 .. index:: Public key & certificate algorithms
 .. _PublicKeyAlgs:

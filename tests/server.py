@@ -83,16 +83,23 @@ class ServerTestCase(AsyncTestCase):
     def asyncSetUpClass(cls):
         """Set up keys, an SSH server, and an SSH agent for the tests to use"""
 
+        ckey_dsa = asyncssh.generate_private_key('ssh-dss')
+        ckey_dsa.write_private_key('ckey_dsa')
+        ckey_dsa.write_public_key('ckey_dsa.pub')
+
         ckey = asyncssh.generate_private_key('ssh-rsa')
         ckey.write_private_key('ckey')
         ckey.write_public_key('ckey.pub')
+
+        ckey_cert = ckey.generate_user_certificate(ckey, 'name')
+        ckey_cert.write_certificate('ckey-cert.pub')
 
         skey = asyncssh.generate_private_key('ssh-rsa')
         skey.write_private_key('skey')
         skey.write_public_key('skey.pub')
 
-        cert = skey.generate_host_certificate(skey, 'name')
-        cert.write_certificate('skey-cert.pub')
+        skey_cert = skey.generate_host_certificate(skey, 'name')
+        skey_cert.write_certificate('skey-cert.pub')
 
         exp_cert = skey.generate_host_certificate(skey, 'name',
                                                   valid_after='-2d',
@@ -100,10 +107,12 @@ class ServerTestCase(AsyncTestCase):
         skey.write_private_key('exp_skey')
         exp_cert.write_certificate('exp_skey-cert.pub')
 
-        run('chmod 600 ckey skey exp_skey')
+        run('chmod 600 ckey_dsa ckey skey exp_skey')
 
         run('mkdir .ssh')
         run('chmod 700 .ssh')
+        run('cp ckey_dsa .ssh/id_dsa')
+        run('cp ckey_dsa.pub .ssh/id_dsa.pub')
         run('cp ckey .ssh/id_rsa')
         run('cp ckey.pub .ssh/id_rsa.pub')
 
@@ -111,6 +120,7 @@ class ServerTestCase(AsyncTestCase):
         run('cat ckey.pub >> authorized_keys')
         run('printf "permitopen=\":*\" " >> authorized_keys')
         run('cat ckey.pub >> authorized_keys')
+        run('cat ckey_dsa.pub >> authorized_keys')
 
         cls._server = yield from cls.start_server()
 
@@ -125,7 +135,7 @@ class ServerTestCase(AsyncTestCase):
         cls._agent_pid = int(output.splitlines()[2].split()[3][:-1])
 
         os.environ['SSH_AUTH_SOCK'] = 'agent'
-        run('ssh-add ckey')
+        run('ssh-add ckey_dsa ckey')
 
         os.environ['LOGNAME'] = 'guest'
         os.environ['HOME'] = '.'

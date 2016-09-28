@@ -41,25 +41,50 @@ SSH_AGENT_RSA_SHA2_512         = 4
 class _SSHAgentKeyPair(SSHKeyPair):
     """Surrogate for a key managed by the SSH agent"""
 
-    def __init__(self, agent, algorithm, sig_algorithm, public_data, comment):
+    def __init__(self, agent, algorithm, public_data, comment):
         self._agent = agent
         self.algorithm = algorithm
-        self.sig_algorithm = sig_algorithm
         self.public_data = public_data
         self.comment = comment
+
+        self._cert = algorithm.endswith(b'-cert-v01@openssh.com')
+        self._flags = 0
+
+        if self._cert:
+            self.sig_algorithm = algorithm[:-21]
+        else:
+            self.sig_algorithm = algorithm
+
+        if self.sig_algorithm == b'ssh-rsa':
+            self.sig_algorithms = (b'rsa-sha2-256', b'rsa-sha2-512',
+                                   b'ssh-rsa')
+        else:
+            self.sig_algorithms = (self.sig_algorithm,)
+
+        if self._cert:
+            self.host_key_algorithms = (algorithm,)
+        else:
+            self.host_key_algorithms = self.sig_algorithms
+
+    def set_sig_algorithm(self, sig_algorithm):
+        """Set the signature algorithm to use when signing data"""
+
+        self.sig_algorithm = sig_algorithm
+
+        if not self._cert:
+            self.algorithm = sig_algorithm
+
+        if sig_algorithm == b'rsa-sha2-256':
+            self._flags |= SSH_AGENT_RSA_SHA2_256
+        elif sig_algorithm == b'rsa-sha2-512':
+            self._flags |= SSH_AGENT_RSA_SHA2_512
 
     @asyncio.coroutine
     def sign(self, data):
         """Sign a block of data with this private key"""
 
-        flags = 0
-
-        if self.sig_algorithm == b'rsa-sha2-256':
-            flags |= SSH_AGENT_RSA_SHA2_256
-        elif self.sig_algorithm == b'rsa-sha2-512':
-            flags |= SSH_AGENT_RSA_SHA2_512
-
-        return (yield from self._agent.sign(self.public_data, data, flags))
+        return (yield from self._agent.sign(self.public_data,
+                                            data, self._flags))
 
 
 class SSHAgentClient:
@@ -144,14 +169,8 @@ class SSHAgentClient:
                 packet = SSHPacket(key_blob)
                 algorithm = packet.get_string()
 
-                result.append(_SSHAgentKeyPair(self, algorithm, algorithm,
+                result.append(_SSHAgentKeyPair(self, algorithm,
                                                key_blob, comment))
-
-                if algorithm == b'ssh-rsa':
-                    for sig_algorithm in (b'rsa-sha2-256', b'rsa-sha2-512'):
-                        result.append(_SSHAgentKeyPair(self, algorithm,
-                                                       sig_algorithm,
-                                                       key_blob, comment))
 
             resp.check_end()
             return result

@@ -1094,19 +1094,6 @@ class _TestPublicKey(TempDirTestCase):
                 cert = asyncssh.import_certificate(cert)
                 cert.export_certificate('xxx')
 
-    def check_signature_algorithms(self):
-        """Test loading a keypair with different signature algorithms"""
-
-        keypairs = asyncssh.load_keypair_list('priv')
-        self.assertEqual(len(keypairs), len(self.privkey.sig_algorithms))
-
-        for sig_alg in self.privkey.sig_algorithms:
-            with self.subTest('Select signature algorithm', sig_alg=sig_alg):
-                keypairs = asyncssh.load_keypair_list([('priv', None,
-                                                        sig_alg)])
-                self.assertEqual(len(keypairs), 1)
-                self.assertEqual(keypairs[0].sig_algorithm, sig_alg)
-
     def test_keys(self):
         """Check keys and certificates"""
 
@@ -1168,8 +1155,6 @@ class _TestPublicKey(TempDirTestCase):
 
                 for cert_type in (CERT_TYPE_USER, CERT_TYPE_HOST):
                     self.check_certificate_errors(cert_type)
-
-                self.check_signature_algorithms()
 
 
 class TestDSA(_TestPublicKey):

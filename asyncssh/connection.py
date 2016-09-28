@@ -170,7 +170,7 @@ def _select_algs(alg_type, algs, possible_algs, none_value=None):
         raise ValueError('No %s algorithms selected' % alg_type)
 
 
-def _validate_algs(kex_algs, enc_algs, mac_algs, cmp_algs):
+def _validate_algs(kex_algs, enc_algs, mac_algs, cmp_algs, sig_algs):
     """Validate requested algorithms"""
 
     kex_algs = _select_algs('key exchange', kex_algs, get_kex_algs())
@@ -178,16 +178,17 @@ def _validate_algs(kex_algs, enc_algs, mac_algs, cmp_algs):
     mac_algs = _select_algs('MAC', mac_algs, get_mac_algs())
     cmp_algs = _select_algs('compression', cmp_algs,
                             get_compression_algs(), b'none')
+    sig_algs = _select_algs('signature', sig_algs, get_public_key_algs())
 
-    return kex_algs, enc_algs, mac_algs, cmp_algs
+    return kex_algs, enc_algs, mac_algs, cmp_algs, sig_algs
 
 
 class SSHConnection(SSHPacketHandler):
     """Parent class for SSH connections"""
 
     def __init__(self, protocol_factory, loop, version, kex_algs,
-                 encryption_algs, mac_algs, compression_algs, rekey_bytes,
-                 rekey_seconds, server):
+                 encryption_algs, mac_algs, compression_algs, signature_algs,
+                 rekey_bytes, rekey_seconds, server):
         self._protocol_factory = protocol_factory
         self._loop = loop
         self._tasks = set()
@@ -237,6 +238,7 @@ class SSHConnection(SSHPacketHandler):
         self._enc_algs = encryption_algs
         self._mac_algs = mac_algs
         self._cmp_algs = compression_algs
+        self._sig_algs = signature_algs
 
         self._kex = None
         self._kexinit_sent = False
@@ -931,7 +933,7 @@ class SSHConnection(SSHPacketHandler):
 
             if self._can_send_ext_info:
                 self._extensions_sent['server-sig-algs'] = \
-                    b','.join(get_public_key_algs())
+                    b','.join(self._sig_algs)
                 self._send_ext_info()
 
         self._kex_complete = True
@@ -1856,12 +1858,14 @@ class SSHClientConnection(SSHConnection):
     """
 
     def __init__(self, client_factory, loop, client_version, kex_algs,
-                 encryption_algs, mac_algs, compression_algs, rekey_bytes,
-                 rekey_seconds, host, port, known_hosts, username, password,
-                 client_keys, agent, agent_path, auth_waiter):
+                 encryption_algs, mac_algs, compression_algs, signature_algs,
+                 rekey_bytes, rekey_seconds, host, port, known_hosts,
+                 username, password, client_keys, agent, agent_path,
+                 auth_waiter):
         super().__init__(client_factory, loop, client_version, kex_algs,
                          encryption_algs, mac_algs, compression_algs,
-                         rekey_bytes, rekey_seconds, server=False)
+                         signature_algs, rekey_bytes, rekey_seconds,
+                         server=False)
 
         self._host = host
         self._port = port if port != _DEFAULT_PORT else None
@@ -2015,15 +2019,28 @@ class SSHClientConnection(SSHConnection):
     def public_key_auth_requested(self):
         """Return a client key pair to authenticate with"""
 
-        if self._client_keys:
-            return self._client_keys.pop(0)
-        else:
-            result = self._owner.public_key_auth_requested()
+        while True:
+            if self._client_keys:
+                keypair = self._client_keys.pop(0)
+            else:
+                result = self._owner.public_key_auth_requested()
 
-            if asyncio.iscoroutine(result):
-                result = yield from result
+                if asyncio.iscoroutine(result):
+                    result = yield from result
 
-            return load_keypair(result)
+                keypair = load_keypair(result)
+
+            if keypair is None:
+                return None
+
+            if self._server_sig_algs:
+                for alg in keypair.sig_algorithms:
+                    if alg in self._sig_algs and alg in self._server_sig_algs:
+                        keypair.set_sig_algorithm(alg)
+                        return keypair
+
+            if keypair.sig_algorithms[-1] in self._sig_algs:
+                return keypair
 
     @asyncio.coroutine
     def password_auth_requested(self):
@@ -2965,14 +2982,15 @@ class SSHServerConnection(SSHConnection):
     """
 
     def __init__(self, server_factory, loop, server_version, kex_algs,
-                 encryption_algs, mac_algs, compression_algs, rekey_bytes,
-                 rekey_seconds, server_host_keys, authorized_client_keys,
-                 allow_pty, line_editor, line_history, agent_forwarding,
-                 session_factory, session_encoding, sftp_factory, window,
-                 max_pktsize, login_timeout):
+                 encryption_algs, mac_algs, compression_algs, signature_algs,
+                 rekey_bytes, rekey_seconds, server_host_keys,
+                 authorized_client_keys, allow_pty, line_editor, line_history,
+                 agent_forwarding, session_factory, session_encoding,
+                 sftp_factory, window, max_pktsize, login_timeout):
         super().__init__(server_factory, loop, server_version, kex_algs,
                          encryption_algs, mac_algs, compression_algs,
-                         rekey_bytes, rekey_seconds, server=True)
+                         signature_algs, rekey_bytes, rekey_seconds,
+                         server=True)
 
         self._server_host_keys = server_host_keys
         self._server_host_key_algs = server_host_keys.keys()
@@ -3035,8 +3053,12 @@ class SSHServerConnection(SSHConnection):
         """
 
         for alg in peer_host_key_algs:
-            if alg in self._server_host_keys:
-                self._server_host_key = self._server_host_keys[alg]
+            keypair = self._server_host_keys.get(alg)
+            if keypair:
+                if alg != keypair.algorithm:
+                    keypair.set_sig_algorithm(alg)
+
+                self._server_host_key = keypair
                 return True
 
         return False
@@ -3885,7 +3907,7 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
                       password=None, client_keys=(), passphrase=None,
                       agent_path=(), agent_forwarding=False,
                       client_version=(), kex_algs=(), encryption_algs=(),
-                      mac_algs=(), compression_algs=(),
+                      mac_algs=(), compression_algs=(), signature_algs=(),
                       rekey_bytes=_DEFAULT_REKEY_BYTES,
                       rekey_seconds=_DEFAULT_REKEY_SECONDS):
     """Create an SSH client connection
@@ -4003,6 +4025,9 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
            A list of compression algorithms to use during the SSH handshake,
            taken from :ref:`compression algorithms <CompressionAlgs>`, or
            ``None`` to disable compression
+       :param signature_algs: (optional)
+           A list of public key signature algorithms to use during the SSH
+           handshake, taken from :ref:`signature algorithms <SignatureAlgs>`
        :param int rekey_bytes: (optional)
            The number of bytes which can be sent before the SSH session
            key is renegotiated. This defaults to 1 GB.
@@ -4021,6 +4046,7 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
        :type encryption_algs: list of str
        :type mac_algs: list of str
        :type compression_algs: list of str
+       :type signature_algs: list of str
 
        :returns: An :class:`SSHClientConnection` and :class:`SSHClient`
 
@@ -4031,10 +4057,10 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
 
         return SSHClientConnection(client_factory, loop, client_version,
                                    kex_algs, encryption_algs, mac_algs,
-                                   compression_algs, rekey_bytes,
-                                   rekey_seconds, host, port, known_hosts,
-                                   username, password, client_keys, agent,
-                                   agent_path, auth_waiter)
+                                   compression_algs, signature_algs,
+                                   rekey_bytes, rekey_seconds, host, port,
+                                   known_hosts, username, password,
+                                   client_keys, agent, agent_path, auth_waiter)
 
     if not client_factory:
         client_factory = SSHClient
@@ -4044,8 +4070,9 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
 
     client_version = _validate_version(client_version)
 
-    kex_algs, encryption_algs, mac_algs, compression_algs = \
-        _validate_algs(kex_algs, encryption_algs, mac_algs, compression_algs)
+    kex_algs, encryption_algs, mac_algs, compression_algs, signature_algs = \
+        _validate_algs(kex_algs, encryption_algs, mac_algs,
+                       compression_algs, signature_algs)
 
     if username is None:
         username = getpass.getuser()
@@ -4109,7 +4136,7 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
                   reuse_address=None, server_host_keys, passphrase=None,
                   authorized_client_keys=None, server_version=(), kex_algs=(),
                   encryption_algs=(), mac_algs=(), compression_algs=(),
-                  allow_pty=True, line_editor=True,
+                  signature_algs=(), allow_pty=True, line_editor=True,
                   line_history=_DEFAULT_LINE_HISTORY, agent_forwarding=True,
                   session_factory=None, session_encoding='utf-8',
                   sftp_factory=None, window=_DEFAULT_WINDOW,
@@ -4176,6 +4203,9 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
            A list of compression algorithms to use during the SSH handshake,
            taken from :ref:`compression algorithms <CompressionAlgs>`, or
            ``None`` to disable compression
+       :param signature_algs: (optional)
+           A list of public key signature algorithms to use during the SSH
+           handshake, taken from :ref:`signature algorithms <SignatureAlgs>`
        :param bool allow_pty: (optional)
            Whether or not to allow allocation of a pseudo-tty in sessions,
            defaulting to ``True``
@@ -4229,6 +4259,7 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
        :type encryption_algs: list of str
        :type mac_algs: list of str
        :type compression_algs: list of str
+       :type signature_algs: list of str
 
        :returns: :class:`asyncio.AbstractServer`
 
@@ -4239,10 +4270,10 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
 
         return SSHServerConnection(server_factory, loop, server_version,
                                    kex_algs, encryption_algs, mac_algs,
-                                   compression_algs, rekey_bytes,
-                                   rekey_seconds, server_host_keys,
-                                   authorized_client_keys, allow_pty,
-                                   line_editor, line_history,
+                                   compression_algs, signature_algs,
+                                   rekey_bytes, rekey_seconds,
+                                   server_host_keys, authorized_client_keys,
+                                   allow_pty, line_editor, line_history,
                                    agent_forwarding, session_factory,
                                    session_encoding, sftp_factory, window,
                                    max_pktsize, login_timeout)
@@ -4258,8 +4289,9 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
 
     server_version = _validate_version(server_version)
 
-    kex_algs, encryption_algs, mac_algs, compression_algs = \
-        _validate_algs(kex_algs, encryption_algs, mac_algs, compression_algs)
+    kex_algs, encryption_algs, mac_algs, compression_algs, signature_algs = \
+        _validate_algs(kex_algs, encryption_algs, mac_algs,
+                       compression_algs, signature_algs)
 
     server_keys = load_keypair_list(server_host_keys, passphrase)
 
@@ -4269,11 +4301,12 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
     server_host_keys = OrderedDict()
 
     for keypair in server_keys:
-        if keypair.algorithm in server_host_keys:
-            raise ValueError('Multiple keys of type %s found' %
-                             keypair.algorithm.decode('ascii'))
+        for alg in keypair.host_key_algorithms:
+            if alg in server_host_keys:
+                raise ValueError('Multiple keys of type %s found' %
+                                 alg.decode('ascii'))
 
-        server_host_keys[keypair.algorithm] = keypair
+            server_host_keys[alg] = keypair
 
     if isinstance(authorized_client_keys, str):
         authorized_client_keys = read_authorized_keys(authorized_client_keys)
