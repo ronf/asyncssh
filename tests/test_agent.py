@@ -78,7 +78,7 @@ class _TestAPI(AsyncTestCase):
 
         run('ssh-keygen -q -b 2048 -t rsa -N "" -f ckey')
 
-        output = run('ssh-agent -a agent')
+        output = run('ssh-agent -a agent 2> /dev/null')
         cls._agent_pid = int(output.splitlines()[2].split()[3][:-1])
 
         os.environ['SSH_AUTH_SOCK'] = 'agent'
