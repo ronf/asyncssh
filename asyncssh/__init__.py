@@ -20,7 +20,7 @@ from .constants import *
 
 # pylint: enable=wildcard-import
 
-from .agent import SSHAgentClient, connect_agent
+from .agent import SSHAgentClient, SSHAgentKeyPair, connect_agent
 
 from .auth_keys import SSHAuthorizedKeys
 from .auth_keys import import_authorized_keys, read_authorized_keys

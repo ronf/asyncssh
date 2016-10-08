@@ -57,7 +57,7 @@ SSH_AGENT_RSA_SHA2_512                   = 4
 # pylint: enable=bad-whitespace
 
 
-class _SSHAgentKeyPair(SSHKeyPair):
+class SSHAgentKeyPair(SSHKeyPair):
     """Surrogate for a key managed by the SSH agent"""
 
     _key_type = 'agent'
@@ -210,8 +210,8 @@ class SSHAgentClient:
                 packet = SSHPacket(key_blob)
                 algorithm = packet.get_string()
 
-                result.append(_SSHAgentKeyPair(self, algorithm,
-                                               key_blob, comment))
+                result.append(SSHAgentKeyPair(self, algorithm,
+                                              key_blob, comment))
 
             resp.check_end()
             return result
