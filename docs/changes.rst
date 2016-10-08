@@ -3,6 +3,47 @@
 Change Log
 ==========
 
+Release 1.7.0 (7 Oct 2016)
+--------------------------
+
+* Added support for group 14 and group 16 Diffie Hellman key exchange
+  algorithms.
+
+* Added support for using SHA-256 and SHA-512 based signature algorithms
+  for RSA keys and support for OpenSSH extension negotiation to advertise
+  these signature algorithms.
+
+* Added new load_keypairs and load_public_keys API functions which
+  support expicitly loading keys using the same syntax that was
+  previously available for specifying client_keys, authorized_client_keys,
+  and server_host_keys arguments when creating SSH clients and servers.
+
+* Enhanced the SSH agent client to support adding and removing keys
+  and certificates (including support for constraints) and locking and
+  unlocking the agent. Support has also been added for adding and
+  removing smart card keys in the agent.
+
+* Added support for getting and setting a comment value when generating
+  keys and certificates, and decoding and encoding this comment when
+  importing and exporting keys that support it. Currently, this is
+  available for OpenSSH format private keys and OpenSSH and RFC 4716
+  format public keys. These comment values are also passed on to the
+  SSH agent when keys are added to it.
+
+* Fixed a bug in the generation of ECDSA certificates that showed up
+  when trying to use the nistp384 or nistp521 curves.
+
+* Updated unit tests to use the new key and certificate generation
+  functions, eliminating the dependency on the ssh-keygen program.
+
+* Updated unit tests to use the new SSH agent support when adding keys
+  to the SSH agent, eliminating the dependency on the ssh-add program.
+
+* Incorporated a fix from Vincent Bernat for an issue with launching
+  ssh-agent on some systems during unit testing.
+
+* Fixed some typos in the documentation found by Jakub Wilk.
+
 Release 1.6.2 (4 Sep 2016)
 --------------------------
 
