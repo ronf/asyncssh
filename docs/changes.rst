@@ -3,6 +3,12 @@
 Change Log
 ==========
 
+Release 1.7.1 (7 Oct 2016)
+--------------------------
+
+* Fix an error that prevented the docs from building.
+
+
 Release 1.7.0 (7 Oct 2016)
 --------------------------
 
