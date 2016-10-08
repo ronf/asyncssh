@@ -133,9 +133,12 @@ class SSHKey:
     pem_name = None
     pkcs8_oid = None
 
+    def __init__(self):
+        self._comment = None
+
     def _generate_certificate(self, key, version, serial, cert_type,
                               key_id, principals, valid_after,
-                              valid_before, cert_options):
+                              valid_before, cert_options, comment):
         """Generate a new SSH certificate"""
 
         try:
@@ -146,7 +149,38 @@ class SSHKey:
 
         return cert_handler.generate(self, algorithm, key, serial, cert_type,
                                      key_id, principals, valid_after,
-                                     valid_before, cert_options)
+                                     valid_before, cert_options, comment)
+
+    def get_algorithm(self):
+        """Return the algorithm associated with this key"""
+
+        return self.algorithm.decode('ascii')
+
+    def get_comment(self):
+        """Return the comment associated with this key
+
+           :returns: `str` or ``None``
+
+        """
+
+        return self._comment
+
+    def set_comment(self, comment):
+        """Set the comment associated with this key
+
+           :param comment:
+               The new comment to associate with this key
+           :type comment: `str` or ``None``
+
+        """
+
+        if isinstance(comment, bytes):
+            try:
+                comment = comment.decode('utf-8')
+            except UnicodeDecodeError:
+                raise KeyImportError('Invalid characters in comment') from None
+
+        self._comment = comment or None
 
     def encode_pkcs1_private(self):
         """Export parameters associated with a PKCS#1 private key"""
@@ -184,6 +218,11 @@ class SSHKey:
         # pylint: disable=no-self-use
         raise KeyExportError('OpenSSH public key export not supported')
 
+    def get_ssh_private_key(self):
+        """Return OpenSSH private key in binary format"""
+
+        return String(self.algorithm) + self.encode_ssh_private()
+
     def get_ssh_public_key(self):
         """Return OpenSSH public key in binary format"""
 
@@ -199,7 +238,9 @@ class SSHKey:
 
         """
 
-        return decode_ssh_public_key(self.get_ssh_public_key())
+        result = decode_ssh_public_key(self.get_ssh_public_key())
+        result.set_comment(self.get_comment())
+        return result
 
     def generate_user_certificate(self, user_key, key_id, version=1,
                                   serial=0, principals=(), valid_after=0,
@@ -208,7 +249,8 @@ class SSHKey:
                                   permit_x11_forwarding=True,
                                   permit_agent_forwarding=True,
                                   permit_port_forwarding=True,
-                                  permit_pty=True, permit_user_rc=True):
+                                  permit_pty=True, permit_user_rc=True,
+                                  comment=()):
         """Generate a new SSH user certificate
 
            This method returns a SSH user certifcate with the requested
@@ -254,10 +296,15 @@ class SSHKey:
            :param bool permit_user_rc: (optional)
                Whether or not to run the user rc file when this certificate
                is used, defaulting to ``True``.
+           :param comment:
+               The comment to associate with this certificate. By default,
+               the comment will be set to the comment currently set on
+               user_key.
            :type user_key: :class:`SSHKey`
            :type principals: list of strings
            :type force_command: `str` or ``None``
            :type source_address: list of ip_address and ip_network values
+           :type comment: `str` or ``None``
 
            :returns: :class:`SSHCertificate`
 
@@ -291,14 +338,18 @@ class SSHKey:
         if permit_user_rc:
             cert_options['permit-user-rc'] = True
 
+        if comment is ():
+            comment = user_key.get_comment()
+
         return self._generate_certificate(user_key, version, serial,
                                           CERT_TYPE_USER, key_id,
                                           principals, valid_after,
-                                          valid_before, cert_options)
+                                          valid_before, cert_options, comment)
 
     def generate_host_certificate(self, host_key, key_id, version=1,
                                   serial=0, principals=(), valid_after=0,
-                                  valid_before=0xffffffffffffffff):
+                                  valid_before=0xffffffffffffffff,
+                                  comment=()):
         """Generate a new SSH host certificate
 
            This method returns a SSH host certifcate with the requested
@@ -323,8 +374,13 @@ class SSHKey:
                The latest time the certificate is valid for, defaulting to
                no restriction on when the certificate stops being valid.
                See :ref:`SpecifyingTimeValues` for allowed time specifications.
+           :param comment:
+               The comment to associate with this certificate. By default,
+               the comment will be set to the comment currently set on
+               host_key.
            :type host_key: :class:`SSHKey`
            :type principals: list of strings
+           :type comment: `str` or ``None``
 
            :returns: :class:`SSHCertificate`
 
@@ -333,10 +389,13 @@ class SSHKey:
                       parameters are unsupported
         """
 
+        if comment is ():
+            comment = host_key.get_comment()
+
         return self._generate_certificate(host_key, version, serial,
                                           CERT_TYPE_HOST, key_id,
                                           principals, valid_after,
-                                          valid_before, {})
+                                          valid_before, {}, comment)
 
     def export_private_key(self, format_name='openssh', passphrase=None,
                            cipher_name='aes256-cbc', hash_name='sha256',
@@ -445,11 +504,9 @@ class SSHKey:
         elif format_name == 'openssh':
             check = os.urandom(4)
             nkeys = 1
-            comment = b''
 
-            keydata = String(self.algorithm) + self.encode_ssh_private()
-
-            data = b''.join((check, check, keydata, String(comment)))
+            data = b''.join((check, check, self.get_ssh_private_key(),
+                             String(self.get_comment() or '')))
 
             if passphrase is not None:
                 try:
@@ -549,12 +606,24 @@ class SSHKey:
         elif format_name == 'openssh':
             data = self.get_ssh_public_key()
 
-            return self.algorithm + b' ' + binascii.b2a_base64(data)
+            if self._comment:
+                comment = b' ' + self._comment.encode('utf-8')
+            else:
+                comment = b''
+
+            return (self.algorithm + b' ' +
+                    binascii.b2a_base64(data)[:-1] + comment + b'\n')
         elif format_name == 'rfc4716':
             data = self.get_ssh_public_key()
 
+            if self._comment:
+                comment = (b'Comment: "' +
+                           self._comment.encode('utf-8') + b'"\n')
+            else:
+                comment = b''
+
             return (b'---- BEGIN SSH2 PUBLIC KEY ----\n' +
-                    _wrap_base64(data) +
+                    comment + _wrap_base64(data) +
                     b'---- END SSH2 PUBLIC KEY ----\n')
         else:
             raise KeyExportError('Unknown export format')
@@ -608,7 +677,8 @@ class SSHCertificate:
     _host_extension_decoders = {}
 
     def __init__(self, algorithm, key, data, principals, options, signing_key,
-                 serial, cert_type, key_id, valid_after, valid_before):
+                 serial, cert_type, key_id, valid_after, valid_before,
+                 comment):
         self.algorithm = algorithm
         self.key = key
         self.data = data
@@ -622,9 +692,11 @@ class SSHCertificate:
         self._valid_after = valid_after
         self._valid_before = valid_before
 
+        self.set_comment(comment)
+
     @classmethod
     def generate(cls, signing_key, algorithm, key, serial, cert_type, key_id,
-                 principals, valid_after, valid_before, options):
+                 principals, valid_after, valid_before, options, comment):
         """Generate a new SSH certificate"""
 
         principals = list(principals)
@@ -661,10 +733,11 @@ class SSHCertificate:
         signing_key = signing_key.convert_to_public()
 
         return cls(algorithm, key, data, principals, options, signing_key,
-                   serial, cert_type, key_id, valid_after, valid_before)
+                   serial, cert_type, key_id, valid_after, valid_before,
+                   comment)
 
     @classmethod
-    def construct(cls, packet, algorithm, key_handler):
+    def construct(cls, packet, algorithm, key_handler, comment):
         """Construct an SSH certificate"""
 
         key_params, serial, cert_type, key_id, \
@@ -714,7 +787,8 @@ class SSHCertificate:
             raise KeyImportError('Unknown certificate type')
 
         return cls(algorithm, key, data, principals, options, signing_key,
-                   serial, cert_type, key_id, valid_after, valid_before)
+                   serial, cert_type, key_id, valid_after, valid_before,
+                   comment)
 
     @classmethod
     def _encode(cls, key, serial, cert_type, key_id, principals,
@@ -810,6 +884,37 @@ class SSHCertificate:
 
         return result
 
+    def get_algorithm(self):
+        """Return the algorithm associated with this certificate"""
+
+        return self.algorithm.decode('ascii')
+
+    def get_comment(self):
+        """Return the comment associated with this certificate
+
+           :returns: `str` or ``None``
+
+        """
+
+        return self._comment
+
+    def set_comment(self, comment):
+        """Set the comment associated with this certificate
+
+           :param comment:
+               The new comment to associate with this certificate
+           :type comment: `str` or ``None``
+
+        """
+
+        if isinstance(comment, bytes):
+            try:
+                comment = comment.decode('utf-8')
+            except UnicodeDecodeError:
+                raise KeyImportError('Invalid characters in comment') from None
+
+        self._comment = comment or None
+
     def export_certificate(self, format_name='openssh'):
         """Export a certificate in the requested format
 
@@ -828,10 +933,22 @@ class SSHCertificate:
         """
 
         if format_name == 'openssh':
-            return self.algorithm + b' ' + binascii.b2a_base64(self.data)
+            if self._comment:
+                comment = b' ' + self._comment.encode('utf-8')
+            else:
+                comment = b''
+
+            return (self.algorithm + b' ' +
+                    binascii.b2a_base64(self.data)[:-1] + comment + b'\n')
         elif format_name == 'rfc4716':
+            if self._comment:
+                comment = (b'Comment: "' +
+                           self._comment.encode('utf-8') + b'"\n')
+            else:
+                comment = b''
+
             return (b'---- BEGIN SSH2 PUBLIC KEY ----\n' +
-                    _wrap_base64(self.data) +
+                    comment + _wrap_base64(self.data) +
                     b'---- END SSH2 PUBLIC KEY ----\n')
         else:
             raise KeyExportError('Unknown export format')
@@ -984,6 +1101,53 @@ class SSHKeyPair:
 
     """
 
+    _key_type = 'unknown'
+
+    def __init__(self, algorithm, comment):
+        self.algorithm = algorithm
+        self.set_comment(comment)
+
+    def get_key_type(self):
+        """Return what type of key pair this is
+
+           This method returns 'local' for locally loaded keys, and
+           'agent' for keys managed by an SSH agent.
+
+        """
+
+        return self._key_type
+
+    def get_algorithm(self):
+        """Return the algorithm associated with this key pair"""
+
+        return self.algorithm.decode('ascii')
+
+    def get_comment(self):
+        """Return the comment associated with this key pair
+
+           :returns: `str` or ``None``
+
+        """
+
+        return self._comment
+
+    def set_comment(self, comment):
+        """Set the comment associated with this key pair
+
+           :param comment:
+               The new comment to associate with this key pair
+           :type comment: `str` or ``None``
+
+        """
+
+        if isinstance(comment, bytes):
+            try:
+                comment = comment.decode('utf-8')
+            except UnicodeDecodeError:
+                raise KeyImportError('Invalid characters in comment') from None
+
+        self._comment = comment or None
+
     def set_sig_algorithm(self, sig_algorithm):
         """Set the signature algorithm to use when signing data"""
 
@@ -1011,25 +1175,38 @@ class SSHLocalKeyPair(SSHKeyPair):
 
     """
 
+    _key_type = 'local'
+
     def __init__(self, key, cert=None):
+        super().__init__(cert.algorithm if cert else key.algorithm,
+                         key.get_comment())
+
         self._key = key
         self._cert = cert
-
-        if cert and key.get_ssh_public_key() != cert.key.get_ssh_public_key():
-            raise ValueError('Certificate key mismatch')
 
         self.sig_algorithm = key.algorithm
         self.sig_algorithms = key.sig_algorithms
 
         if cert:
-            self.algorithm = cert.algorithm
+            if key.get_ssh_public_key() != cert.key.get_ssh_public_key():
+                raise ValueError('Certificate key mismatch')
+
             self.host_key_algorithms = (cert.algorithm,)
             self.public_data = cert.data
         else:
-            self.algorithm = key.algorithm
             self.host_key_algorithms = self.sig_algorithms
             self.public_data = key.get_ssh_public_key()
 
+    def get_agent_private_key(self):
+        """Return binary encoding of keypair for upload to SSH agent"""
+
+        if self._cert:
+            data = String(self.public_data) + \
+                       self._key.encode_agent_cert_private()
+        else:
+            data = self._key.encode_ssh_private()
+
+        return String(self.algorithm) + data
 
     def set_sig_algorithm(self, sig_algorithm):
         """Set the signature algorithm to use when signing data"""
@@ -1216,13 +1393,15 @@ def _decode_openssh_private(data, passphrase):
             raise KeyImportError('Unknown OpenSSH private key algorithm')
 
         key_params = handler.decode_ssh_private(packet)
-        _ = packet.get_string()                             # comment
+        comment = packet.get_string()
         pad = packet.get_remaining_payload()
 
         if len(pad) >= block_size or pad != bytes(range(1, len(pad) + 1)):
             raise KeyImportError('Invalid OpenSSH private key')
 
-        return handler.make_private(*key_params)
+        key = handler.make_private(*key_params)
+        key.set_comment(comment)
+        return key
     except PacketDecodeError:
         raise KeyImportError('Invalid OpenSSH private key')
 
@@ -1411,12 +1590,16 @@ def _decode_pem_public(lines):
 def _decode_openssh(line):
     """Decode an OpenSSH format public key or certificate"""
 
-    line = line.split()
+    line = line.split(None, 2)
     if len(line) < 2:
         raise KeyImportError('Invalid OpenSSH public key or certificate')
+    elif len(line) == 2:
+        comment = None
+    else:
+        comment = line[2]
 
     try:
-        return binascii.a2b_base64(line[1])
+        return binascii.a2b_base64(line[1]), comment
     except binascii.Error:
         raise KeyImportError('Invalid OpenSSH public key '
                              'or certificate') from None
@@ -1435,13 +1618,26 @@ def _decode_rfc4716(lines):
     if not start:
         raise KeyImportError('Missing RFC 4716 header')
 
-    continuation = False
+    hdr = b''
+    comment = None
+
     for start, line in enumerate(lines[start:], start):
         line = line.strip()
-        if continuation or b':' in line:
-            continuation = line.endswith(b'\\')
+        if line[-1:] == b'\\':
+            hdr += line[:-1]
         else:
-            break
+            hdr += line
+            if b':' in hdr:
+                hdr, value = hdr.split(b':')
+
+                if hdr.strip() == b'Comment':
+                    comment = value.strip()
+                    if comment[:1] == b'"' and comment[-1:] == b'"':
+                        comment = comment[1:-1]
+
+                hdr = b''
+            else:
+                break
 
     end = None
     for i, line in enumerate(lines[start:], start):
@@ -1454,7 +1650,7 @@ def _decode_rfc4716(lines):
         raise KeyImportError('Missing RFC 4716 footer')
 
     try:
-        return binascii.a2b_base64(b''.join(lines[start:end])), end+1
+        return binascii.a2b_base64(b''.join(lines[start:end])), comment, end+1
     except binascii.Error:
         raise KeyImportError('Invalid RFC 4716 public key '
                              'or certificate') from None
@@ -1521,7 +1717,7 @@ def decode_ssh_public_key(data):
         raise KeyImportError('Invalid public key') from None
 
 
-def decode_ssh_certificate(data):
+def decode_ssh_certificate(data, comment=None):
     """Decode a packetized SSH certificate"""
 
     try:
@@ -1530,7 +1726,7 @@ def decode_ssh_certificate(data):
         key_handler, cert_handler = _certificate_alg_map.get(alg, (None, None))
 
         if cert_handler:
-            return cert_handler.construct(packet, alg, key_handler)
+            return cert_handler.construct(packet, alg, key_handler, comment)
         else:
             raise KeyImportError('Unknown certificate algorithm: %s' %
                                  alg.decode('ascii', errors='replace'))
@@ -1538,7 +1734,7 @@ def decode_ssh_certificate(data):
         raise KeyImportError('Invalid certificate') from None
 
 
-def generate_private_key(alg_name, **kwargs):
+def generate_private_key(alg_name, comment=None, **kwargs):
     """Generate a new private key
 
        This function generates a new private key of a type matching
@@ -1565,11 +1761,14 @@ def generate_private_key(alg_name, **kwargs):
        by the algorithm at 256 bits.
 
        :param str alg_name:
-           The SSH algorithm name corresponding to the desired type of key
+           The SSH algorithm name corresponding to the desired type of key.
+       :param comment: (optional)
+           A comment to associate with this key.
        :param int key_size: (optional)
            The key size in bits for RSA keys.
        :param int exponent: (optional)
            The public exponent for RSA keys.
+       :type comment: `str` or ``None``
 
        :returns: An :class:`SSHKey` private key
 
@@ -1582,11 +1781,14 @@ def generate_private_key(alg_name, **kwargs):
 
     if handler:
         try:
-            return handler.generate(algorithm, **kwargs)
+            key = handler.generate(algorithm, **kwargs)
         except (TypeError, ValueError) as exc:
             raise KeyGenerationError(str(exc)) from None
     else:
         raise KeyGenerationError('Unknown algorithm: %s' % alg_name)
+
+    key.set_comment(comment)
+    return key
 
 def import_private_key(data, passphrase=None):
     """Import a private key
@@ -1644,13 +1846,15 @@ def import_public_key(data):
     if stripped_key.startswith(b'-----'):
         key, _ = _decode_pem_public(stripped_key.splitlines())
     elif stripped_key.startswith(b'---- '):
-        data, _ = _decode_rfc4716(stripped_key.splitlines())
+        data, comment, _ = _decode_rfc4716(stripped_key.splitlines())
         key = decode_ssh_public_key(data)
+        key.set_comment(comment)
     elif data.startswith(b'\x30'):
         key, _ = _decode_der_public(data)
     elif data:
-        data = _decode_openssh(stripped_key.splitlines()[0])
+        data, comment = _decode_openssh(stripped_key.splitlines()[0])
         key = decode_ssh_public_key(data)
+        key.set_comment(comment)
     else:
         raise KeyImportError('Invalid public key')
 
@@ -1679,11 +1883,11 @@ def import_certificate(data):
 
     stripped_key = data.lstrip()
     if stripped_key.startswith(b'---- '):
-        data, _ = _decode_rfc4716(stripped_key.splitlines())
+        data, comment, _ = _decode_rfc4716(stripped_key.splitlines())
     else:
-        data = _decode_openssh(stripped_key.splitlines()[0])
+        data, comment = _decode_openssh(stripped_key.splitlines()[0])
 
-    return decode_ssh_certificate(data)
+    return decode_ssh_certificate(data, comment)
 
 
 def read_private_key(filename, passphrase=None):
@@ -1703,7 +1907,12 @@ def read_private_key(filename, passphrase=None):
     """
 
     with open(filename, 'rb') as f:
-        return import_private_key(f.read(), passphrase)
+        key = import_private_key(f.read(), passphrase)
+
+    if not key.get_comment():
+        key.set_comment(filename)
+
+    return key
 
 
 def read_public_key(filename):
@@ -1721,7 +1930,12 @@ def read_public_key(filename):
     """
 
     with open(filename, 'rb') as f:
-        return import_public_key(f.read())
+        key = import_public_key(f.read())
+
+    if not key.get_comment():
+        key.set_comment(filename)
+
+    return key
 
 
 def read_certificate(filename):
@@ -1777,6 +1991,10 @@ def read_private_key_list(filename, passphrase=None):
             keys.append(key)
             data = data[end:]
 
+    for key in keys:
+        if not key.get_comment():
+            key.set_comment(filename)
+
     return keys
 
 
@@ -1809,8 +2027,10 @@ def read_public_key_list(filename):
     elif stripped_key.startswith(b'---- '):
         lines = stripped_key.splitlines()
         while lines:
-            data, end = _decode_rfc4716(lines)
-            keys.append(decode_ssh_public_key(data))
+            data, comment, end = _decode_rfc4716(lines)
+            key = decode_ssh_public_key(data)
+            key.set_comment(comment)
+            keys.append(key)
             lines = lines[end:]
     elif data.startswith(b'\x30'):
         while data:
@@ -1819,7 +2039,14 @@ def read_public_key_list(filename):
             data = data[end:]
     else:
         for line in stripped_key.splitlines():
-            keys.append(decode_ssh_public_key(_decode_openssh(line)))
+            data, comment = _decode_openssh(line)
+            key = decode_ssh_public_key(data)
+            key.set_comment(comment)
+            keys.append(key)
+
+    for key in keys:
+        if not key.get_comment():
+            key.set_comment(filename)
 
     return keys
 
@@ -1847,160 +2074,102 @@ def read_certificate_list(filename):
     if stripped_key.startswith(b'---- '):
         lines = stripped_key.splitlines()
         while lines:
-            data, end = _decode_rfc4716(lines)
-            certs.append(decode_ssh_certificate(data))
+            data, comment, end = _decode_rfc4716(lines)
+            certs.append(decode_ssh_certificate(data, comment))
             lines = lines[end:]
     else:
         for line in stripped_key.splitlines():
-            certs.append(decode_ssh_certificate(_decode_openssh(line)))
+            data, comment = _decode_openssh(line)
+            certs.append(decode_ssh_certificate(data, comment))
 
     return certs
 
 
-def _load_private_key(key, passphrase=None):
-    """Load a private key and optional certificate"""
+def load_keypairs(keylist, passphrase=None):
+    """Load SSH private keys and optional matching certificates
 
-    if isinstance(key, str):
-        cert = key + '-cert.pub'
-        ignore_missing_cert = True
-    elif isinstance(key, tuple):
-        key, cert = key
-        ignore_missing_cert = False
-    else:
-        cert = None
+       This function loads a list of SSH keys and optional matching
+       certificates.
 
-    if isinstance(key, str):
-        key = read_private_key(key, passphrase)
-    elif isinstance(key, bytes):
-        key = import_private_key(key, passphrase)
-
-    if isinstance(cert, str):
-        try:
-            cert = read_certificate(cert)
-        except OSError:
-            if ignore_missing_cert:
-                cert = None
-            else:
-                raise
-    elif isinstance(cert, bytes):
-        cert = import_certificate(cert)
-
-    return key, cert
-
-
-def load_keypair(key, passphrase=None):
-    """Load an SSH key pair
-
-       This function loads a private SSH key and optional certificate.
-       The key argument can be either a key reference or a tuple
-       containing a key reference and an optional matching cerificate
-       reference.
-
-       Key references can either be the name of a file to load the
-       key from, a byte string to import as a private key, or an
-       already loaded :class:`SSHKey` private key.
-
-       Certificate references can be the name of a file to load the
-       certificate from, a byte string to import as a certificate,
-       an already loaded :class:`SSHCertificate`, or ``None`` if
-       no certificate should be associated with the key.
-
-       When a filename is provided in as a reference outside of a
-       tuple, an attempt is made to load a private key from that
-       file and a certificate from a file constructed by appending
-       '-cert.pub' to the end of the filename.
-
-       :param key:
-           The key to import.
-       :param str passphrase: (optional)
-           The passphrase to use to decrypt the key.
-
-       :returns: An :class:`SSHKeyPair` or ``None``
-
-    """
-
-    if isinstance(key, SSHKeyPair):
-        return key
-    elif key:
-        key, cert = _load_private_key(key, passphrase)
-        return SSHLocalKeyPair(key, cert)
-    else:
-        return None
-
-
-def load_keypair_list(keylist, passphrase=None):
-    """Load list of SSH key pairs
-
-       This function loads a collection of SSH key pairs. The keylist
-       argument can be either a filename to load private keys from
-       (without any certificates) or a list of values representing
-       key pairs as described in :func:`load_keypair`.
-
-       In cases where a private key is provided with a certificate,
-       the private key is added to the list both with and without
-       the certificate.
+       When certificates are specified, the private key is added to
+       the list both with and without the certificate.
 
        :param keylist:
-           The list of keys to import.
+           The list of private keys and certificates to import.
        :param str passphrase: (optional)
-           The passphrase to use to decrypt the key.
+           The passphrase to use to decrypt private keys.
+       :type keylist: *see* :ref:`SpecifyingPrivateKeys`
 
        :returns: A list of :class:`SSHKeyPair` objects
 
     """
 
+    result = []
+
     if isinstance(keylist, str):
         keys = read_private_key_list(keylist, passphrase)
-        return [SSHLocalKeyPair(key) for key in keys]
-    else:
-        result = []
 
-        for key in keylist:
-            if isinstance(key, SSHKeyPair):
-                result.append(key)
+        if len(keys) == 1:
+            try:
+                cert = read_certificate(keylist + '-cert.pub')
+            except OSError:
+                cert = None
+
+            if cert:
+                result.append(SSHLocalKeyPair(keys[0], cert))
+
+            result.append(SSHLocalKeyPair(keys[0]))
+            return result
+        else:
+            return [SSHLocalKeyPair(key) for key in keys]
+    elif isinstance(keylist, (tuple, bytes, SSHKey, SSHKeyPair)):
+        keylist = [keylist]
+
+    for key in keylist:
+        if isinstance(key, SSHKeyPair):
+            result.append(key)
+        else:
+            if isinstance(key, str):
+                cert = key + '-cert.pub'
+                ignore_missing_cert = True
+            elif isinstance(key, tuple):
+                key, cert = key
+                ignore_missing_cert = False
             else:
-                key, cert = _load_private_key(key, passphrase)
+                cert = None
 
-                if cert:
-                    result.append(SSHLocalKeyPair(key, cert))
+            if isinstance(key, str):
+                key = read_private_key(key, passphrase)
+            elif isinstance(key, bytes):
+                key = import_private_key(key, passphrase)
 
-                result.append(SSHLocalKeyPair(key, None))
+            if isinstance(cert, str):
+                try:
+                    cert = read_certificate(cert)
+                except OSError:
+                    if ignore_missing_cert:
+                        cert = None
+                    else:
+                        raise
+            elif isinstance(cert, bytes):
+                cert = import_certificate(cert)
 
-        return result
+            if cert:
+                result.append(SSHLocalKeyPair(key, cert))
 
+            result.append(SSHLocalKeyPair(key, None))
 
-def load_public_key(key):
-    """Load a public key
-
-       This function loads a public key. The key argument can be
-       the name of a file to load the key from, a byte string to
-       import the key from, or an already loaded :class:`SSHKey`
-       public key.
-
-       :param key:
-           The key to import.
-
-       :returns: An :class:`SSHKey` object
-
-    """
-
-    if isinstance(key, str):
-        key = read_public_key(key)
-    elif isinstance(key, bytes):
-        key = import_public_key(key)
-
-    return key
+    return result
 
 
-def load_public_key_list(keylist):
-    """Load public key list
+def load_public_keys(keylist):
+    """Load public keys
 
-       This function loads a collection of public keys. The keylist
-       argument can be either a filename to load keys from or a list of
-       values representing keys as described in :func:`load_public_key`.
+       This function loads a list of SSH public keys.
 
        :param keylist:
-           The list of keys to import.
+           The list of public keys to import.
+       :type keylist: *see* :ref:`SpecifyingPublicKeys`
 
        :returns: A list of :class:`SSHKey` objects
 
@@ -2009,4 +2178,14 @@ def load_public_key_list(keylist):
     if isinstance(keylist, str):
         return read_public_key_list(keylist)
     else:
-        return [load_public_key(key) for key in keylist]
+        result = []
+
+        for key in keylist:
+            if isinstance(key, str):
+                key = read_public_key(key)
+            elif isinstance(key, bytes):
+                key = import_public_key(key)
+
+            result.append(key)
+
+        return result

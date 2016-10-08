@@ -143,8 +143,19 @@ class _TestPublicKey(TempDirTestCase):
         """Check for a private key match"""
 
         newkey = asyncssh.read_private_key('new', passphrase)
+        keydata = newkey.get_ssh_public_key()
+
         self.assertEqual(newkey, self.privkey)
         self.assertEqual(hash(newkey), hash(self.privkey))
+
+        keylist = asyncssh.load_keypairs('new', passphrase)
+        self.assertEqual(keylist[0].get_key_type(), 'local')
+        self.assertEqual(keylist[0].get_algorithm(), newkey.get_algorithm())
+        self.assertEqual(keylist[0].public_data, keydata)
+
+        keylist = asyncssh.load_keypairs(['new'], passphrase)
+        self.assertEqual(keylist[0].get_algorithm(), newkey.get_algorithm())
+        self.assertEqual(keylist[0].public_data, keydata)
 
         if passphrase:
             with self.assertRaises((asyncssh.KeyEncryptionError,
@@ -152,9 +163,9 @@ class _TestPublicKey(TempDirTestCase):
                 asyncssh.read_private_key('new', 'xxx')
         else:
             run('cat new new > list')
-            keylist = asyncssh.read_private_key_list('list', passphrase)
-            self.assertEqual(keylist[0], newkey)
-            self.assertEqual(keylist[1], newkey)
+            keylist = asyncssh.load_keypairs('list')
+            self.assertEqual(keylist[0].public_data, keydata)
+            self.assertEqual(keylist[1].public_data, keydata)
 
     def check_public(self):
         """Check for a public key match"""
@@ -163,8 +174,14 @@ class _TestPublicKey(TempDirTestCase):
         self.assertEqual(newkey, self.pubkey)
         self.assertEqual(hash(newkey), hash(self.pubkey))
 
+        keylist = asyncssh.load_public_keys('new')
+        self.assertEqual(keylist[0], newkey)
+
+        keylist = asyncssh.load_public_keys(['new'])
+        self.assertEqual(keylist[0], newkey)
+
         run('cat new new > list')
-        keylist = asyncssh.read_public_key_list('list')
+        keylist = asyncssh.load_public_keys('list')
         self.assertEqual(keylist[0], newkey)
         self.assertEqual(keylist[1], newkey)
 
@@ -423,6 +440,10 @@ class _TestPublicKey(TempDirTestCase):
             with self.subTest('Encode with unknown openssh cipher'):
                 with self.assertRaises(asyncssh.KeyEncryptionError):
                     self.privkey.export_private_key('openssh', 'x', 'xxx')
+
+        with self.subTest('Encode agent cert private from public'):
+            with self.assertRaises(asyncssh.KeyExportError):
+                self.pubkey.encode_agent_cert_private()
 
     def check_decode_errors(self):
         """Check error code paths in key decoding"""
@@ -699,6 +720,7 @@ class _TestPublicKey(TempDirTestCase):
             ('Missing RFC4716 footer', b'---- BEGIN SSH2 PUBLIC KEY ----\n'),
             ('Invalid RFC4716 header',
              b'---- BEGIN SSH2 PUBLIC KEY ----\n'
+             b'Comment: comment\n'
              b'XXX:\\\n'
              b'---- END SSH2 PUBLIC KEY ----\n'),
             ('Invalid RFC4716 Base64',
@@ -735,7 +757,7 @@ class _TestPublicKey(TempDirTestCase):
         for fmt, key in keypair_errors:
             with self.subTest('Load keypair (%s)' % fmt):
                 with self.assertRaises(ValueError):
-                    asyncssh.load_keypair(key)
+                    asyncssh.load_keypairs([key])
 
     def check_sshkey_base_errors(self):
         """Check SSHKey base class errors"""
@@ -794,6 +816,50 @@ class _TestPublicKey(TempDirTestCase):
             with self.subTest('Sign with public key'):
                 with self.assertRaises(ValueError):
                     self.pubkey.sign(data, self.pubkey.algorithm)
+
+    def check_comment(self):
+        """Check getting and setting comments"""
+
+        with self.subTest('Comment test'):
+            self.assertEqual(self.privkey.get_comment(), 'comment')
+            self.assertEqual(self.pubkey.get_comment(), 'comment')
+
+            key = asyncssh.import_private_key(
+                self.privkey.export_private_key('openssh'))
+            self.assertEqual(key.get_comment(), 'comment')
+
+            for fmt in ('openssh', 'rfc4716'):
+                key = asyncssh.import_public_key(
+                    self.pubkey.export_public_key(fmt))
+                self.assertEqual(key.get_comment(), 'comment')
+
+                key = asyncssh.import_public_key(
+                    self.pubca.export_public_key(fmt))
+                self.assertEqual(key.get_comment(), None)
+
+            self.assertEqual(self.usercert.get_comment(), 'cert_comment')
+
+            for fmt in ('openssh', 'rfc4716'):
+                cert = asyncssh.import_certificate(
+                    self.usercert.export_certificate(fmt))
+                self.assertEqual(cert.get_comment(), 'cert_comment')
+
+                cert = asyncssh.import_certificate(
+                    self.hostcert.export_certificate(fmt))
+                self.assertEqual(cert.get_comment(), None)
+
+            with self.assertRaises(asyncssh.KeyImportError):
+                self.privkey.set_comment(b'\xff')
+
+            with self.assertRaises(asyncssh.KeyImportError):
+                self.pubkey.set_comment(b'\xff')
+
+            with self.assertRaises(asyncssh.KeyImportError):
+                self.usercert.set_comment(b'\xff')
+
+            with self.assertRaises(asyncssh.KeyImportError):
+                keypairs = asyncssh.load_keypairs([self.privkey])
+                keypairs[0].set_comment(b'\xff')
 
     def check_pkcs1_private(self):
         """Check PKCS#1 private key format"""
@@ -1100,6 +1166,7 @@ class _TestPublicKey(TempDirTestCase):
         for alg_name, kwargs in self.generate_args:
             with self.subTest(alg_name=alg_name, **kwargs):
                 self.privkey = asyncssh.generate_private_key(alg_name,
+                                                             comment='comment',
                                                              **kwargs)
                 self.privkey.write_private_key('priv', self.base_format)
 
@@ -1114,19 +1181,25 @@ class _TestPublicKey(TempDirTestCase):
                 self.pubca.write_public_key('pubca', self.base_format)
 
                 self.usercert = self.privca.generate_user_certificate(
-                    self.pubkey, 'name')
+                    self.pubkey, 'name', comment='cert_comment')
                 self.usercert.write_certificate('usercert')
 
                 self.hostcert = self.privca.generate_host_certificate(
-                    self.pubkey, 'name')
+                    self.pubkey, 'name', comment=None)
                 self.hostcert.write_certificate('hostcert')
 
                 run('chmod 600 priv privca')
+
+                self.assertEqual(self.privkey.get_algorithm(), alg_name)
+
+                self.assertEqual(self.usercert.get_algorithm(),
+                                 alg_name + '-cert-v01@openssh.com')
 
                 self.check_encode_errors()
                 self.check_decode_errors()
                 self.check_sshkey_base_errors()
                 self.check_sign_and_verify()
+                self.check_comment()
 
                 if 'pkcs1' in self.private_formats:
                     self.check_pkcs1_private()

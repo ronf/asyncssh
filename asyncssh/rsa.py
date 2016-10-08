@@ -33,6 +33,8 @@ class _RSAKey(SSHKey):
     sig_algorithms = (b'rsa-sha2-256', b'rsa-sha2-512', b'ssh-rsa')
 
     def __init__(self, key):
+        super().__init__()
+
         self._key = key
 
     def __eq__(self, other):
@@ -176,6 +178,15 @@ class _RSAKey(SSHKey):
         """Encode an SSH format RSA public key"""
 
         return b''.join((MPInt(self._key.e), MPInt(self._key.n)))
+
+    def encode_agent_cert_private(self):
+        """Encode RSA certificate private key data for agent"""
+
+        if not self._key.d:
+            raise KeyExportError('Key is not private')
+
+        return b''.join((MPInt(self._key.d), MPInt(self._key.iqmp),
+                         MPInt(self._key.p), MPInt(self._key.q)))
 
     def sign(self, data, algorithm):
         """Return a signature of the specified data using this key"""

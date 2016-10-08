@@ -15,25 +15,44 @@
 import asyncio
 import os
 
-from .misc import ChannelOpenError
+import asyncssh
+
+from .misc import ChannelOpenError, load_default_keypairs
 from .packet import Byte, String, UInt32, PacketDecodeError, SSHPacket
 from .public_key import SSHKeyPair
 
 
 # pylint: disable=bad-whitespace
 
-# Generic agent replies
-SSH_AGENT_FAILURE              = 5
+# Client request message numbers
+SSH_AGENTC_REQUEST_IDENTITIES            = 11
+SSH_AGENTC_SIGN_REQUEST                  = 13
+SSH_AGENTC_ADD_IDENTITY                  = 17
+SSH_AGENTC_REMOVE_IDENTITY               = 18
+SSH_AGENTC_REMOVE_ALL_IDENTITIES         = 19
+SSH_AGENTC_ADD_SMARTCARD_KEY             = 20
+SSH_AGENTC_REMOVE_SMARTCARD_KEY          = 21
+SSH_AGENTC_LOCK                          = 22
+SSH_AGENTC_UNLOCK                        = 23
+SSH_AGENTC_ADD_ID_CONSTRAINED            = 25
+SSH_AGENTC_ADD_SMARTCARD_KEY_CONSTRAINED = 26
+SSH_AGENTC_EXTENSION                     = 27
 
-# Protocol 2 key operations
-SSH2_AGENTC_REQUEST_IDENTITIES = 11
-SSH2_AGENT_IDENTITIES_ANSWER   = 12
-SSH2_AGENTC_SIGN_REQUEST       = 13
-SSH2_AGENT_SIGN_RESPONSE       = 14
+# Agent response message numbers
+SSH_AGENT_FAILURE                        = 5
+SSH_AGENT_SUCCESS                        = 6
+SSH_AGENT_IDENTITIES_ANSWER              = 12
+SSH_AGENT_SIGN_RESPONSE                  = 14
+SSH_AGENT_EXTENSION_FAILURE              = 28
+
+# SSH agent constraint numbers
+SSH_AGENT_CONSTRAIN_LIFETIME             = 1
+SSH_AGENT_CONSTRAIN_CONFIRM              = 2
+SSH_AGENT_CONSTRAIN_EXTENSION            = 3
 
 # SSH agent signature flags
-SSH_AGENT_RSA_SHA2_256         = 2
-SSH_AGENT_RSA_SHA2_512         = 4
+SSH_AGENT_RSA_SHA2_256                   = 2
+SSH_AGENT_RSA_SHA2_512                   = 4
 
 # pylint: enable=bad-whitespace
 
@@ -41,11 +60,13 @@ SSH_AGENT_RSA_SHA2_512         = 4
 class _SSHAgentKeyPair(SSHKeyPair):
     """Surrogate for a key managed by the SSH agent"""
 
+    _key_type = 'agent'
+
     def __init__(self, agent, algorithm, public_data, comment):
+        super().__init__(algorithm, comment)
+
         self._agent = agent
-        self.algorithm = algorithm
         self.public_data = public_data
-        self.comment = comment
 
         self._cert = algorithm.endswith(b'-cert-v01@openssh.com')
         self._flags = 0
@@ -86,6 +107,12 @@ class _SSHAgentKeyPair(SSHKeyPair):
         return (yield from self._agent.sign(self.public_data,
                                             data, self._flags))
 
+    @asyncio.coroutine
+    def remove(self):
+        """Remove this key pair from the agent"""
+
+        yield from self._agent.remove_keys([self])
+
 
 class SSHAgentClient:
     """SSH agent client"""
@@ -104,6 +131,20 @@ class SSHAgentClient:
             self._writer.close()
             self._reader = None
             self._writer = None
+
+    @staticmethod
+    def encode_constraints(lifetime, confirm):
+        """Encode key constraints"""
+
+        result = b''
+
+        if lifetime:
+            result += Byte(SSH_AGENT_CONSTRAIN_LIFETIME) + UInt32(lifetime)
+
+        if confirm:
+            result += Byte(SSH_AGENT_CONSTRAIN_CONFIRM)
+
+        return result
 
     @asyncio.coroutine
     def connect(self):
@@ -156,9 +197,9 @@ class SSHAgentClient:
         """
 
         resptype, resp = \
-            yield from self._make_request(SSH2_AGENTC_REQUEST_IDENTITIES)
+            yield from self._make_request(SSH_AGENTC_REQUEST_IDENTITIES)
 
-        if resptype == SSH2_AGENT_IDENTITIES_ANSWER:
+        if resptype == SSH_AGENT_IDENTITIES_ANSWER:
             result = []
 
             num_keys = resp.get_uint32()
@@ -179,19 +220,253 @@ class SSHAgentClient:
 
     @asyncio.coroutine
     def sign(self, key_blob, data, flags=0):
-        """Sign a block of data with this private key"""
+        """Sign a block of data with the requested key"""
 
         resptype, resp = \
-            yield from self._make_request(SSH2_AGENTC_SIGN_REQUEST,
+            yield from self._make_request(SSH_AGENTC_SIGN_REQUEST,
                                           String(key_blob), String(data),
                                           UInt32(flags))
 
-        if resptype == SSH2_AGENT_SIGN_RESPONSE:
+        if resptype == SSH_AGENT_SIGN_RESPONSE:
             sig = resp.get_string()
             resp.check_end()
             return sig
         elif resptype == SSH_AGENT_FAILURE:
-            raise ValueError('Unknown key passed to SSH agent')
+            raise ValueError('Unable to sign with requested key')
+        else:
+            raise ValueError('Unknown SSH agent response: %d' % resptype)
+
+    @asyncio.coroutine
+    def add_keys(self, keylist=(), passphrase=None,
+                 lifetime=None, confirm=False):
+        """Add keys to the agent
+
+           This method adds a list of local private keys and optional
+           matching certificates to the agent.
+
+           :param keylist: (optional)
+               The list of keys to add. If not specified, an attempt will
+               be made to load keys from the files :file:`.ssh/id_ed25519`,
+               :file:`.ssh/id_ecdsa`, :file:`.ssh/id_rsa` and
+               :file:`.ssh/id_dsa` in the user's home directory with
+               optional matching certificates loaded from the files
+               :file:`.ssh/id_ed25519-cert.pub`,
+               :file:`.ssh/id_ecdsa-cert.pub`, :file:`.ssh/id_rsa-cert.pub`,
+               and :file:`.ssh/id_dsa-cert.pub`.
+           :param str passphrase: (optional)
+               The passphrase to use to decrypt the keys.
+           :param lifetime: (optional)
+               The time in seconds after which the keys should be
+               automatically deleted, or ``None`` to store these keys
+               indefinitely (the default).
+           :param bool confirm: (optional)
+               Whether or not to require confirmation for each private
+               key operation which uses these keys, defaulting to ``False``.
+           :type keylist: *see* :ref:`SpecifyingPrivateKeys`
+           :type lifetime: `int` or ``None``
+
+           :raises: ::exc::`ValueError` if the keys cannot be added
+
+        """
+
+        if keylist:
+            keypairs = asyncssh.load_keypairs(keylist, passphrase)
+        else:
+            keypairs = load_default_keypairs(passphrase)
+
+        constraints = self.encode_constraints(lifetime, confirm)
+        msgtype = SSH_AGENTC_ADD_ID_CONSTRAINED if constraints else \
+                      SSH_AGENTC_ADD_IDENTITY
+
+        for keypair in keypairs:
+            comment = keypair.get_comment()
+            resptype, resp = \
+                yield from self._make_request(msgtype,
+                                              keypair.get_agent_private_key(),
+                                              String(comment or ''),
+                                              constraints)
+
+            if resptype == SSH_AGENT_SUCCESS:
+                resp.check_end()
+            elif resptype == SSH_AGENT_FAILURE:
+                raise ValueError('Unable to add key')
+            else:
+                raise ValueError('Unknown SSH agent response: %d' % resptype)
+
+    @asyncio.coroutine
+    def add_smartcard_keys(self, provider, pin=None,
+                           lifetime=None, confirm=False):
+        """Store keys associated with a smart card in the agent
+
+           :param str provider:
+               The name of the smart card provider
+           :param pin: (optional)
+               The PIN to use to unlock the smart card
+           :param lifetime: (optional)
+               The time in seconds after which the keys should be
+               automatically deleted, or ``None`` to store these keys
+               indefinitely (the default).
+           :param bool confirm: (optional)
+               Whether or not to require confirmation for each private
+               key operation which uses these keys, defaulting to ``False``.
+           :type pin: `str` or ``None``
+           :type lifetime: `int` or ``None``
+
+           :raises: ::exc::`ValueError` if the keys cannot be added
+
+        """
+
+        constraints = self.encode_constraints(lifetime, confirm)
+        msgtype = SSH_AGENTC_ADD_SMARTCARD_KEY_CONSTRAINED \
+                      if constraints else SSH_AGENTC_ADD_SMARTCARD_KEY
+
+        resptype, resp = \
+            yield from self._make_request(msgtype, String(provider),
+                                          String(pin or ''), constraints)
+
+        if resptype == SSH_AGENT_SUCCESS:
+            resp.check_end()
+        elif resptype == SSH_AGENT_FAILURE:
+            raise ValueError('Unable to add keys')
+        else:
+            raise ValueError('Unknown SSH agent response: %d' % resptype)
+
+    @asyncio.coroutine
+    def remove_keys(self, keylist):
+        """Remove a key stored in the agent
+
+           :param keylist:
+               The list of keys to remove.
+           :type keylist: list of :class:`SSHKeyPair`
+
+           :raises: ::exc::`ValueError` if any keys are not found
+
+        """
+
+        for keypair in keylist:
+            resptype, resp = \
+                yield from self._make_request(SSH_AGENTC_REMOVE_IDENTITY,
+                                              String(keypair.public_data))
+
+            if resptype == SSH_AGENT_SUCCESS:
+                resp.check_end()
+            elif resptype == SSH_AGENT_FAILURE:
+                raise ValueError('Key not found')
+            else:
+                raise ValueError('Unknown SSH agent response: %d' % resptype)
+
+    @asyncio.coroutine
+    def remove_smartcard_keys(self, provider, pin=None):
+        """Remove keys associated with a smart card stored in the agent
+
+           :param str provider:
+               The name of the smart card provider
+           :param pin: (optional)
+               The PIN to use to unlock the smart card
+           :type pin: `str` or ``None``
+
+           :raises: ::exc::`ValueError` if the keys are not found
+
+        """
+
+        resptype, resp = \
+            yield from self._make_request(SSH_AGENTC_REMOVE_SMARTCARD_KEY,
+                                          String(provider), String(pin or ''))
+
+        if resptype == SSH_AGENT_SUCCESS:
+            resp.check_end()
+        elif resptype == SSH_AGENT_FAILURE:
+            raise ValueError('Keys not found')
+        else:
+            raise ValueError('Unknown SSH agent response: %d' % resptype)
+
+    @asyncio.coroutine
+    def remove_all(self):
+        """Remove all keys stored in the agent
+
+           :raises: ::exc::`ValueError` if the keys can't be removed
+
+        """
+
+        resptype, resp = \
+            yield from self._make_request(SSH_AGENTC_REMOVE_ALL_IDENTITIES)
+
+        if resptype == SSH_AGENT_SUCCESS:
+            resp.check_end()
+        elif resptype == SSH_AGENT_FAILURE:
+            raise ValueError('Unable to remove all keys')
+        else:
+            raise ValueError('Unknown SSH agent response: %d' % resptype)
+
+    @asyncio.coroutine
+    def lock(self, passphrase):
+        """Lock the agent using the specified passphrase
+
+           :param str passphrase:
+               The passphrase required to later unlock the agent
+
+           :raises: ::exc::`ValueError` if the agent can't be locked
+
+        """
+
+        resptype, resp = yield from self._make_request(SSH_AGENTC_LOCK,
+                                                       String(passphrase))
+
+        if resptype == SSH_AGENT_SUCCESS:
+            resp.check_end()
+        elif resptype == SSH_AGENT_FAILURE:
+            raise ValueError('Unable to lock SSH agent')
+        else:
+            raise ValueError('Unknown SSH agent response: %d' % resptype)
+
+    @asyncio.coroutine
+    def unlock(self, passphrase):
+        """Unlock the agent using the specified passphrase
+
+           :param str passphrase:
+               The passphrase to use to unlock the agent
+
+           :raises: ::exc::`ValueError` if the agent can't be unlocked
+
+        """
+
+        resptype, resp = yield from self._make_request(SSH_AGENTC_UNLOCK,
+                                                       String(passphrase))
+
+        if resptype == SSH_AGENT_SUCCESS:
+            resp.check_end()
+        elif resptype == SSH_AGENT_FAILURE:
+            raise ValueError('Unable to unlock SSH agent')
+        else:
+            raise ValueError('Unknown SSH agent response: %d' % resptype)
+
+    @asyncio.coroutine
+    def query_extensions(self):
+        """Return a list of extensions supported by the agent
+
+           :returns: A list of strings of supported extension names
+
+        """
+
+        resptype, resp = yield from self._make_request(SSH_AGENTC_EXTENSION,
+                                                       String('query'))
+
+        if resptype == SSH_AGENT_SUCCESS:
+            result = []
+
+            while resp:
+                exttype = resp.get_string()
+
+                try:
+                    exttype = exttype.decode('utf-8')
+                except UnicodeDecodeError:
+                    raise ValueError('Invalid extension type name')
+
+                result.append(exttype)
+
+            return result
+        elif resptype == SSH_AGENT_FAILURE:
+            return []
         else:
             raise ValueError('Unknown SSH agent response: %d' % resptype)
 

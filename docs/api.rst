@@ -950,14 +950,13 @@ Public Key Support
 AsyncSSH has extensive public key and certificate support.
 
 Supported public key types include DSA, RSA, and ECDSA. In addition,
-ed25519 keys are supported if the libnacl package and libsodium library
+Ed25519 keys are supported if the libnacl package and libsodium library
 are installed.
 
-Supported certificate types include version 00 certificates for DSA and
-RSA keys and version 01 certificates for DSA, RSA, ECDSA, and ed25519
-keys. Support is also available for the certificate critical options of
-force-command and source-address and the extensions permit-pty and
-permit-port-forwarding.
+Supported certificate types include OpenSSH version 01 certificates for
+DSA, RSA, ECDSA, and Ed25519 keys. Support is also available for the
+certificate critical options of force-command and source-address and
+the extensions permit-pty and permit-port-forwarding.
 
 Several public key and certificate formats are supported including
 PKCS#1 and PKCS#8 DER and PEM, OpenSSH, and RFC4716 formats.
@@ -972,33 +971,26 @@ Specifying private keys
 -----------------------
 
 Private keys may be passed into AsyncSSH in a variety of forms. The
-simplest option is to pass the name of a file containing the list of
-private keys to read in using :func:`read_private_key_list`. However,
-this form can only be used for unencrypted private keys and does not
-allow any of the private keys to have associated certificates.
+simplest option is to pass the name of a file to read one or more
+private keys from.
 
 An alternate form involves passing in a list of values which can be
 either a reference to a private key or a tuple containing a reference
 to a private key and a reference to a matching certificate.
 
 Key references can either be the name of a file to load a key from,
-a byte string to import it from, or an already loaded :class:`SSHKey`
+a byte string to import as a key, or an already loaded :class:`SSHKey`
 private key. See the function :func:`import_private_key` for the list
 of supported private key formats.
 
-Certificate references can be the name of a file to load the
-certificate from, a byte string to import it from, an already loaded
+Certificate references can be the name of a file to load the certificate
+from, a byte string to import as a certificate, an already loaded
 :class:`SSHCertificate`, or ``None`` if no certificate should be
 associated with the key.
 
-When a filename is provided as a value in the list, an attempt is
-made to load a private key from that file and a certificate from a
-file constructed by appending '-cert.pub' to the end of the name.
-
-Encrypted private keys can be loaded by making an explicit call to
-:func:`import_private_key` or :func:`read_private_key` with the
-correct passphrase. The resulting :class:`SSHKey` objects can then
-be included in the list, each with an optional matching certificate.
+Whenever a filename is provided, an attempt is made to load a
+corresponding certificate from a file constructed by appending
+'-cert.pub' to the end of the name.
 
 New private keys can be generated using the :func:`generate_private_key`
 function. The resulting :class:`SSHKey` objects have methods which can
@@ -1012,8 +1004,8 @@ Specifying public keys
 ----------------------
 
 Public keys may be passed into AsyncSSH in a variety of forms. The
-simplest option is to pass the name of a file containing the list of
-public keys to read in using :func:`read_public_key_list`.
+simplest option is to pass the name of a file to read one or more
+public keys from.
 
 An alternate form involves passing in a list of values each of which
 can be either the name of a file to load a key from, a byte string
@@ -1052,6 +1044,9 @@ SSHKey
 .. autoclass:: SSHKey()
 
    ========================================= =
+   .. automethod:: get_algorithm
+   .. automethod:: get_comment
+   .. automethod:: set_comment
    .. automethod:: convert_to_public
    .. automethod:: generate_user_certificate
    .. automethod:: generate_host_certificate
@@ -1066,7 +1061,13 @@ SSHKeyPair
 
 .. autoclass:: SSHKeyPair()
 
+   ============================= =
+   .. automethod:: get_key_type
+   .. automethod:: get_algorithm
+   .. automethod:: get_comment
+   .. automethod:: set_comment
    .. automethod:: sign
+   ============================= =
 
 SSHCertificate
 --------------
@@ -1074,6 +1075,9 @@ SSHCertificate
 .. autoclass:: SSHCertificate()
 
    ================================== =
+   .. automethod:: get_algorithm
+   .. automethod:: get_comment
+   .. automethod:: set_comment
    .. automethod:: export_certificate
    .. automethod:: write_certificate
    .. automethod:: validate
@@ -1129,25 +1133,15 @@ read_certificate_list
 
 .. autofunction:: read_certificate_list
 
-load_keypair
-------------
+load_keypairs
+-------------
 
-.. autofunction:: load_keypair
+.. autofunction:: load_keypairs
 
-load_keypair_list
------------------
+load_public_keys
+----------------
 
-.. autofunction:: load_keypair_list
-
-load_public_key
----------------
-
-.. autofunction:: load_public_key
-
-load_public_key_list
---------------------
-
-.. autofunction:: load_public_key_list
+.. autofunction:: load_public_keys
 
 .. index:: SSH agent support
 
@@ -1159,10 +1153,32 @@ SSHAgentClient
 
 .. autoclass:: SSHAgentClient()
 
-   ======================== =
+   ===================================== =
    .. automethod:: get_keys
+   .. automethod:: add_keys
+   .. automethod:: add_smartcard_keys
+   .. automethod:: remove_keys
+   .. automethod:: remove_smartcard_keys
+   .. automethod:: remove_all
+   .. automethod:: lock
+   .. automethod:: unlock
+   .. automethod:: query_extensions
    .. automethod:: close
-   ======================== =
+   ===================================== =
+
+SSHAgentKeyPair
+---------------
+
+.. autoclass:: SSHAgentKeyPair()
+
+   ============================= =
+   .. automethod:: get_key_type
+   .. automethod:: get_algorithm
+   .. automethod:: get_comment
+   .. automethod:: set_comment
+   .. automethod:: sign
+   .. automethod:: remove
+   ============================= =
 
 connect_agent
 -------------

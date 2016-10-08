@@ -38,6 +38,8 @@ class _ECKey(SSHKey):
     pkcs8_oid = ObjectIdentifier('1.2.840.10045.2.1')
 
     def __init__(self, key):
+        super().__init__()
+
         self.algorithm = b'ecdsa-sha2-' + key.curve_id
         self.sig_algorithms = (self.algorithm,)
         self._alg_oid = _alg_oids[key.curve_id]
@@ -247,6 +249,14 @@ class _ECKey(SSHKey):
 
         return b''.join((String(self._key.curve_id),
                          String(self._key.public_value)))
+
+    def encode_agent_cert_private(self):
+        """Encode ECDSA certificate private key data for agent"""
+
+        if not self._key.d:
+            raise KeyExportError('Key is not private')
+
+        return MPInt(self._key.d)
 
     def sign(self, data, algorithm):
         """Return a signature of the specified data using this key"""

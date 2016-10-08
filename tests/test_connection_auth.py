@@ -72,8 +72,8 @@ class _PublicKeyServer(Server):
         if self._authorized_keys:
             self._conn.set_authorized_keys(self._authorized_keys)
         else:
-            self._client_keys = asyncssh.load_public_key_list(['ckey_dsa.pub',
-                                                               'ckey.pub'])
+            self._client_keys = asyncssh.load_public_keys(['ckey_dsa.pub',
+                                                           'ckey.pub'])
 
         return True
 
@@ -432,10 +432,10 @@ class _TestPublicKeyAuth(ServerTestCase):
     def test_client_key_keypairs(self):
         """Test client keys passed in as a list of SSHKeyPairs"""
 
-        ckey = asyncssh.load_keypair('ckey')
+        keys = asyncssh.load_keypairs('ckey')
 
         with (yield from self.connect(username='ckey',
-                                      client_keys=[ckey])) as conn:
+                                      client_keys=keys)) as conn:
             pass
 
         yield from conn.wait_closed()

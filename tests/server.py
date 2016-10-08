@@ -131,11 +131,14 @@ class ServerTestCase(AsyncTestCase):
                                                       cls._server_port))
         run('cat skey.pub >> .ssh/known_hosts')
 
-        output = run('ssh-agent -a agent')
+        output = run('ssh-agent -a agent 2>/dev/null')
         cls._agent_pid = int(output.splitlines()[2].split()[3][:-1])
 
         os.environ['SSH_AUTH_SOCK'] = 'agent'
-        run('ssh-add ckey_dsa ckey')
+
+        agent = yield from asyncssh.connect_agent()
+        yield from agent.add_keys([ckey_dsa, (ckey, ckey_cert)])
+        agent.close()
 
         os.environ['LOGNAME'] = 'guest'
         os.environ['HOME'] = '.'

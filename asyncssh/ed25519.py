@@ -27,6 +27,8 @@ class _Ed25519Key(SSHKey):
     sig_algorithms = (b'ssh-ed25519',)
 
     def __init__(self, vk, sk):
+        super().__init__()
+
         self._vk = vk
         self._sk = sk
 
@@ -89,6 +91,11 @@ class _Ed25519Key(SSHKey):
         """Encode an SSH format Ed25519 public key"""
 
         return String(self._vk)
+
+    def encode_agent_cert_private(self):
+        """Encode Ed25519 certificate private key data for agent"""
+
+        return self.encode_ssh_private()
 
     def sign(self, data, algorithm):
         """Return a signature of the specified data using this key"""

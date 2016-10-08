@@ -76,18 +76,17 @@ from .mac import get_mac_algs, get_mac_params, get_mac
 
 from .misc import ChannelOpenError, DisconnectError, PasswordChangeRequired
 from .misc import async_context_manager, ensure_future, ip_address
-from .misc import map_handler_name
+from .misc import load_default_keypairs, map_handler_name
 
 from .packet import Boolean, Byte, NameList, String, UInt32, UInt64
 from .packet import PacketDecodeError, SSHPacket, SSHPacketHandler
 
 from .process import PIPE, SSHClientProcess
 
-from .public_key import CERT_TYPE_HOST, CERT_TYPE_USER
+from .public_key import CERT_TYPE_HOST, CERT_TYPE_USER, KeyImportError
 from .public_key import get_public_key_algs, get_certificate_algs
 from .public_key import decode_ssh_public_key, decode_ssh_certificate
-from .public_key import load_keypair, load_keypair_list, load_public_key_list
-from .public_key import KeyImportError
+from .public_key import load_keypairs, load_public_keys
 
 from .saslprep import saslprep, SASLPrepError
 
@@ -106,9 +105,6 @@ _DEFAULT_PORT = 22
 # SSH service names
 _USERAUTH_SERVICE = b'ssh-userauth'
 _CONNECTION_SERVICE = b'ssh-connection'
-
-# Default file names in .ssh directory to read private keys from
-_DEFAULT_KEY_FILES = ('id_ed25519', 'id_ecdsa', 'id_rsa', 'id_dsa')
 
 # Default rekey parameters
 _DEFAULT_REKEY_BYTES = 1 << 30      # 1 GiB
@@ -1908,9 +1904,9 @@ class SSHClientConnection(SSHConnection):
                 server_host_keys, server_ca_keys, revoked_server_keys = \
                     self._known_hosts
 
-                server_host_keys = load_public_key_list(server_host_keys)
-                server_ca_keys = load_public_key_list(server_ca_keys)
-                revoked_server_keys = load_public_key_list(revoked_server_keys)
+                server_host_keys = load_public_keys(server_host_keys)
+                server_ca_keys = load_public_keys(server_ca_keys)
+                revoked_server_keys = load_public_keys(revoked_server_keys)
 
             self._server_host_keys = set()
             self._server_host_key_algs = []
@@ -2020,18 +2016,18 @@ class SSHClientConnection(SSHConnection):
         """Return a client key pair to authenticate with"""
 
         while True:
-            if self._client_keys:
-                keypair = self._client_keys.pop(0)
-            else:
+            if not self._client_keys:
                 result = self._owner.public_key_auth_requested()
 
                 if asyncio.iscoroutine(result):
                     result = yield from result
 
-                keypair = load_keypair(result)
+                if not result:
+                    return None
 
-            if keypair is None:
-                return None
+                self._client_keys = load_keypairs(result)
+
+            keypair = self._client_keys.pop(0)
 
             if self._server_sig_algs:
                 for alg in keypair.sig_algorithms:
@@ -4083,7 +4079,7 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
         agent_path = os.environ.get('SSH_AUTH_SOCK', None)
 
     if client_keys:
-        client_keys = load_keypair_list(client_keys, passphrase)
+        client_keys = load_keypairs(client_keys, passphrase)
     elif client_keys is ():
         if agent_path:
             agent = yield from connect_agent(agent_path)
@@ -4094,15 +4090,7 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
                 agent_path = None
 
         if not client_keys:
-            client_keys = []
-
-            for file in _DEFAULT_KEY_FILES:
-                try:
-                    file = os.path.join(os.path.expanduser('~'), '.ssh', file)
-                    key = load_keypair_list([file], passphrase)
-                    client_keys.extend(key)
-                except OSError:
-                    pass
+            client_keys = load_default_keypairs()
 
     if not agent_forwarding:
         agent_path = None
@@ -4293,7 +4281,7 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
         _validate_algs(kex_algs, encryption_algs, mac_algs,
                        compression_algs, signature_algs)
 
-    server_keys = load_keypair_list(server_host_keys, passphrase)
+    server_keys = load_keypairs(server_host_keys, passphrase)
 
     if not server_keys:
         raise ValueError('No server host keys provided')

@@ -33,6 +33,8 @@ class _DSAKey(SSHKey):
     sig_algorithms = (b'ssh-dss',)
 
     def __init__(self, key):
+        super().__init__()
+
         self._key = key
 
     def __eq__(self, other):
@@ -189,6 +191,14 @@ class _DSAKey(SSHKey):
 
         return b''.join((MPInt(self._key.p), MPInt(self._key.q),
                          MPInt(self._key.g), MPInt(self._key.y)))
+
+    def encode_agent_cert_private(self):
+        """Encode DSA certificate private key data for agent"""
+
+        if not self._key.x:
+            raise KeyExportError('Key is not private')
+
+        return MPInt(self._key.x)
 
     def sign(self, data, algorithm):
         """Return a signature of the specified data using this key"""
