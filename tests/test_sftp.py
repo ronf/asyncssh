@@ -341,7 +341,7 @@ class _AsyncSFTPServer(SFTPServer):
 class _CheckSFTP(ServerTestCase):
     """Utility functions for AsyncSSH SFTP unit tests"""
 
-    def _create_file(self, name, data=(), mode=None):
+    def _create_file(self, name, data=(), mode=None, utime=None):
         """Create a test file"""
 
         if data is ():
@@ -352,6 +352,9 @@ class _CheckSFTP(ServerTestCase):
 
         if mode is not None:
             os.chmod(name, mode)
+
+        if utime is not None:
+            os.utime(name, utime)
 
     def _check_attr(self, name1, name2, follow_symlinks=False):
         """Check if attributes on two files are equal"""
@@ -424,7 +427,7 @@ class _TestSFTP(_CheckSFTP):
         for method in ('get', 'put', 'copy'):
             with self.subTest(method=method):
                 try:
-                    self._create_file('src', mode=0o400)
+                    self._create_file('src', mode=0o400, utime=(1, 2))
                     yield from getattr(sftp, method)('src', 'dst',
                                                      preserve=True)
                     self._check_file('src', 'dst', preserve=True)

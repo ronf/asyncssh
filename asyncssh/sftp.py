@@ -1617,6 +1617,8 @@ class SFTPClient:
                                                   dstpath, srcattrs.size)
 
             if preserve:
+                srcattrs = yield from srcfs.stat(srcpath)
+
                 yield from dstfs.setstat(
                     dstpath, SFTPAttrs(permissions=srcattrs.permissions,
                                        atime=srcattrs.atime,
