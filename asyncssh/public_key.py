@@ -1074,31 +1074,6 @@ class SSHKeyPair:
        algorithm and public key or certificate information needed to
        identify what key was used for signing.
 
-       .. attribute:: algorithm
-
-          The public key or certificate algorithm associated with this
-          key pair.
-
-       .. attribute:: sig_algorithm
-
-          The public key signature algorithm currently associated with
-          this key pair.
-
-       .. attribute:: host_key_algorithms
-
-          The list of host key algorithms this key pair is capable of
-          supporting.
-
-       .. attribute:: sig_algorithms
-
-          The list of signature algorithms this key pair is capable of
-          supporting.
-
-       .. attribute:: public_data
-
-          The public key or certificate associated with this key pair
-          in OpenSSH binary format.
-
     """
 
     _key_type = 'unknown'
