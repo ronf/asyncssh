@@ -265,7 +265,7 @@ class SSHAgentClient:
            :type keylist: *see* :ref:`SpecifyingPrivateKeys`
            :type lifetime: `int` or ``None``
 
-           :raises: ::exc::`ValueError` if the keys cannot be added
+           :raises: :exc:`ValueError` if the keys cannot be added
 
         """
 
@@ -312,7 +312,7 @@ class SSHAgentClient:
            :type pin: `str` or ``None``
            :type lifetime: `int` or ``None``
 
-           :raises: ::exc::`ValueError` if the keys cannot be added
+           :raises: :exc:`ValueError` if the keys cannot be added
 
         """
 
@@ -339,7 +339,7 @@ class SSHAgentClient:
                The list of keys to remove.
            :type keylist: list of :class:`SSHKeyPair`
 
-           :raises: ::exc::`ValueError` if any keys are not found
+           :raises: :exc:`ValueError` if any keys are not found
 
         """
 
@@ -365,7 +365,7 @@ class SSHAgentClient:
                The PIN to use to unlock the smart card
            :type pin: `str` or ``None``
 
-           :raises: ::exc::`ValueError` if the keys are not found
+           :raises: :exc:`ValueError` if the keys are not found
 
         """
 
@@ -384,7 +384,7 @@ class SSHAgentClient:
     def remove_all(self):
         """Remove all keys stored in the agent
 
-           :raises: ::exc::`ValueError` if the keys can't be removed
+           :raises: :exc:`ValueError` if the keys can't be removed
 
         """
 
@@ -405,7 +405,7 @@ class SSHAgentClient:
            :param str passphrase:
                The passphrase required to later unlock the agent
 
-           :raises: ::exc::`ValueError` if the agent can't be locked
+           :raises: :exc:`ValueError` if the agent can't be locked
 
         """
 
@@ -426,7 +426,7 @@ class SSHAgentClient:
            :param str passphrase:
                The passphrase to use to unlock the agent
 
-           :raises: ::exc::`ValueError` if the agent can't be unlocked
+           :raises: :exc:`ValueError` if the agent can't be unlocked
 
         """
 
@@ -474,7 +474,7 @@ class SSHAgentClient:
         """Close the SSH agent connection
 
            This method closes the connection to the ssh-agent. Any
-           attempts to use this :class:``SSHAgentClient`` or the key
+           attempts to use this :class:`SSHAgentClient` or the key
            pairs it previously returned will result in an error.
 
         """

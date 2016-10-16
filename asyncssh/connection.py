@@ -2970,7 +2970,7 @@ class SSHServerConnection(SSHConnection):
        :class:`SSHServer` objects wishing to create UNIX domain socket
        connection objects with non-default channel properties can call
        :meth:`create_unix_channel` from the :meth:`unix_connection_requested()
-       <SSHServer.unix_connection_requested>' method and return a tuple of
+       <SSHServer.unix_connection_requested>` method and return a tuple of
        the :class:`SSHUNIXChannel` object returned from that and either
        an :class:`SSHUNIXSession` object or a coroutine which returns an
        :class:`SSHUNIXSession`.

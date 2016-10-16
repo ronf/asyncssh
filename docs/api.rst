@@ -59,7 +59,7 @@ and :class:`SSHWriter` objects in a callback when new connections are opened.
 SSH client sessions can also be opened by calling :meth:`create_process()
 <SSHClientConnection.create_process>`. This returns a :class:`SSHClientProcess`
 object which has members ``stdin``, ``stdout``, and ``stderr`` which are
-:class:``SSHReader`` and :class:``SSHWriter`` objects. This API also makes
+:class:`SSHReader` and :class:`SSHWriter` objects. This API also makes
 it very easy to redirect input and output from the remote process to local
 files, pipes, sockets, or other :class:`SSHReader` and :class:`SSHWriter`
 objects. In cases where you just want to run a remote process to completion
