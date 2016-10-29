@@ -5,7 +5,7 @@ install:
 
 matrix:
   allow_failures:
-    - python: nightly
+    - python: 3.6-dev
   fast_finish: true
   include:
     - os: linux
@@ -27,7 +27,7 @@ matrix:
     - os: linux
       sudo: required
       dist: trusty
-      python: nightly
+      python: 3.6-dev
       before_install:
         - .travis/build-libsodium.sh
       env:
