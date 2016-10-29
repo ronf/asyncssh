@@ -3,6 +3,17 @@
 Change Log
 ==========
 
+Release 1.7.2 (28 Oct 2016)
+---------------------------
+
+* Fixed an issue with preserving file access times in SFTP, and update
+  the unit tests to more accurate detect this kind of failure.
+
+* Fixed some markup errors in the documentation.
+
+* Fixed a small error in the change log for release 1.7.0 regarding
+  the newly added Diffie Hellman key exchange algorithms.
+
 Release 1.7.1 (7 Oct 2016)
 --------------------------
 
