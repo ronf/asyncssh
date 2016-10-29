@@ -12,8 +12,8 @@ Release 1.7.1 (7 Oct 2016)
 Release 1.7.0 (7 Oct 2016)
 --------------------------
 
-* Added support for group 14 and group 16 Diffie Hellman key exchange
-  algorithms.
+* Added support for group 14, 16, and 18 Diffie Hellman key exchange
+  algorithms which use SHA-256 and SHA-512.
 
 * Added support for using SHA-256 and SHA-512 based signature algorithms
   for RSA keys and support for OpenSSH extension negotiation to advertise
