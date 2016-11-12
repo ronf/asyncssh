@@ -16,7 +16,7 @@ import asyncio
 
 from hashlib import sha1
 
-from .util import asynctest, run, ConnectionStub, AsyncTestCase
+import asyncssh
 
 from asyncssh.dh import MSG_KEXDH_INIT, MSG_KEXDH_REPLY
 from asyncssh.dh import _KexDHGex, MSG_KEX_DH_GEX_GROUP
@@ -25,8 +25,9 @@ from asyncssh.ecdh import MSG_KEX_ECDH_INIT, MSG_KEX_ECDH_REPLY
 from asyncssh.kex import register_kex_alg, get_kex_algs, get_kex
 from asyncssh.misc import DisconnectError
 from asyncssh.packet import SSHPacket, Byte, MPInt, String
-from asyncssh.public_key import decode_ssh_public_key, read_private_key
-from asyncssh.public_key import SSHLocalKeyPair
+from asyncssh.public_key import SSHLocalKeyPair, decode_ssh_public_key
+
+from .util import asynctest, ConnectionStub, AsyncTestCase
 
 # Short variable names are used here, matching names in the specs
 # pylint: disable=invalid-name
@@ -136,8 +137,7 @@ class _KexServerStub(_KexConnectionStub):
     def __init__(self, alg, peer):
         super().__init__(alg, peer, True)
 
-        run('openssl genrsa -out priv 2048')
-        priv_key = read_private_key('priv')
+        priv_key = asyncssh.generate_private_key('ssh-rsa')
         self._server_host_key = SSHLocalKeyPair(priv_key)
 
     def get_server_host_key(self):
