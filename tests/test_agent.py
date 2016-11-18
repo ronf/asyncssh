@@ -16,6 +16,8 @@ import asyncio
 import functools
 import os
 import signal
+import subprocess
+import unittest
 
 import asyncssh
 
@@ -105,7 +107,12 @@ class _TestAPI(AsyncTestCase):
         os.environ['DISPLAY'] = ''
         os.environ['HOME'] = '.'
         os.environ['SSH_ASKPASS'] = os.path.join(os.getcwd(), 'ssh-askpass')
-        output = run('ssh-agent -a agent 2>/dev/null')
+
+        try:
+            output = run('ssh-agent -a agent 2>/dev/null')
+        except subprocess.CalledProcessError:
+            raise unittest.SkipTest('ssh-agent not available')
+
         cls._agent_pid = int(output.splitlines()[2].split()[3][:-1])
         os.environ['SSH_AUTH_SOCK'] = 'agent'
 
