@@ -16,13 +16,13 @@ import asyncio
 import functools
 import os
 import signal
-import subprocess
-import unittest
 
 import asyncssh
 
 from asyncssh.agent import SSH_AGENT_SUCCESS, SSH_AGENT_FAILURE
 from asyncssh.packet import Byte, String
+from subprocess import CalledProcessError
+from unittest import SkipTest
 
 from .util import AsyncTestCase, asynctest, libnacl_available, run
 
@@ -110,8 +110,8 @@ class _TestAPI(AsyncTestCase):
 
         try:
             output = run('ssh-agent -a agent 2>/dev/null')
-        except subprocess.CalledProcessError:
-            raise unittest.SkipTest('ssh-agent not available')
+        except CalledProcessError:
+            raise SkipTest('ssh-agent not available')
 
         cls._agent_pid = int(output.splitlines()[2].split()[3][:-1])
         os.environ['SSH_AUTH_SOCK'] = 'agent'
