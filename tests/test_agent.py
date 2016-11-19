@@ -110,7 +110,7 @@ class _TestAPI(AsyncTestCase):
 
         try:
             output = run('ssh-agent -a agent 2>/dev/null')
-        except subprocess.CalledProcessError:
+        except subprocess.CalledProcessError: # pragma: no cover
             raise unittest.SkipTest('ssh-agent not available')
 
         cls._agent_pid = int(output.splitlines()[2].split()[3][:-1])

@@ -15,6 +15,8 @@
 import asyncio
 import os
 import signal
+import subprocess
+import unittest
 
 import asyncssh
 from asyncssh.misc import async_context_manager
@@ -131,17 +133,21 @@ class ServerTestCase(AsyncTestCase):
                                                       cls._server_port))
         run('cat skey.pub >> .ssh/known_hosts')
 
-        output = run('ssh-agent -a agent 2>/dev/null')
-        cls._agent_pid = int(output.splitlines()[2].split()[3][:-1])
-
-        os.environ['SSH_AUTH_SOCK'] = 'agent'
-
-        agent = yield from asyncssh.connect_agent()
-        yield from agent.add_keys([ckey_dsa, (ckey, ckey_cert)])
-        agent.close()
-
         os.environ['LOGNAME'] = 'guest'
         os.environ['HOME'] = '.'
+
+        try:
+            output = run('ssh-agent -a agent 2>/dev/null')
+        except subprocess.CalledProcessError: # pragma: no cover
+            cls._agent_pid = None
+        else:
+            cls._agent_pid = int(output.splitlines()[2].split()[3][:-1])
+
+            os.environ['SSH_AUTH_SOCK'] = 'agent'
+
+            agent = yield from asyncssh.connect_agent()
+            yield from agent.add_keys([ckey_dsa, (ckey, ckey_cert)])
+            agent.close()
 
     @classmethod
     @asyncio.coroutine
@@ -154,9 +160,15 @@ class ServerTestCase(AsyncTestCase):
         cls._server.close()
         yield from cls._server.wait_closed()
 
-        os.kill(cls._agent_pid, signal.SIGTERM)
+        if cls._agent_pid: # pragma: no branch
+            os.kill(cls._agent_pid, signal.SIGTERM)
 
     # pylint: enable=invalid-name
+
+    def agent_available(self):
+        """Return whether SSH agent is available"""
+
+        return bool(self._agent_pid)
 
     @asyncio.coroutine
     def create_connection(self, client_factory, loop=(), **kwargs):

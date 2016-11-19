@@ -320,6 +320,9 @@ class _TestPublicKeyAuth(ServerTestCase):
     def test_agent_auth(self):
         """Test connecting with ssh-agent authentication"""
 
+        if not self.agent_available(): # pragma: no cover
+            self.skipTest('ssh-agent not available')
+
         with (yield from self.connect(username='ckey')) as conn:
             pass
 
@@ -328,6 +331,9 @@ class _TestPublicKeyAuth(ServerTestCase):
     @asynctest
     def test_agent_signature_algs(self):
         """Test ssh-agent keys with specific signature algorithms"""
+
+        if not self.agent_available(): # pragma: no cover
+            self.skipTest('ssh-agent not available')
 
         for alg in ('ssh-rsa', 'rsa-sha2-256', 'rsa-sha2-512'):
             with (yield from self.connect(username='ckey',
@@ -339,6 +345,9 @@ class _TestPublicKeyAuth(ServerTestCase):
     @asynctest
     def test_agent_auth_failure(self):
         """Test failure connecting with ssh-agent authentication"""
+
+        if not self.agent_available(): # pragma: no cover
+            self.skipTest('ssh-agent not available')
 
         with patch.dict(os.environ, HOME='xxx'):
             with self.assertRaises(asyncssh.DisconnectError):
@@ -388,7 +397,8 @@ class _TestPublicKeyAuth(ServerTestCase):
 
         with patch('asyncssh.connection.SSHConnection._get_ext_info_kex_alg',
                    skip_ext_info):
-            with (yield from self.connect(username='ckey')) as conn:
+            with (yield from self.connect(username='ckey', client_keys='ckey',
+                                          agent_path=None)) as conn:
                 pass
 
         yield from conn.wait_closed()
@@ -443,6 +453,9 @@ class _TestPublicKeyAuth(ServerTestCase):
     @asynctest
     def test_client_key_agent_keypairs(self):
         """Test client keys passed in as a list of SSHAgentKeyPairs"""
+
+        if not self.agent_available(): # pragma: no cover
+            self.skipTest('ssh-agent not available')
 
         agent = yield from asyncssh.connect_agent()
 
@@ -545,6 +558,9 @@ class _TestPublicKeyAuth(ServerTestCase):
     def test_callback_sshkeypair(self):
         """Test client key passed in as an SSHKeyPair by callback"""
 
+        if not self.agent_available(): # pragma: no cover
+            self.skipTest('ssh-agent not available')
+
         agent = yield from asyncssh.connect_agent()
         keylist = yield from agent.get_keys()
 
@@ -568,7 +584,8 @@ class _TestPublicKeyAuth(ServerTestCase):
 
         with patch('asyncssh.connection.SSHClientConnection',
                    _UnknownAuthClientConnection):
-            with (yield from self.connect(username='ckey')) as conn:
+            with (yield from self.connect(username='ckey', client_keys='ckey',
+                                          agent_path=None)) as conn:
                 pass
 
         yield from conn.wait_closed()
@@ -938,7 +955,8 @@ class _TestLoginTimeoutDisabled(ServerTestCase):
     def test_login_timeout_disabled(self):
         """Test with login timeout disabled"""
 
-        with (yield from self.connect()) as conn:
+        with (yield from self.connect(username='ckey',
+                                      client_keys='ckey')) as conn:
             pass
 
         yield from conn.wait_closed()

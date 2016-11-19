@@ -734,6 +734,9 @@ class _TestChannel(ServerTestCase):
     def test_agent_forwarding(self):
         """Test SSH agent forwarding"""
 
+        if not self.agent_available(): # pragma: no cover
+            self.skipTest('ssh-agent not available')
+
         with (yield from self.connect(username='ckey',
                                       agent_forwarding=True)) as conn:
             chan, session = yield from _create_session(conn, 'agent')
