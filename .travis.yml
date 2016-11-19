@@ -42,7 +42,7 @@ matrix:
         - TOXENV=py34
       before_install:
         - brew update
-        - brew install libffi libsodium
+        - brew install libffi libsodium openssl
         - eval "$(pyenv init -)"
         - pyenv install 3.4.5
         - pyenv local 3.4.5
@@ -57,7 +57,7 @@ matrix:
         - TOXENV=py35
       before_install:
         - brew update
-        - brew install libffi libsodium
+        - brew install libffi libsodium openssl
         - eval "$(pyenv init -)"
         - pyenv install 3.5.2
         - pyenv local 3.5.2
