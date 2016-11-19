@@ -18,6 +18,8 @@ import signal
 
 import asyncssh
 from asyncssh.misc import async_context_manager
+from subprocess import CalledProcessError
+from unittest import SkipTest
 
 from .util import run, AsyncTestCase
 
@@ -107,6 +109,13 @@ class ServerTestCase(AsyncTestCase):
         skey.write_private_key('exp_skey')
         exp_cert.write_certificate('exp_skey-cert.pub')
 
+        # Lets identify that we don't have ssh-agent earlier to avoid all
+        # the other forking :D
+        try:
+            output = run('ssh-agent -a agent 2>/dev/null')
+        except CalledProcessError:
+            raise SkipTest('ssh-agent not available')
+
         run('chmod 600 ckey_dsa ckey skey exp_skey')
 
         run('mkdir .ssh')
@@ -131,7 +140,6 @@ class ServerTestCase(AsyncTestCase):
                                                       cls._server_port))
         run('cat skey.pub >> .ssh/known_hosts')
 
-        output = run('ssh-agent -a agent 2>/dev/null')
         cls._agent_pid = int(output.splitlines()[2].split()[3][:-1])
 
         os.environ['SSH_AUTH_SOCK'] = 'agent'
