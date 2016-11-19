@@ -33,7 +33,7 @@ matrix:
       env:
         - TOXENV=py36
     - os: osx
-      osx_image: xcode7.3
+      osx_image: xcode8.1
       language: generic
       env:
         - CPPFLAGS=-I/usr/local/opt/openssl/include
@@ -42,14 +42,13 @@ matrix:
         - TOXENV=py34
       before_install:
         - brew update
-        - brew install libffi libsodium openssl pyenv pyenv-virtualenv
+        - brew install libffi libsodium
         - eval "$(pyenv init -)"
-        - eval "$(pyenv virtualenv-init -)"
         - pyenv install 3.4.5
         - pyenv local 3.4.5
         - pyenv rehash
     - os: osx
-      osx_image: xcode7.3
+      osx_image: xcode8.1
       language: generic
       env:
         - CPPFLAGS=-I/usr/local/opt/openssl/include
@@ -58,9 +57,8 @@ matrix:
         - TOXENV=py35
       before_install:
         - brew update
-        - brew install libffi libsodium openssl pyenv pyenv-virtualenv
+        - brew install libffi libsodium
         - eval "$(pyenv init -)"
-        - eval "$(pyenv virtualenv-init -)"
         - pyenv install 3.5.2
         - pyenv local 3.5.2
         - pyenv rehash
