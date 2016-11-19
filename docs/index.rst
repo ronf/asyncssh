@@ -33,8 +33,8 @@ This example only uses the output on stdout, but output on stderr is also
 collected as another attribute in the returned :class:`SSHCompletedProcess`
 object.
 
-To check against a different set of server host keys, they can be read
-and provided in the known_hosts argument when the connection is opened:
+To check against a different set of server host keys, they can be provided
+in the known_hosts argument when the connection is opened:
 
    .. code::
 
@@ -53,7 +53,7 @@ provided:
      async with asyncssh.connect('localhost', username='user123') as conn:
 
 To use a different set of client keys for authentication, they can be
-read and provided in the client_keys argument:
+provided in the client_keys argument:
 
    .. code::
 
@@ -132,9 +132,9 @@ and the output written to '/tmp/stdout' should contain the reversed lines
 
 The ``stdin``, ``stdout``, and ``stderr`` arguments support redirecting
 to a variety of locations include local files, pipes, and sockets as
-well as an :class:`SSHReader` or :class:`SSHWriter` objects associated
-with other remote SSH processes. Here's an example of piping stdout from
-a local process to a remote process:
+well as :class:`SSHReader` or :class:`SSHWriter` objects associated with
+other remote SSH processes. Here's an example of piping stdout from a
+local process to a remote process:
 
    .. include:: ../examples/redirect_local_pipe.py
       :literal:
