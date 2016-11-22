@@ -782,7 +782,7 @@ class _TestProcess(ServerTestCase):
 
         data = '\u2000test\u2000'
 
-        with open('stdin', 'w') as file:
+        with open('stdin', 'w', encoding='utf-8') as file:
             file.write(data)
 
         with (yield from self.connect()) as conn:
