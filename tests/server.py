@@ -16,7 +16,6 @@ import asyncio
 import os
 import signal
 import subprocess
-import unittest
 
 import asyncssh
 from asyncssh.misc import async_context_manager
