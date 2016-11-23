@@ -3,6 +3,19 @@
 Change Log
 ==========
 
+Release 1.7.3 (22 Nov 2016)
+---------------------------
+
+* Updated unit tests to run properly in environments where OpenSSH
+  and OpenSSL are not installed.
+
+* Updated a process unit test to not depend on the system's default
+  file encoding being UTF-8.
+
+* Updated Mac TravisCI builds to use Xcode 8.1.
+
+* Cleaned up some wording in the documentation.
+
 Release 1.7.2 (28 Oct 2016)
 ---------------------------
 
