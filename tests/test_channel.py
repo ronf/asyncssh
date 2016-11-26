@@ -18,7 +18,7 @@ from unittest.mock import patch
 
 import asyncssh
 
-from asyncssh.channel import SSHAgentChannel, SSHClientChannel
+from asyncssh.channel import SSHAgentChannel
 from asyncssh.constants import DEFAULT_LANG, MSG_USERAUTH_REQUEST
 from asyncssh.constants import MSG_CHANNEL_OPEN_CONFIRMATION
 from asyncssh.constants import MSG_CHANNEL_OPEN_FAILURE
@@ -29,7 +29,6 @@ from asyncssh.constants import MSG_CHANNEL_EOF, MSG_CHANNEL_CLOSE
 from asyncssh.constants import MSG_CHANNEL_SUCCESS
 from asyncssh.packet import Byte, String, UInt32
 from asyncssh.public_key import CERT_TYPE_USER
-from asyncssh.stream import SSHClientStreamSession
 from asyncssh.stream import SSHTCPStreamSession, SSHUNIXStreamSession
 
 from .server import Server, ServerTestCase
@@ -137,6 +136,12 @@ class _ServerChannel(asyncssh.SSHServerChannel):
 
         self._send_packet(pkttype, *args)
 
+    @asyncio.coroutine
+    def open_session(self):
+        """Attempt to open a session on the client"""
+
+        return (yield from self._open(b'session'))
+
 
 class _EchoServerSession(asyncssh.SSHServerSession):
     """A shell session which echos data from stdin to stdout/stderr"""
@@ -221,12 +226,11 @@ class _ChannelServer(Server):
             except asyncssh.ChannelOpenError:
                 stdout.channel.exit(1)
         elif action == 'rejected_session':
-            chan = SSHClientChannel(self._conn, asyncio.get_event_loop(),
-                                    None, 1, 32768)
+            chan = _ServerChannel(self._conn, asyncio.get_event_loop(),
+                                  False, False, 0, False, None, 1, 32768)
 
             try:
-                yield from chan.create(SSHClientStreamSession, None, None,
-                                       {}, None, None, None, False)
+                yield from chan.open_session()
             except asyncssh.ChannelOpenError:
                 stdout.channel.exit(1)
         elif action == 'rejected_tcpip_direct':
@@ -669,7 +673,7 @@ class _TestChannel(ServerTestCase):
 
             with self.assertRaises(OSError):
                 yield from chan.create(None, None, None, {}, None, None,
-                                       None, False)
+                                       None, False, None, None, False, False)
 
             chan.close()
 

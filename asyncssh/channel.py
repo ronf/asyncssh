@@ -13,6 +13,7 @@
 """SSH channel and session handlers"""
 
 import asyncio
+import binascii
 
 from .constants import DEFAULT_LANG, DISC_PROTOCOL_ERROR, EXTENDED_DATA_STDERR
 from .constants import MSG_CHANNEL_OPEN, MSG_CHANNEL_WINDOW_ADJUST
@@ -20,6 +21,7 @@ from .constants import MSG_CHANNEL_DATA, MSG_CHANNEL_EXTENDED_DATA
 from .constants import MSG_CHANNEL_EOF, MSG_CHANNEL_CLOSE, MSG_CHANNEL_REQUEST
 from .constants import MSG_CHANNEL_SUCCESS, MSG_CHANNEL_FAILURE
 from .constants import OPEN_CONNECT_FAILED, PTY_OP_RESERVED, PTY_OP_END
+from .constants import OPEN_REQUEST_X11_FORWARDING_FAILED
 from .constants import OPEN_REQUEST_PTY_FAILED, OPEN_REQUEST_SESSION_FAILED
 from .editor import SSHLineEditorChannel, SSHLineEditorSession
 from .misc import ChannelOpenError, DisconnectError, map_handler_name
@@ -795,9 +797,18 @@ class SSHClientChannel(SSHChannel):
         self._exit_status = None
         self._exit_signal = None
 
+    def _cleanup(self, exc=None):
+        """Clean up this channel"""
+
+        if self._conn: # pragma: no branch
+            self._conn.detach_x11_listener(self)
+
+        super()._cleanup(exc)
+
     @asyncio.coroutine
-    def create(self, session_factory, command, subsystem, env,
-               term_type, term_size, term_modes, agent_forwarding):
+    def create(self, session_factory, command, subsystem, env, term_type,
+               term_size, term_modes, x11_forwarding, x11_display,
+               x11_auth_path, x11_single_connection, agent_forwarding):
         """Create an SSH client session"""
 
         packet = yield from self._open(b'session')
@@ -842,6 +853,20 @@ class SSHClientChannel(SSHChannel):
                 self.close()
                 raise ChannelOpenError(OPEN_REQUEST_PTY_FAILED,
                                        'PTY request failed')
+
+        if x11_forwarding:
+            auth_proto, remote_auth, screen = \
+                yield from self._conn.attach_x11_listener(
+                    self, x11_display, x11_auth_path, x11_single_connection)
+
+            result = yield from self._make_request(
+                b'x11-req', Boolean(x11_single_connection), String(auth_proto),
+                String(binascii.b2a_hex(remote_auth)), UInt32(screen))
+
+            if not result:
+                self._conn.detach_x11_listener(self)
+                raise ChannelOpenError(OPEN_REQUEST_X11_FORWARDING_FAILED,
+                                       'X11 forwarding request failed')
 
         if agent_forwarding:
             self._send_request(b'auth-agent-req@openssh.com')
@@ -1534,6 +1559,27 @@ class SSHUNIXChannel(SSHForwardChannel):
 
         self._extra['local_peername'] = dest_path
         self._extra['remote_peername'] = ''
+
+
+class SSHX11Channel(SSHForwardChannel):
+    """SSH X11 channel"""
+
+    @asyncio.coroutine
+    def open(self, session_factory, orig_host, orig_port):
+        """Open an SSH X11 channel"""
+
+        self._extra['local_peername'] = (orig_host, orig_port)
+        self._extra['remote_peername'] = None
+
+        return (yield from self._open(session_factory, b'x11',
+                                      String(orig_host), UInt32(orig_port)))
+
+    def set_inbound_peer_names(self, orig_host, orig_port):
+        """Set local and remote peer name for inbound connections"""
+
+        self._extra['local_peername'] = None
+        self._extra['remote_peername'] = (orig_host, orig_port)
+
 
 class SSHAgentChannel(SSHForwardChannel):
     """SSH agent channel"""

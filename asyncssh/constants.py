@@ -80,6 +80,7 @@ OPEN_UNKNOWN_CHANNEL_TYPE           = 3
 OPEN_RESOURCE_SHORTAGE              = 4
 
 # Internal failure reason codes
+OPEN_REQUEST_X11_FORWARDING_FAILED  = 0xfffffffd
 OPEN_REQUEST_PTY_FAILED             = 0xfffffffe
 OPEN_REQUEST_SESSION_FAILED         = 0xffffffff
 

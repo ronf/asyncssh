@@ -30,7 +30,8 @@ from .auth import get_server_auth_methods, lookup_server_auth
 from .auth_keys import read_authorized_keys
 
 from .channel import SSHClientChannel, SSHServerChannel
-from .channel import SSHTCPChannel, SSHUNIXChannel, SSHAgentChannel
+from .channel import SSHTCPChannel, SSHUNIXChannel
+from .channel import SSHX11Channel, SSHAgentChannel
 
 from .cipher import get_encryption_algs, get_encryption_params, get_cipher
 
@@ -97,6 +98,8 @@ from .sftp import SFTPClient, SFTPServer, SFTPClientHandler
 from .stream import SSHClientStreamSession, SSHServerStreamSession
 from .stream import SSHTCPStreamSession, SSHUNIXStreamSession
 from .stream import SSHReader, SSHWriter
+
+from .x11 import SSHX11ClientListener
 
 
 # SSH default port
@@ -277,6 +280,8 @@ class SSHConnection(SSHPacketHandler):
         self._global_request_waiters = []
 
         self._local_listeners = {}
+
+        self._x11_listener = None
 
         self._close_event = asyncio.Event()
 
@@ -1683,6 +1688,12 @@ class SSHConnection(SSHPacketHandler):
 
         return SSHUNIXChannel(self, self._loop, encoding, window, max_pktsize)
 
+    def create_x11_channel(self, encoding=None, window=_DEFAULT_WINDOW,
+                           max_pktsize=_DEFAULT_MAX_PKTSIZE):
+        """Create an SSH X11 channel to use in X11 forwarding"""
+
+        return SSHX11Channel(self, self._loop, encoding, window, max_pktsize)
+
     @asyncio.coroutine
     def create_connection(self, session_factory, remote_host, remote_port,
                           orig_host='', orig_port=0, *, encoding=None,
@@ -2246,6 +2257,24 @@ class SSHClientConnection(SSHConnection):
         if listen_path in self._remote_listeners:
             del self._remote_listeners[listen_path]
 
+    def _process_x11_open(self, packet):
+        """Process an inbound X11 channel open request"""
+
+        orig_host = packet.get_string()
+        orig_port = packet.get_uint32()
+
+        packet.check_end()
+
+        if self._x11_listener:
+            chan = self.create_x11_channel()
+
+            chan.set_inbound_peer_names(orig_host, orig_port)
+
+            return chan, self._x11_listener.forward_connection()
+        else:
+            raise ChannelOpenError(OPEN_CONNECT_FAILED,
+                                   'X11 forwarding disabled')
+
     def _process_auth_agent_at_openssh_dot_com_open(self, packet):
         """Process an inbound auth agent channel open request"""
 
@@ -2261,6 +2290,8 @@ class SSHClientConnection(SSHConnection):
     @asyncio.coroutine
     def create_session(self, session_factory, command=None, *, subsystem=None,
                        env={}, term_type=None, term_size=None, term_modes={},
+                       x11_forwarding=False, x11_display=None,
+                       x11_auth_path=None, x11_single_connection=False,
                        encoding='utf-8', window=_DEFAULT_WINDOW,
                        max_pktsize=_DEFAULT_MAX_PKTSIZE):
         """Create an SSH client session
@@ -2310,6 +2341,20 @@ class SSHClientConnection(SSHConnection):
                POSIX terminal modes to set for this session, where keys
                are taken from :ref:`POSIX terminal modes <PTYModes>` with
                values defined in section 8 of :rfc:`4254#section-8`.
+           :param bool x11_forwarding: (optional)
+               Whether or not to request X11 forwarding for this session,
+               defaulting to ``False``
+           :param str x11_display: (optional)
+               The display that X11 connections shoul be forwarded to,
+               defaulting to the value in the environment variable ``DISPLAY``
+           :param str x11_auth_path: (optional)
+               The path to the Xauthority file to read X11 authentication
+               from, defaulting to the value in the environment variable
+               ``XAUTHORITY`` or the file ``.Xauthority`` in the user's
+               home directory if that's not set
+           :param bool x11_single_connection: (optional)
+               Whether or not to limit X11 forwarding to a single connection,
+               defaulting to ``False``
            :param str encoding: (optional)
                The Unicode encoding to use for data exchanged on the connection
            :param int window: (optional)
@@ -2329,6 +2374,8 @@ class SSHClientConnection(SSHConnection):
 
         return (yield from chan.create(session_factory, command, subsystem,
                                        env, term_type, term_size, term_modes,
+                                       x11_forwarding, x11_display,
+                                       x11_auth_path, x11_single_connection,
                                        bool(self._agent_path)))
 
     @asyncio.coroutine
@@ -2808,6 +2855,31 @@ class SSHClientConnection(SSHConnection):
 
         return (yield from self.create_unix_server(session_factory,
                                                    *args, **kwargs))
+
+    @asyncio.coroutine
+    def attach_x11_listener(self, chan, display, auth_path, single_connection):
+        """Attach a channel to a local X11 display"""
+
+        if not display:
+            display = os.environ.get('DISPLAY')
+
+        if not display:
+            raise ValueError('X11 display not set')
+
+        if self._x11_listener:
+            if self._x11_listener.get_display() != display:
+                raise ValueError('Already forwarding to another X11 display')
+        else:
+            self._x11_listener = yield from SSHX11ClientListener.create(
+                self._loop, display, auth_path)
+
+        return self._x11_listener.attach(chan, single_connection)
+
+    def detach_x11_listener(self, chan):
+        """Detach a session from a local X11 listener"""
+
+        if self._x11_listener:
+            self._x11_listener.detach(chan)
 
     @asyncio.coroutine
     def create_ssh_connection(self, client_factory, host, port=_DEFAULT_PORT,
@@ -3879,6 +3951,18 @@ class SSHServerConnection(SSHConnection):
                                                    *args, **kwargs)
 
         return SSHReader(session, chan), SSHWriter(session, chan)
+
+    @asyncio.coroutine
+    def open_x11_connection(self, orig_host='', orig_port=0):
+        """Open a forwarded X11 connection back to the client"""
+
+        chan = self.create_x11_channel()
+
+        session = yield from chan.open(SSHTCPStreamSession,
+                                       orig_host, orig_port)
+
+        return SSHReader(session, chan), SSHWriter(session, chan)
+
 
     @asyncio.coroutine
     def open_agent_connection(self):

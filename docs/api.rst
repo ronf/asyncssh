@@ -1538,6 +1538,10 @@ be specified as channel open failure reason codes:
   | OPEN_CONNECT_FAILED
   | OPEN_UNKNOWN_CHANNEL_TYPE
   | OPEN_RESOURCE_SHORTAGE
+
+In addition, AsyncSSH defines the following channel open failure reason codes:
+
+  | OPEN_REQUEST_X11_FORWARDING_FAILED
   | OPEN_REQUEST_PTY_FAILED
   | OPEN_REQUEST_SESSION_FAILED
 
