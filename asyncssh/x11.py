@@ -411,6 +411,8 @@ class SSHX11ClientListener:
             # Channel may already be removed in single connection case
             pass
 
+        return self._remote_auth == {}
+
     @asyncio.coroutine
     def forward_connection(self):
         """Forward an incoming connection to the local X server"""

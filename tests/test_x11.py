@@ -212,6 +212,8 @@ class _X11Server(Server):
 
                 result = yield from self._open_x11(endian, bad)
                 stdin.channel.exit(result)
+            elif action == 'sleep':
+                yield from asyncio.sleep(0.1)
             else:
                 stdin.channel.exit(255)
 
@@ -458,11 +460,33 @@ class _TestX11(ServerTestCase):
         yield from conn.wait_closed()
 
     @asynctest
-    def test_display_change(self):
-        """Test requesting X11 forwarding to two different X servers"""
+    def test_simultaneous_sessions(self):
+        """Test X11 forwarding from multiple sessions simultaneously"""
 
         with (yield from self.connect()) as conn:
-            yield from _create_process(conn, x11_display='test:0')
+            yield from _create_process(conn, 'sleep', x11_display='test:0')
+            yield from _create_process(conn, 'sleep', x11_display='test:0')
+
+        yield from conn.wait_closed()
+
+    @asynctest
+    def test_consecutive_different_servers(self):
+        """Test X11 forwarding to different X servers consecutively"""
+
+        with (yield from self.connect()) as conn:
+            proc = yield from _create_process(conn, x11_display='test:0')
+            yield from proc.wait()
+
+            yield from _create_process(conn, x11_display='test1:0')
+
+        yield from conn.wait_closed()
+
+    @asynctest
+    def test_simultaneous_different_servers(self):
+        """Test X11 forwarding to different X servers simultaneously"""
+
+        with (yield from self.connect()) as conn:
+            yield from _create_process(conn, 'sleep', x11_display='test:0')
 
             with self.assertRaises(ValueError):
                 yield from _create_process(conn, x11_display='test1:0')

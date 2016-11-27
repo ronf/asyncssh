@@ -2879,7 +2879,8 @@ class SSHClientConnection(SSHConnection):
         """Detach a session from a local X11 listener"""
 
         if self._x11_listener:
-            self._x11_listener.detach(chan)
+            if self._x11_listener.detach(chan):
+                self._x11_listener = None
 
     @asyncio.coroutine
     def create_ssh_connection(self, client_factory, host, port=_DEFAULT_PORT,
