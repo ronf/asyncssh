@@ -233,6 +233,24 @@ class _TestStream(ServerTestCase):
         yield from conn.wait_closed()
 
     @asynctest
+    def test_read_until_exception(self):
+        """Test read_until returning an exception"""
+
+        with (yield from self.connect()) as conn:
+            stdin, stdout, _ = yield from conn.open_session('disconnect')
+
+            stdin.write('\0')
+
+            self.assertEqual((yield from stdout.read_until('test')), '\0')
+
+            with self.assertRaises(asyncssh.DisconnectError):
+                yield from stdout.read_until('test')
+
+            stdin.close()
+
+        yield from conn.wait_closed()
+
+    @asynctest
     def test_pause_read(self):
         """Test pause reading"""
 
@@ -266,6 +284,26 @@ class _TestStream(ServerTestCase):
 
             yield from asyncio.sleep(0.01)
             yield from stdout.readline()
+
+            stdin.channel.abort()
+
+        yield from conn.wait_closed()
+
+    @asynctest
+    def test_pause_read_until(self):
+        """Test pause reading while calling read_until"""
+
+        with (yield from self.connect()) as conn:
+            stdin, stdout, _ = yield from conn.open_session()
+
+            stdin.write('test'+2*1024*1024*'\0')
+            stdin.write_eof()
+
+            yield from asyncio.sleep(0.01)
+            yield from stdout.read_until('test')
+
+            yield from asyncio.sleep(0.01)
+            yield from stdout.read_until('test')
 
             stdin.channel.abort()
 

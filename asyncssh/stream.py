@@ -104,7 +104,22 @@ class SSHReader:
 
         """
 
-        return self._session.readline(self._datatype)
+        return self.read_until('\n')
+
+    @asyncio.coroutine
+    def read_until(self, expect):
+        """Read until we have found the expect str from the stream
+
+           This method is a coroutine which reads until ``expect``, the 
+           result include the ``expect``.
+
+           If EOF was received before ``'expect`` was found, the partial
+           line is returned. If EOF was received and the receive buffer
+           is empty, an empty bytes or str object is returned.
+
+        """
+        return self._session.read_until(expect, self._datatype)
+
 
     @asyncio.coroutine
     def readexactly(self, n):
@@ -420,11 +435,11 @@ class SSHStreamSession:
         return buf
 
     @asyncio.coroutine
-    def readline(self, datatype):
-        """Read a line from the channel"""
+    def read_until(self, expect, datatype):
+        """Read until ``expect`` from the channel"""
 
         recv_buf = self._recv_buf[datatype]
-        buf, sep = ('', '\n') if self._encoding else (b'', b'\n')
+        buf, sep = ('', expect) if self._encoding else (b'', expect.encode())
         data = []
 
         while True:
