@@ -438,6 +438,8 @@ class SSHStreamSession:
     def read_until(self, expect, datatype):
         """Read until ``expect`` from the channel"""
 
+        if not expect:
+            return
         recv_buf = self._recv_buf[datatype]
         buf, sep = ('', expect) if self._encoding else (b'', expect.encode())
         data = []
