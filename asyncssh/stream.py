@@ -113,7 +113,7 @@ class SSHReader:
            This method is a coroutine which reads until ``expect``, the 
            result include the ``expect``.
 
-           If EOF was received before ``'expect`` was found, the partial
+           If EOF was received before ``expect`` was found, the partial
            line is returned. If EOF was received and the receive buffer
            is empty, an empty bytes or str object is returned.
 
