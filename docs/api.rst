@@ -606,6 +606,7 @@ SSHServerChannel
    .. automethod:: get_terminal_type
    .. automethod:: get_terminal_size
    .. automethod:: get_terminal_mode
+   .. automethod:: get_x11_display
    ================================= =
 
    ============================== =

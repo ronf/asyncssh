@@ -13,13 +13,16 @@
 """X11 forwarding support"""
 
 import asyncio
-from collections import OrderedDict
 import os
 import socket
+import time
+
+from collections import namedtuple
 
 from .constants import OPEN_CONNECT_FAILED
 from .forward import SSHForwarder
-from .misc import ChannelOpenError, Record
+from .listener import create_tcp_forward_listener
+from .misc import ChannelOpenError
 
 # pylint: disable=bad-whitespace
 
@@ -33,14 +36,45 @@ XAUTH_FAMILY_WILD     = 65535
 # Xauth protocol values
 XAUTH_PROTO_COOKIE    = b'MIT-MAGIC-COOKIE-1'
 
-# X11 port numbers
+# Xauth lock information
+XAUTH_LOCK_SUFFIX     = '-c'
+XAUTH_LOCK_TRIES      = 5
+XAUTH_LOCK_DELAY      = 0.2
+XAUTH_LOCK_DEAD       = 5
+
+# X11 display and port numbers
 X11_BASE_PORT         = 6000
+X11_DISPLAY_START     = 10
+X11_MAX_DISPLAYS      = 64
+
+# Host to listen on when doing X11 forwarding
+X11_LISTEN_HOST       = 'localhost'
 
 # pylint: enable=bad-whitespace
 
 
+def _parse_display(display):
+    """Parse an X11 display value"""
+
+    try:
+        host, dpynum = display.rsplit(':', 1)
+
+        if host.startswith('[') and host.endswith(']'):
+            host = host[1:-1]
+
+        idx = dpynum.find('.')
+        if idx >= 0:
+            screen = int(dpynum[idx+1:])
+            dpynum = dpynum[:idx]
+        else:
+            screen = 0
+    except (ValueError, UnicodeEncodeError):
+        raise ValueError('Invalid X11 display') from None
+
+    return host, dpynum, screen
+
 @asyncio.coroutine
-def lookup_host(loop, host, family):
+def _lookup_host(loop, host, family):
     """Look up IPv4 or IPv6 addresses of a host name"""
 
     try:
@@ -52,114 +86,26 @@ def lookup_host(loop, host, family):
     return [ai[4][0] for ai in addrinfo]
 
 
-class SSHXAuthorityEntry(Record):
-    """An entry in an Xauthority file
+class SSHXAuthorityEntry(namedtuple('SSHXAuthorityEntry',
+                                    'family addr dpynum proto data')):
+    """An entry in an Xauthority file"""
 
-       This object hold a single entry in an Xauthority file.
-
-       ======= ================================================== ======
-       Field   Description                                        Type
-       ======= ================================================== ======
-       family  The address family (IPv4=0, IPv6=6, Hostname=256)  int
-       addr    The server hostname or address in binary form      bytes
-       dpynum  The display number to match against                bytes
-       proto   The authentication protocol to use                 bytes
-       data    The authentication data to send                    bytes
-       ======= ================================================== ======
-
-    """
-
-    __slots__ = OrderedDict((('family', 0), ('addr', b''), ('dpynum', b''),
-                             ('proto', b''), ('data', b'')))
-
-    @staticmethod
-    def _build_short(value):
-        """Construct a big-endian 16-bit integer"""
-
-        return value.to_bytes(2, 'big')
-
-    def _build_string(self, data):
-        """Construct a binary string with a 16-bit length"""
-
-        return self._build_short(len(data)) + data
-
-    def to_bytes(self):
+    def __bytes__(self):
         """Construct an Xauthority entry"""
 
-        # pylint: disable=no-member
+        def _uint16(value):
+            """Construct a big-endian 16-bit unsigned integer"""
 
-        return b''.join((self._build_short(self.family),
-                         self._build_string(self.addr),
-                         self._build_string(self.dpynum),
-                         self._build_string(self.proto),
-                         self._build_string(self.data)))
+            return value.to_bytes(2, 'big')
 
+        def _string(data):
+            """Construct a binary string with a 16-bit length"""
 
-class SSHXAuthorityFile:
-    """An iterator for Xauthority file entries"""
+            return _uint16(len(data)) + data
 
-    def __init__(self, auth_path=None):
-        if not auth_path:
-            auth_path = os.environ.get('XAUTHORITY')
-
-        if not auth_path:
-            auth_path = os.path.join(os.path.expanduser('~'), '.Xauthority')
-
-        try:
-            self._file = open(auth_path, 'rb')
-        except OSError:
-            self._file = None
-
-    def __del__(self):
-        self._close()
-
-    def __iter__(self):
-        return self
-
-    def _close(self):
-        """Close the Xauthority file"""
-
-        if self._file:
-            self._file.close()
-            self._file = None
-
-    def _read_bytes(self, n):
-        """Read a fixed number of bytes"""
-
-        data = self._file.read(n)
-
-        if len(data) != n:
-            raise EOFError
-
-        return data
-
-    def _read_short(self):
-        """Read a 16-bit integer"""
-
-        return int.from_bytes(self._read_bytes(2), 'big')
-
-    def _read_string(self):
-        """Read a binary string"""
-
-        return self._read_bytes(self._read_short())
-
-    def __next__(self):
-        if not self._file:
-            raise StopIteration
-
-        try:
-            family = self._read_short()
-        except EOFError:
-            self._file.close()
-            self._file = None
-            raise StopIteration
-
-        try:
-            return SSHXAuthorityEntry(family, self._read_string(),
-                                      self._read_string(), self._read_string(),
-                                      self._read_string())
-        except EOFError:
-            raise ValueError('Incomplete Xauthority entry') from None
+        return b''.join((_uint16(self.family), _string(self.addr),
+                         _string(self.dpynum), _string(self.proto),
+                         _string(self.data)))
 
 
 class SSHX11ClientForwarder(SSHForwarder):
@@ -186,7 +132,7 @@ class SSHX11ClientForwarder(SSHForwarder):
         self._auth_data_pad = b''
 
     def _encode_uint16(self, value):
-        """Encode a 16-bit value using the specified endianness"""
+        """Encode a 16-bit unsigned integer"""
 
         if self._endian == b'B':
             return bytes((value >> 8, value & 255))
@@ -194,7 +140,7 @@ class SSHX11ClientForwarder(SSHForwarder):
             return bytes((value & 255, value >> 8))
 
     def _decode_uint16(self, value):
-        """Decode a 16-bit value using the specified endianness"""
+        """Decode a 16-bit unsigned integer"""
 
         if self._endian == b'B':
             return (value[0] << 8) + value[1]
@@ -291,115 +237,39 @@ class SSHX11ClientForwarder(SSHForwarder):
 class SSHX11ClientListener:
     """Client listener used to accept forwarded X11 connections"""
 
-    def __init__(self, display, connect_coro, connect_args, screen,
-                 auth_proto, local_auth):
-        self._display = display
-        self._connect_coro = connect_coro
-        self._connect_args = connect_args
-        self._screen = screen
+    def __init__(self, loop, host, dpynum, auth_proto, auth_data):
+        self._host = host
+        self._dpynum = dpynum
         self._auth_proto = auth_proto
-        self._auth_len = len(local_auth)
-        self._local_auth = local_auth
+        self._local_auth = auth_data
+
+        if host.startswith('/'):
+            self._connect_coro = loop.create_unix_connection
+            self._connect_args = (host + ':' + dpynum,)
+        elif host in ('', 'unix'):
+            self._connect_coro = loop.create_unix_connection
+            self._connect_args = ('/tmp/.X11-unix/X' + dpynum,)
+        else:
+            self._connect_coro = loop.create_connection
+            self._connect_args = (host, X11_BASE_PORT + int(dpynum))
+
         self._remote_auth = {}
         self._channel = {}
 
-    @staticmethod
-    def _parse_display(display):
-        """Parse an X11 display value"""
-
-        try:
-            host, dpynum = display.rsplit(':', 1)
-
-            if host.startswith('[') and host.endswith(']'):
-                host = host[1:-1]
-
-            idx = dpynum.find('.')
-            if idx >= 0:
-                screen = int(dpynum[idx+1:])
-                dpynum = dpynum[:idx]
-            else:
-                screen = 0
-        except (ValueError, UnicodeEncodeError):
-            raise ValueError('Invalid X11 display') from None
-
-        return host, dpynum, screen
-
-    def get_display(self):
-        """Return the display this handler is associated with"""
-
-        return self._display
-
-    @classmethod
-    @asyncio.coroutine
-    def create(cls, loop, display, auth_path):
-        """Create a listener for forwarded X11 connections"""
-
-        host, dpynum, screen = cls._parse_display(display)
-
-        if host.startswith('/') or host in ('', 'unix', 'localhost'):
-            match_host = socket.gethostname()
-        else:
-            match_host = host
-
-        match_dpynum = dpynum.encode('ascii')
-
-        ipv4_addrs = []
-        ipv6_addrs = []
-
-        # Avoid pylint false positive
-        # pylint: disable=undefined-loop-variable
-        for entry in SSHXAuthorityFile(auth_path):
-            if entry.dpynum and entry.dpynum != match_dpynum:
-                continue
-
-            if entry.family == XAUTH_FAMILY_IPV4:
-                if not ipv4_addrs:
-                    ipv4_addrs = yield from lookup_host(loop, match_host,
-                                                        socket.AF_INET)
-
-                addr = socket.inet_ntop(socket.AF_INET, entry.addr)
-                match = addr in ipv4_addrs
-            elif entry.family == XAUTH_FAMILY_IPV6:
-                if not ipv6_addrs:
-                    ipv6_addrs = yield from lookup_host(loop, match_host,
-                                                        socket.AF_INET6)
-
-                addr = socket.inet_ntop(socket.AF_INET6, entry.addr)
-                match = addr in ipv6_addrs
-            elif entry.family == XAUTH_FAMILY_HOSTNAME:
-                match = entry.addr == match_host.encode('idna')
-            elif entry.family == XAUTH_FAMILY_WILD:
-                match = True
-            else:
-                match = False
-
-            if match:
-                break
-        else:
-            raise ValueError('No xauth entry found for display')
-
-        if host.startswith('/'):
-            connect_coro = loop.create_unix_connection
-            connect_args = (host + ':' + dpynum,)
-        elif host in ('', 'unix'):
-            connect_coro = loop.create_unix_connection
-            connect_args = ('/tmp/.X11-unix/X' + dpynum,)
-        else:
-            connect_coro = loop.create_connection
-            connect_args = (host, X11_BASE_PORT + int(dpynum))
-
-        return cls(display, connect_coro, connect_args, screen,
-                   entry.proto, entry.data)
-
-    def attach(self, chan, single_connection):
+    def attach(self, display, chan, single_connection):
         """Attach a channel to this listener"""
 
-        remote_auth = os.urandom(self._auth_len)
+        host, dpynum, screen = _parse_display(display)
+
+        if self._host != host or self._dpynum != dpynum:
+            raise ValueError('Already forwarding to another X11 display')
+
+        remote_auth = os.urandom(len(self._local_auth))
 
         self._remote_auth[chan] = remote_auth
         self._channel[remote_auth] = chan, single_connection
 
-        return self._auth_proto, remote_auth, self._screen
+        return self._auth_proto, remote_auth, screen
 
     def detach(self, chan):
         """Detach a channel from this listener"""
@@ -408,7 +278,6 @@ class SSHX11ClientListener:
             remote_auth = self._remote_auth.pop(chan)
             del self._channel[remote_auth]
         except KeyError:
-            # Channel may already be removed in single connection case
             pass
 
         return self._remote_auth == {}
@@ -435,3 +304,215 @@ class SSHX11ClientListener:
             del self._remote_auth[chan]
 
         return self._local_auth
+
+
+class SSHX11ServerListener:
+    """Server listener used to forward X11 connections"""
+
+    def __init__(self, tcp_listener, display):
+        self._tcp_listener = tcp_listener
+        self._display = display
+        self._channels = set()
+
+    def attach(self, chan, screen):
+        """Attach a channel to this listener and return its display"""
+
+        self._channels.add(chan)
+
+        return '%s.%s' % (self._display, screen)
+
+    def detach(self, chan):
+        """Detach a channel from this listener"""
+
+        try:
+            self._channels.remove(chan)
+        except KeyError:
+            pass
+
+        if not self._channels:
+            self._tcp_listener.close()
+            self._tcp_listener = None
+            return True
+        else:
+            return False
+
+
+def get_xauth_path(auth_path):
+    """Compute the path to the Xauthority file"""
+
+    if not auth_path:
+        auth_path = os.environ.get('XAUTHORITY')
+
+    if not auth_path:
+        auth_path = os.path.join(os.path.expanduser('~'), '.Xauthority')
+
+    return auth_path
+
+
+def walk_xauth(auth_path):
+    """Walk the entries in an Xauthority file"""
+
+    def _read_bytes(n):
+        """Read exactly n bytes"""
+
+        data = auth_file.read(n)
+
+        if len(data) != n:
+            raise EOFError
+
+        return data
+
+    def _read_uint16():
+        """Read a 16-bit unsigned integer"""
+
+        return int.from_bytes(_read_bytes(2), 'big')
+
+    def _read_string():
+        """Read a string"""
+
+        return _read_bytes(_read_uint16())
+
+    try:
+        with open(auth_path, 'rb') as auth_file:
+            while True:
+                try:
+                    family = _read_uint16()
+                except EOFError:
+                    break
+
+                try:
+                    yield SSHXAuthorityEntry(family, _read_string(),
+                                             _read_string(), _read_string(),
+                                             _read_string())
+                except EOFError:
+                    raise ValueError('Incomplete Xauthority entry') from None
+    except OSError:
+        pass
+
+
+@asyncio.coroutine
+def lookup_xauth(loop, auth_path, host, dpynum):
+    """Look up Xauthority data for the specified display"""
+
+    auth_path = get_xauth_path(auth_path)
+
+    if host.startswith('/') or host in ('', 'unix', 'localhost'):
+        host = socket.gethostname()
+
+    dpynum = dpynum.encode('ascii')
+
+    ipv4_addrs = []
+    ipv6_addrs = []
+
+    for entry in walk_xauth(auth_path):
+        if entry.dpynum and entry.dpynum != dpynum:
+            continue
+
+        if entry.family == XAUTH_FAMILY_IPV4:
+            if not ipv4_addrs:
+                ipv4_addrs = yield from _lookup_host(loop, host,
+                                                     socket.AF_INET)
+
+            addr = socket.inet_ntop(socket.AF_INET, entry.addr)
+            match = addr in ipv4_addrs
+        elif entry.family == XAUTH_FAMILY_IPV6:
+            if not ipv6_addrs:
+                ipv6_addrs = yield from _lookup_host(loop, host,
+                                                     socket.AF_INET6)
+
+            addr = socket.inet_ntop(socket.AF_INET6, entry.addr)
+            match = addr in ipv6_addrs
+        elif entry.family == XAUTH_FAMILY_HOSTNAME:
+            match = entry.addr == host.encode('idna')
+        elif entry.family == XAUTH_FAMILY_WILD:
+            match = True
+        else:
+            match = False
+
+        if match:
+            return entry.proto, entry.data
+
+    raise ValueError('No xauth entry found for display')
+
+@asyncio.coroutine
+def update_xauth(auth_path, host, dpynum, auth_proto, auth_data):
+    """Update Xauthority data for the specified display"""
+
+    if host.startswith('/') or host in ('', 'unix', 'localhost'):
+        host = socket.gethostname()
+
+    host = host.encode('idna')
+    dpynum = str(dpynum).encode('ascii')
+
+    auth_path = get_xauth_path(auth_path)
+    new_auth_path = auth_path + XAUTH_LOCK_SUFFIX
+    new_file = None
+
+    try:
+        if time.time() - os.stat(new_auth_path).st_ctime > XAUTH_LOCK_DEAD:
+            os.unlink(new_auth_path)
+    except FileNotFoundError:
+        pass
+
+    for _ in range(XAUTH_LOCK_TRIES):
+        try:
+            new_file = open(new_auth_path, 'xb')
+        except FileExistsError:
+            yield from asyncio.sleep(XAUTH_LOCK_DELAY)
+        else:
+            break
+
+    if not new_file:
+        raise ValueError('Unable to acquire Xauthority lock')
+
+    new_entry = SSHXAuthorityEntry(XAUTH_FAMILY_HOSTNAME, host, dpynum,
+                                   auth_proto, auth_data)
+
+    new_file.write(bytes(new_entry))
+
+    for entry in walk_xauth(auth_path):
+        if (entry.family != new_entry.family or entry.addr != new_entry.addr or
+                entry.dpynum != new_entry.dpynum):
+            new_file.write(bytes(entry))
+
+    new_file.close()
+
+    os.rename(new_auth_path, auth_path)
+
+
+@asyncio.coroutine
+def create_x11_client_listener(loop, display, auth_path):
+    """Create a listener to accept X11 connections forwarded over SSH"""
+
+    host, dpynum, _ = _parse_display(display)
+
+    auth_proto, auth_data = yield from lookup_xauth(loop, auth_path,
+                                                    host, dpynum)
+
+    return SSHX11ClientListener(loop, host, dpynum, auth_proto, auth_data)
+
+
+@asyncio.coroutine
+def create_x11_server_listener(conn, loop, auth_path, auth_proto, auth_data):
+    """Create a listener to forward X11 connections over SSH"""
+
+    for dpynum in range(X11_DISPLAY_START, X11_MAX_DISPLAYS):
+        try:
+            tcp_listener = yield from create_tcp_forward_listener(
+                conn, loop, conn.create_x11_connection,
+                X11_LISTEN_HOST, X11_BASE_PORT + dpynum)
+        except OSError:
+            continue
+
+        display = '%s:%d' % (X11_LISTEN_HOST, dpynum)
+
+        try:
+            yield from update_xauth(auth_path, X11_LISTEN_HOST, dpynum,
+                                    auth_proto, auth_data)
+        except ValueError:
+            tcp_listener.close()
+            break
+
+        return SSHX11ServerListener(tcp_listener, display)
+
+    return None

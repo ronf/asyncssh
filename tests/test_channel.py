@@ -53,6 +53,11 @@ class _ClientChannel(asyncssh.SSHClientChannel):
 
         super()._send_request(request, *args, want_reply=want_reply)
 
+    def send_request(self, request, *args):
+        """Send a custom request (for unit testing)"""
+
+        self._send_request(request, *args)
+
     @asyncio.coroutine
     def make_request(self, request, *args):
         """Make a custom request (for unit testing)"""
@@ -130,6 +135,13 @@ class _ServerChannel(asyncssh.SSHServerChannel):
                 args = args[:3] + (String(b'\xff'),)
 
         super()._send_request(request, *args, want_reply=want_reply)
+
+    def _process_delayed_request(self, packet):
+        """Process a request that delays before responding"""
+
+        packet.check_end()
+
+        asyncio.get_event_loop().call_later(0.1, self._report_response, True)
 
     def send_packet(self, pkttype, *args):
         """Send a packet for unit testing (bypassing state checks)"""
@@ -650,6 +662,19 @@ class _TestChannel(ServerTestCase):
 
                 with self.assertRaises(asyncssh.DisconnectError):
                     yield from chan.make_request('\xff')
+
+            yield from conn.wait_closed()
+
+    @asynctest
+    def test_delayed_channel_request(self):
+        """Test queuing channel requests with delayed response"""
+
+        with patch('asyncssh.connection.SSHClientChannel', _ClientChannel):
+            with (yield from self.connect()) as conn:
+                chan, _ = yield from _create_session(conn)
+
+                chan.send_request(b'delayed')
+                chan.send_request(b'delayed')
 
             yield from conn.wait_closed()
 

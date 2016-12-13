@@ -70,6 +70,8 @@ class SSHChannel(SSHPacketHandler):
         self._recv_buf = []
         self._recv_partial = {}
 
+        self._request_queue = []
+
         self._open_waiter = None
         self._request_waiters = []
 
@@ -294,6 +296,36 @@ class SSHChannel(SSHPacketHandler):
         else:
             self._deliver_data(data, datatype)
 
+    def _service_next_request(self):
+        """Process next item on channel request queue"""
+
+        request, packet, _ = self._request_queue[0]
+
+        name = '_process_' + map_handler_name(request) + '_request'
+        handler = getattr(self, name, None)
+        result = handler(packet) if callable(handler) else False
+
+        if result is not None:
+            self._report_response(result)
+
+    def _report_response(self, result):
+        """Report back the response to a previously issued channel request"""
+
+        request, _, want_reply = self._request_queue.pop(0)
+
+        if want_reply and self._send_state not in {'close_pending', 'closed'}:
+            if result:
+                self._send_packet(MSG_CHANNEL_SUCCESS)
+            else:
+                self._send_packet(MSG_CHANNEL_FAILURE)
+
+        if result and request in {'shell', 'exec', 'subsystem'}:
+            self._session.session_started()
+            self.resume_reading()
+
+        if self._request_queue:
+            self._service_next_request()
+
     def process_connection_close(self, exc):
         """Process the SSH connection closing"""
 
@@ -473,19 +505,9 @@ class SSHChannel(SSHPacketHandler):
             raise DisconnectError(DISC_PROTOCOL_ERROR,
                                   'Invalid channel request') from None
 
-        name = '_process_' + map_handler_name(request) + '_request'
-        handler = getattr(self, name, None)
-        result = handler(packet) if callable(handler) else False
-
-        if want_reply and self._send_state not in {'close_pending', 'closed'}:
-            if result:
-                self._send_packet(MSG_CHANNEL_SUCCESS)
-            else:
-                self._send_packet(MSG_CHANNEL_FAILURE)
-
-        if result and request in {'shell', 'exec', 'subsystem'}:
-            self._session.session_started()
-            self.resume_reading()
+        self._request_queue.append((request, packet, want_reply))
+        if len(self._request_queue) == 1:
+            self._service_next_request()
 
     def _process_response(self, pkttype, packet):
         """Process a success or failure response"""
@@ -855,9 +877,13 @@ class SSHClientChannel(SSHChannel):
                                        'PTY request failed')
 
         if x11_forwarding:
-            auth_proto, remote_auth, screen = \
-                yield from self._conn.attach_x11_listener(
-                    self, x11_display, x11_auth_path, x11_single_connection)
+            try:
+                auth_proto, remote_auth, screen = \
+                    yield from self._conn.attach_x11_listener(
+                        self, x11_display, x11_auth_path, x11_single_connection)
+            except ValueError as exc:
+                raise ChannelOpenError(OPEN_REQUEST_X11_FORWARDING_FAILED,
+                                       str(exc)) from None
 
             result = yield from self._make_request(
                 b'x11-req', Boolean(x11_single_connection), String(auth_proto),
@@ -1059,6 +1085,14 @@ class SSHServerChannel(SSHChannel):
         self._term_type = None
         self._term_size = (0, 0, 0, 0)
         self._term_modes = {}
+        self._x11_display = None
+
+    def _cleanup(self, exc=None):
+        """Clean up this channel"""
+
+        self._conn.detach_x11_listener(self)
+
+        super()._cleanup(exc)
 
     def _wrap_session(self, session):
         """Wrap a line editor around the session if enabled"""
@@ -1119,6 +1153,32 @@ class SSHServerChannel(SSHChannel):
             self._term_modes = term_modes
 
         return result
+
+    def _process_x11_req_request(self, packet):
+        """Process request to enable X11 forwarding"""
+
+        _ = packet.get_boolean()                        # single_connection
+        auth_proto = packet.get_string()
+        auth_data = packet.get_string()
+        screen = packet.get_uint32()
+        packet.check_end()
+
+        try:
+            auth_data = binascii.a2b_hex(auth_data)
+        except binascii.Error:
+            return False
+
+        self._conn.create_task(self._finish_x11_req_request(auth_proto,
+                                                            auth_data, screen))
+
+    @asyncio.coroutine
+    def _finish_x11_req_request(self, auth_proto, auth_data, screen):
+        """Finish processing request to enable X11 forwarding"""
+
+        self._x11_display = yield from self._conn.attach_x11_listener(
+            self, auth_proto, auth_data, screen)
+
+        self._report_response(bool(self._x11_display))
 
     def _process_auth_agent_req_at_openssh_dot_com_request(self, packet):
         """Process a request to enable ssh-agent forwarding"""
@@ -1355,6 +1415,21 @@ class SSHServerChannel(SSHChannel):
         """
 
         return self._term_modes.get(mode)
+
+    def get_x11_display(self):
+        """Return the display to use for X11 forwarding
+
+           When X11 forwarding has been requested by the client, this
+           method returns the X11 display which should be used to open
+           a forwarded connection. If the client did not request X11
+           forwarding, this method returns ``None``.
+
+           :returns: A str containing the X11 display or ``None`` if
+                     X11 fowarding was not requested
+
+        """
+
+        return self._x11_display
 
     def set_xon_xoff(self, client_can_do):
         """Set whether the client should enable XON/XOFF flow control

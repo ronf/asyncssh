@@ -99,7 +99,7 @@ from .stream import SSHClientStreamSession, SSHServerStreamSession
 from .stream import SSHTCPStreamSession, SSHUNIXStreamSession
 from .stream import SSHReader, SSHWriter
 
-from .x11 import SSHX11ClientListener
+from .x11 import create_x11_client_listener, create_x11_server_listener
 
 
 # SSH default port
@@ -2288,6 +2288,29 @@ class SSHClientConnection(SSHConnection):
                                    'Auth agent forwarding disabled')
 
     @asyncio.coroutine
+    def attach_x11_listener(self, chan, display, auth_path, single_connection):
+        """Attach a channel to a local X11 display"""
+
+        if not display:
+            display = os.environ.get('DISPLAY')
+
+        if not display:
+            raise ValueError('X11 display not set')
+
+        if not self._x11_listener:
+            self._x11_listener = yield from create_x11_client_listener(
+                self._loop, display, auth_path)
+
+        return self._x11_listener.attach(display, chan, single_connection)
+
+    def detach_x11_listener(self, chan):
+        """Detach a session from a local X11 listener"""
+
+        if self._x11_listener:
+            if self._x11_listener.detach(chan):
+                self._x11_listener = None
+
+    @asyncio.coroutine
     def create_session(self, session_factory, command=None, *, subsystem=None,
                        env={}, term_type=None, term_size=None, term_modes={},
                        x11_forwarding=False, x11_display=None,
@@ -2349,7 +2372,7 @@ class SSHClientConnection(SSHConnection):
                defaulting to the value in the environment variable ``DISPLAY``
            :param str x11_auth_path: (optional)
                The path to the Xauthority file to read X11 authentication
-               from, defaulting to the value in the environment variable
+               data from, defaulting to the value in the environment variable
                ``XAUTHORITY`` or the file ``.Xauthority`` in the user's
                home directory if that's not set
            :param bool x11_single_connection: (optional)
@@ -2857,32 +2880,6 @@ class SSHClientConnection(SSHConnection):
                                                    *args, **kwargs))
 
     @asyncio.coroutine
-    def attach_x11_listener(self, chan, display, auth_path, single_connection):
-        """Attach a channel to a local X11 display"""
-
-        if not display:
-            display = os.environ.get('DISPLAY')
-
-        if not display:
-            raise ValueError('X11 display not set')
-
-        if self._x11_listener:
-            if self._x11_listener.get_display() != display:
-                raise ValueError('Already forwarding to another X11 display')
-        else:
-            self._x11_listener = yield from SSHX11ClientListener.create(
-                self._loop, display, auth_path)
-
-        return self._x11_listener.attach(chan, single_connection)
-
-    def detach_x11_listener(self, chan):
-        """Detach a session from a local X11 listener"""
-
-        if self._x11_listener:
-            if self._x11_listener.detach(chan):
-                self._x11_listener = None
-
-    @asyncio.coroutine
     def create_ssh_connection(self, client_factory, host, port=_DEFAULT_PORT,
                               *args, **kwargs):
         """Create a tunneled SSH client connection
@@ -3054,8 +3051,9 @@ class SSHServerConnection(SSHConnection):
                  encryption_algs, mac_algs, compression_algs, signature_algs,
                  rekey_bytes, rekey_seconds, server_host_keys,
                  authorized_client_keys, allow_pty, line_editor, line_history,
-                 agent_forwarding, session_factory, session_encoding,
-                 sftp_factory, window, max_pktsize, login_timeout):
+                 x11_forwarding, x11_auth_path, agent_forwarding,
+                 session_factory, session_encoding, sftp_factory, window,
+                 max_pktsize, login_timeout):
         super().__init__(server_factory, loop, server_version, kex_algs,
                          encryption_algs, mac_algs, compression_algs,
                          signature_algs, rekey_bytes, rekey_seconds,
@@ -3067,6 +3065,8 @@ class SSHServerConnection(SSHConnection):
         self._allow_pty = allow_pty
         self._line_editor = line_editor
         self._line_history = line_history
+        self._x11_forwarding = x11_forwarding
+        self._x11_auth_path = x11_auth_path
         self._agent_forwarding = agent_forwarding
         self._agent_forwarding_enabled = False
         self._session_factory = session_factory
@@ -3605,6 +3605,31 @@ class SSHServerConnection(SSHConnection):
 
         self._report_global_response(True)
 
+    @asyncio.coroutine
+    def attach_x11_listener(self, chan, auth_proto, auth_data, screen):
+        """Attach a channel to a remote X11 display"""
+
+        if (not self._x11_forwarding or
+                not self.check_key_permission('X11-forwarding') or
+                not self.check_certificate_permission('X11-forwarding')):
+            return None
+
+        if not self._x11_listener:
+            self._x11_listener = yield from create_x11_server_listener(
+                self, self._loop, self._x11_auth_path, auth_proto, auth_data)
+
+        if self._x11_listener:
+            return self._x11_listener.attach(chan, screen)
+        else:
+            return None
+
+    def detach_x11_listener(self, chan):
+        """Detach a session from a remote X11 listener"""
+
+        if self._x11_listener:
+            if self._x11_listener.detach(chan):
+                self._x11_listener = None
+
     def send_auth_banner(self, msg, lang=DEFAULT_LANG):
         """Send an authentication banner to the client
 
@@ -3699,9 +3724,9 @@ class SSHServerConnection(SSHConnection):
                | pty
                | user-rc
 
-           AsyncSSH internally enforces agent-forwarding, port-forwarding
-           and pty permissions but ignores the other values since it does
-           not implement those features.
+           AsyncSSH internally enforces X11-forwarding, agent-forwarding,
+           port-forwarding and pty permissions but ignores user-rc since
+           it does not implement that feature.
 
            Non-standard permissions can also be checked, as long as the
            option follows the convention of starting with 'no-'.
@@ -3954,16 +3979,16 @@ class SSHServerConnection(SSHConnection):
         return SSHReader(session, chan), SSHWriter(session, chan)
 
     @asyncio.coroutine
-    def open_x11_connection(self, orig_host='', orig_port=0):
-        """Open a forwarded X11 connection back to the client"""
+    def create_x11_connection(self, session_factory, orig_host='',
+                              orig_port=0, *, window=_DEFAULT_WINDOW,
+                              max_pktsize=_DEFAULT_MAX_PKTSIZE):
+        """Create an SSH X11 forwarded connection"""
 
-        chan = self.create_x11_channel()
+        chan = self.create_x11_channel(None, window, max_pktsize)
 
-        session = yield from chan.open(SSHTCPStreamSession,
-                                       orig_host, orig_port)
+        session = yield from chan.open(session_factory, orig_host, orig_port)
 
-        return SSHReader(session, chan), SSHWriter(session, chan)
-
+        return chan, session
 
     @asyncio.coroutine
     def open_agent_connection(self):
@@ -4210,7 +4235,8 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
                   authorized_client_keys=None, server_version=(), kex_algs=(),
                   encryption_algs=(), mac_algs=(), compression_algs=(),
                   signature_algs=(), allow_pty=True, line_editor=True,
-                  line_history=_DEFAULT_LINE_HISTORY, agent_forwarding=True,
+                  line_history=_DEFAULT_LINE_HISTORY, x11_forwarding=False,
+                  x11_auth_path=None, agent_forwarding=True,
                   session_factory=None, session_encoding='utf-8',
                   sftp_factory=None, window=_DEFAULT_WINDOW,
                   max_pktsize=_DEFAULT_MAX_PKTSIZE,
@@ -4288,6 +4314,14 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
        :param bool line_history: (int)
            The number of lines of input line history to store in the
            line editor when it is enabled, defaulting to 1000
+       :param bool x11_forwarding: (optional)
+           Whether or not to allow forwarding of X11 connections back
+           to the client when the client supports it, defaulting to ``False``
+       :param str x11_auth_path: (optional)
+           The path to the Xauthority file to write X11 authentication
+           data to, defaulting to the value in the environment variable
+           ``XAUTHORITY`` or the file ``.Xauthority`` in the user's
+           home directory if that's not set
        :param bool agent_forwarding: (optional)
            Whether or not to allow forwarding of ssh-agent requests back
            to the client when the client supports it, defaulting to ``True``
@@ -4347,6 +4381,7 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
                                    rekey_bytes, rekey_seconds,
                                    server_host_keys, authorized_client_keys,
                                    allow_pty, line_editor, line_history,
+                                   x11_forwarding, x11_auth_path,
                                    agent_forwarding, session_factory,
                                    session_encoding, sftp_factory, window,
                                    max_pktsize, login_timeout)
