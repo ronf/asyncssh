@@ -524,5 +524,5 @@ def connect_agent(agent_path=None, *, loop=None):
     try:
         yield from agent.connect()
         return agent
-    except (OSError, ChannelOpenError):
+    except (OSError, ChannelOpenError, AttributeError):
         return None
