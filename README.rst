@@ -34,6 +34,7 @@ Features
   * OpenSSH-compatible direct and forwarded UNIX domain socket channels
   * Local and remote TCP/IP port forwarding
   * Local and remote UNIX domain socket forwarding
+  * X11 forwarding support on both the client and the server
   * SFTP protocol version 3 with OpenSSH extensions
 
 * Multiple simultaneous sessions on a single SSH connection

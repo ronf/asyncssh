@@ -957,7 +957,8 @@ are installed.
 Supported certificate types include OpenSSH version 01 certificates for
 DSA, RSA, ECDSA, and Ed25519 keys. Support is also available for the
 certificate critical options of force-command and source-address and
-the extensions permit-pty and permit-port-forwarding.
+the extensions permit-X11-forwarding, permit-agent-forwarding,
+permit-port-forwarding, and permit-pty.
 
 Several public key and certificate formats are supported including
 PKCS#1 and PKCS#8 DER and PEM, OpenSSH, and RFC4716 formats.
@@ -1245,8 +1246,8 @@ Authorized Keys
 AsyncSSH supports OpenSSH-style authorized_keys files, including the
 cert-authority option to validate user certificates, enforcement of
 from and principals options to restrict key matching, enforcement
-of no-pty, no-port-forwarding, and permitopen options, and support
-for command and environment options.
+of no-X11-forwarding, no-agent-forwarding, no-pty, no-port-forwarding,
+and permitopen options, and support for command and environment options.
 
 .. index:: Specifying authorized keys
 .. _SpecifyingAuthorizedKeys:
