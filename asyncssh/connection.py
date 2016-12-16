@@ -2368,7 +2368,7 @@ class SSHClientConnection(SSHConnection):
                Whether or not to request X11 forwarding for this session,
                defaulting to ``False``
            :param str x11_display: (optional)
-               The display that X11 connections shoul be forwarded to,
+               The display that X11 connections should be forwarded to,
                defaulting to the value in the environment variable ``DISPLAY``
            :param str x11_auth_path: (optional)
                The path to the Xauthority file to read X11 authentication
