@@ -13,6 +13,7 @@
 """SSH listeners"""
 
 import asyncio
+import errno
 import socket
 
 from .forward import SSHLocalPortForwarder, SSHLocalPathForwarder
@@ -226,11 +227,15 @@ def create_tcp_forward_listener(conn, loop, coro, listen_host, listen_port):
 
         try:
             sock.bind(sa)
-        except OSError as exc:
+        except (OSError, OverflowError) as exc:
             sock.close()
 
             for server in servers:
                 server.close()
+
+            if isinstance(exc, OverflowError): # pragma: no cover
+                exc.errno = errno.EOVERFLOW
+                exc.strerror = str(exc)
 
             raise OSError(exc.errno, 'error while attempting to bind on '
                           'address %r: %s' % (sa, exc.strerror)) from None
