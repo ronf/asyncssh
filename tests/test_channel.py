@@ -13,12 +13,12 @@
 """Unit tests for AsyncSSH channel API"""
 
 import asyncio
+import tempfile
 
 from unittest.mock import patch
 
 import asyncssh
 
-from asyncssh.channel import SSHAgentChannel
 from asyncssh.constants import DEFAULT_LANG, MSG_USERAUTH_REQUEST
 from asyncssh.constants import MSG_CHANNEL_OPEN_CONFIRMATION
 from asyncssh.constants import MSG_CHANNEL_OPEN_FAILURE
@@ -229,9 +229,20 @@ class _ChannelServer(Server):
                 agent.close()
             else:
                 stdout.channel.exit(1)
+        elif action == 'agent_sock':
+            agent_path = stdin.channel.get_agent_path()
+
+            if agent_path:
+                agent = yield from asyncssh.connect_agent(agent_path)
+                stdout.write(str(len((yield from agent.get_keys()))) + '\n')
+                agent.close()
+            else:
+                stdout.channel.exit(1)
         elif action == 'rejected_agent':
-            chan = SSHAgentChannel(self._conn, asyncio.get_event_loop(),
-                                   None, 1, 32768)
+            agent_path = stdin.channel.get_agent_path()
+            stdout.write(str(bool(agent_path)) + '\n')
+
+            chan = self._conn.create_agent_channel()
 
             try:
                 yield from chan.open(SSHUNIXStreamSession)
@@ -239,7 +250,7 @@ class _ChannelServer(Server):
                 stdout.channel.exit(1)
         elif action == 'rejected_session':
             chan = _ServerChannel(self._conn, asyncio.get_event_loop(),
-                                  False, False, 0, False, None, 1, 32768)
+                                  False, False, 0, None, 1, 32768)
 
             try:
                 yield from chan.open_session()
@@ -775,6 +786,31 @@ class _TestChannel(ServerTestCase):
             result = ''.join(session.recv_buf[None])
             self.assertEqual(result, '3\n')
 
+            chan, session = yield from _create_session(conn, 'agent')
+
+            yield from chan.wait_closed()
+
+            result = ''.join(session.recv_buf[None])
+            self.assertEqual(result, '3\n')
+
+        yield from conn.wait_closed()
+
+    @asynctest
+    def test_agent_forwarding_sock(self):
+        """Test SSH agent forwarding via UNIX domain socket"""
+
+        if not self.agent_available(): # pragma: no cover
+            self.skipTest('ssh-agent not available')
+
+        with (yield from self.connect(username='ckey',
+                                      agent_forwarding=True)) as conn:
+            chan, session = yield from _create_session(conn, 'agent_sock')
+
+            yield from chan.wait_closed()
+
+            result = ''.join(session.recv_buf[None])
+            self.assertEqual(result, '3\n')
+
         yield from conn.wait_closed()
 
     @asynctest
@@ -840,6 +876,24 @@ class _TestChannel(ServerTestCase):
         yield from conn.wait_closed()
 
     @asynctest
+    def test_agent_forwarding_sock_failure(self):
+        """Test failure to create SSH agent forwarding socket"""
+
+        tempfile.tempdir = 'xxx'
+
+        with (yield from self.connect(username='ckey',
+                                      agent_forwarding=True)) as conn:
+            chan, session = yield from _create_session(conn, 'agent_sock')
+
+            yield from chan.wait_closed()
+
+            self.assertEqual(session.exit_status, 1)
+
+        yield from conn.wait_closed()
+
+        tempfile.tempdir = None
+
+    @asynctest
     def test_agent_forwarding_not_offered(self):
         """Test SSH agent forwarding not offered by client"""
 
@@ -860,6 +914,9 @@ class _TestChannel(ServerTestCase):
             chan, session = yield from _create_session(conn, 'rejected_agent')
 
             yield from chan.wait_closed()
+
+            result = ''.join(session.recv_buf[None])
+            self.assertEqual(result, 'False\n')
 
             self.assertEqual(session.exit_status, 1)
 

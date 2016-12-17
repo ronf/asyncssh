@@ -14,9 +14,11 @@
 
 import asyncio
 import os
+import tempfile
 
 import asyncssh
 
+from .listener import create_unix_forward_listener
 from .misc import ChannelOpenError, load_default_keypairs
 from .packet import Byte, String, UInt32, PacketDecodeError, SSHPacket
 from .public_key import SSHKeyPair
@@ -55,6 +57,26 @@ SSH_AGENT_RSA_SHA2_256                   = 2
 SSH_AGENT_RSA_SHA2_512                   = 4
 
 # pylint: enable=bad-whitespace
+
+
+class _X11AgentListener:
+    """Listener used to forward agent connections"""
+
+    def __init__(self, tempdir, path, unix_listener):
+        self._tempdir = tempdir
+        self._path = path
+        self._unix_listener = unix_listener
+
+    def get_path(self):
+        """Return the path being listened on"""
+
+        return self._path
+
+    def close(self):
+        """Close the agent listener"""
+
+        self._unix_listener.close()
+        self._tempdir.cleanup()
 
 
 class SSHAgentKeyPair(SSHKeyPair):
@@ -525,4 +547,19 @@ def connect_agent(agent_path=None, *, loop=None):
         yield from agent.connect()
         return agent
     except (OSError, ChannelOpenError, AttributeError):
+        return None
+
+
+@asyncio.coroutine
+def create_agent_listener(conn, loop):
+    """Create a listener for forwarding ssh-agent connections"""
+
+    try:
+        tempdir = tempfile.TemporaryDirectory(prefix='asyncssh-')
+        path = os.path.join(tempdir.name, 'agent')
+        unix_listener = yield from create_unix_forward_listener(
+            conn, loop, conn.create_agent_connection, path)
+
+        return _X11AgentListener(tempdir, path, unix_listener)
+    except OSError:
         return None

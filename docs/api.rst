@@ -607,6 +607,7 @@ SSHServerChannel
    .. automethod:: get_terminal_size
    .. automethod:: get_terminal_mode
    .. automethod:: get_x11_display
+   .. automethod:: get_agent_path
    ================================= =
 
    ============================== =
@@ -1149,6 +1150,35 @@ load_public_keys
 
 SSH Agent Support
 =================
+
+AsyncSSH supports the ability to use private keys managed by the OpenSSH
+ssh-agent on UNIX systems. It can connect via a UNIX domain socket to
+the agent and offload all private key operations to it, avoiding the need
+to read these keys into AsyncSSH itself. An ssh-agent is automatically
+used in :func:`create_connection` when a valid ``SSH_AUTH_SOCK`` is set
+in the environment. An alternate path to the agent can be specified via
+the ``agent_path`` argument to this function.
+
+An ssh-agent can also be accessed directly from AsyncSSH by calling
+:func:`connect_agent`. When successful, this function returns an
+:class:`SSHAgentClient` which can be used to get a list of available
+keys, add and remove keys, and lock and unlock access to this agent.
+
+SSH agent forwarding may be enabled when making outbound SSH connections
+by specifying the ``agent_forwarding`` argument when calling
+:func:`create_connection`, allowing processes running on the server
+to tunnel requests back over the SSH connection to the client's ssh-agent.
+
+Agent forwarding can be enabled when starting an SSH server by
+specifying the ``agent_forwarding`` argument when calling
+:func:`create_server`. In this case, the client's ssh-agent can be
+accessed from the server by passing the :class:`SSHServerConnection` as
+the argument to :func:`connect_agent` instead of a local path. Alternately,
+when an :class:`SSHServerChannel` has been opened, the :meth:`get_agent_path()
+<SSHServerChannel.get_agent_path>` method may be called on it to get a
+path to a UNIX domain socket which can be passed as the ``SSH_AUTH_SOCK``
+to local applications which need this access. Any requests sent to this
+socket are forwarded over the SSH connection to the client's ssh-agent.
 
 SSHAgentClient
 --------------

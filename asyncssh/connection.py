@@ -22,7 +22,7 @@ import time
 
 from collections import OrderedDict
 
-from .agent import connect_agent
+from .agent import connect_agent, create_agent_listener
 
 from .auth import lookup_client_auth
 from .auth import get_server_auth_methods, lookup_server_auth
@@ -1694,6 +1694,12 @@ class SSHConnection(SSHPacketHandler):
 
         return SSHX11Channel(self, self._loop, encoding, window, max_pktsize)
 
+    def create_agent_channel(self, encoding=None, window=_DEFAULT_WINDOW,
+                             max_pktsize=_DEFAULT_MAX_PKTSIZE):
+        """Create an SSH agent channel to use in agent forwarding"""
+
+        return SSHAgentChannel(self, self._loop, encoding, window, max_pktsize)
+
     @asyncio.coroutine
     def create_connection(self, session_factory, remote_host, remote_port,
                           orig_host='', orig_port=0, *, encoding=None,
@@ -3068,7 +3074,6 @@ class SSHServerConnection(SSHConnection):
         self._x11_forwarding = x11_forwarding
         self._x11_auth_path = x11_auth_path
         self._agent_forwarding = agent_forwarding
-        self._agent_forwarding_enabled = False
         self._session_factory = session_factory
         self._session_encoding = session_encoding
         self._sftp_factory = sftp_factory
@@ -3086,8 +3091,14 @@ class SSHServerConnection(SSHConnection):
         self._cert_options = None
         self._kbdint_password_auth = False
 
+        self._agent_listener = None
+
     def _cleanup(self, exc):
         """Clean up this server connection"""
+
+        if self._agent_listener:
+            self._agent_listener.close()
+            self._agent_listener = None
 
         self._cancel_login_timer()
         super()._cleanup(exc)
@@ -3630,6 +3641,28 @@ class SSHServerConnection(SSHConnection):
             if self._x11_listener.detach(chan):
                 self._x11_listener = None
 
+    def create_agent_listener(self):
+        """Create a listener for forwarding ssh-agent connections"""
+
+        if (not self._agent_forwarding or
+                not self.check_key_permission('agent-forwarding') or
+                not self.check_certificate_permission('agent-forwarding')):
+            return False
+
+        if not self._agent_listener:
+            self._agent_listener = yield from create_agent_listener(self,
+                                                                    self._loop)
+
+        return bool(self._agent_listener)
+
+    def get_agent_path(self):
+        """Return the path of the ssh-agent listener, if one exists"""
+
+        if self._agent_listener:
+            return self._agent_listener.get_path()
+        else:
+            return None
+
     def send_auth_banner(self, msg, lang=DEFAULT_LANG):
         """Send an authentication banner to the client
 
@@ -3824,13 +3857,7 @@ class SSHServerConnection(SSHConnection):
 
         return SSHServerChannel(self, self._loop, self._allow_pty,
                                 self._line_editor, self._line_history,
-                                self._agent_forwarding, encoding, window,
-                                max_pktsize)
-
-    def agent_forwarding_enabled(self):
-        """Enable ssh-agent forwarding to the client"""
-
-        self._agent_forwarding_enabled = True
+                                encoding, window, max_pktsize)
 
     @asyncio.coroutine
     def create_connection(self, session_factory, remote_host, remote_port,
@@ -3991,17 +4018,27 @@ class SSHServerConnection(SSHConnection):
         return chan, session
 
     @asyncio.coroutine
-    def open_agent_connection(self):
-        """Open a forwarded ssh-agent connection back to the client"""
+    def create_agent_connection(self, session_factory, *,
+                                encoding=None, window=_DEFAULT_WINDOW,
+                                max_pktsize=_DEFAULT_MAX_PKTSIZE):
+        """Create a forwarded ssh-agent connection back to the client"""
 
-        if not self._agent_forwarding_enabled:
+        if not self._agent_listener:
             raise ChannelOpenError(OPEN_ADMINISTRATIVELY_PROHIBITED,
                                    'Agent forwarding not permitted')
 
-        chan = SSHAgentChannel(self, self._loop, None, _DEFAULT_WINDOW,
-                               _DEFAULT_MAX_PKTSIZE)
+        chan = self.create_agent_channel(encoding, window, max_pktsize)
 
-        session = yield from chan.open(SSHUNIXStreamSession)
+        session = yield from chan.open(session_factory)
+
+        return chan, session
+
+    @asyncio.coroutine
+    def open_agent_connection(self):
+        """Open a forwarded ssh-agent connection back to the client"""
+
+        chan, session = \
+            yield from self.create_agent_connection(SSHUNIXStreamSession)
 
         return SSHReader(session, chan), SSHWriter(session, chan)
 

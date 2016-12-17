@@ -1070,7 +1070,7 @@ class SSHServerChannel(SSHChannel):
     _write_datatypes = {EXTENDED_DATA_STDERR}
 
     def __init__(self, conn, loop, allow_pty, line_editor, line_history,
-                 agent_forwarding, encoding, window, max_pktsize):
+                 encoding, window, max_pktsize):
         """Initialize an SSH server channel"""
 
         super().__init__(conn, loop, encoding, window, max_pktsize)
@@ -1078,7 +1078,6 @@ class SSHServerChannel(SSHChannel):
         self._allow_pty = allow_pty
         self._line_editor = line_editor
         self._line_history = line_history
-        self._agent_forwarding = agent_forwarding
         self._env = self._conn.get_key_option('environment', {})
         self._command = None
         self._subsystem = None
@@ -1185,13 +1184,13 @@ class SSHServerChannel(SSHChannel):
 
         packet.check_end()
 
-        if not self._agent_forwarding or \
-           not self._conn.check_key_permission('agent-forwarding') or \
-           not self._conn.check_certificate_permission('agent-forwarding'):
-            return False
+        self._conn.create_task(self._finish_agent_req_request())
 
-        self._conn.agent_forwarding_enabled()
-        return True
+    @asyncio.coroutine
+    def _finish_agent_req_request(self):
+        """Finish processing request to enable agent forwarding"""
+
+        self._report_response((yield from self._conn.create_agent_listener()))
 
     def _process_env_request(self, packet):
         """Process a request to set an environment variable"""
@@ -1430,6 +1429,22 @@ class SSHServerChannel(SSHChannel):
         """
 
         return self._x11_display
+
+    def get_agent_path(self):
+        """Return the path of the ssh-agent listening socket
+
+           When agent forwarding has been requested by the client,
+           this method returns the path of the listening socket which
+           should be used to open a forwarded agent connection. If the
+           client did not request agent forwarding, this method returns
+           ``None``.
+
+           :returns: A str containing the ssh-agent socket path or
+                     ``None`` if agent fowarding was not requested
+
+        """
+
+        return self._conn.get_agent_path()
 
     def set_xon_xoff(self, client_can_do):
         """Set whether the client should enable XON/XOFF flow control
