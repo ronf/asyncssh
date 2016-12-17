@@ -132,8 +132,7 @@ class ServerTestCase(AsyncTestCase):
                                                       cls._server_port))
         run('cat skey.pub >> .ssh/known_hosts')
 
-        os.environ['LOGNAME'] = 'guest'
-        os.environ['HOME'] = '.'
+        os.environ = {'LOGNAME': 'guest', 'HOME': '.'}
 
         try:
             output = run('ssh-agent -a agent 2>/dev/null')
