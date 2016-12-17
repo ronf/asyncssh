@@ -760,6 +760,7 @@ SSHReader
    .. automethod:: at_eof
    .. automethod:: read
    .. automethod:: readline
+   .. automethod:: readuntil
    .. automethod:: readexactly
    ============================== =
 

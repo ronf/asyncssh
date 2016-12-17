@@ -272,6 +272,48 @@ class _TestStream(ServerTestCase):
         yield from conn.wait_closed()
 
     @asynctest
+    def test_readuntil(self):
+        """Test readuntil with multi-character separator"""
+
+        with (yield from self.connect()) as conn:
+            stdin, stdout, _ = yield from conn.open_session()
+
+            stdin.write('abc\r')
+            yield from asyncio.sleep(0.01)
+            stdin.write('\ndef')
+            yield from asyncio.sleep(0.01)
+            stdin.write('\r\n')
+            yield from asyncio.sleep(0.01)
+            stdin.write('ghi')
+            stdin.write_eof()
+
+            self.assertEqual((yield from stdout.readuntil('\r\n')), 'abc\r\n')
+            self.assertEqual((yield from stdout.readuntil('\r\n')), 'def\r\n')
+
+            with self.assertRaises(asyncio.IncompleteReadError) as exc:
+                yield from stdout.readuntil('\r\n')
+
+            self.assertEqual(exc.exception.partial, 'ghi')
+
+            stdin.close()
+
+        yield from conn.wait_closed()
+
+    @asynctest
+    def test_readuntil_empty_separator(self):
+        """Test readuntil with empty separator"""
+
+        with (yield from self.connect()) as conn:
+            stdin, stdout, _ = yield from conn.open_session()
+
+            with self.assertRaises(ValueError):
+                yield from stdout.readuntil('')
+
+            stdin.close()
+
+        yield from conn.wait_closed()
+
+    @asynctest
     def test_get_extra_info(self):
         """Test get_extra_info on streams"""
 

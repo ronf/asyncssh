@@ -21,6 +21,8 @@ from .session import SSHClientSession, SSHServerSession
 from .session import SSHTCPSession, SSHUNIXSession
 from .sftp import SFTPServerHandler
 
+_NEWLINE = object()
+
 
 class SSHReader:
     """SSH read stream handler"""
@@ -72,11 +74,13 @@ class SSHReader:
 
            This method is a coroutine which reads up to ``n`` bytes
            or characters from the stream. If ``n`` is not provided or
-           set to ``-1``, it reads until EOF or until a signal is
-           received on the stream.
+           set to ``-1``, it reads until EOF or a signal is received.
 
-           If EOF was received and the receive buffer is empty, an
+           If EOF is received and the receive buffer is empty, an
            empty bytes or str object is returned.
+
+           If the next data in the stream is a signal, the signal is
+           delivered as a raised exception.
 
            .. note:: Unlike traditional ``asyncio`` stream readers,
                      the data will be delivered as either bytes or
@@ -94,9 +98,12 @@ class SSHReader:
            This method is a coroutine which reads one line, ending in
            ``'\\n'``.
 
-           If EOF was received before ``'\\n'`` was found, the partial
-           line is returned. If EOF was received and the receive buffer
+           If EOF is received before ``'\\n'`` is found, the partial
+           line is returned. If EOF is received and the receive buffer
            is empty, an empty bytes or str object is returned.
+
+           If the next data in the stream is a signal, the signal is
+           delivered as a raised exception.
 
            .. note:: In Python 3.5 and later, :class:`SSHReader` objects
                      can also be used as async iterators, returning input
@@ -104,7 +111,30 @@ class SSHReader:
 
         """
 
-        return self._session.readline(self._datatype)
+        try:
+            return (yield from self.readuntil(_NEWLINE))
+        except asyncio.IncompleteReadError as exc:
+            return exc.partial
+
+    @asyncio.coroutine
+    def readuntil(self, separator):
+        """Read data from the stream until ``separator`` is seen
+
+           This method is a coroutine which reads from the stream until
+           the requested separator is seen. If a match is found, the
+           returned data will include the separator at the end.
+
+           If EOF or a signal is received before a match occurs, an
+           :exc:`IncompleteReadError <asyncio.IncompleteReadError>`
+           is raised and its ``partial`` attribute will contain the
+           data in the stream prior to the EOF or signal.
+
+           If the next data in the stream is a signal, the signal is
+           delivered as a raised exception.
+
+        """
+
+        return self._session.readuntil(separator, self._datatype)
 
     @asyncio.coroutine
     def readexactly(self, n):
@@ -113,10 +143,13 @@ class SSHReader:
            This method is a coroutine which reads exactly n bytes or
            characters from the stream.
 
-           If EOF is received before ``n`` bytes are read, an
-           :exc:`IncompleteReadError <asyncio.IncompleteReadError>` is
-           raised and its ``partial`` attribute contains the partially
-           read data.
+           If EOF or a signal is received in the stream before ``n``
+           bytes are read, an :exc:`IncompleteReadError
+           <asyncio.IncompleteReadError>` is raised and its ``partial``
+           attribute will contain the data before the EOF or signal.
+
+           If the next data in the stream is a signal, the signal is
+           delivered as a raised exception.
 
         """
 
@@ -420,42 +453,52 @@ class SSHStreamSession:
         return buf
 
     @asyncio.coroutine
-    def readline(self, datatype):
-        """Read a line from the channel"""
+    def readuntil(self, separator, datatype):
+        """Read data from the channel until a separator is seen"""
 
+        if separator is _NEWLINE:
+            separator = '\n' if self._encoding else b'\n'
+        elif not separator:
+            raise ValueError('Separator cannot be empty')
+
+        seplen = len(separator)
         recv_buf = self._recv_buf[datatype]
-        buf, sep = ('', '\n') if self._encoding else (b'', b'\n')
-        data = []
+        buf = '' if self._encoding else b''
+        buflen = 0
 
         while True:
             while recv_buf:
                 if isinstance(recv_buf[0], Exception):
-                    if data:
-                        return buf.join(data)
+                    if buf:
+                        raise asyncio.IncompleteReadError(buf, None)
                     else:
                         raise recv_buf.pop(0)
 
-                idx = recv_buf[0].find(sep) + 1
-                if idx > 0:
-                    data.append(recv_buf[0][:idx])
-                    recv_buf[0] = recv_buf[0][idx:]
+                buf += recv_buf[0]
+                start = max(buflen + 1 - seplen, 0)
+                idx = buf.find(separator, start)
+                if idx >= 0:
+                    idx += seplen
+                    recv_buf[0] = buf[idx:]
+                    buf = buf[:idx]
                     self._recv_buf_len -= idx
 
                     if not recv_buf[0]:
                         recv_buf.pop(0)
 
                     self._maybe_resume_reading()
-                    return buf.join(data)
+                    return buf
 
                 l = len(recv_buf[0])
-                data.append(recv_buf.pop(0))
+                buflen += l
                 self._recv_buf_len -= l
+                recv_buf.pop(0)
 
             if self._maybe_resume_reading():
                 continue
 
             if self._eof_received:
-                return buf.join(data)
+                raise asyncio.IncompleteReadError(buf, None)
 
             yield from self._block_read(datatype)
 
