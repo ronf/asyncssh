@@ -1392,6 +1392,7 @@ Key exchange algorithms
 
 The following are the key exchange algorithms currently supported by AsyncSSH:
 
+  | curve25519-sha256
   | curve25519-sha256\@libssh.org
   | ecdh-sha2-nistp521
   | ecdh-sha2-nistp384

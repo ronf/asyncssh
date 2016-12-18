@@ -120,6 +120,16 @@ class _KexECDH(Kex):
 
 try:
     # pylint: disable=wrong-import-position
+    from .crypto import Curve25519DH
+except ImportError: # pragma: no cover
+    pass
+else:
+    register_kex_alg(b'curve25519-sha256', _KexECDH, sha256, Curve25519DH)
+    register_kex_alg(b'curve25519-sha256@libssh.org', _KexECDH,
+                     sha256, Curve25519DH)
+
+try:
+    # pylint: disable=wrong-import-position
     from .crypto import ECDH
 except ImportError: # pragma: no cover
     pass
@@ -129,12 +139,3 @@ else:
                                  (b'nistp256', sha256)):
         register_kex_alg(b'ecdh-sha2-' + _curve_id, _KexECDH,
                          _hash_alg, ECDH, _curve_id)
-
-try:
-    # pylint: disable=wrong-import-position
-    from .crypto import Curve25519DH
-except ImportError: # pragma: no cover
-    pass
-else:
-    register_kex_alg(b'curve25519-sha256@libssh.org', _KexECDH,
-                     sha256, Curve25519DH)
