@@ -14,9 +14,15 @@
 
 import asyncio
 import os
+import sys
 import tempfile
 
 import asyncssh
+
+if sys.platform == 'win32': # pragma: no cover
+    from .agent_win32 import open_agent
+else:
+    from .agent_unix import open_agent
 
 from .listener import create_unix_forward_listener
 from .misc import ChannelOpenError, load_default_keypairs
@@ -172,15 +178,12 @@ class SSHAgentClient:
     def connect(self):
         """Connect to the SSH agent"""
 
-        if isinstance(self._agent_path, str):
-            # pylint doesn't think open_unix_connection exists
-            # pylint: disable=no-member
-            self._reader, self._writer = \
-                yield from asyncio.open_unix_connection(self._agent_path,
-                                                        loop=self._loop)
-        else:
+        if isinstance(self._agent_path, asyncssh.SSHServerConnection):
             self._reader, self._writer = \
                 yield from self._agent_path.open_agent_connection()
+        else:
+            self._reader, self._writer = \
+                yield from open_agent(self._loop, self._agent_path)
 
     @asyncio.coroutine
     def _make_request(self, msgtype, *args):
@@ -532,21 +535,12 @@ def connect_agent(agent_path=None, *, loop=None):
 
     """
 
-    if not loop:
-        loop = asyncio.get_event_loop()
-
-    if not agent_path:
-        agent_path = os.environ.get('SSH_AUTH_SOCK', None)
-
-        if not agent_path:
-            return None
-
     agent = SSHAgentClient(loop, agent_path)
 
     try:
         yield from agent.connect()
         return agent
-    except (OSError, ChannelOpenError, AttributeError):
+    except (OSError, ChannelOpenError):
         return None
 
 
