@@ -547,7 +547,8 @@ class _TestTCPForwarding(_CheckForwarding):
     def test_forward_remote_port(self):
         """Test forwarding of a remote port"""
 
-        server = yield from asyncio.start_server(echo, '', 0)
+        server = yield from asyncio.start_server(echo, None, 0,
+                                                 family=socket.AF_INET)
         server_port = server.sockets[0].getsockname()[1]
 
         with (yield from self.connect()) as conn:
@@ -568,7 +569,8 @@ class _TestTCPForwarding(_CheckForwarding):
     def test_forward_remote_specific_port(self):
         """Test forwarding of a specific remote port"""
 
-        server = yield from asyncio.start_server(echo, '', 0)
+        server = yield from asyncio.start_server(echo, None, 0,
+                                                 family=socket.AF_INET)
         server_port = server.sockets[0].getsockname()[1]
 
         sock = socket.socket()
