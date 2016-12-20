@@ -15,6 +15,7 @@
 import asyncio
 import os
 import signal
+import socket
 import subprocess
 
 import asyncssh
@@ -69,7 +70,7 @@ class ServerTestCase(AsyncTestCase):
             server_host_keys = ['skey']
 
         return (yield from asyncssh.create_server(
-            server_factory, port=0, loop=loop,
+            server_factory, port=0, family=socket.AF_INET, loop=loop,
             server_host_keys=server_host_keys, **kwargs))
 
     @classmethod
