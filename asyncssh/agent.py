@@ -13,16 +13,25 @@
 """SSH agent client"""
 
 import asyncio
+import errno
 import os
 import sys
 import tempfile
 
 import asyncssh
 
-if sys.platform == 'win32': # pragma: no cover
-    from .agent_win32 import open_agent
-else:
-    from .agent_unix import open_agent
+try:
+    if sys.platform == 'win32': # pragma: no cover
+        from .agent_win32 import open_agent
+    else:
+        from .agent_unix import open_agent
+except ImportError: # pragma: no cover
+    def open_agent(loop, agent_path):
+        """Dummy function if we're unable to import agent support"""
+
+        # pylint: disable=unused-argument
+
+        raise OSError(errno.ENOENT, 'Agent support not available')
 
 from .listener import create_unix_forward_listener
 from .misc import ChannelOpenError, load_default_keypairs
