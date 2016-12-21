@@ -112,21 +112,31 @@ functionality:
   if you want support for OpenSSH private key encryption.
 
 * Install libsodium from https://github.com/jedisct1/libsodium
-  and libnacl from https://github.com/saltstack/libnacl if you want
+  and libnacl from https://pypi.python.org/pypi/libnacl if you want
   support for curve25519 Diffie Hellman key exchange, ed25519 keys,
   and the chacha20-poly1305 cipher.
+
+* Install pypiwin32 from https://pypi.python.org/pypi/pypiwin32
+  if you want support for using the Pageant agent on Windows.
 
 AsyncSSH defines the following optional PyPI extra packages to make it
 easy to install any or all of these dependencies:
 
   | bcrypt
   | libnacl
+  | pypiwin32
 
-For example, to install both of these, you can run:
+For example, to install bcrypt and libnacl, you can run:
 
   ::
 
     pip install 'asyncssh[bcrypt,libnacl]'
+
+To install all three of these packages on a Windows system, you can run:
+
+  ::
+
+    pip install 'asyncssh[bcrypt,libnacl,pypiwin32]'
 
 Note that you will still need to manually install the libsodium library
 listed above for libnacl to work correctly. Unfortunately, since
