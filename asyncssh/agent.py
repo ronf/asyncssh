@@ -20,18 +20,21 @@ import tempfile
 
 import asyncssh
 
+from .logging import logger
+
+
 try:
     if sys.platform == 'win32': # pragma: no cover
         from .agent_win32 import open_agent
     else:
         from .agent_unix import open_agent
-except ImportError: # pragma: no cover
-    def open_agent(loop, agent_path):
+except ImportError as exc: # pragma: no cover
+    def open_agent(loop, agent_path, reason=str(exc)):
         """Dummy function if we're unable to import agent support"""
 
         # pylint: disable=unused-argument
 
-        raise OSError(errno.ENOENT, 'Agent support not available')
+        raise OSError(errno.ENOENT, 'Agent support unavailable: %s' % reason)
 
 from .listener import create_unix_forward_listener
 from .misc import ChannelOpenError, load_default_keypairs
@@ -549,7 +552,8 @@ def connect_agent(agent_path=None, *, loop=None):
     try:
         yield from agent.connect()
         return agent
-    except (OSError, ChannelOpenError):
+    except (OSError, ChannelOpenError) as exc:
+        logger.debug('Unable to contact agent: %s', exc)
         return None
 
 
