@@ -278,7 +278,7 @@ class SSHConnection(SSHPacketHandler):
 
         self._local_listeners = {}
 
-        self._close_event = asyncio.Event()
+        self._close_event = asyncio.Event(loop=loop)
 
         self._server_host_key_algs = []
 
@@ -1555,7 +1555,8 @@ class SSHConnection(SSHPacketHandler):
 
         yield from self._close_event.wait()
 
-        yield from asyncio.gather(*self._tasks, return_exceptions=True)
+        yield from asyncio.gather(*self._tasks, return_exceptions=True,
+                                  loop=self._loop)
 
     def disconnect(self, code, reason, lang=DEFAULT_LANG):
         """Disconnect the SSH connection
@@ -4082,7 +4083,7 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
         client_keys = load_keypairs(client_keys, passphrase)
     elif client_keys is ():
         if agent_path:
-            agent = yield from connect_agent(agent_path)
+            agent = yield from connect_agent(agent_path, loop=loop)
 
             if agent:
                 client_keys = yield from agent.get_keys()
