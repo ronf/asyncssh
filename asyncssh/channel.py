@@ -75,7 +75,7 @@ class SSHChannel(SSHPacketHandler):
         self._open_waiter = None
         self._request_waiters = []
 
-        self._close_event = asyncio.Event()
+        self._close_event = asyncio.Event(loop=loop)
 
         self.set_write_buffer_limits()
 

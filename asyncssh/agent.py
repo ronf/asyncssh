@@ -162,7 +162,7 @@ class SSHAgentClient:
         self._agent_path = agent_path
         self._reader = None
         self._writer = None
-        self._lock = asyncio.Lock()
+        self._lock = asyncio.Lock(loop=loop)
 
     def _cleanup(self):
         """Clean up this SSH agent client"""

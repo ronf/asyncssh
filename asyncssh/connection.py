@@ -283,7 +283,7 @@ class SSHConnection(SSHPacketHandler):
 
         self._x11_listener = None
 
-        self._close_event = asyncio.Event()
+        self._close_event = asyncio.Event(loop=loop)
 
         self._server_host_key_algs = []
 
@@ -1560,7 +1560,8 @@ class SSHConnection(SSHPacketHandler):
 
         yield from self._close_event.wait()
 
-        yield from asyncio.gather(*self._tasks, return_exceptions=True)
+        yield from asyncio.gather(*self._tasks, return_exceptions=True,
+                                  loop=self._loop)
 
     def disconnect(self, code, reason, lang=DEFAULT_LANG):
         """Disconnect the SSH connection
@@ -2666,7 +2667,7 @@ class SSHClientConnection(SSHConnection):
 
             packet.check_end()
 
-            listener = SSHTCPClientListener(self, session_factory,
+            listener = SSHTCPClientListener(self, self._loop, session_factory,
                                             listen_host, listen_port,
                                             encoding, window, max_pktsize)
 
@@ -2833,7 +2834,7 @@ class SSHClientConnection(SSHConnection):
         packet.check_end()
 
         if pkttype == MSG_REQUEST_SUCCESS:
-            listener = SSHUNIXClientListener(self, session_factory,
+            listener = SSHUNIXClientListener(self, self._loop, session_factory,
                                              listen_path, encoding,
                                              window, max_pktsize)
 
@@ -3016,7 +3017,7 @@ class SSHClientConnection(SSHConnection):
 
         yield from handler.start()
 
-        return SFTPClient(handler, path_encoding, path_errors)
+        return SFTPClient(self._loop, handler, path_encoding, path_errors)
 
 
 class SSHServerConnection(SSHConnection):
@@ -4229,7 +4230,7 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
         client_keys = load_keypairs(client_keys, passphrase)
     elif client_keys is ():
         if agent_path:
-            agent = yield from connect_agent(agent_path)
+            agent = yield from connect_agent(agent_path, loop=loop)
 
             if agent:
                 client_keys = yield from agent.get_keys()

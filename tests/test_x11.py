@@ -347,7 +347,8 @@ class _TestX11(ServerTestCase):
     def test_xauth_lookup(self):
         """Test writing an xauth entry and looking it back up"""
 
-        yield from update_xauth('xauth', 'test', '0', b'', b'\x00')
+        yield from update_xauth(asyncio.get_event_loop(), 'xauth',
+                                'test', '0', b'', b'\x00')
 
         _, auth_data = yield from lookup_xauth(asyncio.get_event_loop(),
                                                'xauth', 'test', '0')
@@ -365,7 +366,8 @@ class _TestX11(ServerTestCase):
 
         yield from asyncio.sleep(6)
 
-        yield from update_xauth('xauth', 'test', '0', b'', b'\x00')
+        yield from update_xauth(asyncio.get_event_loop(), 'xauth',
+                                'test', '0', b'', b'\x00')
 
         _, auth_data = yield from lookup_xauth(asyncio.get_event_loop(),
                                                'xauth', 'test', '0')
@@ -378,9 +380,11 @@ class _TestX11(ServerTestCase):
     def test_xauth_update(self):
         """Test overwriting an xauth entry"""
 
-        yield from update_xauth('xauth', 'test', '0', b'', b'\x00')
+        yield from update_xauth(asyncio.get_event_loop(), 'xauth',
+                                'test', '0', b'', b'\x00')
 
-        yield from update_xauth('xauth', 'test', '0', b'', b'\x01')
+        yield from update_xauth(asyncio.get_event_loop(), 'xauth',
+                                'test', '0', b'', b'\x01')
 
         self.assertEqual(len(list(walk_xauth('xauth'))), 1)
 

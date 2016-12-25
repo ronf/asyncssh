@@ -233,7 +233,8 @@ class _SFTPFileCopier:
 
     """
 
-    def __init__(self):
+    def __init__(self, loop):
+        self._loop = loop
         self._src = None
         self._dst = None
         self._bytes_left = 0
@@ -253,7 +254,8 @@ class _SFTPFileCopier:
         while self._bytes_left and len(self._pending) < _MAX_SFTP_REQUESTS:
             size = min(self._bytes_left, _SFTP_BLOCK_SIZE)
 
-            task = asyncio.Task(self._copy_block(self._offset, size))
+            task = asyncio.Task(self._copy_block(self._offset, size),
+                                loop=self._loop)
             self._pending.add(task)
 
             self._offset += size
@@ -1424,7 +1426,8 @@ class SFTPClient:
         'x+': FXF_READ | FXF_WRITE | FXF_CREAT | FXF_EXCL
     }
 
-    def __init__(self, handler, path_encoding, path_errors):
+    def __init__(self, loop, handler, path_encoding, path_errors):
+        self._loop = loop
         self._handler = handler
         self._path_encoding = path_encoding
         self._path_errors = path_errors
@@ -1613,8 +1616,8 @@ class SFTPClient:
                 targetpath = yield from srcfs.readlink(srcpath)
                 yield from dstfs.symlink(targetpath, dstpath)
             else:
-                yield from _SFTPFileCopier().copy(srcfs, dstfs, srcpath,
-                                                  dstpath, srcattrs.size)
+                yield from _SFTPFileCopier(self._loop).copy(
+                    srcfs, dstfs, srcpath, dstpath, srcattrs.size)
 
             if preserve:
                 srcattrs = yield from srcfs.stat(srcpath)

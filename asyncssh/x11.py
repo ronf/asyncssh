@@ -435,7 +435,7 @@ def lookup_xauth(loop, auth_path, host, dpynum):
     raise ValueError('No xauth entry found for display')
 
 @asyncio.coroutine
-def update_xauth(auth_path, host, dpynum, auth_proto, auth_data):
+def update_xauth(loop, auth_path, host, dpynum, auth_proto, auth_data):
     """Update Xauthority data for the specified display"""
 
     if host.startswith('/') or host in ('', 'unix', 'localhost'):
@@ -458,7 +458,7 @@ def update_xauth(auth_path, host, dpynum, auth_proto, auth_data):
         try:
             new_file = open(new_auth_path, 'xb')
         except FileExistsError:
-            yield from asyncio.sleep(XAUTH_LOCK_DELAY)
+            yield from asyncio.sleep(XAUTH_LOCK_DELAY, loop=loop)
         else:
             break
 
@@ -507,7 +507,7 @@ def create_x11_server_listener(conn, loop, auth_path, auth_proto, auth_data):
         display = '%s:%d' % (X11_LISTEN_HOST, dpynum)
 
         try:
-            yield from update_xauth(auth_path, X11_LISTEN_HOST, dpynum,
+            yield from update_xauth(loop, auth_path, X11_LISTEN_HOST, dpynum,
                                     auth_proto, auth_data)
         except ValueError:
             tcp_listener.close()

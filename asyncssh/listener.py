@@ -64,13 +64,14 @@ class SSHListener(asyncio.AbstractServer):
 class SSHClientListener(SSHListener):
     """Client listener used to accept inbound forwarded connections"""
 
-    def __init__(self, conn, session_factory, encoding, window, max_pktsize):
+    def __init__(self, conn, loop, session_factory,
+                 encoding, window, max_pktsize):
         self._conn = conn
         self._session_factory = session_factory
         self._encoding = encoding
         self._window = window
         self._max_pktsize = max_pktsize
-        self._close_event = asyncio.Event()
+        self._close_event = asyncio.Event(loop=loop)
 
     @asyncio.coroutine
     def _close(self):
@@ -95,9 +96,10 @@ class SSHClientListener(SSHListener):
 class SSHTCPClientListener(SSHClientListener):
     """Client listener used to accept inbound forwarded TCP connections"""
 
-    def __init__(self, conn, session_factory, listen_host, listen_port,
+    def __init__(self, conn, loop, session_factory, listen_host, listen_port,
                  encoding, window, max_pktsize):
-        super().__init__(conn, session_factory, encoding, window, max_pktsize)
+        super().__init__(conn, loop, session_factory,
+                         encoding, window, max_pktsize)
 
         self._listen_host = listen_host
         self._listen_port = listen_port
@@ -132,9 +134,10 @@ class SSHTCPClientListener(SSHClientListener):
 class SSHUNIXClientListener(SSHClientListener):
     """Client listener used to accept inbound forwarded UNIX connections"""
 
-    def __init__(self, conn, session_factory, listen_path,
+    def __init__(self, conn, loop, session_factory, listen_path,
                  encoding, window, max_pktsize):
-        super().__init__(conn, session_factory, encoding, window, max_pktsize)
+        super().__init__(conn, loop, session_factory,
+                         encoding, window, max_pktsize)
 
         self._listen_path = listen_path
 
