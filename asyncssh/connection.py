@@ -646,7 +646,7 @@ class SSHConnection(SSHPacketHandler):
             packet = self._packet + rest
             mac = self._inpbuf[rem-self._recv_macsize:rem]
 
-            if not self._recv_mac.verify(UInt32(self._recv_seq) + packet, mac):
+            if not self._recv_mac.verify(self._recv_seq, packet, mac):
                 raise DisconnectError(DISC_MAC_ERROR,
                                       'MAC verification failed')
 
@@ -659,8 +659,7 @@ class SSHConnection(SSHPacketHandler):
             mac = self._inpbuf[rem-self._recv_macsize:rem]
 
             if self._recv_mac:
-                if not self._recv_mac.verify(UInt32(self._recv_seq) +
-                                             packet, mac):
+                if not self._recv_mac.verify(self._recv_seq, packet, mac):
                     raise DisconnectError(DISC_MAC_ERROR,
                                           'MAC verification failed')
 
@@ -752,12 +751,12 @@ class SSHConnection(SSHPacketHandler):
             packet = hdr + packet
         elif self._send_mode == 'etm':
             packet = hdr + self._send_cipher.encrypt(packet)
-            mac = self._send_mac.sign(UInt32(self._send_seq) + packet)
+            mac = self._send_mac.sign(self._send_seq, packet)
         else:
             packet = hdr + packet
 
             if self._send_mac:
-                mac = self._send_mac.sign(UInt32(self._send_seq) + packet)
+                mac = self._send_mac.sign(self._send_seq, packet)
             else:
                 mac = b''
 

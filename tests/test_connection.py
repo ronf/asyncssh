@@ -31,7 +31,7 @@ from asyncssh.constants import MSG_CHANNEL_OPEN_FAILURE, MSG_CHANNEL_DATA
 from asyncssh.compression import get_compression_algs
 from asyncssh.crypto.pyca.cipher import GCMShim
 from asyncssh.kex import get_kex_algs
-from asyncssh.mac import _MAC, get_mac_algs
+from asyncssh.mac import _HMAC, _mac_handlers, get_mac_algs
 from asyncssh.packet import Boolean, Byte, NameList, String, UInt32
 
 from .server import Server, ServerTestCase
@@ -106,13 +106,19 @@ class _ExtInfoServerConnection(asyncssh.SSHServerConnection):
         super()._send_ext_info()
 
 
-class _FailingMAC(_MAC):
-    """Test error in MAC validation"""
+def _failing_get_mac(alg, key):
+    """Replace HMAC class with FailingMAC"""
 
-    def verify(self, data, sig):
-        """Verify the signature of a message"""
+    class _FailingMAC(_HMAC):
+        """Test error in MAC validation"""
 
-        return super().verify(data + b'\xff', sig)
+        def verify(self, seq, packet, sig):
+            """Verify the signature of a message"""
+
+            return super().verify(seq, packet + b'\xff', sig)
+
+    _, hash_size, args = _mac_handlers[alg]
+    return _FailingMAC(key, hash_size, *args)
 
 
 class _FailingGCMShim(GCMShim):
@@ -513,7 +519,7 @@ class _TestConnection(ServerTestCase):
     def test_mac_verify_error(self):
         """Test MAC validation failure"""
 
-        with patch('asyncssh.mac._MAC', _FailingMAC):
+        with patch('asyncssh.connection.get_mac', _failing_get_mac):
             for mac in ('hmac-sha2-256-etm@openssh.com', 'hmac-sha2-256'):
                 with self.subTest(mac_alg=mac):
                     with self.assertRaises(asyncssh.DisconnectError):

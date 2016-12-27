@@ -32,3 +32,9 @@ try:
     from .curve25519 import Curve25519DH
 except ImportError: # pragma: no cover
     pass
+
+# Import umac cryptographic hash if available
+try:
+    from .umac import umac32, umac64, umac96, umac128
+except (ImportError, AttributeError, OSError): # pragma: no cover
+    pass

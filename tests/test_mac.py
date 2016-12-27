@@ -29,19 +29,39 @@ class _TestMAC(unittest.TestCase):
                 keysize, _, _ = get_mac_params(alg)
 
                 key = os.urandom(keysize)
-                data = os.urandom(256)
+                packet = os.urandom(256)
 
                 enc_mac = get_mac(alg, key)
                 dec_mac = get_mac(alg, key)
 
-                baddata = bytearray(data)
-                baddata[-1] ^= 0xff
+                badpacket = bytearray(packet)
+                badpacket[-1] ^= 0xff
 
-                mac = enc_mac.sign(data)
+                mac = enc_mac.sign(0, packet)
 
                 badmac = bytearray(mac)
                 badmac[-1] ^= 0xff
 
-                self.assertTrue(dec_mac.verify(data, mac))
-                self.assertFalse(dec_mac.verify(bytes(baddata), mac))
-                self.assertFalse(dec_mac.verify(data, bytes(badmac)))
+                self.assertTrue(dec_mac.verify(0, packet, mac))
+                self.assertFalse(dec_mac.verify(0, bytes(badpacket), mac))
+                self.assertFalse(dec_mac.verify(0, packet, bytes(badmac)))
+
+    def test_umac_wrapper(self):
+        """Unit test some unused parts of the UMAC wrapper code"""
+
+        try:
+            from asyncssh.crypto import umac32
+        except ImportError: # pragma: no cover
+            self.skipTest('umac not available')
+
+        key = os.urandom(16)
+
+        mac1 = umac32(key)
+        mac1.update(b'test')
+
+        mac2 = mac1.copy()
+
+        mac1.update(b'123')
+        mac2.update(b'123')
+
+        self.assertEqual(mac1.hexdigest(), mac2.hexdigest())

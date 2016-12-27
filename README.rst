@@ -116,6 +116,9 @@ functionality:
   support for curve25519 Diffie Hellman key exchange, ed25519 keys,
   and the chacha20-poly1305 cipher.
 
+* Install libnettle from http://www.lysator.liu.se/~nisse/nettle/
+  if you want support for UMAC cryptographic hashes.
+
 * Install pypiwin32 from https://pypi.python.org/pypi/pypiwin32
   if you want support for using the Pageant agent on Windows.
 
@@ -139,9 +142,9 @@ To install all three of these packages on a Windows system, you can run:
     pip install 'asyncssh[bcrypt,libnacl,pypiwin32]'
 
 Note that you will still need to manually install the libsodium library
-listed above for libnacl to work correctly. Unfortunately, since
-libsodium is not a Python package, it cannot be directly installed using
-pip.
+listed above for libnacl to work correctly and/or libnettle for UMAC
+support. Unfortunately, since libsodium and libnettle are not Python
+packages, they cannot be directly installed using pip.
 
 Installing the development branch
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
