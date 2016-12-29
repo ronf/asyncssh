@@ -3,6 +3,60 @@
 Change Log
 ==========
 
+Release 1.8.0 (29 Dec 2016)
+---------------------------
+
+* Added support for forwarding X11 connections. When requested, AsyncSSH
+  clients will allow remote X11 applications to tunnel data back to a local
+  X server and AsyncSSH servers can request an X11 DISPLAY value to export
+  to X11 applications they launch which will tunnel data back to an X
+  server associated with the client.
+
+* Improved ssh-agent forwarding support on UNIX to allow AsyncSSH
+  servers to request an SSH_AUTH_SOCK value to export to applications
+  they launch in order to access the client's ssh-agent. Previously,
+  there was support for agent forwarding on server connections within
+  AsyncSSH itself, but they did not provide this forwarding to other
+  applications.
+
+* Added support for PuTTY's Pageant agent on Windows systems, providing
+  functionality similar to the OpenSSH agent on UNIX. AsyncSSH client
+  connections from Windows can now access keys stored in the Pageant
+  agent when they perform public key authentication.
+
+* Added support for the umac-64 and umac-128 MAC algorithms, compatible
+  with the implementation in OpenSSH. These algorithms are preferred
+  over the HMAC algorithms when both are available and the cipher chosen
+  doesn't already include a MAC.
+
+* Added curve25519-sha256 as a supported key exchange algorithm. This
+  algorithm is identical to the previously supported algorithm named
+  'curve25519-sha256\@libssh.org', matching what was done in OpenSSH 7.3.
+  Either name may now be used to request this type of key exchange.
+
+* Changed the default order of key exchange algorithms to prefer the
+  curve25519-sha256 algorithm over the ecdh-sha2-nistp algorithms.
+
+* Added support for a readuntil() function in SSHReader, modeled after
+  the readuntil() function in asyncio.StreamReader added in Python 3.5.2.
+  Thanks go to wwjiang for suggesting this and providing an example
+  implementation.
+
+* Fixed issues where the explicitly provided event loop value was not
+  being passed through to all of the places which needed it. Thanks go
+  to Vladimir Rutsky for pointing out this problem and providing some
+  initial fixes.
+
+* Improved error handling when port forwarding is requested for a port
+  number outside of the range 0-65535.
+
+* Disabled use of IPv6 in unit tests when opening local loopback sockets
+  to avoid issues with incomplete IPv6 support in TravisCI.
+
+* Changed the unit tests to always start with a known set of environment
+  variables rather than inheriting the environment from the shell
+  running the tests. This was leading to test breakage in some cases.
+
 Release 1.7.3 (22 Nov 2016)
 ---------------------------
 
