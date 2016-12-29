@@ -15,6 +15,7 @@
 import binascii
 import ctypes
 import ctypes.util
+import sys
 
 
 _UMAC_BLOCK_SIZE = 1024
@@ -107,7 +108,10 @@ def __build_umac(size):
 
 digest_size = None
 
-_nettle = ctypes.cdll.LoadLibrary(ctypes.util.find_library('nettle'))
+if sys.platform == 'win32': # pragma: no cover
+    _nettle = ctypes.cdll.LoadLibrary('libnettle-6')
+else:
+    _nettle = ctypes.cdll.LoadLibrary(ctypes.util.find_library('nettle'))
 
 for _size in (32, 64, 96, 128):
     __build_umac(_size)
