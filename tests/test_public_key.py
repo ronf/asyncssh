@@ -24,6 +24,7 @@ from datetime import datetime
 import os
 import shutil
 import subprocess
+import sys
 
 import asyncssh
 
@@ -56,7 +57,10 @@ _openssl_available = _openssl_version != b''
 _openssl_supports_v2prf = _openssl_version >= b'OpenSSL 1.0.2'
 
 try:
-    _openssh_version = run('ssh -V')
+    if sys.platform != 'win32':
+        _openssh_version = run('ssh -V')
+    else: # pragma: no cover
+        _openssh_version = b''
 except subprocess.CalledProcessError: # pragma: no cover
     _openssh_version = b''
 
