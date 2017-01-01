@@ -15,7 +15,9 @@
 import asyncio
 import functools
 import os
+import shutil
 import stat
+import sys
 import time
 import unittest
 
@@ -31,7 +33,20 @@ from asyncssh.packet import SSHPacket, Byte, String, UInt32
 from asyncssh.sftp import SFTPHandler, SFTPServerHandler
 
 from .server import ServerTestCase
-from .util import asynctest, run
+from .util import asynctest
+
+
+def remove(files):
+    """Remove files and directories"""
+
+    for f in files.split(' '):
+        try:
+            shutil.rmtree(f)
+        except OSError:
+            try:
+                os.remove(f)
+            except OSError:
+                pass
 
 
 def sftp_test(func):
@@ -87,7 +102,7 @@ class _ChrootSFTPServer(SFTPServer):
     def exit(self):
         """Clean up the changed root directory"""
 
-        run('rm -rf chroot')
+        remove('chroot')
 
 
 class _IOErrorSFTPServer(SFTPServer):
@@ -138,7 +153,7 @@ class _LongnameSFTPServer(SFTPServer):
 class _StatVFSSFTPServer(SFTPServer):
     """Return a fixed set of attributes in response to a statvfs request"""
 
-    expected_statvfs = SFTPVFSAttrs.from_local(os.statvfs('.'))
+    expected_statvfs = SFTPVFSAttrs(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11)
 
     def statvfs(self, path):
         """Get attributes of the file system containing a file"""
@@ -395,6 +410,7 @@ class _CheckSFTP(ServerTestCase):
         self.assertEqual(os.readlink(link), target)
 
 
+@unittest.skipIf(sys.platform == 'win32', 'skip SFTP tests on Windows')
 class _TestSFTP(_CheckSFTP):
     """Unit tests for AsyncSSH SFTP client and server"""
 
@@ -418,7 +434,7 @@ class _TestSFTP(_CheckSFTP):
                     yield from getattr(sftp, method)('src', 'dst')
                     self._check_file('src', 'dst')
                 finally:
-                    run('rm -f src dst')
+                    remove('src dst')
 
     @sftp_test
     def test_copy_preserve(self, sftp):
@@ -432,7 +448,7 @@ class _TestSFTP(_CheckSFTP):
                                                      preserve=True)
                     self._check_file('src', 'dst', preserve=True)
                 finally:
-                    run('rm -rf src dst')
+                    remove('src dst')
 
     @sftp_test
     def test_copy_recurse(self, sftp):
@@ -449,7 +465,7 @@ class _TestSFTP(_CheckSFTP):
                     self._check_file('src/file1', 'dst/file1')
                     self._check_link('dst/file2', 'file1')
                 finally:
-                    run('rm -rf src dst')
+                    remove('src dst')
 
     @sftp_test
     def test_copy_recurse_existing(self, sftp):
@@ -468,7 +484,7 @@ class _TestSFTP(_CheckSFTP):
                     self._check_file('src/file1', 'dst/src/file1')
                     self._check_link('dst/src/file2', 'file1')
                 finally:
-                    run('rm -rf src dst')
+                    remove('src dst')
 
     @sftp_test
     def test_copy_follow_symlinks(self, sftp):
@@ -483,7 +499,7 @@ class _TestSFTP(_CheckSFTP):
                                                      follow_symlinks=True)
                     self._check_file('src', 'dst')
                 finally:
-                    run('rm -f src dst link')
+                    remove('src dst link')
 
     @sftp_test
     def test_copy_invalid_name(self, sftp):
@@ -505,7 +521,7 @@ class _TestSFTP(_CheckSFTP):
                     with self.assertRaises(SFTPError):
                         yield from getattr(sftp, method)('dir')
                 finally:
-                    run('rm -rf dir')
+                    remove('dir')
 
     @sftp_test
     def test_multiple_copy(self, sftp):
@@ -523,7 +539,7 @@ class _TestSFTP(_CheckSFTP):
                     self._check_file('src1', 'dst/src1')
                     self._check_file('src2', 'dst/src2')
                 finally:
-                    run('rm -rf src1 src2 dst')
+                    remove('src1 src2 dst')
 
     @sftp_test
     def test_multiple_copy_bytes_path(self, sftp):
@@ -541,7 +557,7 @@ class _TestSFTP(_CheckSFTP):
                     self._check_file('src1', 'dst/src1')
                     self._check_file('src2', 'dst/src2')
                 finally:
-                    run('rm -rf src1 src2 dst')
+                    remove('src1 src2 dst')
 
     @sftp_test
     def test_multiple_copy_target_not_dir(self, sftp):
@@ -555,7 +571,7 @@ class _TestSFTP(_CheckSFTP):
                     with self.assertRaises(SFTPError):
                         yield from getattr(sftp, method)('src', 'dst')
                 finally:
-                    run('rm -f src')
+                    remove('src')
 
     @sftp_test
     def test_multiple_copy_error_handler(self, sftp):
@@ -578,7 +594,7 @@ class _TestSFTP(_CheckSFTP):
 
                     self._check_file('src1', 'dst/src1')
                 finally:
-                    run('rm -rf src1 src2 dst')
+                    remove('src1 src2 dst')
 
     @sftp_test
     def test_glob(self, sftp):
@@ -602,7 +618,7 @@ class _TestSFTP(_CheckSFTP):
             self.assertEqual(sorted((yield from sftp.glob(['file*/*']))),
                              ['filedir/file2'])
         finally:
-            run('rm -rf file1 filedir')
+            remove('file1 filedir')
 
     @sftp_test
     def test_glob_error(self, sftp):
@@ -627,7 +643,7 @@ class _TestSFTP(_CheckSFTP):
                                                    error_handler=err_handler)),
                              ['file2'])
         finally:
-            run('rm -f file2')
+            remove('file2')
 
     @sftp_test
     def test_stat(self, sftp):
@@ -670,7 +686,7 @@ class _TestSFTP(_CheckSFTP):
             self.assertTrue((yield from sftp.islink('dirlink')))
             self.assertTrue((yield from sftp.islink('filelink')))
         finally:
-            run('rm -rf dir file badlink dirlink filelink')
+            remove('dir file badlink dirlink filelink')
 
     @sftp_test
     def test_lstat(self, sftp):
@@ -680,7 +696,7 @@ class _TestSFTP(_CheckSFTP):
             os.symlink('file', 'link')
             self._check_stat((yield from sftp.lstat('link')), os.lstat('link'))
         finally:
-            run('rm -f link')
+            remove('link')
 
     @sftp_test
     def test_setstat(self, sftp):
@@ -691,7 +707,7 @@ class _TestSFTP(_CheckSFTP):
             yield from sftp.setstat('file', SFTPAttrs(permissions=0o777))
             self.assertEqual(stat.S_IMODE(os.stat('file').st_mode), 0o777)
         finally:
-            run('rm -f file')
+            remove('file')
 
     @sftp_test
     def test_statvfs(self, sftp):
@@ -719,7 +735,7 @@ class _TestSFTP(_CheckSFTP):
             with open('file', 'r') as f:
                 self.assertEqual(f.read(), '0123456789')
         finally:
-            run('rm -f file')
+            remove('file')
 
     @sftp_test
     def test_chown(self, sftp):
@@ -742,7 +758,7 @@ class _TestSFTP(_CheckSFTP):
             self.assertEqual(new_attrs.st_uid, attrs.st_uid)
             self.assertEqual(new_attrs.st_gid, attrs.st_gid)
         finally:
-            run('rm -f file')
+            remove('file')
 
     @sftp_test
     def test_chmod(self, sftp):
@@ -753,7 +769,7 @@ class _TestSFTP(_CheckSFTP):
             yield from sftp.chmod('file', 0o1234)
             self.assertEqual(stat.S_IMODE(os.stat('file').st_mode), 0o1234)
         finally:
-            run('rm -f file')
+            remove('file')
 
     @sftp_test
     def test_utime(self, sftp):
@@ -771,7 +787,7 @@ class _TestSFTP(_CheckSFTP):
             self.assertEqual((yield from sftp.getatime('file')), 1)
             self.assertEqual((yield from sftp.getmtime('file')), 2)
         finally:
-            run('rm -f file')
+            remove('file')
 
     @sftp_test
     def test_exists(self, sftp):
@@ -786,7 +802,7 @@ class _TestSFTP(_CheckSFTP):
             with self.assertRaises(SFTPError):
                 yield from sftp.exists('file1/file2')
         finally:
-            run('rm -f file1')
+            remove('file1')
 
     @sftp_test
     def test_lexists(self, sftp):
@@ -798,7 +814,7 @@ class _TestSFTP(_CheckSFTP):
             self.assertTrue((yield from sftp.lexists('link1')))
             self.assertFalse((yield from sftp.lexists('link2')))
         finally:
-            run('rm -f link1')
+            remove('link1')
 
     @sftp_test
     def test_remove(self, sftp):
@@ -814,7 +830,7 @@ class _TestSFTP(_CheckSFTP):
             with self.assertRaises(SFTPError):
                 yield from sftp.remove('file')
         finally:
-            run('rm -f file')
+            remove('file')
 
     @sftp_test
     def test_unlink(self, sftp):
@@ -830,7 +846,7 @@ class _TestSFTP(_CheckSFTP):
             with self.assertRaises(SFTPError):
                 yield from sftp.unlink('file')
         finally:
-            run('rm -f file')
+            remove('file')
 
     @sftp_test
     def test_rename(self, sftp):
@@ -846,7 +862,7 @@ class _TestSFTP(_CheckSFTP):
             yield from sftp.rename('file1', 'file3')
             self.assertTrue(os.path.exists('file3'))
         finally:
-            run('rm -f file1 file2 file3')
+            remove('file1 file2 file3')
 
     @sftp_test
     def test_posix_rename(self, sftp):
@@ -861,7 +877,7 @@ class _TestSFTP(_CheckSFTP):
             with open('file2') as f:
                 self.assertEqual(f.read(), 'xxx')
         finally:
-            run('rm -f file1 file2')
+            remove('file1 file2')
 
     @sftp_test
     def test_listdir(self, sftp):
@@ -874,7 +890,7 @@ class _TestSFTP(_CheckSFTP):
             self.assertEqual(sorted((yield from sftp.listdir('dir'))),
                              ['.', '..', 'file1', 'file2'])
         finally:
-            run('rm -rf dir')
+            remove('dir')
 
     @sftp_test
     def test_listdir_error(self, sftp):
@@ -896,7 +912,7 @@ class _TestSFTP(_CheckSFTP):
                 with self.assertRaises(SFTPError):
                     yield from sftp.listdir('dir')
         finally:
-            run('rm -rf dir')
+            remove('dir')
 
     @sftp_test
     def test_mkdir(self, sftp):
@@ -906,7 +922,7 @@ class _TestSFTP(_CheckSFTP):
             yield from sftp.mkdir('dir')
             self.assertTrue(os.path.isdir('dir'))
         finally:
-            run('rm -rf dir')
+            remove('dir')
 
     @sftp_test
     def test_rmdir(self, sftp):
@@ -919,7 +935,7 @@ class _TestSFTP(_CheckSFTP):
             with self.assertRaises(FileNotFoundError):
                 os.stat('dir')
         finally:
-            run('rm -rf dir')
+            remove('dir')
 
     @sftp_test
     def test_readlink(self, sftp):
@@ -929,7 +945,7 @@ class _TestSFTP(_CheckSFTP):
             os.symlink('/file', 'link')
             self.assertEqual((yield from sftp.readlink('link')), '/file')
         finally:
-            run('rm -f link')
+            remove('link')
 
     @sftp_test
     def test_readlink_decode_error(self, sftp):
@@ -956,7 +972,7 @@ class _TestSFTP(_CheckSFTP):
             yield from sftp.symlink('file', 'link')
             self._check_link('link', 'file')
         finally:
-            run('rm -f file link')
+            remove('file link')
 
     @asynctest
     def test_symlink_encode_error(self):
@@ -986,7 +1002,7 @@ class _TestSFTP(_CheckSFTP):
 
             yield from conn.wait_closed()
         finally:
-            run('rm -f file link')
+            remove('file link')
 
     @sftp_test
     def test_link(self, sftp):
@@ -997,7 +1013,7 @@ class _TestSFTP(_CheckSFTP):
             yield from sftp.link('file1', 'file2')
             self._check_file('file1', 'file2')
         finally:
-            run('rm -f file1 file2')
+            remove('file1 file2')
 
     @sftp_test
     def test_open_read(self, sftp):
@@ -1009,7 +1025,7 @@ class _TestSFTP(_CheckSFTP):
             with (yield from sftp.open('file', 'r')) as f:
                 self.assertEqual((yield from f.read()), 'xxx')
         finally:
-            run('rm -f file')
+            remove('file')
 
     @sftp_test
     def test_open_read_bytes(self, sftp):
@@ -1021,7 +1037,7 @@ class _TestSFTP(_CheckSFTP):
             with (yield from sftp.open('file', 'rb')) as f:
                 self.assertEqual((yield from f.read()), b'xxx')
         finally:
-            run('rm -f file')
+            remove('file')
 
     @sftp_test
     def test_open_read_offset_size(self, sftp):
@@ -1033,7 +1049,7 @@ class _TestSFTP(_CheckSFTP):
             with (yield from sftp.open('file', 'r')) as f:
                 self.assertEqual((yield from f.read(4, 2)), 'xxyy')
         finally:
-            run('rm -f file')
+            remove('file')
 
     @sftp_test
     def test_open_read_nonexistent(self, sftp):
@@ -1052,7 +1068,7 @@ class _TestSFTP(_CheckSFTP):
             with self.assertRaises(SFTPError):
                 yield from sftp.open('file', 'r')
         finally:
-            run('rm -f file')
+            remove('file')
 
     @sftp_test
     def test_open_write(self, sftp):
@@ -1065,7 +1081,7 @@ class _TestSFTP(_CheckSFTP):
             with open('file', 'r') as f:
                 self.assertEqual(f.read(), 'xxx')
         finally:
-            run('rm -f file')
+            remove('file')
 
     @sftp_test
     def test_open_write_bytes(self, sftp):
@@ -1078,7 +1094,7 @@ class _TestSFTP(_CheckSFTP):
             with open('file', 'rb') as f:
                 self.assertEqual(f.read(), b'xxx')
         finally:
-            run('rm -f file')
+            remove('file')
 
     @sftp_test
     def test_open_truncate(self, sftp):
@@ -1093,7 +1109,7 @@ class _TestSFTP(_CheckSFTP):
             with open('file', 'r') as f:
                 self.assertEqual(f.read(), 'zzz')
         finally:
-            run('rm -f file')
+            remove('file')
 
     @sftp_test
     def test_open_append(self, sftp):
@@ -1109,7 +1125,7 @@ class _TestSFTP(_CheckSFTP):
             with open('file', 'r') as f:
                 self.assertEqual(f.read(), 'xxxyyy')
         finally:
-            run('rm -f file')
+            remove('file')
 
     @sftp_test
     def test_open_exclusive_create(self, sftp):
@@ -1125,7 +1141,7 @@ class _TestSFTP(_CheckSFTP):
             with self.assertRaises(SFTPError):
                 yield from sftp.open('file', 'x')
         finally:
-            run('rm -f file')
+            remove('file')
 
     @sftp_test
     def test_open_exclusive_create_existing(self, sftp):
@@ -1137,7 +1153,7 @@ class _TestSFTP(_CheckSFTP):
             with self.assertRaises(SFTPError):
                 yield from sftp.open('file', 'x')
         finally:
-            run('rm -f file')
+            remove('file')
 
     @sftp_test
     def test_open_overwrite(self, sftp):
@@ -1152,7 +1168,7 @@ class _TestSFTP(_CheckSFTP):
             with open('file', 'r') as f:
                 self.assertEqual(f.read(), 'zzzyyy')
         finally:
-            run('rm -f file')
+            remove('file')
 
     @sftp_test
     def test_open_overwrite_offset_size(self, sftp):
@@ -1167,7 +1183,7 @@ class _TestSFTP(_CheckSFTP):
             with open('file', 'r') as f:
                 self.assertEqual(f.read(), 'xxxzzyyy')
         finally:
-            run('rm -f file')
+            remove('file')
 
     @sftp_test
     def test_open_overwrite_nonexistent(self, sftp):
@@ -1200,7 +1216,7 @@ class _TestSFTP(_CheckSFTP):
             with open('file', 'r') as f:
                 self.assertEqual(f.read(), 'xxxzzyyy')
         finally:
-            run('rm -f file')
+            remove('file')
 
     @sftp_test
     def test_file_stat(self, sftp):
@@ -1212,7 +1228,7 @@ class _TestSFTP(_CheckSFTP):
             with (yield from sftp.open('file')) as f:
                 self._check_stat((yield from f.stat()), os.stat('file'))
         finally:
-            run('rm -f file')
+            remove('file')
 
     @sftp_test
     def test_file_setstat(self, sftp):
@@ -1227,7 +1243,7 @@ class _TestSFTP(_CheckSFTP):
 
             self.assertEqual(stat.S_IMODE(os.stat('file').st_mode), 0o777)
         finally:
-            run('rm -f file')
+            remove('file')
 
     @sftp_test
     def test_file_truncate(self, sftp):
@@ -1242,7 +1258,7 @@ class _TestSFTP(_CheckSFTP):
                 self.assertEqual((yield from f.read(offset=0)), '0123456789')
                 self.assertEqual((yield from f.tell()), 10)
         finally:
-            run('rm -f file')
+            remove('file')
 
     @sftp_test
     def test_file_utime(self, sftp):
@@ -1259,7 +1275,7 @@ class _TestSFTP(_CheckSFTP):
             self.assertEqual(attrs.st_atime, 1)
             self.assertEqual(attrs.st_mtime, 2)
         finally:
-            run('rm -f file')
+            remove('file')
 
     @sftp_test
     def test_file_statvfs(self, sftp):
@@ -1278,7 +1294,7 @@ class _TestSFTP(_CheckSFTP):
             with (yield from sftp.open('file')) as f:
                 self.assertIsInstance((yield from f.statvfs()), SFTPVFSAttrs)
         finally:
-            run('rm -f file')
+            remove('file')
 
     @sftp_test
     def test_file_sync(self, sftp):
@@ -1290,7 +1306,7 @@ class _TestSFTP(_CheckSFTP):
             with (yield from sftp.open('file')) as f:
                 self.assertIsNone((yield from f.fsync()))
         finally:
-            run('rm -f file')
+            remove('file')
 
     @sftp_test
     def test_exited_session(self, sftp):
@@ -1311,7 +1327,7 @@ class _TestSFTP(_CheckSFTP):
 
             yield from sftp.open('file', 'r')
         finally:
-            run('rm -f file')
+            remove('file')
 
     @sftp_test
     def test_invalid_open_mode(self, sftp):
@@ -1409,7 +1425,7 @@ class _TestSFTP(_CheckSFTP):
 
             yield from f.close()
         finally:
-            run('rm -f file')
+            remove('file')
 
     def test_immediate_client_close(self):
         """Test closing SFTP channel immediately after opening"""
@@ -1523,7 +1539,7 @@ class _TestSFTP(_CheckSFTP):
                         self.assertEqual((yield from file1.read()), 'xxx')
                         self.assertEqual((yield from file2.read()), 'yyy')
             finally:
-                run('rm -f file1 file2')
+                remove('file1 file2')
 
         with patch('asyncssh.stream.SFTPServerHandler',
                    _ResetFileHandleServerHandler):
@@ -1709,7 +1725,7 @@ class _TestSFTP(_CheckSFTP):
                     with self.assertRaises(SFTPError):
                         yield from f.fsync()
             finally:
-                run('rm -f file1')
+                remove('file1')
 
         with patch('asyncssh.sftp.SFTPServerHandler._extensions', []):
             sftp_test(_unsupported_extensions)(self)
@@ -1727,13 +1743,14 @@ class _TestSFTP(_CheckSFTP):
                 with (yield from sftp.open('file', 'w')):
                     pass
             finally:
-                run('rm -f file')
+                remove('file')
 
         with patch('asyncssh.stream.SFTPServerHandler',
                    _NonblockingCloseServerHandler):
             sftp_test(_nonblocking_close)(self)
 
 
+@unittest.skipIf(sys.platform == 'win32', 'skip SFTP tests on Windows')
 class _TestSFTPChroot(_CheckSFTP):
     """Unit test for SFTP server with changed root"""
 
@@ -1753,7 +1770,7 @@ class _TestSFTPChroot(_CheckSFTP):
             yield from sftp.put('src', 'dst')
             self._check_file('src', 'chroot/dst')
         finally:
-            run('rm -f src chroot/dst')
+            remove('src chroot/dst')
 
     @sftp_test
     def test_chroot_glob(self, sftp):
@@ -1765,7 +1782,7 @@ class _TestSFTPChroot(_CheckSFTP):
             self.assertEqual(sorted((yield from sftp.glob('/file*'))),
                              ['/file1', '/file2'])
         finally:
-            run('rm -f chroot/file1 chroot/file2')
+            remove('chroot/file1 chroot/file2')
 
     @sftp_test
     def test_chroot_realpath(self, sftp):
@@ -1785,7 +1802,7 @@ class _TestSFTPChroot(_CheckSFTP):
             yield from sftp.chdir('dir')
             self.assertEqual((yield from sftp.getcwd()), '/dir')
         finally:
-            run('rm -rf chroot/dir')
+            remove('chroot/dir')
 
     @sftp_test
     def test_chroot_readlink(self, sftp):
@@ -1803,7 +1820,7 @@ class _TestSFTPChroot(_CheckSFTP):
             with self.assertRaises(SFTPError):
                 yield from sftp.readlink('link3')
         finally:
-            run('rm -f link1 link2 link3')
+            remove('link1 link2 link3')
 
     @sftp_test
     def test_chroot_symlink(self, sftp):
@@ -1816,9 +1833,10 @@ class _TestSFTPChroot(_CheckSFTP):
             self._check_link('chroot/link1', os.path.abspath('chroot/file'))
             self._check_link('chroot/link2', 'file')
         finally:
-            run('rm -f chroot/link1 chroot/link2')
+            remove('chroot/link1 chroot/link2')
 
 
+@unittest.skipIf(sys.platform == 'win32', 'skip SFTP tests on Windows')
 class _TestSFTPIOError(_CheckSFTP):
     """Unit test for SFTP server returning file I/O error"""
 
@@ -1841,9 +1859,10 @@ class _TestSFTPIOError(_CheckSFTP):
                     with self.assertRaises((FileNotFoundError, SFTPError)):
                         yield from getattr(sftp, method)('src', 'dst')
                 finally:
-                    run('rm -f src chroot/dst')
+                    remove('src chroot/dst')
 
 
+@unittest.skipIf(sys.platform == 'win32', 'skip SFTP tests on Windows')
 class _TestSFTPNotImplemented(_CheckSFTP):
     """Unit test for SFTP server returning not-implemented error"""
 
@@ -1862,6 +1881,7 @@ class _TestSFTPNotImplemented(_CheckSFTP):
             yield from sftp.symlink('file', 'link')
 
 
+@unittest.skipIf(sys.platform == 'win32', 'skip SFTP tests on Windows')
 class _TestSFTPLongname(_CheckSFTP):
     """Unit test for SFTP server formatting directory listings"""
 
@@ -1942,6 +1962,7 @@ class _TestSFTPLongname(_CheckSFTP):
         self.assertIn(result[4].longname[51:55], ('1969', '1970'))
 
 
+@unittest.skipIf(sys.platform == 'win32', 'skip SFTP tests on Windows')
 class _TestSFTPStatVFS(_CheckSFTP):
     """Unit test for SFTP server filesystem attributes"""
 
@@ -1987,9 +2008,10 @@ class _TestSFTPStatVFS(_CheckSFTP):
             with (yield from sftp.open('file')) as f:
                 self._check_statvfs((yield from f.statvfs()))
         finally:
-            run('rm -f file')
+            remove('file')
 
 
+@unittest.skipIf(sys.platform == 'win32', 'skip SFTP tests on Windows')
 class _TestSFTPChown(_CheckSFTP):
     """Unit test for SFTP server file ownership"""
 
@@ -2011,9 +2033,10 @@ class _TestSFTPChown(_CheckSFTP):
             self.assertEqual(attrs.uid, 1)
             self.assertEqual(attrs.gid, 2)
         finally:
-            run('rm -f file')
+            remove('file')
 
 
+@unittest.skipIf(sys.platform == 'win32', 'skip SFTP tests on Windows')
 class _TestSFTPAttrs(unittest.TestCase):
     """Unit test for SFTPAttrs object"""
 
@@ -2036,6 +2059,7 @@ class _TestSFTPAttrs(unittest.TestCase):
             SFTPAttrs.decode(SSHPacket(UInt32(FILEXFER_ATTR_UNDEFINED)))
 
 
+@unittest.skipIf(sys.platform == 'win32', 'skip SFTP tests on Windows')
 class _TestSFTPNonstandardSymlink(_CheckSFTP):
     """Unit tests for SFTP server with non-standard symlink order"""
 
@@ -2063,9 +2087,10 @@ class _TestSFTPNonstandardSymlink(_CheckSFTP):
 
             yield from conn.wait_closed()
         finally:
-            run('rm -f file link')
+            remove('file link')
 
 
+@unittest.skipIf(sys.platform == 'win32', 'skip SFTP tests on Windows')
 class _TestSFTPAsync(_TestSFTP):
     """Unit test for an async SFTPServer"""
 

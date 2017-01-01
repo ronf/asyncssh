@@ -15,6 +15,8 @@
 import asyncio
 import os
 import socket
+import sys
+import unittest
 
 from unittest.mock import patch
 
@@ -472,6 +474,8 @@ class _TestTCPForwarding(_CheckForwarding):
 
         yield from conn.wait_closed()
 
+    @unittest.skipIf(sys.platform == 'win32',
+                     'skip dual-stack tests on Windows')
     @asynctest
     def test_forward_bind_error_ipv4(self):
         """Test error binding a local forwarding port"""
@@ -489,6 +493,8 @@ class _TestTCPForwarding(_CheckForwarding):
 
         yield from conn.wait_closed()
 
+    @unittest.skipIf(sys.platform == 'win32',
+                     'skip dual-stack tests on Windows')
     @asynctest
     def test_forward_bind_error_ipv6(self):
         """Test error binding a local forwarding port"""
@@ -670,6 +676,8 @@ class _TestTCPForwarding(_CheckForwarding):
         yield from conn.wait_closed()
 
 
+@unittest.skipIf(sys.platform == 'win32',
+                 'skip UNIX domain socket tests on Windows')
 class _TestUNIXForwarding(_CheckForwarding):
     """Unit tests for AsyncSSH UNIX connection forwarding"""
 

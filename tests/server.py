@@ -14,6 +14,7 @@
 
 import asyncio
 import os
+import shutil
 import signal
 import socket
 import subprocess
@@ -109,29 +110,42 @@ class ServerTestCase(AsyncTestCase):
         skey.write_private_key('exp_skey')
         exp_cert.write_certificate('exp_skey-cert.pub')
 
-        run('chmod 600 ckey_dsa ckey skey exp_skey')
+        for f in ('ckey_dsa', 'ckey', 'skey', 'exp_skey'):
+            os.chmod(f, 0o600)
 
-        run('mkdir .ssh')
-        run('chmod 700 .ssh')
-        run('cp ckey_dsa .ssh/id_dsa')
-        run('cp ckey_dsa.pub .ssh/id_dsa.pub')
-        run('cp ckey .ssh/id_rsa')
-        run('cp ckey.pub .ssh/id_rsa.pub')
+        os.mkdir('.ssh', 0o700)
 
-        run('printf "cert-authority,principals=\"ckey\" " > authorized_keys')
-        run('cat ckey.pub >> authorized_keys')
-        run('printf "permitopen=\":*\" " >> authorized_keys')
-        run('cat ckey.pub >> authorized_keys')
-        run('cat ckey_dsa.pub >> authorized_keys')
+        shutil.copy('ckey_dsa', os.path.join('.ssh', 'id_dsa'))
+        shutil.copy('ckey_dsa.pub', os.path.join('.ssh', 'id_dsa.pub'))
+        shutil.copy('ckey', os.path.join('.ssh', 'id_rsa'))
+        shutil.copy('ckey.pub', os.path.join('.ssh', 'id_rsa.pub'))
+
+        with open('authorized_keys', 'w') as auth_keys:
+            auth_keys.write('cert-authority,principals="ckey" ')
+
+            with open('ckey.pub') as ckey_pub:
+                shutil.copyfileobj(ckey_pub, auth_keys)
+
+            auth_keys.write('permitopen=":*" ')
+
+            with open('ckey.pub') as ckey_pub:
+                shutil.copyfileobj(ckey_pub, auth_keys)
+
+            with open('ckey_dsa.pub') as ckey_dsa_pub:
+                shutil.copyfileobj(ckey_dsa_pub, auth_keys)
 
         cls._server = yield from cls.start_server()
 
         sock = cls._server.sockets[0]
-        cls._server_addr, cls._server_port = sock.getsockname()[:2]
+        cls._server_addr = '127.0.0.1'
+        cls._server_port = sock.getsockname()[1]
 
-        run('printf "[%s]:%s " > .ssh/known_hosts' % (cls._server_addr,
-                                                      cls._server_port))
-        run('cat skey.pub >> .ssh/known_hosts')
+        with open(os.path.join('.ssh', 'known_hosts'), 'w') as known_hosts:
+            known_hosts.write('[%s]:%s ' % (cls._server_addr,
+                                            cls._server_port))
+
+            with open('skey.pub') as skey_pub:
+                shutil.copyfileobj(skey_pub, known_hosts)
 
         os.environ = {'LOGNAME': 'guest', 'HOME': '.'}
 

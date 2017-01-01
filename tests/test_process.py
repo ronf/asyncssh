@@ -15,6 +15,8 @@
 import asyncio
 import os
 import socket
+import sys
+import unittest
 
 import asyncssh
 
@@ -59,8 +61,6 @@ def _handle_session(stdin, stdout, stderr):
 class _TestProcess(ServerTestCase):
     """Unit tests for AsyncSSH process API"""
 
-    # pylint: disable=too-many-public-methods
-
     @classmethod
     @asyncio.coroutine
     def start_server(cls):
@@ -68,6 +68,10 @@ class _TestProcess(ServerTestCase):
 
         return (yield from cls.create_server(session_factory=_handle_session,
                                              session_encoding=None))
+
+
+class _TestProcessBasic(_TestProcess):
+    """Unit tests for AsyncSSH process basic functions"""
 
     @asynctest
     def test_shell(self):
@@ -237,6 +241,76 @@ class _TestProcess(ServerTestCase):
                          'Process exited with signal HUP')
 
     @asynctest
+    def test_split_unicode(self):
+        """Test Unicode split across blocks"""
+
+        data = '\u2000test\u2000'
+
+        with open('stdin', 'w', encoding='utf-8') as file:
+            file.write(data)
+
+        with (yield from self.connect()) as conn:
+            result = yield from conn.run('echo', stdin='stdin', bufsize=2)
+
+        self.assertEqual(result.stdout, data)
+
+    @asynctest
+    def test_invalid_unicode(self):
+        """Test invalid Unicode data"""
+
+        data = b'\xfftest'
+
+        with open('stdin', 'wb') as file:
+            file.write(data)
+
+        with (yield from self.connect()) as conn:
+            with self.assertRaises(asyncssh.DisconnectError):
+                yield from conn.run('echo', stdin='stdin')
+
+    @asynctest
+    def test_incomplete_unicode(self):
+        """Test incomplete Unicode data"""
+
+        data = '\u2000'.encode('utf-8')[:2]
+
+        with open('stdin', 'wb') as file:
+            file.write(data)
+
+        with (yield from self.connect()) as conn:
+            with self.assertRaises(asyncssh.DisconnectError):
+                yield from conn.run('echo', stdin='stdin')
+
+    @asynctest
+    def test_disconnect(self):
+        """Test collecting output from a disconnected channel"""
+
+        data = str(id(self))
+
+        with (yield from self.connect()) as conn:
+            process = yield from conn.create_process()
+
+            process.stdin.write(data)
+            process.send_signal('ABRT')
+
+            result = yield from process.wait()
+
+        self.assertEqual(result.stdout, data)
+        self.assertEqual(result.stderr, data)
+
+    @asynctest
+    def test_unknown_action(self):
+        """Test unknown action"""
+
+        with (yield from self.connect()) as conn:
+            result = yield from conn.run('unknown')
+
+        self.assertEqual(result.exit_status, 255)
+
+
+class _TestProcessRedirection(_TestProcess):
+    """Unit tests for AsyncSSH process I/O redirection"""
+
+    @asynctest
     def test_input(self):
         """Test with input from a string"""
 
@@ -325,58 +399,6 @@ class _TestProcess(ServerTestCase):
         self.assertEqual(result.stderr, data)
 
     @asynctest
-    def test_stdin_pipe(self):
-        """Test with stdin redirected to a pipe"""
-
-        data = str(id(self))
-
-        rpipe, wpipe = os.pipe()
-
-        os.write(wpipe, data.encode())
-        os.close(wpipe)
-
-        with (yield from self.connect()) as conn:
-            result = yield from conn.run('echo', stdin=rpipe)
-
-        self.assertEqual(result.stdout, data)
-        self.assertEqual(result.stderr, data)
-
-    @asynctest
-    def test_stdin_binary_pipe(self):
-        """Test with stdin redirected to a pipe in binary mode"""
-
-        data = str(id(self)).encode() + b'\xff'
-
-        rpipe, wpipe = os.pipe()
-
-        os.write(wpipe, data)
-        os.close(wpipe)
-
-        with (yield from self.connect()) as conn:
-            result = yield from conn.run('echo', stdin=rpipe,
-                                         encoding=None)
-
-        self.assertEqual(result.stdout, data)
-        self.assertEqual(result.stderr, data)
-
-    @asynctest
-    def test_stdin_socketpair(self):
-        """Test with stdin redirected to a socketpair"""
-
-        data = str(id(self))
-
-        sock1, sock2 = socket.socketpair()
-
-        sock1.send(data.encode())
-        sock1.close()
-
-        with (yield from self.connect()) as conn:
-            result = yield from conn.run('echo', stdin=sock2)
-
-        self.assertEqual(result.stdout, data)
-        self.assertEqual(result.stderr, data)
-
-    @asynctest
     def test_stdin_process(self):
         """Test with stdin redirected to another SSH process"""
 
@@ -389,30 +411,6 @@ class _TestProcess(ServerTestCase):
 
         self.assertEqual(result.stdout, data)
         self.assertEqual(result.stderr, data)
-
-    @asynctest
-    def test_change_stdin(self):
-        """Test changing stdin of an open process"""
-
-        sock1, sock2 = socket.socketpair()
-        sock3, sock4 = socket.socketpair()
-
-        sock1.send(b'xxx')
-        sock3.send(b'yyy')
-
-        with (yield from self.connect()) as conn:
-            process = yield from conn.create_process(stdin=sock2)
-
-            yield from asyncio.sleep(0.1)
-            yield from process.redirect_stdin(sock4)
-
-            sock1.close()
-            sock3.close()
-
-            result = yield from process.wait()
-
-        self.assertEqual(result.stdout, 'xxxyyy')
-        self.assertEqual(result.stderr, 'xxxyyy')
 
     @asynctest
     def test_stdout_devnull(self):
@@ -495,60 +493,6 @@ class _TestProcess(ServerTestCase):
 
         self.assertEqual(stdout_data, data)
         self.assertEqual(result.stdout, b'')
-        self.assertEqual(result.stderr, data)
-
-    @asynctest
-    def test_stdout_pipe(self):
-        """Test with stdout redirected to a pipe"""
-
-        data = str(id(self))
-
-        rpipe, wpipe = os.pipe()
-
-        with (yield from self.connect()) as conn:
-            result = yield from conn.run('echo', input=data, stdout=wpipe)
-
-        stdout_data = os.read(rpipe, 1024)
-        os.close(rpipe)
-
-        self.assertEqual(stdout_data.decode(), data)
-        self.assertEqual(result.stdout, '')
-        self.assertEqual(result.stderr, data)
-
-    @asynctest
-    def test_stdout_binary_pipe(self):
-        """Test with stdout redirected to a pipe in binary mode"""
-
-        data = str(id(self)).encode() + b'\xff'
-
-        rpipe, wpipe = os.pipe()
-
-        with (yield from self.connect()) as conn:
-            result = yield from conn.run('echo', input=data, stdout=wpipe,
-                                         encoding=None)
-
-        stdout_data = os.read(rpipe, 1024)
-        os.close(rpipe)
-
-        self.assertEqual(stdout_data, data)
-        self.assertEqual(result.stdout, b'')
-        self.assertEqual(result.stderr, data)
-
-    @asynctest
-    def test_stdout_socketpair(self):
-        """Test with stdout redirected to a socketpair"""
-
-        data = str(id(self))
-
-        sock1, sock2 = socket.socketpair()
-
-        with (yield from self.connect()) as conn:
-            result = yield from conn.run('echo', input=data, stdout=sock1)
-
-        stdout_data = sock2.recv(1024)
-        sock2.close()
-
-        self.assertEqual(stdout_data.decode(), data)
         self.assertEqual(result.stderr, data)
 
     @asynctest
@@ -646,55 +590,6 @@ class _TestProcess(ServerTestCase):
         self.assertEqual(result.stdout, data)
 
     @asynctest
-    def test_pause_pipe_reader(self):
-        """Test pausing and resuming reading from a socketpair"""
-
-        data = 4*1024*1024*'*'
-
-        sock1, sock2 = socket.socketpair()
-
-        _, writer = yield from asyncio.open_unix_connection(sock=sock1)
-        writer.write(data.encode())
-        writer.close()
-
-        with (yield from self.connect()) as conn:
-            result = yield from conn.run('delay', stdin=sock2,
-                                         stderr=asyncssh.DEVNULL)
-
-        self.assertEqual(result.stdout, data)
-
-    @asynctest
-    def test_pause_pipe_writer(self):
-        """Test pausing and resuming writing to a socketpair"""
-
-        data = 4*1024*1024*'*'
-
-        rsock1, wsock1 = socket.socketpair()
-        rsock2, wsock2 = socket.socketpair()
-
-        reader1, writer1 = yield from asyncio.open_unix_connection(sock=rsock1)
-        reader2, writer2 = yield from asyncio.open_unix_connection(sock=rsock2)
-
-        with (yield from self.connect()) as conn:
-            process = yield from conn.create_process(input=data)
-
-            yield from asyncio.sleep(1)
-
-            yield from process.redirect_stdout(wsock1)
-            yield from process.redirect_stderr(wsock2)
-
-            stdout_data, stderr_data = \
-                yield from asyncio.gather(reader1.read(), reader2.read())
-
-            writer1.close()
-            writer2.close()
-
-            yield from process.wait()
-
-        self.assertEqual(stdout_data.decode(), data)
-        self.assertEqual(stderr_data.decode(), data)
-
-    @asynctest
     def test_pause_process_reader(self):
         """Test pausing and resuming reading from another SSH process"""
 
@@ -776,68 +671,191 @@ class _TestProcess(ServerTestCase):
         self.assertEqual(result.stdout, data+data)
         self.assertEqual(result.stderr, data+data)
 
-    @asynctest
-    def test_split_unicode(self):
-        """Test Unicode split across blocks"""
 
-        data = '\u2000test\u2000'
-
-        with open('stdin', 'w', encoding='utf-8') as file:
-            file.write(data)
-
-        with (yield from self.connect()) as conn:
-            result = yield from conn.run('echo', stdin='stdin', bufsize=2)
-
-        self.assertEqual(result.stdout, data)
+@unittest.skipIf(sys.platform == 'win32', 'skip pipe tests on Windows')
+class _TestProcessPipes(_TestProcess):
+    """Unit tests for AsyncSSH process I/O using pipes"""
 
     @asynctest
-    def test_invalid_unicode(self):
-        """Test invalid Unicode data"""
-
-        data = b'\xfftest'
-
-        with open('stdin', 'wb') as file:
-            file.write(data)
-
-        with (yield from self.connect()) as conn:
-            with self.assertRaises(asyncssh.DisconnectError):
-                yield from conn.run('echo', stdin='stdin')
-
-    @asynctest
-    def test_incomplete_unicode(self):
-        """Test incomplete Unicode data"""
-
-        data = '\u2000'.encode('utf-8')[:2]
-
-        with open('stdin', 'wb') as file:
-            file.write(data)
-
-        with (yield from self.connect()) as conn:
-            with self.assertRaises(asyncssh.DisconnectError):
-                yield from conn.run('echo', stdin='stdin')
-
-    @asynctest
-    def test_disconnect(self):
-        """Test collecting output from a disconnected channel"""
+    def test_stdin_pipe(self):
+        """Test with stdin redirected to a pipe"""
 
         data = str(id(self))
 
+        rpipe, wpipe = os.pipe()
+
+        os.write(wpipe, data.encode())
+        os.close(wpipe)
+
         with (yield from self.connect()) as conn:
-            process = yield from conn.create_process()
-
-            process.stdin.write(data)
-            process.send_signal('ABRT')
-
-            result = yield from process.wait()
+            result = yield from conn.run('echo', stdin=rpipe)
 
         self.assertEqual(result.stdout, data)
         self.assertEqual(result.stderr, data)
 
     @asynctest
-    def test_unknown_action(self):
-        """Test unknown action"""
+    def test_stdin_binary_pipe(self):
+        """Test with stdin redirected to a pipe in binary mode"""
+
+        data = str(id(self)).encode() + b'\xff'
+
+        rpipe, wpipe = os.pipe()
+
+        os.write(wpipe, data)
+        os.close(wpipe)
 
         with (yield from self.connect()) as conn:
-            result = yield from conn.run('unknown')
+            result = yield from conn.run('echo', stdin=rpipe,
+                                         encoding=None)
 
-        self.assertEqual(result.exit_status, 255)
+        self.assertEqual(result.stdout, data)
+        self.assertEqual(result.stderr, data)
+
+    @asynctest
+    def test_stdout_pipe(self):
+        """Test with stdout redirected to a pipe"""
+
+        data = str(id(self))
+
+        rpipe, wpipe = os.pipe()
+
+        with (yield from self.connect()) as conn:
+            result = yield from conn.run('echo', input=data, stdout=wpipe)
+
+        stdout_data = os.read(rpipe, 1024)
+        os.close(rpipe)
+
+        self.assertEqual(stdout_data.decode(), data)
+        self.assertEqual(result.stdout, '')
+        self.assertEqual(result.stderr, data)
+
+    @asynctest
+    def test_stdout_binary_pipe(self):
+        """Test with stdout redirected to a pipe in binary mode"""
+
+        data = str(id(self)).encode() + b'\xff'
+
+        rpipe, wpipe = os.pipe()
+
+        with (yield from self.connect()) as conn:
+            result = yield from conn.run('echo', input=data, stdout=wpipe,
+                                         encoding=None)
+
+        stdout_data = os.read(rpipe, 1024)
+        os.close(rpipe)
+
+        self.assertEqual(stdout_data, data)
+        self.assertEqual(result.stdout, b'')
+        self.assertEqual(result.stderr, data)
+
+
+@unittest.skipIf(sys.platform == 'win32', 'skip socketpair tests on Windows')
+class _TestProcessSocketPair(_TestProcess):
+    """Unit tests for AsyncSSH process I/O using socketpair"""
+
+    @asynctest
+    def test_stdin_socketpair(self):
+        """Test with stdin redirected to a socketpair"""
+
+        data = str(id(self))
+
+        sock1, sock2 = socket.socketpair()
+
+        sock1.send(data.encode())
+        sock1.close()
+
+        with (yield from self.connect()) as conn:
+            result = yield from conn.run('echo', stdin=sock2)
+
+        self.assertEqual(result.stdout, data)
+        self.assertEqual(result.stderr, data)
+
+    @asynctest
+    def test_change_stdin(self):
+        """Test changing stdin of an open process"""
+
+        sock1, sock2 = socket.socketpair()
+        sock3, sock4 = socket.socketpair()
+
+        sock1.send(b'xxx')
+        sock3.send(b'yyy')
+
+        with (yield from self.connect()) as conn:
+            process = yield from conn.create_process(stdin=sock2)
+
+            yield from asyncio.sleep(0.1)
+            yield from process.redirect_stdin(sock4)
+
+            sock1.close()
+            sock3.close()
+
+            result = yield from process.wait()
+
+        self.assertEqual(result.stdout, 'xxxyyy')
+        self.assertEqual(result.stderr, 'xxxyyy')
+
+    @asynctest
+    def test_stdout_socketpair(self):
+        """Test with stdout redirected to a socketpair"""
+
+        data = str(id(self))
+
+        sock1, sock2 = socket.socketpair()
+
+        with (yield from self.connect()) as conn:
+            result = yield from conn.run('echo', input=data, stdout=sock1)
+
+        stdout_data = sock2.recv(1024)
+        sock2.close()
+
+        self.assertEqual(stdout_data.decode(), data)
+        self.assertEqual(result.stderr, data)
+
+    @asynctest
+    def test_pause_socketpair_reader(self):
+        """Test pausing and resuming reading from a socketpair"""
+
+        data = 4*1024*1024*'*'
+
+        sock1, sock2 = socket.socketpair()
+
+        _, writer = yield from asyncio.open_unix_connection(sock=sock1)
+        writer.write(data.encode())
+        writer.close()
+
+        with (yield from self.connect()) as conn:
+            result = yield from conn.run('delay', stdin=sock2,
+                                         stderr=asyncssh.DEVNULL)
+
+        self.assertEqual(result.stdout, data)
+
+    @asynctest
+    def test_pause_socketpair_writer(self):
+        """Test pausing and resuming writing to a socketpair"""
+
+        data = 4*1024*1024*'*'
+
+        rsock1, wsock1 = socket.socketpair()
+        rsock2, wsock2 = socket.socketpair()
+
+        reader1, writer1 = yield from asyncio.open_unix_connection(sock=rsock1)
+        reader2, writer2 = yield from asyncio.open_unix_connection(sock=rsock2)
+
+        with (yield from self.connect()) as conn:
+            process = yield from conn.create_process(input=data)
+
+            yield from asyncio.sleep(1)
+
+            yield from process.redirect_stdout(wsock1)
+            yield from process.redirect_stderr(wsock2)
+
+            stdout_data, stderr_data = \
+                yield from asyncio.gather(reader1.read(), reader2.read())
+
+            writer1.close()
+            writer2.close()
+
+            yield from process.wait()
+
+        self.assertEqual(stdout_data.decode(), data)
+        self.assertEqual(stderr_data.decode(), data)

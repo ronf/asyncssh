@@ -15,6 +15,8 @@
 import asyncio
 import os
 import socket
+import sys
+import unittest
 
 from unittest.mock import patch
 
@@ -262,6 +264,7 @@ class _X11Server(Server):
         return self._begin_session
 
 
+@unittest.skipIf(sys.platform == 'win32', 'skip X11 tests on Windows')
 @patch('asyncssh.connection.SSHServerConnection', _X11ServerConnection)
 @patch('asyncssh.x11.SSHX11ClientListener', _X11ClientListener)
 class _TestX11(ServerTestCase):

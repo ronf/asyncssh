@@ -229,6 +229,7 @@ class TempDirTestCase(unittest.TestCase):
     def tearDownClass(cls):
         """Clean up temporary directory"""
 
+        os.chdir('..')
         cls._tempdir.cleanup()
 
 
