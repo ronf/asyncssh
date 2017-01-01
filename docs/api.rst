@@ -1058,6 +1058,8 @@ SSHKey
    .. automethod:: export_public_key
    .. automethod:: write_private_key
    .. automethod:: write_public_key
+   .. automethod:: append_private_key
+   .. automethod:: append_public_key
    ========================================= =
 
 SSHKeyPair
@@ -1084,6 +1086,7 @@ SSHCertificate
    .. automethod:: set_comment
    .. automethod:: export_certificate
    .. automethod:: write_certificate
+   .. automethod:: append_certificate
    .. automethod:: validate
    ================================== =
 

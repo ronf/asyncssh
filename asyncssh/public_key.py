@@ -662,6 +662,40 @@ class SSHKey:
         with open(filename, 'wb') as f:
             f.write(self.export_public_key(*args, **kwargs))
 
+    def append_private_key(self, filename, *args, **kwargs):
+        """Append a private key to a file in the requested format
+
+           This method is a simple wrapper around :meth:`export_private_key`
+           which appends the exported key data to an existing file.
+
+           :param str filename:
+               The filename to append the private key to.
+           :param \\*args,\\ \\*\\*kwargs:
+               Additional arguments to pass through to
+               :meth:`export_private_key`.
+
+        """
+
+        with open(filename, 'ab') as f:
+            f.write(self.export_private_key(*args, **kwargs))
+
+    def append_public_key(self, filename, *args, **kwargs):
+        """Append a public key to a file in the requested format
+
+           This method is a simple wrapper around :meth:`export_public_key`
+           which appends the exported key data to an existing file.
+
+           :param str filename:
+               The filename to append the public key to.
+           :param \\*args,\\ \\*\\*kwargs:
+               Additional arguments to pass through to
+               :meth:`export_public_key`.
+
+        """
+
+        with open(filename, 'ab') as f:
+            f.write(self.export_public_key(*args, **kwargs))
+
 
 class SSHCertificate:
     """Parent class which holds an SSH certificate"""
@@ -968,6 +1002,23 @@ class SSHCertificate:
         """
 
         with open(filename, 'wb') as f:
+            f.write(self.export_certificate(*args, **kwargs))
+
+    def append_certificate(self, filename, *args, **kwargs):
+        """Append a certificate to a file in the requested format
+
+           This function is a simple wrapper around export_certificate
+           which appends the exported certificate to an existing file.
+
+           :param str filename:
+               The filename to append the certificate to.
+           :param \\*args,\\ \\*\\*kwargs:
+               Additional arguments to pass through to
+               :meth:`export_certificate`.
+
+        """
+
+        with open(filename, 'ab') as f:
             f.write(self.export_certificate(*args, **kwargs))
 
     def validate(self, cert_type, principal):
