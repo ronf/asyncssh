@@ -15,8 +15,6 @@
 import asyncio
 import os
 import socket
-import sys
-import unittest
 
 from unittest.mock import patch
 
@@ -27,15 +25,12 @@ from asyncssh.packet import Boolean, String, UInt32
 from asyncssh.x11 import XAUTH_FAMILY_IPV4, XAUTH_FAMILY_DECNET
 from asyncssh.x11 import XAUTH_FAMILY_IPV6, XAUTH_FAMILY_HOSTNAME
 from asyncssh.x11 import XAUTH_FAMILY_WILD, XAUTH_PROTO_COOKIE
-from asyncssh.x11 import X11_BASE_PORT, X11_LISTEN_HOST
+from asyncssh.x11 import XAUTH_COOKIE_LEN, X11_BASE_PORT, X11_LISTEN_HOST
 from asyncssh.x11 import SSHXAuthorityEntry, SSHX11ClientListener
 from asyncssh.x11 import walk_xauth, lookup_xauth, update_xauth
 
 from .server import Server, ServerTestCase
 from .util import asynctest
-
-
-_AUTH_DATA_LEN = 16
 
 
 def _failing_bind(self, address):
@@ -264,7 +259,6 @@ class _X11Server(Server):
         return self._begin_session
 
 
-@unittest.skipIf(sys.platform == 'win32', 'skip X11 tests on Windows')
 @patch('asyncssh.connection.SSHServerConnection', _X11ServerConnection)
 @patch('asyncssh.x11.SSHX11ClientListener', _X11ClientListener)
 class _TestX11(ServerTestCase):
@@ -276,7 +270,7 @@ class _TestX11(ServerTestCase):
 
         super().setUpClass()
 
-        auth_data = os.urandom(_AUTH_DATA_LEN)
+        auth_data = os.urandom(XAUTH_COOKIE_LEN)
 
         with open('.Xauthority', 'wb') as auth_file:
             auth_file.write(bytes(SSHXAuthorityEntry(
@@ -506,8 +500,7 @@ class _TestX11(ServerTestCase):
     def test_no_xauth_match(self):
         """Test no xauth match"""
 
-        yield from self._check_x11(exc=asyncssh.ChannelOpenError,
-                                   x11_display='no_match:1')
+        yield from self._check_x11(x11_display='no_match:1')
 
     @asynctest
     def test_invalid_display(self):
@@ -520,15 +513,13 @@ class _TestX11(ServerTestCase):
     def test_xauth_missing(self):
         """Test missing .Xauthority file"""
 
-        yield from self._check_x11(exc=asyncssh.ChannelOpenError,
-                                   x11_auth_path='.Xauthority-missing')
+        yield from self._check_x11(x11_auth_path='.Xauthority-missing')
 
     @asynctest
     def test_xauth_empty(self):
         """Test empty .Xauthority file"""
 
-        yield from self._check_x11(exc=asyncssh.ChannelOpenError,
-                                   x11_auth_path='.Xauthority-empty')
+        yield from self._check_x11(x11_auth_path='.Xauthority-empty')
 
     @asynctest
     def test_xauth_corrupted(self):

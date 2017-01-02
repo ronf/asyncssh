@@ -22,6 +22,7 @@ from collections import namedtuple
 from .constants import OPEN_CONNECT_FAILED
 from .forward import SSHForwarder
 from .listener import create_tcp_forward_listener
+from .logging import logger
 from .misc import ChannelOpenError
 
 # pylint: disable=bad-whitespace
@@ -35,6 +36,7 @@ XAUTH_FAMILY_WILD     = 65535
 
 # Xauth protocol values
 XAUTH_PROTO_COOKIE    = b'MIT-MAGIC-COOKIE-1'
+XAUTH_COOKIE_LEN      = 16
 
 # Xauth lock information
 XAUTH_LOCK_SUFFIX     = '-c'
@@ -432,7 +434,8 @@ def lookup_xauth(loop, auth_path, host, dpynum):
         if match:
             return entry.proto, entry.data
 
-    raise ValueError('No xauth entry found for display')
+    logger.warning('No xauth entry found for display: using random auth')
+    return XAUTH_PROTO_COOKIE, os.urandom(XAUTH_COOKIE_LEN)
 
 @asyncio.coroutine
 def update_xauth(loop, auth_path, host, dpynum, auth_proto, auth_data):
@@ -477,7 +480,7 @@ def update_xauth(loop, auth_path, host, dpynum, auth_proto, auth_data):
 
     new_file.close()
 
-    os.rename(new_auth_path, auth_path)
+    os.replace(new_auth_path, auth_path)
 
 
 @asyncio.coroutine
