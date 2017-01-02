@@ -6,7 +6,7 @@ Change Log
 Release 1.8.1 (29 Dec 2016)
 ---------------------------
 
-* Fix an issue in atempting to load the 'nettle' library on Windows.
+* Fix an issue in attempting to load the 'nettle' library on Windows.
 
 Release 1.8.0 (29 Dec 2016)
 ---------------------------
