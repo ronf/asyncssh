@@ -1,8 +1,8 @@
 build: off
 
 environment:
-    global:
-      VENV_DIR: "venv"
+  global:
+    - VENV_DIR: "venv"
 
   matrix:
     - PYTHON: "C:\\Python34"
