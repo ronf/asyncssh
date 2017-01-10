@@ -22,6 +22,7 @@ import os
 from os import SEEK_SET, SEEK_CUR, SEEK_END
 import posixpath
 import stat
+import sys
 import time
 
 from .constants import DEFAULT_LANG
@@ -91,7 +92,10 @@ def _setstat(path, attrs):
         os.truncate(path, attrs.size)
 
     if attrs.uid is not None and attrs.gid is not None:
-        os.chown(path, attrs.uid, attrs.gid)
+        try:
+            os.chown(path, attrs.uid, attrs.gid)
+        except AttributeError: # pragma: no cover
+            raise NotImplementedError
 
     if attrs.permissions is not None:
         os.chmod(path, stat.S_IMODE(attrs.permissions))
@@ -105,12 +109,6 @@ class _LocalFile:
 
     def __init__(self, f):
         self._file = f
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *exc_info):
-        self._file.close()
 
     @classmethod
     def encode(cls, path):
@@ -201,12 +199,19 @@ class _LocalFile:
     def readlink(cls, path):
         """Return the target of a local symbolic link"""
 
+        if sys.platform == 'win32': # pragma: no cover
+            path = os.fsdecode(path)
+
         return os.readlink(path)
 
     @classmethod
     @asyncio.coroutine
     def symlink(cls, oldpath, newpath):
         """Create a local symbolic link"""
+
+        if sys.platform == 'win32': # pragma: no cover
+            oldpath = os.fsdecode(oldpath)
+            newpath = os.fsdecode(newpath)
 
         os.symlink(oldpath, newpath)
 
@@ -223,6 +228,12 @@ class _LocalFile:
 
         self._file.seek(offset)
         return self._file.write(data)
+
+    @asyncio.coroutine
+    def close(self):
+        """Close the local file"""
+
+        self._file.close()
 
 
 class _SFTPFileCopier:
@@ -265,25 +276,32 @@ class _SFTPFileCopier:
     def copy(self, srcfs, dstfs, srcpath, dstpath, size):
         """Copy a file"""
 
-        with (yield from srcfs.open(srcpath, 'rb')) as self._src:
-            with (yield from dstfs.open(dstpath, 'wb')) as self._dst:
-                self._bytes_left = size
+        try:
+            self._src = yield from srcfs.open(srcpath, 'rb')
+            self._dst = yield from dstfs.open(dstpath, 'wb')
+            self._bytes_left = size
+            self._copy_blocks()
+
+            while self._pending:
+                done, self._pending = yield from asyncio.wait(
+                    self._pending, return_when=asyncio.FIRST_COMPLETED)
+
+                exceptions = [task.exception() for task in done
+                              if task.exception()]
+
+                if exceptions:
+                    for task in self._pending:
+                        task.cancel()
+
+                    raise exceptions[0]
+
                 self._copy_blocks()
+        finally:
+            if self._src: # pragma: no branch
+                yield from self._src.close()
 
-                while self._pending:
-                    done, self._pending = yield from asyncio.wait(
-                        self._pending, return_when=asyncio.FIRST_COMPLETED)
-
-                    exceptions = [task.exception() for task in done
-                                  if task.exception()]
-
-                    if exceptions:
-                        for task in self._pending:
-                            task.cancel()
-
-                        raise exceptions[0]
-
-                    self._copy_blocks()
+            if self._dst: # pragma: no branch
+                yield from self._dst.close()
 
 
 class SFTPError(Error):
@@ -2694,10 +2712,12 @@ class SFTPServerHandler(SFTPHandler):
     """An SFTP server session handler"""
 
     _extensions = [(b'posix-rename@openssh.com', b'1'),
-                   (b'statvfs@openssh.com', b'2'),
-                   (b'fstatvfs@openssh.com', b'2'),
                    (b'hardlink@openssh.com', b'1'),
                    (b'fsync@openssh.com', b'1')]
+
+    if hasattr(os, 'statvfs'): # pragma: no branch
+        _extensions += [(b'statvfs@openssh.com', b'2'),
+                        (b'fstatvfs@openssh.com', b'2')]
 
     def __init__(self, sftp_factory, conn, reader, writer):
         super().__init__(conn, reader, writer)
@@ -2789,14 +2809,14 @@ class SFTPServerHandler(SFTPHandler):
         except OSError as exc:
             return_type = FXP_STATUS
 
-            if exc.errno == errno.ENOENT:
+            if exc.errno in (errno.ENOENT, errno.ENOTDIR):
                 code = FX_NO_SUCH_FILE
             elif exc.errno == errno.EACCES:
                 code = FX_PERMISSION_DENIED
             else:
                 code = FX_FAILURE
 
-            result = (UInt32(code) + String(exc.strerror) +
+            result = (UInt32(code) + String(exc.strerror or str(exc)) +
                       String(DEFAULT_LANG))
         except Exception as exc: # pragma: no cover
             return_type = FXP_STATUS
@@ -3317,7 +3337,12 @@ class SFTPServer:
         # pylint: disable=unused-argument
 
         if chroot:
-            self._chroot = os.fsencode(os.path.realpath(chroot))
+            chroot = os.fsencode(os.path.realpath(chroot))
+
+            if sys.platform == 'win32': # pragma: no cover
+                chroot = b'/' + chroot.replace(b'\\', b'/')
+
+            self._chroot = chroot
         else:
             self._chroot = None
 
@@ -3389,10 +3414,16 @@ class SFTPServer:
         """
 
         if self._chroot:
-            normpath = os.path.normpath(os.path.join(b'/', path))
-            return os.path.join(self._chroot, normpath[1:])
-        else:
-            return path
+            normpath = posixpath.normpath(os.path.join(b'/', path))
+            path = posixpath.join(self._chroot, normpath[1:])
+
+        if sys.platform == 'win32': # pragma: no cover
+            if path[:1] == b'/' and path[2:3] == b':':
+                path = path[1:]
+
+            path = path.replace(b'/', b'\\')
+
+        return path
 
     def reverse_map_path(self, path):
         """Reverse map a local path into the path reported to the client
@@ -3409,15 +3440,21 @@ class SFTPServer:
 
         """
 
+        if sys.platform == 'win32': # pragma: no cover
+            path = path.replace(b'\\', b'/')
+
+            if path[:1] != b'/' and path[1:2] == b':':
+                path = b'/' + path
+
         if self._chroot:
             if path == self._chroot:
-                return b'/'
+                path = b'/'
             elif path.startswith(self._chroot + b'/'):
-                return path[len(self._chroot):]
+                path = path[len(self._chroot):]
             else:
                 raise SFTPError(FX_NO_SUCH_FILE, 'File not found')
-        else:
-            return path
+
+        return path
 
     def open(self, path, pflags, attrs):
         """Open a file to serve to a remote client
@@ -3615,7 +3652,11 @@ class SFTPServer:
         """
 
         file_obj.flush()
-        _setstat(file_obj.fileno(), attrs)
+
+        if sys.platform == 'win32': # pragma: no cover
+            _setstat(file_obj.name, attrs)
+        else:
+            _setstat(file_obj.fileno(), attrs)
 
     def listdir(self, path):
         """List the contents of a directory
@@ -3745,7 +3786,15 @@ class SFTPServer:
 
         """
 
-        target = os.readlink(self.map_path(path))
+        path = self.map_path(path)
+
+        if sys.platform == 'win32': # pragma: no cover
+            path = os.fsdecode(path)
+
+        target = os.readlink(path)
+
+        if sys.platform == 'win32': # pragma: no cover
+            target = os.fsencode(target)
 
         if os.path.isabs(target):
             return self.reverse_map_path(target)
@@ -3779,6 +3828,10 @@ class SFTPServer:
 
         newpath = self.map_path(newpath)
 
+        if sys.platform == 'win32': # pragma: no cover
+            oldpath = os.fsdecode(oldpath)
+            newpath = os.fsdecode(newpath)
+
         return os.symlink(oldpath, newpath)
 
     def posix_rename(self, oldpath, newpath):
@@ -3796,7 +3849,7 @@ class SFTPServer:
 
         """
 
-        return os.rename(self.map_path(oldpath), self.map_path(newpath))
+        return os.replace(self.map_path(oldpath), self.map_path(newpath))
 
     def statvfs(self, path):
         """Get attributes of the file system containing a file
@@ -3811,7 +3864,10 @@ class SFTPServer:
 
         """
 
-        return os.statvfs(self.map_path(path))
+        try:
+            return os.statvfs(self.map_path(path))
+        except AttributeError: # pragma: no cover
+            raise SFTPError(FX_OP_UNSUPPORTED, 'statvfs not supported')
 
     def fstatvfs(self, file_obj):
         """Return attributes of the file system containing an open file
@@ -3826,7 +3882,10 @@ class SFTPServer:
 
         """
 
-        return os.statvfs(file_obj.fileno())
+        try:
+            return os.statvfs(file_obj.fileno())
+        except AttributeError: # pragma: no cover
+            raise SFTPError(FX_OP_UNSUPPORTED, 'fstatvfs not supported')
 
     def link(self, oldpath, newpath):
         """Create a hard link

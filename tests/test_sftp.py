@@ -15,6 +15,7 @@
 import asyncio
 import functools
 import os
+import posixpath
 import shutil
 import stat
 import sys
@@ -39,14 +40,14 @@ from .util import asynctest
 def remove(files):
     """Remove files and directories"""
 
-    for f in files.split(' '):
+    for f in files.split():
         try:
-            shutil.rmtree(f)
-        except OSError:
-            try:
+            if os.path.isdir(f) and not os.path.islink(f):
+                shutil.rmtree(f)
+            else:
                 os.remove(f)
-            except OSError:
-                pass
+        except OSError:
+            pass
 
 
 def sftp_test(func):
@@ -356,6 +357,19 @@ class _AsyncSFTPServer(SFTPServer):
 class _CheckSFTP(ServerTestCase):
     """Utility functions for AsyncSSH SFTP unit tests"""
 
+    @classmethod
+    def setUpClass(cls):
+        """Check if symlink is available on this platform"""
+
+        super().setUpClass()
+
+        try:
+            os.symlink('file', 'link')
+            os.remove('link')
+            cls._symlink_supported = True
+        except OSError: # pragma: no cover
+            cls._symlink_supported = False
+
     def _create_file(self, name, data=(), mode=None, utime=None):
         """Create a test file"""
 
@@ -390,8 +404,8 @@ class _CheckSFTP(ServerTestCase):
         if preserve:
             self._check_attr(name1, name2, follow_symlinks)
 
-        with open(name1, 'r') as file1:
-            with open(name2, 'r') as file2:
+        with open(name1) as file1:
+            with open(name2) as file2:
                 self.assertEqual(file1.read(), file2.read())
 
     def _check_stat(self, sftp_stat, local_stat):
@@ -410,7 +424,6 @@ class _CheckSFTP(ServerTestCase):
         self.assertEqual(os.readlink(link), target)
 
 
-@unittest.skipIf(sys.platform == 'win32', 'skip SFTP tests on Windows')
 class _TestSFTP(_CheckSFTP):
     """Unit tests for AsyncSSH SFTP client and server"""
 
@@ -443,7 +456,7 @@ class _TestSFTP(_CheckSFTP):
         for method in ('get', 'put', 'copy'):
             with self.subTest(method=method):
                 try:
-                    self._create_file('src', mode=0o400, utime=(1, 2))
+                    self._create_file('src', mode=0o666, utime=(1, 2))
                     yield from getattr(sftp, method)('src', 'dst',
                                                      preserve=True)
                     self._check_file('src', 'dst', preserve=True)
@@ -459,11 +472,17 @@ class _TestSFTP(_CheckSFTP):
                 try:
                     os.mkdir('src')
                     self._create_file('src/file1')
-                    os.symlink('file1', 'src/file2')
+
+                    if self._symlink_supported: # pragma: no branch
+                        os.symlink('file1', 'src/file2')
+
                     yield from getattr(sftp, method)('src', 'dst',
                                                      recurse=True)
+
                     self._check_file('src/file1', 'dst/file1')
-                    self._check_link('dst/file2', 'file1')
+
+                    if self._symlink_supported: # pragma: no branch
+                        self._check_link('dst/file2', 'file1')
                 finally:
                     remove('src dst')
 
@@ -478,17 +497,26 @@ class _TestSFTP(_CheckSFTP):
                     os.mkdir('dst')
                     os.mkdir('dst/src')
                     self._create_file('src/file1')
-                    os.symlink('file1', 'src/file2')
+
+                    if self._symlink_supported: # pragma: no branch
+                        os.symlink('file1', 'src/file2')
+
                     yield from getattr(sftp, method)('src', 'dst',
                                                      recurse=True)
+
                     self._check_file('src/file1', 'dst/src/file1')
-                    self._check_link('dst/src/file2', 'file1')
+
+                    if self._symlink_supported: # pragma: no branch
+                        self._check_link('dst/src/file2', 'file1')
                 finally:
                     remove('src dst')
 
     @sftp_test
     def test_copy_follow_symlinks(self, sftp):
         """Test copying a file over SFTP while following symlinks"""
+
+        if not self._symlink_supported: # pragma: no cover
+            raise unittest.SkipTest('symlink not available')
 
         for method in ('get', 'put', 'copy'):
             with self.subTest(method=method):
@@ -507,7 +535,8 @@ class _TestSFTP(_CheckSFTP):
 
         for method in ('get', 'put', 'copy', 'mget', 'mput', 'mcopy'):
             with self.subTest(method=method):
-                with self.assertRaises((FileNotFoundError, SFTPError)):
+                with self.assertRaises((FileNotFoundError, SFTPError,
+                                        UnicodeDecodeError)):
                     yield from getattr(sftp, method)(b'\xff')
 
     @sftp_test
@@ -653,44 +682,55 @@ class _TestSFTP(_CheckSFTP):
             os.mkdir('dir')
             self._create_file('file')
 
-            os.symlink('bad', 'badlink')
-            os.symlink('dir', 'dirlink')
-            os.symlink('file', 'filelink')
+            if self._symlink_supported: # pragma: no branch
+                os.symlink('bad', 'badlink')
+                os.symlink('dir', 'dirlink')
+                os.symlink('file', 'filelink')
 
             self._check_stat((yield from sftp.stat('dir')), os.stat('dir'))
             self._check_stat((yield from sftp.stat('file')), os.stat('file'))
 
-            self._check_stat((yield from sftp.stat('dirlink')),
-                             os.stat('dir'))
-            self._check_stat((yield from sftp.stat('filelink')),
-                             os.stat('file'))
+            if self._symlink_supported: # pragma: no branch
+                self._check_stat((yield from sftp.stat('dirlink')),
+                                 os.stat('dir'))
+                self._check_stat((yield from sftp.stat('filelink')),
+                                 os.stat('file'))
 
-            with self.assertRaises(SFTPError):
-                yield from sftp.stat('badlink') # pragma: no branch
+                with self.assertRaises(SFTPError):
+                    yield from sftp.stat('badlink') # pragma: no branch
 
             self.assertTrue((yield from sftp.isdir('dir')))
             self.assertFalse((yield from sftp.isdir('file')))
-            self.assertFalse((yield from sftp.isdir('badlink')))
-            self.assertTrue((yield from sftp.isdir('dirlink')))
-            self.assertFalse((yield from sftp.isdir('filelink')))
+
+            if self._symlink_supported: # pragma: no branch
+                self.assertFalse((yield from sftp.isdir('badlink')))
+                self.assertTrue((yield from sftp.isdir('dirlink')))
+                self.assertFalse((yield from sftp.isdir('filelink')))
 
             self.assertFalse((yield from sftp.isfile('dir')))
             self.assertTrue((yield from sftp.isfile('file')))
-            self.assertFalse((yield from sftp.isfile('badlink')))
-            self.assertFalse((yield from sftp.isfile('dirlink')))
-            self.assertTrue((yield from sftp.isfile('filelink')))
+
+            if self._symlink_supported: # pragma: no branch
+                self.assertFalse((yield from sftp.isfile('badlink')))
+                self.assertFalse((yield from sftp.isfile('dirlink')))
+                self.assertTrue((yield from sftp.isfile('filelink')))
 
             self.assertFalse((yield from sftp.islink('dir')))
             self.assertFalse((yield from sftp.islink('file')))
-            self.assertTrue((yield from sftp.islink('badlink')))
-            self.assertTrue((yield from sftp.islink('dirlink')))
-            self.assertTrue((yield from sftp.islink('filelink')))
+
+            if self._symlink_supported: # pragma: no branch
+                self.assertTrue((yield from sftp.islink('badlink')))
+                self.assertTrue((yield from sftp.islink('dirlink')))
+                self.assertTrue((yield from sftp.islink('filelink')))
         finally:
             remove('dir file badlink dirlink filelink')
 
     @sftp_test
     def test_lstat(self, sftp):
         """Test getting attributes on a link"""
+
+        if not self._symlink_supported: # pragma: no cover
+            raise unittest.SkipTest('symlink not available')
 
         try:
             os.symlink('file', 'link')
@@ -704,11 +744,12 @@ class _TestSFTP(_CheckSFTP):
 
         try:
             self._create_file('file')
-            yield from sftp.setstat('file', SFTPAttrs(permissions=0o777))
-            self.assertEqual(stat.S_IMODE(os.stat('file').st_mode), 0o777)
+            yield from sftp.setstat('file', SFTPAttrs(permissions=0o666))
+            self.assertEqual(stat.S_IMODE(os.stat('file').st_mode), 0o666)
         finally:
             remove('file')
 
+    @unittest.skipIf(sys.platform == 'win32', 'skip statvfs tests on Windows')
     @sftp_test
     def test_statvfs(self, sftp):
         """Test getting attributes on a filesystem
@@ -732,11 +773,12 @@ class _TestSFTP(_CheckSFTP):
             yield from sftp.truncate('file', 10)
             self.assertEqual((yield from sftp.getsize('file')), 10)
 
-            with open('file', 'r') as f:
-                self.assertEqual(f.read(), '0123456789')
+            with open('file') as localf:
+                self.assertEqual(localf.read(), '0123456789')
         finally:
             remove('file')
 
+    @unittest.skipIf(sys.platform == 'win32', 'skip chown tests on Windows')
     @sftp_test
     def test_chown(self, sftp):
         """Test changing ownership of a file
@@ -760,6 +802,7 @@ class _TestSFTP(_CheckSFTP):
         finally:
             remove('file')
 
+    @unittest.skipIf(sys.platform == 'win32', 'skip chmod tests on Windows')
     @sftp_test
     def test_chmod(self, sftp):
         """Test changing permissions on a file"""
@@ -800,13 +843,16 @@ class _TestSFTP(_CheckSFTP):
             self.assertFalse((yield from sftp.exists('file2')))
 
             with self.assertRaises(SFTPError):
-                yield from sftp.exists('file1/file2')
+                yield from sftp.exists(1024*'a')
         finally:
             remove('file1')
 
     @sftp_test
     def test_lexists(self, sftp):
         """Test checking whether a link exists"""
+
+        if not self._symlink_supported: # pragma: no cover
+            raise unittest.SkipTest('symlink not available')
 
         try:
             os.symlink('file', 'link1')
@@ -874,8 +920,8 @@ class _TestSFTP(_CheckSFTP):
 
             yield from sftp.posix_rename('file1', 'file2')
 
-            with open('file2') as f:
-                self.assertEqual(f.read(), 'xxx')
+            with open('file2') as localf:
+                self.assertEqual(localf.read(), 'xxx')
         finally:
             remove('file1 file2')
 
@@ -941,6 +987,9 @@ class _TestSFTP(_CheckSFTP):
     def test_readlink(self, sftp):
         """Test reading a symlink"""
 
+        if not self._symlink_supported: # pragma: no cover
+            raise unittest.SkipTest('symlink not available')
+
         try:
             os.symlink('/file', 'link')
             self.assertEqual((yield from sftp.readlink('link')), '/file')
@@ -968,6 +1017,9 @@ class _TestSFTP(_CheckSFTP):
     def test_symlink(self, sftp):
         """Test creating a symlink"""
 
+        if not self._symlink_supported: # pragma: no cover
+            raise unittest.SkipTest('symlink not available')
+
         try:
             yield from sftp.symlink('file', 'link')
             self._check_link('link', 'file')
@@ -977,6 +1029,9 @@ class _TestSFTP(_CheckSFTP):
     @asynctest
     def test_symlink_encode_error(self):
         """Test creating a unicode symlink with no path encoding set"""
+
+        if not self._symlink_supported: # pragma: no cover
+            raise unittest.SkipTest('symlink not available')
 
         with (yield from self.connect()) as conn:
             sftp = yield from conn.start_sftp_client(path_encoding=None)
@@ -991,6 +1046,9 @@ class _TestSFTP(_CheckSFTP):
     @asynctest
     def test_nonstandard_symlink_client(self):
         """Test creating a symlink with opposite argument order"""
+
+        if not self._symlink_supported: # pragma: no cover
+            raise unittest.SkipTest('symlink not available')
 
         try:
             with (yield from self.connect(client_version='OpenSSH')) as conn:
@@ -1019,264 +1077,375 @@ class _TestSFTP(_CheckSFTP):
     def test_open_read(self, sftp):
         """Test reading data from a file"""
 
+        f = None
+
         try:
             self._create_file('file', 'xxx')
 
-            with (yield from sftp.open('file', 'r')) as f:
-                self.assertEqual((yield from f.read()), 'xxx')
+            f = yield from sftp.open('file')
+            self.assertEqual((yield from f.read()), 'xxx')
         finally:
+            if f: # pragma: no branch
+                yield from f.close()
+
             remove('file')
 
     @sftp_test
     def test_open_read_bytes(self, sftp):
         """Test reading bytes from a file"""
 
+        f = None
+
         try:
             self._create_file('file', 'xxx')
 
-            with (yield from sftp.open('file', 'rb')) as f:
-                self.assertEqual((yield from f.read()), b'xxx')
+            f = yield from sftp.open('file', 'rb')
+            self.assertEqual((yield from f.read()), b'xxx')
         finally:
+            if f: # pragma: no branch
+                yield from f.close()
+
             remove('file')
 
     @sftp_test
     def test_open_read_offset_size(self, sftp):
         """Test reading at a specific offset and size"""
 
+        f = None
+
         try:
             self._create_file('file', 'xxxxyyyy')
 
-            with (yield from sftp.open('file', 'r')) as f:
-                self.assertEqual((yield from f.read(4, 2)), 'xxyy')
+            f = yield from sftp.open('file')
+            self.assertEqual((yield from f.read(4, 2)), 'xxyy')
         finally:
+            if f: # pragma: no branch
+                yield from f.close()
+
             remove('file')
 
     @sftp_test
     def test_open_read_nonexistent(self, sftp):
         """Test reading data from a nonexistent file"""
 
-        with self.assertRaises(SFTPError):
-            yield from sftp.open('file', 'r')
+        f = None
 
+        try:
+            with self.assertRaises(SFTPError):
+                f = yield from sftp.open('file')
+        finally:
+            if f: # pragma: no cover
+                yield from f.close()
+
+    @unittest.skipIf(sys.platform == 'win32',
+                     'skip permission tests on Windows')
     @sftp_test
     def test_open_read_not_permitted(self, sftp):
         """Test reading data from a file with no read permission"""
+
+        f = None
 
         try:
             self._create_file('file', mode=0)
 
             with self.assertRaises(SFTPError):
-                yield from sftp.open('file', 'r')
+                f = yield from sftp.open('file')
         finally:
+            if f: # pragma: no cover
+                yield from f.close()
+
             remove('file')
 
     @sftp_test
     def test_open_write(self, sftp):
         """Test writing data to a file"""
 
-        try:
-            with (yield from sftp.open('file', 'w')) as f:
-                yield from f.write('xxx') # pragma: no branch
+        f = None
 
-            with open('file', 'r') as f:
-                self.assertEqual(f.read(), 'xxx')
+        try:
+            f = yield from sftp.open('file', 'w')
+            yield from f.write('xxx')
+            yield from f.close()
+
+            with open('file') as localf:
+                self.assertEqual(localf.read(), 'xxx')
         finally:
+            if f: # pragma: no branch
+                yield from f.close()
+
             remove('file')
 
     @sftp_test
     def test_open_write_bytes(self, sftp):
         """Test writing bytes to a file"""
 
-        try:
-            with (yield from sftp.open('file', 'wb')) as f:
-                yield from f.write(b'xxx') # pragma: no branch
+        f = None
 
-            with open('file', 'rb') as f:
-                self.assertEqual(f.read(), b'xxx')
+        try:
+            f = yield from sftp.open('file', 'wb')
+            yield from f.write(b'xxx')
+            yield from f.close()
+
+            with open('file', 'rb') as localf:
+                self.assertEqual(localf.read(), b'xxx')
         finally:
+            if f: # pragma: no branch
+                yield from f.close()
+
             remove('file')
 
     @sftp_test
     def test_open_truncate(self, sftp):
         """Test truncating a file at open time"""
 
+        f = None
+
         try:
             self._create_file('file', 'xxxyyy')
 
-            with (yield from sftp.open('file', 'w')) as f:
-                yield from f.write('zzz') # pragma: no branch
+            f = yield from sftp.open('file', 'w')
+            yield from f.write('zzz')
+            yield from f.close()
 
-            with open('file', 'r') as f:
-                self.assertEqual(f.read(), 'zzz')
+            with open('file') as localf:
+                self.assertEqual(localf.read(), 'zzz')
         finally:
+            if f: # pragma: no branch
+                yield from f.close()
+
             remove('file')
 
     @sftp_test
     def test_open_append(self, sftp):
         """Test appending data to an existing file"""
 
+        f = None
+
         try:
             self._create_file('file', 'xxx')
 
-            with (yield from sftp.open('file', 'a+')) as f:
-                yield from f.write('yyy')
-                self.assertEqual((yield from f.read()), '') # pragma: no branch
+            f = yield from sftp.open('file', 'a+')
+            yield from f.write('yyy')
+            self.assertEqual((yield from f.read()), '')
+            yield from f.close()
 
-            with open('file', 'r') as f:
-                self.assertEqual(f.read(), 'xxxyyy')
+            with open('file') as localf:
+                self.assertEqual(localf.read(), 'xxxyyy')
         finally:
+            if f: # pragma: no branch
+                yield from f.close()
+
             remove('file')
 
     @sftp_test
     def test_open_exclusive_create(self, sftp):
         """Test creating a new file"""
 
-        try:
-            with (yield from sftp.open('file', 'x')) as f:
-                yield from f.write('xxx') # pragma: no branch
+        f = None
 
-            with open('file', 'r') as f:
-                self.assertEqual(f.read(), 'xxx') # pragma: no branch
+        try:
+            f = yield from sftp.open('file', 'x')
+            yield from f.write('xxx')
+            yield from f.close()
+
+            with open('file') as localf:
+                self.assertEqual(localf.read(), 'xxx') # pragma: no branch
 
             with self.assertRaises(SFTPError):
-                yield from sftp.open('file', 'x')
+                f = yield from sftp.open('file', 'x')
         finally:
+            if f: # pragma: no branch
+                yield from f.close()
+
             remove('file')
 
     @sftp_test
     def test_open_exclusive_create_existing(self, sftp):
         """Test exclusive create of an existing file"""
 
+        f = None
+
         try:
             self._create_file('file')
 
             with self.assertRaises(SFTPError):
-                yield from sftp.open('file', 'x')
+                f = yield from sftp.open('file', 'x')
         finally:
+            if f: # pragma: no cover
+                yield from f.close()
+
             remove('file')
 
     @sftp_test
     def test_open_overwrite(self, sftp):
         """Test overwriting part of an existing file"""
 
+        f = None
+
         try:
             self._create_file('file', 'xxxyyy')
 
-            with (yield from sftp.open('file', 'r+')) as f:
-                yield from f.write('zzz') # pragma: no branch
+            f = yield from sftp.open('file', 'r+')
+            yield from f.write('zzz')
+            yield from f.close()
 
-            with open('file', 'r') as f:
-                self.assertEqual(f.read(), 'zzzyyy')
+            with open('file') as localf:
+                self.assertEqual(localf.read(), 'zzzyyy')
         finally:
+            if f: # pragma: no branch
+                yield from f.close()
+
             remove('file')
 
     @sftp_test
     def test_open_overwrite_offset_size(self, sftp):
         """Test writing data at a specific offset"""
 
+        f = None
+
         try:
             self._create_file('file', 'xxxxyyyy')
 
-            with (yield from sftp.open('file', 'r+')) as f:
-                yield from f.write('zz', 3) # pragma: no branch
+            f = yield from sftp.open('file', 'r+')
+            yield from f.write('zz', 3)
+            yield from f.close()
 
-            with open('file', 'r') as f:
-                self.assertEqual(f.read(), 'xxxzzyyy')
+            with open('file') as localf:
+                self.assertEqual(localf.read(), 'xxxzzyyy')
         finally:
+            if f: # pragma: no branch
+                yield from f.close()
+
             remove('file')
 
     @sftp_test
     def test_open_overwrite_nonexistent(self, sftp):
         """Test overwriting a nonexistent file"""
 
-        with self.assertRaises(SFTPError):
-            yield from sftp.open('file', 'r+')
+        f = None
+
+        try:
+            with self.assertRaises(SFTPError):
+                f = yield from sftp.open('file', 'r+')
+        finally:
+            if f: # pragma: no cover
+                yield from f.close()
 
     @sftp_test
     def test_file_seek(self, sftp):
         """Test seeking within a file"""
 
+        f = None
+
         try:
-            with (yield from sftp.open('file', 'w+')) as f:
-                yield from f.write('xxxxyyyy')
-                yield from f.seek(3)
-                yield from f.write('zz') # pragma: no branch
+            f = yield from sftp.open('file', 'w+')
+            yield from f.write('xxxxyyyy')
+            yield from f.seek(3)
+            yield from f.write('zz')
 
-                yield from f.seek(-3, SEEK_CUR)
-                self.assertEqual((yield from f.read(4)), 'xzzy')
+            yield from f.seek(-3, SEEK_CUR)
+            self.assertEqual((yield from f.read(4)), 'xzzy')
 
-                yield from f.seek(-4, SEEK_END)
-                self.assertEqual((yield from f.read()), 'zyyy')
-                self.assertEqual((yield from f.read()), '')
-                self.assertEqual((yield from f.read(1)), '')
+            yield from f.seek(-4, SEEK_END)
+            self.assertEqual((yield from f.read()), 'zyyy')
+            self.assertEqual((yield from f.read()), '')
+            self.assertEqual((yield from f.read(1)), '')
 
-                with self.assertRaises(ValueError):
-                    yield from f.seek(0, -1) # pragma: no branch
+            with self.assertRaises(ValueError):
+                yield from f.seek(0, -1)
 
-            with open('file', 'r') as f:
-                self.assertEqual(f.read(), 'xxxzzyyy')
+            yield from f.close()
+
+            with open('file') as localf:
+                self.assertEqual(localf.read(), 'xxxzzyyy')
         finally:
+            if f: # pragma: no branch
+                yield from f.close()
+
             remove('file')
 
     @sftp_test
     def test_file_stat(self, sftp):
         """Test getting attributes on an open file"""
 
+        f = None
+
         try:
             self._create_file('file')
 
-            with (yield from sftp.open('file')) as f:
-                self._check_stat((yield from f.stat()), os.stat('file'))
+            f = yield from sftp.open('file')
+            self._check_stat((yield from f.stat()), os.stat('file'))
         finally:
+            if f: # pragma: no branch
+                yield from f.close()
+
             remove('file')
 
     @sftp_test
     def test_file_setstat(self, sftp):
         """Test setting attributes on an open file"""
 
+        f = None
+
         try:
             self._create_file('file')
-            attrs = SFTPAttrs(permissions=0o777)
+            attrs = SFTPAttrs(permissions=0o666)
 
-            with (yield from sftp.open('file')) as f:
-                yield from f.setstat(attrs) # pragma: no branch
+            f = yield from sftp.open('file')
+            yield from f.setstat(attrs)
+            yield from f.close()
 
-            self.assertEqual(stat.S_IMODE(os.stat('file').st_mode), 0o777)
+            self.assertEqual(stat.S_IMODE(os.stat('file').st_mode), 0o666)
         finally:
+            if f: # pragma: no branch
+                yield from f.close()
+
             remove('file')
 
     @sftp_test
     def test_file_truncate(self, sftp):
         """Test truncating an open file"""
 
+        f = None
+
         try:
             self._create_file('file', '01234567890123456789')
 
-            with (yield from sftp.open('file', 'a+')) as f:
-                yield from f.truncate(10)
-                self.assertEqual((yield from f.tell()), 10)
-                self.assertEqual((yield from f.read(offset=0)), '0123456789')
-                self.assertEqual((yield from f.tell()), 10)
+            f = yield from sftp.open('file', 'a+')
+            yield from f.truncate(10)
+            self.assertEqual((yield from f.tell()), 10)
+            self.assertEqual((yield from f.read(offset=0)), '0123456789')
+            self.assertEqual((yield from f.tell()), 10)
         finally:
+            if f: # pragma: no branch
+                yield from f.close()
+
             remove('file')
 
     @sftp_test
     def test_file_utime(self, sftp):
         """Test changing access and modify times on an open file"""
 
+        f = None
+
         try:
             self._create_file('file')
 
-            with (yield from sftp.open('file')) as f:
-                yield from f.utime()
-                yield from f.utime((1, 2)) # pragma: no branch
+            f = yield from sftp.open('file')
+            yield from f.utime()
+            yield from f.utime((1, 2))
+            yield from f.close()
 
             attrs = os.stat('file')
             self.assertEqual(attrs.st_atime, 1)
             self.assertEqual(attrs.st_mtime, 2)
         finally:
+            if f: # pragma: no branch
+                yield from f.close()
+
             remove('file')
 
+    @unittest.skipIf(sys.platform == 'win32', 'skip statvfs tests on Windows')
     @sftp_test
     def test_file_statvfs(self, sftp):
         """Test getting attributes on the filesystem containing an open file
@@ -1288,24 +1457,32 @@ class _TestSFTP(_CheckSFTP):
 
         """
 
+        f = None
+
         try:
             self._create_file('file')
 
-            with (yield from sftp.open('file')) as f:
-                self.assertIsInstance((yield from f.statvfs()), SFTPVFSAttrs)
+            f = yield from sftp.open('file')
+            self.assertIsInstance((yield from f.statvfs()), SFTPVFSAttrs)
         finally:
+            if f: # pragma: no branch
+                yield from f.close()
+
             remove('file')
 
     @sftp_test
     def test_file_sync(self, sftp):
         """Test file sync"""
 
-        try:
-            self._create_file('file')
+        f = None
 
-            with (yield from sftp.open('file')) as f:
-                self.assertIsNone((yield from f.fsync()))
+        try:
+            f = yield from sftp.open('file', 'w')
+            self.assertIsNone((yield from f.fsync()))
         finally:
+            if f: # pragma: no branch
+                yield from f.close()
+
             remove('file')
 
     @sftp_test
@@ -1315,8 +1492,14 @@ class _TestSFTP(_CheckSFTP):
         sftp.exit()
         yield from sftp.wait_closed()
 
-        with self.assertRaises(SFTPError):
-            yield from sftp.open('file', 'r')
+        f = None
+
+        try:
+            with self.assertRaises(SFTPError):
+                f = yield from sftp.open('file')
+        finally:
+            if f: # pragma: no cover
+                yield from f.close()
 
     @sftp_test
     def test_cleanup_open_files(self, sftp):
@@ -1325,8 +1508,11 @@ class _TestSFTP(_CheckSFTP):
         try:
             self._create_file('file')
 
-            yield from sftp.open('file', 'r')
+            yield from sftp.open('file')
         finally:
+            sftp.exit()
+            yield from sftp.wait_closed()
+
             remove('file')
 
     @sftp_test
@@ -1380,12 +1566,14 @@ class _TestSFTP(_CheckSFTP):
     def test_closed_file(self, sftp):
         """Test I/O operations on a closed file"""
 
+        f = None
+
         try:
             self._create_file('file')
 
             with (yield from sftp.open('file')) as f:
                 # Do an explicit close to test double-close
-                yield from f.close() # pragma: no branch
+                yield from f.close()
 
             with self.assertRaises(ValueError):
                 yield from f.read() # pragma: no branch
@@ -1422,10 +1610,21 @@ class _TestSFTP(_CheckSFTP):
 
             with self.assertRaises(ValueError):
                 yield from f.fsync() # pragma: no branch
-
-            yield from f.close()
         finally:
+            if f: # pragma: no branch
+                yield from f.close()
+
             remove('file')
+
+    @sftp_test
+    def test_exit_after_nonblocking_close(self, sftp):
+        """Test exit before receiving reply to a non-blocking close"""
+
+        # pylint: disable=no-self-use
+
+        # We don't clean up this file, as it's still open when we exit
+        with (yield from sftp.open('nonblocking_file', 'w')):
+            pass
 
     def test_immediate_client_close(self):
         """Test closing SFTP channel immediately after opening"""
@@ -1530,15 +1729,25 @@ class _TestSFTP(_CheckSFTP):
         def _reset_file_handle(self, sftp):
             """Open multiple files, resetting next handle each time"""
 
+            file1 = None
+            file2 = None
+
             try:
                 self._create_file('file1', 'xxx')
                 self._create_file('file2', 'yyy')
 
-                with (yield from sftp.open('file1', 'r')) as file1:
-                    with (yield from sftp.open('file2', 'r')) as file2:
-                        self.assertEqual((yield from file1.read()), 'xxx')
-                        self.assertEqual((yield from file2.read()), 'yyy')
+                file1 = yield from sftp.open('file1')
+                file2 = yield from sftp.open('file2')
+
+                self.assertEqual((yield from file1.read()), 'xxx')
+                self.assertEqual((yield from file2.read()), 'yyy')
             finally:
+                if file1: # pragma: no branch
+                    yield from file1.close()
+
+                if file2: # pragma: no branch
+                    yield from file2.close()
+
                 remove('file1 file2')
 
         with patch('asyncssh.stream.SFTPServerHandler',
@@ -1558,7 +1767,7 @@ class _TestSFTP(_CheckSFTP):
             self.send_packet(Byte(FXP_OPEN))
 
         with patch('asyncssh.sftp.SFTPClientHandler.open', _missing_pktid):
-            yield from sftp.open('file', 'r')
+            yield from sftp.open('file')
 
     @sftp_test
     def test_malformed_open_request(self, sftp):
@@ -1574,7 +1783,7 @@ class _TestSFTP(_CheckSFTP):
 
         with patch('asyncssh.sftp.SFTPClientHandler.open', _malformed_open):
             with self.assertRaises(SFTPError):
-                yield from sftp.open('file', 'r')
+                yield from sftp.open('file')
 
     @sftp_test
     def test_unknown_request(self, sftp):
@@ -1590,7 +1799,7 @@ class _TestSFTP(_CheckSFTP):
 
         with patch('asyncssh.sftp.SFTPClientHandler.open', _unknown_request):
             with self.assertRaises(SFTPError):
-                yield from sftp.open('file', 'r')
+                yield from sftp.open('file')
 
     @sftp_test
     def test_unrecognized_response_pktid(self, sftp):
@@ -1608,7 +1817,7 @@ class _TestSFTP(_CheckSFTP):
         with patch('asyncssh.sftp.SFTPServerHandler._process_packet',
                    _unrecognized_response_pktid):
             with self.assertRaises(SFTPError):
-                yield from sftp.open('file', 'r')
+                yield from sftp.open('file')
 
     @sftp_test
     def test_bad_response_type(self, sftp):
@@ -1626,7 +1835,7 @@ class _TestSFTP(_CheckSFTP):
         with patch('asyncssh.sftp.SFTPServerHandler._process_packet',
                    _bad_response_type):
             with self.assertRaises(SFTPError):
-                yield from sftp.open('file', 'r')
+                yield from sftp.open('file')
 
     @sftp_test
     def test_unexpected_ok_response(self, sftp):
@@ -1644,7 +1853,7 @@ class _TestSFTP(_CheckSFTP):
         with patch('asyncssh.sftp.SFTPServerHandler._process_packet',
                    _unexpected_ok_response):
             with self.assertRaises(SFTPError):
-                yield from sftp.open('file', 'r')
+                yield from sftp.open('file')
 
     @sftp_test
     def test_malformed_ok_response(self, sftp):
@@ -1662,7 +1871,7 @@ class _TestSFTP(_CheckSFTP):
         with patch('asyncssh.sftp.SFTPServerHandler._process_packet',
                    _malformed_ok_response):
             with self.assertRaises(SFTPError):
-                yield from sftp.open('file', 'r')
+                yield from sftp.open('file')
 
     @sftp_test
     def test_malformed_realpath_response(self, sftp):
@@ -1710,9 +1919,10 @@ class _TestSFTP(_CheckSFTP):
                 with self.assertRaises(SFTPError):
                     yield from sftp.statvfs('.') # pragma: no branch
 
-                with (yield from sftp.open('file1')) as f:
-                    with self.assertRaises(SFTPError):
-                        yield from f.statvfs() # pragma: no branch
+                f = yield from sftp.open('file1')
+
+                with self.assertRaises(SFTPError):
+                    yield from f.statvfs() # pragma: no branch
 
                 with self.assertRaises(SFTPError):
                     yield from sftp.posix_rename('file1', # pragma: no branch
@@ -1721,10 +1931,12 @@ class _TestSFTP(_CheckSFTP):
                 with self.assertRaises(SFTPError):
                     yield from sftp.link('file1', 'file2') # pragma: no branch
 
-                with (yield from sftp.open('file1')) as f:
-                    with self.assertRaises(SFTPError):
-                        yield from f.fsync()
+                with self.assertRaises(SFTPError):
+                    yield from f.fsync()
             finally:
+                if f: # pragma: no branch
+                    yield from f.close()
+
                 remove('file1')
 
         with patch('asyncssh.sftp.SFTPServerHandler._extensions', []):
@@ -1743,6 +1955,9 @@ class _TestSFTP(_CheckSFTP):
                 with (yield from sftp.open('file', 'w')):
                     pass
             finally:
+                sftp.exit()
+                yield from sftp.wait_closed()
+
                 remove('file')
 
         with patch('asyncssh.stream.SFTPServerHandler',
@@ -1750,7 +1965,6 @@ class _TestSFTP(_CheckSFTP):
             sftp_test(_nonblocking_close)(self)
 
 
-@unittest.skipIf(sys.platform == 'win32', 'skip SFTP tests on Windows')
 class _TestSFTPChroot(_CheckSFTP):
     """Unit test for SFTP server with changed root"""
 
@@ -1808,6 +2022,9 @@ class _TestSFTPChroot(_CheckSFTP):
     def test_chroot_readlink(self, sftp):
         """Test reading symlinks on an FTP server with a changed root"""
 
+        if not self._symlink_supported: # pragma: no cover
+            raise unittest.SkipTest('symlink not available')
+
         try:
             root = os.path.join(os.getcwd(), 'chroot')
 
@@ -1820,11 +2037,14 @@ class _TestSFTPChroot(_CheckSFTP):
             with self.assertRaises(SFTPError):
                 yield from sftp.readlink('link3')
         finally:
-            remove('link1 link2 link3')
+            remove('chroot/link1 chroot/link2 chroot/link3')
 
     @sftp_test
     def test_chroot_symlink(self, sftp):
         """Test setting a symlink on an SFTP server with a changed root"""
+
+        if not self._symlink_supported: # pragma: no cover
+            raise unittest.SkipTest('symlink not available')
 
         try:
             yield from sftp.symlink('/file', 'link1')
@@ -1836,7 +2056,6 @@ class _TestSFTPChroot(_CheckSFTP):
             remove('chroot/link1 chroot/link2')
 
 
-@unittest.skipIf(sys.platform == 'win32', 'skip SFTP tests on Windows')
 class _TestSFTPIOError(_CheckSFTP):
     """Unit test for SFTP server returning file I/O error"""
 
@@ -1859,10 +2078,9 @@ class _TestSFTPIOError(_CheckSFTP):
                     with self.assertRaises((FileNotFoundError, SFTPError)):
                         yield from getattr(sftp, method)('src', 'dst')
                 finally:
-                    remove('src chroot/dst')
+                    remove('src dst')
 
 
-@unittest.skipIf(sys.platform == 'win32', 'skip SFTP tests on Windows')
 class _TestSFTPNotImplemented(_CheckSFTP):
     """Unit test for SFTP server returning not-implemented error"""
 
@@ -1881,7 +2099,6 @@ class _TestSFTPNotImplemented(_CheckSFTP):
             yield from sftp.symlink('file', 'link')
 
 
-@unittest.skipIf(sys.platform == 'win32', 'skip SFTP tests on Windows')
 class _TestSFTPLongname(_CheckSFTP):
     """Unit test for SFTP server formatting directory listings"""
 
@@ -1905,6 +2122,7 @@ class _TestSFTPLongname(_CheckSFTP):
 
         self.assertEqual((yield from sftp.glob('/.*')), ['/.file'])
 
+    @unittest.skipIf(sys.platform == 'win32', 'skip uid/gid tests on Windows')
     @sftp_test
     def test_getpwuid_error(self, sftp):
         """Test long name formatting where user name can't be resolved"""
@@ -1922,6 +2140,7 @@ class _TestSFTPLongname(_CheckSFTP):
         self.assertEqual(result[3].longname[16:24], '        ')
         self.assertEqual(result[4].longname[16:24], '0       ')
 
+    @unittest.skipIf(sys.platform == 'win32', 'skip uid/gid tests on Windows')
     @sftp_test
     def test_getgrgid_error(self, sftp):
         """Test long name formatting where group name can't be resolved"""
@@ -1962,7 +2181,7 @@ class _TestSFTPLongname(_CheckSFTP):
         self.assertIn(result[4].longname[51:55], ('1969', '1970'))
 
 
-@unittest.skipIf(sys.platform == 'win32', 'skip SFTP tests on Windows')
+@unittest.skipIf(sys.platform == 'win32', 'skip statvfs tests on Windows')
 class _TestSFTPStatVFS(_CheckSFTP):
     """Unit test for SFTP server filesystem attributes"""
 
@@ -2002,16 +2221,21 @@ class _TestSFTPStatVFS(_CheckSFTP):
     def test_file_statvfs(self, sftp):
         """Test getting attributes on the filesystem containing an open file"""
 
+        f = None
+
         try:
             self._create_file('file')
 
-            with (yield from sftp.open('file')) as f:
-                self._check_statvfs((yield from f.statvfs()))
+            f = yield from sftp.open('file')
+            self._check_statvfs((yield from f.statvfs()))
         finally:
+            if f: # pragma: no branch
+                yield from f.close()
+
             remove('file')
 
 
-@unittest.skipIf(sys.platform == 'win32', 'skip SFTP tests on Windows')
+@unittest.skipIf(sys.platform == 'win32', 'skip chown tests on Windows')
 class _TestSFTPChown(_CheckSFTP):
     """Unit test for SFTP server file ownership"""
 
@@ -2036,7 +2260,6 @@ class _TestSFTPChown(_CheckSFTP):
             remove('file')
 
 
-@unittest.skipIf(sys.platform == 'win32', 'skip SFTP tests on Windows')
 class _TestSFTPAttrs(unittest.TestCase):
     """Unit test for SFTPAttrs object"""
 
@@ -2059,11 +2282,8 @@ class _TestSFTPAttrs(unittest.TestCase):
             SFTPAttrs.decode(SSHPacket(UInt32(FILEXFER_ATTR_UNDEFINED)))
 
 
-@unittest.skipIf(sys.platform == 'win32', 'skip SFTP tests on Windows')
 class _TestSFTPNonstandardSymlink(_CheckSFTP):
     """Unit tests for SFTP server with non-standard symlink order"""
-
-    # pylint: disable=too-many-public-methods
 
     @classmethod
     @asyncio.coroutine
@@ -2076,6 +2296,9 @@ class _TestSFTPNonstandardSymlink(_CheckSFTP):
     @asynctest
     def test_nonstandard_symlink_client(self):
         """Test creating a symlink with opposite argument order"""
+
+        if not self._symlink_supported: # pragma: no cover
+            raise unittest.SkipTest('symlink not available')
 
         try:
             with (yield from self.connect(client_version='OpenSSH')) as conn:
@@ -2090,7 +2313,6 @@ class _TestSFTPNonstandardSymlink(_CheckSFTP):
             remove('file link')
 
 
-@unittest.skipIf(sys.platform == 'win32', 'skip SFTP tests on Windows')
 class _TestSFTPAsync(_TestSFTP):
     """Unit test for an async SFTPServer"""
 
@@ -2106,4 +2328,4 @@ class _TestSFTPAsync(_TestSFTP):
         """Test canonicalizing a path on an async SFTP server"""
 
         self.assertEqual((yield from sftp.realpath('dir/../file')),
-                         os.path.join(os.getcwd(), 'file'))
+                         posixpath.join((yield from sftp.getcwd()), 'file'))
