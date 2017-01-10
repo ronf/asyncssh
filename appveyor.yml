@@ -1,35 +1,40 @@
 build: off
 
 environment:
+    global:
+      VENV_DIR: "venv"
+
   matrix:
     - PYTHON: "C:\\Python34"
-      PYTHON_VERSION: "3.4.x"
       PYTHON_ARCH: 32
+      TOXENV: py34
 
     - PYTHON: "C:\\Python34-x64"
-      PYTHON_VERSION: "3.4.x"
       PYTHON_ARCH: 64
+      TOXENV: py34-64
 
     - PYTHON: "C:\\Python35"
-      PYTHON_VERSION: "3.5.x"
       PYTHON_ARCH: 32
+      TOXENV: py35
 
     - PYTHON: "C:\\Python35-x64"
-      PYTHON_VERSION: "3.5.x"
       PYTHON_ARCH: 64
+      TOXENV: py35-64
 
     - PYTHON: "C:\\Python36"
-      PYTHON_VERSION: "3.6.x"
       PYTHON_ARCH: 32
+      TOXENV: py36
 
     - PYTHON: "C:\\Python36-x64"
-      PYTHON_VERSION: "3.6.x"
       PYTHON_ARCH: 64
+      TOXENV: py36-64
 
 install:
   - set include=C:\OpenSSL-Win%PYTHON_ARCH%\include;%include%
   - set lib=C:\OpenSSL-Win%PYTHON_ARCH%\lib;%lib%
-  - "%PYTHON%\\python.exe -m easy_install -U setuptools"
+  - pip install tox virtualenv
 
 test_script:
-  - "%PYTHON%\\python.exe setup.py test"
+  - "virtualenv --clear %VENV_DIR%"
+  - "%VENV_DIR%\\Scripts\\activate.bat"
+  - tox
