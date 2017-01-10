@@ -27,6 +27,8 @@ environment:
       PYTHON_ARCH: 64
 
 install:
+  - set include=C:\OpenSSL-Win%PYTHON_ARCH%\include:%include%
+  - set lib=C:\OpenSSL-Win%PYTHON_ARCH%\lib:%lib%
   - pip install wheel
   - pip install bcrypt cryptography libnacl
 
