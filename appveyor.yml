@@ -1,40 +1,32 @@
-build: off
-
 environment:
-  global:
-    VENV_DIR: "venv"
-
   matrix:
     - PYTHON: "C:\\Python34"
-      PYTHON_ARCH: 32
-      TOXENV: py34
+      ARCH: win32
 
     - PYTHON: "C:\\Python34-x64"
-      PYTHON_ARCH: 64
-      TOXENV: py34-64
+      ARCH: win64
 
     - PYTHON: "C:\\Python35"
-      PYTHON_ARCH: 32
-      TOXENV: py35
+      ARCH: win32
 
     - PYTHON: "C:\\Python35-x64"
-      PYTHON_ARCH: 64
-      TOXENV: py35-64
+      ARCH: win64
 
     - PYTHON: "C:\\Python36"
-      PYTHON_ARCH: 32
-      TOXENV: py36
+      ARCH: win32
 
     - PYTHON: "C:\\Python36-x64"
-      PYTHON_ARCH: 64
-      TOXENV: py36-64
+      ARCH: win64
 
 install:
-  - set include=C:\OpenSSL-Win%PYTHON_ARCH%\include;%include%
-  - set lib=C:\OpenSSL-Win%PYTHON_ARCH%\lib;%lib%
-  - pip install tox virtualenv
+  - "cd %PYTHON%"
+  - "curl https://www.timeheart.net/appveyor/%ARCH%/libsodium-18.dll -O"
+  - "curl https://www.timeheart.net/appveyor/%ARCH%/libnettle-6.dll -O"
+  - "curl https://www.timeheart.net/appveyor/%ARCH%/libhogweed-4.dll -O"
+  - "cd %APPVEYOR_BUILD_FOLDER%"
+  - "%PYTHON%\\python.exe -m pip install bcrypt libnacl tox"
+
+build: off
 
 test_script:
-  - "virtualenv --clear %VENV_DIR%"
-  - "%VENV_DIR%\\Scripts\\activate.bat"
-  - tox
+  - "%PYTHON%\\python.exe -m tox -e py"
