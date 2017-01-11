@@ -858,7 +858,7 @@ class _TestSFTP(_CheckSFTP):
             self.assertFalse((yield from sftp.exists('file2')))
 
             with self.assertRaises(SFTPError):
-                yield from sftp.exists(1024*'a')
+                yield from sftp.exists(65536*'a')
         finally:
             remove('file1')
 
