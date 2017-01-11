@@ -30,6 +30,7 @@ from asyncssh import FXP_INIT, FXP_VERSION, FXP_OPEN, FXP_CLOSE
 from asyncssh import FXP_STATUS, FXP_HANDLE, FXP_DATA
 from asyncssh import FILEXFER_ATTR_UNDEFINED, FX_OK, FX_FAILURE
 
+from asyncssh.misc import python35
 from asyncssh.packet import SSHPacket, Byte, String, UInt32
 from asyncssh.sftp import SFTPHandler, SFTPServerHandler
 
@@ -775,6 +776,8 @@ class _TestSFTP(_CheckSFTP):
 
         self.assertIsInstance((yield from sftp.statvfs('.')), SFTPVFSAttrs)
 
+    @unittest.skipIf(sys.platform == 'win32' and not python35,
+                     'skip truncate tests on Windows before Python 3.5')
     @sftp_test
     def test_truncate(self, sftp):
         """Test truncating a file"""
@@ -1414,6 +1417,8 @@ class _TestSFTP(_CheckSFTP):
 
             remove('file')
 
+    @unittest.skipIf(sys.platform == 'win32' and not python35,
+                     'skip truncate tests on Windows before Python 3.5')
     @sftp_test
     def test_file_truncate(self, sftp):
         """Test truncating an open file"""
