@@ -12,8 +12,10 @@
 
 """Unit tests for AsyncSSH SFTP client and server on Python 3.5 and later"""
 
+import os
+
 from tests.server import ServerTestCase
-from tests.util import asynctest, asynctest35, run
+from tests.util import asynctest, asynctest35
 
 
 class _TestSFTP(ServerTestCase):
@@ -62,7 +64,7 @@ class _TestSFTP(ServerTestCase):
                     async with sftp.open('file', 'w'):
                         pass
                 finally:
-                    run('rm -f file')
+                    os.unlink('file')
 
     @asynctest35
     async def test_sftp_open_await(self):
@@ -75,7 +77,7 @@ class _TestSFTP(ServerTestCase):
                     async with sftp.open('file', 'w'):
                         pass
                 finally:
-                    run('rm -f file')
+                    os.unlink('file')
 
     @asynctest
     def test_sftp_open_yield(self):
@@ -83,8 +85,12 @@ class _TestSFTP(ServerTestCase):
 
         with (yield from self.connect()) as conn:
             with (yield from conn.start_sftp_client()) as sftp:
+                f = None
+
                 try:
-                    with (yield from sftp.open('file', 'w')):
-                        pass
+                    f = yield from sftp.open('file', 'w')
                 finally:
-                    run('rm -f file')
+                    if f: # pragma: no branch
+                        yield from f.close()
+
+                    os.unlink('file')
