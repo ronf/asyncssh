@@ -53,6 +53,7 @@ from .packet import Byte, String, UInt32, UInt64, PacketDecodeError, SSHPacket
 _SFTP_VERSION = 3
 _SFTP_BLOCK_SIZE = 16384
 _MAX_SFTP_REQUESTS = 128
+_MAX_READDIR_NAMES = 128
 
 
 def _get_user_name(uid):
@@ -3029,8 +3030,9 @@ class SFTPServerHandler(SFTPHandler):
 
         names = self._dir_handles.get(handle)
         if names:
-            self._dir_handles[handle] = []
-            return names
+            result = names[:_MAX_READDIR_NAMES]
+            del names[:_MAX_READDIR_NAMES]
+            return result
         else:
             raise SFTPError(FX_EOF, '')
 

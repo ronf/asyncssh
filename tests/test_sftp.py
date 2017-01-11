@@ -151,6 +151,18 @@ class _LongnameSFTPServer(SFTPServer):
         return SFTPAttrs.from_local(super().lstat(path))
 
 
+class _LargeDirSFTPServer(SFTPServer):
+    """Return a really large listdir result"""
+
+    @asyncio.coroutine
+    def listdir(self, path):
+        """Return a really large listdir result"""
+
+        # pylint: disable=unused-argument
+
+        return 100000 * [SFTPName(b'a', '', SFTPAttrs())]
+
+
 class _StatVFSSFTPServer(SFTPServer):
     """Return a fixed set of attributes in response to a statvfs request"""
 
@@ -2179,6 +2191,23 @@ class _TestSFTPLongname(_CheckSFTP):
 
         self.assertEqual(result[3].longname[51:55], '    ')
         self.assertIn(result[4].longname[51:55], ('1969', '1970'))
+
+
+class _TestSFTPLargeListDir(_CheckSFTP):
+    """Unit test for SFTP server returning large listdir result"""
+
+    @classmethod
+    @asyncio.coroutine
+    def start_server(cls):
+        """Start an SFTP server which returns file I/O errors"""
+
+        return (yield from cls.create_server(sftp_factory=_LargeDirSFTPServer))
+
+    @sftp_test
+    def test_large_listdir(self, sftp):
+        """Test large listdir result"""
+
+        self.assertEqual(len((yield from sftp.readdir('/'))), 100000)
 
 
 @unittest.skipIf(sys.platform == 'win32', 'skip statvfs tests on Windows')
