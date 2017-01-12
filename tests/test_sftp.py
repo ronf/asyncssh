@@ -117,7 +117,7 @@ class _IOErrorSFTPServer(SFTPServer):
         if offset >= 65536:
             raise SFTPError(FX_FAILURE, 'I/O error')
         else:
-            yield from super().write(file_obj, offset, data)
+            super().write(file_obj, offset, data)
 
 
 class _NotImplSFTPServer(SFTPServer):
@@ -1711,7 +1711,9 @@ class _TestSFTP(_CheckSFTP):
         def _unsupported_version_response(self):
             """Send an unsupported version in response to init"""
 
+            packet = yield from SFTPHandler.recv_packet(self)
             self.send_packet(Byte(FXP_VERSION), UInt32(4))
+            return packet
 
         with patch('asyncssh.sftp.SFTPServerHandler.recv_packet',
                    _unsupported_version_response):
