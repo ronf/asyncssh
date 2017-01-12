@@ -56,6 +56,34 @@ _MAX_SFTP_REQUESTS = 128
 _MAX_READDIR_NAMES = 128
 
 
+def _from_local_path(path):
+    """Convert SFTP path to local path"""
+
+    path = os.fsencode(path)
+
+    if sys.platform == 'win32': # pragma: no cover
+        path = path.replace(b'\\', b'/')
+
+        if path[:1] != b'/' and path[1:2] == b':':
+            path = b'/' + path
+
+    return path
+
+
+def _to_local_path(path):
+    """Convert local path to SFTP path"""
+
+    if sys.platform == 'win32': # pragma: no cover
+        path = os.fsdecode(path)
+
+        if path[:1] == '/' and path[2:3] == ':':
+            path = path[1:]
+
+        path = path.replace('/', '\\')
+
+    return path
+
+
 def _get_user_name(uid):
     """Return the user name associated with a uid"""
 
@@ -148,73 +176,71 @@ class _LocalFile:
 
     @classmethod
     @asyncio.coroutine
-    def open(cls, *args):
+    def open(cls, path, *args):
         """Open a local file"""
 
-        return cls(open(*args))
+        return cls(open(_to_local_path(path), *args))
 
     @classmethod
     @asyncio.coroutine
     def stat(cls, path):
         """Get attributes of a local file or directory, following symlinks"""
 
-        return SFTPAttrs.from_local(os.stat(path))
+        return SFTPAttrs.from_local(os.stat(_to_local_path(path)))
 
     @classmethod
     @asyncio.coroutine
     def lstat(cls, path):
         """Get attributes of a local file, directory, or symlink"""
 
-        return SFTPAttrs.from_local(os.lstat(path))
+        return SFTPAttrs.from_local(os.lstat(_to_local_path(path)))
 
     @classmethod
     @asyncio.coroutine
     def setstat(cls, path, attrs):
         """Set attributes of a local file or directory"""
 
-        _setstat(path, attrs)
+        _setstat(_to_local_path(path), attrs)
 
     @classmethod
     @asyncio.coroutine
     def isdir(cls, path):
         """Return if the local path refers to a directory"""
 
-        return os.path.isdir(path)
+        return os.path.isdir(_to_local_path(path))
 
     @classmethod
     @asyncio.coroutine
     def listdir(cls, path):
         """Read the names of the files in a local directory"""
 
-        return os.listdir(path)
+        files = os.listdir(_to_local_path(path))
+
+        if sys.platform == 'win32': # pragma: no cover
+            files = [os.fsencode(f) for f in files]
+
+        return files
 
     @classmethod
     @asyncio.coroutine
     def mkdir(cls, path):
         """Create a local directory with the specified attributes"""
 
-        os.mkdir(path)
+        os.mkdir(_to_local_path(path))
 
     @classmethod
     @asyncio.coroutine
     def readlink(cls, path):
         """Return the target of a local symbolic link"""
 
-        if sys.platform == 'win32': # pragma: no cover
-            path = os.fsdecode(path)
-
-        return os.readlink(path)
+        return _from_local_path(os.readlink(_to_local_path(path)))
 
     @classmethod
     @asyncio.coroutine
     def symlink(cls, oldpath, newpath):
         """Create a local symbolic link"""
 
-        if sys.platform == 'win32': # pragma: no cover
-            oldpath = os.fsdecode(oldpath)
-            newpath = os.fsdecode(newpath)
-
-        os.symlink(oldpath, newpath)
+        os.symlink(_to_local_path(oldpath), _to_local_path(newpath))
 
     @asyncio.coroutine
     def read(self, size, offset):
@@ -3339,12 +3365,7 @@ class SFTPServer:
         # pylint: disable=unused-argument
 
         if chroot:
-            chroot = os.fsencode(os.path.realpath(chroot))
-
-            if sys.platform == 'win32': # pragma: no cover
-                chroot = b'/' + chroot.replace(b'\\', b'/')
-
-            self._chroot = chroot
+            self._chroot = _from_local_path(os.path.realpath(chroot))
         else:
             self._chroot = None
 
@@ -3411,21 +3432,15 @@ class SFTPServer:
            :param bytes path:
                The path name to map
 
-           :returns: bytes containing he local path name to operate on
+           :returns: bytes containing the local path name to operate on
 
         """
 
         if self._chroot:
             normpath = posixpath.normpath(os.path.join(b'/', path))
-            path = posixpath.join(self._chroot, normpath[1:])
-
-        if sys.platform == 'win32': # pragma: no cover
-            if path[:1] == b'/' and path[2:3] == b':':
-                path = path[1:]
-
-            path = path.replace(b'/', b'\\')
-
-        return path
+            return posixpath.join(self._chroot, normpath[1:])
+        else:
+            return path
 
     def reverse_map_path(self, path):
         """Reverse map a local path into the path reported to the client
@@ -3442,21 +3457,15 @@ class SFTPServer:
 
         """
 
-        if sys.platform == 'win32': # pragma: no cover
-            path = path.replace(b'\\', b'/')
-
-            if path[:1] != b'/' and path[1:2] == b':':
-                path = b'/' + path
-
         if self._chroot:
             if path == self._chroot:
-                path = b'/'
+                return b'/'
             elif path.startswith(self._chroot + b'/'):
-                path = path[len(self._chroot):]
+                return path[len(self._chroot):]
             else:
                 raise SFTPError(FX_NO_SUCH_FILE, 'File not found')
-
-        return path
+        else:
+            return path
 
     def open(self, path, pflags, attrs):
         """Open a file to serve to a remote client
@@ -3532,7 +3541,7 @@ class SFTPServer:
         flags |= getattr(os, 'O_BINARY', 0)
 
         perms = 0o666 if attrs.permissions is None else attrs.permissions
-        return open(self.map_path(path), mode, buffering=0,
+        return open(_to_local_path(self.map_path(path)), mode, buffering=0,
                     opener=lambda path, _: os.open(path, flags, perms))
 
     def close(self, file_obj):
@@ -3603,7 +3612,7 @@ class SFTPServer:
 
         """
 
-        return os.lstat(self.map_path(path))
+        return os.lstat(_to_local_path(self.map_path(path)))
 
     def fstat(self, file_obj):
         """Get attributes of an open file
@@ -3640,7 +3649,7 @@ class SFTPServer:
 
         """
 
-        _setstat(self.map_path(path), attrs)
+        _setstat(_to_local_path(self.map_path(path)), attrs)
 
     def fsetstat(self, file_obj, attrs):
         """Set attributes of an open file
@@ -3672,7 +3681,12 @@ class SFTPServer:
 
         """
 
-        return [b'.', b'..'] + os.listdir(self.map_path(path))
+        files = os.listdir(_to_local_path(self.map_path(path)))
+
+        if sys.platform == 'win32': # pragma: no cover
+            files = [os.fsencode(f) for f in files]
+
+        return [b'.', b'..'] + files
 
     def remove(self, path):
         """Remove a file or symbolic link
@@ -3684,7 +3698,7 @@ class SFTPServer:
 
         """
 
-        return os.remove(self.map_path(path))
+        return os.remove(_to_local_path(self.map_path(path)))
 
     def mkdir(self, path, attrs):
         """Create a directory with the specified attributes
@@ -3700,7 +3714,7 @@ class SFTPServer:
         """
 
         mode = 0o777 if attrs.permissions is None else attrs.permissions
-        return os.mkdir(self.map_path(path), mode)
+        return os.mkdir(_to_local_path(self.map_path(path)), mode)
 
     def rmdir(self, path):
         """Remove a directory
@@ -3712,7 +3726,7 @@ class SFTPServer:
 
         """
 
-        return os.rmdir(self.map_path(path))
+        return os.rmdir(_to_local_path(self.map_path(path)))
 
     def realpath(self, path):
         """Return the canonical version of a path
@@ -3726,7 +3740,8 @@ class SFTPServer:
 
         """
 
-        return self.reverse_map_path(os.path.realpath(self.map_path(path)))
+        path = os.path.realpath(_to_local_path(self.map_path(path)))
+        return self.reverse_map_path(_from_local_path(path))
 
     def stat(self, path):
         """Get attributes of a file or directory, following symlinks
@@ -3745,7 +3760,7 @@ class SFTPServer:
 
         """
 
-        return os.stat(self.map_path(path))
+        return os.stat(_to_local_path(self.map_path(path)))
 
     def rename(self, oldpath, newpath):
         """Rename a file, directory, or link
@@ -3768,8 +3783,8 @@ class SFTPServer:
 
         """
 
-        oldpath = self.map_path(oldpath)
-        newpath = self.map_path(newpath)
+        oldpath = _to_local_path(self.map_path(oldpath))
+        newpath = _to_local_path(self.map_path(newpath))
 
         if os.path.exists(newpath):
             raise SFTPError(FX_FAILURE, 'File already exists')
@@ -3788,20 +3803,8 @@ class SFTPServer:
 
         """
 
-        path = self.map_path(path)
-
-        if sys.platform == 'win32': # pragma: no cover
-            path = os.fsdecode(path)
-
-        target = os.readlink(path)
-
-        if sys.platform == 'win32': # pragma: no cover
-            target = os.fsencode(target)
-
-        if os.path.isabs(target):
-            return self.reverse_map_path(target)
-        else:
-            return target
+        path = os.readlink(_to_local_path(self.map_path(path)))
+        return self.reverse_map_path(_from_local_path(path))
 
     def symlink(self, oldpath, newpath):
         """Create a symbolic link
@@ -3830,11 +3833,7 @@ class SFTPServer:
 
         newpath = self.map_path(newpath)
 
-        if sys.platform == 'win32': # pragma: no cover
-            oldpath = os.fsdecode(oldpath)
-            newpath = os.fsdecode(newpath)
-
-        return os.symlink(oldpath, newpath)
+        return os.symlink(_to_local_path(oldpath), _to_local_path(newpath))
 
     def posix_rename(self, oldpath, newpath):
         """Rename a file, directory, or link with POSIX semantics
@@ -3851,7 +3850,10 @@ class SFTPServer:
 
         """
 
-        return os.replace(self.map_path(oldpath), self.map_path(newpath))
+        oldpath = _to_local_path(self.map_path(oldpath))
+        newpath = _to_local_path(self.map_path(newpath))
+
+        return os.replace(oldpath, newpath)
 
     def statvfs(self, path):
         """Get attributes of the file system containing a file
@@ -3867,7 +3869,7 @@ class SFTPServer:
         """
 
         try:
-            return os.statvfs(self.map_path(path))
+            return os.statvfs(_to_local_path(self.map_path(path)))
         except AttributeError: # pragma: no cover
             raise SFTPError(FX_OP_UNSUPPORTED, 'statvfs not supported')
 
@@ -3901,7 +3903,10 @@ class SFTPServer:
 
         """
 
-        return os.link(self.map_path(oldpath), self.map_path(newpath))
+        oldpath = _to_local_path(self.map_path(oldpath))
+        newpath = _to_local_path(self.map_path(newpath))
+
+        return os.link(oldpath, newpath)
 
     def fsync(self, file_obj):
         """Force file data to be written to disk
