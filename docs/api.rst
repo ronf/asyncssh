@@ -861,6 +861,8 @@ SFTPServer
    ================================== =
    Path remapping and display methods
    ================================== =
+   .. automethod:: format_user
+   .. automethod:: format_group
    .. automethod:: format_longname
    .. automethod:: map_path
    .. automethod:: reverse_map_path

@@ -84,36 +84,6 @@ def _to_local_path(path):
     return path
 
 
-def _get_user_name(uid):
-    """Return the user name associated with a uid"""
-
-    if uid is not None:
-        try:
-            import pwd
-            user = pwd.getpwuid(uid).pw_name
-        except (ImportError, KeyError):
-            user = str(uid)
-    else:
-        user = ''
-
-    return user
-
-
-def _get_group_name(gid):
-    """Return the group name associated with a gid"""
-
-    if gid is not None:
-        try:
-            import grp
-            group = grp.getgrgid(gid).gr_name
-        except (ImportError, KeyError):
-            group = str(gid)
-    else:
-        group = ''
-
-    return group
-
-
 def _setstat(path, attrs):
     """Utility function to set file attributes"""
 
@@ -3369,6 +3339,72 @@ class SFTPServer:
         else:
             self._chroot = None
 
+    def format_user(self, uid):
+        """Return the user name associated with a uid
+
+           This method returns a user name string to insert into
+           the ``longname`` field of an :class:`SFTPName` object.
+
+           By default, it calls the Python :func:`pwd.getpwuid`
+           function if it is available, or returns the numeric
+           uid as a string if not. If there is no uid, it returns
+           an empty string.
+
+           :param uid:
+               The uid value to look up
+           :type uid: int or ``None``
+
+           :returns: The formatted user name string
+
+        """
+
+        # pylint: disable=no-self-use
+
+        if uid is not None:
+            try:
+                import pwd
+                user = pwd.getpwuid(uid).pw_name
+            except (ImportError, KeyError):
+                user = str(uid)
+        else:
+            user = ''
+
+        return user
+
+
+    def format_group(self, gid):
+        """Return the group name associated with a gid
+
+           This method returns a group name string to insert into
+           the ``longname`` field of an :class:`SFTPName` object.
+
+           By default, it calls the Python :func:`grp.getgrgid`
+           function if it is available, or returns the numeric
+           gid as a string if not. If there is no gid, it returns
+           an empty string.
+
+           :param gid:
+               The gid value to look up
+           :type gid: int or ``None``
+
+           :returns: The formatted group name string
+
+        """
+
+        # pylint: disable=no-self-use
+
+        if gid is not None:
+            try:
+                import grp
+                group = grp.getgrgid(gid).gr_name
+            except (ImportError, KeyError):
+                group = str(gid)
+        else:
+            group = ''
+
+        return group
+
+
     def format_longname(self, name):
         """Format the long name associated with an SFTP name
 
@@ -3391,8 +3427,8 @@ class SFTPServer:
 
         nlink = str(name.attrs.nlink) if name.attrs.nlink else ''
 
-        user = _get_user_name(name.attrs.uid)
-        group = _get_group_name(name.attrs.gid)
+        user = self.format_user(name.attrs.uid)
+        group = self.format_group(name.attrs.gid)
 
         size = str(name.attrs.size) if name.attrs.size is not None else ''
 
