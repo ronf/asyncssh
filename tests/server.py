@@ -147,9 +147,16 @@ class ServerTestCase(AsyncTestCase):
             with open('skey.pub') as skey_pub:
                 shutil.copyfileobj(skey_pub, known_hosts)
 
-        os.environ.clear()
         os.environ['LOGNAME'] = 'guest'
         os.environ['HOME'] = '.'
+        if 'DISPLAY' in os.environ:
+            del os.environ['DISPLAY']
+        if 'SSH_ASKPASS' in os.environ:
+            del os.environ['SSH_ASKPASS']
+        if 'SSH_AUTH_SOCK' in os.environ:
+            del os.environ['SSH_AUTH_SOCK']
+        if 'XAUTHORITY' in os.environ:
+            del os.environ['XAUTHORITY']
 
         try:
             output = run('ssh-agent -a agent 2>/dev/null')
