@@ -16,7 +16,6 @@ import asyncio
 import binascii
 import functools
 import os
-import platform
 import subprocess
 import tempfile
 import unittest
@@ -38,14 +37,8 @@ except (ImportError, OSError, AttributeError): # pragma: no cover
 # pylint: enable=unused-import
 
 from asyncssh.constants import DISC_CONNECTION_LOST
-from asyncssh.misc import DisconnectError, SignalReceived
+from asyncssh.misc import DisconnectError, SignalReceived, create_task
 from asyncssh.packet import String, UInt32, UInt64
-
-
-if platform.python_version_tuple() >= ('3', '4', '4'):
-    create_task = asyncio.ensure_future
-else: # pragma: no cover
-    create_task = asyncio.async
 
 
 def asynctest(func):
@@ -159,10 +152,28 @@ class ConnectionStub:
 
         if peer:
             self._packet_queue = asyncio.queues.Queue()
-            self._queue_task = create_task(self._process_packets())
+            self._queue_task = self.create_task(self._process_packets())
         else:
             self._packet_queue = None
             self._queue_task = None
+
+    @asyncio.coroutine
+    def _run_task(self, coro):
+        """Run an asynchronous task"""
+
+        # pylint: disable=broad-except
+        try:
+            yield from coro
+        except Exception as exc:
+            if self._peer: # pragma: no branch
+                self.queue_packet(exc)
+
+            self.connection_lost(exc)
+
+    def create_task(self, coro):
+        """Create an asynchronous task"""
+
+        return create_task(self._run_task(coro))
 
     def is_client(self):
         """Return if this is a client connection"""
@@ -185,31 +196,44 @@ class ConnectionStub:
 
         while True:
             data = yield from self._packet_queue.get()
+
+            if data is None or isinstance(data, Exception):
+                self._queue_task = None
+                self.connection_lost(data)
+                break
+
             self.process_packet(data)
+
+    def connection_lost(self, exc):
+        """Handle the closing of a connection"""
+
+        raise NotImplementedError
 
     def process_packet(self, data):
         """Process an incoming packet"""
 
         raise NotImplementedError
 
-    def queue_packet(self, *args):
+    def queue_packet(self, data):
         """Add an incoming packet to the queue"""
 
-        self._packet_queue.put_nowait(b''.join(args))
+        self._packet_queue.put_nowait(data)
 
     def send_packet(self, *args):
         """Send a packet to this connection's peer"""
 
         if self._peer:
-            self._peer.queue_packet(*args)
+            self._peer.queue_packet(b''.join(args))
 
     def close(self):
         """Close the connection, stopping processing of incoming packets"""
 
+        if self._peer:
+            self._peer.queue_packet(None)
+            self._peer = None
+
         if self._queue_task:
-            # This is a pylint false positive
-            # pylint: disable=no-member
-            self._queue_task.cancel()
+            self.queue_packet(None)
             self._queue_task = None
 
 

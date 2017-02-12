@@ -111,6 +111,9 @@ functionality:
 * Install bcrypt from https://pypi.python.org/pypi/bcrypt
   if you want support for OpenSSH private key encryption.
 
+* Install gssapi from https://pypi.python.org/pypi/gssapi if you
+  want support for GSS key exchange and authentication on UNIX.
+
 * Install libsodium from https://github.com/jedisct1/libsodium
   and libnacl from https://pypi.python.org/pypi/libnacl if you want
   support for curve25519 Diffie Hellman key exchange, ed25519 keys,
@@ -126,16 +129,17 @@ AsyncSSH defines the following optional PyPI extra packages to make it
 easy to install any or all of these dependencies:
 
   | bcrypt
+  | gssapi
   | libnacl
   | pypiwin32
 
-For example, to install bcrypt and libnacl, you can run:
+For example, to install bcrypt, gssapi, and libnacl on UNIX, you can run:
 
   ::
 
-    pip install 'asyncssh[bcrypt,libnacl]'
+    pip install 'asyncssh[bcrypt,gssapi,libnacl]'
 
-To install all three of these packages on a Windows system, you can run:
+To install bcrypt, libnacl, and pypiwin32 on Windows, you can run:
 
   ::
 

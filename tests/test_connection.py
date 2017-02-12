@@ -1,4 +1,4 @@
-# Copyright (c) 2016 by Ron Frederick <ronf@timeheart.net>.
+# Copyright (c) 2016-2017 by Ron Frederick <ronf@timeheart.net>.
 # All rights reserved.
 #
 # This program and the accompanying materials are made available under
@@ -32,8 +32,10 @@ from asyncssh.compression import get_compression_algs
 from asyncssh.crypto.pyca.cipher import GCMShim
 from asyncssh.kex import get_kex_algs
 from asyncssh.mac import _HMAC, _mac_handlers, get_mac_algs
+from asyncssh.misc import async_context_manager
 from asyncssh.packet import Boolean, Byte, NameList, String, UInt32
 
+from . import gssapi_stub
 from .server import Server, ServerTestCase
 from .util import asynctest
 
@@ -193,6 +195,9 @@ class _VersionReportingServer(Server):
         return False
 
 
+@patch('asyncssh.gss.Name', gssapi_stub.Name)
+@patch('asyncssh.gss.Credentials', gssapi_stub.Credentials)
+@patch('asyncssh.gss.SecurityContext', gssapi_stub.SecurityContext)
 class _TestConnection(ServerTestCase):
     """Unit tests for AsyncSSH connection API"""
 
@@ -208,6 +213,12 @@ class _TestConnection(ServerTestCase):
                 pass
 
             yield from conn.wait_closed()
+
+    @async_context_manager
+    def connect(self, gss_host=None, **kwargs):
+        """Open a connection to the test server"""
+
+        return super().connect(gss_host=gss_host, **kwargs)
 
     @asynctest
     def test_connect_no_loop(self):
@@ -273,7 +284,7 @@ class _TestConnection(ServerTestCase):
         """Test starting a server with no host keys"""
 
         with self.assertRaises(ValueError):
-            yield from asyncssh.listen(server_host_keys=[])
+            yield from asyncssh.listen(server_host_keys=[], gss_host=None)
 
     @asynctest
     def test_duplicate_type_server_host_keys(self):
@@ -398,7 +409,8 @@ class _TestConnection(ServerTestCase):
             kex = kex.decode('ascii')
 
             with self.subTest(kex_alg=kex):
-                with (yield from self.connect(kex_algs=[kex])) as conn:
+                with (yield from self.connect(kex_algs=[kex], username='user',
+                                              gss_host='1')) as conn:
                     pass
 
                 yield from conn.wait_closed()
@@ -695,6 +707,20 @@ class _TestConnection(ServerTestCase):
         yield from conn.wait_closed()
 
     @asynctest
+    def test_no_matching_host_key_algs(self):
+        """Test no matching server host key algorithms"""
+
+        conn = yield from self.connect()
+
+        conn.send_packet(Byte(MSG_KEXINIT), os.urandom(16),
+                         NameList([b'ecdh-sha2-nistp521']), NameList([b'xxx']),
+                         NameList([]), NameList([]), NameList([]),
+                         NameList([]), NameList([]), NameList([]),
+                         NameList([]), NameList([]), Boolean(False), UInt32(0))
+
+        yield from conn.wait_closed()
+
+    @asynctest
     def test_invalid_newkeys(self):
         """Test invalid new keys request"""
 
@@ -898,7 +924,7 @@ class _TestServerNoLoop(ServerTestCase):
     @classmethod
     @asyncio.coroutine
     def start_server(cls):
-        """Start an SSH server which raises an error during auth"""
+        """Start an SSH server which has no loop specified"""
 
         return (yield from cls.create_server(loop=None))
 
@@ -910,6 +936,37 @@ class _TestServerNoLoop(ServerTestCase):
             pass
 
         yield from conn.wait_closed()
+
+
+@patch('asyncssh.gss.Name', gssapi_stub.Name)
+@patch('asyncssh.gss.Credentials', gssapi_stub.Credentials)
+@patch('asyncssh.gss.SecurityContext', gssapi_stub.SecurityContext)
+class _TestServerNoHostKey(ServerTestCase):
+    """Unit test for server with no server host key"""
+
+    @classmethod
+    @asyncio.coroutine
+    def start_server(cls):
+        """Start an SSH server which sets no server host keys"""
+
+        return (yield from cls.create_server(server_host_keys=None,
+                                             gss_host='1'))
+
+    @asynctest
+    def test_gss_with_no_host_key(self):
+        """Test GSS key exchange with no server host key specified"""
+
+        with (yield from self.connect(known_hosts=b'\n')) as conn:
+            pass
+
+        yield from conn.wait_closed()
+
+    @asynctest
+    def test_dh_with_no_host_key(self):
+        """Test failure of DH key exchange with no server host key specified"""
+
+        with self.assertRaises(asyncssh.DisconnectError):
+            yield from self.connect(gss_host=None)
 
 
 class _TestServerInternalError(ServerTestCase):

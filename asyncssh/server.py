@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2016 by Ron Frederick <ronf@timeheart.net>.
+# Copyright (c) 2013-2017 by Ron Frederick <ronf@timeheart.net>.
 # All rights reserved.
 #
 # This program and the accompanying materials are made available under
@@ -93,6 +93,39 @@ class SSHServer:
         """
 
         return True # pragma: no cover
+
+    def validate_gss_principal(self, username, user_principal,
+                               host_principal):
+        """Return whether a GSS principal is valid for this user
+
+           This method should return ``True`` if the specified user
+           principal is valid for the user being authenticated. It can
+           be overridden by applications wishing to perform their
+           authentication.
+
+           If blocking operations need to be performed to determine the
+           validity of the principal, this method may be defined as a
+           coroutine.
+
+           By default, this method will return ``True`` only when the
+           name in the user principal exactly matches the username and
+           the domain of the user principal matches the domain of the
+           host principal.
+
+           :param str username:
+               The user being authenticated
+           :param str user_principal:
+               The user principal sent by the client
+           :param str host_principal:
+               The host principal sent by the server
+
+           :returns: A bool indicating if the specified user principal
+                     is valid for the user being authenticated
+
+        """
+
+        host_domain = host_principal.rsplit('@')[-1]
+        return user_principal == username + '@' + host_domain
 
     def public_key_auth_supported(self):
         """Return whether or not public key authentication is supported

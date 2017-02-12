@@ -46,6 +46,7 @@ setup(name = 'asyncssh',
       install_requires = ['cryptography >= 1.5'],
       extras_require = {
           'bcrypt':     ['bcrypt >= 3.0.0'],
+          'gssapi':     ['gssapi >= 1.2.0'],
           'libnacl':    ['libnacl >= 1.4.2'],
           'pypiwin32':  ['pypiwin32 >= 219']
       },

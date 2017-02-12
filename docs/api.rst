@@ -200,6 +200,12 @@ SSHServer
    .. automethod:: begin_auth
    =============================== =
 
+   ====================================== =
+   GSSAPI authentication handlers
+   ====================================== =
+   .. automethod:: validate_gss_principal
+   ====================================== =
+
    ========================================= =
    Public key authentication handlers
    ========================================= =
@@ -1397,21 +1403,35 @@ Key exchange algorithms
 
 The following are the key exchange algorithms currently supported by AsyncSSH:
 
+  | gss-gex-sha256
+  | gss-gex-sha1
+  | gss-group1-sha1
+  | gss-group14-sha1
+  | gss-group14-sha256
+  | gss-group15-sha512
+  | gss-group16-sha512
+  | gss-group17-sha512
+  | gss-group18-sha512
   | curve25519-sha256
   | curve25519-sha256\@libssh.org
   | ecdh-sha2-nistp521
   | ecdh-sha2-nistp384
   | ecdh-sha2-nistp256
   | diffie-hellman-group-exchange-sha256
-  | diffie-hellman-group16-sha512
-  | diffie-hellman-group18-sha512
-  | diffie-hellman-group14-sha256
   | diffie-hellman-group-exchange-sha1
-  | diffie-hellman-group14-sha1
   | diffie-hellman-group1-sha1
+  | diffie-hellman-group14-sha1
+  | diffie-hellman-group14-sha256
+  | diffie-hellman-group15-sha512
+  | diffie-hellman-group16-sha512
+  | diffie-hellman-group17-sha512
+  | diffie-hellman-group18-sha512
 
 Curve25519 support is only available when the libnacl package and libsodium
 library are installed.
+
+GSS support is only available when the gssapi package on UNIX is installed.
+This support is not yet available on Windows.
 
 .. index:: Encryption algorithms
 .. _EncryptionAlgs:

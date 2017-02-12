@@ -1,4 +1,4 @@
-# Copyright (c) 2015-2016 by Ron Frederick <ronf@timeheart.net>.
+# Copyright (c) 2015-2017 by Ron Frederick <ronf@timeheart.net>.
 # All rights reserved.
 #
 # This program and the accompanying materials are made available under
@@ -15,19 +15,23 @@
 import asyncio
 
 from hashlib import sha1
+from unittest.mock import patch
 
 import asyncssh
 
 from asyncssh.dh import MSG_KEXDH_INIT, MSG_KEXDH_REPLY
-from asyncssh.dh import _KexDHGex, MSG_KEX_DH_GEX_GROUP
+from asyncssh.dh import _KexDHGex, MSG_KEX_DH_GEX_REQUEST, MSG_KEX_DH_GEX_GROUP
 from asyncssh.dh import MSG_KEX_DH_GEX_INIT, MSG_KEX_DH_GEX_REPLY
+from asyncssh.dh import MSG_KEXGSS_INIT, MSG_KEXGSS_COMPLETE, MSG_KEXGSS_ERROR
 from asyncssh.ecdh import MSG_KEX_ECDH_INIT, MSG_KEX_ECDH_REPLY
+from asyncssh.gss import GSSClient, GSSServer
 from asyncssh.kex import register_kex_alg, get_kex_algs, get_kex
 from asyncssh.misc import DisconnectError
-from asyncssh.packet import SSHPacket, Byte, MPInt, String
+from asyncssh.packet import SSHPacket, Boolean, Byte, MPInt, String
 from asyncssh.public_key import SSHLocalKeyPair, decode_ssh_public_key
 
-from .util import asynctest, ConnectionStub, AsyncTestCase
+from . import gssapi_stub
+from .util import asynctest, AsyncTestCase, ConnectionStub
 
 # Short variable names are used here, matching names in the specs
 # pylint: disable=invalid-name
@@ -36,12 +40,26 @@ from .util import asynctest, ConnectionStub, AsyncTestCase
 class _KexConnectionStub(ConnectionStub):
     """Connection stub class to test key exchange"""
 
-    def __init__(self, alg, peer, server):
+    def __init__(self, alg, gss, peer, server=False):
         super().__init__(peer, server)
 
-        self._key_future = asyncio.Future()
+        self._gss = gss
+        self._key_waiter = asyncio.Future()
 
         self._kex = get_kex(self, alg)
+
+        if self.is_client():
+            self._kex.start()
+
+    def connection_lost(self, exc):
+        """Handle the closing of a connection"""
+
+        raise NotImplementedError
+
+    def enable_gss_kex_auth(self):
+        """Ignore request to enable GSS key exchange authentication"""
+
+        pass
 
     def process_packet(self, data):
         """Process an incoming packet"""
@@ -60,12 +78,17 @@ class _KexConnectionStub(ConnectionStub):
     def send_newkeys(self, k, h):
         """Handle a request to send a new keys message"""
 
-        self._key_future.set_result(self._kex.compute_key(k, h, b'A', h, 128))
+        self._key_waiter.set_result(self._kex.compute_key(k, h, b'A', h, 128))
 
     def get_key(self):
         """Return generated key data"""
 
-        return (yield from self._key_future)
+        return (yield from self._key_waiter)
+
+    def get_gss_context(self):
+        """Return the GSS context associated with this connection"""
+
+        return self._gss
 
     def simulate_dh_init(self, e):
         """Simulate receiving a DH init packet"""
@@ -96,6 +119,12 @@ class _KexConnectionStub(ConnectionStub):
                                       String(host_key_data),
                                       MPInt(f), String(sig))))
 
+    def simulate_gss_complete(self, f, sig):
+        """Simulate receiving a GSS complete packet"""
+
+        self.process_packet(b''.join((Byte(MSG_KEXGSS_COMPLETE), MPInt(f),
+                                      String(sig), Boolean(False))))
+
     def simulate_ecdh_init(self, client_pub):
         """Simulate receiving an ECDH init packet"""
 
@@ -113,15 +142,33 @@ class _KexClientStub(_KexConnectionStub):
     """Stub class for client connection"""
 
     @classmethod
-    def make_pair(cls, alg):
+    def make_pair(cls, alg, gss_host=None):
         """Make a client and server connection pair to test key exchange"""
 
-        client_conn = cls(alg)
-
+        client_conn = cls(alg, gss_host)
         return client_conn, client_conn.get_peer()
 
-    def __init__(self, alg):
-        super().__init__(alg, _KexServerStub(alg, self), False)
+    def __init__(self, alg, gss_host):
+        server_conn = _KexServerStub(alg, gss_host, self)
+
+        try:
+            if gss_host:
+                gss = GSSClient(gss_host, 'delegate' in gss_host)
+            else:
+                gss = None
+
+            super().__init__(alg, gss, server_conn)
+        except DisconnectError:
+            server_conn.close()
+            raise
+
+    def connection_lost(self, exc):
+        """Handle the closing of a connection"""
+
+        if exc and not self._key_waiter.done():
+            self._key_waiter.set_exception(exc)
+
+        self.close()
 
     def validate_server_host_key(self, host_key_data):
         """Validate and return the server's host key"""
@@ -134,11 +181,23 @@ class _KexClientStub(_KexConnectionStub):
 class _KexServerStub(_KexConnectionStub):
     """Stub class for server connection"""
 
-    def __init__(self, alg, peer):
-        super().__init__(alg, peer, True)
+    def __init__(self, alg, gss_host, peer):
+        gss = GSSServer(gss_host) if gss_host else None
+        super().__init__(alg, gss, peer, True)
 
-        priv_key = asyncssh.generate_private_key('ssh-rsa')
-        self._server_host_key = SSHLocalKeyPair(priv_key)
+        if gss_host and 'no_host_key' in gss_host:
+            self._server_host_key = None
+        else:
+            priv_key = asyncssh.generate_private_key('ssh-rsa')
+            self._server_host_key = SSHLocalKeyPair(priv_key)
+
+    def connection_lost(self, exc):
+        """Handle the closing of a connection"""
+
+        if self._peer:
+            self._peer.connection_lost(exc)
+
+        self.close()
 
     def get_server_host_key(self):
         """Return the server host key"""
@@ -146,52 +205,59 @@ class _KexServerStub(_KexConnectionStub):
         return self._server_host_key
 
 
+@patch('asyncssh.gss.Name', gssapi_stub.Name)
+@patch('asyncssh.gss.Credentials', gssapi_stub.Credentials)
+@patch('asyncssh.gss.SecurityContext', gssapi_stub.SecurityContext)
 class _TestKex(AsyncTestCase):
     """Unit tests for kex module"""
 
+    @asyncio.coroutine
+    def _check_kex(self, alg, gss_host=None):
+        """Unit test key exchange"""
+
+        client_conn, server_conn = _KexClientStub.make_pair(alg, gss_host)
+
+        try:
+            self.assertEqual((yield from client_conn.get_key()),
+                             (yield from server_conn.get_key()))
+        finally:
+            client_conn.close()
+            server_conn.close()
+
     @asynctest
     def test_key_exchange_algs(self):
-        """Unit test kex exchange algorithms"""
+        """Unit test key exchange algorithms"""
 
         for alg in get_kex_algs():
             with self.subTest(alg=alg):
-                client_conn, server_conn = _KexClientStub.make_pair(alg)
+                if alg.startswith(b'gss-'):
+                    yield from self._check_kex(alg + b'-mech', '1')
+                else:
+                    yield from self._check_kex(alg)
 
-                with self.subTest('Check matching keys'):
-                    self.assertEqual((yield from client_conn.get_key()),
-                                     (yield from server_conn.get_key()))
+        for steps in range(4):
+            with self.subTest('GSS key exchange', steps=steps):
+                yield from self._check_kex(b'gss-group1-sha1-mech', str(steps))
 
-                with self.subTest('Check bad init msg'):
-                    with self.assertRaises(DisconnectError):
-                        client_conn.process_packet(Byte(MSG_KEXDH_INIT))
+        with self.subTest('GSS with credential delegation'):
+            yield from self._check_kex(b'gss-group1-sha1-mech', '1,delegate')
 
-                with self.subTest('Check bad reply msg'):
-                    with self.assertRaises(DisconnectError):
-                        server_conn.process_packet(Byte(MSG_KEXDH_REPLY))
+        with self.subTest('GSS with no host key'):
+            yield from self._check_kex(b'gss-group1-sha1-mech', '1,no_host_key')
 
-                client_conn.close()
-                server_conn.close()
+        with self.subTest('GSS with full host principal'):
+            yield from self._check_kex(b'gss-group1-sha1-mech', 'host/1@TEST')
 
     @asynctest
     def test_dh_gex_old(self):
         """Unit test old DH group exchange request"""
 
-        register_kex_alg(b'diffie-hellman-group-exchange-sha1-1024',
-                         _KexDHGex, sha1, True, 1024)
-        register_kex_alg(b'diffie-hellman-group-exchange-sha1-2048',
-                         _KexDHGex, sha1, True, 2048)
+        register_kex_alg(b'dh-gex-sha1-1024', _KexDHGex, sha1, 1024)
+        register_kex_alg(b'dh-gex-sha1-2048', _KexDHGex, sha1, 2048)
 
         for size in (b'1024', b'2048'):
             with self.subTest('Old DH group exchange', size=size):
-                alg = b'diffie-hellman-group-exchange-sha1-' + size
-
-                client_conn, server_conn = _KexClientStub.make_pair(alg)
-
-                self.assertEqual((yield from client_conn.get_key()),
-                                 (yield from server_conn.get_key()))
-
-                client_conn.close()
-                server_conn.close()
+                yield from self._check_kex(b'dh-gex-sha1-' + size)
 
     @asynctest
     def test_dh_errors(self):
@@ -200,17 +266,26 @@ class _TestKex(AsyncTestCase):
         client_conn, server_conn = \
             _KexClientStub.make_pair(b'diffie-hellman-group14-sha1')
 
+        host_key = server_conn.get_server_host_key()
+
+        with self.subTest('Init sent to client'):
+            with self.assertRaises(DisconnectError):
+                client_conn.process_packet(Byte(MSG_KEXDH_INIT))
+
+        with self.subTest('Reply sent to server'):
+            with self.assertRaises(DisconnectError):
+                server_conn.process_packet(Byte(MSG_KEXDH_REPLY))
+
         with self.subTest('Invalid e value'):
             with self.assertRaises(DisconnectError):
                 server_conn.simulate_dh_init(0)
 
         with self.subTest('Invalid f value'):
             with self.assertRaises(DisconnectError):
-                client_conn.simulate_dh_reply(b'', 0, b'')
+                client_conn.simulate_dh_reply(host_key.public_data, 0, b'')
 
         with self.subTest('Invalid signature'):
             with self.assertRaises(DisconnectError):
-                host_key = server_conn.get_server_host_key()
                 client_conn.simulate_dh_reply(host_key.public_data, 1, b'')
 
         client_conn.close()
@@ -218,10 +293,14 @@ class _TestKex(AsyncTestCase):
 
     @asynctest
     def test_dh_gex_errors(self):
-        """Unit test error conditions in DH group and key exchange"""
+        """Unit test error conditions in DH group exchange"""
 
         client_conn, server_conn = \
             _KexClientStub.make_pair(b'diffie-hellman-group-exchange-sha1')
+
+        with self.subTest('Request sent to client'):
+            with self.assertRaises(DisconnectError):
+                client_conn.process_packet(Byte(MSG_KEX_DH_GEX_REQUEST))
 
         with self.subTest('Group sent to server'):
             with self.assertRaises(DisconnectError):
@@ -245,6 +324,72 @@ class _TestKex(AsyncTestCase):
 
         client_conn.close()
         server_conn.close()
+
+    @asynctest
+    def test_gss_errors(self):
+        """Unit test error conditions in GSS key exchange"""
+
+        client_conn, server_conn = \
+            _KexClientStub.make_pair(b'gss-group1-sha1-mech', '3')
+
+        with self.subTest('Init sent to client'):
+            with self.assertRaises(DisconnectError):
+                client_conn.process_packet(Byte(MSG_KEXGSS_INIT))
+
+        with self.subTest('Complete sent to server'):
+            with self.assertRaises(DisconnectError):
+                server_conn.process_packet(Byte(MSG_KEXGSS_COMPLETE))
+
+        with self.subTest('Exchange failed to complete'):
+            with self.assertRaises(DisconnectError):
+                client_conn.simulate_gss_complete(1, b'succeed')
+
+        with self.subTest('Error sent to server'):
+            with self.assertRaises(DisconnectError):
+                server_conn.process_packet(Byte(MSG_KEXGSS_ERROR))
+
+        client_conn.close()
+        server_conn.close()
+
+        with self.subTest('Signature verification failure'):
+            with self.assertRaises(DisconnectError):
+                yield from self._check_kex(b'gss-group1-sha1-mech', '0,fail')
+
+        with self.subTest('Empty token in init'):
+            with self.assertRaises(DisconnectError):
+                yield from self._check_kex(b'gss-group1-sha1-mech',
+                                           '0,empty_init')
+
+        with self.subTest('Empty token in continue'):
+            with self.assertRaises(DisconnectError):
+                yield from self._check_kex(b'gss-group1-sha1-mech',
+                                           '1,empty_continue')
+
+        with self.subTest('Token after complete'):
+            with self.assertRaises(DisconnectError):
+                yield from self._check_kex(b'gss-group1-sha1-mech',
+                                           '0,continue_token')
+
+        for steps in range(2):
+            with self.subTest('Token after complete', steps=steps):
+                with self.assertRaises(DisconnectError):
+                    yield from self._check_kex(b'gss-group1-sha1-mech',
+                                               str(steps) + ',extra_token')
+
+        with self.subTest('Context not secure'):
+            with self.assertRaises(DisconnectError):
+                yield from self._check_kex(b'gss-group1-sha1-mech',
+                                           '1,no_server_integrity')
+
+        with self.subTest('GSS error'):
+            with self.assertRaises(DisconnectError):
+                yield from self._check_kex(b'gss-group1-sha1-mech',
+                                           '1,step_error')
+
+        with self.subTest('GSS error with error token'):
+            with self.assertRaises(DisconnectError):
+                yield from self._check_kex(b'gss-group1-sha1-mech',
+                                           '1,step_error,errtok')
 
     @asynctest
     def test_ecdh_errors(self):

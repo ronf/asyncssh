@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2016 by Ron Frederick <ronf@timeheart.net>.
+# Copyright (c) 2013-2017 by Ron Frederick <ronf@timeheart.net>.
 # All rights reserved.
 #
 # This program and the accompanying materials are made available under
@@ -64,7 +64,9 @@ from .constants import OPEN_UNKNOWN_CHANNEL_TYPE
 
 from .forward import SSHForwarder
 
-from .kex import get_kex_algs, get_kex
+from .gss import GSSClient, GSSServer, GSSError
+
+from .kex import get_kex_algs, expand_kex_algs, get_kex
 
 from .known_hosts import match_known_hosts
 
@@ -76,7 +78,7 @@ from .logging import logger
 from .mac import get_mac_algs, get_mac_params, get_mac
 
 from .misc import ChannelOpenError, DisconnectError, PasswordChangeRequired
-from .misc import async_context_manager, ensure_future, ip_address
+from .misc import async_context_manager, create_task, ip_address
 from .misc import load_default_keypairs, map_handler_name
 
 from .packet import Boolean, Byte, NameList, String, UInt32, UInt64
@@ -244,6 +246,10 @@ class SSHConnection(SSHPacketHandler):
         self._kex_complete = False
         self._ignore_first_kex = False
 
+        self._gss = None
+        self._gss_kex_auth = False
+        self._gss_mic_auth = False
+
         self._rekey_bytes = rekey_bytes
         self._rekey_bytes_sent = 0
         self._rekey_seconds = rekey_seconds
@@ -377,7 +383,7 @@ class SSHConnection(SSHPacketHandler):
     def create_task(self, coro):
         """Create an asynchronous task which catches and reports errors"""
 
-        task = ensure_future(self._run_task(coro), loop=self._loop)
+        task = create_task(self._run_task(coro), loop=self._loop)
         self._tasks.add(task)
         return task
 
@@ -510,6 +516,16 @@ class SSHConnection(SSHPacketHandler):
         """Remove the channel with the specified channel number"""
 
         del self._channels[recv_chan]
+
+    def get_gss_context(self):
+        """Return the GSS context associated with this connection"""
+
+        return self._gss
+
+    def enable_gss_kex_auth(self):
+        """Enable GSS key exchange authentication"""
+
+        self._gss_kex_auth = True
 
     def _choose_alg(self, alg_type, local_algs, remote_algs):
         """Choose a common algorithm from the client & server lists
@@ -791,9 +807,13 @@ class SSHConnection(SSHPacketHandler):
         self._rekey_bytes_sent = 0
         self._rekey_time = time.monotonic() + self._rekey_seconds
 
+        gss_mechs = self._gss.mechs if self._gss else []
+        kex_algs = expand_kex_algs(self._kex_algs, gss_mechs,
+                                   bool(self._server_host_key_algs))
+
         cookie = os.urandom(16)
-        kex_algs = NameList(self._kex_algs + self._get_ext_info_kex_alg())
-        host_key_algs = NameList(self._server_host_key_algs)
+        kex_algs = NameList(kex_algs + self._get_ext_info_kex_alg())
+        host_key_algs = NameList(self._server_host_key_algs or [b'null'])
         enc_algs = NameList(self._enc_algs)
         mac_algs = NameList(self._mac_algs)
         cmp_algs = NameList(self._cmp_algs)
@@ -945,12 +965,23 @@ class SSHConnection(SSHPacketHandler):
         self._next_service = service
         self.send_packet(Byte(MSG_SERVICE_REQUEST), String(service))
 
+    def _get_userauth_request_packet(self, method, args):
+        """Get packet data for a user authentication request"""
+
+        return b''.join((Byte(MSG_USERAUTH_REQUEST), String(self._username),
+                         String(_CONNECTION_SERVICE), String(method)) + args)
+
+    def get_userauth_request_data(self, method, *args):
+        """Get signature data for a user authentication request"""
+
+        return (String(self._session_id) +
+                self._get_userauth_request_packet(method, args))
+
     @asyncio.coroutine
     def send_userauth_request(self, method, *args, key=None):
         """Send a user authentication request"""
 
-        packet = b''.join((Byte(MSG_USERAUTH_REQUEST), String(self._username),
-                           String(_CONNECTION_SERVICE), String(method)) + args)
+        packet = self._get_userauth_request_packet(method, args)
 
         if key:
             sig = key.sign(String(self._session_id) + packet)
@@ -1178,8 +1209,8 @@ class SSHConnection(SSHPacketHandler):
                                   'Key exchange already in progress')
 
         _ = packet.get_bytes(16)                        # cookie
-        kex_algs = packet.get_namelist()
-        server_host_key_algs = packet.get_namelist()
+        peer_kex_algs = packet.get_namelist()
+        peer_host_key_algs = packet.get_namelist()
         enc_algs_cs = packet.get_namelist()
         enc_algs_sc = packet.get_namelist()
         mac_algs_cs = packet.get_namelist()
@@ -1195,13 +1226,7 @@ class SSHConnection(SSHPacketHandler):
         if self.is_server():
             self._client_kexinit = packet.get_consumed_payload()
 
-            # This method is only in SSHServerConnection
-            # pylint: disable=no-member
-            if not self._choose_server_host_key(server_host_key_algs):
-                raise DisconnectError(DISC_KEY_EXCHANGE_FAILED, 'Unable to '
-                                      'find compatible server host key')
-
-            if b'ext-info-c' in kex_algs:
+            if b'ext-info-c' in peer_kex_algs:
                 self._can_send_ext_info = True
         else:
             self._server_kexinit = packet.get_consumed_payload()
@@ -1211,10 +1236,25 @@ class SSHConnection(SSHPacketHandler):
         else:
             self._send_kexinit()
 
-        kex_alg = self._choose_alg('key exchange', self._kex_algs, kex_algs)
+        if self._gss:
+            self._gss.reset()
+
+        gss_mechs = self._gss.mechs if self._gss else []
+        kex_algs = expand_kex_algs(self._kex_algs, gss_mechs,
+                                   bool(self._server_host_key_algs))
+
+        kex_alg = self._choose_alg('key exchange', kex_algs, peer_kex_algs)
         self._kex = get_kex(self, kex_alg)
         self._ignore_first_kex = (first_kex_follows and
-                                  self._kex.algorithm != kex_algs[0])
+                                  self._kex.algorithm != peer_kex_algs[0])
+
+        if self.is_server():
+            # This method is only in SSHServerConnection
+            # pylint: disable=no-member
+            if (not self._choose_server_host_key(peer_host_key_algs) and
+                    not kex_alg.startswith(b'gss-')):
+                raise DisconnectError(DISC_KEY_EXCHANGE_FAILED, 'Unable '
+                                      'to find compatible server host key')
 
         self._enc_alg_cs = self._choose_alg('encryption', self._enc_algs,
                                             enc_algs_cs)
@@ -1228,6 +1268,9 @@ class SSHConnection(SSHPacketHandler):
                                             cmp_algs_cs)
         self._cmp_alg_sc = self._choose_alg('compression', self._cmp_algs,
                                             cmp_algs_sc)
+
+        if self.is_client():
+            self._kex.start()
 
     def _process_newkeys(self, pkttype, packet):
         """Process a new keys message, finishing a key exchange"""
@@ -1873,8 +1916,8 @@ class SSHClientConnection(SSHConnection):
     def __init__(self, client_factory, loop, client_version, kex_algs,
                  encryption_algs, mac_algs, compression_algs, signature_algs,
                  rekey_bytes, rekey_seconds, host, port, known_hosts,
-                 username, password, client_keys, agent, agent_path,
-                 auth_waiter):
+                 username, password, client_keys, gss_host, gss_delegate_creds,
+                 agent, agent_path, auth_waiter):
         super().__init__(client_factory, loop, client_version, kex_algs,
                          encryption_algs, mac_algs, compression_algs,
                          signature_algs, rekey_bytes, rekey_seconds,
@@ -1889,6 +1932,13 @@ class SSHClientConnection(SSHConnection):
         self._agent = agent
         self._agent_path = agent_path
         self._auth_waiter = auth_waiter
+
+        if gss_host:
+            try:
+                self._gss = GSSClient(gss_host, gss_delegate_creds)
+                self._gss_mic_auth = True
+            except GSSError:
+                pass
 
         self._server_host_keys = set()
         self._server_ca_keys = set()
@@ -1906,8 +1956,7 @@ class SSHClientConnection(SSHConnection):
             self._server_host_keys = None
             self._server_ca_keys = None
             self._revoked_server_keys = None
-            self._server_host_key_algs = (get_public_key_algs() +
-                                          get_certificate_algs())
+            self._server_host_key_algs = None
         else:
             if not self._known_hosts:
                 self._known_hosts = os.path.join(os.path.expanduser('~'),
@@ -1940,8 +1989,14 @@ class SSHClientConnection(SSHConnection):
                     self._server_host_key_algs.extend(key.sig_algorithms)
 
         if not self._server_host_key_algs:
-            raise DisconnectError(DISC_HOST_KEY_NOT_VERIFYABLE,
-                                  'No trusted server host keys available')
+            if self._known_hosts is None:
+                self._server_host_key_algs = (get_public_key_algs() +
+                                              get_certificate_algs())
+            elif self._gss:
+                self._server_host_key_algs = [b'null']
+            else:
+                raise DisconnectError(DISC_HOST_KEY_NOT_VERIFYABLE,
+                                      'No trusted server host keys available')
 
     def _cleanup(self, exc):
         """Clean up this client connection"""
@@ -2027,6 +2082,24 @@ class SSHClientConnection(SSHConnection):
 
         self._force_close(DisconnectError(DISC_NO_MORE_AUTH_METHODS_AVAILABLE,
                                           'Permission denied'))
+
+    def gss_kex_auth_requested(self):
+        """Return whether to allow GSS key exchange authentication or not"""
+
+        if self._gss_kex_auth:
+            self._gss_kex_auth = False
+            return True
+        else:
+            return False
+
+    def gss_mic_auth_requested(self):
+        """Return whether to allow GSS MIC authentication or not"""
+
+        if self._gss_mic_auth:
+            self._gss_mic_auth = False
+            return True
+        else:
+            return False
 
     @asyncio.coroutine
     def public_key_auth_requested(self):
@@ -3056,8 +3129,8 @@ class SSHServerConnection(SSHConnection):
     def __init__(self, server_factory, loop, server_version, kex_algs,
                  encryption_algs, mac_algs, compression_algs, signature_algs,
                  rekey_bytes, rekey_seconds, server_host_keys,
-                 authorized_client_keys, allow_pty, line_editor, line_history,
-                 x11_forwarding, x11_auth_path, agent_forwarding,
+                 authorized_client_keys, gss_host, allow_pty, line_editor,
+                 line_history, x11_forwarding, x11_auth_path, agent_forwarding,
                  session_factory, session_encoding, sftp_factory, window,
                  max_pktsize, login_timeout):
         super().__init__(server_factory, loop, server_version, kex_algs,
@@ -3079,6 +3152,13 @@ class SSHServerConnection(SSHConnection):
         self._sftp_factory = sftp_factory
         self._window = window
         self._max_pktsize = max_pktsize
+
+        if gss_host:
+            try:
+                self._gss = GSSServer(gss_host)
+                self._gss_mic_auth = True
+            except GSSError:
+                pass
 
         if login_timeout:
             self._login_timer = loop.call_later(login_timeout,
@@ -3153,6 +3233,33 @@ class SSHServerConnection(SSHConnection):
         """
 
         return self._server_host_key
+
+    def gss_kex_auth_supported(self):
+        """Return whether GSS key exchange authentication is supported"""
+
+        return self._gss_kex_auth and self._gss.complete
+
+    def gss_mic_auth_supported(self):
+        """Return whether GSS MIC authentication is supported"""
+
+        return self._gss_mic_auth
+
+    @asyncio.coroutine
+    def validate_gss_principal(self, username, user_principal, host_principal):
+        """Validate the GSS principal name for the specified user
+
+           Return whether the user principal acquired during GSS
+           authentication is valid for the specified user.
+
+        """
+
+        result = self._owner.validate_gss_principal(username, user_principal,
+                                                    host_principal)
+
+        if asyncio.iscoroutine(result):
+            result = yield from result
+
+        return result
 
     @asyncio.coroutine
     def _validate_client_certificate(self, username, key_data):
@@ -4048,6 +4155,7 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
                       loop=None, tunnel=None, family=0, flags=0,
                       local_addr=None, known_hosts=(), username=None,
                       password=None, client_keys=(), passphrase=None,
+                      gss_host=(), gss_delegate_creds=False,
                       agent_path=(), agent_forwarding=False,
                       client_version=(), kex_algs=(), encryption_algs=(),
                       mac_algs=(), compression_algs=(), signature_algs=(),
@@ -4139,6 +4247,14 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
            if they are encrypted. If this is not specified, only unencrypted
            client keys can be loaded. If the keys passed into client_keys
            are already loaded, this argument is ignored.
+       :param str gss_host: (optional)
+           The principal name to use for the host in GSS key exchange and
+           authentication. If not specified, this value will be the same
+           as the ``host`` argument. If this argument is explicitly set to
+           ``None``, GSS key exchange and authentication will not be performed.
+       :param bool gss_delegate_creds: (optional)
+           Whether or not to forward GSS credentials to the server being
+           accessed. By default, GSS credential delegation is disabled.
        :param agent_path: (optional)
            The path of a UNIX domain socket to use to contact an ssh-agent
            process which will perform the operations needed for client
@@ -4203,7 +4319,8 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
                                    compression_algs, signature_algs,
                                    rekey_bytes, rekey_seconds, host, port,
                                    known_hosts, username, password,
-                                   client_keys, agent, agent_path, auth_waiter)
+                                   client_keys, gss_host, gss_delegate_creds,
+                                   agent, agent_path, auth_waiter)
 
     if not client_factory:
         client_factory = SSHClient
@@ -4219,6 +4336,9 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
 
     if username is None:
         username = getpass.getuser()
+
+    if gss_host is ():
+        gss_host = host
 
     agent = None
 
@@ -4268,15 +4388,15 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
 @asyncio.coroutine
 def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
                   loop=None, family=0, flags=socket.AI_PASSIVE, backlog=100,
-                  reuse_address=None, server_host_keys, passphrase=None,
-                  authorized_client_keys=None, server_version=(), kex_algs=(),
-                  encryption_algs=(), mac_algs=(), compression_algs=(),
-                  signature_algs=(), allow_pty=True, line_editor=True,
-                  line_history=_DEFAULT_LINE_HISTORY, x11_forwarding=False,
-                  x11_auth_path=None, agent_forwarding=True,
-                  session_factory=None, session_encoding='utf-8',
-                  sftp_factory=None, window=_DEFAULT_WINDOW,
-                  max_pktsize=_DEFAULT_MAX_PKTSIZE,
+                  reuse_address=None, server_host_keys=None, passphrase=None,
+                  authorized_client_keys=None, gss_host=(), allow_pty=True,
+                  line_editor=True, line_history=_DEFAULT_LINE_HISTORY,
+                  x11_forwarding=False, x11_auth_path=None,
+                  agent_forwarding=True, session_factory=None,
+                  session_encoding='utf-8', sftp_factory=None,
+                  window=_DEFAULT_WINDOW, max_pktsize=_DEFAULT_MAX_PKTSIZE,
+                  server_version=(), kex_algs=(), encryption_algs=(),
+                  mac_algs=(), compression_algs=(), signature_algs=(),
                   rekey_bytes=_DEFAULT_REKEY_BYTES,
                   rekey_seconds=_DEFAULT_REKEY_SECONDS,
                   login_timeout=_DEFAULT_LOGIN_TIMEOUT):
@@ -4310,10 +4430,11 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
            Whether or not to reuse a local socket in the TIME_WAIT state
            without waiting for its natural timeout to expire. If not
            specified, this will be automatically set to ``True`` on UNIX.
-       :param server_host_keys:
+       :param server_host_keys: (optional)
            A list of private keys and optional certificates which can be
-           used by the server as a host key. This argument must be
-           specified.
+           used by the server as a host key. Either this argument or
+           ``gss_host`` must be specified. If this is not specified,
+           only GSS-based key exchange will be supported.
        :param str passphrase: (optional)
            The passphrase to use to decrypt server host keys when loading
            them, if they are encrypted. If this is not specified, only
@@ -4323,25 +4444,13 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
        :param authorized_client_keys: (optional)
            A list of authorized user and CA public keys which should be
            trusted for certifcate-based client public key authentication.
-       :param str server_version: (optional)
-           An ASCII string to advertise to SSH clients as the version of
-           this server, defaulting to ``AsyncSSH`` and its version number.
-       :param kex_algs: (optional)
-           A list of allowed key exchange algorithms in the SSH handshake,
-           taken from :ref:`key exchange algorithms <KexAlgs>`
-       :param encryption_algs: (optional)
-           A list of encryption algorithms to use during the SSH handshake,
-           taken from :ref:`encryption algorithms <EncryptionAlgs>`
-       :param mac_algs: (optional)
-           A list of MAC algorithms to use during the SSH handshake, taken
-           from :ref:`MAC algorithms <MACAlgs>`
-       :param compression_algs: (optional)
-           A list of compression algorithms to use during the SSH handshake,
-           taken from :ref:`compression algorithms <CompressionAlgs>`, or
-           ``None`` to disable compression
-       :param signature_algs: (optional)
-           A list of public key signature algorithms to use during the SSH
-           handshake, taken from :ref:`signature algorithms <SignatureAlgs>`
+       :param str gss_host: (optional)
+           The principal name to use for the host in GSS key exchange and
+           authentication. If not specified, the value returned by
+           :func:`socket.gethostname` will be used if it is a fully qualified
+           name. Otherwise, the value used by :func:`socket.getfqdn` will be
+           used. If this argument is explicitly set to ``None``, GSS
+           key exchange and authentication will not be performed.
        :param bool allow_pty: (optional)
            Whether or not to allow allocation of a pseudo-tty in sessions,
            defaulting to ``True``
@@ -4385,6 +4494,25 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
            The receive window size for sessions on this server
        :param int max_pktsize: (optional)
            The maximum packet size for sessions on this server
+       :param str server_version: (optional)
+           An ASCII string to advertise to SSH clients as the version of
+           this server, defaulting to ``AsyncSSH`` and its version number.
+       :param kex_algs: (optional)
+           A list of allowed key exchange algorithms in the SSH handshake,
+           taken from :ref:`key exchange algorithms <KexAlgs>`
+       :param encryption_algs: (optional)
+           A list of encryption algorithms to use during the SSH handshake,
+           taken from :ref:`encryption algorithms <EncryptionAlgs>`
+       :param mac_algs: (optional)
+           A list of MAC algorithms to use during the SSH handshake, taken
+           from :ref:`MAC algorithms <MACAlgs>`
+       :param compression_algs: (optional)
+           A list of compression algorithms to use during the SSH handshake,
+           taken from :ref:`compression algorithms <CompressionAlgs>`, or
+           ``None`` to disable compression
+       :param signature_algs: (optional)
+           A list of public key signature algorithms to use during the SSH
+           handshake, taken from :ref:`signature algorithms <SignatureAlgs>`
        :param int rekey_bytes: (optional)
            The number of bytes which can be sent before the SSH session
            key is renegotiated, defaulting to 1 GB
@@ -4417,8 +4545,8 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
                                    compression_algs, signature_algs,
                                    rekey_bytes, rekey_seconds,
                                    server_host_keys, authorized_client_keys,
-                                   allow_pty, line_editor, line_history,
-                                   x11_forwarding, x11_auth_path,
+                                   gss_host, allow_pty, line_editor,
+                                   line_history, x11_forwarding, x11_auth_path,
                                    agent_forwarding, session_factory,
                                    session_encoding, sftp_factory, window,
                                    max_pktsize, login_timeout)
@@ -4434,13 +4562,19 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
 
     server_version = _validate_version(server_version)
 
+    if gss_host is ():
+        gss_host = socket.gethostname()
+
+        if '.' not in gss_host:
+            gss_host = socket.getfqdn()
+
     kex_algs, encryption_algs, mac_algs, compression_algs, signature_algs = \
         _validate_algs(kex_algs, encryption_algs, mac_algs,
                        compression_algs, signature_algs)
 
     server_keys = load_keypairs(server_host_keys, passphrase)
 
-    if not server_keys:
+    if not server_keys and not gss_host:
         raise ValueError('No server host keys provided')
 
     server_host_keys = OrderedDict()
@@ -4493,7 +4627,7 @@ def connect(host, port=_DEFAULT_PORT, **kwargs):
 
 
 @asyncio.coroutine
-def listen(host=None, port=_DEFAULT_PORT, *, server_host_keys, **kwargs):
+def listen(host=None, port=_DEFAULT_PORT, **kwargs):
     """Start an SSH server
 
        This function is a coroutine wrapper around :func:`create_server`
@@ -4522,6 +4656,4 @@ def listen(host=None, port=_DEFAULT_PORT, *, server_host_keys, **kwargs):
 
     """
 
-    return (yield from create_server(None, host, port,
-                                     server_host_keys=server_host_keys,
-                                     **kwargs))
+    return (yield from create_server(None, host, port, **kwargs))

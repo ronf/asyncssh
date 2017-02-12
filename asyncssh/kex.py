@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2015 by Ron Frederick <ronf@timeheart.net>.
+# Copyright (c) 2013-2017 by Ron Frederick <ronf@timeheart.net>.
 # All rights reserved.
 #
 # This program and the accompanying materials are made available under
@@ -12,10 +12,17 @@
 
 """SSH key exchange handlers"""
 
+import binascii
+from hashlib import md5
+
 from .packet import MPInt, SSHPacketHandler
+
 
 _kex_algs = []
 _kex_handlers = {}
+
+_gss_kex_algs = []
+_gss_kex_handlers = {}
 
 
 class Kex(SSHPacketHandler):
@@ -48,10 +55,33 @@ def register_kex_alg(alg, handler, hash_alg, *args):
     _kex_handlers[alg] = (handler, hash_alg, args)
 
 
+def register_gss_kex_alg(alg, handler, hash_alg, *args):
+    """Register a GSSAPI key exchange algorithm"""
+
+    _gss_kex_algs.append(alg)
+    _gss_kex_handlers[alg] = (handler, hash_alg, args)
+
+
 def get_kex_algs():
     """Return a list of available key exchange algorithms"""
 
-    return _kex_algs
+    return _gss_kex_algs + _kex_algs
+
+
+def expand_kex_algs(kex_algs, mechs, host_key_available):
+    """Add mechanisms to GSS entries in key exchange algorithm list"""
+
+    expanded_kex_algs = []
+
+    for alg in kex_algs:
+        if alg.startswith(b'gss-'):
+            for mech in mechs:
+                suffix = b'-' + binascii.b2a_base64(md5(mech).digest())[:-1]
+                expanded_kex_algs.append(alg + suffix)
+        elif host_key_available:
+            expanded_kex_algs.append(alg)
+
+    return expanded_kex_algs
 
 
 def get_kex(conn, alg):
@@ -62,5 +92,10 @@ def get_kex(conn, alg):
 
     """
 
-    handler, hash_alg, args = _kex_handlers[alg]
+    if alg.startswith(b'gss-'):
+        alg = alg.rsplit(b'-', 1)[0]
+        handler, hash_alg, args = _gss_kex_handlers[alg]
+    else:
+        handler, hash_alg, args = _kex_handlers[alg]
+
     return handler(alg, conn, hash_alg, *args)

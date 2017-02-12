@@ -149,13 +149,14 @@ class ServerTestCase(AsyncTestCase):
 
         os.environ['LOGNAME'] = 'guest'
         os.environ['HOME'] = '.'
-        if 'DISPLAY' in os.environ:
+
+        if 'DISPLAY' in os.environ: # pragma: no cover
             del os.environ['DISPLAY']
-        if 'SSH_ASKPASS' in os.environ:
+        if 'SSH_ASKPASS' in os.environ: # pragma: no cover
             del os.environ['SSH_ASKPASS']
-        if 'SSH_AUTH_SOCK' in os.environ:
+        if 'SSH_AUTH_SOCK' in os.environ: # pragma: no cover
             del os.environ['SSH_AUTH_SOCK']
-        if 'XAUTHORITY' in os.environ:
+        if 'XAUTHORITY' in os.environ: # pragma: no cover
             del os.environ['XAUTHORITY']
 
         try:

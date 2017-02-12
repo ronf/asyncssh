@@ -2150,6 +2150,8 @@ def load_keypairs(keylist, passphrase=None):
             return [SSHLocalKeyPair(key) for key in keys]
     elif isinstance(keylist, (tuple, bytes, SSHKey, SSHKeyPair)):
         keylist = [keylist]
+    elif not keylist:
+        keylist = []
 
     for key in keylist:
         if isinstance(key, SSHKeyPair):

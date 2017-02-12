@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2016 by Ron Frederick <ronf@timeheart.net>.
+# Copyright (c) 2013-2017 by Ron Frederick <ronf@timeheart.net>.
 # All rights reserved.
 #
 # This program and the accompanying materials are made available under
@@ -14,7 +14,9 @@
 
 import asyncio
 
-from .constants import DISC_PROTOCOL_ERROR
+from .constants import DEFAULT_LANG, DISC_PROTOCOL_ERROR
+from .gss import GSSError
+from .logging import logger
 from .misc import DisconnectError, PasswordChangeRequired
 from .packet import Boolean, Byte, String, UInt32, SSHPacketHandler
 from .saslprep import saslprep, SASLPrepError
@@ -22,15 +24,23 @@ from .saslprep import saslprep, SASLPrepError
 
 # pylint: disable=bad-whitespace
 
+# SSH message values for GSS auth
+MSG_USERAUTH_GSSAPI_RESPONSE          = 60
+MSG_USERAUTH_GSSAPI_TOKEN             = 61
+MSG_USERAUTH_GSSAPI_EXCHANGE_COMPLETE = 63
+MSG_USERAUTH_GSSAPI_ERROR             = 64
+MSG_USERAUTH_GSSAPI_ERRTOK            = 65
+MSG_USERAUTH_GSSAPI_MIC               = 66
+
 # SSH message values for public key auth
-MSG_USERAUTH_PK_OK            = 60
+MSG_USERAUTH_PK_OK                    = 60
 
 # SSH message values for password auth
-MSG_USERAUTH_PASSWD_CHANGEREQ = 60
+MSG_USERAUTH_PASSWD_CHANGEREQ         = 60
 
 # SSH message values for 'keyboard-interactive' auth
-MSG_USERAUTH_INFO_REQUEST     = 60
-MSG_USERAUTH_INFO_RESPONSE    = 61
+MSG_USERAUTH_INFO_REQUEST             = 60
+MSG_USERAUTH_INFO_RESPONSE            = 61
 
 # pylint: enable=bad-whitespace
 
@@ -44,9 +54,7 @@ class _Auth(SSHPacketHandler):
 
     def __init__(self, conn, coro):
         self._conn = conn
-        self._coro = None
-
-        self.create_task(coro)
+        self._coro = conn.create_task(coro)
 
     def create_task(self, coro):
         """Create an asynchronous auth task"""
@@ -57,7 +65,7 @@ class _Auth(SSHPacketHandler):
     def cancel(self):
         """Cancel any authentication in progress"""
 
-        if self._coro:
+        if self._coro: # pragma: no branch
             self._coro.cancel()
             self._coro = None
 
@@ -99,6 +107,149 @@ class _ClientNullAuth(_ClientAuth):
         """Start client null authentication"""
 
         yield from self.send_request()
+
+
+class _ClientGSSKexAuth(_ClientAuth):
+    """Client side implementation of GSS key exchange auth"""
+
+    @asyncio.coroutine
+    def _start(self):
+        """Start client GSS key exchange authentication"""
+
+        if self._conn.gss_kex_auth_requested():
+            yield from self.send_request(key=self._conn.get_gss_context())
+        else:
+            self._conn.try_next_auth()
+
+
+class _ClientGSSMICAuth(_ClientAuth):
+    """Client side implementation of GSS MIC auth"""
+
+    def __init__(self, conn, method):
+        super().__init__(conn, method)
+
+        self._gss = None
+        self._got_error = False
+
+    @asyncio.coroutine
+    def _start(self):
+        """Start client GSS MIC authentication"""
+
+        if self._conn.gss_mic_auth_requested():
+            self._gss = self._conn.get_gss_context()
+            mechs = b''.join((String(mech) for mech in self._gss.mechs))
+            yield from self.send_request(UInt32(len(self._gss.mechs)), mechs)
+        else:
+            self._conn.try_next_auth()
+
+    def _finish(self):
+        """Finish client GSS MIC authentication"""
+
+        if self._gss.provides_integrity:
+            data = self._conn.get_userauth_request_data(self._method)
+
+            self._conn.send_packet(Byte(MSG_USERAUTH_GSSAPI_MIC),
+                                   String(self._gss.sign(data)))
+        else:
+            self._conn.send_packet(Byte(MSG_USERAUTH_GSSAPI_EXCHANGE_COMPLETE))
+
+    def _process_response(self, pkttype, packet):
+        """Process a GSS response from the server"""
+
+        # pylint: disable=unused-argument
+
+        mech = packet.get_string()
+        packet.check_end()
+
+        if mech not in self._gss.mechs:
+            raise DisconnectError(DISC_PROTOCOL_ERROR, 'Mechanism mismatch')
+
+        try:
+            token = self._gss.step()
+
+            self._conn.send_packet(Byte(MSG_USERAUTH_GSSAPI_TOKEN),
+                                   String(token))
+
+            if self._gss.complete:
+                self._finish()
+        except GSSError as exc:
+            if exc.token:
+                self._conn.send_packet(Byte(MSG_USERAUTH_GSSAPI_ERRTOK),
+                                       String(exc.token))
+
+            self._conn.try_next_auth()
+
+        return True
+
+    def _process_token(self, pkttype, packet):
+        """Process a GSS token from the server"""
+
+        # pylint: disable=unused-argument
+
+        token = packet.get_string()
+        packet.check_end()
+
+        try:
+            token = self._gss.step(token)
+
+            if token:
+                self._conn.send_packet(Byte(MSG_USERAUTH_GSSAPI_TOKEN),
+                                       String(token))
+
+            if self._gss.complete:
+                self._finish()
+        except GSSError as exc:
+            if exc.token:
+                self._conn.send_packet(Byte(MSG_USERAUTH_GSSAPI_ERRTOK),
+                                       String(exc.token))
+
+            self._conn.try_next_auth()
+
+        return True
+
+    def _process_error(self, pkttype, packet):
+        """Process a GSS error from the server"""
+
+        # pylint: disable=unused-argument
+
+        _ = packet.get_uint32()         # major_status
+        _ = packet.get_uint32()         # minor_status
+        msg = packet.get_string()
+        _ = packet.get_string()         # lang
+        packet.check_end()
+
+        logger.warning('GSS error from server: %s',
+                       msg.decode('utf-8', errors='ignore'))
+        self._got_error = True
+
+        return True
+
+    def _process_error_token(self, pkttype, packet):
+        """Process a GSS error token from the server"""
+
+        # pylint: disable=no-self-use,unused-argument
+
+        token = packet.get_string()
+        packet.check_end()
+
+        try:
+            self._gss.step(token)
+        except GSSError as exc:
+            if not self._got_error: # pragma: no cover
+                logger.warning('GSS error from server: %s', str(exc))
+
+        return True
+
+    # pylint: disable=bad-whitespace
+
+    packet_handlers = {
+        MSG_USERAUTH_GSSAPI_RESPONSE: _process_response,
+        MSG_USERAUTH_GSSAPI_TOKEN:    _process_token,
+        MSG_USERAUTH_GSSAPI_ERROR:    _process_error,
+        MSG_USERAUTH_GSSAPI_ERRTOK:   _process_error_token
+    }
+
+    # pylint: enable=bad-whitespace
 
 
 class _ClientPublicKeyAuth(_ClientAuth):
@@ -297,8 +448,9 @@ class _ClientPasswordAuth(_ClientAuth):
 class _ServerAuth(_Auth):
     """Parent class for server authentication"""
 
-    def __init__(self, conn, username, packet):
+    def __init__(self, conn, username, method, packet):
         self._username = username
+        self._method = method
 
         super().__init__(conn, self._start(packet))
 
@@ -332,10 +484,176 @@ class _ServerNullAuth(_ServerAuth):
 
     @asyncio.coroutine
     def _start(self, packet):
-        """Always fail null server authentication"""
+        """Supported always returns false, so we never get here"""
+
+
+class _ServerGSSKexAuth(_ServerAuth):
+    """Server side implementation of GSS key exchange auth"""
+
+    def __init__(self, conn, username, method, packet):
+        super().__init__(conn, username, method, packet)
+
+        self._gss = conn.get_gss_context()
+
+    @classmethod
+    def supported(cls, conn):
+        """Return whether GSS key exchange authentication is supported"""
+
+        return conn.gss_kex_auth_supported()
+
+    @asyncio.coroutine
+    def _start(self, packet):
+        """Start server GSS key exchange authentication"""
+
+        mic = packet.get_string()
+        packet.check_end()
+
+        data = self._conn.get_userauth_request_data(self._method)
+
+        if (self._gss.complete and self._gss.verify(data, mic) and
+                (yield from self._conn.validate_gss_principal(self._username,
+                                                              self._gss.user,
+                                                              self._gss.host))):
+            self.send_success()
+        else:
+            self.send_failure()
+
+
+class _ServerGSSMICAuth(_ServerAuth):
+    """Server side implementation of GSS MIC auth"""
+
+    def __init__(self, conn, username, method, packet):
+        super().__init__(conn, username, method, packet)
+
+        self._gss = conn.get_gss_context()
+
+    @classmethod
+    def supported(cls, conn):
+        """Return whether GSS MIC authentication is supported"""
+
+        return conn.gss_mic_auth_supported()
+
+    @asyncio.coroutine
+    def _start(self, packet):
+        """Start server GSS MIC authentication"""
+
+        mechs = set()
+
+        n = packet.get_uint32()
+        for _ in range(n):
+            mechs.add(packet.get_string())
+        packet.check_end()
+
+        match = None
+
+        for mech in self._gss.mechs:
+            if mech in mechs:
+                match = mech
+                break
+
+        if not match:
+            self.send_failure()
+            return
+
+        self._conn.send_packet(Byte(MSG_USERAUTH_GSSAPI_RESPONSE),
+                               String(match))
+
+    @asyncio.coroutine
+    def _finish(self):
+        """Finish server GSS MIC authentication"""
+
+        if (yield from self._conn.validate_gss_principal(self._username,
+                                                         self._gss.user,
+                                                         self._gss.host)):
+            self.send_success()
+        else:
+            self.send_failure()
+
+    def _process_token(self, pkttype, packet):
+        """Process a GSS token from the client"""
+
+        # pylint: disable=unused-argument
+
+        token = packet.get_string()
+        packet.check_end()
+
+        try:
+            token = self._gss.step(token)
+
+            if token:
+                self._conn.send_packet(Byte(MSG_USERAUTH_GSSAPI_TOKEN),
+                                       String(token))
+        except GSSError as exc:
+            self._conn.send_packet(Byte(MSG_USERAUTH_GSSAPI_ERROR),
+                                   UInt32(exc.maj_code), UInt32(exc.min_code),
+                                   String(str(exc)), String(DEFAULT_LANG))
+
+            if exc.token:
+                self._conn.send_packet(Byte(MSG_USERAUTH_GSSAPI_ERRTOK),
+                                       String(exc.token))
+
+            self.send_failure()
+
+        return True
+
+    def _process_exchange_complete(self, pkttype, packet):
+        """Process a GSS exchange complete message from the client"""
+
+        # pylint: disable=unused-argument
 
         packet.check_end()
-        self.send_failure()
+
+        if self._gss.complete and not self._gss.provides_integrity:
+            self.create_task(self._finish())
+        else:
+            self.send_failure()
+
+        return True
+
+    def _process_error_token(self, pkttype, packet):
+        """Process a GSS error token from the client"""
+
+        # pylint: disable=unused-argument
+
+        token = packet.get_string()
+        packet.check_end()
+
+        try:
+            self._gss.step(token)
+        except GSSError as exc:
+            logger.warning('GSS error from client: %s', str(exc))
+
+        return True
+
+    def _process_mic(self, pkttype, packet):
+        """Process a GSS MIC from the client"""
+
+        # pylint: disable=unused-argument
+
+        mic = packet.get_string()
+        packet.check_end()
+
+        data = self._conn.get_userauth_request_data(self._method)
+
+        if (self._gss.complete and self._gss.provides_integrity and
+                self._gss.verify(data, mic)):
+            self.create_task(self._finish())
+        else:
+            self.send_failure()
+
+        return True
+
+    # pylint: disable=bad-whitespace
+
+    packet_handlers = {
+        MSG_USERAUTH_GSSAPI_TOKEN:             _process_token,
+        MSG_USERAUTH_GSSAPI_EXCHANGE_COMPLETE: _process_exchange_complete,
+        MSG_USERAUTH_GSSAPI_ERRTOK:            _process_error_token,
+        MSG_USERAUTH_GSSAPI_MIC:               _process_mic
+    }
+
+    # pylint: enable=bad-whitespace
+
 
 class _ServerPublicKeyAuth(_ServerAuth):
     """Server side implementation of public key auth"""
@@ -452,6 +770,7 @@ class _ServerKbdIntAuth(_ServerAuth):
         packet.check_end()
 
         self.create_task(self._validate_response(responses))
+        return True
 
     packet_handlers = {
         MSG_USERAUTH_INFO_RESPONSE: _process_info_response
@@ -534,16 +853,21 @@ def get_server_auth_methods(conn):
 def lookup_server_auth(conn, username, method, packet):
     """Look up the server authentication method to use"""
 
-    if method in _auth_methods:
-        return _server_auth_handlers[method](conn, username, packet)
+    handler = _server_auth_handlers.get(method)
+
+    if handler and handler.supported(conn):
+        return handler(conn, username, method, packet)
     else:
         conn.send_userauth_failure(False)
         return None
+
 
 # pylint: disable=bad-whitespace
 
 _auth_method_list = (
     (b'none',                 _ClientNullAuth,      _ServerNullAuth),
+    (b'gssapi-keyex',         _ClientGSSKexAuth,    _ServerGSSKexAuth),
+    (b'gssapi-with-mic',      _ClientGSSMICAuth,    _ServerGSSMICAuth),
     (b'publickey',            _ClientPublicKeyAuth, _ServerPublicKeyAuth),
     (b'keyboard-interactive', _ClientKbdIntAuth,    _ServerKbdIntAuth),
     (b'password',             _ClientPasswordAuth,  _ServerPasswordAuth)

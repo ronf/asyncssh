@@ -41,9 +41,9 @@ randrange = _random.randrange
 
 # Avoid deprecation warning for asyncio.async()
 if python344:
-    ensure_future = asyncio.ensure_future
+    create_task = asyncio.ensure_future
 else: # pragma: no cover
-    ensure_future = asyncio.async    # pylint: disable=deprecated-method
+    create_task = asyncio.async    # pylint: disable=deprecated-method
 
 
 def all_ints(seq):

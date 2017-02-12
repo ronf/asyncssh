@@ -39,9 +39,14 @@ class _KexECDH(Kex):
 
         if conn.is_client():
             self._client_pub = pub
-            self._conn.send_packet(Byte(MSG_KEX_ECDH_INIT), String(pub))
         else:
             self._server_pub = pub
+
+    def start(self):
+        """Start ECDH key exchange"""
+
+        self._conn.send_packet(Byte(MSG_KEX_ECDH_INIT),
+                               String(self._client_pub))
 
     def _compute_hash(self, host_key_data, k):
         """Compute a hash of key information associated with the connection"""
