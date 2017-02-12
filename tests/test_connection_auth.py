@@ -301,13 +301,13 @@ class _TestPublicKeyAuth(ServerTestCase):
             _PublicKeyServer, authorized_client_keys='authorized_keys'))
 
     @asyncio.coroutine
-    def _connect_publickey(self, keylist, async=False):
+    def _connect_publickey(self, keylist, async_=False):
         """Open a connection to test public key auth"""
 
         def client_factory():
             """Return an SSHClient to use to do public key auth"""
 
-            client_class = _AsyncPublicKeyClient if async else _PublicKeyClient
+            client_class = _AsyncPublicKeyClient if async_ else _PublicKeyClient
             return client_class(keylist)
 
         conn, _ = yield from self.create_connection(client_factory,
@@ -549,7 +549,7 @@ class _TestPublicKeyAuth(ServerTestCase):
         """Test connecting with public key authentication using callback"""
 
         with (yield from self._connect_publickey(['ckey'],
-                                                 async=True)) as conn:
+                                                 async_=True)) as conn:
             pass
 
         yield from conn.wait_closed()
@@ -714,13 +714,13 @@ class _TestPasswordAuth(ServerTestCase):
 
     @asyncio.coroutine
     def _connect_password(self, username, password, old_password='',
-                          new_password='', async=False):
+                          new_password='', async_=False):
         """Open a connection to test password authentication"""
 
         def client_factory():
             """Return an SSHClient to use to do password change"""
 
-            client_class = _AsyncPasswordClient if async else _PasswordClient
+            client_class = _AsyncPasswordClient if async_ else _PasswordClient
             return client_class(password, old_password, new_password)
 
         conn, _ = yield from self.create_connection(client_factory,
@@ -752,7 +752,7 @@ class _TestPasswordAuth(ServerTestCase):
         """Test connecting with password authentication callback"""
 
         with (yield from self._connect_password('pw', 'pw',
-                                                async=True)) as conn:
+                                                async_=True)) as conn:
             pass
 
         yield from conn.wait_closed()
@@ -769,7 +769,7 @@ class _TestPasswordAuth(ServerTestCase):
         """Test password change"""
 
         with (yield from self._connect_password('pw', 'oldpw', 'oldpw',
-                                                'pw', async=True)) as conn:
+                                                'pw', async_=True)) as conn:
             pass
 
         yield from conn.wait_closed()
@@ -804,13 +804,13 @@ class _TestKbdintAuth(ServerTestCase):
         return (yield from cls.create_server(_KbdintServer))
 
     @asyncio.coroutine
-    def _connect_kbdint(self, username, responses, async=False):
+    def _connect_kbdint(self, username, responses, async_=False):
         """Open a connection to test keyboard-interactive auth"""
 
         def client_factory():
             """Return an SSHClient to use to do keyboard-interactive auth"""
 
-            client_class = _AsyncKbdintClient if async else _KbdintClient
+            client_class = _AsyncKbdintClient if async_ else _KbdintClient
             return client_class(responses)
 
         conn, _ = yield from self.create_connection(client_factory,
@@ -842,7 +842,7 @@ class _TestKbdintAuth(ServerTestCase):
         """Test keyboard-interactive auth callback"""
 
         with (yield from self._connect_kbdint('kbdint', ['kbdint'],
-                                              async=True)) as conn:
+                                              async_=True)) as conn:
             pass
 
         yield from conn.wait_closed()
