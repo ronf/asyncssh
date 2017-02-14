@@ -418,14 +418,14 @@ class _TestPublicKeyAuth(ServerTestCase):
             gss_host=None))
 
     @asyncio.coroutine
-    def _connect_publickey(self, keylist, async=False):
+    def _connect_publickey(self, keylist, test_async=False):
         """Open a connection to test public key auth"""
 
         def client_factory():
             """Return an SSHClient to use to do public key auth"""
 
-            client_class = _AsyncPublicKeyClient if async else _PublicKeyClient
-            return client_class(keylist)
+            cls = _AsyncPublicKeyClient if test_async else _PublicKeyClient
+            return cls(keylist)
 
         conn, _ = yield from self.create_connection(client_factory,
                                                     username='ckey',
@@ -671,7 +671,7 @@ class _TestPublicKeyAuth(ServerTestCase):
         """Test connecting with public key authentication using callback"""
 
         with (yield from self._connect_publickey(['ckey'],
-                                                 async=True)) as conn:
+                                                 test_async=True)) as conn:
             pass
 
         yield from conn.wait_closed()
@@ -840,14 +840,14 @@ class _TestPasswordAuth(ServerTestCase):
 
     @asyncio.coroutine
     def _connect_password(self, username, password, old_password='',
-                          new_password='', async=False):
+                          new_password='', test_async=False):
         """Open a connection to test password authentication"""
 
         def client_factory():
             """Return an SSHClient to use to do password change"""
 
-            client_class = _AsyncPasswordClient if async else _PasswordClient
-            return client_class(password, old_password, new_password)
+            cls = _AsyncPasswordClient if test_async else _PasswordClient
+            return cls(password, old_password, new_password)
 
         conn, _ = yield from self.create_connection(client_factory,
                                                     username=username,
@@ -879,7 +879,7 @@ class _TestPasswordAuth(ServerTestCase):
         """Test connecting with password authentication callback"""
 
         with (yield from self._connect_password('pw', 'pw',
-                                                async=True)) as conn:
+                                                test_async=True)) as conn:
             pass
 
         yield from conn.wait_closed()
@@ -895,8 +895,8 @@ class _TestPasswordAuth(ServerTestCase):
     def test_password_change(self):
         """Test password change"""
 
-        with (yield from self._connect_password('pw', 'oldpw', 'oldpw',
-                                                'pw', async=True)) as conn:
+        with (yield from self._connect_password('pw', 'oldpw', 'oldpw', 'pw',
+                                                test_async=True)) as conn:
             pass
 
         yield from conn.wait_closed()
@@ -932,14 +932,14 @@ class _TestKbdintAuth(ServerTestCase):
         return (yield from cls.create_server(_KbdintServer, gss_host=None))
 
     @asyncio.coroutine
-    def _connect_kbdint(self, username, responses, async=False):
+    def _connect_kbdint(self, username, responses, test_async=False):
         """Open a connection to test keyboard-interactive auth"""
 
         def client_factory():
             """Return an SSHClient to use to do keyboard-interactive auth"""
 
-            client_class = _AsyncKbdintClient if async else _KbdintClient
-            return client_class(responses)
+            cls = _AsyncKbdintClient if test_async else _KbdintClient
+            return cls(responses)
 
         conn, _ = yield from self.create_connection(client_factory,
                                                     username=username,
@@ -971,7 +971,7 @@ class _TestKbdintAuth(ServerTestCase):
         """Test keyboard-interactive auth callback"""
 
         with (yield from self._connect_kbdint('kbdint', ['kbdint'],
-                                              async=True)) as conn:
+                                              test_async=True)) as conn:
             pass
 
         yield from conn.wait_closed()
