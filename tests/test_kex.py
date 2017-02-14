@@ -260,6 +260,21 @@ class _TestKex(AsyncTestCase):
                 yield from self._check_kex(b'dh-gex-sha1-' + size)
 
     @asynctest
+    def test_dh_gex(self):
+        """Unit test old DH group exchange request"""
+
+        register_kex_alg(b'dh-gex-sha1-1024-1536', _KexDHGex, sha1, 1024, 1536)
+        register_kex_alg(b'dh-gex-sha1-1536-3072', _KexDHGex, sha1, 1536, 3072)
+        register_kex_alg(b'dh-gex-sha1-2560-2560', _KexDHGex, sha1, 2560, 2560)
+        register_kex_alg(b'dh-gex-sha1-2560-4096', _KexDHGex, sha1, 2560, 4096)
+        register_kex_alg(b'dh-gex-sha1-9216-9216', _KexDHGex, sha1, 9216, 9216)
+
+        for size in (b'1024-1536', b'1536-3072', b'2560-2560',
+                     b'2560-4096', b'9216-9216'):
+            with self.subTest('Old DH group exchange', size=size):
+                yield from self._check_kex(b'dh-gex-sha1-' + size)
+
+    @asynctest
     def test_dh_errors(self):
         """Unit test error conditions in DH key exchange"""
 
