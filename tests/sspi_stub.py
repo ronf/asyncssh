@@ -63,6 +63,7 @@ class SSPIAuth:
         self._flags = scflags
         self._ctxt = SSPIContext()
         self._complete = False
+        self._error = False
 
     @property
     def authenticated(self):
@@ -90,15 +91,23 @@ class SSPIAuth:
     def authorize(self, token):
         """Perform next step in SSPI authentication"""
 
-        token, complete = step(self._host, token)
+        if self._error:
+            self._error = False
+            raise SSPIError('Token authentication errror')
+
+        new_token, complete = step(self._host, token)
 
         if complete:
             self._complete = True
 
-        if token in (b'error', b'errtok'):
-            raise SSPIError('Token authentication errror')
+        if new_token in (b'error', b'errtok'):
+            if token:
+                raise SSPIError('Token authentication errror')
+            else:
+                self._error = True
+                return True, [SSPIBuffer(b'')]
         else:
-            return bool(token), [SSPIBuffer(token)]
+            return bool(new_token), [SSPIBuffer(new_token)]
 
     def sign(self, data):
         """Sign a block of data"""
