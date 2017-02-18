@@ -3,6 +3,39 @@
 Change Log
 ==========
 
+Release 1.9.0 (18 Feb 2017)
+---------------------------
+
+* Added support for GSSAPI key exchange and authentication when the
+  "gssapi" module is installed on UNIX or the "sspi" module from pypiwin32
+  is installed on Windows.
+
+* Added support for additional Diffie Hellman groups, and added the ability
+  for Diffie Hellman and GSS group exchange to select larger group sizes.
+
+* Added overridable methods format_user() and format_group() to format user
+  and group names in the SFTP server, defaulting to the previous behavior of
+  using pwd.getpwuid() and grp.getgrgid() on platforms that support those.
+
+* Added an optional progress reporting callback on SFTP file transfers,
+  and made the block size for these transfers configurable.
+
+* Added append_private_key(), append_public_key(), and append_certificate()
+  methods on the corresponding key and certificate classes to simplify
+  the creating of files containing a list of keys/certificates.
+
+* Updated readdir to break responses into chunks to avoid hitting maximum
+  message size limits on large directories.
+
+* Updated SFTP to work better on Windows, properly handling drive letters
+  and conversion between forward and back slashes in paths and handling
+  setting of attributes on open files and proper support for POSIX rename.
+  Also, file closes now block until the close completes, to avoid issues
+  with file locking.
+
+* Updated the unit tests to run on Windows, and enabled continuous
+  integration builds for Windows to automatically run on Appveyor.
+
 Release 1.8.1 (29 Dec 2016)
 ---------------------------
 
