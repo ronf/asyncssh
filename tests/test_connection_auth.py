@@ -21,9 +21,8 @@ import asyncssh
 from asyncssh.packet import String
 from asyncssh.public_key import CERT_TYPE_USER
 
-from . import gssapi_stub
 from .server import Server, ServerTestCase
-from .util import asynctest, make_certificate
+from .util import asynctest, patch_gss, make_certificate
 
 
 class _AsyncGSSServer(asyncssh.SSHServer):
@@ -301,9 +300,7 @@ class _UnknownAuthClientConnection(asyncssh.connection.SSHClientConnection):
         super().try_next_auth()
 
 
-@patch('asyncssh.gss.Name', gssapi_stub.Name)
-@patch('asyncssh.gss.Credentials', gssapi_stub.Credentials)
-@patch('asyncssh.gss.SecurityContext', gssapi_stub.SecurityContext)
+@patch_gss
 class _TestGSSAuth(ServerTestCase):
     """Unit tests for GSS authentication"""
 
@@ -349,9 +346,7 @@ class _TestGSSAuth(ServerTestCase):
             yield from self.connect(gss_host='1,init_error', username='user')
 
 
-@patch('asyncssh.gss.Name', gssapi_stub.Name)
-@patch('asyncssh.gss.Credentials', gssapi_stub.Credentials)
-@patch('asyncssh.gss.SecurityContext', gssapi_stub.SecurityContext)
+@patch_gss
 class _TestGSSServerError(ServerTestCase):
     """Unit tests for GSS server error"""
 
@@ -370,9 +365,7 @@ class _TestGSSServerError(ServerTestCase):
             yield from self.connect(username='user')
 
 
-@patch('asyncssh.gss.Name', gssapi_stub.Name)
-@patch('asyncssh.gss.Credentials', gssapi_stub.Credentials)
-@patch('asyncssh.gss.SecurityContext', gssapi_stub.SecurityContext)
+@patch_gss
 class _TestGSSFQDN(ServerTestCase):
     """Unit tests for GSS server error"""
 

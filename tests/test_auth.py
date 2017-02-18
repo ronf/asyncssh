@@ -14,8 +14,6 @@
 
 import asyncio
 
-from unittest.mock import patch
-
 import asyncssh
 
 from asyncssh.auth import MSG_USERAUTH_PK_OK, lookup_client_auth
@@ -28,8 +26,7 @@ from asyncssh.misc import DisconnectError, PasswordChangeRequired
 from asyncssh.packet import SSHPacket, Boolean, Byte, NameList, String
 from asyncssh.public_key import SSHLocalKeyPair
 
-from . import gssapi_stub
-from .util import asynctest, AsyncTestCase, ConnectionStub
+from .util import asynctest, patch_gss, AsyncTestCase, ConnectionStub
 
 
 class _AuthConnectionStub(ConnectionStub):
@@ -387,9 +384,7 @@ class _AuthServerStub(_AuthConnectionStub):
         return self._success
 
 
-@patch('asyncssh.gss.Name', gssapi_stub.Name)
-@patch('asyncssh.gss.Credentials', gssapi_stub.Credentials)
-@patch('asyncssh.gss.SecurityContext', gssapi_stub.SecurityContext)
+@patch_gss
 class _TestAuth(AsyncTestCase):
     """Unit tests for auth module"""
 

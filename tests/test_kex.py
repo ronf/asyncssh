@@ -15,7 +15,6 @@
 import asyncio
 
 from hashlib import sha1
-from unittest.mock import patch
 
 import asyncssh
 
@@ -30,8 +29,7 @@ from asyncssh.misc import DisconnectError
 from asyncssh.packet import SSHPacket, Boolean, Byte, MPInt, String
 from asyncssh.public_key import SSHLocalKeyPair, decode_ssh_public_key
 
-from . import gssapi_stub
-from .util import asynctest, AsyncTestCase, ConnectionStub
+from .util import asynctest, patch_gss, AsyncTestCase, ConnectionStub
 
 # Short variable names are used here, matching names in the specs
 # pylint: disable=invalid-name
@@ -205,9 +203,7 @@ class _KexServerStub(_KexConnectionStub):
         return self._server_host_key
 
 
-@patch('asyncssh.gss.Name', gssapi_stub.Name)
-@patch('asyncssh.gss.Credentials', gssapi_stub.Credentials)
-@patch('asyncssh.gss.SecurityContext', gssapi_stub.SecurityContext)
+@patch_gss
 class _TestKex(AsyncTestCase):
     """Unit tests for kex module"""
 

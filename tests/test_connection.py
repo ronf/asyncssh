@@ -35,9 +35,8 @@ from asyncssh.mac import _HMAC, _mac_handlers, get_mac_algs
 from asyncssh.misc import async_context_manager
 from asyncssh.packet import Boolean, Byte, NameList, String, UInt32
 
-from . import gssapi_stub
 from .server import Server, ServerTestCase
-from .util import asynctest
+from .util import asynctest, patch_gss
 
 
 class _SplitClientConnection(asyncssh.SSHClientConnection):
@@ -195,9 +194,7 @@ class _VersionReportingServer(Server):
         return False
 
 
-@patch('asyncssh.gss.Name', gssapi_stub.Name)
-@patch('asyncssh.gss.Credentials', gssapi_stub.Credentials)
-@patch('asyncssh.gss.SecurityContext', gssapi_stub.SecurityContext)
+@patch_gss
 class _TestConnection(ServerTestCase):
     """Unit tests for AsyncSSH connection API"""
 
@@ -932,15 +929,13 @@ class _TestServerNoLoop(ServerTestCase):
     def test_server_no_loop(self):
         """Test server with no loop specified"""
 
-        with (yield from self.connect()) as conn:
+        with (yield from self.connect(gss_host=None)) as conn:
             pass
 
         yield from conn.wait_closed()
 
 
-@patch('asyncssh.gss.Name', gssapi_stub.Name)
-@patch('asyncssh.gss.Credentials', gssapi_stub.Credentials)
-@patch('asyncssh.gss.SecurityContext', gssapi_stub.SecurityContext)
+@patch_gss
 class _TestServerNoHostKey(ServerTestCase):
     """Unit test for server with no server host key"""
 
@@ -1039,6 +1034,7 @@ class _TestCustomClientVersion(ServerTestCase):
 
         conn, client = \
             yield from self.create_connection(_VersionRecordingClient,
+                                              gss_host=None,
                                               client_version=version)
 
         with conn:
@@ -1087,7 +1083,7 @@ class _TestCustomServerVersion(ServerTestCase):
     def test_custom_server_version(self):
         """Test custom server version"""
 
-        with (yield from self.connect()) as conn:
+        with (yield from self.connect(gss_host=None)) as conn:
             version = conn.get_extra_info('server_version')
             self.assertEqual(version, 'SSH-2.0-custom')
 

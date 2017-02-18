@@ -12,7 +12,9 @@
 
 """Stub GSSAPI module for unit tests"""
 
-from asyncssh.gss import GSSError, RequirementFlag
+from asyncssh.gss import GSSError
+
+from .gss_stub import step
 
 
 class Name:
@@ -42,6 +44,14 @@ class Credentials:
             return [0] if 'unknown_mech' in self.host else [1, 2]
         else:
             return [2]
+
+
+class RequirementFlag:
+    """Stub class for GSS requirement flags"""
+
+    mutual_authentication = 'mutual_auth'
+    integrity = 'integrity'
+    delegate_to_peer = 'delegate'
 
 
 class SecurityContext:
@@ -90,30 +100,17 @@ class SecurityContext:
     def step(self, token=None):
         """Perform next step in GSS security exchange"""
 
-        if token == b'errtok':
-            raise GSSError(99, 99, token)
-        elif ((token is None and 'empty_init' in self._host) or
-              (token == b'1' and 'empty_continue' in self._host)):
-            return b''
-        elif token == b'0':
-            if 'continue_token' in self._host:
-                token = b'continue'
-            else:
-                self._complete = True
-                token = b'extra' if 'extra_token' in self._host else None
-        elif token:
-            token = bytes((token[0]-1,))
-        else:
-            token = self._host[0].encode('ascii')
+        token, complete = step(self._host, token)
 
-        if token == b'0':
-            if 'step_error' in self._host:
-                errtok = b'errtok' if 'errtok' in self._host else None
-                raise GSSError(99, 99, errtok)
-
+        if complete:
             self._complete = True
 
-        return token
+        if token == b'error':
+            raise GSSError(99, 99)
+        elif token == b'errtok':
+            raise GSSError(99, 99, token)
+        else:
+            return token
 
     def get_signature(self, data):
         """Sign a block of data"""

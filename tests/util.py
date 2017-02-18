@@ -17,8 +17,11 @@ import binascii
 import functools
 import os
 import subprocess
+import sys
 import tempfile
 import unittest
+
+from unittest.mock import patch
 
 # pylint: disable=unused-import
 
@@ -65,6 +68,26 @@ def asynctest35(func):
         return self.loop.run_until_complete(wrapped_func)
 
     return async_wrapper
+
+
+def patch_gss(cls):
+    """Decorator for patching GSSAPI classes"""
+
+    if sys.platform == 'win32': # pragma: no cover
+        from .sspi_stub import SSPIAuth
+
+        cls = patch('asyncssh.gss_win32.ClientAuth', SSPIAuth)(cls)
+        cls = patch('asyncssh.gss_win32.ServerAuth', SSPIAuth)(cls)
+    else:
+        from .gssapi_stub import Name, Credentials, RequirementFlag
+        from .gssapi_stub import SecurityContext
+
+        cls = patch('asyncssh.gss_unix.Name', Name)(cls)
+        cls = patch('asyncssh.gss_unix.Credentials', Credentials)(cls)
+        cls = patch('asyncssh.gss_unix.RequirementFlag', RequirementFlag)(cls)
+        cls = patch('asyncssh.gss_unix.SecurityContext', SecurityContext)(cls)
+
+    return cls
 
 
 @asyncio.coroutine

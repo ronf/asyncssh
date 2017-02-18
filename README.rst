@@ -112,7 +112,7 @@ functionality:
   if you want support for OpenSSH private key encryption.
 
 * Install gssapi from https://pypi.python.org/pypi/gssapi if you
-  want support for GSS key exchange and authentication on UNIX.
+  want support for GSSAPI key exchange and authentication on UNIX.
 
 * Install libsodium from https://github.com/jedisct1/libsodium
   and libnacl from https://pypi.python.org/pypi/libnacl if you want
@@ -123,7 +123,8 @@ functionality:
   if you want support for UMAC cryptographic hashes.
 
 * Install pypiwin32 from https://pypi.python.org/pypi/pypiwin32
-  if you want support for using the Pageant agent on Windows.
+  if you want support for using the Pageant agent or support for
+  GSSAPI key exchange and authentication on Windows.
 
 AsyncSSH defines the following optional PyPI extra packages to make it
 easy to install any or all of these dependencies:
