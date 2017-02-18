@@ -13,6 +13,7 @@
 """Unit tests for authentication"""
 
 import asyncio
+import unittest
 
 import asyncssh
 
@@ -26,7 +27,8 @@ from asyncssh.misc import DisconnectError, PasswordChangeRequired
 from asyncssh.packet import SSHPacket, Boolean, Byte, NameList, String
 from asyncssh.public_key import SSHLocalKeyPair
 
-from .util import asynctest, patch_gss, AsyncTestCase, ConnectionStub
+from .util import asynctest, gss_available, patch_gss
+from .util import AsyncTestCase, ConnectionStub
 
 
 class _AuthConnectionStub(ConnectionStub):
@@ -306,7 +308,7 @@ class _AuthServerStub(_AuthConnectionStub):
 
         # pylint: disable=no-self-use
 
-        return False
+        return bool(self._gss)
 
     def gss_mic_auth_supported(self):
         """Return whether or not GSS MIC authentication is supported"""
@@ -419,11 +421,19 @@ class _TestAuth(AsyncTestCase):
             server_conn.close()
 
         with self.subTest('All auth methods'):
-            server_conn = _AuthServerStub(gss_host='1', public_key_auth=True,
+            gss_host = '1' if gss_available else None
+            server_conn = _AuthServerStub(gss_host=gss_host,
+                                          public_key_auth=True,
                                           password_auth=True, kbdint_auth=True)
-            self.assertEqual(get_server_auth_methods(server_conn),
-                             [b'gssapi-with-mic', b'publickey',
-                              b'keyboard-interactive', b'password'])
+            if gss_available: # pragma: no branch
+                self.assertEqual(get_server_auth_methods(server_conn),
+                                 [b'gssapi-keyex', b'gssapi-with-mic',
+                                  b'publickey', b'keyboard-interactive',
+                                  b'password'])
+            else: # pragma: no cover
+                self.assertEqual(get_server_auth_methods(server_conn),
+                                 [b'publickey', b'keyboard-interactive',
+                                  b'password'])
             server_conn.close()
 
         with self.subTest('Unknown auth method'):
@@ -438,6 +448,7 @@ class _TestAuth(AsyncTestCase):
 
         yield from self.check_auth(b'none', (False, None))
 
+    @unittest.skipUnless(gss_available, 'GSS not available')
     @asynctest
     def test_gss_auth(self):
         """Unit test GSS authentication"""

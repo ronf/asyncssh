@@ -13,9 +13,9 @@
 """Unit tests for AsyncSSH connection API"""
 
 import asyncio
-import os
-
 from copy import copy
+import os
+import unittest
 from unittest.mock import patch
 
 import asyncssh
@@ -36,7 +36,7 @@ from asyncssh.misc import async_context_manager
 from asyncssh.packet import Boolean, Byte, NameList, String, UInt32
 
 from .server import Server, ServerTestCase
-from .util import asynctest, patch_gss
+from .util import asynctest, gss_available, patch_gss
 
 
 class _SplitClientConnection(asyncssh.SSHClientConnection):
@@ -405,8 +405,11 @@ class _TestConnection(ServerTestCase):
         for kex in get_kex_algs():
             kex = kex.decode('ascii')
 
+            if kex.startswith('gss-') and not gss_available: # pragma: no cover
+                continue
+
             with self.subTest(kex_alg=kex):
-                with (yield from self.connect(kex_algs=[kex], username='user',
+                with (yield from self.connect(kex_algs=[kex],
                                               gss_host='1')) as conn:
                     pass
 
@@ -935,6 +938,7 @@ class _TestServerNoLoop(ServerTestCase):
         yield from conn.wait_closed()
 
 
+@unittest.skipUnless(gss_available, 'GSS not available')
 @patch_gss
 class _TestServerNoHostKey(ServerTestCase):
     """Unit test for server with no server host key"""

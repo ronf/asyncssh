@@ -21,7 +21,11 @@ try:
         from .gss_win32 import GSSError, GSSClient, GSSServer
     else:
         from .gss_unix import GSSError, GSSClient, GSSServer
+
+    gss_available = True
 except ImportError: # pragma: no cover
+    gss_available = False
+
     class GSSError(ValueError):
         """Stub class for reporting that GSS is not available"""
 

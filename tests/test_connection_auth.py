@@ -14,6 +14,7 @@
 
 import asyncio
 import os
+import unittest
 
 from unittest.mock import patch
 
@@ -22,7 +23,7 @@ from asyncssh.packet import String
 from asyncssh.public_key import CERT_TYPE_USER
 
 from .server import Server, ServerTestCase
-from .util import asynctest, patch_gss, make_certificate
+from .util import asynctest, gss_available, patch_gss, make_certificate
 
 
 class _AsyncGSSServer(asyncssh.SSHServer):
@@ -300,6 +301,7 @@ class _UnknownAuthClientConnection(asyncssh.connection.SSHClientConnection):
         super().try_next_auth()
 
 
+@unittest.skipUnless(gss_available, 'GSS not available')
 @patch_gss
 class _TestGSSAuth(ServerTestCase):
     """Unit tests for GSS authentication"""
@@ -346,6 +348,7 @@ class _TestGSSAuth(ServerTestCase):
             yield from self.connect(gss_host='1,init_error', username='user')
 
 
+@unittest.skipUnless(gss_available, 'GSS not available')
 @patch_gss
 class _TestGSSServerError(ServerTestCase):
     """Unit tests for GSS server error"""
@@ -365,6 +368,7 @@ class _TestGSSServerError(ServerTestCase):
             yield from self.connect(username='user')
 
 
+@unittest.skipUnless(gss_available, 'GSS not available')
 @patch_gss
 class _TestGSSFQDN(ServerTestCase):
     """Unit tests for GSS server error"""

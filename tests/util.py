@@ -40,6 +40,7 @@ except (ImportError, OSError, AttributeError): # pragma: no cover
 # pylint: enable=unused-import
 
 from asyncssh.constants import DISC_CONNECTION_LOST
+from asyncssh.gss import gss_available
 from asyncssh.misc import DisconnectError, SignalReceived, create_task
 from asyncssh.packet import String, UInt32, UInt64
 
@@ -72,6 +73,9 @@ def asynctest35(func):
 
 def patch_gss(cls):
     """Decorator for patching GSSAPI classes"""
+
+    if not gss_available: # pragma: no cover
+        return cls
 
     if sys.platform == 'win32': # pragma: no cover
         from .sspi_stub import SSPIAuth

@@ -13,6 +13,7 @@
 """Unit tests for key exchange"""
 
 import asyncio
+import unittest
 
 from hashlib import sha1
 
@@ -29,7 +30,8 @@ from asyncssh.misc import DisconnectError
 from asyncssh.packet import SSHPacket, Boolean, Byte, MPInt, String
 from asyncssh.public_key import SSHLocalKeyPair, decode_ssh_public_key
 
-from .util import asynctest, patch_gss, AsyncTestCase, ConnectionStub
+from .util import asynctest, gss_available, patch_gss
+from .util import AsyncTestCase, ConnectionStub
 
 # Short variable names are used here, matching names in the specs
 # pylint: disable=invalid-name
@@ -227,22 +229,28 @@ class _TestKex(AsyncTestCase):
         for alg in get_kex_algs():
             with self.subTest(alg=alg):
                 if alg.startswith(b'gss-'):
-                    yield from self._check_kex(alg + b'-mech', '1')
+                    if gss_available: # pragma: no branch
+                        yield from self._check_kex(alg + b'-mech', '1')
                 else:
                     yield from self._check_kex(alg)
 
-        for steps in range(4):
-            with self.subTest('GSS key exchange', steps=steps):
-                yield from self._check_kex(b'gss-group1-sha1-mech', str(steps))
+        if gss_available: # pragma: no branch
+            for steps in range(4):
+                with self.subTest('GSS key exchange', steps=steps):
+                    yield from self._check_kex(b'gss-group1-sha1-mech',
+                                               str(steps))
 
-        with self.subTest('GSS with credential delegation'):
-            yield from self._check_kex(b'gss-group1-sha1-mech', '1,delegate')
+            with self.subTest('GSS with credential delegation'):
+                yield from self._check_kex(b'gss-group1-sha1-mech',
+                                           '1,delegate')
 
-        with self.subTest('GSS with no host key'):
-            yield from self._check_kex(b'gss-group1-sha1-mech', '1,no_host_key')
+            with self.subTest('GSS with no host key'):
+                yield from self._check_kex(b'gss-group1-sha1-mech',
+                                           '1,no_host_key')
 
-        with self.subTest('GSS with full host principal'):
-            yield from self._check_kex(b'gss-group1-sha1-mech', 'host/1@TEST')
+            with self.subTest('GSS with full host principal'):
+                yield from self._check_kex(b'gss-group1-sha1-mech',
+                                           'host/1@TEST')
 
     @asynctest
     def test_dh_gex_old(self):
@@ -336,6 +344,7 @@ class _TestKex(AsyncTestCase):
         client_conn.close()
         server_conn.close()
 
+    @unittest.skipUnless(gss_available, 'GSS not available')
     @asynctest
     def test_gss_errors(self):
         """Unit test error conditions in GSS key exchange"""
