@@ -463,6 +463,33 @@ class _TestSFTP(_CheckSFTP):
                     remove('src dst')
 
     @sftp_test
+    def test_copy_progress(self, sftp):
+        """Test copying a file over SFTP with progress reporting"""
+
+        def _report_progress(srcpath, dstpath, bytes_copied, total_bytes):
+            """Monitor progress of copy"""
+
+            # pylint: disable=unused-argument
+
+            reports.append(bytes_copied)
+
+        for method in ('get', 'put', 'copy'):
+            reports = []
+
+            with self.subTest(method=method):
+                try:
+                    self._create_file('src', 100000*'a')
+                    yield from getattr(sftp, method)(
+                        'src', 'dst', block_size=8192,
+                        progress_handler=_report_progress)
+                    self._check_file('src', 'dst')
+
+                    self.assertEqual(len(reports), 13)
+                    self.assertEqual(reports[-1], 100000)
+                finally:
+                    remove('src dst')
+
+    @sftp_test
     def test_copy_preserve(self, sftp):
         """Test copying a file with preserved attributes over SFTP"""
 
