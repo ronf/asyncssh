@@ -280,7 +280,7 @@ class SSHStreamSession:
         self._connection_lost = False
         self._recv_buf = {None: []}
         self._recv_buf_len = 0
-        self._read_waiter = {None: None}
+        self._read_waiters = {None: None}
         self._read_paused = False
         self._write_paused = False
         self._drain_waiters = []
@@ -289,21 +289,21 @@ class SSHStreamSession:
     def _block_read(self, datatype):
         """Wait for more data to arrive on the stream"""
 
-        if self._read_waiter[datatype]:
+        if self._read_waiters[datatype]:
             raise RuntimeError('read called while another coroutine is '
                                'already waiting to read')
 
         try:
             waiter = asyncio.Future(loop=self._loop)
-            self._read_waiter[datatype] = waiter
+            self._read_waiters[datatype] = waiter
             yield from waiter
         finally:
-            self._read_waiter[datatype] = None
+            self._read_waiters[datatype] = None
 
     def _unblock_read(self, datatype):
         """Signal that more data has arrived on the stream"""
 
-        waiter = self._read_waiter[datatype]
+        waiter = self._read_waiters[datatype]
         if waiter:
             if not waiter.done():
                 waiter.set_result(None)
@@ -358,7 +358,7 @@ class SSHStreamSession:
 
         for datatype in chan.get_read_datatypes():
             self._recv_buf[datatype] = []
-            self._read_waiter[datatype] = None
+            self._read_waiters[datatype] = None
 
     def connection_lost(self, exc):
         """Handle an incoming channel close"""
@@ -368,7 +368,7 @@ class SSHStreamSession:
 
         if not self._eof_received:
             if exc:
-                for datatype in self._read_waiter.keys():
+                for datatype in self._read_waiters:
                     self._recv_buf[datatype].append(exc)
 
             self.eof_received()
@@ -389,7 +389,7 @@ class SSHStreamSession:
 
         self._eof_received = True
 
-        for datatype in self._read_waiter.keys():
+        for datatype in self._read_waiters:
             self._unblock_read(datatype)
 
         return True

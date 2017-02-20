@@ -15,10 +15,10 @@
 import os
 import unittest
 
-from .util import libnacl_available
-
 from asyncssh.cipher import get_encryption_algs, get_encryption_params
 from asyncssh.cipher import get_cipher
+
+from .util import libnacl_available
 
 
 class _TestCipher(unittest.TestCase):
@@ -105,4 +105,3 @@ class _TestCipher(unittest.TestCase):
 
                 with self.assertRaises(ValueError):
                     cipher.verify_and_decrypt(b'', b'', b'', b'')
-
