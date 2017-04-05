@@ -152,6 +152,24 @@ class _AbortServer(Server):
         return False
 
 
+class _CloseDuringAuthServer(Server):
+    """Server for testing connection close during long auth callback"""
+
+    def password_auth_supported(self):
+        """Return that password auth is supported"""
+
+        return True
+
+    @asyncio.coroutine
+    def validate_password(self, username, password):
+        """Delay validating password"""
+
+        # pylint: disable=unused-argument
+
+        yield from asyncio.sleep(1)
+        return False
+
+
 class _InternalErrorServer(Server):
     """Server for testing internal error during auth"""
 
@@ -916,6 +934,27 @@ class _TestConnectionAbort(ServerTestCase):
 
         with self.assertRaises(asyncssh.DisconnectError):
             yield from self.connect()
+
+
+class _TestConnectionCloseDurngAuth(ServerTestCase):
+    """Unit test for connection close during long auth callback"""
+
+    @classmethod
+    @asyncio.coroutine
+    def start_server(cls):
+        """Start an SSH server which aborts connections during auth"""
+
+        return (yield from cls.create_server(_CloseDuringAuthServer))
+
+    @asynctest
+    def test_close_during_auth(self):
+        """Test connection close during long auth callback"""
+
+        import logging
+        logging.basicConfig(level='DEBUG')
+        with self.assertRaises(asyncio.TimeoutError):
+            yield from asyncio.wait_for(self.connect(username='user',
+                                                     password=''), 0.5)
 
 
 class _TestServerNoLoop(ServerTestCase):

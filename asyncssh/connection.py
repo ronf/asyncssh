@@ -372,6 +372,8 @@ class SSHConnection(SSHPacketHandler):
         # pylint: disable=broad-except
         try:
             yield from coro
+        except asyncio.CancelledError:
+            pass
         except DisconnectError as exc:
             self._send_disconnect(exc.code, exc.reason, exc.lang)
             self._force_close(exc)
@@ -2140,7 +2142,7 @@ class SSHClientConnection(SSHConnection):
         #          self._send_mode not in ('chacha', 'gcm'))):
         #     return None
 
-        if self._password:
+        if self._password is not None:
             result = self._password
             self._password = None
         else:
