@@ -424,6 +424,7 @@ class SSHConnection(SSHPacketHandler):
         self._transport = transport
 
         sock = transport.get_extra_info('socket')
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
         sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 
         peername = transport.get_extra_info('peername')
