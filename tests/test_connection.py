@@ -950,8 +950,6 @@ class _TestConnectionCloseDurngAuth(ServerTestCase):
     def test_close_during_auth(self):
         """Test connection close during long auth callback"""
 
-        import logging
-        logging.basicConfig(level='DEBUG')
         with self.assertRaises(asyncio.TimeoutError):
             yield from asyncio.wait_for(self.connect(username='user',
                                                      password=''), 0.5)
