@@ -29,6 +29,13 @@ class SSHServer:
        sessions or direct connections or set up listeners for forwarded
        connections.
 
+       .. note:: The authentication callbacks described here can be
+                 defined as coroutines. However, they may be cancelled if
+                 they are running when the SSH connection is closed by
+                 the client. If they attempt to catch the CancelledError
+                 exception to perform cleanup, they should make sure to
+                 re-raise it to allow AsyncSSH to finish its own cleanup.
+
     """
 
     # pylint: disable=no-self-use,unused-argument
