@@ -366,6 +366,7 @@ SSHClientProcess
    ============================== =
    Process attributes
    ============================== =
+   .. autoattribute:: channel
    .. autoattribute:: stdin
    .. autoattribute:: stdout
    .. autoattribute:: stderr
@@ -373,31 +374,60 @@ SSHClientProcess
    .. autoattribute:: exit_signal
    ============================== =
 
-   =============================== =
-   I/O redirection methods
-   =============================== =
-   .. automethod:: redirect_stdin
-   .. automethod:: redirect_stdout
-   .. automethod:: redirect_stderr
-   =============================== =
-
    ==================================== =
-   Process communication methods
+   General client process methods
    ==================================== =
+   .. automethod:: redirect
    .. automethod:: communicate
+   .. automethod:: wait
    .. automethod:: change_terminal_size
    .. automethod:: send_break
    .. automethod:: send_signal
    ==================================== =
 
-   ========================= =
-   Process close methods
-   ========================= =
+   ============================ =
+   Client process close methods
+   ============================ =
    .. automethod:: terminate
    .. automethod:: kill
    .. automethod:: close
-   .. automethod:: wait
-   ========================= =
+   .. automethod:: wait_closed
+   ============================ =
+
+SSHServerProcess
+----------------
+
+.. autoclass:: SSHServerProcess
+
+   ============================== =
+   Process attributes
+   ============================== =
+   .. autoattribute:: channel
+   .. autoattribute:: stdin
+   .. autoattribute:: stdout
+   .. autoattribute:: stderr
+   ============================== =
+
+   ================================= =
+   General server process methods
+   ================================= =
+   .. automethod:: redirect
+   .. automethod:: get_environment
+   .. automethod:: get_command
+   .. automethod:: get_subsystem
+   .. automethod:: get_terminal_type
+   .. automethod:: get_terminal_size
+   .. automethod:: get_terminal_mode
+   ================================= =
+
+   ================================ =
+   Server process close methods
+   ================================ =
+   .. automethod:: exit
+   .. automethod:: exit_with_signal
+   .. automethod:: close
+   .. automethod:: wait_closed
+   ================================ =
 
 SSHCompletedProcess
 -------------------

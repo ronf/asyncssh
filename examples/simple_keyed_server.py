@@ -1,6 +1,6 @@
 #!/usr/bin/env python3.5
 #
-# Copyright (c) 2013-2016 by Ron Frederick <ronf@timeheart.net>.
+# Copyright (c) 2013-2017 by Ron Frederick <ronf@timeheart.net>.
 # All rights reserved.
 #
 # This program and the accompanying materials are made available under
@@ -22,10 +22,10 @@
 
 import asyncio, asyncssh, sys
 
-def handle_session(stdin, stdout, stderr):
-    stdout.write('Welcome to my SSH server, %s!\n' %
-                 stdout.channel.get_extra_info('username'))
-    stdout.channel.exit(0)
+def handle_client(process):
+    process.stdout.write('Welcome to my SSH server, %s!\n' %
+                         process.channel.get_extra_info('username'))
+    process.exit(0)
 
 class MySSHServer(asyncssh.SSHServer):
     def connection_made(self, conn):
@@ -42,7 +42,7 @@ class MySSHServer(asyncssh.SSHServer):
 async def start_server():
     await asyncssh.create_server(MySSHServer, '', 8022,
                                  server_host_keys=['ssh_host_key'],
-                                 session_factory=handle_session)
+                                 process_factory=handle_client)
 
 loop = asyncio.get_event_loop()
 

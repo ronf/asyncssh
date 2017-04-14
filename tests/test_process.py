@@ -24,38 +24,55 @@ from .server import ServerTestCase
 from .util import asynctest, echo
 
 
-def _handle_session(stdin, stdout, stderr):
-    """Handle a new session"""
+def _handle_client(process):
+    """Handle a new client request"""
 
     # pylint: disable=no-self-use
 
-    action = stdin.channel.get_command() or stdin.channel.get_subsystem()
+    action = process.get_command() or process.get_subsystem()
     if not action:
         action = 'echo'
 
     if action == 'break':
         try:
-            yield from stdin.readline()
+            yield from process.stdin.readline()
         except asyncssh.BreakReceived as exc:
-            stdin.channel.exit_with_signal('ABRT', False, str(exc.msec))
+            process.exit_with_signal('ABRT', False, str(exc.msec))
     elif action == 'delay':
         yield from asyncio.sleep(1)
-        yield from echo(stdin, stdout, stderr)
+        yield from echo(process.stdin, process.stdout, process.stderr)
     elif action == 'echo':
-        yield from echo(stdin, stdout, stderr)
+        yield from echo(process.stdin, process.stdout, process.stderr)
     elif action == 'exit_status':
-        stdin.channel.exit(1)
+        process.exit(1)
+    elif action == 'env':
+        process.channel.set_encoding('utf-8')
+        process.stdout.write(process.get_environment().get('TEST', ''))
+    elif action == 'redirect_stdin':
+        yield from process.redirect_stdin(process.stdout)
+        yield from process.stdout.drain()
+    elif action == 'redirect_stdout':
+        yield from process.redirect_stdout(process.stdin)
+        yield from process.stdout.drain()
+    elif action == 'redirect_stderr':
+        yield from process.redirect_stderr(process.stdin)
+        yield from process.stderr.drain()
     elif action == 'term':
+        info = str((process.get_terminal_type(), process.get_terminal_size(),
+                    process.get_terminal_mode(asyncssh.PTY_OP_OSPEED)))
+        process.channel.set_encoding('utf-8')
+        process.stdout.write(info)
+    elif action == 'term_size':
         try:
-            yield from stdin.readline()
+            yield from process.stdin.readline()
         except asyncssh.TerminalSizeChanged as exc:
-            stdin.channel.exit_with_signal('ABRT', False,
-                                           '%sx%s' % (exc.width, exc.height))
+            process.exit_with_signal('ABRT', False,
+                                     '%sx%s' % (exc.width, exc.height))
     else:
-        stdin.channel.exit(255)
+        process.exit(255)
 
-    stdin.channel.close()
-    yield from stdin.channel.wait_closed()
+    process.close()
+    yield from process.wait_closed()
 
 
 class _TestProcess(ServerTestCase):
@@ -66,7 +83,7 @@ class _TestProcess(ServerTestCase):
     def start_server(cls):
         """Start an SSH server for the tests to use"""
 
-        return (yield from cls.create_server(session_factory=_handle_session,
+        return (yield from cls.create_server(process_factory=_handle_client,
                                              session_encoding=None))
 
 
@@ -137,11 +154,37 @@ class _TestProcessBasic(_TestProcess):
         self.assertEqual(stderr_data, data)
 
     @asynctest
+    def test_env(self):
+        """Test sending environment"""
+
+        with (yield from self.connect()) as conn:
+            process = yield from conn.create_process('env',
+                                                     env={'TEST': 'test'})
+            result = yield from process.wait()
+
+        self.assertEqual(result.stdout, 'test')
+
+    @asynctest
+    def test_terminal_info(self):
+        """Test sending terminal information"""
+
+        modes = {asyncssh.PTY_OP_OSPEED: 9600}
+
+        with (yield from self.connect()) as conn:
+            process = yield from conn.create_process('term', term_type='ansi',
+                                                     term_size=(80, 24),
+                                                     term_modes=modes)
+            result = yield from process.wait()
+
+        self.assertEqual(result.stdout, "('ansi', (80, 24, 0, 0), 9600)")
+
+    @asynctest
     def test_change_terminal_size(self):
         """Test changing terminal size"""
 
         with (yield from self.connect()) as conn:
-            process = yield from conn.create_process('term', term_type='ansi')
+            process = yield from conn.create_process('term_size',
+                                                     term_type='ansi')
             process.change_terminal_size(80, 24)
             result = yield from process.wait()
 
@@ -538,6 +581,31 @@ class _TestProcessRedirection(_TestProcess):
         self.assertEqual(result.stderr, 'xxxyyy')
 
     @asynctest
+    def test_change_stdin_process(self):
+        """Test changing stdin of an open process reading from another"""
+
+        data = str(id(self))
+
+        with (yield from self.connect()) as conn:
+            with (yield from conn.create_process()) as proc2:
+                proc1 = yield from conn.create_process(stdout=proc2.stdin)
+
+                proc1.stdin.write(data)
+                yield from asyncio.sleep(0.1)
+
+                yield from proc2.redirect_stdin(asyncssh.PIPE)
+                proc2.stdin.write(data)
+                yield from asyncio.sleep(0.1)
+
+                yield from proc2.redirect_stdin(proc1.stdout)
+                proc1.stdin.write_eof()
+
+                result = yield from proc2.wait()
+
+        self.assertEqual(result.stdout, data+data)
+        self.assertEqual(result.stderr, data+data)
+
+    @asynctest
     def test_change_stdout_process(self):
         """Test changing stdout of an open process sending to another"""
 
@@ -573,6 +641,42 @@ class _TestProcessRedirection(_TestProcess):
                                          stderr=asyncssh.STDOUT)
 
         self.assertEqual(result.stdout, data+data)
+
+    @asynctest
+    def test_server_redirect_stdin(self):
+        """Test redirect on server of stdin"""
+
+        data = str(id(self))
+
+        with (yield from self.connect()) as conn:
+            result = yield from conn.run('redirect_stdin', input=data)
+
+        self.assertEqual(result.stdout, data)
+        self.assertEqual(result.stderr, '')
+
+    @asynctest
+    def test_server_redirect_stdout(self):
+        """Test redirect on server of stdout"""
+
+        data = str(id(self))
+
+        with (yield from self.connect()) as conn:
+            result = yield from conn.run('redirect_stdout', input=data)
+
+        self.assertEqual(result.stdout, data)
+        self.assertEqual(result.stderr, '')
+
+    @asynctest
+    def test_server_redirect_stderr(self):
+        """Test redirect on server of stderr"""
+
+        data = str(id(self))
+
+        with (yield from self.connect()) as conn:
+            result = yield from conn.run('redirect_stderr', input=data)
+
+        self.assertEqual(result.stdout, '')
+        self.assertEqual(result.stderr, data)
 
     @asynctest
     def test_pause_file_reader(self):

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3.5
 #
-# Copyright (c) 2016 by Ron Frederick <ronf@timeheart.net>.
+# Copyright (c) 2016-2017 by Ron Frederick <ronf@timeheart.net>.
 # All rights reserved.
 #
 # This program and the accompanying materials are made available under
@@ -24,16 +24,15 @@ import asyncio, asyncssh, sys
 class ChatClient:
     _clients = []
 
-    def __init__(self, stdin, stdout):
-        self._stdin = stdin
-        self._stdout = stdout
+    def __init__(self, process):
+        self._process = process
 
     @classmethod
-    async def handle_session(cls, stdin, stdout, stderr):
-        await cls(stdin, stdout).run()
+    async def handle_client(cls, process):
+        await cls(process).run()
 
     def write(self, msg):
-        self._stdout.write(msg)
+        self._process.stdout.write(msg)
 
     def broadcast(self, msg):
         for client in self._clients:
@@ -44,7 +43,7 @@ class ChatClient:
         self.write('Welcome to chat!\n\n')
 
         self.write('Enter your name: ')
-        name = (await self._stdin.readline()).rstrip('\n')
+        name = (await self._process.stdin.readline()).rstrip('\n')
 
         self.write('\n%d other users are connected.\n\n' % len(self._clients))
 
@@ -52,7 +51,7 @@ class ChatClient:
         self.broadcast('*** %s has entered chat ***\n' % name)
 
         try:
-            async for line in self._stdin:
+            async for line in self._process.stdin:
                 self.broadcast('%s: %s' % (name, line))
         except asyncssh.BreakReceived:
             pass
@@ -63,7 +62,7 @@ class ChatClient:
 async def start_server():
     await asyncssh.listen('', 8022, server_host_keys=['ssh_host_key'],
                           authorized_client_keys='ssh_user_ca',
-                          session_factory=ChatClient.handle_session)
+                          process_factory=ChatClient.handle_client)
 
 loop = asyncio.get_event_loop()
 

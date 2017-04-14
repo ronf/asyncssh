@@ -283,7 +283,7 @@ class SSHStreamSession:
         self._read_waiters = {None: None}
         self._read_paused = False
         self._write_paused = False
-        self._drain_waiters = []
+        self._drain_waiters = {None: set()}
 
     @asyncio.coroutine
     def _block_read(self, datatype):
@@ -304,23 +304,23 @@ class SSHStreamSession:
         """Signal that more data has arrived on the stream"""
 
         waiter = self._read_waiters[datatype]
-        if waiter:
-            if not waiter.done():
-                waiter.set_result(None)
+        if waiter and not waiter.done():
+            waiter.set_result(None)
 
     def _should_block_drain(self, datatype):
         """Return whether output is still being written to the channel"""
 
         # pylint: disable=unused-argument
 
-        return self._write_paused
+        return self._write_paused and not self._connection_lost
 
-    def _unblock_drain(self):
+    def _unblock_drain(self, datatype):
         """Signal that more data can be written on the stream"""
 
-        for waiter in self._drain_waiters:
-            if not waiter.done(): # pragma: no branch
-                waiter.set_result(None)
+        if not self._should_block_drain(datatype):
+            for waiter in self._drain_waiters[datatype]:
+                if not waiter.done(): # pragma: no branch
+                    waiter.set_result(None)
 
     def _should_pause_reading(self):
         """Return whether to pause reading from the channel"""
@@ -360,6 +360,9 @@ class SSHStreamSession:
             self._recv_buf[datatype] = []
             self._read_waiters[datatype] = None
 
+        for datatype in chan.get_write_datatypes():
+            self._drain_waiters[datatype] = set()
+
     def connection_lost(self, exc):
         """Handle an incoming channel close"""
 
@@ -373,8 +376,8 @@ class SSHStreamSession:
 
             self.eof_received()
 
-        if self._write_paused:
-            self._unblock_drain()
+        for datatype in self._drain_waiters:
+            self._unblock_drain(datatype)
 
     def data_received(self, data, datatype):
         """Handle incoming data on the channel"""
@@ -408,7 +411,9 @@ class SSHStreamSession:
         """Handle a request to resume writing on the channel"""
 
         self._write_paused = False
-        self._unblock_drain()
+
+        for datatype in self._drain_waiters:
+            self._unblock_drain(datatype)
 
     @asyncio.coroutine
     def read(self, n, datatype, exact):
@@ -506,13 +511,13 @@ class SSHStreamSession:
     def drain(self, datatype):
         """Wait for data written to the channel to drain"""
 
-        while self._should_block_drain(datatype) and not self._connection_lost:
+        while self._should_block_drain(datatype):
             try:
                 waiter = asyncio.Future(loop=self._loop)
-                self._drain_waiters.append(waiter)
+                self._drain_waiters[datatype].add(waiter)
                 yield from waiter
             finally:
-                self._drain_waiters.remove(waiter)
+                self._drain_waiters[datatype].remove(waiter)
 
         if self._connection_lost:
             exc = self._exception

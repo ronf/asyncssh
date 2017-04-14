@@ -397,6 +397,17 @@ custom :class:`SSHServer` and :class:`SSHServerSession` subclasses.
       :literal:
       :start-line: 21
 
+I/O redirection
+---------------
+
+The following shows an example of I/O redirection on the server side,
+executing a process on the server with input and output redirected
+back to the SSH client:
+
+   .. include:: ../examples/redirect_server.py
+      :literal:
+      :start-line: 14
+
 Serving multiple clients
 ------------------------
 

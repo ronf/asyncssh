@@ -1,6 +1,6 @@
 #!/usr/bin/env python3.5
 #
-# Copyright (c) 2013-2016 by Ron Frederick <ronf@timeheart.net>.
+# Copyright (c) 2013-2017 by Ron Frederick <ronf@timeheart.net>.
 # All rights reserved.
 #
 # This program and the accompanying materials are made available under
@@ -21,29 +21,29 @@
 
 import asyncio, asyncssh, sys
 
-async def handle_session(stdin, stdout, stderr):
-    stdout.write('Enter numbers one per line, or EOF when done:\n')
+async def handle_client(process):
+    process.stdout.write('Enter numbers one per line, or EOF when done:\n')
 
     total = 0
 
     try:
-        async for line in stdin:
+        async for line in process.stdin:
             line = line.rstrip('\n')
             if line:
                 try:
                     total += int(line)
                 except ValueError:
-                    stderr.write('Invalid number: %s\n' % line)
+                    process.stderr.write('Invalid number: %s\n' % line)
     except asyncssh.BreakReceived:
         pass
 
-    stdout.write('Total = %s\n' % total)
-    stdout.channel.exit(0)
+    process.stdout.write('Total = %s\n' % total)
+    process.exit(0)
 
 async def start_server():
     await asyncssh.listen('', 8022, server_host_keys=['ssh_host_key'],
                           authorized_client_keys='ssh_user_ca',
-                          session_factory=handle_session)
+                          process_factory=handle_client)
 
 loop = asyncio.get_event_loop()
 

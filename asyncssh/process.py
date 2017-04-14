@@ -22,7 +22,8 @@ import stat
 
 from .constants import DEFAULT_LANG, DISC_PROTOCOL_ERROR, EXTENDED_DATA_STDERR
 from .misc import DisconnectError, Error, Record
-from .stream import SSHClientStreamSession, SSHReader, SSHWriter
+from .stream import SSHClientStreamSession, SSHServerStreamSession
+from .stream import SSHReader, SSHWriter
 
 
 class _UnicodeReader:
@@ -379,12 +380,14 @@ class SSHCompletedProcess(Record):
                              ('stdout', None), ('stderr', None)))
 
 
-class SSHClientProcess(SSHClientStreamSession):
-    """SSH client process handler"""
+class SSHProcess:
+    """SSH process handler"""
+
+    # Pylint doesn't know that all SSHProcess instances will always be
+    # subclasses of SSHStreamSession.
+    # pylint: disable=no-member
 
     def __init__(self):
-        super().__init__()
-
         self._readers = {}
         self._send_eof = {}
 
@@ -396,7 +399,7 @@ class SSHClientProcess(SSHClientStreamSession):
         self._stderr = None
 
     def __enter__(self):
-        """Allow SSHClientProcess to be used as a context manager"""
+        """Allow SSHProcess to be used as a context manager"""
 
         return self
 
@@ -407,7 +410,7 @@ class SSHClientProcess(SSHClientStreamSession):
 
     @asyncio.coroutine
     def __aenter__(self):
-        """Allow SSHClientProcess to be used as an async context manager"""
+        """Allow SSHProcess to be used as an async context manager"""
 
         return self
 
@@ -417,6 +420,12 @@ class SSHClientProcess(SSHClientStreamSession):
 
         self.close()
         yield from self._chan.wait_closed()
+
+    @property
+    def channel(self):
+        """The channel associated with the process"""
+
+        return self._chan
 
     @asyncio.coroutine
     def _create_reader(self, source, bufsize, send_eof, datatype=None):
@@ -524,26 +533,6 @@ class SSHClientProcess(SSHClientStreamSession):
 
         return self._paused_write_streams or super()._should_pause_reading()
 
-    def _collect_output(self, datatype=None):
-        """Return output from the process"""
-
-        recv_buf = self._recv_buf[datatype]
-
-        if recv_buf and isinstance(recv_buf[-1], Exception):
-            recv_buf = recv_buf[:-1]
-
-        buf = '' if self._encoding else b''
-        return buf.join(recv_buf)
-
-    def connection_made(self, chan):
-        """Handle a newly created client process"""
-
-        super().connection_made(chan)
-
-        self._stdin = SSHWriter(self, chan)
-        self._stdout = SSHReader(self, chan)
-        self._stderr = SSHReader(self, chan, EXTENDED_DATA_STDERR)
-
     def connection_lost(self, exc):
         """Handle a close of the SSH channel"""
 
@@ -639,7 +628,6 @@ class SSHClientProcess(SSHClientStreamSession):
 
         if old_reader:
             old_reader.close()
-            self.clear_reader(datatype)
 
         if reader:
             self._readers[datatype] = reader
@@ -647,12 +635,15 @@ class SSHClientProcess(SSHClientStreamSession):
 
             if self._write_paused:
                 reader.pause_reading()
+        elif old_reader:
+            self.clear_reader(datatype)
 
     def clear_reader(self, datatype):
         """Clear a reader forwarding data to the channel"""
 
         del self._readers[datatype]
         del self._send_eof[datatype]
+        self._unblock_drain(datatype)
 
     def set_writer(self, writer, datatype):
         """Set a writer used to forward data from the channel"""
@@ -673,6 +664,43 @@ class SSHClientProcess(SSHClientStreamSession):
             self.resume_feeding(datatype)
 
         del self._writers[datatype]
+
+    def close(self):
+        """Shut down the process"""
+
+        self._chan.close()
+
+    @asyncio.coroutine
+    def wait_closed(self):
+        """Wait for the process to finish shutting down"""
+
+        yield from self._chan.wait_closed()
+
+
+class SSHClientProcess(SSHProcess, SSHClientStreamSession):
+    """SSH client process handler"""
+
+    def __init__(self):
+        SSHProcess.__init__(self)
+        SSHClientStreamSession.__init__(self)
+
+    def _collect_output(self, datatype=None):
+        """Return output from the process"""
+
+        recv_buf = self._recv_buf[datatype]
+
+        if recv_buf and isinstance(recv_buf[-1], Exception):
+            recv_buf = recv_buf[:-1]
+
+        buf = '' if self._encoding else b''
+        return buf.join(recv_buf)
+
+    def session_started(self):
+        """Start a process for this newly opened client channel"""
+
+        self._stdin = SSHWriter(self, self._chan)
+        self._stdout = SSHReader(self, self._chan)
+        self._stderr = SSHReader(self, self._chan, EXTENDED_DATA_STDERR)
 
     @property
     def exit_status(self):
@@ -705,120 +733,89 @@ class SSHClientProcess(SSHClientStreamSession):
         return self._stderr
 
     @asyncio.coroutine
-    def redirect(self, bufsize, input_, stdin, stdout, stderr):
-        """Set up initial redirection for the process"""
+    def redirect(self, stdin=None, stdout=None, stderr=None,
+                 bufsize=io.DEFAULT_BUFFER_SIZE, send_eof=True):
+        """Perform I/O redirection for the process
 
-        if input_:
-            self._chan.write(input_)
-            self._chan.write_eof()
-        else:
-            yield from self.redirect_stdin(stdin, bufsize)
+           This method redirects data going to or from any or all of
+           standard input, standard output, and standard error for
+           the process.
 
-        yield from self.redirect_stdout(stdout, bufsize)
-
-        yield from self.redirect_stderr(stderr, bufsize)
-
-    @asyncio.coroutine
-    def redirect_stdin(self, source, bufsize=io.DEFAULT_BUFFER_SIZE,
-                       send_eof=True):
-        """Redirect standard input of the process
-
-           This method is a coroutine which redirects data from the
-           requested source to standard input of the process. The source
-           can be any of the following:
+           The ``stdin`` argument can be any of the following:
 
                * An :class:`SSHReader` object
                * A file object open for read
                * An int file descriptor open for read
                * A connected socket object
                * A string containing the name of a file or device to open
+               * ``DEVNULL`` to provide no input to standard input
+               * ``PIPE`` to interactively write standard input
 
-           File sources passed in can be associated with plain files, pipes,
+           The ``stdout`` and ``stderr`` arguments can be any of the
+           following:
+
+               * An :class:`SSHWriter` object
+               * A file object open for write
+               * An int file descriptor open for write
+               * A connected socket object
+               * A string containing the name of a file or device to open
+               * ``DEVNULL`` to discard standard error output
+               * ``PIPE`` to interactively read standard error output
+
+           The ``stderr`` argument also accepts the value ``STDOUT`` to
+           request that standard error output be delivered to stdout.
+
+           File objects passed in can be associated with plain files, pipes,
            sockets, or ttys.
 
-           :param source:
-               Source to feed input from
+           The default value of ``None`` means to not change redirection
+           for that stream.
+
+           :param stdin:
+               Source of data to feed to standard input
+           :param stdout:
+               Target to feed data from standard output to
+           :param stderr:
+               Target to feed data from standard error to
            :param int bufsize:
-               Read buffer size to use when forwarding data from a file
+               Buffer size to use when forwarding data from a file
            :param bool send_eof:
                Whether or not to send EOF to the channel when redirection
                is complete, defaulting to ``True``. If set to ``False``,
                multiple sources can be sequentially fed to the channel.
-               The :meth:`drain <SSHWriter.drain>` method on :attr:`stdin`
-               can be used to determine when redirection is complete.
 
         """
 
-        yield from self._create_reader(source, bufsize, send_eof)
+        if stdin:
+            yield from self._create_reader(stdin, bufsize, send_eof)
+
+        if stdout:
+            yield from self._create_writer(stdout, bufsize, send_eof)
+
+        if stderr:
+            yield from self._create_writer(stderr, bufsize, send_eof,
+                                           EXTENDED_DATA_STDERR)
+
+    @asyncio.coroutine
+    def redirect_stdin(self, source, bufsize=io.DEFAULT_BUFFER_SIZE,
+                       send_eof=True):
+        """Redirect standard input of the process"""
+
+        yield from self.redirect(source, None, None, bufsize, send_eof)
 
     @asyncio.coroutine
     def redirect_stdout(self, target, bufsize=io.DEFAULT_BUFFER_SIZE,
                         send_eof=True):
-        """Redirect standard output of the process
+        """Redirect standard output of the process"""
 
-           This method is a coroutine which redirects data from standard
-           output of the process to the requested target. The target can
-           be any of the following:
-
-               * An :class:`SSHWriter` object
-               * A file object open for write
-               * An int file descriptor open for write
-               * A connected socket object
-               * A string containing the name of a file or device to open
-
-           File sources passed in can be associated with plain files, pipes,
-           sockets, or ttys.
-
-           :param target:
-               Target to feed output to
-           :param int bufsize:
-               Write buffer size to use when forwarding data to a file
-           :param bool send_eof:
-               Whether or not to forward EOF to the target when redirecting
-               to another SSH process, defaulting to ``True``. If set to
-               ``False``, multiple sources can be sequentially fed to
-               the target channel. The :meth:`drain <SSHWriter.drain>`
-               method on the target can be used to determine when
-               redirection is complete.
-
-        """
-
-        yield from self._create_writer(target, bufsize, send_eof)
+        yield from self.redirect(None, target, None, bufsize, send_eof)
 
     @asyncio.coroutine
     def redirect_stderr(self, target, bufsize=io.DEFAULT_BUFFER_SIZE,
                         send_eof=True):
-        """Redirect standard error of the process
+        """Redirect standard error of the process"""
 
-           This method is a coroutine which redirects data from standard
-           error of the process to the requested target. The target can
-           be any of the following:
-
-               * An :class:`SSHWriter` object
-               * A file object open for write
-               * An int file descriptor open for write
-               * A connected socket object
-               * A string containing the name of a file or device to open
-
-           File sources passed in can be associated with plain files, pipes,
-           sockets, or ttys.
-
-           :param target:
-               Target to feed output to
-           :param int bufsize:
-               Write buffer size to use when forwarding data to a file
-           :param bool send_eof:
-               Whether or not to forward EOF to the target when redirecting
-               to another SSH process, defaulting to ``True``. If set to
-               ``False``, multiple sources can be sequentially fed to
-               the target channel. The :meth:`drain <SSHWriter.drain>`
-               method on the target can be used to determine when
-               redirection is complete.
-
-        """
-
-        yield from self._create_writer(target, bufsize, send_eof,
-                                       EXTENDED_DATA_STDERR)
+        yield from self.redirect(None, None, target, bufsize, send_eof)
 
     # pylint: disable=redefined-builtin
     @asyncio.coroutine
@@ -914,11 +911,6 @@ class SSHClientProcess(SSHClientStreamSession):
 
         self._chan.kill()
 
-    def close(self):
-        """Shut down the process"""
-
-        self._chan.close()
-
     @asyncio.coroutine
     def wait(self, check=False):
         """Wait for process to exit
@@ -949,3 +941,250 @@ class SSHClientProcess(SSHClientStreamSession):
         else:
             return SSHCompletedProcess(self.exit_status, self.exit_signal,
                                        stdout_data, stderr_data)
+
+
+class SSHServerProcess(SSHProcess, SSHServerStreamSession):
+    """SSH server process handler"""
+
+    def __init__(self, process_factory, sftp_factory):
+        SSHProcess.__init__(self)
+        SSHServerStreamSession.__init__(self, self._start_process, sftp_factory)
+
+        self._process_factory = process_factory
+
+    def _start_process(self, stdin, stdout, stderr):
+        """Start a new server process"""
+
+        self._stdin = stdin
+        self._stdout = stdout
+        self._stderr = stderr
+
+        return self._process_factory(self)
+
+    @property
+    def stdin(self):
+        """The :class:`SSHReader` to use to read from stdin of the process"""
+
+        return self._stdin
+
+    @property
+    def stdout(self):
+        """The :class:`SSHWriter` to use to write to stdout of the process"""
+
+        return self._stdout
+
+    @property
+    def stderr(self):
+        """The :class:`SSHWriter` to use to write to stderr of the process"""
+
+        return self._stderr
+
+    @asyncio.coroutine
+    def redirect(self, stdin=None, stdout=None, stderr=None,
+                 bufsize=io.DEFAULT_BUFFER_SIZE, send_eof=True):
+        """Perform I/O redirection for the process
+
+           This method redirects data going to or from any or all of
+           standard input, standard output, and standard error for
+           the process.
+
+           The ``stdin`` argument can be any of the following:
+
+               * An :class:`SSHWriter` object
+               * A file object open for write
+               * An int file descriptor open for write
+               * A connected socket object
+               * A string containing the name of a file or device to open
+               * ``DEVNULL`` to discard standard error output
+               * ``PIPE`` to interactively read standard error output
+
+           The ``stdout`` and ``stderr`` arguments can be any of the
+           following:
+
+               * An :class:`SSHReader` object
+               * A file object open for read
+               * An int file descriptor open for read
+               * A connected socket object
+               * A string containing the name of a file or device to open
+               * ``DEVNULL`` to provide no input to standard input
+               * ``PIPE`` to interactively write standard input
+
+           File objects passed in can be associated with plain files, pipes,
+           sockets, or ttys.
+
+           The default value of ``None`` means to not change redirection
+           for that stream.
+
+           :param stdin:
+               Target to feed data from standard input to
+           :param stdout:
+               Source of data to feed to standard output
+           :param stderr:
+               Source of data to feed to standard error
+           :param int bufsize:
+               Buffer size to use when forwarding data from a file
+           :param bool send_eof:
+               Whether or not to send EOF to the channel when redirection
+               is complete, defaulting to ``True``. If set to ``False``,
+               multiple sources can be sequentially fed to the channel.
+
+        """
+
+        if stdin:
+            yield from self._create_writer(stdin, bufsize, send_eof)
+
+        if stdout:
+            yield from self._create_reader(stdout, bufsize, send_eof)
+
+        if stderr:
+            yield from self._create_reader(stderr, bufsize, send_eof,
+                                           EXTENDED_DATA_STDERR)
+
+    @asyncio.coroutine
+    def redirect_stdin(self, target, bufsize=io.DEFAULT_BUFFER_SIZE,
+                       send_eof=True):
+        """Redirect standard input of the process"""
+
+        yield from self.redirect(target, None, None, bufsize, send_eof)
+
+    @asyncio.coroutine
+    def redirect_stdout(self, source, bufsize=io.DEFAULT_BUFFER_SIZE,
+                        send_eof=True):
+        """Redirect standard output of the process"""
+
+        yield from self.redirect(None, source, None, bufsize, send_eof)
+
+    @asyncio.coroutine
+    def redirect_stderr(self, source, bufsize=io.DEFAULT_BUFFER_SIZE,
+                        send_eof=True):
+        """Redirect standard error of the process"""
+
+        yield from self.redirect(None, None, source, bufsize, send_eof)
+
+    def get_environment(self):
+        """Return the environment set by the client for the process
+
+           This method returns the environment set by the client
+           when the session was opened.
+
+           :returns: A dictionary containing the environment variables
+                     set by the client
+
+        """
+
+        return self._chan.get_environment()
+
+    def get_command(self):
+        """Return the command the client requested to execute, if any
+
+           This method returns the command the client requested to
+           execute when the process was started, if any. If the client
+           did not request that a command be executed, this method
+           will return ``None``.
+
+           :returns: A str containing the command or ``None`` if
+                     no command was specified
+
+        """
+
+        return self._chan.get_command()
+
+    def get_subsystem(self):
+        """Return the subsystem the client requested to open, if any
+
+           This method returns the subsystem the client requested to
+           open when the process was started, if any. If the client
+           did not request that a subsystem be opened, this method will
+           return ``None``.
+
+           :returns: A str containing the subsystem name or ``None``
+                     if no subsystem was specified
+
+        """
+
+        return self._chan.get_subsystem()
+
+    def get_terminal_type(self):
+        """Return the terminal type set by the client for the process
+
+           This method returns the terminal type set by the client
+           when the process was started. If the client didn't request
+           a pseudo-terminal, this method will return ``None``.
+
+           :returns: A str containing the terminal type or ``None`` if
+                     no pseudo-terminal was requested
+
+        """
+
+        return self._chan.get_terminal_type()
+
+    def get_terminal_size(self):
+        """Return the terminal size set by the client for the process
+
+           This method returns the latest terminal size information set
+           by the client. If the client didn't set any terminal size
+           information, all values returned will be zero.
+
+           :returns: A tuple of four integers containing the width and
+                     height of the terminal in characters and the width
+                     and height of the terminal in pixels
+
+        """
+
+        return self._chan.get_terminal_size()
+
+    def get_terminal_mode(self, mode):
+        """Return the requested TTY mode for this session
+
+           This method looks up the value of a POSIX terminal mode
+           set by the client when the process was started. If the client
+           didn't request a pseudo-terminal or didn't set the requested
+           TTY mode opcode, this method will return ``None``.
+
+           :param int mode:
+               POSIX terminal mode taken from :ref:`POSIX terminal modes
+               <PTYModes>` to look up
+
+           :returns: An int containing the value of the requested
+                     POSIX terminal mode or ``None`` if the requested
+                     mode was not set
+
+        """
+
+        return self._chan.get_terminal_mode(mode)
+
+    def exit(self, status):
+        """Send exit status and close the channel
+
+           This method can be called to report an exit status for the
+           process back to the client and close the channel.
+
+           :param int status:
+               The exit status to report to the client
+
+        """
+
+        self._chan.exit(status)
+
+    def exit_with_signal(self, signal, core_dumped=False,
+                         msg='', lang=DEFAULT_LANG):
+        """Send exit signal and close the channel
+
+           This method can be called to report that the process
+           terminated abnormslly with a signal. A more detailed
+           error message may also provided, along with an indication
+           of whether or not the process dumped core. After
+           reporting the signal, the channel is closed.
+
+           :param str signal:
+               The signal which caused the process to exit
+           :param bool core_dumped: (optional)
+               Whether or not the process dumped core
+           :param str msg: (optional)
+               Details about what error occurred
+           :param str lang: (optional)
+               The language the error message is in
+
+        """
+
+        return self._chan.exit_with_signal(signal, core_dumped, msg, lang)

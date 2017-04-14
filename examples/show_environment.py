@@ -1,6 +1,6 @@
 #!/usr/bin/env python3.5
 #
-# Copyright (c) 2013-2016 by Ron Frederick <ronf@timeheart.net>.
+# Copyright (c) 2013-2017 by Ron Frederick <ronf@timeheart.net>.
 # All rights reserved.
 #
 # This program and the accompanying materials are made available under
@@ -21,22 +21,22 @@
 
 import asyncio, asyncssh, sys
 
-async def handle_session(stdin, stdout, stderr):
-    env = stdout.channel.get_environment()
+async def handle_client(process):
+    env = process.get_environment()
     if env:
         keywidth = max(map(len, env.keys()))+1
-        stdout.write('Environment:\n')
+        process.stdout.write('Environment:\n')
         for key, value in env.items():
-            stdout.write('  %-*s %s\n' % (keywidth, key+':', value))
-        stdout.channel.exit(0)
+            process.stdout.write('  %-*s %s\n' % (keywidth, key+':', value))
+        process.exit(0)
     else:
-        stderr.write('No environment sent.\n')
-        stdout.channel.exit(1)
+        process.stderr.write('No environment sent.\n')
+        process.exit(1)
 
 async def start_server():
     await asyncssh.listen('', 8022, server_host_keys=['ssh_host_key'],
                           authorized_client_keys='ssh_user_ca',
-                          session_factory=handle_session)
+                          process_factory=handle_client)
 
 loop = asyncio.get_event_loop()
 

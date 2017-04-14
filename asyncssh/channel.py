@@ -111,6 +111,11 @@ class SSHChannel(SSHPacketHandler):
 
         return self._read_datatypes
 
+    def get_write_datatypes(self):
+        """Return the legal write data types for this channel"""
+
+        return self._write_datatypes
+
     def _cleanup(self, exc=None):
         """Clean up this channel"""
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3.5
 #
-# Copyright (c) 2013-2017 by Ron Frederick <ronf@timeheart.net>.
+# Copyright (c) 2017 by Ron Frederick <ronf@timeheart.net>.
 # All rights reserved.
 #
 # This program and the accompanying materials are made available under
@@ -19,28 +19,15 @@
 # The file ``ssh_user_ca`` must exist with a cert-authority entry of
 # the certificate authority which can sign valid client certificates.
 
-import asyncio, asyncssh, sys
+import asyncio, asyncssh, subprocess, sys
 
 async def handle_client(process):
-    term_type = process.get_terminal_type()
-    width, height, pixwidth, pixheight = process.get_terminal_size()
+    bc_proc = subprocess.Popen('bc', shell=True, stdin=subprocess.PIPE,
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
-    process.stdout.write('Terminal type: %s, size: %sx%s' %
-                         (term_type, width, height))
-    if pixwidth and pixheight:
-        process.stdout.write(' (%sx%s pixels)' % (pixwidth, pixheight))
-    process.stdout.write('\nTry resizing your window!\n')
-
-    while not process.stdin.at_eof():
-        try:
-            await process.stdin.read()
-        except asyncssh.TerminalSizeChanged as exc:
-            process.stdout.write('New window size: %sx%s' %
-                                 (exc.width, exc.height))
-            if exc.pixwidth and exc.pixheight:
-                process.stdout.write(' (%sx%s pixels)' %
-                                     (exc.pixwidth, exc.pixheight))
-            process.stdout.write('\n')
+    await process.redirect(bc_proc.stdin, bc_proc.stdout, bc_proc.stderr)
+    await process.stdout.drain()
+    process.exit(0)
 
 async def start_server():
     await asyncssh.listen('', 8022, server_host_keys=['ssh_host_key'],

@@ -49,7 +49,8 @@ from .misc import BreakReceived, SignalReceived, TerminalSizeChanged
 
 from .pbe import KeyEncryptionError
 
-from .process import SSHClientProcess, SSHCompletedProcess, ProcessError
+from .process import SSHClientProcess, SSHServerProcess
+from .process import SSHCompletedProcess, ProcessError
 from .process import DEVNULL, PIPE, STDOUT
 
 from .public_key import SSHKey, SSHKeyPair, SSHCertificate

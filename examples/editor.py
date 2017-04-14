@@ -1,6 +1,6 @@
 #!/usr/bin/env python3.5
 #
-# Copyright (c) 2013-2016 by Ron Frederick <ronf@timeheart.net>.
+# Copyright (c) 2013-2017 by Ron Frederick <ronf@timeheart.net>.
 # All rights reserved.
 #
 # This program and the accompanying materials are made available under
@@ -21,25 +21,26 @@
 
 import asyncio, asyncssh, sys
 
-async def handle_session(stdin, stdout, stderr):
-    stdout.write('Welcome to my SSH server, %s!\n\n' %
-                 stdout.channel.get_extra_info('username'))
+async def handle_client(process):
+    process.stdout.write('Welcome to my SSH server, %s!\n\n' %
+                         process.channel.get_extra_info('username'))
 
-    stdin.channel.set_echo(False)
-    stdout.write('Tell me a secret: ')
-    secret = await stdin.readline()
+    process.channel.set_echo(False)
+    process.stdout.write('Tell me a secret: ')
+    secret = await process.stdin.readline()
 
-    stdin.channel.set_line_mode(False)
-    stdout.write('\nYour secret is safe with me! Press any key to exit...')
-    await stdin.read(1)
+    process.stdin.channel.set_line_mode(False)
+    process.stdout.write('\nYour secret is safe with me! '
+                         'Press any key to exit...')
+    await process.stdin.read(1)
 
-    stdout.write('\n')
-    stdout.channel.exit(0)
+    process.stdout.write('\n')
+    process.exit(0)
 
 async def start_server():
     await asyncssh.listen('', 8022, server_host_keys=['ssh_host_key'],
                           authorized_client_keys='ssh_user_ca',
-                          session_factory=handle_session)
+                          process_factory=handle_client)
 
 loop = asyncio.get_event_loop()
 

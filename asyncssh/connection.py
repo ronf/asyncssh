@@ -84,7 +84,7 @@ from .misc import load_default_keypairs, map_handler_name
 from .packet import Boolean, Byte, NameList, String, UInt32, UInt64
 from .packet import PacketDecodeError, SSHPacket, SSHPacketHandler
 
-from .process import PIPE, SSHClientProcess
+from .process import PIPE, SSHClientProcess, SSHServerProcess
 
 from .public_key import CERT_TYPE_HOST, CERT_TYPE_USER, KeyImportError
 from .public_key import get_public_key_algs, get_certificate_algs
@@ -2517,10 +2517,11 @@ class SSHClientConnection(SSHConnection):
            stdout, and stderr to and from files or pipes attached to
            other local and remote processes.
 
-           By default, stdin, stdout, and stderr can be read and written
-           interactively via stream objects which are members of the
-           :class:`SSHClientProcess` object this method returns. However,
-           if other file-like objects are provided as arguments here,
+           By default, the stdin, stdout, and stderr arguments default
+           to the special value ``PIPE`` which means that they can be
+           read and written interactively via stream objects which are
+           members of the :class:`SSHClientProcess` object this method
+           returns. If other file-like objects are provided as arguments,
            input or output will automatically be redirected to them. The
            special value ``DEVNULL`` can be used to provide no input or
            discard all output, and the special value ``STDOUT`` can be
@@ -2559,10 +2560,15 @@ class SSHClientConnection(SSHConnection):
 
         """
 
-        _, process = yield from self.create_session(SSHClientProcess, *args,
-                                                    **kwargs)
+        chan, process = yield from self.create_session(SSHClientProcess,
+                                                       *args, **kwargs)
 
-        yield from process.redirect(bufsize, input, stdin, stdout, stderr)
+        if input:
+            chan.write(input)
+            chan.write_eof()
+            stdin = None
+
+        yield from process.redirect(stdin, stdout, stderr, bufsize)
 
         return process
     # pylint: enable=redefined-builtin
@@ -3134,8 +3140,8 @@ class SSHServerConnection(SSHConnection):
                  rekey_bytes, rekey_seconds, server_host_keys,
                  authorized_client_keys, gss_host, allow_pty, line_editor,
                  line_history, x11_forwarding, x11_auth_path, agent_forwarding,
-                 session_factory, session_encoding, sftp_factory, window,
-                 max_pktsize, login_timeout):
+                 process_factory, session_factory, session_encoding,
+                 sftp_factory, window, max_pktsize, login_timeout):
         super().__init__(server_factory, loop, server_version, kex_algs,
                          encryption_algs, mac_algs, compression_algs,
                          signature_algs, rekey_bytes, rekey_seconds,
@@ -3150,6 +3156,7 @@ class SSHServerConnection(SSHConnection):
         self._x11_forwarding = x11_forwarding
         self._x11_auth_path = x11_auth_path
         self._agent_forwarding = agent_forwarding
+        self._process_factory = process_factory
         self._session_factory = session_factory
         self._session_encoding = session_encoding
         self._sftp_factory = sftp_factory
@@ -3459,7 +3466,12 @@ class SSHServerConnection(SSHConnection):
 
         packet.check_end()
 
-        if self._session_factory or self._sftp_factory:
+        if self._process_factory:
+            chan = self.create_server_channel(self._session_encoding,
+                                              self._window, self._max_pktsize)
+            session = SSHServerProcess(self._process_factory,
+                                       self._sftp_factory)
+        elif self._session_factory or self._sftp_factory:
             chan = self.create_server_channel(self._session_encoding,
                                               self._window, self._max_pktsize)
             session = SSHServerStreamSession(self._session_factory,
@@ -4395,11 +4407,12 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
                   authorized_client_keys=None, gss_host=(), allow_pty=True,
                   line_editor=True, line_history=_DEFAULT_LINE_HISTORY,
                   x11_forwarding=False, x11_auth_path=None,
-                  agent_forwarding=True, session_factory=None,
-                  session_encoding='utf-8', sftp_factory=None,
-                  window=_DEFAULT_WINDOW, max_pktsize=_DEFAULT_MAX_PKTSIZE,
-                  server_version=(), kex_algs=(), encryption_algs=(),
-                  mac_algs=(), compression_algs=(), signature_algs=(),
+                  agent_forwarding=True, process_factory=None,
+                  session_factory=None, session_encoding='utf-8',
+                  sftp_factory=None, window=_DEFAULT_WINDOW,
+                  max_pktsize=_DEFAULT_MAX_PKTSIZE, server_version=(),
+                  kex_algs=(), encryption_algs=(), mac_algs=(),
+                  compression_algs=(), signature_algs=(),
                   rekey_bytes=_DEFAULT_REKEY_BYTES,
                   rekey_seconds=_DEFAULT_REKEY_SECONDS,
                   login_timeout=_DEFAULT_LOGIN_TIMEOUT):
@@ -4474,6 +4487,12 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
        :param bool agent_forwarding: (optional)
            Whether or not to allow forwarding of ssh-agent requests back
            to the client when the client supports it, defaulting to ``True``
+       :param callable process_factory: (optional)
+           A callable or coroutine handler function which takes an AsyncSSH
+           :class:`SSHServerProcess` argument that will be called each time a
+           new shell, exec, or subsystem other than SFTP is requested by the
+           client. If set, this takes precedence over the ``session_factory``
+           argument.
        :param callable session_factory: (optional)
            A callable or coroutine handler function which takes AsyncSSH
            stream objects for stdin, stdout, and stderr that will be called
@@ -4550,9 +4569,10 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
                                    server_host_keys, authorized_client_keys,
                                    gss_host, allow_pty, line_editor,
                                    line_history, x11_forwarding, x11_auth_path,
-                                   agent_forwarding, session_factory,
-                                   session_encoding, sftp_factory, window,
-                                   max_pktsize, login_timeout)
+                                   agent_forwarding, process_factory,
+                                   session_factory, session_encoding,
+                                   sftp_factory, window, max_pktsize,
+                                   login_timeout)
 
     if not server_factory:
         server_factory = SSHServer
@@ -4652,8 +4672,8 @@ def listen(host=None, port=_DEFAULT_PORT, **kwargs):
 
            3. Only handlers using the streams API are supported and the same
               handlers must be used for all clients. These handlers must
-              be provided in the ``session_factory`` and/or ``sftp_factory``
-              arguments to this call.
+              be provided in the ``process_factory``, ``session_factory``,
+              and ``sftp_factory`` arguments to this call.
 
            4. Any debug messages sent by the client will be ignored.
 
