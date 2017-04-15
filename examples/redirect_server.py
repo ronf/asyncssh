@@ -25,7 +25,8 @@ async def handle_client(process):
     bc_proc = subprocess.Popen('bc', shell=True, stdin=subprocess.PIPE,
                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
-    await process.redirect(bc_proc.stdin, bc_proc.stdout, bc_proc.stderr)
+    await process.redirect(stdin=bc_proc.stdin, stdout=bc_proc.stdout,
+                           stderr=bc_proc.stderr)
     await process.stdout.drain()
     process.exit(0)
 
