@@ -1968,7 +1968,8 @@ class SSHClientConnection(SSHConnection):
                                       self._peer_addr, self._port)
             else:
                 server_host_keys, server_ca_keys, revoked_server_keys = \
-                    self._known_hosts
+                    self._known_hosts.match(self._host, self._peer_addr,
+                                            self._port)
 
                 server_host_keys = load_public_keys(server_host_keys)
                 server_ca_keys = load_public_keys(server_ca_keys)
