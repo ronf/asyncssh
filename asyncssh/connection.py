@@ -1966,10 +1966,20 @@ class SSHClientConnection(SSHConnection):
                 server_host_keys, server_ca_keys, revoked_server_keys = \
                     match_known_hosts(self._known_hosts, self._host,
                                       self._peer_addr, self._port)
-            else:
+
+            # Duck typing SSHKnownHosts.
+            elif hasattr(self._known_hosts, 'match'):
                 server_host_keys, server_ca_keys, revoked_server_keys = \
                     self._known_hosts.match(self._host, self._peer_addr,
                                             self._port)
+
+                server_host_keys = load_public_keys(server_host_keys)
+                server_ca_keys = load_public_keys(server_ca_keys)
+                revoked_server_keys = load_public_keys(revoked_server_keys)
+
+            else:
+                server_host_keys, server_ca_keys, revoked_server_keys = \
+                    self._known_hosts
 
                 server_host_keys = load_public_keys(server_host_keys)
                 server_ca_keys = load_public_keys(server_ca_keys)
