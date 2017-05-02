@@ -342,6 +342,29 @@ class _TestConnection(ServerTestCase):
         yield from conn.wait_closed()
 
     @asynctest
+    def test_read_known_hosts(self):
+        """Test connecting with known hosts object from 'read_known_hosts'"""
+
+        obj = asyncssh.read_known_hosts('.ssh/known_hosts')
+
+        with (yield from self.connect(known_hosts=obj)) as conn:
+            pass
+
+        yield from conn.wait_closed()
+
+    @asynctest
+    def test_import_known_hosts(self):
+        """Test connecting with known hosts object from 'import_known_hosts'"""
+
+        with open('.ssh/known_hosts', 'r') as known_hosts:
+            obj = asyncssh.import_known_hosts(known_hosts.read())
+
+            with (yield from self.connect(known_hosts=obj)) as conn:
+                pass
+
+            yield from conn.wait_closed()
+
+    @asynctest
     def test_known_hosts_sshkeys(self):
         """Test connecting with known hosts passed in as SSHKeys"""
 
