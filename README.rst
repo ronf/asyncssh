@@ -26,7 +26,7 @@ __ http://asyncssh.readthedocs.io/en/stable/#client-examples
 Features
 --------
 
-* Full support for SSHv2 and SFTP client and server functions
+* Full support for SSHv2, SFTP, and SCP client and server functions
 
   * Shell, command, and subsystem channels
   * Environment variables, terminal type, and window size
@@ -36,6 +36,7 @@ Features
   * Local and remote UNIX domain socket forwarding
   * X11 forwarding support on both the client and the server
   * SFTP protocol version 3 with OpenSSH extensions
+  * SCP protocol support, including third-party remote to remote copies
 
 * Multiple simultaneous sessions on a single SSH connection
 * Multiple SSH connections in a single event loop

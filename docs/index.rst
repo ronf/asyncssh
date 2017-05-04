@@ -341,6 +341,73 @@ The following downloads all files with extension "txt":
 See the :class:`SFTPClient` documentation for the full list of available
 actions.
 
+SCP client
+----------
+
+AsyncSSH also supports SCP. The following code shows an example of
+downloading a file via SCP:
+
+   .. include:: ../examples/scp_client.py
+      :literal:
+      :start-line: 14
+
+To upload a file to a remote system, host information can be specified for
+the destination instead of the source:
+
+   .. code::
+
+      await asyncssh.scp('example.txt', 'localhost:')
+
+If the destination path includes a file name, that name will be used instead
+of the original file name when performing the copy. For instance:
+
+   .. code::
+
+      await asyncssh.scp('example.txt', 'localhost:example2.txt')
+
+If the destination path refers to a directory, the origin file name
+will be preserved, but it will be copied into the requested directory.
+
+Wild card patterns are also supported on source paths. For instance, the
+following copies all files with extension "txt":
+
+   .. code::
+
+      await asyncssh.scp('*.txt', 'localhost:')
+
+Similar to SFTP, SCP also supports options for recursively copying a
+directory and preserving modification times and permissions on files
+using the preserve and recurse arguments:
+
+   .. code::
+
+      await asyncssh.scp('example_dir', 'localhost:', preserve=True, recurse=True)
+
+In addition to the ``'host:path'`` syntax for source and destination paths,
+a tuple of the form ``(host, path)`` is also supported. A non-default port
+can be specified by replacing ``host`` with ``(host, port)``, resulting in
+something like:
+
+   .. code::
+
+      await asyncssh.scp((('localhost', 8022), 'example.txt'), '.')
+
+An already open :class:`SSHClientConnection` can also be passed as the host:
+
+   .. code::
+
+      async with asyncssh.connect('localhost') as conn:
+          await asyncssh.scp((conn, 'example.txt'), '.')
+
+Multiple file patterns can be copied to the same destination by making the
+source path argument a list.  Source paths in this list can be a mixture
+of local and remote file references and the destination path can be
+local or remote, but one or both of source and destination must be remote.
+Local to local copies are not supported.
+
+See the :func:`scp` function documentation for the complete list of
+available options.
+
 .. _ServerExamples:
 
 Server Examples
@@ -536,3 +603,16 @@ More complex path remapping can be performed by implementing the
 :meth:`reverse_map_path <SFTPServer.reverse_map_path>` methods. Individual
 SFTP actions can also be overridden as needed. See the :class:`SFTPServer`
 documentation for the full list of methods to override.
+
+SCP server
+----------
+
+The above server examples can be modified to also support SCP by simply
+adding ``allow_scp=True`` alongside the specification of the ``sftp_factory``
+in the :func:`listen` call. This will use the same :class:`SFTPServer`
+instance when performing file I/O for both SFTP and SCP requests. For
+instance:
+
+   .. include:: ../examples/simple_scp_server.py
+      :literal:
+      :start-line: 21

@@ -95,7 +95,7 @@ from .saslprep import saslprep, SASLPrepError
 
 from .server import SSHServer
 
-from .sftp import SFTPClient, SFTPServer, SFTPClientHandler
+from .sftp import SFTPServer, start_sftp_client
 
 from .stream import SSHClientStreamSession, SSHServerStreamSession
 from .stream import SSHTCPStreamSession, SSHUNIXStreamSession
@@ -3089,16 +3089,11 @@ class SSHClientConnection(SSHConnection):
 
         """
 
-        chan, session = yield from self.create_session(SSHClientStreamSession,
-                                                       subsystem='sftp',
-                                                       encoding=None)
+        writer, reader, _ = yield from self.open_session(subsystem='sftp',
+                                                         encoding=None)
 
-        handler = SFTPClientHandler(self, self._loop, SSHReader(session, chan),
-                                    SSHWriter(session, chan))
-
-        yield from handler.start()
-
-        return SFTPClient(self._loop, handler, path_encoding, path_errors)
+        return (yield from start_sftp_client(self, self._loop, reader, writer,
+                                             path_encoding, path_errors))
 
 
 class SSHServerConnection(SSHConnection):
@@ -3141,7 +3136,7 @@ class SSHServerConnection(SSHConnection):
                  authorized_client_keys, gss_host, allow_pty, line_editor,
                  line_history, x11_forwarding, x11_auth_path, agent_forwarding,
                  process_factory, session_factory, session_encoding,
-                 sftp_factory, window, max_pktsize, login_timeout):
+                 sftp_factory, allow_scp, window, max_pktsize, login_timeout):
         super().__init__(server_factory, loop, server_version, kex_algs,
                          encryption_algs, mac_algs, compression_algs,
                          signature_algs, rekey_bytes, rekey_seconds,
@@ -3160,6 +3155,7 @@ class SSHServerConnection(SSHConnection):
         self._session_factory = session_factory
         self._session_encoding = session_encoding
         self._sftp_factory = sftp_factory
+        self._allow_scp = allow_scp
         self._window = window
         self._max_pktsize = max_pktsize
 
@@ -3466,16 +3462,18 @@ class SSHServerConnection(SSHConnection):
 
         packet.check_end()
 
-        if self._process_factory:
+        if self._process_factory or self._session_factory or self._sftp_factory:
             chan = self.create_server_channel(self._session_encoding,
                                               self._window, self._max_pktsize)
-            session = SSHServerProcess(self._process_factory,
-                                       self._sftp_factory)
-        elif self._session_factory or self._sftp_factory:
-            chan = self.create_server_channel(self._session_encoding,
-                                              self._window, self._max_pktsize)
-            session = SSHServerStreamSession(self._session_factory,
-                                             self._sftp_factory)
+
+            if self._process_factory:
+                session = SSHServerProcess(self._process_factory,
+                                           self._sftp_factory,
+                                           self._allow_scp)
+            else:
+                session = SSHServerStreamSession(self._session_factory,
+                                                 self._sftp_factory,
+                                                 self._allow_scp)
         else:
             result = self._owner.session_requested()
 
@@ -3490,7 +3488,7 @@ class SSHServerConnection(SSHConnection):
                                                   self._max_pktsize)
 
             if callable(result):
-                session = SSHServerStreamSession(result, None)
+                session = SSHServerStreamSession(result, None, False)
             else:
                 session = result
 
@@ -4409,7 +4407,7 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
                   x11_forwarding=False, x11_auth_path=None,
                   agent_forwarding=True, process_factory=None,
                   session_factory=None, session_encoding='utf-8',
-                  sftp_factory=None, window=_DEFAULT_WINDOW,
+                  sftp_factory=None, allow_scp=False, window=_DEFAULT_WINDOW,
                   max_pktsize=_DEFAULT_MAX_PKTSIZE, server_version=(),
                   kex_algs=(), encryption_algs=(), mac_algs=(),
                   compression_algs=(), signature_algs=(),
@@ -4512,6 +4510,12 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
            client, or ``True`` to use the base :class:`SFTPServer` class
            to handle SFTP requests. If not specified, SFTP sessions are
            rejected by default.
+       :param bool allow_scp: (optional)
+           Whether or not to allow incoming scp requests to be accepted.
+           This option can only be used in conjunction with ``sftp_factory``.
+           If not specified, scp requests will be passed as regular
+           commands to the ``process_factory`` or ``session_factory``.
+           to the client when the client supports it, defaulting to ``True``
        :param int window: (optional)
            The receive window size for sessions on this server
        :param int max_pktsize: (optional)
@@ -4571,8 +4575,8 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
                                    line_history, x11_forwarding, x11_auth_path,
                                    agent_forwarding, process_factory,
                                    session_factory, session_encoding,
-                                   sftp_factory, window, max_pktsize,
-                                   login_timeout)
+                                   sftp_factory, allow_scp, window,
+                                   max_pktsize, login_timeout)
 
     if not server_factory:
         server_factory = SSHServer

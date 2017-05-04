@@ -50,10 +50,40 @@ from .misc import async_context_manager, Error, Record
 
 from .packet import Byte, String, UInt32, UInt64, PacketDecodeError, SSHPacket
 
+SFTP_BLOCK_SIZE = 16384
+
 _SFTP_VERSION = 3
-_SFTP_BLOCK_SIZE = 16384
 _MAX_SFTP_REQUESTS = 128
 _MAX_READDIR_NAMES = 128
+
+_open_modes = {
+    'r':  FXF_READ,
+    'w':  FXF_WRITE | FXF_CREAT | FXF_TRUNC,
+    'a':  FXF_WRITE | FXF_CREAT | FXF_APPEND,
+    'x':  FXF_WRITE | FXF_CREAT | FXF_EXCL,
+
+    'r+': FXF_READ | FXF_WRITE,
+    'w+': FXF_READ | FXF_WRITE | FXF_CREAT | FXF_TRUNC,
+    'a+': FXF_READ | FXF_WRITE | FXF_CREAT | FXF_APPEND,
+    'x+': FXF_READ | FXF_WRITE | FXF_CREAT | FXF_EXCL
+}
+
+
+def _mode_to_pflags(mode):
+    """Convert open mode to SFTP open flags"""
+
+    if 'b' in mode:
+        mode = mode.replace('b', '')
+        binary = True
+    else:
+        binary = False
+
+    pflags = _open_modes.get(mode)
+
+    if not pflags:
+        raise ValueError('Invalid mode: %r' % mode)
+
+    return pflags, binary
 
 
 def _from_local_path(path):
@@ -103,7 +133,72 @@ def _setstat(path, attrs):
         os.utime(path, times=(attrs.atime, attrs.mtime))
 
 
-class _LocalFile:
+@asyncio.coroutine
+def _glob(fs, basedir, patlist, result):
+    """Recursively match a glob pattern"""
+
+    pattern, patlist = patlist[0], patlist[1:]
+
+    names = yield from fs.listdir(basedir or b'.')
+
+    for name in names:
+        if pattern != name and name in (b'.', b'..'):
+            continue
+
+        if name[:1] == b'.' and not pattern[:1] == b'.':
+            continue
+
+        if fnmatch(name, pattern):
+            if basedir:
+                newbase = posixpath.join(basedir, name)
+            else:
+                newbase = name
+
+            if not patlist:
+                result.append(newbase)
+            else:
+                attrs = yield from fs.stat(newbase)
+
+                if stat.S_ISDIR(attrs.permissions):
+                    yield from _glob(fs, newbase, patlist, result)
+
+
+@asyncio.coroutine
+def match_glob(fs, pattern, error_handler=None):
+    """Match a glob pattern"""
+
+    names = []
+
+    try:
+        if any(c in pattern for c in b'*?'):
+            patlist = pattern.split(b'/')
+
+            if not patlist[0]:
+                basedir = b'/'
+                patlist = patlist[1:]
+            else:
+                basedir = None
+
+            yield from _glob(fs, basedir, patlist, names)
+
+            if not names:
+                raise SFTPError(FX_NO_SUCH_FILE, 'No matches found')
+        else:
+            yield from fs.stat(pattern)
+            names.append(pattern)
+    except (OSError, SFTPError) as exc:
+        # pylint: disable=attribute-defined-outside-init
+        exc.srcpath = pattern
+
+        if error_handler:
+            error_handler(exc)
+        else:
+            raise exc
+
+    return names
+
+
+class LocalFile:
     """A coroutine wrapper around local file I/O"""
 
     def __init__(self, f):
@@ -120,17 +215,14 @@ class _LocalFile:
         return os.fsencode(path)
 
     @classmethod
-    def decode(cls, path, want_string=True):
+    def decode(cls, path):
         """Decode path name using filesystem native encoding
 
-           This method has no effect if want_string is set to ``False``.
+           This method has no effect if the path is already a string.
 
         """
 
-        if want_string:
-            path = os.fsdecode(path)
-
-        return path
+        return os.fsdecode(path)
 
     @classmethod
     def compose_path(cls, path, parent=None):
@@ -140,9 +232,7 @@ class _LocalFile:
 
         """
 
-        path = cls.encode(path)
-
-        return os.path.join(parent, path) if parent else path
+        return posixpath.join(parent, path) if parent else path
 
     @classmethod
     @asyncio.coroutine
@@ -171,6 +261,13 @@ class _LocalFile:
         """Set attributes of a local file or directory"""
 
         _setstat(_to_local_path(path), attrs)
+
+    @classmethod
+    @asyncio.coroutine
+    def exists(cls, path):
+        """Return if the local path exists and isn't a broken symbolic link"""
+
+        return os.path.exists(_to_local_path(path))
 
     @classmethod
     @asyncio.coroutine
@@ -583,8 +680,7 @@ class SFTPHandler:
         b'fstatvfs@openssh.com':  FXP_EXTENDED_REPLY
     }
 
-    def __init__(self, conn, reader, writer):
-        self._conn = conn
+    def __init__(self, reader, writer):
         self._reader = reader
         self._writer = writer
 
@@ -604,11 +700,6 @@ class SFTPHandler:
         """Abstract method for processing SFTP packets"""
 
         raise NotImplementedError
-
-    def create_task(self, coro):
-        """Create an asynchronous task which catches and reports errors"""
-
-        return self._conn.create_task(coro)
 
     def send_packet(self, *args):
         """Send an SFTP packet"""
@@ -658,8 +749,8 @@ class SFTPClientHandler(SFTPHandler):
 
     _extensions = []
 
-    def __init__(self, conn, loop, reader, writer):
-        super().__init__(conn, reader, writer)
+    def __init__(self, loop, reader, writer):
+        super().__init__(reader, writer)
 
         self._loop = loop
         self._version = None
@@ -812,7 +903,7 @@ class SFTPClientHandler(SFTPHandler):
 
     @asyncio.coroutine
     def start(self):
-        """Start a new SFTP client"""
+        """Start an SFTP client"""
 
         extensions = (String(name) + String(data)
                       for name, data in self._extensions)
@@ -859,8 +950,6 @@ class SFTPClientHandler(SFTPHandler):
             if any(name in server_version
                    for name in self._nonstandard_symlink_impls):
                 self._nonstandard_symlink = True
-
-        self.create_task(self.recv_packets())
 
     @asyncio.coroutine
     def open(self, filename, pflags, attrs):
@@ -1062,7 +1151,7 @@ class SFTPClientHandler(SFTPHandler):
             yield from self._writer.channel.wait_closed()
 
 
-class SFTPFile:
+class SFTPClientFile:
     """SFTP client remote file object
 
        This class represents an open file on a remote SFTP server. It
@@ -1081,7 +1170,7 @@ class SFTPFile:
         self._offset = None if appending else 0
 
     def __enter__(self):
-        """Allow SFTPFile to be used as a context manager"""
+        """Allow SFTPClientFile to be used as a context manager"""
 
         return self
 
@@ -1094,7 +1183,7 @@ class SFTPFile:
 
     @asyncio.coroutine
     def __aenter__(self):
-        """Allow SFTPFile to be used as an async context manager"""
+        """Allow SFTPClientFile to be used as an async context manager"""
 
         return self
 
@@ -1161,7 +1250,7 @@ class SFTPFile:
                 while True:
                     result = yield from self._handler.read(self._handle,
                                                            offset,
-                                                           _SFTP_BLOCK_SIZE)
+                                                           SFTP_BLOCK_SIZE)
                     data.append(result)
                     offset += len(result)
                     self._offset = offset
@@ -1444,18 +1533,6 @@ class SFTPClient:
 
     """
 
-    _open_modes = {
-        'r':  FXF_READ,
-        'w':  FXF_WRITE | FXF_CREAT | FXF_TRUNC,
-        'a':  FXF_WRITE | FXF_CREAT | FXF_APPEND,
-        'x':  FXF_WRITE | FXF_CREAT | FXF_EXCL,
-
-        'r+': FXF_READ | FXF_WRITE,
-        'w+': FXF_READ | FXF_WRITE | FXF_CREAT | FXF_TRUNC,
-        'a+': FXF_READ | FXF_WRITE | FXF_CREAT | FXF_APPEND,
-        'x+': FXF_READ | FXF_WRITE | FXF_CREAT | FXF_EXCL
-    }
-
     def __init__(self, loop, handler, path_encoding, path_errors):
         self._loop = loop
         self._handler = handler
@@ -1549,29 +1626,10 @@ class SFTPClient:
                 raise
 
     @asyncio.coroutine
-    def _glob(self, fs, basedir, patlist, decode, result):
-        """Match a glob pattern"""
-
-        pattern, patlist = patlist[0], patlist[1:]
-
-        for name in (yield from fs.listdir(basedir or b'.')):
-            if pattern != name and name in (b'.', b'..'):
-                continue
-
-            if name[:1] == b'.' and not pattern[:1] == b'.':
-                continue
-
-            if fnmatch(name, pattern):
-                newbase = fs.compose_path(name, parent=basedir)
-
-                if not patlist:
-                    result.append(fs.decode(newbase, decode))
-                elif (yield from fs.isdir(newbase)):
-                    yield from self._glob(fs, newbase, patlist, decode, result)
-
-    @asyncio.coroutine
-    def _begin_glob(self, fs, patterns, error_handler):
+    def _glob(self, fs, patterns, error_handler):
         """Begin a new glob pattern match"""
+
+        # pylint: disable=no-self-use
 
         if isinstance(patterns, (str, bytes)):
             patterns = [patterns]
@@ -1582,32 +1640,12 @@ class SFTPClient:
             if not pattern:
                 continue
 
-            decode = isinstance(pattern, str)
-            patlist = self.encode(pattern).split(b'/')
+            names = yield from match_glob(fs, fs.encode(pattern), error_handler)
 
-            if not patlist[0]:
-                basedir = b'/'
-                patlist = patlist[1:]
-            else:
-                basedir = None
+            if isinstance(pattern, str):
+                names = [fs.decode(name) for name in names]
 
-            names = []
-
-            try:
-                yield from self._glob(fs, basedir, patlist, decode, names)
-
-                if names:
-                    result.extend(names)
-                else:
-                    raise SFTPError(FX_NO_SUCH_FILE, 'No matches found')
-            except (OSError, SFTPError) as exc:
-                # pylint: disable=attribute-defined-outside-init
-                exc.srcpath = pattern
-
-                if error_handler:
-                    error_handler(exc)
-                else:
-                    raise exc
+            result.extend(names)
 
         return result
 
@@ -1636,8 +1674,8 @@ class SFTPClient:
                     if name in (b'.', b'..'):
                         continue
 
-                    srcfile = srcfs.compose_path(name, parent=srcpath)
-                    dstfile = dstfs.compose_path(name, parent=dstpath)
+                    srcfile = posixpath.join(srcpath, name)
+                    dstfile = posixpath.join(dstpath, name)
 
                     yield from self._copy(srcfs, dstfs, srcfile,
                                           dstfile, preserve, recurse,
@@ -1675,7 +1713,9 @@ class SFTPClient:
         """Begin a new file upload, download, or copy"""
 
         dst_isdir = dstpath is None or (yield from dstfs.isdir(dstpath))
-        dstpath = self.encode(dstpath)
+
+        if dstpath:
+            dstpath = dstfs.encode(dstpath)
 
         if isinstance(srcpaths, (str, bytes)):
             srcpaths = [srcpaths]
@@ -1684,7 +1724,7 @@ class SFTPClient:
                             dstpath.decode('utf-8', errors='replace'))
 
         for srcfile in srcpaths:
-            srcfile = self.encode(srcfile)
+            srcfile = srcfs.encode(srcfile)
             filename = posixpath.basename(srcfile)
 
             if dstpath is None:
@@ -1700,7 +1740,7 @@ class SFTPClient:
 
     @asyncio.coroutine
     def get(self, remotepaths, localpath=None, *, preserve=False,
-            recurse=False, follow_symlinks=False, block_size=_SFTP_BLOCK_SIZE,
+            recurse=False, follow_symlinks=False, block_size=SFTP_BLOCK_SIZE,
             progress_handler=None, error_handler=None):
         """Download remote files
 
@@ -1778,14 +1818,14 @@ class SFTPClient:
 
         """
 
-        yield from self._begin_copy(self, _LocalFile, remotepaths, localpath,
+        yield from self._begin_copy(self, LocalFile, remotepaths, localpath,
                                     preserve, recurse, follow_symlinks,
                                     block_size, progress_handler,
                                     error_handler)
 
     @asyncio.coroutine
     def put(self, localpaths, remotepath=None, *, preserve=False,
-            recurse=False, follow_symlinks=False, block_size=_SFTP_BLOCK_SIZE,
+            recurse=False, follow_symlinks=False, block_size=SFTP_BLOCK_SIZE,
             progress_handler=None, error_handler=None):
         """Upload local files
 
@@ -1864,14 +1904,14 @@ class SFTPClient:
 
         """
 
-        yield from self._begin_copy(_LocalFile, self, localpaths, remotepath,
+        yield from self._begin_copy(LocalFile, self, localpaths, remotepath,
                                     preserve, recurse, follow_symlinks,
                                     block_size, progress_handler,
                                     error_handler)
 
     @asyncio.coroutine
     def copy(self, srcpaths, dstpath=None, *, preserve=False,
-             recurse=False, follow_symlinks=False, block_size=_SFTP_BLOCK_SIZE,
+             recurse=False, follow_symlinks=False, block_size=SFTP_BLOCK_SIZE,
              progress_handler=None, error_handler=None):
         """Copy remote files to a new location
 
@@ -1956,7 +1996,7 @@ class SFTPClient:
 
     @asyncio.coroutine
     def mget(self, remotepaths, localpath=None, *, preserve=False,
-             recurse=False, follow_symlinks=False, block_size=_SFTP_BLOCK_SIZE,
+             recurse=False, follow_symlinks=False, block_size=SFTP_BLOCK_SIZE,
              progress_handler=None, error_handler=None):
         """Download remote files with glob pattern match
 
@@ -1969,16 +2009,16 @@ class SFTPClient:
 
         """
 
-        matches = yield from self._begin_glob(self, remotepaths, error_handler)
+        matches = yield from self._glob(self, remotepaths, error_handler)
 
-        yield from self._begin_copy(self, _LocalFile, matches, localpath,
+        yield from self._begin_copy(self, LocalFile, matches, localpath,
                                     preserve, recurse, follow_symlinks,
                                     block_size, progress_handler,
                                     error_handler)
 
     @asyncio.coroutine
     def mput(self, localpaths, remotepath=None, *, preserve=False,
-             recurse=False, follow_symlinks=False, block_size=_SFTP_BLOCK_SIZE,
+             recurse=False, follow_symlinks=False, block_size=SFTP_BLOCK_SIZE,
              progress_handler=None, error_handler=None):
         """Upload local files with glob pattern match
 
@@ -1991,17 +2031,16 @@ class SFTPClient:
 
         """
 
-        matches = yield from self._begin_glob(_LocalFile, localpaths,
-                                              error_handler)
+        matches = yield from self._glob(LocalFile, localpaths, error_handler)
 
-        yield from self._begin_copy(_LocalFile, self, matches, remotepath,
+        yield from self._begin_copy(LocalFile, self, matches, remotepath,
                                     preserve, recurse, follow_symlinks,
                                     block_size, progress_handler,
                                     error_handler)
 
     @asyncio.coroutine
     def mcopy(self, srcpaths, dstpath=None, *, preserve=False,
-              recurse=False, follow_symlinks=False, block_size=_SFTP_BLOCK_SIZE,
+              recurse=False, follow_symlinks=False, block_size=SFTP_BLOCK_SIZE,
               progress_handler=None, error_handler=None):
         """Download remote files with glob pattern match
 
@@ -2014,7 +2053,7 @@ class SFTPClient:
 
         """
 
-        matches = yield from self._begin_glob(self, srcpaths, error_handler)
+        matches = yield from self._glob(self, srcpaths, error_handler)
 
         yield from self._begin_copy(self, self, matches, dstpath, preserve,
                                     recurse, follow_symlinks, block_size,
@@ -2054,16 +2093,16 @@ class SFTPClient:
 
         """
 
-        return (yield from self._begin_glob(self, patterns, error_handler))
+        return (yield from self._glob(self, patterns, error_handler))
 
     @async_context_manager
     def open(self, path, pflags_or_mode=FXF_READ, attrs=SFTPAttrs(),
              encoding='utf-8', errors='strict'):
         """Open a remote file
 
-           This method opens a remote file and returns an :class:`SFTPFile`
-           object which can be used to read and write data and get and set
-           file attributes.
+           This method opens a remote file and returns an
+           :class:`SFTPClientFile` object which can be used to read and
+           write data and get and set file attributes.
 
            The path can be either a str or bytes value. If it is a
            str, it will be encoded using the file encoding specified
@@ -2134,7 +2173,7 @@ class SFTPClient:
            :type pflags_or_mode: int or str
            :type attrs: :class:`SFTPAttrs`
 
-           :returns: An :class:`SFTPFile` to use to access the file
+           :returns: An :class:`SFTPClientFile` to use to access the file
 
            :raises: | :exc:`ValueError` if the mode is not valid
                     | :exc:`SFTPError` if the server returns an error
@@ -2142,25 +2181,18 @@ class SFTPClient:
         """
 
         if isinstance(pflags_or_mode, str):
-            mode = pflags_or_mode
+            pflags, binary = _mode_to_pflags(pflags_or_mode)
 
-            if 'b' in mode:
-                # Avoid a false positive where pylint thinks mode is an int
-                # pylint: disable=no-member
-                mode = mode.replace('b', '')
+            if binary:
                 encoding = None
-
-            pflags = self._open_modes.get(mode)
-            if not pflags:
-                raise ValueError('Invalid mode: %r' % mode)
         else:
             pflags = pflags_or_mode
 
         path = self.compose_path(path)
         handle = yield from self._handler.open(path, pflags, attrs)
 
-        return SFTPFile(self._handler, handle, pflags & FXF_APPEND,
-                        encoding, errors)
+        return SFTPClientFile(self._handler, handle, pflags & FXF_APPEND,
+                              encoding, errors)
 
     @asyncio.coroutine
     def stat(self, path):
@@ -2792,10 +2824,10 @@ class SFTPServerHandler(SFTPHandler):
         _extensions += [(b'statvfs@openssh.com', b'2'),
                         (b'fstatvfs@openssh.com', b'2')]
 
-    def __init__(self, sftp_factory, conn, reader, writer):
-        super().__init__(conn, reader, writer)
+    def __init__(self, server, reader, writer):
+        super().__init__(reader, writer)
 
-        self._server = sftp_factory(conn)
+        self._server = server
         self._version = None
         self._nonstandard_symlink = False
         self._next_handle = 0
@@ -3337,8 +3369,8 @@ class SFTPServerHandler(SFTPHandler):
     }
 
     @asyncio.coroutine
-    def start(self):
-        """Start a new SFTP server"""
+    def run(self):
+        """Run an SFTP server"""
 
         try:
             packet = yield from self.recv_packet()
@@ -3434,8 +3466,6 @@ class SFTPServer:
 
         """
 
-        # pylint: disable=no-self-use
-
         if uid is not None:
             try:
                 import pwd
@@ -3466,8 +3496,6 @@ class SFTPServer:
            :returns: The formatted group name string
 
         """
-
-        # pylint: disable=no-self-use
 
         if gid is not None:
             try:
@@ -3810,7 +3838,7 @@ class SFTPServer:
 
         """
 
-        return os.remove(_to_local_path(self.map_path(path)))
+        os.remove(_to_local_path(self.map_path(path)))
 
     def mkdir(self, path, attrs):
         """Create a directory with the specified attributes
@@ -3826,7 +3854,7 @@ class SFTPServer:
         """
 
         mode = 0o777 if attrs.permissions is None else attrs.permissions
-        return os.mkdir(_to_local_path(self.map_path(path)), mode)
+        os.mkdir(_to_local_path(self.map_path(path)), mode)
 
     def rmdir(self, path):
         """Remove a directory
@@ -3838,7 +3866,7 @@ class SFTPServer:
 
         """
 
-        return os.rmdir(_to_local_path(self.map_path(path)))
+        os.rmdir(_to_local_path(self.map_path(path)))
 
     def realpath(self, path):
         """Return the canonical version of a path
@@ -3901,7 +3929,7 @@ class SFTPServer:
         if os.path.exists(newpath):
             raise SFTPError(FX_FAILURE, 'File already exists')
 
-        return os.rename(oldpath, newpath)
+        os.rename(oldpath, newpath)
 
     def readlink(self, path):
         """Return the target of a symbolic link
@@ -3945,7 +3973,7 @@ class SFTPServer:
 
         newpath = self.map_path(newpath)
 
-        return os.symlink(_to_local_path(oldpath), _to_local_path(newpath))
+        os.symlink(_to_local_path(oldpath), _to_local_path(newpath))
 
     def posix_rename(self, oldpath, newpath):
         """Rename a file, directory, or link with POSIX semantics
@@ -3965,7 +3993,7 @@ class SFTPServer:
         oldpath = _to_local_path(self.map_path(oldpath))
         newpath = _to_local_path(self.map_path(newpath))
 
-        return os.replace(oldpath, newpath)
+        os.replace(oldpath, newpath)
 
     def statvfs(self, path):
         """Get attributes of the file system containing a file
@@ -4018,7 +4046,7 @@ class SFTPServer:
         oldpath = _to_local_path(self.map_path(oldpath))
         newpath = _to_local_path(self.map_path(newpath))
 
-        return os.link(oldpath, newpath)
+        os.link(oldpath, newpath)
 
     def fsync(self, file_obj):
         """Force file data to be written to disk
@@ -4036,3 +4064,148 @@ class SFTPServer:
         """Shut down this SFTP server"""
 
         pass
+
+
+class SFTPServerFile:
+    """A wrapper around SFTPServer used to access files it manages"""
+
+    def __init__(self, server):
+        self._server = server
+        self._file_obj = None
+
+    @asyncio.coroutine
+    def stat(self, path):
+        """Get attributes of a file"""
+
+        attrs = self._server.stat(path)
+
+        if asyncio.iscoroutine(attrs):
+            attrs = yield from attrs
+
+        if isinstance(attrs, os.stat_result):
+            attrs = SFTPAttrs.from_local(attrs)
+
+        return attrs
+
+    @asyncio.coroutine
+    def setstat(self, path, attrs):
+        """Set attributes of a file or directory"""
+
+        result = self._server.setstat(path, attrs)
+
+        if asyncio.iscoroutine(result):
+            attrs = yield from result
+
+    @asyncio.coroutine
+    def _mode(self, path):
+        """Return the file mode of a path, or 0 if it can't be accessed"""
+
+        try:
+            return (yield from self.stat(path)).permissions
+        except OSError as exc:
+            if exc.errno in (errno.ENOENT, errno.EACCES):
+                return 0
+            else:
+                raise
+        except SFTPError as exc:
+            if exc.code in (FX_NO_SUCH_FILE, FX_PERMISSION_DENIED):
+                return 0
+            else:
+                raise
+
+    @asyncio.coroutine
+    def exists(self, path):
+        """Return if a path exists"""
+
+        return (yield from self._mode(path)) != 0
+
+    @asyncio.coroutine
+    def isdir(self, path):
+        """Return if the path refers to a directory"""
+
+        return stat.S_ISDIR((yield from self._mode(path)))
+
+    @asyncio.coroutine
+    def mkdir(self, path):
+        """Create a directory"""
+
+        result = self._server.mkdir(path, SFTPAttrs())
+
+        if asyncio.iscoroutine(result):
+            yield from result
+
+    @asyncio.coroutine
+    def listdir(self, path):
+        """List the contents of a directory"""
+
+        files = self._server.listdir(path)
+
+        if asyncio.iscoroutine(files):
+            files = yield from files
+
+        return files
+
+    @asyncio.coroutine
+    def open(self, path, mode='rb'):
+        """Open a file"""
+
+        pflags, _ = _mode_to_pflags(mode)
+        file_obj = self._server.open(path, pflags, SFTPAttrs())
+
+        if asyncio.iscoroutine(file_obj):
+            file_obj = yield from file_obj
+
+        self._file_obj = file_obj
+        return self
+
+    @asyncio.coroutine
+    def read(self, size, offset):
+        """Read bytes from the file"""
+
+        data = self._server.read(self._file_obj, offset, size)
+
+        if asyncio.iscoroutine(data):
+            data = yield from data
+
+        return data
+
+    @asyncio.coroutine
+    def write(self, data, offset):
+        """Write bytes to the file"""
+
+        size = self._server.write(self._file_obj, offset, data)
+
+        if asyncio.iscoroutine(size):
+            size = yield from size
+
+        return size
+
+    @asyncio.coroutine
+    def close(self):
+        """Close a file managed by the associated SFTPServer"""
+
+        result = self._server.close(self._file_obj)
+
+        if asyncio.iscoroutine(result):
+            yield from result
+
+
+@asyncio.coroutine
+def start_sftp_client(conn, loop, reader, writer, path_encoding, path_errors):
+    """Start an SFTP client"""
+
+    handler = SFTPClientHandler(loop, reader, writer)
+
+    yield from handler.start()
+
+    conn.create_task(handler.recv_packets())
+
+    return SFTPClient(loop, handler, path_encoding, path_errors)
+
+
+def start_sftp_server(conn, sftp_factory, reader, writer):
+    """Start an SFTP server"""
+
+    handler = SFTPServerHandler(sftp_factory(conn), reader, writer)
+
+    conn.create_task(handler.run())

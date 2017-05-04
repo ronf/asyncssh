@@ -1,4 +1,4 @@
-# Copyright (c) 2016 by Ron Frederick <ronf@timeheart.net>.else:
+# Copyright (c) 2016-2017 by Ron Frederick <ronf@timeheart.net>.else:
 # All rights reserved.
 #
 # This program and the accompanying materials are made available under
@@ -946,9 +946,10 @@ class SSHClientProcess(SSHProcess, SSHClientStreamSession):
 class SSHServerProcess(SSHProcess, SSHServerStreamSession):
     """SSH server process handler"""
 
-    def __init__(self, process_factory, sftp_factory):
+    def __init__(self, process_factory, sftp_factory, allow_scp):
         SSHProcess.__init__(self)
-        SSHServerStreamSession.__init__(self, self._start_process, sftp_factory)
+        SSHServerStreamSession.__init__(self, self._start_process,
+                                        sftp_factory, allow_scp)
 
         self._process_factory = process_factory
 

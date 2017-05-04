@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2015 by Ron Frederick <ronf@timeheart.net>.
+# Copyright (c) 2013-2017 by Ron Frederick <ronf@timeheart.net>.
 # All rights reserved.
 #
 # This program and the accompanying materials are made available under
@@ -19,7 +19,8 @@ from .misc import BreakReceived, SignalReceived, TerminalSizeChanged
 from .misc import async_iterator, python35
 from .session import SSHClientSession, SSHServerSession
 from .session import SSHTCPSession, SSHUNIXSession
-from .sftp import SFTPServerHandler
+from .sftp import start_sftp_server
+from .scp import start_scp_server
 
 _NEWLINE = object()
 
@@ -536,11 +537,12 @@ class SSHClientStreamSession(SSHStreamSession, SSHClientSession):
 class SSHServerStreamSession(SSHStreamSession, SSHServerSession):
     """SSH server stream session handler"""
 
-    def __init__(self, session_factory, sftp_factory):
+    def __init__(self, session_factory, sftp_factory, allow_scp):
         super().__init__()
 
         self._session_factory = session_factory
         self._sftp_factory = sftp_factory
+        self._allow_scp = allow_scp and bool(sftp_factory)
 
     def shell_requested(self):
         """Return whether a shell can be requested"""
@@ -550,7 +552,8 @@ class SSHServerStreamSession(SSHStreamSession, SSHServerSession):
     def exec_requested(self, command):
         """Return whether execution of a command can be requested"""
 
-        return bool(self._session_factory)
+        return ((self._allow_scp and command.startswith('scp ')) or
+                bool(self._session_factory))
 
     def subsystem_requested(self, subsystem):
         """Return whether starting a subsystem can be requested"""
@@ -563,21 +566,28 @@ class SSHServerStreamSession(SSHStreamSession, SSHServerSession):
     def session_started(self):
         """Start a session for this newly opened server channel"""
 
+        command = self._chan.get_command()
+
+        stdin = SSHReader(self, self._chan)
+        stdout = SSHWriter(self, self._chan)
+        stderr = SSHWriter(self, self._chan, EXTENDED_DATA_STDERR)
+
         if self._chan.get_subsystem() == 'sftp':
             self._chan.set_encoding(None)
             self._encoding = None
 
-            handler = SFTPServerHandler(self._sftp_factory, self._conn,
-                                        SSHReader(self, self._chan),
-                                        SSHWriter(self, self._chan)).start()
-        else:
-            handler = self._session_factory(SSHReader(self, self._chan),
-                                            SSHWriter(self, self._chan),
-                                            SSHWriter(self, self._chan,
-                                                      EXTENDED_DATA_STDERR))
+            start_sftp_server(self._conn, self._sftp_factory, stdin, stdout)
+        elif self._allow_scp and command and command.startswith('scp '):
+            self._chan.set_encoding(None)
+            self._encoding = None
 
-        if asyncio.iscoroutine(handler):
-            self._conn.create_task(handler)
+            start_scp_server(self._conn, self._sftp_factory, command,
+                             stdin, stdout, stderr)
+        else:
+            handler = self._session_factory(stdin, stdout, stderr)
+
+            if asyncio.iscoroutine(handler):
+                self._conn.create_task(handler)
 
     def break_received(self, msec):
         """Handle an incoming break on the channel"""

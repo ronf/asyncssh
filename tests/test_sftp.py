@@ -13,6 +13,7 @@
 """Unit tests for AsyncSSH SFTP client and server"""
 
 import asyncio
+import errno
 import functools
 import os
 import posixpath
@@ -27,12 +28,13 @@ from unittest.mock import patch
 from asyncssh import SFTPError, SFTPAttrs, SFTPVFSAttrs, SFTPName, SFTPServer
 from asyncssh import SEEK_CUR, SEEK_END
 from asyncssh import FXP_INIT, FXP_VERSION, FXP_OPEN, FXP_CLOSE
-from asyncssh import FXP_STATUS, FXP_HANDLE, FXP_DATA
-from asyncssh import FILEXFER_ATTR_UNDEFINED, FX_OK, FX_FAILURE
+from asyncssh import FXP_STATUS, FXP_HANDLE, FXP_DATA, FILEXFER_ATTR_UNDEFINED
+from asyncssh import FX_OK, FX_PERMISSION_DENIED, FX_FAILURE
+from asyncssh import scp
 
 from asyncssh.misc import python35
 from asyncssh.packet import SSHPacket, Byte, String, UInt32
-from asyncssh.sftp import SFTPHandler, SFTPServerHandler
+from asyncssh.sftp import LocalFile, SFTPHandler, SFTPServerHandler
 
 from .server import ServerTestCase
 from .util import asynctest
@@ -219,6 +221,22 @@ class _SymlinkSFTPServer(SFTPServer):
         return super().symlink(oldpath, newpath)
 
 
+class _SFTPAttrsSFTPServer(SFTPServer):
+    """Implement stat which returns SFTPAttrs and raises SFTPError"""
+
+    @asyncio.coroutine
+    def stat(self, path):
+        """Get attributes of a file or directory, following symlinks"""
+
+        try:
+            return SFTPAttrs.from_local(super().stat(path))
+        except OSError as exc:
+            if exc.errno == errno.EACCES:
+                raise SFTPError(FX_PERMISSION_DENIED, exc.strerror)
+            else:
+                raise SFTPError(FX_FAILURE, exc.strerror)
+
+
 class _AsyncSFTPServer(SFTPServer):
     """Implement all SFTP callbacks as coroutines"""
 
@@ -398,7 +416,7 @@ class _CheckSFTP(ServerTestCase):
         if utime is not None:
             os.utime(name, utime)
 
-    def _check_attr(self, name1, name2, follow_symlinks=False):
+    def _check_attr(self, name1, name2, follow_symlinks, check_atime):
         """Check if attributes on two files are equal"""
 
         statfunc = os.stat if follow_symlinks else os.lstat
@@ -408,14 +426,17 @@ class _CheckSFTP(ServerTestCase):
 
         self.assertEqual(stat.S_IMODE(attrs1.st_mode),
                          stat.S_IMODE(attrs2.st_mode))
-        self.assertEqual(int(attrs1.st_atime), int(attrs2.st_atime))
         self.assertEqual(int(attrs1.st_mtime), int(attrs2.st_mtime))
 
-    def _check_file(self, name1, name2, preserve=False, follow_symlinks=False):
+        if check_atime:
+            self.assertEqual(int(attrs1.st_atime), int(attrs2.st_atime))
+
+    def _check_file(self, name1, name2, preserve=False, follow_symlinks=False,
+                    check_atime=True):
         """Check if two files are equal"""
 
         if preserve:
-            self._check_attr(name1, name2, follow_symlinks)
+            self._check_attr(name1, name2, follow_symlinks, check_atime)
 
         with open(name1) as file1:
             with open(name2) as file2:
@@ -673,6 +694,7 @@ class _TestSFTP(_CheckSFTP):
             os.mkdir('filedir')
             self._create_file('file1')
             self._create_file('filedir/file2')
+            self._create_file('filedir/file3')
 
             self.assertEqual(sorted((yield from sftp.glob('file*'))),
                              ['file1', 'filedir'])
@@ -684,8 +706,10 @@ class _TestSFTP(_CheckSFTP):
                              ['file1', 'filedir'])
             self.assertEqual(sorted((yield from sftp.glob(['', 'file*']))),
                              ['file1', 'filedir'])
-            self.assertEqual(sorted((yield from sftp.glob(['file*/*']))),
+            self.assertEqual(sorted((yield from sftp.glob(['file*/*2']))),
                              ['filedir/file2'])
+            self.assertEqual((yield from sftp.glob([b'fil*1', 'fil*dir'])),
+                             [b'file1', 'filedir'])
         finally:
             remove('file1 filedir')
 
@@ -708,7 +732,7 @@ class _TestSFTP(_CheckSFTP):
         try:
             self._create_file('file2')
 
-            self.assertEqual((yield from sftp.glob(['file1', 'file2'],
+            self.assertEqual((yield from sftp.glob(['file1*', 'file2*'],
                                                    error_handler=err_handler)),
                              ['file2'])
         finally:
@@ -1035,6 +1059,7 @@ class _TestSFTP(_CheckSFTP):
         try:
             os.symlink('/file', 'link')
             self.assertEqual((yield from sftp.readlink('link')), '/file')
+            self.assertEqual((yield from sftp.readlink(b'link')), b'/file')
         finally:
             remove('link')
 
@@ -1796,7 +1821,7 @@ class _TestSFTP(_CheckSFTP):
 
                 remove('file1 file2')
 
-        with patch('asyncssh.stream.SFTPServerHandler',
+        with patch('asyncssh.sftp.SFTPServerHandler',
                    _ResetFileHandleServerHandler):
             sftp_test(_reset_file_handle)(self)
 
@@ -2006,7 +2031,7 @@ class _TestSFTP(_CheckSFTP):
 
                 remove('file')
 
-        with patch('asyncssh.stream.SFTPServerHandler',
+        with patch('asyncssh.sftp.SFTPServerHandler',
                    _NonblockingCloseServerHandler):
             sftp_test(_nonblocking_close)(self)
 
@@ -2392,3 +2417,895 @@ class _TestSFTPAsync(_TestSFTP):
 
         self.assertEqual((yield from sftp.realpath('dir/../file')),
                          posixpath.join((yield from sftp.getcwd()), 'file'))
+
+
+class _CheckSCP(_CheckSFTP):
+    """Utility functions for AsyncSSH SCP unit tests"""
+
+    @classmethod
+    @asyncio.coroutine
+    def asyncSetUpClass(cls):
+        """Set up SCP target host/port tuple"""
+
+        yield from super().asyncSetUpClass()
+
+        cls._scp_server = (cls._server_addr, cls._server_port)
+
+    @classmethod
+    @asyncio.coroutine
+    def start_server(cls):
+        """Start an SFTP server with SCP enabled for the tests to use"""
+
+        return (yield from cls.create_server(sftp_factory=True, allow_scp=True))
+
+
+class _TestSCP(_CheckSCP):
+    """Unit tests for AsyncSSH SCP client and server"""
+
+    @asynctest
+    def test_get(self):
+        """Test getting a file over SCP"""
+
+        try:
+            self._create_file('src')
+            yield from scp((self._scp_server, 'src'), 'dst')
+            self._check_file('src', 'dst')
+        finally:
+            remove('src dst')
+
+    @asynctest
+    def test_get_bytes_path(self):
+        """Test getting a file with a byte string path over SCP"""
+
+        try:
+            self._create_file('src')
+            yield from scp((self._scp_server, b'src'), b'dst')
+            self._check_file('src', 'dst')
+        finally:
+            remove('src dst')
+
+    @asynctest
+    def test_get_progress(self):
+        """Test getting a file over SCP with progress reporting"""
+
+        def _report_progress(srcpath, dstpath, bytes_copied, total_bytes):
+            """Monitor progress of copy"""
+
+            # pylint: disable=unused-argument
+
+            reports.append(bytes_copied)
+
+        reports = []
+
+        try:
+            self._create_file('src', 100000*'a')
+            yield from scp((self._scp_server, 'src'), 'dst', block_size=8192,
+                           progress_handler=_report_progress)
+            self._check_file('src', 'dst')
+
+            self.assertEqual(len(reports), 13)
+            self.assertEqual(reports[-1], 100000)
+        finally:
+            remove('src dst')
+
+    @asynctest
+    def test_get_preserve(self):
+        """Test getting a file with preserved attributes over SCP"""
+
+        try:
+            self._create_file('src', utime=(1, 2))
+            yield from scp((self._scp_server, 'src'), 'dst', preserve=True)
+            self._check_file('src', 'dst', preserve=True, check_atime=False)
+        finally:
+            remove('src dst')
+
+    @asynctest
+    def test_get_recurse(self):
+        """Test recursively getting a directory over SCP"""
+
+        try:
+            os.mkdir('src')
+            self._create_file('src/file1')
+
+            yield from scp((self._scp_server, 'src'), 'dst', recurse=True)
+
+            self._check_file('src/file1', 'dst/file1')
+        finally:
+            remove('src dst')
+
+    @asynctest
+    def test_get_error_handler(self):
+        """Test getting multiple files over SCP with error handler"""
+
+        def err_handler(exc):
+            """Catch error for non-recursive copy of directory"""
+
+            self.assertEqual(exc.reason, 'scp: Not a regular file: src2')
+
+        try:
+            self._create_file('src1')
+            os.mkdir('src2')
+            os.mkdir('dst')
+
+            yield from scp((self._scp_server, 'src*'), 'dst',
+                           error_handler=err_handler)
+
+            self._check_file('src1', 'dst/src1')
+        finally:
+            remove('src1 src2 dst')
+
+    @asynctest
+    def test_get_recurse_existing(self):
+        """Test getting a directory over SCP where target dir exists"""
+
+        try:
+            os.mkdir('src')
+            os.mkdir('dst')
+            os.mkdir('dst/src')
+            self._create_file('src/file1')
+
+            yield from scp((self._scp_server, 'src'), 'dst', recurse=True)
+
+            self._check_file('src/file1', 'dst/src/file1')
+        finally:
+            remove('src dst')
+
+    @asynctest
+    def test_get_not_permitted(self):
+        """Test getting a file with no read permissions over SCP"""
+
+        try:
+            self._create_file('src', mode=0)
+
+            with self.assertRaises(SFTPError):
+                yield from scp((self._scp_server, 'src'), 'dst')
+        finally:
+            remove('src dst')
+
+    @asynctest
+    def test_get_directory_as_file(self):
+        """Test getting a file which is actually a directory over SCP"""
+
+        try:
+            os.mkdir('src')
+
+            with self.assertRaises(SFTPError):
+                yield from scp((self._scp_server, 'src'), 'dst')
+        finally:
+            remove('src dst')
+
+    @asynctest
+    def test_get_non_directory_in_path(self):
+        """Test getting a file with a non-directory in path over SCP"""
+
+        try:
+            self._create_file('src')
+
+            with self.assertRaises(SFTPError):
+                yield from scp((self._scp_server, 'src/xxx'), 'dst')
+        finally:
+            remove('src dst')
+
+    @asynctest
+    def test_get_recurse_not_directory(self):
+        """Test getting a directory over SCP where target is not directory"""
+
+        try:
+            os.mkdir('src')
+            self._create_file('dst')
+            self._create_file('src/file1')
+
+            with self.assertRaises(SFTPError):
+                yield from scp((self._scp_server, 'src'), 'dst', recurse=True)
+        finally:
+            remove('src dst')
+
+    @asynctest
+    def test_put(self):
+        """Test putting a file over SCP"""
+
+        try:
+            self._create_file('src')
+            yield from scp('src', (self._scp_server, 'dst'))
+            self._check_file('src', 'dst')
+        finally:
+            remove('src dst')
+
+    @asynctest
+    def test_put_bytes_path(self):
+        """Test putting a file with a byte string path over SCP"""
+
+        try:
+            self._create_file('src')
+            yield from scp(b'src', (self._scp_server, b'dst'))
+            self._check_file('src', 'dst')
+        finally:
+            remove('src dst')
+
+    @asynctest
+    def test_put_progress(self):
+        """Test putting a file over SCP with progress reporting"""
+
+        def _report_progress(srcpath, dstpath, bytes_copied, total_bytes):
+            """Monitor progress of copy"""
+
+            # pylint: disable=unused-argument
+
+            reports.append(bytes_copied)
+
+        reports = []
+
+        try:
+            self._create_file('src', 100000*'a')
+            yield from scp('src', (self._scp_server, 'dst'), block_size=8192,
+                           progress_handler=_report_progress)
+            self._check_file('src', 'dst')
+
+            self.assertEqual(len(reports), 13)
+            self.assertEqual(reports[-1], 100000)
+        finally:
+            remove('src dst')
+
+    @asynctest
+    def test_put_preserve(self):
+        """Test putting a file with preserved attributes over SCP"""
+
+        try:
+            self._create_file('src', utime=(1, 2))
+            yield from scp('src', (self._scp_server, 'dst'), preserve=True)
+            self._check_file('src', 'dst', preserve=True, check_atime=False)
+        finally:
+            remove('src dst')
+
+    @asynctest
+    def test_put_recurse(self):
+        """Test recursively putting a directory over SCP"""
+
+        try:
+            os.mkdir('src')
+            self._create_file('src/file1')
+
+            yield from scp('src', (self._scp_server, 'dst'), recurse=True)
+
+            self._check_file('src/file1', 'dst/file1')
+        finally:
+            remove('src dst')
+
+    @asynctest
+    def test_put_recurse_existing(self):
+        """Test putting a directory over SCP where target dir exists"""
+
+        try:
+            os.mkdir('src')
+            os.mkdir('dst')
+            self._create_file('src/file1')
+
+            yield from scp('src', (self._scp_server, 'dst'), recurse=True)
+
+            self._check_file('src/file1', 'dst/src/file1')
+        finally:
+            remove('src dst')
+
+    @asynctest
+    def test_put_must_be_dir(self):
+        """Test putting multiple files to a non-directory over SCP"""
+
+        try:
+            self._create_file('src1')
+            self._create_file('src2')
+            self._create_file('dst')
+
+            with self.assertRaises(SFTPError):
+                yield from scp(['src1', 'src2'], (self._scp_server, 'dst'))
+        finally:
+            remove('src1 src2 dst')
+
+    @asynctest
+    def test_put_non_directory_in_path(self):
+        """Test putting a file with a non-directory in path over SCP"""
+
+        try:
+            self._create_file('src')
+
+            with self.assertRaises(OSError):
+                yield from scp('src/xxx', (self._scp_server, 'dst'))
+        finally:
+            remove('src')
+
+    @asynctest
+    def test_put_recurse_not_directory(self):
+        """Test putting a directory over SCP where target is not directory"""
+
+        try:
+            os.mkdir('src')
+            self._create_file('dst')
+            self._create_file('src/file1')
+
+            with self.assertRaises(SFTPError):
+                yield from scp('src', (self._scp_server, 'dst'), recurse=True)
+        finally:
+            remove('src dst')
+
+    @asynctest
+    def test_put_read_error(self):
+        """Test read errors when putting a file over SCP"""
+
+        @asyncio.coroutine
+        def _read_error(self, size, offset):
+            """Return an error for reads past 64 KB in a file"""
+
+            if offset >= 65536:
+                raise OSError(errno.EIO, 'I/O error')
+            else:
+                return (yield from orig_read(self, size, offset))
+
+        try:
+            self._create_file('src', 128*1024*'\0')
+
+            orig_read = LocalFile.read
+
+            with patch('asyncssh.sftp.LocalFile.read', _read_error):
+                with self.assertRaises(OSError):
+                    yield from scp('src', (self._scp_server, 'dst'))
+        finally:
+            remove('src dst')
+
+    @asynctest
+    def test_put_read_early_eof(self):
+        """Test getting early EOF when putting a file over SCP"""
+
+        @asyncio.coroutine
+        def _read_early_eof(self, size, offset):
+            """Return an early EOF for reads past 64 KB in a file"""
+
+            if offset >= 65536:
+                return b''
+            else:
+                return (yield from orig_read(self, size, offset))
+
+        try:
+            self._create_file('src', 128*1024*'\0')
+
+            orig_read = LocalFile.read
+
+            with patch('asyncssh.sftp.LocalFile.read', _read_early_eof):
+                with self.assertRaises(SFTPError):
+                    yield from scp('src', (self._scp_server, 'dst'))
+        finally:
+            remove('src dst')
+
+    @asynctest
+    def test_put_name_too_long(self):
+        """Test putting a file over SCP with too long a name"""
+
+        try:
+            self._create_file('src')
+
+            with self.assertRaises(SFTPError):
+                yield from scp('src', (self._scp_server, 65536*'a'))
+        finally:
+            remove('src dst')
+
+    @asynctest
+    def test_copy(self):
+        """Test copying a file between remote hosts over SCP"""
+
+        try:
+            self._create_file('src')
+            yield from scp((self._scp_server, 'src'), (self._scp_server, 'dst'))
+            self._check_file('src', 'dst')
+        finally:
+            remove('src dst')
+
+    @asynctest
+    def test_copy_progress(self):
+        """Test copying a file over SCP with progress reporting"""
+
+        def _report_progress(srcpath, dstpath, bytes_copied, total_bytes):
+            """Monitor progress of copy"""
+
+            # pylint: disable=unused-argument
+
+            reports.append(bytes_copied)
+
+        reports = []
+
+        try:
+            self._create_file('src', 100000*'a')
+            yield from scp((self._scp_server, 'src'),
+                           (self._scp_server, 'dst'), block_size=8192,
+                           progress_handler=_report_progress)
+            self._check_file('src', 'dst')
+
+            self.assertEqual(len(reports), 13)
+            self.assertEqual(reports[-1], 100000)
+        finally:
+            remove('src dst')
+
+    @asynctest
+    def test_copy_preserve(self):
+        """Test copying a file with preserved attributes between hosts"""
+
+        try:
+            self._create_file('src', utime=(1, 2))
+            yield from scp((self._scp_server, 'src'), (self._scp_server, 'dst'),
+                           preserve=True)
+            self._check_file('src', 'dst', preserve=True, check_atime=False)
+        finally:
+            remove('src dst')
+
+    @asynctest
+    def test_copy_recurse(self):
+        """Test recursively copying a directory between hosts over SCP"""
+
+        try:
+            os.mkdir('src')
+            self._create_file('src/file1')
+
+            yield from scp((self._scp_server, 'src'), (self._scp_server, 'dst'),
+                           recurse=True)
+
+            self._check_file('src/file1', 'dst/file1')
+        finally:
+            remove('src dst')
+
+    @asynctest
+    def test_copy_error_handler_source(self):
+        """Test copying multiple files over SCP with error handler"""
+
+        def err_handler(exc):
+            """Catch error for non-recursive copy of directory"""
+
+            self.assertEqual(exc.reason, 'scp: Not a regular file: src2')
+
+        try:
+            self._create_file('src1')
+            os.mkdir('src2')
+            os.mkdir('dst')
+
+            yield from scp((self._scp_server, 'src*'),
+                           (self._scp_server, 'dst'),
+                           error_handler=err_handler)
+
+            self._check_file('src1', 'dst/src1')
+        finally:
+            remove('src1 src2 dst')
+
+    @asynctest
+    def test_copy_error_handler_sink(self):
+        """Test copying multiple files over SCP with error handler"""
+
+        def err_handler(exc):
+            """Catch error for non-recursive copy of directory"""
+
+            self.assertEqual(exc.reason, 'scp: Is a directory: dst/src2')
+
+        try:
+            self._create_file('src1')
+            self._create_file('src2')
+            os.mkdir('dst')
+            os.mkdir('dst/src2')
+
+            yield from scp((self._scp_server, 'src*'),
+                           (self._scp_server, 'dst'),
+                           error_handler=err_handler)
+
+            self._check_file('src1', 'dst/src1')
+        finally:
+            remove('src1 src2 dst')
+
+    @asynctest
+    def test_copy_recurse_existing(self):
+        """Test copying a directory over SCP where target dir exists"""
+
+        try:
+            os.mkdir('src')
+            os.mkdir('dst')
+            self._create_file('src/file1')
+
+            yield from scp((self._scp_server, 'src'), (self._scp_server, 'dst'),
+                           recurse=True)
+
+            self._check_file('src/file1', 'dst/src/file1')
+        finally:
+            remove('src dst')
+
+    @asynctest
+    def test_local_copy(self):
+        """Test for error return when attempting to copy local files"""
+
+        with self.assertRaises(ValueError):
+            yield from scp('src', 'dst')
+
+    @asynctest
+    def test_copy_multiple(self):
+        """Test copying multiple files over SCP"""
+
+        try:
+            os.mkdir('src')
+            self._create_file('src/file1')
+            self._create_file('src/file2')
+            yield from scp([(self._scp_server, 'src/file1'),
+                            (self._scp_server, 'src/file2')], '.')
+            self._check_file('src/file1', 'file1')
+            self._check_file('src/file2', 'file2')
+        finally:
+            remove('src file1 file2')
+
+    @asynctest
+    def test_copy_recurse_not_directory(self):
+        """Test copying a directory over SCP where target is not directory"""
+
+        try:
+            os.mkdir('src')
+            self._create_file('dst')
+            self._create_file('src/file1')
+
+            with self.assertRaises(SFTPError):
+                yield from scp((self._scp_server, 'src'),
+                               (self._scp_server, 'dst'), recurse=True)
+        finally:
+            remove('src dst')
+
+    @asynctest
+    def test_source_string(self):
+        """Test passing a string to SCP"""
+
+        with self.assertRaises(OSError):
+            yield from scp('0.0.0.1:xxx', '.')
+
+    @unittest.skipUnless(python35, 'skip host as bytes before Python 3.5')
+    @asynctest
+    def test_source_bytes(self):
+        """Test passing a byte string to SCP"""
+
+        with self.assertRaises(OSError):
+            yield from scp(b'0.0.0.1:xxx', '.')
+
+    @asynctest
+    def test_source_open_connection(self):
+        """Test passing an open SSHClientConnection to SCP as source"""
+
+        try:
+            with (yield from self.connect()) as conn:
+                self._create_file('src')
+                yield from scp((conn, 'src'), 'dst')
+                self._check_file('src', 'dst')
+        finally:
+            remove('src dst')
+
+    @asynctest
+    def test_destination_open_connection(self):
+        """Test passing an open SSHClientConnection to SCP as destination"""
+
+        try:
+            with (yield from self.connect()) as conn:
+                os.mkdir('src')
+                self._create_file('src/file1')
+                yield from scp('src/file1', conn)
+                self._check_file('src/file1', 'file1')
+        finally:
+            remove('src file1')
+
+    @asynctest
+    def test_missing_path(self):
+        """Test running SCP with missing path"""
+
+        with (yield from self.connect()) as conn:
+            result = yield from conn.run('scp ')
+            self.assertEqual(result.stderr, 'scp: the following arguments '
+                             'are required: path\n')
+
+    @asynctest
+    def test_missing_direction(self):
+        """Test running SCP with missing direction argument"""
+
+        with (yield from self.connect()) as conn:
+            result = yield from conn.run('scp xxx')
+            self.assertEqual(result.stderr, 'scp: one of the arguments -f -t '
+                             'is required\n')
+
+    @asynctest
+    def test_invalid_argument(self):
+        """Test running SCP with invalid argument"""
+
+        with (yield from self.connect()) as conn:
+            result = yield from conn.run('scp -f -x src')
+            self.assertEqual(result.stderr, 'scp: unrecognized arguments: -x\n')
+
+    @asynctest
+    def test_invalid_c_argument(self):
+        """Test running SCP with invalid argument to C request"""
+
+        with (yield from self.connect()) as conn:
+            result = yield from conn.run('scp -t dst', input='C\n')
+            self.assertEqual(result.stdout,
+                             '\0\x01scp: Invalid copy or dir request\n')
+
+    @asynctest
+    def test_invalid_t_argument(self):
+        """Test running SCP with invalid argument to C request"""
+
+        with (yield from self.connect()) as conn:
+            result = yield from conn.run('scp -t -p dst', input='T\n')
+            self.assertEqual(result.stdout, '\0\x01scp: Invalid time request\n')
+
+
+class _TestSCPAsync(_TestSCP):
+    """Unit test for AsyncSSH SCP using an async SFTPServer"""
+
+    @classmethod
+    @asyncio.coroutine
+    def start_server(cls):
+        """Start an SFTP server with coroutine callbacks"""
+
+        return (yield from cls.create_server(sftp_factory=_AsyncSFTPServer,
+                                             allow_scp=True))
+
+
+class _TestSCPAttrs(_CheckSCP):
+    """Unit test for SCP with SFTP server returning SFTPAttrs"""
+
+    @classmethod
+    @asyncio.coroutine
+    def start_server(cls):
+        """Start an SFTP server which returns SFTPAttrs from stat"""
+
+        return (yield from cls.create_server(sftp_factory=_SFTPAttrsSFTPServer,
+                                             allow_scp=True))
+
+    @asynctest
+    def test_get(self):
+        """Test getting a file over SCP with stat returning SFTPAttrs"""
+
+        try:
+            self._create_file('src')
+            yield from scp((self._scp_server, 'src'), 'dst')
+            self._check_file('src', 'dst')
+        finally:
+            remove('src dst')
+
+    @asynctest
+    def test_put_recurse_not_directory(self):
+        """Test putting a directory over SCP where target is not directory"""
+
+        try:
+            os.mkdir('src')
+            self._create_file('dst')
+            self._create_file('src/file1')
+
+            with self.assertRaises(SFTPError):
+                yield from scp('src', (self._scp_server, 'dst'), recurse=True)
+        finally:
+            remove('src dst')
+
+    @asynctest
+    def test_put_not_permitted(self):
+        """Test putting a file over SCP onto an unwritable target"""
+
+        try:
+            self._create_file('src')
+            os.mkdir('dst')
+            os.chmod('dst', 0)
+
+            with self.assertRaises(SFTPError):
+                yield from scp('src', (self._scp_server, 'dst/src'))
+        finally:
+            os.chmod('dst', 0o755)
+            remove('src dst')
+
+    @asynctest
+    def test_put_name_too_long(self):
+        """Test putting a file over SCP with too long a name"""
+
+        try:
+            self._create_file('src')
+
+            with self.assertRaises(SFTPError):
+                yield from scp('src', (self._scp_server, 65536*'a'))
+        finally:
+            remove('src dst')
+
+
+class _TestSCPIOError(_CheckSCP):
+    """Unit test for SCP with SFTP server returning file I/O error"""
+
+    @classmethod
+    @asyncio.coroutine
+    def start_server(cls):
+        """Start an SFTP server which returns file I/O errors"""
+
+        return (yield from cls.create_server(sftp_factory=_IOErrorSFTPServer,
+                                             allow_scp=True))
+
+    @asynctest
+    def test_put_error(self):
+        """Test error when putting a file over SCP"""
+
+        try:
+            self._create_file('src', 4*1024*1024*'\0')
+
+            with self.assertRaises(SFTPError):
+                yield from scp('src', (self._scp_server, 'dst'))
+        finally:
+            remove('src dst')
+
+    @asynctest
+    def test_copy_error(self):
+        """Test error when copying a file over SCP"""
+
+        try:
+            self._create_file('src', 4*1024*1024*'\0')
+
+            with self.assertRaises(SFTPError):
+                yield from scp((self._scp_server, 'src'),
+                               (self._scp_server, 'dst'))
+        finally:
+            remove('src dst')
+
+
+class _TestSCPErrors(_CheckSCP):
+    """Unit test for SCP returning error on startup"""
+
+    @classmethod
+    @asyncio.coroutine
+    def start_server(cls):
+        """Start an SFTP server which returns file I/O errors"""
+
+        @asyncio.coroutine
+        def _handle_client(process):
+            """Handle new client"""
+
+            with process:
+                command = process.get_command()
+
+                if command.endswith('get_connection_lost'):
+                    pass
+                elif command.endswith('get_dir_no_recurse'):
+                    yield from process.stdin.read(1)
+                    process.stdout.write('D0755 0 src\n')
+                elif command.endswith('get_early_eof'):
+                    yield from process.stdin.read(1)
+                    process.stdout.write('C0644 10 src\n')
+                    yield from process.stdin.read(1)
+                elif command.endswith('get_extra_e'):
+                    yield from process.stdin.read(1)
+                    process.stdout.write('E\n')
+                    yield from process.stdin.read(1)
+                elif command.endswith('get_t_without_preserve'):
+                    yield from process.stdin.read(1)
+                    process.stdout.write('T0 0 0 0\n')
+                    yield from process.stdin.read(1)
+                elif command.endswith('get_unknown_action'):
+                    yield from process.stdin.read(1)
+                    process.stdout.write('X\n')
+                    yield from process.stdin.read(1)
+                elif command.endswith('put_connection_lost'):
+                    process.stdout.write('\0\0')
+                elif command.endswith('put_startup_error'):
+                    process.stdout.write('Error starting SCP\n')
+                elif command.endswith('recv_early_eof'):
+                    process.stdout.write('\0')
+                    yield from process.stdin.readline()
+                    process.stdout.write('\0')
+                else:
+                    process.exit(255)
+
+        return (yield from cls.create_server(process_factory=_handle_client))
+
+    @asynctest
+    def test_get_directory_without_recurse(self):
+        """Test receiving directory when recurse wasn't requested"""
+
+        try:
+            with self.assertRaises(SFTPError):
+                yield from scp((self._scp_server, 'get_dir_no_recurse'), 'dst')
+        finally:
+            remove('dst')
+
+    @asynctest
+    def test_get_early_eof(self):
+        """Test getting early EOF when getting a file over SCP"""
+
+        try:
+            with self.assertRaises(SFTPError):
+                yield from scp((self._scp_server, 'get_early_eof'), 'dst')
+        finally:
+            remove('dst')
+
+    @asynctest
+    def test_get_t_without_preserve(self):
+        """Test getting timestamps with requesting preserve"""
+
+        try:
+            yield from scp((self._scp_server, 'get_t_without_preserve'), 'dst')
+        finally:
+            remove('dst')
+
+    @asynctest
+    def test_get_unknown_action(self):
+        """Test getting unknown action from SCP server during get"""
+
+        try:
+            with self.assertRaises(SFTPError):
+                yield from scp((self._scp_server, 'get_unknown_action'), 'dst')
+        finally:
+            remove('dst')
+
+    @asynctest
+    def test_put_startup_error(self):
+        """Test SCP server returning an error on startup"""
+
+        try:
+            self._create_file('src')
+
+            with self.assertRaises(SFTPError) as exc:
+                yield from scp('src', (self._scp_server, 'put_startup_error'))
+
+            self.assertEqual(exc.exception.reason, 'Error starting SCP')
+        finally:
+            remove('src')
+
+    @asynctest
+    def test_put_connection_lost(self):
+        """Test SCP server abruptly closing connection on put"""
+
+        try:
+            self._create_file('src')
+
+            with self.assertRaises(SFTPError) as exc:
+                yield from scp('src', (self._scp_server, 'put_connection_lost'))
+
+            self.assertEqual(exc.exception.reason, 'Connection lost')
+        finally:
+            remove('src')
+
+    @asynctest
+    def test_copy_connection_lost_source(self):
+        """Test source abruptly closing connection during SCP copy"""
+
+        with self.assertRaises(SFTPError) as exc:
+            yield from scp((self._scp_server, 'get_connection_lost'),
+                           (self._scp_server, 'recv_early_eof'))
+
+        self.assertEqual(exc.exception.reason, 'Connection lost')
+
+    @asynctest
+    def test_copy_connection_lost_sink(self):
+        """Test sink abruptly closing connection during SCP copy"""
+
+        with self.assertRaises(SFTPError) as exc:
+            yield from scp((self._scp_server, 'get_early_eof'),
+                           (self._scp_server, 'put_connection_lost'))
+
+        self.assertEqual(exc.exception.reason, 'Connection lost')
+
+    @asynctest
+    def test_copy_early_eof(self):
+        """Test getting early EOF when copying a file over SCP"""
+
+        with self.assertRaises(SFTPError):
+            yield from scp((self._scp_server, 'get_early_eof'),
+                           (self._scp_server, 'recv_early_eof'))
+
+    @asynctest
+    def test_copy_extra_e(self):
+        """Test getting extra E when copying a file over SCP"""
+
+        yield from scp((self._scp_server, 'get_extra_e'),
+                       (self._scp_server, 'recv_early_eof'))
+
+    @asynctest
+    def test_copy_unknown_action(self):
+        """Test getting unknown action from SCP server during copy"""
+
+        with self.assertRaises(SFTPError):
+            yield from scp((self._scp_server, 'get_unknown_action'),
+                           (self._scp_server, 'recv_early_eof'))
+
+    @asynctest
+    def test_unknown(self):
+        """Test unknown SCP server request for code coverage"""
+
+        with self.assertRaises(SFTPError):
+            yield from scp('src', (self._scp_server, 'unknown'))

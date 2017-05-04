@@ -136,6 +136,11 @@ listen
 
 .. autofunction:: listen
 
+scp
+---
+
+.. autofunction:: scp
+
 Main Classes
 ============
 
@@ -889,6 +894,27 @@ SFTPClient
    .. automethod:: wait_closed
    =========================== =
 
+SFTPClientFile
+--------------
+
+.. autoclass:: SFTPClientFile()
+
+   ================================================ =
+   .. automethod:: read
+   .. automethod:: write
+   .. automethod:: seek(offset, from_what=SEEK_SET)
+   .. automethod:: tell
+   .. automethod:: stat
+   .. automethod:: setstat
+   .. automethod:: statvfs
+   .. automethod:: truncate
+   .. automethod:: chown
+   .. automethod:: chmod
+   .. automethod:: utime
+   .. automethod:: fsync
+   .. automethod:: close
+   ================================================ =
+
 SFTPServer
 ----------
 
@@ -945,27 +971,6 @@ SFTPServer
    ===================== =
    .. automethod:: exit
    ===================== =
-
-SFTPFile
---------
-
-.. autoclass:: SFTPFile()
-
-   ================================================ =
-   .. automethod:: read
-   .. automethod:: write
-   .. automethod:: seek(offset, from_what=SEEK_SET)
-   .. automethod:: tell
-   .. automethod:: stat
-   .. automethod:: setstat
-   .. automethod:: statvfs
-   .. automethod:: truncate
-   .. automethod:: chown
-   .. automethod:: chmod
-   .. automethod:: utime
-   .. automethod:: fsync
-   .. automethod:: close
-   ================================================ =
 
 SFTPAttrs
 ---------
