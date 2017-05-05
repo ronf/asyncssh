@@ -65,8 +65,14 @@ class _TestKnownHosts(TempDirTestCase):
         self.assertEqual(matches, results)
 
     def check_hosts(self, patlists, results=None, host='host', addr='1.2.3.4',
-                    port=22, from_file=False, from_bytes=False):
+                    port=22, from_file=False, from_bytes=False,
+                    as_callable=False, as_tuple=False):
         """Check a known_hosts file built from the specified patterns"""
+
+        def call_match(host, addr, port):
+            """Test passing callable as known_hosts"""
+
+            return asyncssh.match_known_hosts(_known_hosts, host, addr, port)
 
         prefixes = ('', '@cert-authority ', '@revoked ')
         known_hosts = '# Comment line\n   # Comment line with whitespace\n\n'
@@ -82,6 +88,13 @@ class _TestKnownHosts(TempDirTestCase):
             known_hosts = 'known_hosts'
         elif from_bytes:
             known_hosts = known_hosts.encode()
+        elif as_callable:
+            _known_hosts = asyncssh.import_known_hosts(known_hosts)
+            known_hosts = call_match
+        elif as_tuple:
+            known_hosts = asyncssh.import_known_hosts(known_hosts)
+            known_hosts = asyncssh.match_known_hosts(known_hosts, host,
+                                                     addr, port)
         else:
             known_hosts = asyncssh.import_known_hosts(known_hosts)
 
@@ -185,3 +198,13 @@ class _TestKnownHosts(TempDirTestCase):
         """Test match against byte string"""
 
         self.check_hosts((['host'], [], []), ([0], [], []), from_bytes=True)
+
+    def test_callable(self):
+        """Test match using callable"""
+
+        self.check_hosts((['host'], [], []), ([0], [], []), as_callable=True)
+
+    def test_tuple(self):
+        """Test passing already constructed tuple of keys"""
+
+        self.check_hosts((['host'], [], []), ([0], [], []), as_tuple=True)

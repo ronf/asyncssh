@@ -89,7 +89,7 @@ from .process import PIPE, SSHClientProcess, SSHServerProcess
 from .public_key import CERT_TYPE_HOST, CERT_TYPE_USER, KeyImportError
 from .public_key import get_public_key_algs, get_certificate_algs
 from .public_key import decode_ssh_public_key, decode_ssh_certificate
-from .public_key import load_keypairs, load_public_keys
+from .public_key import load_keypairs
 
 from .saslprep import saslprep, SASLPrepError
 
@@ -1965,17 +1965,10 @@ class SSHClientConnection(SSHConnection):
                 self._known_hosts = os.path.join(os.path.expanduser('~'),
                                                  '.ssh', 'known_hosts')
 
-            if isinstance(self._known_hosts, (str, bytes)):
-                server_host_keys, server_ca_keys, revoked_server_keys = \
-                    match_known_hosts(self._known_hosts, self._host,
-                                      self._peer_addr, self._port)
-            else:
-                server_host_keys, server_ca_keys, revoked_server_keys = \
-                    self._known_hosts
+            known_hosts = match_known_hosts(self._known_hosts, self._host,
+                                            self._peer_addr, self._port)
 
-                server_host_keys = load_public_keys(server_host_keys)
-                server_ca_keys = load_public_keys(server_ca_keys)
-                revoked_server_keys = load_public_keys(revoked_server_keys)
+            server_host_keys, server_ca_keys, revoked_server_keys = known_hosts
 
             self._server_host_keys = set()
             self._server_host_key_algs = []

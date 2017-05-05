@@ -22,7 +22,7 @@ from hashlib import sha1
 
 from .misc import ip_address
 from .pattern import HostPatternList
-from .public_key import KeyImportError, import_public_key
+from .public_key import KeyImportError, import_public_key, load_public_keys
 
 
 class _PlainHost:
@@ -220,10 +220,17 @@ def match_known_hosts(known_hosts, host, addr, port):
        host patterns in OpenSSH ``known_hosts`` format and returns the
        host keys, CA keys, and revoked keys which match.
 
-       The ``known_hosts`` argument can be a string containing the
-       filename to load the host patterns from, a byte string containing
-       host pattern data, or an already loaded :class:`SSHKnownHosts`
-       object.
+       The ``known_hosts`` argument can be any of the following:
+
+           * a string containing the filename to load host patterns from
+           * a byte string containing host pattern data to load
+           * an already loaded :class:`SSHKnownHosts` object containing
+             host patterns to match against
+           * an alternate matching function which accepts a host, address,
+             and port and returns lists of trusted host keys, trusted CA
+             keys, and revoked keys to load
+           * lists of trusted host keys, trusted CA keys, and revoked keys
+             to load without doing any matching
 
        If the port is not the default port and no match is found
        for it, the lookup is attempted again without a port number.
@@ -236,8 +243,6 @@ def match_known_hosts(known_hosts, host, addr, port):
            The IP address of the target host
        :param int port:
            The port number on the target host, or ``None`` for the default
-       :type known_hosts: str or bytes or :class:`SSHKnownHosts`
-
 
        :returns: A tuple of matching host keys, CA keys, and revoked keys
 
@@ -248,4 +253,12 @@ def match_known_hosts(known_hosts, host, addr, port):
     elif isinstance(known_hosts, bytes):
         known_hosts = import_known_hosts(known_hosts.decode())
 
-    return known_hosts.match(host, addr, port)
+    if isinstance(known_hosts, SSHKnownHosts):
+        known_hosts = known_hosts.match(host, addr, port)
+    else:
+        if callable(known_hosts):
+            known_hosts = known_hosts(host, addr, port)
+
+        known_hosts = tuple(map(load_public_keys, known_hosts))
+
+    return known_hosts

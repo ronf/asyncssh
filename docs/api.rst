@@ -1279,18 +1279,26 @@ to indicate revoked keys which should no longer be trusted.
 Specifying known hosts
 ----------------------
 
-Known hosts may be passed into AsyncSSH via the ``known_hosts``
-argument to :func:`create_connection`. This can be the name of a
-file containing a list of known hosts or an :class:`SSHKnownHosts`
-object which was previously imported from a string by calling
-:func:`import_known_hosts` or read from a file by calling
-:func:`read_known_hosts`.
+Known hosts may be passed into AsyncSSH via the ``known_hosts`` argument
+to :func:`create_connection`. This can be the name of a file containing
+a list of known hosts, a byte string containing a list of known hosts,
+or an :class:`SSHKnownHosts` object which was previously imported from
+a string by calling :func:`import_known_hosts` or read from a file by
+calling :func:`read_known_hosts`. In all of these cases, the host patterns
+in the list will be compared against the target host, address, and port
+being connected to and the matching trusted host keys, trusted CA keys,
+and revoked keys will be returned.
 
-Alternately, known hosts can be passed into AsyncSSH as a sequence
-of three public key lists containing trusted host keys, trusted CA
-keys, and revoked keys which should no longer be trusted.
-See :ref:`SpecifyingPublicKeys` for the allowed form of each of
-these values.
+Alternately, a function can be passed in as the ``known_hosts`` argument
+that accepts a target host, address, and port and returns three public key
+lists containing trusted host keys, trusted CA keys, and revoked keys.
+
+If no matching is required and the caller already knows exactly what the
+trusted host keys, trusted CA keys, and revoked keys should be, these three
+lists can also be provided directly in the ``known_hosts`` argument.
+
+See :ref:`SpecifyingPublicKeys` for the allowed form of public key values
+which can be provided in these last two cases.
 
 SSHKnownHosts
 -------------
