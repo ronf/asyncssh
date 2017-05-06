@@ -3,6 +3,34 @@
 Change Log
 ==========
 
+Release 1.10.0 (5 May 2017)
+---------------------------
+
+* Added SCP client and server support, The new asyncssh.scp() function
+  can get and put files on a remote SCP server and copy files between
+  two or more remote SCP servers, with options similar to what was
+  previously supported for SFTP. On the server side, an SFTPServer used
+  to serve files over SFTP can also serve files over SCP by simply
+  setting allow_scp to True in the call to create_server().
+
+* Added a new SSHServerProcess class which supports I/O redirection on
+  inbound connections to an SSH server, mirroring the SSHClientProcess
+  class added previously for outbound SSH client connections.
+
+* Enabled TCP keepalive on SSH client and server connections.
+
+* Enabled Python 3 highlighting in Sphinx documentation.
+
+* Fixed a bug where a previously loaded SSHKnownHosts object wasn't
+  properly accepted as a known_hosts value in create_connection() and
+  enhanced known_hosts to accept a callable to allow applications to
+  provide their own function to return trusted host keys.
+
+* Fixed a bug where an exception was raised if the connection closed
+  while waiting for an asynchronous authentication callback to complete.
+
+* Fixed a bug where empty passwords weren't being properly supported.
+
 Release 1.9.0 (18 Feb 2017)
 ---------------------------
 
