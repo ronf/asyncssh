@@ -201,11 +201,16 @@ class _SCPHandler:
 
         if isinstance(exc, SFTPError):
             reason = exc.reason.encode('utf-8')
-        else:
+        elif isinstance(exc, OSError): # pragma: no branch (win32)
             reason = exc.strerror.encode('utf-8')
 
             if exc.filename:
+                if isinstance(exc.filename, str): # pragma: no cover (win32)
+                    exc.filename = exc.filename.encode('utf-8')
+
                 reason += b': ' + exc.filename
+        else: # pragma: no cover (win32)
+            reason = str(exc).encode('utf-8')
 
         fatal = getattr(exc, 'fatal', False)
 
@@ -357,7 +362,7 @@ class _SCPSource(_SCPHandler):
                 yield from self._send_file(srcpath, dstpath, attrs)
             else:
                 raise SCPError(FX_FAILURE, 'Not a regular file', srcpath)
-        except (OSError, SFTPError) as exc:
+        except (OSError, SFTPError, ValueError) as exc:
             self.handle_error(exc)
 
     @asyncio.coroutine
@@ -520,7 +525,7 @@ class _SCPSink(_SCPHandler):
                                            dstpath))
             else:
                 yield from self._recv_files(b'', dstpath)
-        except (OSError, SFTPError) as exc:
+        except (OSError, SFTPError, ValueError) as exc:
             self.handle_error(exc)
         finally:
             self.close()

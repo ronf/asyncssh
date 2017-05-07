@@ -2550,6 +2550,8 @@ class _TestSCP(_CheckSCP):
         finally:
             remove('src dst')
 
+    @unittest.skipIf(sys.platform == 'win32',
+                     'skip permission tests on Windows')
     @asynctest
     def test_get_not_permitted(self):
         """Test getting a file with no read permissions over SCP"""
@@ -2878,7 +2880,11 @@ class _TestSCP(_CheckSCP):
         def err_handler(exc):
             """Catch error for non-recursive copy of directory"""
 
-            self.assertEqual(exc.reason, 'scp: Is a directory: dst/src2')
+            if sys.platform == 'win32': # pragma: no cover
+                self.assertEqual(exc.reason,
+                                 'scp: Permission denied: dst\\src2')
+            else:
+                self.assertEqual(exc.reason, 'scp: Is a directory: dst/src2')
 
         try:
             self._create_file('src1')
@@ -3187,7 +3193,10 @@ class _TestSCPErrors(_CheckSCP):
                 elif command.endswith('recv_early_eof'):
                     process.stdout.write('\0')
                     yield from process.stdin.readline()
-                    process.stdout.write('\0')
+                    try:
+                        process.stdout.write('\0')
+                    except BrokenPipeError:
+                        pass
                 else:
                     process.exit(255)
 
