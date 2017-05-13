@@ -806,8 +806,9 @@ def scp(srcpaths, dstpath=None, *, preserve=False, recurse=False,
             yield from dstconn.wait_closed()
 
 
-def start_scp_server(conn, sftp_factory, command, stdin, stdout, stderr):
-    """Start an SCP server"""
+@asyncio.coroutine
+def run_scp_server(sftp_server, command, stdin, stdout, stderr):
+    """Return a handler for an SCP server session"""
 
     try:
         args = _SCPArgParser().parse(command)
@@ -816,7 +817,7 @@ def start_scp_server(conn, sftp_factory, command, stdin, stdout, stderr):
         stderr.channel.exit(1)
         return
 
-    fs = SFTPServerFile(sftp_factory(conn))
+    fs = SFTPServerFile(sftp_server)
 
     if args.source:
         handler = _SCPSource(fs, stdin, stdout, args.preserve, args.recurse,
@@ -825,4 +826,7 @@ def start_scp_server(conn, sftp_factory, command, stdin, stdout, stderr):
         handler = _SCPSink(fs, stdin, stdout, args.must_be_dir, args.preserve,
                            args.recurse, error_handler=False)
 
-    conn.create_task(handler.run(args.path))
+    try:
+        yield from handler.run(args.path)
+    finally:
+        sftp_server.exit()

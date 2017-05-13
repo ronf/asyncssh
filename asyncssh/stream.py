@@ -19,8 +19,8 @@ from .misc import BreakReceived, SignalReceived, TerminalSizeChanged
 from .misc import async_iterator, python35
 from .session import SSHClientSession, SSHServerSession
 from .session import SSHTCPSession, SSHUNIXSession
-from .sftp import start_sftp_server
-from .scp import start_scp_server
+from .sftp import run_sftp_server
+from .scp import run_scp_server
 
 _NEWLINE = object()
 
@@ -576,18 +576,19 @@ class SSHServerStreamSession(SSHStreamSession, SSHServerSession):
             self._chan.set_encoding(None)
             self._encoding = None
 
-            start_sftp_server(self._conn, self._sftp_factory, stdin, stdout)
+            handler = run_sftp_server(self._sftp_factory(self._conn),
+                                      stdin, stdout)
         elif self._allow_scp and command and command.startswith('scp '):
             self._chan.set_encoding(None)
             self._encoding = None
 
-            start_scp_server(self._conn, self._sftp_factory, command,
-                             stdin, stdout, stderr)
+            handler = run_scp_server(self._sftp_factory(self._conn),
+                                     command, stdin, stdout, stderr)
         else:
             handler = self._session_factory(stdin, stdout, stderr)
 
-            if asyncio.iscoroutine(handler):
-                self._conn.create_task(handler)
+        if asyncio.iscoroutine(handler):
+            self._conn.create_task(handler)
 
     def break_received(self, msec):
         """Handle an incoming break on the channel"""

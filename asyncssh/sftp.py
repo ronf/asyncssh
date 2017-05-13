@@ -4203,9 +4203,10 @@ def start_sftp_client(conn, loop, reader, writer, path_encoding, path_errors):
     return SFTPClient(loop, handler, path_encoding, path_errors)
 
 
-def start_sftp_server(conn, sftp_factory, reader, writer):
-    """Start an SFTP server"""
+@asyncio.coroutine
+def run_sftp_server(sftp_server, reader, writer):
+    """Return a handler for an SFTP server session"""
 
-    handler = SFTPServerHandler(sftp_factory(conn), reader, writer)
+    handler = SFTPServerHandler(sftp_server, reader, writer)
 
-    conn.create_task(handler.run())
+    yield from handler.run()
