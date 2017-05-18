@@ -399,7 +399,7 @@ class SSHKey:
 
     def export_private_key(self, format_name='openssh', passphrase=None,
                            cipher_name='aes256-cbc', hash_name='sha256',
-                           pbe_version=2, rounds=16):
+                           pbe_version=2, rounds=128):
         """Export a private key in the requested format
 
            This method returns this object's private key encoded in the
@@ -439,8 +439,18 @@ class SSHKey:
            Not all combinations of cipher, hash, and version are supported.
 
            The default cipher is aes256. In the pkcs8 formats, the default
-           hash is sha256 and default version is PBES2. In openssh format,
-           the default number of rounds is 16.
+           hash is sha256 and default version is PBES2.
+
+           In openssh format, the default number of rounds is 128.
+
+           .. note:: The openssh format uses bcrypt for encryption, but
+                     unlike the traditional bcrypt cost factor used in
+                     password hashing which scales logarithmically, the
+                     encryption strength here scales linearly with the
+                     rounds value. Since the cipher is rekeyed 64 times
+                     per round, the default rounds value of 128 corresponds
+                     to 8192 total iterations, which is the equivalent of
+                     a bcrypt cost factor of 13.
 
            :param str format_name: (optional)
                The format to export the key in.
