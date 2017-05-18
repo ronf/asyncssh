@@ -1,7 +1,7 @@
 language: python
 
 install:
-  - pip install tox bcrypt gssapi libnacl
+  - pip install tox
 
 matrix:
   allow_failures:
