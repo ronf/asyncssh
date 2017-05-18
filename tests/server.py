@@ -92,6 +92,7 @@ class ServerTestCase(AsyncTestCase):
 
         ckey = asyncssh.generate_private_key('ssh-rsa')
         ckey.write_private_key('ckey')
+        ckey.write_private_key('ckey_encrypted', passphrase='passphrase')
         ckey.write_public_key('ckey.pub')
 
         ckey_cert = ckey.generate_user_certificate(ckey, 'name')
@@ -117,7 +118,7 @@ class ServerTestCase(AsyncTestCase):
 
         shutil.copy('ckey_dsa', os.path.join('.ssh', 'id_dsa'))
         shutil.copy('ckey_dsa.pub', os.path.join('.ssh', 'id_dsa.pub'))
-        shutil.copy('ckey', os.path.join('.ssh', 'id_rsa'))
+        shutil.copy('ckey_encrypted', os.path.join('.ssh', 'id_rsa'))
         shutil.copy('ckey.pub', os.path.join('.ssh', 'id_rsa.pub'))
 
         with open('authorized_keys', 'w') as auth_keys:

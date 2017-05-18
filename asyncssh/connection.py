@@ -4363,7 +4363,7 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
                 agent_path = None
 
         if not client_keys:
-            client_keys = load_default_keypairs()
+            client_keys = load_default_keypairs(passphrase)
 
     if not agent_forwarding:
         agent_path = None

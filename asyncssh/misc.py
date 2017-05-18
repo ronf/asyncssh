@@ -64,6 +64,10 @@ def load_default_keypairs(passphrase=None):
         try:
             file = os.path.join(os.path.expanduser('~'), '.ssh', file)
             result.extend(asyncssh.load_keypairs(file, passphrase))
+        except asyncssh.KeyImportError as exc:
+            # Ignore encrypted default keys if a passphrase isn't provided
+            if not str(exc).startswith('Passphrase'):
+                raise
         except OSError:
             pass
 

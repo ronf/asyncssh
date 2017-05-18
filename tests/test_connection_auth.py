@@ -532,6 +532,20 @@ class _TestPublicKeyAuth(ServerTestCase):
         yield from conn.wait_closed()
 
     @asynctest
+    def test_invalid_default_key(self):
+        """Test connecting with invalid default client key"""
+
+        key_path = os.path.join('.ssh', 'id_ecdsa')
+        with open(key_path, 'w') as f:
+            f.write('-----XXX-----')
+
+        with self.assertRaises(asyncssh.KeyImportError):
+            yield from self.connect(username='ckey', gss_host=None,
+                                    agent_path=None)
+
+        os.remove(key_path)
+
+    @asynctest
     def test_client_key_bytes(self):
         """Test client key passed in as bytes"""
 
