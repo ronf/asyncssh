@@ -385,7 +385,8 @@ class _TestPublicKey(TempDirTestCase):
             shutil.copy('priv', 'new')
 
             if cipher:
-                run('ssh-keygen -p -N passphrase -Z %s -o -f new' % cipher)
+                run('ssh-keygen -p -a 128 -N passphrase -Z %s -o -f new' %
+                    cipher)
             else:
                 run('ssh-keygen -p -N "" -o -f new')
         else: # pragma: no cover
@@ -772,21 +773,21 @@ class _TestPublicKey(TempDirTestCase):
              b'-----BEGIN OPENSSH PRIVATE KEY-----\n' +
              binascii.b2a_base64(b''.join(
                  (b'openssh-key-v1\0', String('aes256-cbc'), String('bcrypt'),
-                  String(b''.join((String(b''), UInt32(1)))), UInt32(1),
+                  String(b''.join((String(b''), UInt32(128)))), UInt32(1),
                   String(''), String('')))) +
              b'-----END OPENSSH PRIVATE KEY-----'),
             ('Invalid OpenSSH encrypted data',
              b'-----BEGIN OPENSSH PRIVATE KEY-----\n' +
              binascii.b2a_base64(b''.join(
                  (b'openssh-key-v1\0', String('aes256-cbc'), String('bcrypt'),
-                  String(b''.join((String(16*b'\0'), UInt32(1)))), UInt32(1),
+                  String(b''.join((String(16*b'\0'), UInt32(128)))), UInt32(1),
                   String(''), String('')))) +
              b'-----END OPENSSH PRIVATE KEY-----'),
             ('Unexpected OpenSSH trailing data',
              b'-----BEGIN OPENSSH PRIVATE KEY-----\n' +
              binascii.b2a_base64(b''.join(
                  (b'openssh-key-v1\0', String('aes256-cbc'), String('bcrypt'),
-                  String(b''.join((String(16*b'\0'), UInt32(1)))), UInt32(1),
+                  String(b''.join((String(16*b'\0'), UInt32(128)))), UInt32(1),
                   String(''), String(''), String('xxx')))) +
              b'-----END OPENSSH PRIVATE KEY-----')
         ]
