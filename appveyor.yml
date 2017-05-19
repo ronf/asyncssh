@@ -24,7 +24,7 @@ install:
   - "curl https://www.timeheart.net/appveyor/%ARCH%/libnettle-6.dll -O"
   - "curl https://www.timeheart.net/appveyor/%ARCH%/libhogweed-4.dll -O"
   - "cd %APPVEYOR_BUILD_FOLDER%"
-  - "%PYTHON%\\python.exe -m pip install bcrypt libnacl pypiwin32 tox"
+  - "%PYTHON%\\python.exe -m pip install tox"
 
 build: off
 
