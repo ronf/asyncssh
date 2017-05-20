@@ -384,6 +384,7 @@ class _SCPSource(_SCPHandler):
             self.handle_error(exc)
         finally:
             self.close()
+            yield from self._fs.exit()
 
 
 class _SCPSink(_SCPHandler):
@@ -529,6 +530,7 @@ class _SCPSink(_SCPHandler):
             self.handle_error(exc)
         finally:
             self.close()
+            yield from self._fs.exit()
 
 
 class _SCPCopier:

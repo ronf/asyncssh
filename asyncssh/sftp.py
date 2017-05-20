@@ -309,6 +309,11 @@ class LocalFile:
 
         os.symlink(_to_local_path(oldpath), _to_local_path(newpath))
 
+    @classmethod
+    @asyncio.coroutine
+    def exit(cls):
+        pass
+
     @asyncio.coroutine
     def read(self, size, offset):
         """Read data from the local file"""
@@ -4188,6 +4193,16 @@ class SFTPServerFile:
 
         if asyncio.iscoroutine(result):
             yield from result
+
+    @asyncio.coroutine
+    def exit(self):
+        """Exit the associated SFTPServer"""
+
+        result = self._server.exit(self._file_obj)
+
+        if asyncio.iscoroutine(result):
+            yield from result
+
 
 
 @asyncio.coroutine
