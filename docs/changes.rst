@@ -3,6 +3,28 @@
 Change Log
 ==========
 
+Release 1.10.1 (19 May 2017)
+----------------------------
+
+* Fixed SCP to properly call exit() on SFTPServer when the copy completes.
+  Thanks go to Arthur Darcet for discovering this and providing a
+  suggested fix.
+
+* Added support for passphrase to be specified when loading default client
+  keys, and to ignore encrypted default keys if no passphrase is specified.
+
+* Added additional known hosts test cases. Thanks go to Rafael Viotti
+  for providing these.
+
+* Increased the default number of rounds for OpenSSH-compatible bcrypt
+  private key encryption to avoid a warning in the latest version of the
+  bcrypt module, and added a note that the encryption strength scale
+  linearly with the rounds value, not logarithmically.
+
+* Fixed SCP unit test errors on Windows.
+
+* Fixed some issues with Travis and Appveyor CI builds.
+
 Release 1.10.0 (5 May 2017)
 ---------------------------
 
