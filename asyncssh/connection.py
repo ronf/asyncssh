@@ -4358,7 +4358,7 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
             agent = yield from connect_agent(agent_path, loop=loop)
 
             if agent:
-                client_keys = yield from agent.get_keys()
+                client_keys = yield from agent.get_keys(passphrase=passphrase)
             else:
                 agent_path = None
 
