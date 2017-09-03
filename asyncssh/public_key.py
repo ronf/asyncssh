@@ -19,6 +19,12 @@ import re
 import time
 
 try:
+    from .crypto import generate_x509_certificate, import_x509_certificate
+    _x509_available = True
+except ImportError: # pragma: no cover
+    _x509_available = False
+
+try:
     import bcrypt
     _bcrypt_available = hasattr(bcrypt, 'kdf')
 except ImportError: # pragma: no cover
@@ -35,6 +41,7 @@ from .pbe import pkcs1_decrypt, pkcs8_decrypt
 
 _public_key_algs = []
 _certificate_algs = []
+_x509_certificate_algs = []
 _public_key_alg_map = {}
 _certificate_alg_map = {}
 _certificate_version_map = {}
@@ -48,6 +55,9 @@ _rel_time_pattern = re.compile(r'(?:(?P<weeks>[+-]?\d+)[Ww]|'
                                r'(?P<hours>[+-]?\d+)[Hh]|'
                                r'(?P<minutes>[+-]?\d+)[Mm]|'
                                r'(?P<seconds>[+-]?\d+)[Ss])+')
+
+_subject_pattern = re.compile(r'(?:Distinguished[ -_]?Name|Subject|DN)[=:]?\s?',
+                              re.IGNORECASE)
 
 # SSH certificate types
 CERT_TYPE_USER = 1
@@ -130,16 +140,32 @@ class SSHKey:
     """Parent class which holds an asymmetric encryption key"""
 
     algorithm = None
+    sig_algorithms = None
+    x509_algorithms = None
     pem_name = None
     pkcs8_oid = None
 
-    def __init__(self):
+    def __init__(self, key=None):
+        self._key = key
         self._comment = None
+
+    @property
+    def pyca_key(self):
+        """Return PyCA key for use in X.509 module"""
+
+        return self._key.pyca_key
 
     def _generate_certificate(self, key, version, serial, cert_type,
                               key_id, principals, valid_after,
                               valid_before, cert_options, comment):
         """Generate a new SSH certificate"""
+
+        valid_after = _parse_time(valid_after)
+        valid_before = _parse_time(valid_before)
+
+        if valid_before <= valid_after:
+            raise ValueError('Valid before time must be later than '
+                             'valid after time')
 
         try:
             algorithm, cert_handler = _certificate_version_map[key.algorithm,
@@ -150,6 +176,34 @@ class SSHKey:
         return cert_handler.generate(self, algorithm, key, serial, cert_type,
                                      key_id, principals, valid_after,
                                      valid_before, cert_options, comment)
+
+    def _generate_x509_certificate(self, key, subject, issuer, serial,
+                                   valid_after, valid_before, ca, ca_path_len,
+                                   purposes, user_principals, host_principals,
+                                   hash_alg, comment):
+        """Generate a new X.509 certificate"""
+
+        if not _x509_available: # pragma: no cover
+            raise KeyGenerationError('X.509 certificate generation '
+                                     'requires PyOpenSSL')
+
+        if not self.x509_algorithms:
+            raise KeyGenerationError('X.509 certificate generation not '
+                                     'supported for ' + self.get_algorithm() +
+                                     ' keys')
+
+        valid_after = _parse_time(valid_after)
+        valid_before = _parse_time(valid_before)
+
+        if valid_before <= valid_after:
+            raise ValueError('Valid before time must be later than '
+                             'valid after time')
+
+        return SSHX509Certificate.generate(self, key, subject, issuer, serial,
+                                           valid_after, valid_before, ca,
+                                           ca_path_len, purposes,
+                                           user_principals, host_principals,
+                                           hash_alg, comment)
 
     def get_algorithm(self):
         """Return the algorithm associated with this key"""
@@ -253,7 +307,7 @@ class SSHKey:
                                   comment=()):
         """Generate a new SSH user certificate
 
-           This method returns a SSH user certifcate with the requested
+           This method returns an SSH user certifcate with the requested
            attributes signed by this private key.
 
            :param user_key:
@@ -352,7 +406,7 @@ class SSHKey:
                                   comment=()):
         """Generate a new SSH host certificate
 
-           This method returns a SSH host certifcate with the requested
+           This method returns an SSH host certifcate with the requested
            attributes signed by this private key.
 
            :param host_key:
@@ -396,6 +450,197 @@ class SSHKey:
                                           CERT_TYPE_HOST, key_id,
                                           principals, valid_after,
                                           valid_before, {}, comment)
+
+    def generate_x509_user_certificate(self, user_key, subject, issuer,
+                                       serial=None, principals=(),
+                                       valid_after=0,
+                                       valid_before=0xffffffffffffffff,
+                                       purposes='secureShellClient',
+                                       hash_alg='sha256', comment=()):
+        """Generate a new X.509 user certificate
+
+           This method returns an X.509 user certifcate with the requested
+           attributes signed by this private key.
+
+           :param user_key:
+               The user's public key.
+           :param str subject:
+               The subject name in the certificate, expresed as a
+               comma-separated list of X.509 ``name=value`` pairs.
+           :param str issuer:
+               The issuer name in the certificate, expresed as a
+               comma-separated list of X.509 ``name=value`` pairs.
+           :param int serial: (optional)
+               The serial number of the certificate, defaulting to a random
+               64-bit value.
+           :param principals: (optional)
+               The user names this certificate is valid for. By default,
+               it can be used with any user name.
+           :param valid_after: (optional)
+               The earliest time the certificate is valid for, defaulting to
+               no restriction on when the certificate starts being valid.
+               See :ref:`SpecifyingTimeValues` for allowed time specifications.
+           :param valid_before: (optional)
+               The latest time the certificate is valid for, defaulting to
+               no restriction on when the certificate stops being valid.
+               See :ref:`SpecifyingTimeValues` for allowed time specifications.
+           :param purposes: (optional)
+               The allowed purposes for this certificate or ``None`` to
+               not restrict the certificate's purpose, defaulting to
+               'secureShellClient'
+           :param str hash_alg: (optional)
+               The hash algorithm to use when signing the new certificate,
+               defaulting to SHA256.
+           :param comment: (optional)
+               The comment to associate with this certificate. By default,
+               the comment will be set to the comment currently set on
+               user_key.
+           :type user_key: :class:`SSHKey`
+           :type principals: list of strings
+           :type purposes: list of strings or ``None``
+           :type comment: `str` or ``None``
+
+           :returns: :class:`SSHCertificate`
+
+           :raises: | :exc:`ValueError` if the validity times are invalid
+                    | :exc:`KeyGenerationError` if the requested certificate
+                      parameters are unsupported
+
+        """
+
+        if comment is ():
+            comment = user_key.get_comment()
+
+        return self._generate_x509_certificate(user_key, subject, issuer,
+                                               serial, valid_after,
+                                               valid_before, False, None,
+                                               purposes, principals, (),
+                                               hash_alg, comment)
+
+    def generate_x509_host_certificate(self, host_key, subject, issuer,
+                                       serial=None, principals=(),
+                                       valid_after=0,
+                                       valid_before=0xffffffffffffffff,
+                                       purposes='secureShellServer',
+                                       hash_alg='sha256', comment=()):
+        """Generate a new X.509 host certificate
+
+           This method returns a X.509 host certifcate with the requested
+           attributes signed by this private key.
+
+           :param host_key:
+               The host's public key.
+           :param str subject:
+               The subject name in the certificate, expresed as a
+               comma-separated list of X.509 ``name=value`` pairs.
+           :param str issuer:
+               The issuer name in the certificate, expresed as a
+               comma-separated list of X.509 ``name=value`` pairs.
+           :param int serial: (optional)
+               The serial number of the certificate, defaulting to a random
+               64-bit value.
+           :param principals: (optional)
+               The host names this certificate is valid for. By default,
+               it can be used with any host name.
+           :param valid_after: (optional)
+               The earliest time the certificate is valid for, defaulting to
+               no restriction on when the certificate starts being valid.
+               See :ref:`SpecifyingTimeValues` for allowed time specifications.
+           :param valid_before: (optional)
+               The latest time the certificate is valid for, defaulting to
+               no restriction on when the certificate stops being valid.
+               See :ref:`SpecifyingTimeValues` for allowed time specifications.
+           :param purposes: (optional)
+               The allowed purposes for this certificate or ``None`` to
+               not restrict the certificate's purpose, defaulting to
+               'secureShellServer'
+           :param str hash_alg: (optional)
+               The hash algorithm to use when signing the new certificate,
+               defaulting to SHA256.
+           :param comment: (optional)
+               The comment to associate with this certificate. By default,
+               the comment will be set to the comment currently set on
+               host_key.
+           :type host_key: :class:`SSHKey`
+           :type principals: list of strings
+           :type purposes: list of strings or ``None``
+           :type comment: `str` or ``None``
+
+           :returns: :class:`SSHCertificate`
+
+           :raises: | :exc:`ValueError` if the validity times are invalid
+                    | :exc:`KeyGenerationError` if the requested certificate
+                      parameters are unsupported
+        """
+
+        if comment is ():
+            comment = host_key.get_comment()
+
+        return self._generate_x509_certificate(host_key, subject, issuer,
+                                               serial, valid_after,
+                                               valid_before, False, None,
+                                               purposes, (), principals,
+                                               hash_alg, comment)
+
+    def generate_x509_ca_certificate(self, ca_key, subject, issuer,
+                                     serial=None, valid_after=0,
+                                     valid_before=0xffffffffffffffff,
+                                     ca_path_len=None, hash_alg='sha256',
+                                     comment=()):
+        """Generate a new X.509 CA certificate
+
+           This method returns a X.509 CA certifcate with the requested
+           attributes signed by this private key.
+
+           :param ca_key:
+               The new CA's public key.
+           :param str subject:
+               The subject name in the certificate, expresed as a
+               comma-separated list of X.509 ``name=value`` pairs.
+           :param str issuer:
+               The issuer name in the certificate, expresed as a
+               comma-separated list of X.509 ``name=value`` pairs.
+           :param int serial: (optional)
+               The serial number of the certificate, defaulting to a random
+               64-bit value.
+           :param valid_after: (optional)
+               The earliest time the certificate is valid for, defaulting to
+               no restriction on when the certificate starts being valid.
+               See :ref:`SpecifyingTimeValues` for allowed time specifications.
+           :param valid_before: (optional)
+               The latest time the certificate is valid for, defaulting to
+               no restriction on when the certificate stops being valid.
+               See :ref:`SpecifyingTimeValues` for allowed time specifications.
+           :param ca_path_len: (optional)
+               The maximum number of levels of intermediate CAs allowed
+               below this new CA or ``None`` to not enforce a limit,
+               defaulting to no limit.
+           :param str hash_alg: (optional)
+               The hash algorithm to use when signing the new certificate,
+               defaulting to SHA256.
+           :param comment: (optional)
+               The comment to associate with this certificate. By default,
+               the comment will be set to the comment currently set on
+               ca_key.
+           :type ca_key: :class:`SSHKey`
+           :type ca_path_len: `int` or ``None``
+           :type comment: `str` or ``None``
+
+           :returns: :class:`SSHCertificate`
+
+           :raises: | :exc:`ValueError` if the validity times are invalid
+                    | :exc:`KeyGenerationError` if the requested certificate
+                      parameters are unsupported
+        """
+
+        if comment is ():
+            comment = ca_key.get_comment()
+
+        return self._generate_x509_certificate(ca_key, subject, issuer,
+                                               serial, valid_after,
+                                               valid_before, True,
+                                               ca_path_len, None, (), (),
+                                               hash_alg, comment)
 
     def export_private_key(self, format_name='openssh', passphrase=None,
                            cipher_name='aes256-cbc', hash_name='sha256',
@@ -710,6 +955,147 @@ class SSHKey:
 class SSHCertificate:
     """Parent class which holds an SSH certificate"""
 
+    is_x509 = False
+    is_x509_chain = False
+
+    def __init__(self, algorithm, sig_algorithms, host_key_algorithms,
+                 key, data, comment):
+        self.algorithm = algorithm
+        self.sig_algorithms = sig_algorithms
+        self.host_key_algorithms = host_key_algorithms
+        self.key = key
+        self.data = data
+
+        self.set_comment(comment)
+
+    def __eq__(self, other):
+        return isinstance(other, type(self)) and self.data == other.data
+
+    def __hash__(self):
+        return hash(self.data)
+
+    def get_algorithm(self):
+        """Return the algorithm associated with this certificate"""
+
+        return self.algorithm.decode('ascii')
+
+    def get_comment(self):
+        """Return the comment associated with this certificate
+
+           :returns: `str` or ``None``
+
+        """
+
+        return self._comment
+
+    def set_comment(self, comment):
+        """Set the comment associated with this certificate
+
+           :param comment:
+               The new comment to associate with this certificate
+           :type comment: `str` or ``None``
+
+        """
+
+        if isinstance(comment, bytes):
+            try:
+                comment = comment.decode('utf-8')
+            except UnicodeDecodeError:
+                raise KeyImportError('Invalid characters in comment') from None
+
+        self._comment = comment or None
+
+    def export_certificate(self, format_name='openssh'):
+        """Export a certificate in the requested format
+
+           This function returns this certificate encoded in the requested
+           format. Available formats include:
+
+               der, pem, openssh, rfc4716
+
+           By default, OpenSSH format will be used.
+
+           :param str format_name: (optional)
+               The format to export the certificate in.
+
+           :returns: bytes representing the exported certificate
+
+        """
+
+        if self.is_x509:
+            if format_name == 'rfc4716':
+                raise KeyExportError('RFC4716 format is not supported for '
+                                     'X.509 certificates')
+        else:
+            if format_name in ('der', 'pem'):
+                raise KeyExportError('DER and PEM formats are not supported '
+                                     'for OpenSSH certificates')
+
+        if format_name == 'der':
+            return self.data
+        elif format_name == 'pem':
+            return (b'-----BEGIN CERTIFICATE-----\n' +
+                    _wrap_base64(self.data) +
+                    b'-----END CERTIFICATE-----\n')
+        elif format_name == 'openssh':
+            if self._comment:
+                comment = b' ' + self._comment.encode('utf-8')
+            else:
+                comment = b''
+
+            return (self.algorithm + b' ' +
+                    binascii.b2a_base64(self.data)[:-1] + comment + b'\n')
+        elif format_name == 'rfc4716':
+            if self._comment:
+                comment = (b'Comment: "' +
+                           self._comment.encode('utf-8') + b'"\n')
+            else:
+                comment = b''
+
+            return (b'---- BEGIN SSH2 PUBLIC KEY ----\n' +
+                    comment + _wrap_base64(self.data) +
+                    b'---- END SSH2 PUBLIC KEY ----\n')
+        else:
+            raise KeyExportError('Unknown export format')
+
+    def write_certificate(self, filename, *args, **kwargs):
+        """Write a certificate to a file in the requested format
+
+           This function is a simple wrapper around export_certificate
+           which writes the exported certificate to a file.
+
+           :param str filename:
+               The filename to write the certificate to.
+           :param \\*args,\\ \\*\\*kwargs:
+               Additional arguments to pass through to
+               :meth:`export_certificate`.
+
+        """
+
+        with open(filename, 'wb') as f:
+            f.write(self.export_certificate(*args, **kwargs))
+
+    def append_certificate(self, filename, *args, **kwargs):
+        """Append a certificate to a file in the requested format
+
+           This function is a simple wrapper around export_certificate
+           which appends the exported certificate to an existing file.
+
+           :param str filename:
+               The filename to append the certificate to.
+           :param \\*args,\\ \\*\\*kwargs:
+               Additional arguments to pass through to
+               :meth:`export_certificate`.
+
+        """
+
+        with open(filename, 'ab') as f:
+            f.write(self.export_certificate(*args, **kwargs))
+
+
+class SSHOpenSSHCertificate(SSHCertificate):
+    """Class which holds an OpenSSH certificate"""
+
     _user_option_encoders = []
     _user_extension_encoders = []
     _host_option_encoders = []
@@ -723,9 +1109,9 @@ class SSHCertificate:
     def __init__(self, algorithm, key, data, principals, options, signing_key,
                  serial, cert_type, key_id, valid_after, valid_before,
                  comment):
-        self.algorithm = algorithm
-        self.key = key
-        self.data = data
+        super().__init__(algorithm, key.sig_algorithms, (algorithm,),
+                         key, data, comment)
+
         self.principals = principals
         self.options = options
         self.signing_key = signing_key
@@ -736,21 +1122,12 @@ class SSHCertificate:
         self._valid_after = valid_after
         self._valid_before = valid_before
 
-        self.set_comment(comment)
-
     @classmethod
     def generate(cls, signing_key, algorithm, key, serial, cert_type, key_id,
                  principals, valid_after, valid_before, options, comment):
         """Generate a new SSH certificate"""
 
         principals = list(principals)
-        valid_after = _parse_time(valid_after)
-        valid_before = _parse_time(valid_before)
-
-        if valid_before <= valid_after:
-            raise ValueError('Valid before time must be later than '
-                             'valid after time')
-
         cert_principals = b''.join(String(p) for p in principals)
 
         if cert_type == CERT_TYPE_USER:
@@ -764,6 +1141,8 @@ class SSHCertificate:
             cert_extensions = cls._encode_options(options,
                                                   cls._host_extension_encoders)
 
+        key = key.convert_to_public()
+
         data = b''.join((String(algorithm),
                          cls._encode(key, serial, cert_type, key_id,
                                      cert_principals, valid_after,
@@ -773,7 +1152,6 @@ class SSHCertificate:
 
         data += String(signing_key.sign(data, signing_key.algorithm))
 
-        key = key.convert_to_public()
         signing_key = signing_key.convert_to_public()
 
         return cls(algorithm, key, data, principals, options, signing_key,
@@ -782,7 +1160,7 @@ class SSHCertificate:
 
     @classmethod
     def construct(cls, packet, algorithm, key_handler, comment):
-        """Construct an SSH certificate"""
+        """Construct an SSH certificate from packetized data"""
 
         key_params, serial, cert_type, key_id, \
             principals, valid_after, valid_before, \
@@ -869,13 +1247,13 @@ class SSHCertificate:
         return b''
 
     @staticmethod
-    def _encode_force_command(force_command):
+    def _encode_force_cmd(force_command):
         """Encode a force-command option"""
 
         return String(force_command)
 
     @staticmethod
-    def _encode_source_address(source_address):
+    def _encode_source_addr(source_address):
         """Encode a source-address option"""
 
         return NameList(str(addr).encode('ascii') for addr in source_address)
@@ -889,7 +1267,7 @@ class SSHCertificate:
         return True
 
     @staticmethod
-    def _decode_force_command(packet):
+    def _decode_force_cmd(packet):
         """Decode a force-command option"""
 
         try:
@@ -898,7 +1276,7 @@ class SSHCertificate:
             raise KeyImportError('Invalid characters in command') from None
 
     @staticmethod
-    def _decode_source_address(packet):
+    def _decode_source_addr(packet):
         """Decode a source-address option"""
 
         try:
@@ -928,125 +1306,8 @@ class SSHCertificate:
 
         return result
 
-    def get_algorithm(self):
-        """Return the algorithm associated with this certificate"""
-
-        return self.algorithm.decode('ascii')
-
-    def get_comment(self):
-        """Return the comment associated with this certificate
-
-           :returns: `str` or ``None``
-
-        """
-
-        return self._comment
-
-    def set_comment(self, comment):
-        """Set the comment associated with this certificate
-
-           :param comment:
-               The new comment to associate with this certificate
-           :type comment: `str` or ``None``
-
-        """
-
-        if isinstance(comment, bytes):
-            try:
-                comment = comment.decode('utf-8')
-            except UnicodeDecodeError:
-                raise KeyImportError('Invalid characters in comment') from None
-
-        self._comment = comment or None
-
-    def export_certificate(self, format_name='openssh'):
-        """Export a certificate in the requested format
-
-           This function returns this certificate encoded in the requested
-           format. Available formats include:
-
-               openssh, rfc4716
-
-           By default, openssh format will be used.
-
-           :param str format_name: (optional)
-               The format to export the certificate in.
-
-           :returns: bytes representing the exported certificate
-
-        """
-
-        if format_name == 'openssh':
-            if self._comment:
-                comment = b' ' + self._comment.encode('utf-8')
-            else:
-                comment = b''
-
-            return (self.algorithm + b' ' +
-                    binascii.b2a_base64(self.data)[:-1] + comment + b'\n')
-        elif format_name == 'rfc4716':
-            if self._comment:
-                comment = (b'Comment: "' +
-                           self._comment.encode('utf-8') + b'"\n')
-            else:
-                comment = b''
-
-            return (b'---- BEGIN SSH2 PUBLIC KEY ----\n' +
-                    comment + _wrap_base64(self.data) +
-                    b'---- END SSH2 PUBLIC KEY ----\n')
-        else:
-            raise KeyExportError('Unknown export format')
-
-    def write_certificate(self, filename, *args, **kwargs):
-        """Write a certificate to a file in the requested format
-
-           This function is a simple wrapper around export_certificate
-           which writes the exported certificate to a file.
-
-           :param str filename:
-               The filename to write the certificate to.
-           :param \\*args,\\ \\*\\*kwargs:
-               Additional arguments to pass through to
-               :meth:`export_certificate`.
-
-        """
-
-        with open(filename, 'wb') as f:
-            f.write(self.export_certificate(*args, **kwargs))
-
-    def append_certificate(self, filename, *args, **kwargs):
-        """Append a certificate to a file in the requested format
-
-           This function is a simple wrapper around export_certificate
-           which appends the exported certificate to an existing file.
-
-           :param str filename:
-               The filename to append the certificate to.
-           :param \\*args,\\ \\*\\*kwargs:
-               Additional arguments to pass through to
-               :meth:`export_certificate`.
-
-        """
-
-        with open(filename, 'ab') as f:
-            f.write(self.export_certificate(*args, **kwargs))
-
     def validate(self, cert_type, principal):
-        """Validate the certificate type, validity period, and principal
-
-           This method validates that the certificate is of the specified
-           type, that the current time is within the certificate validity
-           period, and that the principal being authenticated is one of
-           the certificate's valid principals.
-
-           :param int cert_type:
-               The expected :ref:`certificate type <CertificateTypes>`.
-           :param str principal:
-               The principal being authenticated.
-
-           :raises: :exc:`ValueError` if any of the validity checks fail
-
-        """
+        """Validate an OpenSSH certificate"""
 
         if self._cert_type != cert_type:
             raise ValueError('Invalid certificate type')
@@ -1063,35 +1324,35 @@ class SSHCertificate:
             raise ValueError('Certificate principal mismatch')
 
 
-class SSHCertificateV01(SSHCertificate):
-    """Encoder/decoder class for version 01 SSH certificates"""
+class SSHOpenSSHCertificateV01(SSHOpenSSHCertificate):
+    """Encoder/decoder class for version 01 OpenSSH certificates"""
 
     # pylint: disable=bad-whitespace
 
     _user_option_encoders = (
-        ('force-command',           SSHCertificate._encode_force_command),
-        ('source-address',          SSHCertificate._encode_source_address)
+        ('force-command',           SSHOpenSSHCertificate._encode_force_cmd),
+        ('source-address',          SSHOpenSSHCertificate._encode_source_addr)
     )
 
     _user_extension_encoders = (
-        ('permit-X11-forwarding',   SSHCertificate._encode_bool),
-        ('permit-agent-forwarding', SSHCertificate._encode_bool),
-        ('permit-port-forwarding',  SSHCertificate._encode_bool),
-        ('permit-pty',              SSHCertificate._encode_bool),
-        ('permit-user-rc',          SSHCertificate._encode_bool)
+        ('permit-X11-forwarding',   SSHOpenSSHCertificate._encode_bool),
+        ('permit-agent-forwarding', SSHOpenSSHCertificate._encode_bool),
+        ('permit-port-forwarding',  SSHOpenSSHCertificate._encode_bool),
+        ('permit-pty',              SSHOpenSSHCertificate._encode_bool),
+        ('permit-user-rc',          SSHOpenSSHCertificate._encode_bool)
     )
 
     _user_option_decoders = {
-        b'force-command':           SSHCertificate._decode_force_command,
-        b'source-address':          SSHCertificate._decode_source_address
+        b'force-command':           SSHOpenSSHCertificate._decode_force_cmd,
+        b'source-address':          SSHOpenSSHCertificate._decode_source_addr
     }
 
     _user_extension_decoders = {
-        b'permit-X11-forwarding':   SSHCertificate._decode_bool,
-        b'permit-agent-forwarding': SSHCertificate._decode_bool,
-        b'permit-port-forwarding':  SSHCertificate._decode_bool,
-        b'permit-pty':              SSHCertificate._decode_bool,
-        b'permit-user-rc':          SSHCertificate._decode_bool
+        b'permit-X11-forwarding':   SSHOpenSSHCertificate._decode_bool,
+        b'permit-agent-forwarding': SSHOpenSSHCertificate._decode_bool,
+        b'permit-port-forwarding':  SSHOpenSSHCertificate._decode_bool,
+        b'permit-pty':              SSHOpenSSHCertificate._decode_bool,
+        b'permit-user-rc':          SSHOpenSSHCertificate._decode_bool
     }
 
     # pylint: enable=bad-whitespace
@@ -1125,6 +1386,125 @@ class SSHCertificateV01(SSHCertificate):
 
         return (key_params, serial, cert_type, key_id, principals,
                 valid_after, valid_before, options, extensions)
+
+
+class SSHX509Certificate(SSHCertificate):
+    """Encoder/decoder class for SSH X.509 certificates"""
+
+    is_x509 = True
+
+    def __init__(self, key, x509_cert):
+        super().__init__(b'x509v3-' + key.algorithm, key.x509_algorithms,
+                         key.x509_algorithms, key, x509_cert.data,
+                         x509_cert.comment)
+
+        self.subject = x509_cert.subject
+        self.issuer = x509_cert.issuer
+        self.user_principals = x509_cert.user_principals
+        self.x509_cert = x509_cert
+
+    @classmethod
+    def generate(cls, signing_key, key, subject, issuer, serial, valid_after,
+                 valid_before, ca, ca_path_len, purposes, user_principals,
+                 host_principals, hash_alg, comment):
+        """Generate a new X.509 certificate"""
+
+        key = key.convert_to_public()
+
+        x509_cert = generate_x509_certificate(signing_key, key, subject, issuer,
+                                              serial, valid_after, valid_before,
+                                              ca, ca_path_len, purposes,
+                                              user_principals, host_principals,
+                                              hash_alg, comment)
+
+        return cls(key, x509_cert)
+
+    @classmethod
+    def construct(cls, data):
+        """Construct an SSH X.509 certificate from DER data"""
+
+        try:
+            x509_cert = import_x509_certificate(data)
+            key = import_public_key(x509_cert.key_data)
+        except ValueError as exc:
+            raise KeyImportError(str(exc)) from None
+
+        return cls(key, x509_cert)
+
+    def validate_chain(self, cert_chain, trusted_certs, purposes,
+                       user_principal=None, host_principal=None):
+        """Validate an X.509 certificate chain"""
+
+        cert_chain = [c.x509_cert for c in cert_chain]
+        trusted_certs = [c.x509_cert for c in trusted_certs]
+
+        self.x509_cert.validate(cert_chain, trusted_certs, purposes,
+                                user_principal, host_principal)
+
+
+class SSHX509CertificateChain(SSHCertificate):
+    """Encoder/decoder class for an SSH X.509 certificate chain"""
+
+    is_x509_chain = True
+
+    def __init__(self, algorithm, data, certs, ocsp_responses, comment):
+        key = certs[0].key
+
+        super().__init__(algorithm, key.x509_algorithms, key.x509_algorithms,
+                         key, data, comment)
+
+        self.subject = certs[0].subject
+        self.issuer = certs[-1].issuer
+        self.user_principals = certs[0].user_principals
+
+        self._certs = certs
+        self._ocsp_responses = ocsp_responses
+
+    @classmethod
+    def construct(cls, packet, algorithm, key_handler, comment=None):
+        """Construct an SSH X.509 certificate from packetized data"""
+
+        # pylint: disable=unused-argument
+
+        cert_count = packet.get_uint32()
+        certs = [import_certificate(packet.get_string())
+                 for _ in range(cert_count)]
+
+        ocsp_resp_count = packet.get_uint32()
+        ocsp_responses = [packet.get_string() for _ in range(ocsp_resp_count)]
+
+        packet.check_end()
+
+        data = packet.get_consumed_payload()
+
+        if not certs:
+            raise KeyImportError('No certificates present')
+
+        return cls(algorithm, data, certs, ocsp_responses, comment)
+
+    @classmethod
+    def construct_from_certs(cls, certs):
+        """Construct an SSH X.509 certificate chain from certificates"""
+
+        cert = certs[0]
+        algorithm = cert.algorithm
+        data = (String(algorithm) + UInt32(len(certs)) +
+                b''.join(String(c.data) for c in certs) + UInt32(0))
+
+        return cls(algorithm, data, certs, (), cert.get_comment())
+
+    def validate_chain(self, trusted_certs, revoked_certs, purposes,
+                       user_principal=None, host_principal=None):
+        """Validate an X.509 certificate chain"""
+
+        if revoked_certs:
+            for cert in self._certs:
+                if cert in revoked_certs:
+                    raise ValueError('Revoked X.509 certificate in '
+                                     'certificate chain')
+
+        self._certs[0].validate_chain(self._certs[1:], trusted_certs, purposes,
+                                      user_principal, host_principal)
 
 
 class SSHKeyPair:
@@ -1221,16 +1601,17 @@ class SSHLocalKeyPair(SSHKeyPair):
         self._cert = cert
 
         self.sig_algorithm = key.algorithm
-        self.sig_algorithms = key.sig_algorithms
 
         if cert:
             if key.get_ssh_public_key() != cert.key.get_ssh_public_key():
                 raise ValueError('Certificate key mismatch')
 
-            self.host_key_algorithms = (cert.algorithm,)
+            self.sig_algorithms = cert.sig_algorithms
+            self.host_key_algorithms = cert.host_key_algorithms
             self.public_data = cert.data
         else:
-            self.host_key_algorithms = self.sig_algorithms
+            self.sig_algorithms = key.sig_algorithms
+            self.host_key_algorithms = key.sig_algorithms
             self.public_data = key.get_ssh_public_key()
 
     def get_agent_private_key(self):
@@ -1247,10 +1628,15 @@ class SSHLocalKeyPair(SSHKeyPair):
     def set_sig_algorithm(self, sig_algorithm):
         """Set the signature algorithm to use when signing data"""
 
+        if sig_algorithm.startswith(b'x509v3-'):
+            sig_algorithm = sig_algorithm[7:]
+
         self.sig_algorithm = sig_algorithm
 
         if not self._cert:
             self.algorithm = sig_algorithm
+        elif self._cert.algorithm.startswith(b'x509v3-'):
+            self.algorithm = b'x509v3-' + sig_algorithm
 
     def sign(self, data):
         """Sign a block of data with this private key"""
@@ -1506,6 +1892,28 @@ def _decode_der_public(data):
     raise KeyImportError('Invalid DER public key')
 
 
+def _decode_der_certificate(data):
+    """Decode a DER format X.509 certificate"""
+
+    return SSHX509Certificate.construct(data)
+
+
+def _decode_der_certificate_list(data):
+    """Decode a DER format X.509 certificate list"""
+
+    certs = []
+
+    while data:
+        try:
+            _, end = der_decode(data, partial_ok=True)
+        except ASN1DecodeError:
+            raise KeyImportError('Invalid DER certificate') from None
+
+        certs.append(_decode_der_certificate(data[:end]))
+        data = data[end:]
+
+    return certs
+
 def _decode_pem(lines, keytype):
     """Decode a PEM format key"""
 
@@ -1623,6 +2031,30 @@ def _decode_pem_public(lines):
         return _decode_pkcs8_public(key_data), end
 
 
+def _decode_pem_certificate(lines):
+    """Decode a PEM format X.509 certificate"""
+
+    pem_name, _, data, end = _decode_pem(lines, b'CERTIFICATE')
+
+    if pem_name:
+        raise KeyImportError('Invalid PEM certificate')
+
+    return SSHX509Certificate.construct(data), end
+
+
+def _decode_pem_certificate_list(lines):
+    """Decode a PEM format X.509 certificate list"""
+
+    certs = []
+
+    while lines:
+        cert, end = _decode_pem_certificate(lines)
+        certs.append(cert)
+        lines = lines[end:]
+
+    return certs
+
+
 def _decode_openssh(line):
     """Decode an OpenSSH format public key or certificate"""
 
@@ -1635,7 +2067,7 @@ def _decode_openssh(line):
         comment = line[2]
 
     try:
-        return binascii.a2b_base64(line[1]), comment
+        return line[0], binascii.a2b_base64(line[1]), comment
     except binascii.Error:
         raise KeyImportError('Invalid OpenSSH public key '
                              'or certificate') from None
@@ -1719,6 +2151,14 @@ def register_certificate_alg(version, algorithm, cert_algorithm,
         (cert_algorithm, cert_handler)
 
 
+def register_x509_certificate_alg(cert_algorithm):
+    """Register a new X.509 certificate algorithm"""
+
+    if _x509_available: # pragma: no branch
+        _certificate_alg_map[cert_algorithm] = (None, SSHX509CertificateChain)
+        _x509_certificate_algs.append(cert_algorithm)
+
+
 def get_public_key_algs():
     """Return supported public key algorithms"""
 
@@ -1729,6 +2169,12 @@ def get_certificate_algs():
     """Return supported certificate-based public key algorithms"""
 
     return _certificate_algs
+
+
+def get_x509_certificate_algs():
+    """Return supported X.509 certificate-based public key algorithms"""
+
+    return _x509_certificate_algs
 
 
 def decode_ssh_public_key(data):
@@ -1766,8 +2212,8 @@ def decode_ssh_certificate(data, comment=None):
         else:
             raise KeyImportError('Unknown certificate algorithm: %s' %
                                  alg.decode('ascii', errors='replace'))
-    except PacketDecodeError:
-        raise KeyImportError('Invalid certificate') from None
+    except (PacketDecodeError, ValueError):
+        raise KeyImportError('Invalid OpenSSH certificate') from None
 
 
 def generate_private_key(alg_name, comment=None, **kwargs):
@@ -1858,6 +2304,30 @@ def import_private_key(data, passphrase=None):
     return key
 
 
+def import_private_key_and_certs(data, passphrase=None):
+    """Import a private key and optional certificate chain"""
+
+    stripped_key = data.lstrip()
+    if stripped_key.startswith(b'-----'):
+        lines = stripped_key.splitlines()
+        key, end = _decode_pem_private(lines, passphrase)
+
+        lines = lines[end:]
+        certs = _decode_pem_certificate_list(lines) if lines else None
+    else:
+        key, end = _decode_der_private(data, passphrase)
+
+        data = data[end:]
+        certs = _decode_der_certificate_list(data) if data else None
+
+    if certs:
+        chain = SSHX509CertificateChain.construct_from_certs(certs)
+    else:
+        chain = None
+
+    return key, chain
+
+
 def import_public_key(data):
     """Import a public key
 
@@ -1888,8 +2358,12 @@ def import_public_key(data):
     elif data.startswith(b'\x30'):
         key, _ = _decode_der_public(data)
     elif data:
-        data, comment = _decode_openssh(stripped_key.splitlines()[0])
+        algorithm, data, comment = _decode_openssh(stripped_key.splitlines()[0])
         key = decode_ssh_public_key(data)
+
+        if algorithm != key.algorithm:
+            raise KeyImportError('Public key algorithm mismatch')
+
         key.set_comment(comment)
     else:
         raise KeyImportError('Invalid public key')
@@ -1900,14 +2374,14 @@ def import_public_key(data):
 def import_certificate(data):
     """Import a certificate
 
-       This function imports an SSH certificate in OpenSSH or RFC4716
-       format.
+       This function imports an SSH certificate in DER, PEM, OpenSSH, or
+       RFC4716 format.
 
        :param data:
            The data to import.
        :type data: bytes or ASCII string
 
-       :returns: An :class:`SSHCertificate` certificate
+       :returns: An :class:`SSHCertificate` object
 
     """
 
@@ -1918,12 +2392,39 @@ def import_certificate(data):
             raise KeyImportError('Invalid encoding for certificate') from None
 
     stripped_key = data.lstrip()
-    if stripped_key.startswith(b'---- '):
+    if stripped_key.startswith(b'-----'):
+        cert, _ = _decode_pem_certificate(stripped_key.splitlines())
+    elif data.startswith(b'\x30'):
+        cert = _decode_der_certificate(data)
+    elif stripped_key.startswith(b'---- '):
         data, comment, _ = _decode_rfc4716(stripped_key.splitlines())
+        cert = decode_ssh_certificate(data, comment)
     else:
-        data, comment = _decode_openssh(stripped_key.splitlines()[0])
+        algorithm, data, comment = _decode_openssh(stripped_key.splitlines()[0])
 
-    return decode_ssh_certificate(data, comment)
+        if algorithm.startswith(b'x509v3-'):
+            cert = _decode_der_certificate(data)
+        else:
+            cert = decode_ssh_certificate(data, comment)
+
+    return cert
+
+
+def import_certificate_subject(data):
+    """Import an X.509 certificate subject name"""
+
+    try:
+        algorithm, data = data.strip().split(None, 1)
+    except ValueError:
+        raise KeyImportError('Missing certificate subject algorithm') from None
+
+    if algorithm.startswith('x509v3-'):
+        match = _subject_pattern.match(data)
+
+        if match:
+            return data[match.end():]
+
+    raise KeyImportError('Invalid certificate subject')
 
 
 def read_private_key(filename, passphrase=None):
@@ -1949,6 +2450,18 @@ def read_private_key(filename, passphrase=None):
         key.set_comment(filename)
 
     return key
+
+
+def read_private_key_and_certs(filename, passphrase=None):
+    """Read a private key and optional certificate chain from a file"""
+
+    with open(filename, 'rb') as f:
+        key, cert = import_private_key_and_certs(f.read(), passphrase)
+
+    if not key.get_comment():
+        key.set_comment(filename)
+
+    return key, cert
 
 
 def read_public_key(filename):
@@ -1984,7 +2497,7 @@ def read_certificate(filename):
        :param str filename:
            The file to read the certificate from.
 
-       :returns: An :class:`SSHCertificate` certificate
+       :returns: An :class:`SSHCertificate` object
 
     """
 
@@ -2075,8 +2588,12 @@ def read_public_key_list(filename):
             data = data[end:]
     else:
         for line in stripped_key.splitlines():
-            data, comment = _decode_openssh(line)
+            algorithm, data, comment = _decode_openssh(line)
             key = decode_ssh_public_key(data)
+
+            if algorithm != key.algorithm:
+                raise KeyImportError('Public key algorithm mismatch')
+
             key.set_comment(comment)
             keys.append(key)
 
@@ -2107,7 +2624,11 @@ def read_certificate_list(filename):
     certs = []
 
     stripped_key = data.strip()
-    if stripped_key.startswith(b'---- '):
+    if stripped_key.startswith(b'-----'):
+        certs = _decode_pem_certificate_list(stripped_key.splitlines())
+    elif data.startswith(b'\x30'):
+        certs = _decode_der_certificate_list(data)
+    elif stripped_key.startswith(b'---- '):
         lines = stripped_key.splitlines()
         while lines:
             data, comment, end = _decode_rfc4716(lines)
@@ -2115,8 +2636,14 @@ def read_certificate_list(filename):
             lines = lines[end:]
     else:
         for line in stripped_key.splitlines():
-            data, comment = _decode_openssh(line)
-            certs.append(decode_ssh_certificate(data, comment))
+            algorithm, data, comment = _decode_openssh(line)
+
+            if algorithm.startswith(b'x509v3-'):
+                cert = _decode_der_certificate(data)
+            else:
+                cert = decode_ssh_certificate(data, comment)
+
+            certs.append(cert)
 
     return certs
 
@@ -2131,7 +2658,7 @@ def load_keypairs(keylist, passphrase=None):
        the list both with and without the certificate.
 
        :param keylist:
-           The list of private keys and certificates to import.
+           The list of private keys and certificates to load.
        :param str passphrase: (optional)
            The passphrase to use to decrypt private keys.
        :type keylist: *see* :ref:`SpecifyingPrivateKeys`
@@ -2143,21 +2670,15 @@ def load_keypairs(keylist, passphrase=None):
     result = []
 
     if isinstance(keylist, str):
-        keys = read_private_key_list(keylist, passphrase)
+        try:
+            keys = read_private_key_list(keylist, passphrase)
 
-        if len(keys) == 1:
-            try:
-                cert = read_certificate(keylist + '-cert.pub')
-            except OSError:
-                cert = None
+            if len(keys) > 1:
+                return [SSHLocalKeyPair(key) for key in keys]
+        except KeyImportError:
+            pass
 
-            if cert:
-                result.append(SSHLocalKeyPair(keys[0], cert))
-
-            result.append(SSHLocalKeyPair(keys[0]))
-            return result
-        else:
-            return [SSHLocalKeyPair(key) for key in keys]
+        keylist = [keylist]
     elif isinstance(keylist, (tuple, bytes, SSHKey, SSHKeyPair)):
         keylist = [keylist]
     elif not keylist:
@@ -2167,30 +2688,50 @@ def load_keypairs(keylist, passphrase=None):
         if isinstance(key, SSHKeyPair):
             result.append(key)
         else:
+            allow_certs = False
+            default_cert_file = None
+            ignore_missing_cert = False
+
             if isinstance(key, str):
-                cert = key + '-cert.pub'
+                allow_certs = True
+                default_cert_file = key + '-cert.pub'
                 ignore_missing_cert = True
+            elif isinstance(key, bytes):
+                allow_certs = True
             elif isinstance(key, tuple):
-                key, cert = key
-                ignore_missing_cert = False
+                key, certs = key
             else:
-                cert = None
+                certs = None
 
             if isinstance(key, str):
-                key = read_private_key(key, passphrase)
-            elif isinstance(key, bytes):
-                key = import_private_key(key, passphrase)
+                if allow_certs:
+                    key, certs = read_private_key_and_certs(key, passphrase)
 
-            if isinstance(cert, str):
+                    if not certs and default_cert_file:
+                        certs = default_cert_file
+                else:
+                    key = read_private_key(key, passphrase)
+            elif isinstance(key, bytes):
+                if allow_certs:
+                    key, certs = import_private_key_and_certs(key, passphrase)
+                else:
+                    key = import_private_key(key, passphrase)
+
+            if certs:
                 try:
-                    cert = read_certificate(cert)
+                    certs = load_certificates(certs)
                 except OSError:
                     if ignore_missing_cert:
-                        cert = None
+                        certs = None
                     else:
                         raise
-            elif isinstance(cert, bytes):
-                cert = import_certificate(cert)
+
+            if certs is None:
+                cert = None
+            elif len(certs) == 1 and not certs[0].is_x509:
+                cert = certs[0]
+            else:
+                cert = SSHX509CertificateChain.construct_from_certs(certs)
 
             if cert:
                 result.append(SSHLocalKeyPair(key, cert))
@@ -2206,7 +2747,7 @@ def load_public_keys(keylist):
        This function loads a list of SSH public keys.
 
        :param keylist:
-           The list of public keys to import.
+           The list of public keys to load.
        :type keylist: *see* :ref:`SpecifyingPublicKeys`
 
        :returns: A list of :class:`SSHKey` objects
@@ -2227,3 +2768,38 @@ def load_public_keys(keylist):
             result.append(key)
 
         return result
+
+
+def load_certificates(certlist):
+    """Load certificates
+
+       This function loads a list of OpenSSH or X.509 certificates.
+
+       :param certlist:
+           The list of certificates to load.
+       :type certlist: *see* :ref:`SpecifyingCertificates`
+
+       :returns: A list of :class:`SSHCertificate` objects
+
+    """
+
+    if isinstance(certlist, SSHCertificate):
+        return [certlist]
+    elif isinstance(certlist, (bytes, str)):
+        certlist = [certlist]
+
+    result = []
+
+    for cert in certlist:
+        if isinstance(cert, str):
+            certs = read_certificate_list(cert)
+        elif isinstance(cert, bytes):
+            certs = [import_certificate(cert)]
+        elif isinstance(cert, SSHCertificate):
+            certs = [cert]
+        else:
+            certs = cert
+
+        result.extend(certs)
+
+    return result

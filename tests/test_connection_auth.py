@@ -24,6 +24,7 @@ from asyncssh.public_key import CERT_TYPE_USER
 
 from .server import Server, ServerTestCase
 from .util import asynctest, gss_available, patch_gss, make_certificate
+from .util import x509_available
 
 
 class _AsyncGSSServer(asyncssh.SSHServer):
@@ -67,9 +68,9 @@ class _AsyncPublicKeyClient(_PublicKeyClient):
 class _PublicKeyServer(Server):
     """Server for testing public key authentication"""
 
-    def __init__(self, authorized_keys=None):
+    def __init__(self, client_keys=(), authorized_keys=None):
         super().__init__()
-        self._client_keys = []
+        self._client_keys = client_keys
         self._authorized_keys = authorized_keys
 
     def connection_made(self, conn):
@@ -84,8 +85,7 @@ class _PublicKeyServer(Server):
         if self._authorized_keys:
             self._conn.set_authorized_keys(self._authorized_keys)
         else:
-            self._client_keys = asyncssh.load_public_keys(['ckey_dsa.pub',
-                                                           'ckey.pub'])
+            self._client_keys = asyncssh.load_public_keys(self._client_keys)
 
         return True
 
@@ -338,7 +338,7 @@ class _TestGSSAuth(ServerTestCase):
         """Test GSS authentication being unavailable"""
 
         with self.assertRaises(asyncssh.DisconnectError):
-            yield from self.connect(username='user1')
+            yield from self.connect(username='user1', gss_host=())
 
     @asynctest
     def test_gss_client_error(self):
@@ -390,13 +390,13 @@ class _TestGSSFQDN(ServerTestCase):
 
         with patch('socket.gethostname', mock_gethostname):
             with patch('socket.getfqdn', mock_getfqdn):
-                return (yield from cls.create_server())
+                return (yield from cls.create_server(gss_host=()))
 
     @asynctest
     def test_gss_fqdn_lookup(self):
         """Test GSS FQDN lookup"""
 
-        with (yield from self.connect(username='user')) as conn:
+        with (yield from self.connect(username='user', gss_host=())) as conn:
             pass
 
         yield from conn.wait_closed()
@@ -411,8 +411,7 @@ class _TestPublicKeyAuth(ServerTestCase):
         """Start an SSH server which supports public key authentication"""
 
         return (yield from cls.create_server(
-            _PublicKeyServer, authorized_client_keys='authorized_keys',
-            gss_host=None))
+            _PublicKeyServer, authorized_client_keys='authorized_keys'))
 
     @asyncio.coroutine
     def _connect_publickey(self, keylist, test_async=False):
@@ -426,7 +425,6 @@ class _TestPublicKeyAuth(ServerTestCase):
 
         conn, _ = yield from self.create_connection(client_factory,
                                                     username='ckey',
-                                                    gss_host=None,
                                                     client_keys=None)
 
         return conn
@@ -438,7 +436,7 @@ class _TestPublicKeyAuth(ServerTestCase):
         if not self.agent_available(): # pragma: no cover
             self.skipTest('ssh-agent not available')
 
-        with (yield from self.connect(username='ckey', gss_host=None)) as conn:
+        with (yield from self.connect(username='ckey')) as conn:
             pass
 
         yield from conn.wait_closed()
@@ -451,7 +449,7 @@ class _TestPublicKeyAuth(ServerTestCase):
             self.skipTest('ssh-agent not available')
 
         for alg in ('ssh-rsa', 'rsa-sha2-256', 'rsa-sha2-512'):
-            with (yield from self.connect(username='ckey', gss_host=None,
+            with (yield from self.connect(username='ckey',
                                           signature_algs=[alg])) as conn:
                 pass
 
@@ -466,8 +464,7 @@ class _TestPublicKeyAuth(ServerTestCase):
 
         with patch.dict(os.environ, HOME='xxx'):
             with self.assertRaises(asyncssh.DisconnectError):
-                yield from self.connect(username='ckey', gss_host=None,
-                                        agent_path='xxx',
+                yield from self.connect(username='ckey', agent_path='xxx',
                                         known_hosts='.ssh/known_hosts')
 
     @asynctest
@@ -476,14 +473,14 @@ class _TestPublicKeyAuth(ServerTestCase):
 
         with patch.dict(os.environ, HOME='xxx', SSH_AUTH_SOCK=''):
             with self.assertRaises(asyncssh.DisconnectError):
-                yield from self.connect(username='ckey', gss_host=None,
+                yield from self.connect(username='ckey',
                                         known_hosts='.ssh/known_hosts')
 
     @asynctest
     def test_public_key_auth(self):
         """Test connecting with public key authentication"""
 
-        with (yield from self.connect(username='ckey', gss_host=None,
+        with (yield from self.connect(username='ckey',
                                       client_keys='ckey')) as conn:
             pass
 
@@ -494,8 +491,7 @@ class _TestPublicKeyAuth(ServerTestCase):
         """Test public key authentication with specific signature algorithms"""
 
         for alg in ('ssh-rsa', 'rsa-sha2-256', 'rsa-sha2-512'):
-            with (yield from self.connect(username='ckey', gss_host=None,
-                                          client_keys='ckey',
+            with (yield from self.connect(username='ckey', client_keys='ckey',
                                           signature_algs=[alg])) as conn:
                 pass
 
@@ -514,8 +510,7 @@ class _TestPublicKeyAuth(ServerTestCase):
 
         with patch('asyncssh.connection.SSHConnection._get_ext_info_kex_alg',
                    skip_ext_info):
-            with (yield from self.connect(username='ckey', gss_host=None,
-                                          client_keys='ckey',
+            with (yield from self.connect(username='ckey', client_keys='ckey',
                                           agent_path=None)) as conn:
                 pass
 
@@ -525,7 +520,7 @@ class _TestPublicKeyAuth(ServerTestCase):
     def test_default_public_key_auth(self):
         """Test connecting with default public key authentication"""
 
-        with (yield from self.connect(username='ckey', gss_host=None,
+        with (yield from self.connect(username='ckey',
                                       agent_path=None)) as conn:
             pass
 
@@ -535,13 +530,12 @@ class _TestPublicKeyAuth(ServerTestCase):
     def test_invalid_default_key(self):
         """Test connecting with invalid default client key"""
 
-        key_path = os.path.join('.ssh', 'id_ecdsa')
+        key_path = os.path.join('.ssh', 'id_dsa')
         with open(key_path, 'w') as f:
             f.write('-----XXX-----')
 
         with self.assertRaises(asyncssh.KeyImportError):
-            yield from self.connect(username='ckey', gss_host=None,
-                                    agent_path=None)
+            yield from self.connect(username='ckey', agent_path=None)
 
         os.remove(key_path)
 
@@ -552,7 +546,7 @@ class _TestPublicKeyAuth(ServerTestCase):
         with open('ckey', 'rb') as f:
             ckey = f.read()
 
-        with (yield from self.connect(username='ckey', gss_host=None,
+        with (yield from self.connect(username='ckey',
                                       client_keys=[ckey])) as conn:
             pass
 
@@ -564,7 +558,7 @@ class _TestPublicKeyAuth(ServerTestCase):
 
         ckey = asyncssh.read_private_key('ckey')
 
-        with (yield from self.connect(username='ckey', gss_host=None,
+        with (yield from self.connect(username='ckey',
                                       client_keys=[ckey])) as conn:
             pass
 
@@ -576,7 +570,7 @@ class _TestPublicKeyAuth(ServerTestCase):
 
         keys = asyncssh.load_keypairs('ckey')
 
-        with (yield from self.connect(username='ckey', gss_host=None,
+        with (yield from self.connect(username='ckey',
                                       client_keys=keys)) as conn:
             pass
 
@@ -592,7 +586,7 @@ class _TestPublicKeyAuth(ServerTestCase):
         agent = yield from asyncssh.connect_agent()
 
         for key in (yield from agent.get_keys()):
-            with (yield from self.connect(username='ckey', gss_host=None,
+            with (yield from self.connect(username='ckey',
                                           client_keys=[key])) as conn:
                 pass
 
@@ -605,15 +599,14 @@ class _TestPublicKeyAuth(ServerTestCase):
         """Test untrusted client key"""
 
         with self.assertRaises(asyncssh.DisconnectError):
-            yield from self.connect(username='ckey', gss_host=None,
-                                    client_keys='skey')
+            yield from self.connect(username='ckey', client_keys='skey')
 
     @asynctest
     def test_missing_cert(self):
         """Test missing client certificate"""
 
         with self.assertRaises(OSError):
-            yield from self.connect(username='ckey', gss_host=None,
+            yield from self.connect(username='ckey',
                                     client_keys=[('ckey', 'xxx')])
 
     @asynctest
@@ -628,8 +621,7 @@ class _TestPublicKeyAuth(ServerTestCase):
                                 valid_before=1)
 
         with self.assertRaises(asyncssh.DisconnectError):
-            yield from self.connect(username='ckey', gss_host=None,
-                                    client_keys=[(skey, cert)])
+            yield from self.connect(username='ckey', client_keys=[(skey, cert)])
 
     @asynctest
     def test_allowed_address(self):
@@ -643,7 +635,7 @@ class _TestPublicKeyAuth(ServerTestCase):
                                 options={'source-address':
                                          String('0.0.0.0/0,::/0')})
 
-        with (yield from self.connect(username='ckey', gss_host=None,
+        with (yield from self.connect(username='ckey',
                                       client_keys=[(skey, cert)])) as conn:
             pass
 
@@ -661,8 +653,7 @@ class _TestPublicKeyAuth(ServerTestCase):
                                 options={'source-address': String('0.0.0.0')})
 
         with self.assertRaises(asyncssh.DisconnectError):
-            yield from self.connect(username='ckey', gss_host=None,
-                                    client_keys=[(skey, cert)])
+            yield from self.connect(username='ckey', client_keys=[(skey, cert)])
 
     @asynctest
     def test_untrusted_ca(self):
@@ -674,7 +665,7 @@ class _TestPublicKeyAuth(ServerTestCase):
                                 CERT_TYPE_USER, skey, skey, ['skey'])
 
         with self.assertRaises(ValueError):
-            yield from self.connect(username='ckey', gss_host=None,
+            yield from self.connect(username='ckey',
                                     client_keys=[('ckey', cert)])
 
     @asynctest
@@ -717,8 +708,7 @@ class _TestPublicKeyAuth(ServerTestCase):
 
         with patch('asyncssh.connection.SSHClientConnection',
                    _UnknownAuthClientConnection):
-            with (yield from self.connect(username='ckey', gss_host=None,
-                                          client_keys='ckey',
+            with (yield from self.connect(username='ckey', client_keys='ckey',
                                           agent_path=None)) as conn:
                 pass
 
@@ -733,8 +723,13 @@ class _TestPublicKeyAsyncServerAuth(_TestPublicKeyAuth):
     def start_server(cls):
         """Start an SSH server which supports async public key auth"""
 
-        return (yield from cls.create_server(_AsyncPublicKeyServer,
-                                             gss_host=None))
+        def server_factory():
+            """Return an SSH server which calls set_authorized_keys"""
+
+            return _AsyncPublicKeyServer(client_keys=['ckey.pub',
+                                                      'ckey_ecdsa.pub'])
+
+        return (yield from cls.create_server(server_factory))
 
 
 class _TestLimitedSignatureAlgs(ServerTestCase):
@@ -747,23 +742,21 @@ class _TestLimitedSignatureAlgs(ServerTestCase):
 
         return (yield from cls.create_server(
             _PublicKeyServer, authorized_client_keys='authorized_keys',
-            gss_host=None, signature_algs=['ssh-rsa', 'rsa-sha2-512']))
+            signature_algs=['ssh-rsa', 'rsa-sha2-512']))
 
     @asynctest
     def test_mismatched_signature_algs(self):
         """Test mismatched signature algorithms"""
 
         with self.assertRaises(asyncssh.DisconnectError):
-            yield from self.connect(username='ckey', gss_host=None,
-                                    client_keys='ckey',
+            yield from self.connect(username='ckey', client_keys='ckey',
                                     signature_algs=['rsa-sha2-256'])
 
     @asynctest
     def test_signature_alg_fallback(self):
         """Test fall back to default signature algorithm"""
 
-        with (yield from self.connect(username='ckey', gss_host=None,
-                                      client_keys='ckey',
+        with (yield from self.connect(username='ckey', client_keys='ckey',
                                       signature_algs=['rsa-sha2-256',
                                                       'ssh-rsa'])) as conn:
             pass
@@ -784,13 +777,13 @@ class _TestSetAuthorizedKeys(ServerTestCase):
 
             return _PublicKeyServer(authorized_keys='authorized_keys')
 
-        return (yield from cls.create_server(server_factory, gss_host=None))
+        return (yield from cls.create_server(server_factory))
 
     @asynctest
     def test_set_authorized_keys(self):
         """Test set_authorized_keys method on server"""
 
-        with (yield from self.connect(username='ckey', gss_host=None,
+        with (yield from self.connect(username='ckey',
                                       client_keys='ckey')) as conn:
             pass
 
@@ -805,7 +798,7 @@ class _TestSetAuthorizedKeys(ServerTestCase):
         cert = make_certificate('ssh-rsa-cert-v01@openssh.com',
                                 CERT_TYPE_USER, ckey, ckey, ['ckey'])
 
-        with (yield from self.connect(username='ckey', gss_host=None,
+        with (yield from self.connect(username='ckey',
                                       client_keys=[(ckey, cert)])) as conn:
             pass
 
@@ -826,17 +819,168 @@ class _TestPreloadedAuthorizedKeys(ServerTestCase):
             authorized_keys = asyncssh.read_authorized_keys('authorized_keys')
             return _PublicKeyServer(authorized_keys=authorized_keys)
 
-        return (yield from cls.create_server(server_factory, gss_host=None))
+        return (yield from cls.create_server(server_factory))
 
     @asynctest
     def test_pre_loaded_authorized_keys(self):
         """Test set_authorized_keys with pre-loaded authorized keys"""
 
-        with (yield from self.connect(username='ckey', gss_host=None,
+        with (yield from self.connect(username='ckey',
                                       client_keys='ckey')) as conn:
             pass
 
         yield from conn.wait_closed()
+
+
+@unittest.skipUnless(x509_available, 'X.509 not available')
+class _TestX509Auth(ServerTestCase):
+    """Unit tests for X.509 certificate authentication"""
+
+    @classmethod
+    @asyncio.coroutine
+    def start_server(cls):
+        """Start an SSH server which supports public key authentication"""
+
+        return (yield from cls.create_server(
+            _PublicKeyServer, authorized_client_keys='authorized_keys_x509'))
+
+    @asynctest
+    def test_x509_self(self):
+        """Test connecting with X.509 self-signed certificate"""
+
+        with (yield from self.connect(username='ckey',
+                                      client_keys=['ckey_x509_self'])) as conn:
+            pass
+
+        yield from conn.wait_closed()
+
+    @asynctest
+    def test_x509_chain(self):
+        """Test connecting with X.509 certificate chain"""
+
+        with (yield from self.connect(username='ckey',
+                                      client_keys=['ckey_x509_chain'])) as conn:
+            pass
+
+        yield from conn.wait_closed()
+
+    @asynctest
+    def test_x509_incomplete_chain(self):
+        """Test connecting with incomplete X.509 certificate chain"""
+
+        with self.assertRaises(asyncssh.DisconnectError):
+            yield from self.connect(username='ckey',
+                                    client_keys=[('ckey_x509_chain',
+                                                  'ckey_x509_partial.pem')])
+
+    @asynctest
+    def test_x509_untrusted_cert(self):
+        """Test connecting with untrusted X.509 certificate chain"""
+
+        with self.assertRaises(asyncssh.DisconnectError):
+            yield from self.connect(username='ckey',
+                                    client_keys=['skey_x509_chain'])
+
+@unittest.skipUnless(x509_available, 'X.509 not available')
+class _TestX509AuthDisabled(ServerTestCase):
+    """Unit tests for disabled X.509 certificate authentication"""
+
+    @classmethod
+    @asyncio.coroutine
+    def start_server(cls):
+        """Start an SSH server which doesn't support X.509 authentication"""
+
+        return (yield from cls.create_server(
+            _PublicKeyServer, x509_trusted_certs=None,
+            authorized_client_keys='authorized_keys'))
+
+    @asynctest
+    def test_failed_x509_auth(self):
+        """Test connect failure with X.509 certificate"""
+
+        with self.assertRaises(asyncssh.DisconnectError):
+            yield from self.connect(username='ckey',
+                                    client_keys=['ckey_x509_self'],
+                                    signature_algs=['x509v3-ssh-rsa'])
+
+    @asynctest
+    def test_non_x509(self):
+        """Test connecting without an X.509 certificate"""
+
+        with (yield from self.connect(username='ckey',
+                                      client_keys=['ckey'])) as conn:
+            pass
+
+        yield from conn.wait_closed()
+
+
+@unittest.skipUnless(x509_available, 'X.509 not available')
+class _TestX509Subject(ServerTestCase):
+    """Unit tests for X.509 certificate authentication by subject name"""
+
+    @classmethod
+    @asyncio.coroutine
+    def start_server(cls):
+        """Start an SSH server which supports public key authentication"""
+
+        authorized_keys = asyncssh.import_authorized_keys(
+            'x509v3-ssh-rsa subject=OU=name\n')
+
+        return (yield from cls.create_server(
+            _PublicKeyServer, authorized_client_keys=authorized_keys,
+            x509_trusted_certs=['ckey_x509_self.pub']))
+
+    @asynctest
+    def test_x509_subject(self):
+        """Test authenticating X.509 certificate by subject name"""
+
+        with (yield from self.connect(username='ckey',
+                                      client_keys=['ckey_x509_self'])) as conn:
+            pass
+
+        yield from conn.wait_closed()
+
+
+@unittest.skipUnless(x509_available, 'X.509 not available')
+class _TestX509Untrusted(ServerTestCase):
+    """Unit tests for X.509 authentication with no trusted certificates"""
+
+    @classmethod
+    @asyncio.coroutine
+    def start_server(cls):
+        """Start an SSH server which supports public key authentication"""
+
+        return (yield from cls.create_server(
+            _PublicKeyServer, authorized_client_keys=None))
+
+    @asynctest
+    def test_x509_untrusted(self):
+        """Test untrusted X.509 self-signed certificate"""
+
+        with self.assertRaises(asyncssh.DisconnectError):
+            yield from self.connect(username='ckey',
+                                    client_keys=['ckey_x509_self'])
+
+
+@unittest.skipUnless(x509_available, 'X.509 not available')
+class _TestX509Disabled(ServerTestCase):
+    """Unit tests for X.509 authentication with server support disabled"""
+
+    @classmethod
+    @asyncio.coroutine
+    def start_server(cls):
+        """Start an SSH server with X.509 authentication disabled"""
+
+        return (yield from cls.create_server(_PublicKeyServer,
+                                             x509_purposes=None))
+
+    @asynctest
+    def test_x509_disabled(self):
+        """Test X.509 client certificate with server support disabled"""
+
+        with self.assertRaises(asyncssh.DisconnectError):
+            yield from self.connect(username='ckey',
+                                    client_keys='skey_x509_self')
 
 
 class _TestPasswordAuth(ServerTestCase):
@@ -847,7 +991,7 @@ class _TestPasswordAuth(ServerTestCase):
     def start_server(cls):
         """Start an SSH server which supports password authentication"""
 
-        return (yield from cls.create_server(_PasswordServer, gss_host=None))
+        return (yield from cls.create_server(_PasswordServer))
 
     @asyncio.coroutine
     def _connect_password(self, username, password, old_password='',
@@ -862,7 +1006,6 @@ class _TestPasswordAuth(ServerTestCase):
 
         conn, _ = yield from self.create_connection(client_factory,
                                                     username=username,
-                                                    gss_host=None,
                                                     client_keys=None)
 
         return conn
@@ -872,7 +1015,7 @@ class _TestPasswordAuth(ServerTestCase):
         """Test connecting with password authentication"""
 
         with (yield from self.connect(username='pw', password='pw',
-                                      gss_host=None, client_keys=None)) as conn:
+                                      client_keys=None)) as conn:
             pass
 
         yield from conn.wait_closed()
@@ -883,7 +1026,7 @@ class _TestPasswordAuth(ServerTestCase):
 
         with self.assertRaises(asyncssh.DisconnectError):
             yield from self.connect(username='pw', password='badpw',
-                                    gss_host=None, client_keys=None)
+                                    client_keys=None)
 
     @asynctest
     def test_password_auth_callback(self):
@@ -928,8 +1071,7 @@ class _TestPasswordAsyncServerAuth(_TestPasswordAuth):
     def start_server(cls):
         """Start an SSH server which supports async password authentication"""
 
-        return (yield from cls.create_server(_AsyncPasswordServer,
-                                             gss_host=None))
+        return (yield from cls.create_server(_AsyncPasswordServer))
 
 
 class _TestKbdintAuth(ServerTestCase):
@@ -940,7 +1082,7 @@ class _TestKbdintAuth(ServerTestCase):
     def start_server(cls):
         """Start an SSH server which supports keyboard-interactive auth"""
 
-        return (yield from cls.create_server(_KbdintServer, gss_host=None))
+        return (yield from cls.create_server(_KbdintServer))
 
     @asyncio.coroutine
     def _connect_kbdint(self, username, responses, test_async=False):
@@ -954,7 +1096,6 @@ class _TestKbdintAuth(ServerTestCase):
 
         conn, _ = yield from self.create_connection(client_factory,
                                                     username=username,
-                                                    gss_host=None,
                                                     client_keys=None)
 
         return conn
@@ -964,7 +1105,7 @@ class _TestKbdintAuth(ServerTestCase):
         """Test connecting with keyboard-interactive authentication"""
 
         with (yield from self.connect(username='kbdint', password='kbdint',
-                                      gss_host=None, client_keys=None)) as conn:
+                                      client_keys=None)) as conn:
             pass
 
         yield from conn.wait_closed()
@@ -975,7 +1116,7 @@ class _TestKbdintAuth(ServerTestCase):
 
         with self.assertRaises(asyncssh.DisconnectError):
             yield from self.connect(username='kbdint', password='badpw',
-                                    gss_host=None, client_keys=None)
+                                    client_keys=None)
 
     @asynctest
     def test_kbdint_auth_callback(self):
@@ -1003,7 +1144,7 @@ class _TestKbdintAsyncServerAuth(_TestKbdintAuth):
     def start_server(cls):
         """Start an SSH server which supports async kbd-int auth"""
 
-        return (yield from cls.create_server(_AsyncKbdintServer, gss_host=None))
+        return (yield from cls.create_server(_AsyncKbdintServer))
 
 
 class _TestKbdintPasswordServerAuth(ServerTestCase):
@@ -1014,7 +1155,7 @@ class _TestKbdintPasswordServerAuth(ServerTestCase):
     def start_server(cls):
         """Start an SSH server which supports server password auth"""
 
-        return (yield from cls.create_server(_PasswordServer, gss_host=None))
+        return (yield from cls.create_server(_PasswordServer))
 
     @asyncio.coroutine
     def _connect_kbdint(self, username, responses):
@@ -1027,7 +1168,6 @@ class _TestKbdintPasswordServerAuth(ServerTestCase):
 
         conn, _ = yield from self.create_connection(client_factory,
                                                     username=username,
-                                                    gss_host=None,
                                                     client_keys=None)
 
         return conn
@@ -1064,8 +1204,9 @@ class _TestLoginTimeoutExceeded(ServerTestCase):
     def start_server(cls):
         """Start an SSH server with a 1 second login timeout"""
 
-        return (yield from cls.create_server(_PublicKeyServer, gss_host=None,
-                                             login_timeout=1))
+        return (yield from cls.create_server(
+            _PublicKeyServer, authorized_client_keys='authorized_keys',
+            login_timeout=1))
 
     @asynctest
     def test_login_timeout_exceeded(self):
@@ -1078,7 +1219,7 @@ class _TestLoginTimeoutExceeded(ServerTestCase):
 
         with self.assertRaises(asyncssh.DisconnectError):
             yield from self.create_connection(client_factory, username='ckey',
-                                              gss_host=None, client_keys=None)
+                                              client_keys=None)
 
 
 class _TestLoginTimeoutDisabled(ServerTestCase):
@@ -1089,14 +1230,15 @@ class _TestLoginTimeoutDisabled(ServerTestCase):
     def start_server(cls):
         """Start an SSH server with no login timeout"""
 
-        return (yield from cls.create_server(_PublicKeyServer, gss_host=None,
-                                             login_timeout=None))
+        return (yield from cls.create_server(
+            _PublicKeyServer, authorized_client_keys='authorized_keys',
+            login_timeout=None))
 
     @asynctest
     def test_login_timeout_disabled(self):
         """Test with login timeout disabled"""
 
-        with (yield from self.connect(username='ckey', gss_host=None,
+        with (yield from self.connect(username='ckey',
                                       client_keys='ckey')) as conn:
             pass
 

@@ -1,4 +1,4 @@
-# Copyright (c) 2014-2015 by Ron Frederick <ronf@timeheart.net>.
+# Copyright (c) 2014-2017 by Ron Frederick <ronf@timeheart.net>.
 # All rights reserved.
 #
 # This program and the accompanying materials are made available under
@@ -18,14 +18,18 @@ from cryptography.hazmat.primitives.asymmetric.padding import PKCS1v15
 from cryptography.hazmat.primitives.hashes import SHA1, SHA256, SHA512
 from cryptography.hazmat.primitives.asymmetric import rsa
 
+from .misc import PyCAKey
+
 # Short variable names are used here, matching names in the spec
 # pylint: disable=invalid-name
 
 
-class _RSAKey:
-    """Base class for shum around PyCA for RSA keys"""
+class _RSAKey(PyCAKey):
+    """Base class for shim around PyCA for RSA keys"""
 
-    def __init__(self, pub, priv=None):
+    def __init__(self, pyca_key, pub, priv=None):
+        super().__init__(pyca_key)
+
         self._pub = pub
         self._priv = priv
 
@@ -35,7 +39,7 @@ class _RSAKey:
 
         if algorithm == b'rsa-sha2-512':
             return SHA512()
-        elif algorithm == b'rsa-sha2-256':
+        elif algorithm in (b'rsa-sha2-256', b'rsa2048-sha256'):
             return SHA256()
         else:
             return SHA1()
@@ -92,10 +96,6 @@ class _RSAKey:
 class RSAPrivateKey(_RSAKey):
     """A shim around PyCA for RSA private keys"""
 
-    def __init__(self, pub, priv, priv_key):
-        super().__init__(pub, priv)
-        self._priv_key = priv_key
-
     @classmethod
     def construct(cls, n, e, d, p, q, dmp1, dmq1, iqmp):
         """Construct an RSA private key"""
@@ -104,7 +104,7 @@ class RSAPrivateKey(_RSAKey):
         priv = rsa.RSAPrivateNumbers(p, q, d, dmp1, dmq1, iqmp, pub)
         priv_key = priv.private_key(default_backend())
 
-        return cls(pub, priv, priv_key)
+        return cls(priv_key, pub, priv)
 
     @classmethod
     def generate(cls, key_size, exponent):
@@ -115,20 +115,16 @@ class RSAPrivateKey(_RSAKey):
         priv = priv_key.private_numbers()
         pub = priv.public_numbers
 
-        return cls(pub, priv, priv_key)
+        return cls(priv_key, pub, priv)
 
     def sign(self, data, algorithm):
         """Sign a block of data"""
 
-        return self._priv_key.sign(data, PKCS1v15(), self.get_hash(algorithm))
+        return self.pyca_key.sign(data, PKCS1v15(), self.get_hash(algorithm))
 
 
 class RSAPublicKey(_RSAKey):
     """A shim around PyCA for RSA public keys"""
-
-    def __init__(self, pub, pub_key):
-        super().__init__(pub)
-        self._pub_key = pub_key
 
     @classmethod
     def construct(cls, n, e):
@@ -137,13 +133,13 @@ class RSAPublicKey(_RSAKey):
         pub = rsa.RSAPublicNumbers(e, n)
         pub_key = pub.public_key(default_backend())
 
-        return cls(pub, pub_key)
+        return cls(pub_key, pub)
 
     def verify(self, data, sig, algorithm):
         """Verify the signature on a block of data"""
 
         try:
-            self._pub_key.verify(sig, data, PKCS1v15(),
+            self.pyca_key.verify(sig, data, PKCS1v15(),
                                  self.get_hash(algorithm))
             return True
         except InvalidSignature:

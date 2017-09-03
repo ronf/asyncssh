@@ -1,4 +1,4 @@
-# Copyright (c) 2015 by Ron Frederick <ronf@timeheart.net>.
+# Copyright (c) 2015-2017 by Ron Frederick <ronf@timeheart.net>.
 # All rights reserved.
 #
 # This program and the accompanying materials are made available under
@@ -13,7 +13,7 @@
 """Ed25519 public key encryption handler"""
 
 from .packet import String, SSHPacket
-from .public_key import SSHKey, SSHCertificateV01, KeyExportError
+from .public_key import SSHKey, SSHOpenSSHCertificateV01, KeyExportError
 from .public_key import register_public_key_alg, register_certificate_alg
 
 # Short variable names are used here, matching names in the spec
@@ -24,7 +24,7 @@ class _Ed25519Key(SSHKey):
     """Handler for Ed25519 public key encryption"""
 
     algorithm = b'ssh-ed25519'
-    sig_algorithms = (b'ssh-ed25519',)
+    sig_algorithms = (algorithm,)
 
     def __init__(self, vk, sk):
         super().__init__()
@@ -138,4 +138,4 @@ else:
 
     register_certificate_alg(1, b'ssh-ed25519',
                              b'ssh-ed25519-cert-v01@openssh.com',
-                             _Ed25519Key, SSHCertificateV01)
+                             _Ed25519Key, SSHOpenSSHCertificateV01)

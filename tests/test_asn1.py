@@ -17,7 +17,7 @@ import unittest
 
 from asyncssh.asn1 import der_encode, der_decode
 from asyncssh.asn1 import ASN1EncodeError, ASN1DecodeError
-from asyncssh.asn1 import BitString, ObjectIdentifier
+from asyncssh.asn1 import BitString, IA5String, ObjectIdentifier
 from asyncssh.asn1 import RawDERObject, TaggedDERObject, PRIVATE
 
 class _TestASN1(unittest.TestCase):
@@ -74,6 +74,10 @@ class _TestASN1(unittest.TestCase):
         (BitString('10000000'),               '03020080'),
         (BitString('10000001'),               '03020081'),
         (BitString('100000000'),              '0303078000'),
+
+        (IA5String(''),                       '1600'),
+        (IA5String('\0'),                     '160100'),
+        (IA5String('abc'),                    '1603616263'),
 
         (ObjectIdentifier('0.0'),             '060100'),
         (ObjectIdentifier('1.2'),             '06012a'),
@@ -147,6 +151,8 @@ class _TestASN1(unittest.TestCase):
 
         '2300',                               # Constructed bit string
         '03020800',                           # Invalid unused bit count
+
+        '3600',                               # Constructed IA5 string
 
         '2600',                               # Constructed object identifier
         '0600',                               # Empty object identifier

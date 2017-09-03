@@ -32,11 +32,10 @@ from asyncssh.compression import get_compression_algs
 from asyncssh.crypto.pyca.cipher import GCMShim
 from asyncssh.kex import get_kex_algs
 from asyncssh.mac import _HMAC, _mac_handlers, get_mac_algs
-from asyncssh.misc import async_context_manager
 from asyncssh.packet import Boolean, Byte, NameList, String, UInt32
 
 from .server import Server, ServerTestCase
-from .util import asynctest, gss_available, patch_gss
+from .util import asynctest, gss_available, patch_gss, x509_available
 
 
 class _SplitClientConnection(asyncssh.SSHClientConnection):
@@ -218,6 +217,13 @@ class _TestConnection(ServerTestCase):
 
     # pylint: disable=too-many-public-methods
 
+    @classmethod
+    @asyncio.coroutine
+    def start_server(cls):
+        """Start an SSH server to connect to"""
+
+        return (yield from cls.create_server(gss_host=()))
+
     @asyncio.coroutine
     def _check_version(self, *args, **kwargs):
         """Check alternate SSH server version lines"""
@@ -228,12 +234,6 @@ class _TestConnection(ServerTestCase):
                 pass
 
             yield from conn.wait_closed()
-
-    @async_context_manager
-    def connect(self, gss_host=None, **kwargs):
-        """Open a connection to the test server"""
-
-        return super().connect(gss_host=gss_host, **kwargs)
 
     @asynctest
     def test_connect_no_loop(self):
@@ -318,6 +318,16 @@ class _TestConnection(ServerTestCase):
         yield from conn.wait_closed()
 
     @asynctest
+    def test_known_hosts_none_without_x509(self):
+        """Test connecting with known hosts checking and X.509 disabled"""
+
+        with (yield from self.connect(known_hosts=None,
+                                      x509_trusted_certs=None)) as conn:
+            pass
+
+        yield from conn.wait_closed()
+
+    @asynctest
     def test_known_hosts_multiple_keys(self):
         """Test connecting with multiple trusted known hosts keys"""
 
@@ -363,7 +373,7 @@ class _TestConnection(ServerTestCase):
     def test_known_hosts_sshkeys(self):
         """Test connecting with known hosts passed in as SSHKeys"""
 
-        keylist = asyncssh.read_public_key_list('skey.pub')
+        keylist = asyncssh.load_public_keys('skey.pub')
 
         with (yield from self.connect(known_hosts=(keylist, [], []))) as conn:
             pass
@@ -981,6 +991,128 @@ class _TestConnectionCloseDurngAuth(ServerTestCase):
                                                      password=''), 0.5)
 
 
+@unittest.skipUnless(x509_available, 'X.509 not available')
+class _TestServerX509Self(ServerTestCase):
+    """Unit test for server with self-signed X.509 host certificate"""
+
+    @classmethod
+    @asyncio.coroutine
+    def start_server(cls):
+        """Start an SSH server with a self-signed X.509 host certificate"""
+
+        return (yield from cls.create_server(
+            server_host_keys=['skey_x509_self']))
+
+    @asynctest
+    def test_connect_x509_self(self):
+        """Test connecting with X.509 self-signed certificate"""
+
+        with (yield from self.connect(known_hosts=([], [], [],
+                                                   ['skey_x509_self.pem'],
+                                                   [], [], []))) as conn:
+            pass
+
+        yield from conn.wait_closed()
+
+    @asynctest
+    def test_connect_x509_untrusted_self(self):
+        """Test connecting with untrusted X.509 self-signed certficate"""
+
+        with self.assertRaises(asyncssh.DisconnectError):
+            yield from self.connect(
+                known_hosts=([], [], [], ['root_ca_cert.pem'], [], [], []))
+
+    @asynctest
+    def test_connect_x509_revoked_self(self):
+        """Test connecting with revoked X.509 self-signed certficate"""
+
+        with self.assertRaises(asyncssh.DisconnectError):
+            yield from self.connect(
+                known_hosts=([], [], [], ['root_ca_cert.pem'],
+                             ['skey_x509_self.pem'], [], []))
+
+    @asynctest
+    def test_connect_x509_trusted_subject(self):
+        """Test connecting to server with trusted X.509 subject name"""
+
+        with (yield from self.connect(
+            known_hosts=([], [], [], [], [], ['OU=name'], ['OU=name1']),
+            x509_trusted_certs=['skey_x509_self.pem'])) as conn:
+            pass
+
+        yield from conn.wait_closed()
+
+    @asynctest
+    def test_connect_x509_untrusted_subject(self):
+        """Test connecting to server with untrusted X.509 subject name"""
+
+        with self.assertRaises(asyncssh.DisconnectError):
+            yield from self.connect(
+                known_hosts=([], [], [], [], [], ['OU=name1'], []),
+                x509_trusted_certs=['skey_x509_self.pem'])
+
+    @asynctest
+    def test_connect_x509_revoked_subject(self):
+        """Test connecting to server with revoked X.509 subject name"""
+
+        with self.assertRaises(asyncssh.DisconnectError):
+            yield from self.connect(
+                known_hosts=([], [], [], [], [], [], ['OU=name']),
+                x509_trusted_certs=['skey_x509_self.pem'])
+
+    @asynctest
+    def test_connect_x509_disabled(self):
+        """Test connecting to X.509 server with X.509 disabled"""
+
+        with self.assertRaises(asyncssh.DisconnectError):
+            yield from self.connect(
+                known_hosts=([], [], [], [], [], ['OU=name'], []),
+                x509_trusted_certs=None)
+
+
+@unittest.skipUnless(x509_available, 'X.509 not available')
+class _TestServerX509Chain(ServerTestCase):
+    """Unit test for server with X.509 host certificate chain"""
+
+    @classmethod
+    @asyncio.coroutine
+    def start_server(cls):
+        """Start an SSH server with an X.509 host certificate chain"""
+
+        return (yield from cls.create_server(
+            server_host_keys=['skey_x509_chain']))
+
+    @asynctest
+    def test_connect_x509_chain(self):
+        """Test connecting with X.509 certificate chain"""
+
+        with (yield from self.connect(known_hosts=([], [], [],
+                                                   ['root_ca_cert.pem'],
+                                                   [], [], []))) as conn:
+            pass
+
+        yield from conn.wait_closed()
+
+    @asynctest
+    def test_connect_x509_untrusted_root(self):
+        """Test connecting to server with untrusted X.509 root CA"""
+
+        with self.assertRaises(asyncssh.DisconnectError):
+            yield from self.connect(known_hosts=([], [], [],
+                                                 ['skey_x509_self.pem'],
+                                                 [], [], []))
+
+    @asynctest
+    def test_connect_x509_revoked_intermediate(self):
+        """Test connecting to server with revoked X.509 intermediate CA"""
+
+        with self.assertRaises(asyncssh.DisconnectError):
+            yield from self.connect(known_hosts=([], [], [],
+                                                 ['root_ca_cert.pem'],
+                                                 ['int_ca_cert.pem'],
+                                                 [], []))
+
+
 class _TestServerNoLoop(ServerTestCase):
     """Unit test for server with no loop specified"""
 
@@ -995,7 +1127,7 @@ class _TestServerNoLoop(ServerTestCase):
     def test_server_no_loop(self):
         """Test server with no loop specified"""
 
-        with (yield from self.connect(gss_host=None)) as conn:
+        with (yield from self.connect()) as conn:
             pass
 
         yield from conn.wait_closed()
@@ -1018,7 +1150,7 @@ class _TestServerNoHostKey(ServerTestCase):
     def test_gss_with_no_host_key(self):
         """Test GSS key exchange with no server host key specified"""
 
-        with (yield from self.connect(known_hosts=b'\n')) as conn:
+        with (yield from self.connect(known_hosts=b'\n', gss_host='1')) as conn:
             pass
 
         yield from conn.wait_closed()
@@ -1028,7 +1160,7 @@ class _TestServerNoHostKey(ServerTestCase):
         """Test failure of DH key exchange with no server host key specified"""
 
         with self.assertRaises(asyncssh.DisconnectError):
-            yield from self.connect(gss_host=None)
+            yield from self.connect()
 
 
 class _TestServerInternalError(ServerTestCase):
@@ -1101,7 +1233,6 @@ class _TestCustomClientVersion(ServerTestCase):
 
         conn, client = \
             yield from self.create_connection(_VersionRecordingClient,
-                                              gss_host=None,
                                               client_version=version)
 
         with conn:
@@ -1150,7 +1281,7 @@ class _TestCustomServerVersion(ServerTestCase):
     def test_custom_server_version(self):
         """Test custom server version"""
 
-        with (yield from self.connect(gss_host=None)) as conn:
+        with (yield from self.connect()) as conn:
             version = conn.get_extra_info('server_version')
             self.assertEqual(version, 'SSH-2.0-custom')
 

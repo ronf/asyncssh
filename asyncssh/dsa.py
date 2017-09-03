@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2015 by Ron Frederick <ronf@timeheart.net>.
+# Copyright (c) 2013-2017 by Ron Frederick <ronf@timeheart.net>.
 # All rights reserved.
 #
 # This program and the accompanying materials are made available under
@@ -16,9 +16,9 @@ from .asn1 import ASN1DecodeError, ObjectIdentifier, der_encode, der_decode
 from .crypto import DSAPrivateKey, DSAPublicKey
 from .misc import all_ints
 from .packet import MPInt, String, PacketDecodeError, SSHPacket
-from .public_key import SSHKey, SSHCertificateV01
-from .public_key import KeyExportError
+from .public_key import SSHKey, SSHOpenSSHCertificateV01, KeyExportError
 from .public_key import register_public_key_alg, register_certificate_alg
+from .public_key import register_x509_certificate_alg
 
 # Short variable names are used here, matching names in the spec
 # pylint: disable=invalid-name
@@ -30,12 +30,8 @@ class _DSAKey(SSHKey):
     algorithm = b'ssh-dss'
     pem_name = b'DSA'
     pkcs8_oid = ObjectIdentifier('1.2.840.10040.4.1')
-    sig_algorithms = (b'ssh-dss',)
-
-    def __init__(self, key):
-        super().__init__()
-
-        self._key = key
+    sig_algorithms = (algorithm,)
+    x509_algorithms = (b'x509v3-' + algorithm,)
 
     def __eq__(self, other):
         # This isn't protected access - both objects are _DSAKey instances
@@ -240,4 +236,7 @@ class _DSAKey(SSHKey):
 register_public_key_alg(b'ssh-dss', _DSAKey)
 
 register_certificate_alg(1, b'ssh-dss', b'ssh-dss-cert-v01@openssh.com',
-                         _DSAKey, SSHCertificateV01)
+                         _DSAKey, SSHOpenSSHCertificateV01)
+
+for alg in _DSAKey.x509_algorithms:
+    register_x509_certificate_alg(alg)

@@ -1023,26 +1023,35 @@ private keys from.
 
 An alternate form involves passing in a list of values which can be
 either a reference to a private key or a tuple containing a reference
-to a private key and a reference to a matching certificate.
+to a private key and a reference to a corresponding certificate or
+certificate chain.
 
 Key references can either be the name of a file to load a key from,
 a byte string to import as a key, or an already loaded :class:`SSHKey`
 private key. See the function :func:`import_private_key` for the list
 of supported private key formats.
 
-Certificate references can be the name of a file to load the certificate
+Certificate references can be the name of a file to load a certificate
 from, a byte string to import as a certificate, an already loaded
 :class:`SSHCertificate`, or ``None`` if no certificate should be
 associated with the key.
 
-Whenever a filename is provided, an attempt is made to load a
-corresponding certificate from a file constructed by appending
-'-cert.pub' to the end of the name.
+Whenever a filename is provided to read the private key from, an attempt
+is made to load a corresponding certificate or certificate chain from a
+file constructed by appending '-cert.pub' to the end of the name. X.509
+certificates may also be provided in the same file as the private key,
+when using DER or PEM format.
+
+When using X.509 certificates, a list of certificates can also be
+provided. These certificates should form a trust chain from a user or
+host certificate up to some self-signed root certificate authority
+which is trusted by the remote system.
 
 New private keys can be generated using the :func:`generate_private_key`
 function. The resulting :class:`SSHKey` objects have methods which can
 then be used to export the generated keys in several formats for
-consumption by other tools.
+consumption by other tools, as well as methods for generating new
+OpenSSH or X.509 certificates.
 
 .. index:: Specifying public keys
 .. _SpecifyingPublicKeys:
@@ -1059,6 +1068,82 @@ can be either the name of a file to load a key from, a byte string
 to import it from, or an already loaded :class:`SSHKey` public key.
 See the function :func:`import_public_key` for the list of supported
 public key formats.
+
+.. index:: Specifying certificates
+.. _SpecifyingCertificates:
+
+Specifying certificates
+-----------------------
+
+Certificates may be passed into AsyncSSH in a variety of forms. The
+simplest option is to pass the name of a file to read one or more
+certificates from.
+
+An alternate form involves passing in a list of values each of which
+can be either the name of a file to load a certificate from, a byte string
+to import it from, or an already loaded :class:`SSHCertificate` object.
+See the function :func:`import_certificate` for the list of supported
+certificate formats.
+
+.. index:: Specifying X.509 subject names
+.. _SpecifyingX509Subjects:
+
+Specifying X.509 subject names
+------------------------------
+
+X.509 certificate subject names may be specified in place of public keys
+or certificates in authorized_keys and known_hosts files, allowing any
+X.509 certificate which matches that subject name to be considered a
+known host or authorized key. The syntax supported for this is compatible
+with PKIX-SSH, which adds X.509 certificate support to OpenSSH.
+
+To specify a subject name pattern instead of a specific certificate,
+base64-encoded certificate data should be replaced with the string
+'Subject:' followed by a a comma-separated list of X.509 relative
+distinguished name components.
+
+AsyncSSH extends the PKIX-SSH syntax to also support matching on a
+prefix of a subject name. To indicate this, a partial subject name
+can be specified which ends in ',*'.  Any subject which matches the
+relative distinguished names listed before the ",*" will be treated
+as a match, even if the certificate provided has additional relative
+distinguished names following what was matched.
+
+.. index:: Specifying X.509 purposes
+.. _SpecifyingX509Purposes:
+
+Specifying X.509 purposes
+-------------------------
+
+When performing X.509 certificate authentication, AsyncSSH can be
+passed in an allowed set of ExtendedKeyUsage purposes. Purposes are
+matched in X.509 certificates as OID values, but AsyncSSH also allows
+the following well-known purpose values to be specified by name:
+
+  ================= ==================
+  Name              OID
+  ================= ==================
+  serverAuth        1.3.6.1.5.5.7.3.1
+  clientAuth        1.3.6.1.5.5.7.3.2
+  secureShellClient 1.3.6.1.5.5.7.3.20
+  secureShellServer 1.3.6.1.5.5.7.3.21
+  ================= ==================
+
+Values not in the list above can be specified directly by OID as a
+dotted numeric string value. Either a single value or a list of values
+can be provided.
+
+The check succeeds if any of the specified values are present in the
+certificate's ExtendedKeyUsage. It will also succeed if the certificate
+does not contain an ExtendedKeyUsage or if the ExtendedKeyUsage contains
+the OID 2.5.29.37.0, which indicates the certificate can be used for any
+purpose.
+
+This check defaults to requiring a purpose of 'secureShellCient' for
+client certificates and 'secureShellServer' for server certificates
+and should not normally need to be changed. However, certificates which
+contain other purposes can be supported by providing alternate values to
+match against, or by passing in the purpose 'any' to disable this checking.
 
 .. index:: Specifying time values
 .. _SpecifyingTimeValues:
@@ -1090,20 +1175,23 @@ SSHKey
 
 .. autoclass:: SSHKey()
 
-   ========================================= =
+   ============================================== =
    .. automethod:: get_algorithm
    .. automethod:: get_comment
    .. automethod:: set_comment
    .. automethod:: convert_to_public
    .. automethod:: generate_user_certificate
    .. automethod:: generate_host_certificate
+   .. automethod:: generate_x509_user_certificate
+   .. automethod:: generate_x509_host_certificate
+   .. automethod:: generate_x509_ca_certificate
    .. automethod:: export_private_key
    .. automethod:: export_public_key
    .. automethod:: write_private_key
    .. automethod:: write_public_key
    .. automethod:: append_private_key
    .. automethod:: append_public_key
-   ========================================= =
+   ============================================== =
 
 SSHKeyPair
 ----------
@@ -1130,7 +1218,6 @@ SSHCertificate
    .. automethod:: export_certificate
    .. automethod:: write_certificate
    .. automethod:: append_certificate
-   .. automethod:: validate
    ================================== =
 
 generate_private_key
@@ -1192,6 +1279,11 @@ load_public_keys
 ----------------
 
 .. autofunction:: load_public_keys
+
+load_certificates
+-----------------
+
+.. autofunction:: load_certificates
 
 .. index:: SSH agent support
 
@@ -1264,14 +1356,18 @@ connect_agent
 
 .. autofunction:: connect_agent
 
+.. index:: Known hosts
+.. _KnownHosts:
+
 Known Hosts
 ===========
 
 AsyncSSH supports OpenSSH-style known_hosts files, including both
 plain and hashed host entries. Regular and negated host patterns are
 supported in plain entries. AsyncSSH also supports the ``@cert_authority``
-marker to indicate certificate authority keys and the ``@revoked`` marker
-to indicate revoked keys which should no longer be trusted.
+marker to indicate keys and certificates which should be trusted as
+certificate authorities and the ``@revoked`` marker to indicate keys and
+certificates which should be explicitly reported as no longer trusted.
 
 .. index:: Specifying known hosts
 .. _SpecifyingKnownHosts:
@@ -1287,18 +1383,24 @@ a string by calling :func:`import_known_hosts` or read from a file by
 calling :func:`read_known_hosts`. In all of these cases, the host patterns
 in the list will be compared against the target host, address, and port
 being connected to and the matching trusted host keys, trusted CA keys,
-and revoked keys will be returned.
+revoked keys, trusted X.509 certificates, revoked X.509 certificates,
+trusted X.509 subject names, and revoked X.509 subject names will be
+returned.
 
 Alternately, a function can be passed in as the ``known_hosts`` argument
-that accepts a target host, address, and port and returns three public key
-lists containing trusted host keys, trusted CA keys, and revoked keys.
+that accepts a target host, address, and port and returns lists containing
+trusted host keys, trusted CA keys, revoked keys, trusted X.509 certificates,
+revoked X.509 certificates, trusted X.509 subject names, and revoked X.509
+subject names.
 
 If no matching is required and the caller already knows exactly what the
-trusted host keys, trusted CA keys, and revoked keys should be, these three
-lists can also be provided directly in the ``known_hosts`` argument.
+above values should be, these seven lists can also be provided directly in
+the ``known_hosts`` argument.
 
 See :ref:`SpecifyingPublicKeys` for the allowed form of public key values
-which can be provided in these last two cases.
+which can be provided, :ref:`SpecifyingCertificates` for the allowed form
+of certificates, and :ref:`SpecifyingX509Subjects` for the allowed form
+of X.509 subject names.
 
 SSHKnownHosts
 -------------
@@ -1325,6 +1427,9 @@ match_known_hosts
 
 .. autofunction:: match_known_hosts
 
+.. index:: Authorized keys
+.. _AuthorizedKeys:
+
 Authorized Keys
 ===============
 
@@ -1350,6 +1455,11 @@ Authorized keys can be provided as either the name of a file to read
 the keys from or an :class:`SSHAuthorizedKeys` object which was previously
 imported from a string by calling :func:`import_authorized_keys` or read
 from a file by calling :func:`read_authorized_keys`.
+
+An authorized keys file may contain public keys or X.509 certificates
+in OpenSSH format or X.509 certificate subject names. See
+:ref:`SpecifyingX509Subjects` for more information on using subject names
+in place of specific X.509 certificates.
 
 SSHAuthorizedKeys
 -----------------
@@ -1473,8 +1583,8 @@ The following are the key exchange algorithms currently supported by AsyncSSH:
 Curve25519 support is only available when the libnacl package and libsodium
 library are installed.
 
-GSS support is only available when the gssapi package on UNIX is installed.
-This support is not yet available on Windows.
+GSS authentication support is only available when the gssapi package is
+installed on UNIX or the pypiwin32 package is installed on Windows.
 
 .. index:: Encryption algorithms
 .. _EncryptionAlgs:
@@ -1555,6 +1665,12 @@ Signature algorithms
 The following are the public key signature algorithms currently supported by
 AsyncSSH:
 
+  | x509v3-ecdsa-sha2-nistp521
+  | x509v3-ecdsa-sha2-nistp384
+  | x509v3-ecdsa-sha2-nistp256
+  | x509v3-rsa2048-sha256
+  | x509v3-ssh-rsa
+  | x509v3-ssh-dss
   | ssh-ed25519
   | ecdsa-sha2-nistp521
   | ecdsa-sha2-nistp384
@@ -1573,6 +1689,12 @@ Public key & certificate algorithms
 The following are the public key and certificate algorithms currently
 supported by AsyncSSH:
 
+  | x509v3-ecdsa-sha2-nistp521
+  | x509v3-ecdsa-sha2-nistp384
+  | x509v3-ecdsa-sha2-nistp256
+  | x509v3-rsa2048-sha256
+  | x509v3-ssh-rsa
+  | x509v3-ssh-dss
   | ssh-ed25519-cert-v01\@openssh.com
   | ecdsa-sha2-nistp521-cert-v01\@openssh.com
   | ecdsa-sha2-nistp384-cert-v01\@openssh.com
@@ -1596,17 +1718,6 @@ library are installed.
 
 Constants
 =========
-
-.. index:: Certificate types
-.. _CertificateTypes:
-
-Certificate types
------------------
-
-The following values can be specified as certificate types:
-
-  | CERT_TYPE_USER
-  | CERT_TYPE_HOST
 
 .. index:: Disconnect reasons
 .. _DisconnectReasons:

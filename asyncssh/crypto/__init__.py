@@ -1,4 +1,4 @@
-# Copyright (c) 2014-2015 by Ron Frederick <ronf@timeheart.net>.
+# Copyright (c) 2014-2017 by Ron Frederick <ronf@timeheart.net>.
 # All rights reserved.
 #
 # This program and the accompanying materials are made available under
@@ -37,4 +37,11 @@ except ImportError: # pragma: no cover
 try:
     from .umac import umac32, umac64, umac96, umac128
 except (ImportError, AttributeError, OSError): # pragma: no cover
+    pass
+
+# Import X.509 certificate support if available
+try:
+    from .pyca.x509 import X509Name, X509NamePattern
+    from .pyca.x509 import generate_x509_certificate, import_x509_certificate
+except ImportError: # pragma: no cover
     pass

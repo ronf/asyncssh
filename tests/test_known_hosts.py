@@ -1,4 +1,4 @@
-# Copyright (c) 2015-2016 by Ron Frederick <ronf@timeheart.net>.
+# Copyright (c) 2015-2017 by Ron Frederick <ronf@timeheart.net>.
 # All rights reserved.
 #
 # This program and the accompanying materials are made available under
@@ -19,7 +19,10 @@ import os
 
 import asyncssh
 
-from .util import TempDirTestCase
+from .util import TempDirTestCase, x509_available
+
+if x509_available: # pragma: no branch
+    from asyncssh.crypto import X509NamePattern
 
 
 def _hash(host):
@@ -36,8 +39,8 @@ def _hash(host):
 class _TestKnownHosts(TempDirTestCase):
     """Unit tests for known_hosts module"""
 
-    keylists = ([], [], [])
-    imported_keylists = ([], [], [])
+    keylists = ([], [], [], [], [], [], [])
+    imported_keylists = ([], [], [], [], [], [], [])
 
     @classmethod
     def setUpClass(cls):
@@ -45,12 +48,29 @@ class _TestKnownHosts(TempDirTestCase):
 
         super().setUpClass()
 
-        for keylist, imported_keylist in zip(cls.keylists,
-                                             cls.imported_keylists):
+        for keylist, imported_keylist in zip(cls.keylists[:3],
+                                             cls.imported_keylists[:3]):
             for _ in range(3):
                 key = asyncssh.generate_private_key('ssh-rsa')
                 keylist.append(key.export_public_key().decode('ascii'))
                 imported_keylist.append(key.convert_to_public())
+
+        if x509_available: # pragma: no branch
+            for keylist, imported_keylist in zip(cls.keylists[3:5],
+                                                 cls.imported_keylists[3:5]):
+                for _ in range(2):
+                    key = asyncssh.generate_private_key('ssh-rsa')
+                    cert = key.generate_x509_user_certificate(key, 'OU=user',
+                                                              'OU=user')
+                    keylist.append(
+                        cert.export_certificate('openssh').decode('ascii'))
+                    imported_keylist.append(cert)
+
+            for keylist, imported_keylist in zip(cls.keylists[5:],
+                                                 cls.imported_keylists[5:]):
+                for name in ('OU=user', 'OU=revoked'):
+                    keylist.append('x509v3-ssh-rsa subject=' + name + '\n')
+                    imported_keylist.append(X509NamePattern(name))
 
     def check_match(self, known_hosts, results=None, host='host',
                     addr='1.2.3.4', port=22):
@@ -74,11 +94,12 @@ class _TestKnownHosts(TempDirTestCase):
 
             return asyncssh.match_known_hosts(_known_hosts, host, addr, port)
 
-        prefixes = ('', '@cert-authority ', '@revoked ')
+        prefixes = ('', '@cert-authority ', '@revoked ',
+                    '', '@revoked ', '', '@revoked ')
         known_hosts = '# Comment line\n   # Comment line with whitespace\n\n'
 
-        for prefix, patlist, key in zip(prefixes, patlists, self.keylists):
-            for pattern, key in zip(patlist, key):
+        for prefix, patlist, keys in zip(prefixes, patlists, self.keylists):
+            for pattern, key in zip(patlist, keys):
                 known_hosts += '%s%s %s' % (prefix, pattern, key)
 
         if from_file:
@@ -104,22 +125,50 @@ class _TestKnownHosts(TempDirTestCase):
         """Test known host matching"""
 
         matches = (
-            ('Empty file', ([], [], []), ([], [], [])),
-            ('Exact host and port', (['[host]:22'], [], []), ([0], [], [])),
-            ('Exact host', (['host'], [], []), ([0], [], [])),
-            ('Exact host CA', ([], ['host'], []), ([], [0], [])),
-            ('Exact host revoked', ([], [], ['host']), ([], [], [0])),
-            ('Multiple exact', (['host'], ['host'], []), ([0], [0], [])),
-            ('Wildcard host', (['hos*'], [], []), ([0], [], [])),
-            ('Mismatched port', (['[host]:23'], [], []), ([], [], [])),
-            ('Negative host', (['hos*,!host'], [], []), ([], [], [])),
-            ('Exact addr and port', (['[1.2.3.4]:22'], [], []), ([0], [], [])),
-            ('Exact addr', (['1.2.3.4'], [], []), ([0], [], [])),
-            ('Subnet', (['1.2.3.0/24'], [], []), ([0], [], [])),
-            ('Negative addr', (['1.2.3.0/24,!1.2.3.4'], [], []), ([], [], [])),
-            ('Hashed host', ([_hash('host')], [], []), ([0], [], [])),
-            ('Hashed addr', ([_hash('1.2.3.4')], [], []), ([0], [], []))
+            ('Empty file', ([], [], [], [], [], [], []),
+             ([], [], [], [], [], [], [])),
+            ('Exact host and port', (['[host]:22'], [], [], [], [], [], []),
+             ([0], [], [], [], [], [], [])),
+            ('Exact host', (['host'], [], [], [], [], [], []),
+             ([0], [], [], [], [], [], [])),
+            ('Exact host CA', ([], ['host'], [], [], [], [], []),
+             ([], [0], [], [], [], [], [])),
+            ('Exact host revoked', ([], [], ['host'], [], [], [], []),
+             ([], [], [0], [], [], [], [])),
+            ('Multiple exact', (['host'], ['host'], [], [], [], [], []),
+             ([0], [0], [], [], [], [], [])),
+            ('Wildcard host', (['hos*'], [], [], [], [], [], []),
+             ([0], [], [], [], [], [], [])),
+            ('Mismatched port', (['[host]:23'], [], [], [], [], [], []),
+             ([], [], [], [], [], [], [])),
+            ('Negative host', (['hos*,!host'], [], [], [], [], [], []),
+             ([], [], [], [], [], [], [])),
+            ('Exact addr and port', (['[1.2.3.4]:22'], [], [], [], [], [], []),
+             ([0], [], [], [], [], [], [])),
+            ('Exact addr', (['1.2.3.4'], [], [], [], [], [], []),
+             ([0], [], [], [], [], [], [])),
+            ('Subnet', (['1.2.3.0/24'], [], [], [], [], [], []),
+             ([0], [], [], [], [], [], [])),
+            ('Negative addr', (['1.2.3.0/24,!1.2.3.4', [], [], []], [], [], []),
+             ([], [], [], [], [], [], [])),
+            ('Hashed host', ([_hash('host')], [], [], [], [], [], []),
+             ([0], [], [], [], [], [], [])),
+            ('Hashed addr', ([_hash('1.2.3.4')], [], [], [], [], [], []),
+             ([0], [], [], [], [], [], []))
         )
+
+        if x509_available: # pragma: no branch
+            matches += (
+                ('Exact host X.509', ([], [], [], ['host'], [], [], []),
+                 ([], [], [], [0], [], [], [])),
+                ('Exact host X.509 revoked', ([], [], [], [], ['host'], [], []),
+                 ([], [], [], [], [0], [], [])),
+                ('Exact host subject', ([], [], [], [], [], ['host'], []),
+                 ([], [], [], [], [], [0], [])),
+                ('Exact host revoked subject',
+                 ([], [], [], [], [], [], ['host']),
+                 ([], [], [], [], [], [], [0])),
+            )
 
         for testname, patlists, result in matches:
             with self.subTest(testname):
@@ -128,25 +177,29 @@ class _TestKnownHosts(TempDirTestCase):
     def test_no_addr(self):
         """Test match without providing addr"""
 
-        self.check_hosts((['host'], [], []), ([0], [], []), addr=None)
-        self.check_hosts((['1.2.3.4'], [], []), ([], [], []), addr=None)
+        self.check_hosts((['host'], [], [], [], [], [], []),
+                         ([0], [], [], [], [], [], []), addr=None)
+        self.check_hosts((['1.2.3.4'], [], [], [], [], [], []),
+                         ([], [], [], [], [], [], []), addr=None)
 
     def test_no_port(self):
         """Test match without providing port"""
 
-        self.check_hosts((['host'], [], []), ([0], [], []), port=None)
-        self.check_hosts((['[host]:22'], [], []), ([], [], []), port=None)
+        self.check_hosts((['host'], [], [], [], [], [], []),
+                         ([0], [], [], [], [], [], []), port=None)
+        self.check_hosts((['[host]:22'], [], [], [], [], [], []),
+                         ([], [], [], [], [], [], []), port=None)
 
     def test_no_match(self):
         """Test for cases where no match is found"""
 
-        no_match = (([], [], []),
-                    (['host1', 'host2'], [], []),
-                    (['2.3.4.5', '3.4.5.6'], [], []),
-                    (['[host]:2222', '[host]:22222'], [], []))
+        no_match = (([], [], [], [], [], [], []),
+                    (['host1', 'host2'], [], [], [], [], [], []),
+                    (['2.3.4.5', '3.4.5.6'], [], [], [], [], [], []),
+                    (['[host]:2222', '[host]:22222'], [], [], [], [], [], []))
 
         for patlists in no_match:
-            self.check_hosts(patlists, ([], [], []))
+            self.check_hosts(patlists, ([], [], [], [], [], [], []))
 
     def test_missing_key(self):
         """Test for line with missing key data"""
@@ -163,7 +216,7 @@ class _TestKnownHosts(TempDirTestCase):
     def test_invalid_key(self):
         """Test for line with invaid key"""
 
-        self.check_match(b'xxx yyy\n', ([], [], []))
+        self.check_match(b'xxx yyy\n', ([], [], [], [], [], [], []))
 
     def test_invalid_marker(self):
         """Test for line with invaid marker"""
@@ -175,36 +228,40 @@ class _TestKnownHosts(TempDirTestCase):
         """Test for line with incomplete host hash"""
 
         with self.assertRaises(ValueError):
-            self.check_hosts((['|1|aaaa'], [], []))
+            self.check_hosts((['|1|aaaa'], [], [], [], [], [], [], [], []))
 
     def test_invalid_hash(self):
         """Test for line with invalid host hash"""
 
         with self.assertRaises(ValueError):
-            self.check_hosts((['|1|aaa'], [], []))
+            self.check_hosts((['|1|aaa'], [], [], [], [], [], [], [], []))
 
     def test_unknown_hash_type(self):
         """Test for line with unknown host hash type"""
 
         with self.assertRaises(ValueError):
-            self.check_hosts((['|2|aaaa|'], [], []))
+            self.check_hosts((['|2|aaaa|'], [], [], [], [], [], [], [], []))
 
     def test_file(self):
         """Test match against file"""
 
-        self.check_hosts((['host'], [], []), ([0], [], []), from_file=True)
+        self.check_hosts((['host'], [], [], [], [], [], []),
+                         ([0], [], [], [], [], [], []), from_file=True)
 
     def test_bytes(self):
         """Test match against byte string"""
 
-        self.check_hosts((['host'], [], []), ([0], [], []), from_bytes=True)
+        self.check_hosts((['host'], [], [], [], [], [], []),
+                         ([0], [], [], [], [], [], []), from_bytes=True)
 
     def test_callable(self):
         """Test match using callable"""
 
-        self.check_hosts((['host'], [], []), ([0], [], []), as_callable=True)
+        self.check_hosts((['host'], [], [], [], [], [], []),
+                         ([0], [], [], [], [], [], []), as_callable=True)
 
     def test_tuple(self):
         """Test passing already constructed tuple of keys"""
 
-        self.check_hosts((['host'], [], []), ([0], [], []), as_tuple=True)
+        self.check_hosts((['host'], [], [], [], [], [], []),
+                         ([0], [], [], [], [], [], []), as_tuple=True)

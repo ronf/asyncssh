@@ -1,4 +1,4 @@
-# Copyright (c) 2015 by Ron Frederick <ronf@timeheart.net>.
+# Copyright (c) 2015-2017 by Ron Frederick <ronf@timeheart.net>.
 # All rights reserved.
 #
 # This program and the accompanying materials are made available under
@@ -20,9 +20,26 @@ import binascii
 import hmac
 from hashlib import sha1
 
+try:
+    from .crypto import X509NamePattern
+    _x509_available = True
+except ImportError: # pragma: no cover
+    _x509_available = False
+
 from .misc import ip_address
 from .pattern import HostPatternList
-from .public_key import KeyImportError, import_public_key, load_public_keys
+from .public_key import KeyImportError, import_public_key
+from .public_key import import_certificate, import_certificate_subject
+from .public_key import load_public_keys, load_certificates
+
+
+def _load_subject_names(names):
+    """Load a list of X.509 subject name patterns"""
+
+    if not _x509_available: # pragma: no cover
+        return []
+
+    return list(map(X509NamePattern, names))
 
 
 class _PlainHost:
@@ -84,10 +101,10 @@ class SSHKnownHosts:
 
             try:
                 if line.startswith('@'):
-                    marker, pattern, key = line[1:].split(None, 2)
+                    marker, pattern, data = line[1:].split(None, 2)
                 else:
                     marker = None
-                    pattern, key = line.split(None, 1)
+                    pattern, data = line.split(None, 1)
             except ValueError:
                 raise ValueError('Invalid known hosts entry: %s' %
                                  line) from None
@@ -96,27 +113,42 @@ class SSHKnownHosts:
                 raise ValueError('Invalid known hosts marker: %s' %
                                  marker) from None
 
+            key = None
+            cert = None
+            subject = None
+
             try:
-                key = import_public_key(key)
+                key = import_public_key(data)
             except KeyImportError:
-                # Ignore keys in the file that we're unable to parse
-                continue
+                try:
+                    cert = import_certificate(data)
+                except KeyImportError:
+                    if not _x509_available: # pragma: no cover
+                        continue
+
+                    try:
+                        subject = import_certificate_subject(data)
+                    except KeyImportError:
+                        # Ignore keys in the file that we're unable to parse
+                        continue
+
+                    subject = X509NamePattern(subject)
 
             if any(c in pattern for c in '*?|/!'):
-                self._add_pattern(marker, pattern, key)
+                self._add_pattern(marker, pattern, key, cert, subject)
             else:
-                self._add_exact(marker, pattern, key)
+                self._add_exact(marker, pattern, key, cert, subject)
 
-    def _add_exact(self, marker, pattern, key):
+    def _add_exact(self, marker, pattern, key, cert, subject):
         """Add an exact match entry"""
 
         for entry in pattern.split(','):
             if entry not in self._exact_entries:
                 self._exact_entries[entry] = []
 
-            self._exact_entries[entry].append((marker, key))
+            self._exact_entries[entry].append((marker, key, cert, subject))
 
-    def _add_pattern(self, marker, pattern, key):
+    def _add_pattern(self, marker, pattern, key, cert, subject):
         """Add a pattern match entry"""
 
         if pattern.startswith('|'):
@@ -124,7 +156,7 @@ class SSHKnownHosts:
         else:
             entry = _PlainHost(pattern)
 
-        self._pattern_entries.append((entry, (marker, key)))
+        self._pattern_entries.append((entry, (marker, key, cert, subject)))
 
     def _match(self, host, addr, port=None):
         """Find host keys matching specified host, address, and port"""
@@ -144,16 +176,32 @@ class SSHKnownHosts:
         host_keys = []
         ca_keys = []
         revoked_keys = []
+        x509_certs = []
+        revoked_certs = []
+        x509_subjects = []
+        revoked_subjects = []
 
-        for marker, key in matches:
-            if marker == 'revoked':
-                revoked_keys.append(key)
-            elif marker == 'cert-authority':
-                ca_keys.append(key)
+        for marker, key, cert, subject in matches:
+            if key:
+                if marker == 'revoked':
+                    revoked_keys.append(key)
+                elif marker == 'cert-authority':
+                    ca_keys.append(key)
+                else:
+                    host_keys.append(key)
+            elif cert:
+                if marker == 'revoked':
+                    revoked_certs.append(cert)
+                else:
+                    x509_certs.append(cert)
             else:
-                host_keys.append(key)
+                if marker == 'revoked':
+                    revoked_subjects.append(subject)
+                else:
+                    x509_subjects.append(subject)
 
-        return host_keys, ca_keys, revoked_keys
+        return (host_keys, ca_keys, revoked_keys, x509_certs, revoked_certs,
+                x509_subjects, revoked_subjects)
 
     def match(self, host, addr, port):
         """Match a host, IP address, and port against known_hosts patterns
@@ -173,12 +221,15 @@ class SSHKnownHosts:
 
         """
 
-        host_keys, ca_keys, revoked_keys = self._match(host, addr, port)
+        host_keys, ca_keys, revoked_keys, x509_certs, revoked_certs, \
+            x509_subjects, revoked_subjects = self._match(host, addr, port)
 
-        if port and not (host_keys or ca_keys):
-            host_keys, ca_keys, revoked_keys = self._match(host, addr)
+        if port and not (host_keys or ca_keys or x509_certs or x509_subjects):
+            host_keys, ca_keys, revoked_keys, x509_certs, revoked_certs, \
+                x509_subjects, revoked_subjects = self._match(host, addr)
 
-        return host_keys, ca_keys, revoked_keys
+        return (host_keys, ca_keys, revoked_keys, x509_certs, revoked_certs,
+                x509_subjects, revoked_subjects)
 
 
 def import_known_hosts(data):
@@ -259,6 +310,12 @@ def match_known_hosts(known_hosts, host, addr, port):
         if callable(known_hosts):
             known_hosts = known_hosts(host, addr, port)
 
-        known_hosts = tuple(map(load_public_keys, known_hosts))
+        known_hosts = (tuple(map(load_public_keys, known_hosts[:3])) +
+                       tuple(map(load_certificates, known_hosts[3:5])) +
+                       tuple(map(_load_subject_names, known_hosts[5:])))
+
+        if len(known_hosts) == 3:
+            # Provide backward compatibility for pre-X.509 releases
+            known_hosts = tuple(known_hosts) + ((), (), (), ())
 
     return known_hosts

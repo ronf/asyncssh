@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2015 by Ron Frederick <ronf@timeheart.net>.
+# Copyright (c) 2013-2017 by Ron Frederick <ronf@timeheart.net>.
 # All rights reserved.
 #
 # This program and the accompanying materials are made available under
@@ -17,9 +17,10 @@ from .asn1 import der_encode, der_decode
 from .crypto import lookup_ec_curve_by_params
 from .crypto import ECDSAPrivateKey, ECDSAPublicKey
 from .packet import MPInt, String, SSHPacket, PacketDecodeError
-from .public_key import SSHKey, SSHCertificateV01
+from .public_key import SSHKey, SSHOpenSSHCertificateV01
 from .public_key import KeyImportError, KeyExportError
 from .public_key import register_public_key_alg, register_certificate_alg
+from .public_key import register_x509_certificate_alg
 
 # OID for EC prime fields
 PRIME_FIELD = ObjectIdentifier('1.2.840.10045.1.1')
@@ -38,12 +39,13 @@ class _ECKey(SSHKey):
     pkcs8_oid = ObjectIdentifier('1.2.840.10045.2.1')
 
     def __init__(self, key):
-        super().__init__()
+        super().__init__(key)
 
         self.algorithm = b'ecdsa-sha2-' + key.curve_id
         self.sig_algorithms = (self.algorithm,)
+        self.x509_algorithms = (b'x509v3-' + self.algorithm,)
+
         self._alg_oid = _alg_oids[key.curve_id]
-        self._key = key
 
     def __eq__(self, other):
         # This isn't protected access - both objects are _ECKey instances
@@ -297,6 +299,7 @@ for _curve_id, _oid in ((b'nistp521', '1.3.132.0.35'),
                         (b'nistp256', '1.2.840.10045.3.1.7')):
     _algorithm = b'ecdsa-sha2-' + _curve_id
     _cert_algorithm = _algorithm + b'-cert-v01@openssh.com'
+    _x509_algorithm = b'x509v3-' + _algorithm
 
     _oid = ObjectIdentifier(_oid)
     _alg_oids[_curve_id] = _oid
@@ -304,4 +307,5 @@ for _curve_id, _oid in ((b'nistp521', '1.3.132.0.35'),
 
     register_public_key_alg(_algorithm, _ECKey, (_algorithm,))
     register_certificate_alg(1, _algorithm, _cert_algorithm,
-                             _ECKey, SSHCertificateV01)
+                             _ECKey, SSHOpenSSHCertificateV01)
+    register_x509_certificate_alg(_x509_algorithm)

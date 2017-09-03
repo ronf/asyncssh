@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2015 by Ron Frederick <ronf@timeheart.net>.
+# Copyright (c) 2013-2017 by Ron Frederick <ronf@timeheart.net>.
 # All rights reserved.
 #
 # This program and the accompanying materials are made available under
@@ -16,9 +16,9 @@ from .asn1 import ASN1DecodeError, ObjectIdentifier, der_encode, der_decode
 from .crypto import RSAPrivateKey, RSAPublicKey
 from .misc import all_ints
 from .packet import MPInt, String, PacketDecodeError, SSHPacket
-from .public_key import SSHKey, SSHCertificateV01
-from .public_key import KeyExportError
+from .public_key import SSHKey, SSHOpenSSHCertificateV01, KeyExportError
 from .public_key import register_public_key_alg, register_certificate_alg
+from .public_key import register_x509_certificate_alg
 
 # Short variable names are used here, matching names in the spec
 # pylint: disable=invalid-name
@@ -31,11 +31,10 @@ class _RSAKey(SSHKey):
     pem_name = b'RSA'
     pkcs8_oid = ObjectIdentifier('1.2.840.113549.1.1.1')
     sig_algorithms = (b'rsa-sha2-256', b'rsa-sha2-512', b'ssh-rsa')
+    x509_sig_algorithms = (b'rsa2048-sha256', b'ssh-rsa')
+    x509_algorithms = tuple(b'x509v3-' + alg for alg in x509_sig_algorithms)
 
-    def __init__(self, key):
-        super().__init__()
-
-        self._key = key
+    _all_sig_algorithms = set(x509_sig_algorithms + sig_algorithms)
 
     def __eq__(self, other):
         # This isn't protected access - both objects are _RSAKey instances
@@ -194,7 +193,7 @@ class _RSAKey(SSHKey):
         if not self._key.d:
             raise ValueError('Private key needed for signing')
 
-        if algorithm not in self.sig_algorithms:
+        if algorithm not in self._all_sig_algorithms:
             raise ValueError('Unrecognized signature algorithm')
 
         sig = self._key.sign(data, algorithm)
@@ -208,7 +207,7 @@ class _RSAKey(SSHKey):
 
             algorithm = packet.get_string()
 
-            if algorithm not in self.sig_algorithms:
+            if algorithm not in self._all_sig_algorithms:
                 return False
 
             sig = packet.get_string()
@@ -222,4 +221,7 @@ class _RSAKey(SSHKey):
 register_public_key_alg(b'ssh-rsa', _RSAKey)
 
 register_certificate_alg(1, b'ssh-rsa', b'ssh-rsa-cert-v01@openssh.com',
-                         _RSAKey, SSHCertificateV01)
+                         _RSAKey, SSHOpenSSHCertificateV01)
+
+for alg in _RSAKey.x509_algorithms:
+    register_x509_certificate_alg(alg)

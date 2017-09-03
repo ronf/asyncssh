@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2016 by Ron Frederick <ronf@timeheart.net>.
+# Copyright (c) 2013-2017 by Ron Frederick <ronf@timeheart.net>.
 # All rights reserved.
 #
 # This program and the accompanying materials are made available under
@@ -60,7 +60,7 @@ from .public_key import import_public_key, import_certificate
 from .public_key import read_private_key, read_public_key, read_certificate
 from .public_key import read_private_key_list, read_public_key_list
 from .public_key import read_certificate_list
-from .public_key import load_keypairs, load_public_keys
+from .public_key import load_keypairs, load_public_keys, load_certificates
 
 from .scp import scp
 

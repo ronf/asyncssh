@@ -37,6 +37,12 @@ try:
 except (ImportError, OSError, AttributeError): # pragma: no cover
     libnacl_available = False
 
+try:
+    from asyncssh.crypto import X509Name
+    x509_available = True
+except ImportError: # pragma: no cover
+    x509_available = False
+
 # pylint: enable=unused-import
 
 from asyncssh.constants import DISC_CONNECTION_LOST

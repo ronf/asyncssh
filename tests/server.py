@@ -22,7 +22,7 @@ import subprocess
 import asyncssh
 from asyncssh.misc import async_context_manager
 
-from .util import run, AsyncTestCase
+from .util import AsyncTestCase, run, x509_available
 
 
 class Server(asyncssh.SSHServer):
@@ -58,7 +58,7 @@ class ServerTestCase(AsyncTestCase):
     @classmethod
     @asyncio.coroutine
     def create_server(cls, server_factory=(), *, loop=(),
-                      server_host_keys=(), **kwargs):
+                      server_host_keys=(), gss_host=None, **kwargs):
         """Create an SSH server for the tests to use"""
 
         if loop is ():
@@ -72,7 +72,7 @@ class ServerTestCase(AsyncTestCase):
 
         return (yield from asyncssh.create_server(
             server_factory, port=0, family=socket.AF_INET, loop=loop,
-            server_host_keys=server_host_keys, **kwargs))
+            server_host_keys=server_host_keys, gss_host=gss_host, **kwargs))
 
     @classmethod
     @asyncio.coroutine
@@ -86,23 +86,31 @@ class ServerTestCase(AsyncTestCase):
     def asyncSetUpClass(cls):
         """Set up keys, an SSH server, and an SSH agent for the tests to use"""
 
-        ckey_dsa = asyncssh.generate_private_key('ssh-dss')
-        ckey_dsa.write_private_key('ckey_dsa')
-        ckey_dsa.write_public_key('ckey_dsa.pub')
+        # pylint: disable=too-many-statements
 
         ckey = asyncssh.generate_private_key('ssh-rsa')
         ckey.write_private_key('ckey')
         ckey.write_private_key('ckey_encrypted', passphrase='passphrase')
         ckey.write_public_key('ckey.pub')
 
-        ckey_cert = ckey.generate_user_certificate(ckey, 'name')
+        ckey_ecdsa = asyncssh.generate_private_key('ecdsa-sha2-nistp256')
+        ckey_ecdsa.write_private_key('ckey_ecdsa')
+        ckey_ecdsa.write_public_key('ckey_ecdsa.pub')
+
+        ckey_cert = ckey.generate_user_certificate(ckey, 'name',
+                                                   principals=['ckey'])
         ckey_cert.write_certificate('ckey-cert.pub')
 
         skey = asyncssh.generate_private_key('ssh-rsa')
         skey.write_private_key('skey')
         skey.write_public_key('skey.pub')
 
-        skey_cert = skey.generate_host_certificate(skey, 'name')
+        skey_ecdsa = asyncssh.generate_private_key('ecdsa-sha2-nistp256')
+        skey_ecdsa.write_private_key('skey_ecdsa')
+        skey_ecdsa.write_public_key('skey_ecdsa.pub')
+
+        skey_cert = skey.generate_host_certificate(skey, 'name',
+                                                   principals=['127.0.0.1'])
         skey_cert.write_certificate('skey-cert.pub')
 
         exp_cert = skey.generate_host_certificate(skey, 'name',
@@ -111,29 +119,80 @@ class ServerTestCase(AsyncTestCase):
         skey.write_private_key('exp_skey')
         exp_cert.write_certificate('exp_skey-cert.pub')
 
-        for f in ('ckey_dsa', 'ckey', 'skey', 'exp_skey'):
+        if x509_available: # pragma: no branch
+            ckey_x509_self = ckey_ecdsa.generate_x509_user_certificate(
+                ckey_ecdsa, 'OU=name', 'OU=name', principals=['ckey'])
+            ckey_ecdsa.write_private_key('ckey_x509_self')
+            ckey_x509_self.append_certificate('ckey_x509_self', 'pem')
+            ckey_x509_self.write_certificate('ckey_x509_self.pem', 'pem')
+            ckey_x509_self.write_certificate('ckey_x509_self.pub')
+
+            skey_x509_self = skey_ecdsa.generate_x509_host_certificate(
+                skey_ecdsa, 'OU=name', 'OU=name', principals=['127.0.0.1'])
+            skey_ecdsa.write_private_key('skey_x509_self')
+            skey_x509_self.append_certificate('skey_x509_self', 'pem')
+            skey_x509_self.write_certificate('skey_x509_self.pem', 'pem')
+
+            root_ca_key = asyncssh.generate_private_key('ssh-rsa')
+            root_ca_key.write_private_key('root_ca_key')
+
+            root_ca_cert = root_ca_key.generate_x509_ca_certificate(
+                root_ca_key, 'OU=RootCA', 'OU=RootCA', ca_path_len=1)
+            root_ca_cert.write_certificate('root_ca_cert.pem', 'pem')
+            root_ca_cert.write_certificate('root_ca_cert.pub')
+
+            int_ca_key = asyncssh.generate_private_key('ssh-rsa')
+            int_ca_key.write_private_key('int_ca_key')
+
+            int_ca_cert = root_ca_key.generate_x509_ca_certificate(
+                int_ca_key, 'OU=IntCA', 'OU=RootCA', ca_path_len=0)
+            int_ca_cert.write_certificate('int_ca_cert.pem', 'pem')
+
+            ckey_x509_chain = int_ca_key.generate_x509_user_certificate(
+                ckey, 'OU=name', 'OU=IntCA', principals=['ckey'])
+            ckey.write_private_key('ckey_x509_chain')
+            ckey_x509_chain.append_certificate('ckey_x509_chain', 'pem')
+            int_ca_cert.append_certificate('ckey_x509_chain', 'pem')
+            ckey_x509_chain.write_certificate('ckey_x509_partial.pem', 'pem')
+
+            skey_x509_chain = int_ca_key.generate_x509_host_certificate(
+                skey, 'OU=name', 'OU=IntCA', principals=['127.0.0.1'])
+            skey.write_private_key('skey_x509_chain')
+            skey_x509_chain.append_certificate('skey_x509_chain', 'pem')
+            int_ca_cert.append_certificate('skey_x509_chain', 'pem')
+
+        for f in ('ckey', 'ckey_ecdsa', 'skey', 'exp_skey', 'skey_ecdsa'):
             os.chmod(f, 0o600)
 
         os.mkdir('.ssh', 0o700)
 
-        shutil.copy('ckey_dsa', os.path.join('.ssh', 'id_dsa'))
-        shutil.copy('ckey_dsa.pub', os.path.join('.ssh', 'id_dsa.pub'))
+        shutil.copy('ckey_ecdsa', os.path.join('.ssh', 'id_ecdsa'))
+        shutil.copy('ckey_ecdsa.pub', os.path.join('.ssh', 'id_ecdsa.pub'))
         shutil.copy('ckey_encrypted', os.path.join('.ssh', 'id_rsa'))
         shutil.copy('ckey.pub', os.path.join('.ssh', 'id_rsa.pub'))
 
         with open('authorized_keys', 'w') as auth_keys:
-            auth_keys.write('cert-authority,principals="ckey" ')
+            with open('ckey.pub') as ckey_pub:
+                shutil.copyfileobj(ckey_pub, auth_keys)
+
+            with open('ckey_ecdsa.pub') as ckey_ecdsa_pub:
+                shutil.copyfileobj(ckey_ecdsa_pub, auth_keys)
+
+            auth_keys.write('cert-authority,principals="ckey",'
+                            'permitopen=:* ')
 
             with open('ckey.pub') as ckey_pub:
                 shutil.copyfileobj(ckey_pub, auth_keys)
 
-            auth_keys.write('permitopen=":*" ')
+        if x509_available: # pragma: no branch
+            with open('authorized_keys_x509', 'w') as auth_keys_x509:
+                with open('ckey_x509_self.pub') as ckey_self_pub:
+                    shutil.copyfileobj(ckey_self_pub, auth_keys_x509)
 
-            with open('ckey.pub') as ckey_pub:
-                shutil.copyfileobj(ckey_pub, auth_keys)
+                auth_keys_x509.write('cert-authority,principals="ckey" ')
 
-            with open('ckey_dsa.pub') as ckey_dsa_pub:
-                shutil.copyfileobj(ckey_dsa_pub, auth_keys)
+                with open('root_ca_cert.pub') as root_pub:
+                    shutil.copyfileobj(root_pub, auth_keys_x509)
 
         cls._server = yield from cls.start_server()
 
@@ -141,12 +200,20 @@ class ServerTestCase(AsyncTestCase):
         cls._server_addr = '127.0.0.1'
         cls._server_port = sock.getsockname()[1]
 
-        with open(os.path.join('.ssh', 'known_hosts'), 'w') as known_hosts:
-            known_hosts.write('[%s]:%s ' % (cls._server_addr,
-                                            cls._server_port))
+        host = '[%s]:%s ' % (cls._server_addr, cls._server_port)
+
+        with open('known_hosts', 'w') as known_hosts:
+            known_hosts.write(host)
 
             with open('skey.pub') as skey_pub:
                 shutil.copyfileobj(skey_pub, known_hosts)
+
+            known_hosts.write('@cert-authority ' + host)
+
+            with open('skey.pub') as skey_pub:
+                shutil.copyfileobj(skey_pub, known_hosts)
+
+        shutil.copy('known_hosts', os.path.join('.ssh', 'known_hosts'))
 
         os.environ['LOGNAME'] = 'guest'
         os.environ['HOME'] = '.'
@@ -170,7 +237,7 @@ class ServerTestCase(AsyncTestCase):
             os.environ['SSH_AUTH_SOCK'] = 'agent'
 
             agent = yield from asyncssh.connect_agent()
-            yield from agent.add_keys([ckey_dsa, (ckey, ckey_cert)])
+            yield from agent.add_keys([ckey_ecdsa, (ckey, ckey_cert)])
             agent.close()
 
     @classmethod
@@ -195,7 +262,8 @@ class ServerTestCase(AsyncTestCase):
         return bool(self._agent_pid)
 
     @asyncio.coroutine
-    def create_connection(self, client_factory, loop=(), **kwargs):
+    def create_connection(self, client_factory, loop=(),
+                          gss_host=None, **kwargs):
         """Create a connection to the test server"""
 
         if loop is ():
@@ -204,7 +272,9 @@ class ServerTestCase(AsyncTestCase):
         return (yield from asyncssh.create_connection(client_factory,
                                                       self._server_addr,
                                                       self._server_port,
-                                                      loop=loop, **kwargs))
+                                                      loop=loop,
+                                                      gss_host=gss_host,
+                                                      **kwargs))
 
     @async_context_manager
     def connect(self, **kwargs):

@@ -43,6 +43,7 @@ OBJECT_IDENTIFIER = 0x06
 UTF8_STRING       = 0x0c
 SEQUENCE          = 0x10
 SET               = 0x11
+IA5_STRING        = 0x16
 
 # pylint: enable=bad-whitespace
 
@@ -455,6 +456,48 @@ class BitString:
             raise ASN1DecodeError('Invalid unused bit count')
 
         return cls(content[1:], unused=content[0])
+
+
+@DERTag(IA5_STRING)
+class IA5String:
+    """An ASCII string value"""
+
+    def __init__(self, value):
+        self.value = value
+
+    def __str__(self):
+        return self.value
+
+    def __repr__(self):
+        return "IA5String('%s')" % self.value
+
+    def __eq__(self, other):
+        return isinstance(other, type(self)) and self.value == other.value
+
+    def __hash__(self):
+        return hash(self.value)
+
+    def encode(self):
+        """Encode a DER IA5 string"""
+
+        # ASN.1 defines this type as only containing ASCII characters, but
+        # some tools expecting ASN.1 allow IA5Strings to contain UTF-8
+        # characters, so we leave it up to the caller whether to resrict
+        # the data to plain ASCII or not.
+
+        if isinstance(self.value, str):
+            return self.value.encode('utf-8')
+        else:
+            return self.value
+
+    @classmethod
+    def decode(cls, constructed, content):
+        """Decode a DER IA5 string"""
+
+        if constructed:
+            raise ASN1DecodeError('IA5 STRING should not be constructed')
+
+        return cls(content.decode('utf-8'))
 
 
 @DERTag(OBJECT_IDENTIFIER)

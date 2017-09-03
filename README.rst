@@ -123,6 +123,9 @@ functionality:
 * Install libnettle from http://www.lysator.liu.se/~nisse/nettle/
   if you want support for UMAC cryptographic hashes.
 
+* Install pyOpenSSL from https://pypi.python.org/pypi/pyOpenSSL
+  if you want support for X.509 certificate authentication.
+
 * Install pypiwin32 from https://pypi.python.org/pypi/pypiwin32
   if you want support for using the Pageant agent or support for
   GSSAPI key exchange and authentication on Windows.
@@ -133,19 +136,21 @@ easy to install any or all of these dependencies:
   | bcrypt
   | gssapi
   | libnacl
+  | pyOpenSSL
   | pypiwin32
 
-For example, to install bcrypt, gssapi, and libnacl on UNIX, you can run:
+For example, to install bcrypt, gssapi, libnacl, and pyOpenSSL on UNIX,
+you can run:
 
   ::
 
-    pip install 'asyncssh[bcrypt,gssapi,libnacl]'
+    pip install 'asyncssh[bcrypt,gssapi,libnacl,pyOpenSSL]'
 
-To install bcrypt, libnacl, and pypiwin32 on Windows, you can run:
+To install bcrypt, libnacl, pyOpenSSL, and pypiwin32 on Windows, you can run:
 
   ::
 
-    pip install 'asyncssh[bcrypt,libnacl,pypiwin32]'
+    pip install 'asyncssh[bcrypt,libnacl,pyOpenSSL,pypiwin32]'
 
 Note that you will still need to manually install the libsodium library
 listed above for libnacl to work correctly and/or libnettle for UMAC
