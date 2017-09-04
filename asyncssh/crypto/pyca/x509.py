@@ -15,6 +15,7 @@
 from datetime import datetime, timezone
 from ipaddress import ip_address
 import re
+import sys
 
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.hashes import MD5, SHA1, SHA224
@@ -44,7 +45,12 @@ _hashes = {h.name: h for h in (MD5, SHA1, SHA224, SHA256, SHA384, SHA512)}
 
 _nscomment_oid = x509.ObjectIdentifier('2.16.840.1.113730.1.13')
 
-_gen_time_max = datetime.max.replace(tzinfo=timezone.utc).timestamp() - 1
+if sys.platform == 'win32': # pragma: no cover
+    # Windows' datetime.max is year 9999, but timestamps that large don't work
+    _gen_time_max = datetime(2999, 12, 31, 23, 59, 59, 999999,
+                             tzinfo=timezone.utc).timestamp() - 1
+else:
+    _gen_time_max = datetime.max.replace(tzinfo=timezone.utc).timestamp() - 1
 
 
 def _to_generalized_time(t):
