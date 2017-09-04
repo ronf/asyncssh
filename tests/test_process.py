@@ -29,7 +29,7 @@ def _handle_client(process):
 
     # pylint: disable=no-self-use
 
-    action = process.get_command() or process.get_subsystem()
+    action = process.command or process.subsystem
     if not action:
         action = 'echo'
 
@@ -44,10 +44,12 @@ def _handle_client(process):
     elif action == 'echo':
         yield from echo(process.stdin, process.stdout, process.stderr)
     elif action == 'exit_status':
+        process.channel.set_encoding('utf-8')
+        process.stderr.write('Exiting with status 1')
         process.exit(1)
     elif action == 'env':
         process.channel.set_encoding('utf-8')
-        process.stdout.write(process.get_environment().get('TEST', ''))
+        process.stdout.write(process.env.get('TEST', ''))
     elif action == 'redirect_stdin':
         yield from process.redirect_stdin(process.stdout)
         yield from process.stdout.drain()
@@ -97,13 +99,16 @@ class _TestProcessBasic(_TestProcess):
         data = str(id(self))
 
         with (yield from self.connect()) as conn:
-            process = yield from conn.create_process()
+            process = yield from conn.create_process(env={'TEST': 'test'})
 
             process.stdin.write(data)
             process.stdin.write_eof()
 
             result = yield from process.wait()
 
+        self.assertEqual(result.env, {'TEST': 'test'})
+        self.assertEqual(result.command, None)
+        self.assertEqual(result.subsystem, None)
         self.assertEqual(result.exit_status, None)
         self.assertEqual(result.exit_signal, None)
         self.assertEqual(result.stdout, data)
@@ -123,6 +128,27 @@ class _TestProcessBasic(_TestProcess):
 
             result = yield from process.wait()
 
+        self.assertEqual(result.command, 'echo')
+        self.assertEqual(result.subsystem, None)
+        self.assertEqual(result.stdout, data)
+        self.assertEqual(result.stderr, data)
+
+    @asynctest
+    def test_subsystem(self):
+        """Test starting a remote subsystem"""
+
+        data = str(id(self))
+
+        with (yield from self.connect()) as conn:
+            process = yield from conn.create_process(subsystem='echo')
+
+            process.stdin.write(data)
+            process.stdin.write_eof()
+
+            result = yield from process.wait()
+
+        self.assertEqual(result.command, None)
+        self.assertEqual(result.subsystem, 'echo')
         self.assertEqual(result.stdout, data)
         self.assertEqual(result.stderr, data)
 
@@ -242,6 +268,8 @@ class _TestProcessBasic(_TestProcess):
             result = yield from conn.run('exit_status')
 
         self.assertEqual(result.exit_status, 1)
+        self.assertEqual(result.stdout, '')
+        self.assertEqual(result.stderr, 'Exiting with status 1')
 
     @asynctest
     def test_raise_on_exit_status(self):
@@ -249,8 +277,12 @@ class _TestProcessBasic(_TestProcess):
 
         with (yield from self.connect()) as conn:
             with self.assertRaises(asyncssh.ProcessError) as exc:
-                yield from conn.run('exit_status', check=True)
+                yield from conn.run('exit_status', env={'TEST': 'test'},
+                                    check=True)
 
+        self.assertEqual(exc.exception.env, {'TEST': 'test'})
+        self.assertEqual(exc.exception.command, 'exit_status')
+        self.assertEqual(exc.exception.subsystem, None)
         self.assertEqual(exc.exception.exit_status, 1)
         self.assertEqual(exc.exception.reason,
                          'Process exited with non-zero exit status 1')

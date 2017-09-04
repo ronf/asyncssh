@@ -3163,7 +3163,7 @@ class _TestSCPErrors(_CheckSCP):
             """Handle new client"""
 
             with process:
-                command = process.get_command()
+                command = process.command
 
                 if command.endswith('get_connection_lost'):
                     pass

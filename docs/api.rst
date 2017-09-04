@@ -369,9 +369,12 @@ SSHClientProcess
 .. autoclass:: SSHClientProcess
 
    ============================== =
-   Process attributes
+   Client process attributes
    ============================== =
    .. autoattribute:: channel
+   .. autoattribute:: environ
+   .. autoattribute:: command
+   .. autoattribute:: subsystem
    .. autoattribute:: stdin
    .. autoattribute:: stdout
    .. autoattribute:: stderr
@@ -380,7 +383,7 @@ SSHClientProcess
    ============================== =
 
    ==================================== =
-   General client process methods
+   Other client process methods
    ==================================== =
    .. automethod:: redirect
    .. automethod:: communicate
@@ -405,24 +408,24 @@ SSHServerProcess
 .. autoclass:: SSHServerProcess
 
    ============================== =
-   Process attributes
+   Server process attributes
    ============================== =
    .. autoattribute:: channel
+   .. autoattribute:: environ
+   .. autoattribute:: command
+   .. autoattribute:: subsystem
    .. autoattribute:: stdin
    .. autoattribute:: stdout
    .. autoattribute:: stderr
    ============================== =
 
    ================================= =
-   General server process methods
+   Other server process methods
    ================================= =
-   .. automethod:: redirect
-   .. automethod:: get_environment
-   .. automethod:: get_command
-   .. automethod:: get_subsystem
    .. automethod:: get_terminal_type
    .. automethod:: get_terminal_size
    .. automethod:: get_terminal_mode
+   .. automethod:: redirect
    ================================= =
 
    ================================ =
@@ -583,11 +586,14 @@ SSHClientChannel
 
 .. autoclass:: SSHClientChannel()
 
-   ============================== =
-   General channel methods
-   ============================== =
+   =============================== =
+   General channel info methods
+   =============================== =
    .. automethod:: get_extra_info
-   ============================== =
+   .. automethod:: get_environment
+   .. automethod:: get_command
+   .. automethod:: get_subsystem
+   =============================== =
 
    ============================== =
    Client channel read methods
@@ -632,18 +638,18 @@ SSHServerChannel
 
 .. autoclass:: SSHServerChannel()
 
-   ============================== =
-   General channel methods
-   ============================== =
+   =============================== =
+   General channel info methods
+   =============================== =
    .. automethod:: get_extra_info
-   ============================== =
+   .. automethod:: get_environment
+   .. automethod:: get_command
+   .. automethod:: get_subsystem
+   =============================== =
 
    ================================= =
    Server channel info methods
    ================================= =
-   .. automethod:: get_environment
-   .. automethod:: get_command
-   .. automethod:: get_subsystem
    .. automethod:: get_terminal_type
    .. automethod:: get_terminal_size
    .. automethod:: get_terminal_mode
@@ -705,7 +711,7 @@ SSHTCPChannel
 .. autoclass:: SSHTCPChannel()
 
    ============================== =
-   General channel methods
+   General channel info methods
    ============================== =
    .. automethod:: get_extra_info
    ============================== =
@@ -742,7 +748,7 @@ SSHUNIXChannel
 .. autoclass:: SSHUNIXChannel()
 
    ============================== =
-   General channel methods
+   General channel info methods
    ============================== =
    .. automethod:: get_extra_info
    ============================== =

@@ -22,11 +22,10 @@
 import asyncio, asyncssh, sys
 
 async def handle_client(process):
-    env = process.get_environment()
-    if env:
-        keywidth = max(map(len, env.keys()))+1
+    if process.env:
+        keywidth = max(map(len, process.env.keys()))+1
         process.stdout.write('Environment:\n')
-        for key, value in env.items():
+        for key, value in process.env.items():
             process.stdout.write('  %-*s %s\n' % (keywidth, key+':', value))
         process.exit(0)
     else:

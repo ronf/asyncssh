@@ -321,6 +321,12 @@ class ProcessError(Error):
          ============ ======================================= ================
          Field        Description                             Type
          ============ ======================================= ================
+         env          The environment the client requested    str or ``None``
+                      to be set for the process
+         command      The command the client requested the    str or ``None``
+                      process to execute (if any)
+         subsystem    The subsystem the client requested the  str or ``None``
+                      process to open (if any)
          exit_status  The exit status returned, or -1 if an   int
                       exit signal is sent
          exit_signal  The exit signal sent (if any) in the    tuple or ``None``
@@ -329,13 +335,23 @@ class ProcessError(Error):
                       occurred, a message associated with the
                       signal, and the language the message
                       was in
+         stdout       The output sent by the process to       str or bytes
+                      stdout (if not redirected)
+         stderr       The output sent by the process to       str or bytes
+                      stderr (if not redirected)
          ============ ======================================= ================
 
     """
 
-    def __init__(self, exit_status, exit_signal):
+    def __init__(self, env, command, subsystem, exit_status,
+                 exit_signal, stdout, stderr):
+        self.env = env
+        self.command = command
+        self.subsystem = subsystem
         self.exit_status = exit_status
         self.exit_signal = exit_signal
+        self.stdout = stdout
+        self.stderr = stderr
 
         if exit_signal:
             signal, core_dumped, msg, lang = exit_signal
@@ -360,6 +376,12 @@ class SSHCompletedProcess(Record):
          ============ ======================================= ================
          Field        Description                             Type
          ============ ======================================= ================
+         env          The environment the client requested    str or ``None``
+                      to be set for the process
+         command      The command the client requested the    str or ``None``
+                      process to execute (if any)
+         subsystem    The subsystem the client requested the  str or ``None``
+                      process to open (if any)
          exit_status  The exit status returned, or -1 if an   int
                       exit signal is sent
          exit_signal  The exit signal sent (if any) in the    tuple or ``None``
@@ -376,8 +398,10 @@ class SSHCompletedProcess(Record):
 
     """
 
-    __slots__ = OrderedDict((('exit_status', None), ('exit_signal', None),
-                             ('stdout', None), ('stderr', None)))
+    __slots__ = OrderedDict((('env', None), ('command', None),
+                             ('subsystem', None), ('exit_status', None),
+                             ('exit_signal', None), ('stdout', None),
+                             ('stderr', None)))
 
 
 class SSHProcess:
@@ -426,6 +450,52 @@ class SSHProcess:
         """The channel associated with the process"""
 
         return self._chan
+
+    @property
+    def env(self):
+        """The environment set by the client for the process
+
+           This method returns the environment set by the client
+           when the session was opened.
+
+           :returns: A dictionary containing the environment variables
+                     set by the client
+
+        """
+
+        return self._chan.get_environment()
+
+    @property
+    def command(self):
+        """The command the client requested to execute, if any
+
+           This method returns the command the client requested to
+           execute when the process was started, if any. If the client
+           did not request that a command be executed, this method
+           will return ``None``.
+
+           :returns: A str containing the command or ``None`` if
+                     no command was specified
+
+        """
+
+        return self._chan.get_command()
+
+    @property
+    def subsystem(self):
+        """The subsystem the client requested to open, if any
+
+           This method returns the subsystem the client requested to
+           open when the process was started, if any. If the client
+           did not request that a subsystem be opened, this method will
+           return ``None``.
+
+           :returns: A str containing the subsystem name or ``None``
+                     if no subsystem was specified
+
+        """
+
+        return self._chan.get_subsystem()
 
     @asyncio.coroutine
     def _create_reader(self, source, bufsize, send_eof, datatype=None):
@@ -937,9 +1007,12 @@ class SSHClientProcess(SSHProcess, SSHClientStreamSession):
         stdout_data, stderr_data = yield from self.communicate()
 
         if check and self.exit_status:
-            raise ProcessError(self.exit_status, self.exit_signal)
+            raise ProcessError(self.env, self.command, self.subsystem,
+                               self.exit_status, self.exit_signal,
+                               stdout_data, stderr_data)
         else:
-            return SSHCompletedProcess(self.exit_status, self.exit_signal,
+            return SSHCompletedProcess(self.env, self.command, self.subsystem,
+                                       self.exit_status, self.exit_signal,
                                        stdout_data, stderr_data)
 
 
@@ -1063,47 +1136,19 @@ class SSHServerProcess(SSHProcess, SSHServerStreamSession):
         yield from self.redirect(None, None, source, bufsize, send_eof)
 
     def get_environment(self):
-        """Return the environment set by the client for the process
+        """Return the environment set by the client (deprecated)"""
 
-           This method returns the environment set by the client
-           when the session was opened.
-
-           :returns: A dictionary containing the environment variables
-                     set by the client
-
-        """
-
-        return self._chan.get_environment()
+        return self.env # pragma: no cover
 
     def get_command(self):
-        """Return the command the client requested to execute, if any
+        """Return the command the client requested to execute (deprecated)"""
 
-           This method returns the command the client requested to
-           execute when the process was started, if any. If the client
-           did not request that a command be executed, this method
-           will return ``None``.
-
-           :returns: A str containing the command or ``None`` if
-                     no command was specified
-
-        """
-
-        return self._chan.get_command()
+        return self.command # pragma: no cover
 
     def get_subsystem(self):
-        """Return the subsystem the client requested to open, if any
+        """Return the subsystem the client requested to open (deprecated)"""
 
-           This method returns the subsystem the client requested to
-           open when the process was started, if any. If the client
-           did not request that a subsystem be opened, this method will
-           return ``None``.
-
-           :returns: A str containing the subsystem name or ``None``
-                     if no subsystem was specified
-
-        """
-
-        return self._chan.get_subsystem()
+        return self.subsystem # pragma: no cover
 
     def get_terminal_type(self):
         """Return the terminal type set by the client for the process

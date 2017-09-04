@@ -54,6 +54,10 @@ class SSHChannel(SSHPacketHandler):
         self._encoding = encoding
         self._extra = {'connection': conn}
 
+        self._env = {}
+        self._command = None
+        self._subsystem = None
+
         self._send_state = 'closed'
         self._send_chan = None
         self._send_window = None
@@ -812,6 +816,58 @@ class SSHChannel(SSHPacketHandler):
             self._recv_paused = False
             self._flush_recv_buf()
 
+    def get_environment(self):
+        """Return the environment for this session
+
+           This method returns the environment set by the client when
+           the session was opened. On the server, calls to this method
+           should only be made after :meth:`session_started
+           <SSHServerSession.session_started>` has been called on the
+           :class:`SSHServerSession`. When using the stream-based API,
+           calls to this can be made at any time after the handler
+           function has started up.
+
+           :returns: A dictionary containing the environment variables
+                     set by the client
+
+        """
+
+        return self._env
+
+    def get_command(self):
+        """Return the command the client requested to execute, if any
+
+           This method returns the command the client requested to
+           execute when the session was opened, if any. If the client
+           did not request that a command be executed, this method
+           will return ``None``. On the server, alls to this method
+           should only be made after :meth:`session_started
+           <SSHServerSession.session_started>` has been called on the
+           :class:`SSHServerSession`. When using the stream-based API,
+           calls to this can be made at any time after the handler
+           function has started up.
+
+        """
+
+        return self._command
+
+    def get_subsystem(self):
+        """Return the subsystem the client requested to open, if any
+
+           This method returns the subsystem the client requested to
+           open when the session was opened, if any. If the client
+           did not request that a subsystem be opened, this method will
+           return ``None``. On the server, calls to this method should
+           only be made after :meth:`session_started
+           <SSHServerSession.session_started>` has been called on the
+           :class:`SSHServerSession`. When using the stream-based API,
+           calls to this can be made at any time after the handler
+           function has started up.
+
+        """
+
+        return self._subsystem
+
 
 class SSHClientChannel(SSHChannel):
     """SSH client channel"""
@@ -845,6 +901,10 @@ class SSHClientChannel(SSHChannel):
 
         self._session = session_factory()
         self._session.connection_made(self)
+
+        self._env = env
+        self._command = command
+        self._subsystem = subsystem
 
         for name, value in env.items():
             self._send_request(b'env', String(str(name)), String(str(value)))
@@ -1080,12 +1140,11 @@ class SSHServerChannel(SSHChannel):
 
         super().__init__(conn, loop, encoding, window, max_pktsize)
 
+        self._env = conn.get_key_option('environment', {})
+
         self._allow_pty = allow_pty
         self._line_editor = line_editor
         self._line_history = line_history
-        self._env = self._conn.get_key_option('environment', {})
-        self._command = None
-        self._subsystem = None
         self._term_type = None
         self._term_size = (0, 0, 0, 0)
         self._term_modes = {}
@@ -1302,54 +1361,6 @@ class SSHServerChannel(SSHChannel):
         packet.check_end()
 
         return self._session.break_received(msec)
-
-    def get_environment(self):
-        """Return the environment for this session
-
-           This method returns the environment set by the client
-           when the session was opened. Calls to this method should
-           only be made after :meth:`session_started
-           <SSHServerSession.session_started>` has been called on
-           the :class:`SSHServerSession`.
-
-           :returns: A dictionary containing the environment variables
-                     set by the client
-
-        """
-
-        return self._env
-
-    def get_command(self):
-        """Return the command the client requested to execute, if any
-
-           This method returns the command the client requested to
-           execute when the session was opened, if any. If the client
-           did not request that a command be executed, this method
-           will return ``None``. Calls to this method should only be made
-           after :meth:`session_started <SSHServerSession.session_started>`
-           has been called on the :class:`SSHServerSession`. When using
-           the stream-based API, calls to this can be made at any time
-           after the handler function has started up.
-
-        """
-
-        return self._command
-
-    def get_subsystem(self):
-        """Return the subsystem the client requested to open, if any
-
-           This method returns the subsystem the client requested to
-           open when the session was opened, if any. If the client
-           did not request that a subsystem be opened, this method will
-           return ``None``. Calls to this method should only be made
-           after :meth:`session_started <SSHServerSession.session_started>`
-           has been called on the :class:`SSHServerSession`. When using
-           the stream-based API, calls to this can be made at any time
-           after the handler function has started up.
-
-        """
-
-        return self._subsystem
 
     def get_terminal_type(self):
         """Return the terminal type for this session
