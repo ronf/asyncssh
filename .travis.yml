@@ -63,4 +63,4 @@ matrix:
         - pyenv local 3.5.2
         - pyenv rehash
 
-script: travis_wait tox
+script: travis_wait 60 tox
