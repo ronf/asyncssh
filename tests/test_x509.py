@@ -39,7 +39,7 @@ class _TestX509(unittest.TestCase):
         cls._pubkey = cls._privkey.convert_to_public()
         cls._pubdata = cls._pubkey.export_public_key('pkcs8-der')
 
-    def generate_certificate(self, subject='OU=name', issuer='OU=name',
+    def generate_certificate(self, subject='OU=name', issuer=None,
                              serial=None, valid_after=0,
                              valid_before=0xffffffffffffffff, ca=False,
                              ca_path_len=None, purposes=None,
@@ -57,7 +57,7 @@ class _TestX509(unittest.TestCase):
         self.assertEqual(cert.data, import_x509_certificate(cert.data).data)
 
         self.assertEqual(cert.subject, X509Name(subject))
-        self.assertEqual(cert.issuer, X509Name(issuer))
+        self.assertEqual(cert.issuer, X509Name(issuer if issuer else subject))
         self.assertEqual(cert.key_data, self._pubdata)
         self.assertEqual(cert.comment, comment)
 
@@ -132,26 +132,24 @@ class _TestX509(unittest.TestCase):
     def test_valid_chain(self):
         """Test validation of X.509 certificate chain"""
 
-        root_ca = self.generate_certificate(subject='OU=root', issuer='OU=root',
-                                            ca=True, ca_path_len=0)
+        root_ca = self.generate_certificate('OU=root', ca=True, ca_path_len=1)
 
-        int_ca = self.generate_certificate(subject='OU=int', issuer='OU=root',
+        int_ca = self.generate_certificate('OU=int', 'OU=root',
                                            ca=True, ca_path_len=0)
 
-        cert = self.generate_certificate(subject='OU=user', issuer='OU=int')
+        cert = self.generate_certificate('OU=user', 'OU=int')
 
         self.assertIsNone(cert.validate([int_ca], [root_ca], None, None, None))
 
     def test_incomplete_chain(self):
         """Test failed validation of incomplete X.509 certificate chain"""
 
-        root_ca = self.generate_certificate(subject='OU=root', issuer='OU=root',
-                                            ca=True, ca_path_len=0)
+        root_ca = self.generate_certificate('OU=root', ca=True, ca_path_len=1)
 
-        int_ca = self.generate_certificate(subject='OU=int', issuer='OU=root',
+        int_ca = self.generate_certificate('OU=int', 'OU=root',
                                            ca=True, ca_path_len=0)
 
-        cert = self.generate_certificate(subject='OU=user', issuer='OU=int2')
+        cert = self.generate_certificate('OU=user', 'OU=int2')
 
         with self.assertRaises(ValueError):
             cert.validate([int_ca], [root_ca], None, None, None)
@@ -175,14 +173,13 @@ class _TestX509(unittest.TestCase):
     def test_expired_intermediate(self):
         """Test failed validation of expired X.509 intermediate CA"""
 
-        root_ca = self.generate_certificate(subject='OU=root', issuer='OU=root',
-                                            ca=True, ca_path_len=0)
+        root_ca = self.generate_certificate('OU=root', ca=True, ca_path_len=1)
 
-        int_ca = self.generate_certificate(subject='OU=int', issuer='OU=root',
+        int_ca = self.generate_certificate('OU=int', 'OU=root',
                                            ca=True, ca_path_len=0,
                                            valid_before=time.time() - 60)
 
-        cert = self.generate_certificate(subject='OU=user', issuer='OU=int')
+        cert = self.generate_certificate('OU=user', 'OU=int')
 
         with self.assertRaises(ValueError):
             cert.validate([int_ca], [root_ca], None, None, None)
@@ -190,14 +187,13 @@ class _TestX509(unittest.TestCase):
     def test_expired_root(self):
         """Test failed validation of expired X.509 root CA"""
 
-        root_ca = self.generate_certificate(subject='OU=root', issuer='OU=root',
-                                            ca=True, ca_path_len=0,
+        root_ca = self.generate_certificate('OU=root', ca=True, ca_path_len=1,
                                             valid_before=time.time() - 60)
 
-        int_ca = self.generate_certificate(subject='OU=int', issuer='OU=root',
+        int_ca = self.generate_certificate('OU=int', 'OU=root',
                                            ca=True, ca_path_len=0)
 
-        cert = self.generate_certificate(subject='OU=user', issuer='OU=int')
+        cert = self.generate_certificate('OU=user', 'OU=int')
 
         with self.assertRaises(ValueError):
             cert.validate([int_ca], [root_ca], None, None, None)

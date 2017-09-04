@@ -451,7 +451,7 @@ class SSHKey:
                                           principals, valid_after,
                                           valid_before, {}, comment)
 
-    def generate_x509_user_certificate(self, user_key, subject, issuer,
+    def generate_x509_user_certificate(self, user_key, subject, issuer=None,
                                        serial=None, principals=(),
                                        valid_after=0,
                                        valid_before=0xffffffffffffffff,
@@ -467,9 +467,11 @@ class SSHKey:
            :param str subject:
                The subject name in the certificate, expresed as a
                comma-separated list of X.509 ``name=value`` pairs.
-           :param str issuer:
+           :param str issuer: (optional)
                The issuer name in the certificate, expresed as a
-               comma-separated list of X.509 ``name=value`` pairs.
+               comma-separated list of X.509 ``name=value`` pairs. If
+               not specified, the subject name will be used, creating
+               a self-signed certificate.
            :param int serial: (optional)
                The serial number of the certificate, defaulting to a random
                64-bit value.
@@ -517,7 +519,7 @@ class SSHKey:
                                                purposes, principals, (),
                                                hash_alg, comment)
 
-    def generate_x509_host_certificate(self, host_key, subject, issuer,
+    def generate_x509_host_certificate(self, host_key, subject, issuer=None,
                                        serial=None, principals=(),
                                        valid_after=0,
                                        valid_before=0xffffffffffffffff,
@@ -533,9 +535,11 @@ class SSHKey:
            :param str subject:
                The subject name in the certificate, expresed as a
                comma-separated list of X.509 ``name=value`` pairs.
-           :param str issuer:
+           :param str issuer: (optional)
                The issuer name in the certificate, expresed as a
-               comma-separated list of X.509 ``name=value`` pairs.
+               comma-separated list of X.509 ``name=value`` pairs. If
+               not specified, the subject name will be used, creating
+               a self-signed certificate.
            :param int serial: (optional)
                The serial number of the certificate, defaulting to a random
                64-bit value.
@@ -582,7 +586,7 @@ class SSHKey:
                                                purposes, (), principals,
                                                hash_alg, comment)
 
-    def generate_x509_ca_certificate(self, ca_key, subject, issuer,
+    def generate_x509_ca_certificate(self, ca_key, subject, issuer=None,
                                      serial=None, valid_after=0,
                                      valid_before=0xffffffffffffffff,
                                      ca_path_len=None, hash_alg='sha256',
@@ -597,9 +601,11 @@ class SSHKey:
            :param str subject:
                The subject name in the certificate, expresed as a
                comma-separated list of X.509 ``name=value`` pairs.
-           :param str issuer:
+           :param str issuer: (optional)
                The issuer name in the certificate, expresed as a
-               comma-separated list of X.509 ``name=value`` pairs.
+               comma-separated list of X.509 ``name=value`` pairs. If
+               not specified, the subject name will be used, creating
+               a self-signed certificate.
            :param int serial: (optional)
                The serial number of the certificate, defaulting to a random
                64-bit value.

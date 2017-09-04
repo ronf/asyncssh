@@ -121,14 +121,14 @@ class ServerTestCase(AsyncTestCase):
 
         if x509_available: # pragma: no branch
             ckey_x509_self = ckey_ecdsa.generate_x509_user_certificate(
-                ckey_ecdsa, 'OU=name', 'OU=name', principals=['ckey'])
+                ckey_ecdsa, 'OU=name', principals=['ckey'])
             ckey_ecdsa.write_private_key('ckey_x509_self')
             ckey_x509_self.append_certificate('ckey_x509_self', 'pem')
             ckey_x509_self.write_certificate('ckey_x509_self.pem', 'pem')
             ckey_x509_self.write_certificate('ckey_x509_self.pub')
 
             skey_x509_self = skey_ecdsa.generate_x509_host_certificate(
-                skey_ecdsa, 'OU=name', 'OU=name', principals=['127.0.0.1'])
+                skey_ecdsa, 'OU=name', principals=['127.0.0.1'])
             skey_ecdsa.write_private_key('skey_x509_self')
             skey_x509_self.append_certificate('skey_x509_self', 'pem')
             skey_x509_self.write_certificate('skey_x509_self.pem', 'pem')
@@ -137,7 +137,7 @@ class ServerTestCase(AsyncTestCase):
             root_ca_key.write_private_key('root_ca_key')
 
             root_ca_cert = root_ca_key.generate_x509_ca_certificate(
-                root_ca_key, 'OU=RootCA', 'OU=RootCA', ca_path_len=1)
+                root_ca_key, 'OU=RootCA', ca_path_len=1)
             root_ca_cert.write_certificate('root_ca_cert.pem', 'pem')
             root_ca_cert.write_certificate('root_ca_cert.pub')
 

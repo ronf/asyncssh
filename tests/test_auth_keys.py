@@ -41,8 +41,8 @@ class _TestAuthorizedKeys(TempDirTestCase):
             cls.imported_keylist.append(key.convert_to_public())
 
             if x509_available: # pragma: no branch
-                subject = issuer = 'CN=cert%s' % i
-                cert = key.generate_x509_user_certificate(key, subject, issuer)
+                subject = 'CN=cert%s' % i
+                cert = key.generate_x509_user_certificate(key, subject)
                 cls.certlist.append(cert.export_certificate().decode('ascii'))
                 cls.imported_certlist.append(cert)
 

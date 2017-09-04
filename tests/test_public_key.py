@@ -267,8 +267,7 @@ class _TestPublicKey(TempDirTestCase):
             self.assertEqual(keylist[1].public_data, pubdata)
 
         if self.x509_supported and format_name[-4:] == '-pem':
-            cert = newkey.generate_x509_user_certificate(newkey, 'OU=user',
-                                                         'OU=user')
+            cert = newkey.generate_x509_user_certificate(newkey, 'OU=user')
             chain = SSHX509CertificateChain.construct_from_certs([cert])
 
             cert.write_certificate('new_cert')
@@ -1191,8 +1190,7 @@ class _TestPublicKey(TempDirTestCase):
                     self.assertEqual(cert.get_comment(), None)
 
                     cert = self.privca.generate_x509_ca_certificate(
-                        self.pubkey, 'OU=root', 'OU=root',
-                        comment='cert_comment')
+                        self.pubkey, 'OU=root', comment='cert_comment')
                     self.assertEqual(cert.get_comment(), 'cert_comment')
 
                     cert = asyncssh.import_certificate(
@@ -1715,7 +1713,7 @@ class _TestPublicKey(TempDirTestCase):
 
                 if self.x509_supported:
                     self.rootx509 = self.privca.generate_x509_ca_certificate(
-                        self.pubca, 'OU=root', 'OU=root')
+                        self.pubca, 'OU=root')
 
                     self.rootx509.write_certificate('rootx509')
 
@@ -1915,19 +1913,19 @@ class _TestPublicKeyTopLevel(TempDirTestCase):
                                              valid_before='-1m')
 
         with self.assertRaises(ValueError):
-            privca.generate_x509_user_certificate(pubkey, 'OU=user', 'OU=user',
+            privca.generate_x509_user_certificate(pubkey, 'OU=user',
                                                   valid_after=())
 
         with self.assertRaises(ValueError):
-            privca.generate_x509_user_certificate(pubkey, 'OU=user', 'OU=user',
+            privca.generate_x509_user_certificate(pubkey, 'OU=user',
                                                   valid_after='xxx')
 
         with self.assertRaises(ValueError):
-            privca.generate_x509_user_certificate(pubkey, 'OU=user', 'OU=user',
+            privca.generate_x509_user_certificate(pubkey, 'OU=user',
                                                   valid_after='now',
                                                   valid_before='-1m')
 
         privca.x509_algorithms = None
 
         with self.assertRaises(asyncssh.KeyGenerationError):
-            privca.generate_x509_user_certificate(pubkey, 'OU=user', 'OU=user')
+            privca.generate_x509_user_certificate(pubkey, 'OU=user')

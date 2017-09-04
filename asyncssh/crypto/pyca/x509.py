@@ -285,7 +285,7 @@ def generate_x509_certificate(signing_key, key, subject, issuer, serial,
     """Generate a new X.509 certificate"""
 
     subject = X509Name(subject)
-    issuer = X509Name(issuer)
+    issuer = X509Name(issuer) if issuer else subject
     valid_after = _to_generalized_time(valid_after)
     valid_before = _to_generalized_time(valid_before)
     purposes = _to_purpose_oids(purposes)
