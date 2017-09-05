@@ -4332,7 +4332,9 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
            will be disabled.
        :param x509_trusted_certs: (optional)
            A list of certificates which should be trusted for X.509 server
-           certificate authentication.  If this argument is explicitly set
+           certificate authentication. If no trusted certificates are
+           specified, an attempt will be made to load them from the file
+           :file:`.ssh/ca-bundle.crt`. If this argument is explicitly set
            to ``None``, X.509 server certificate authentication will not
            be performed.
 
@@ -4462,7 +4464,13 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
         _validate_algs(kex_algs, encryption_algs, mac_algs, compression_algs,
                        signature_algs, x509_trusted_certs is not None)
 
-    if x509_trusted_certs is not None:
+    if x509_trusted_certs is ():
+        try:
+            x509_trusted_certs = load_certificates(
+                os.path.join(os.path.expanduser('~'), '.ssh', 'ca-bundle.crt'))
+        except OSError:
+            pass
+    elif x509_trusted_certs is not None:
         x509_trusted_certs = load_certificates(x509_trusted_certs)
 
     if username is None:
