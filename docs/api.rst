@@ -372,7 +372,7 @@ SSHClientProcess
    Client process attributes
    ============================== =
    .. autoattribute:: channel
-   .. autoattribute:: environ
+   .. autoattribute:: env
    .. autoattribute:: command
    .. autoattribute:: subsystem
    .. autoattribute:: stdin
@@ -411,7 +411,7 @@ SSHServerProcess
    Server process attributes
    ============================== =
    .. autoattribute:: channel
-   .. autoattribute:: environ
+   .. autoattribute:: env
    .. autoattribute:: command
    .. autoattribute:: subsystem
    .. autoattribute:: stdin
