@@ -1094,6 +1094,16 @@ class _TestServerX509Chain(ServerTestCase):
         yield from conn.wait_closed()
 
     @asynctest
+    def test_connect_x509_chain_cert_path(self):
+        """Test connecting with X.509 certificate and certificate path"""
+
+        with (yield from self.connect(x509_trusted_cert_paths=['cert_path'],
+                                      known_hosts=b'\n')) as conn:
+            pass
+
+        yield from conn.wait_closed()
+
+    @asynctest
     def test_connect_x509_untrusted_root(self):
         """Test connecting to server with untrusted X.509 root CA"""
 
@@ -1101,6 +1111,13 @@ class _TestServerX509Chain(ServerTestCase):
             yield from self.connect(known_hosts=([], [], [],
                                                  ['skey_x509_self.pem'],
                                                  [], [], []))
+
+    @asynctest
+    def test_connect_x509_untrusted_root_cert_path(self):
+        """Test connecting to server with untrusted X.509 root CA"""
+
+        with self.assertRaises(asyncssh.DisconnectError):
+            yield from self.connect(known_hosts=b'\n')
 
     @asynctest
     def test_connect_x509_revoked_intermediate(self):
@@ -1111,6 +1128,13 @@ class _TestServerX509Chain(ServerTestCase):
                                                  ['root_ca_cert.pem'],
                                                  ['int_ca_cert.pem'],
                                                  [], []))
+
+    @asynctest
+    def test_invalid_x509_path(self):
+        """Test passing in invalid trusted X.509 certificate path"""
+
+        with self.assertRaises(ValueError):
+            yield from self.connect(x509_trusted_cert_paths='xxx')
 
 
 class _TestServerNoLoop(ServerTestCase):
@@ -1150,7 +1174,9 @@ class _TestServerNoHostKey(ServerTestCase):
     def test_gss_with_no_host_key(self):
         """Test GSS key exchange with no server host key specified"""
 
-        with (yield from self.connect(known_hosts=b'\n', gss_host='1')) as conn:
+        with (yield from self.connect(known_hosts=b'\n', gss_host='1',
+                                      x509_trusted_certs=None,
+                                      x509_trusted_cert_paths=None)) as conn:
             pass
 
         yield from conn.wait_closed()

@@ -184,27 +184,27 @@ class _TestPublicKey(TempDirTestCase):
     def validate_x509(self, cert, user_principal=None):
         """Check X.509 certificate validation"""
 
-        self.assertIsNone(cert.validate_chain([], [self.rootx509], 'any',
+        self.assertIsNone(cert.validate_chain([], [self.rootx509], [], 'any',
                                               user_principal, None))
 
         with self.assertRaises(ValueError):
-            cert.validate_chain([self.rootx509], [], 'any', None, None)
+            cert.validate_chain([self.rootx509], [], [], 'any', None, None)
 
         chain = SSHX509CertificateChain.construct_from_certs([cert])
         self.assertEqual(chain, decode_ssh_certificate(chain.data))
 
-        self.assertIsNone(chain.validate_chain([self.rootx509], [], 'any',
+        self.assertIsNone(chain.validate_chain([self.rootx509], [], [], 'any',
                                                user_principal, None))
 
         self.assertIsNone(chain.validate_chain([self.rootx509],
-                                               [self.otherx509], 'any',
+                                               [], [self.otherx509], 'any',
                                                user_principal, None))
 
         with self.assertRaises(ValueError):
-            chain.validate_chain([], [], 'any', user_principal, None)
+            chain.validate_chain([], [], [], 'any', user_principal, None)
 
         with self.assertRaises(ValueError):
-            chain.validate_chain([self.rootx509], [cert], 'any',
+            chain.validate_chain([self.rootx509], [], [cert], 'any',
                                  user_principal, None)
 
     def check_private(self, format_name, passphrase=None):

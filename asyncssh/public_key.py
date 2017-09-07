@@ -1406,8 +1406,32 @@ class SSHX509Certificate(SSHCertificate):
 
         self.subject = x509_cert.subject
         self.issuer = x509_cert.issuer
+        self.issuer_hash = x509_cert.issuer_hash
         self.user_principals = x509_cert.user_principals
         self.x509_cert = x509_cert
+
+    def _expand_trust_store(self, cert, trusted_cert_paths, trust_store):
+        """Look up certificates by issuer hash to build a trust store"""
+
+        issuer_hash = cert.issuer_hash
+
+        for path in trusted_cert_paths:
+            idx = 0
+
+            try:
+                while True:
+                    cert_path = os.path.join(path, issuer_hash + '.' + str(idx))
+                    idx += 1
+
+                    c = read_certificate(cert_path)
+
+                    if c.subject != cert.issuer or c in trust_store:
+                        continue
+
+                    trust_store.add(c)
+                    self._expand_trust_store(c, trusted_cert_paths, trust_store)
+            except (OSError, KeyImportError):
+                pass
 
     @classmethod
     def generate(cls, signing_key, key, subject, issuer, serial, valid_after,
@@ -1437,15 +1461,21 @@ class SSHX509Certificate(SSHCertificate):
 
         return cls(key, x509_cert)
 
-    def validate_chain(self, cert_chain, trusted_certs, purposes,
-                       user_principal=None, host_principal=None):
+    def validate_chain(self, trust_chain, trusted_certs, trusted_cert_paths,
+                       purposes, user_principal=None, host_principal=None):
         """Validate an X.509 certificate chain"""
 
-        cert_chain = [c.x509_cert for c in cert_chain]
-        trusted_certs = [c.x509_cert for c in trusted_certs]
+        trust_chain = set(c for c in trust_chain if c.subject != c.issuer)
+        trust_store = trust_chain | set(c for c in trusted_certs)
 
-        self.x509_cert.validate(cert_chain, trusted_certs, purposes,
-                                user_principal, host_principal)
+        if trusted_cert_paths:
+            self._expand_trust_store(self, trusted_cert_paths, trust_store)
+
+            for c in trust_chain:
+                self._expand_trust_store(c, trusted_cert_paths, trust_store)
+
+        self.x509_cert.validate([c.x509_cert for c in trust_store],
+                                purposes, user_principal, host_principal)
 
 
 class SSHX509CertificateChain(SSHCertificate):
@@ -1499,8 +1529,8 @@ class SSHX509CertificateChain(SSHCertificate):
 
         return cls(algorithm, data, certs, (), cert.get_comment())
 
-    def validate_chain(self, trusted_certs, revoked_certs, purposes,
-                       user_principal=None, host_principal=None):
+    def validate_chain(self, trusted_certs, trusted_cert_paths, revoked_certs,
+                       purposes, user_principal=None, host_principal=None):
         """Validate an X.509 certificate chain"""
 
         if revoked_certs:
@@ -1509,7 +1539,8 @@ class SSHX509CertificateChain(SSHCertificate):
                     raise ValueError('Revoked X.509 certificate in '
                                      'certificate chain')
 
-        self._certs[0].validate_chain(self._certs[1:], trusted_certs, purposes,
+        self._certs[0].validate_chain(self._certs[1:], trusted_certs,
+                                      trusted_cert_paths, purposes,
                                       user_principal, host_principal)
 
 

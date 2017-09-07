@@ -206,13 +206,16 @@ class X509Certificate:
     """A shim around PyCA and PyOpenSSL for X.509 certificates"""
 
     def __init__(self, cert, data):
-        self.cert = cert
         self.data = data
 
         self.subject = X509Name(cert.subject)
         self.issuer = X509Name(cert.issuer)
         self.key_data = cert.public_key().public_bytes(
             Encoding.DER, PublicFormat.SubjectPublicKeyInfo)
+
+        self.openssl_cert = crypto.X509.from_cryptography(cert)
+        self.subject_hash = hex(self.openssl_cert.get_subject().hash())[2:]
+        self.issuer_hash = hex(self.openssl_cert.get_issuer().hash())[2:]
 
         try:
             self.purposes = set(cert.extensions.get_extension_for_class(
@@ -243,14 +246,13 @@ class X509Certificate:
             raise ValueError('Invalid character in comment') from None
 
     def __eq__(self, other):
-        return isinstance(other, type(self)) and self.cert == other.cert
+        return isinstance(other, type(self)) and self.data == other.data
 
     def __hash__(self):
-        return hash(self.cert)
+        return hash(self.data)
 
-    def validate(self, trust_chain, trusted_certs, purposes,
-                 user_principal, host_principal):
-        """Validate an X.509 certificate chain"""
+    def validate(self, trust_store, purposes, user_principal, host_principal):
+        """Validate an X.509 certificate"""
 
         purposes = _to_purpose_oids(purposes)
 
@@ -263,17 +265,13 @@ class X509Certificate:
         if host_principal and host_principal not in self.host_principals:
             raise ValueError('Certificate host principal mismatch')
 
-        trust_chain = [c for c in trust_chain if c.subject != c.issuer]
-
         x509_store = crypto.X509Store()
 
-        for c in set(trust_chain + trusted_certs):
-            cert = crypto.X509.from_cryptography(c.cert)
-            x509_store.add_cert(cert)
+        for c in trust_store:
+            x509_store.add_cert(c.openssl_cert)
 
         try:
-            cert = crypto.X509.from_cryptography(self.cert)
-            x509_ctx = crypto.X509StoreContext(x509_store, cert)
+            x509_ctx = crypto.X509StoreContext(x509_store, self.openssl_cert)
             x509_ctx.verify_certificate()
         except crypto.X509StoreContextError as exc:
             raise ValueError(str(exc)) from None

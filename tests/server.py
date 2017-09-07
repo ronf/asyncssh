@@ -161,10 +161,21 @@ class ServerTestCase(AsyncTestCase):
             skey_x509_chain.append_certificate('skey_x509_chain', 'pem')
             int_ca_cert.append_certificate('skey_x509_chain', 'pem')
 
+            root_hash = root_ca_cert.x509_cert.subject_hash
+
+            os.mkdir('cert_path')
+            shutil.copy('root_ca_cert.pem',
+                        os.path.join('cert_path', root_hash + '.0'))
+
+            # Intentional hash mismatch
+            shutil.copy('int_ca_cert.pem',
+                        os.path.join('cert_path', root_hash + '.1'))
+
         for f in ('ckey', 'ckey_ecdsa', 'skey', 'exp_skey', 'skey_ecdsa'):
             os.chmod(f, 0o600)
 
         os.mkdir('.ssh', 0o700)
+        os.mkdir('.ssh/crt', 0o700)
 
         shutil.copy('ckey_ecdsa', os.path.join('.ssh', 'id_ecdsa'))
         shutil.copy('ckey_ecdsa.pub', os.path.join('.ssh', 'id_ecdsa.pub'))

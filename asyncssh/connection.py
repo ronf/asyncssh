@@ -1912,9 +1912,9 @@ class SSHClientConnection(SSHConnection):
     def __init__(self, client_factory, loop, client_version, kex_algs,
                  encryption_algs, mac_algs, compression_algs, signature_algs,
                  rekey_bytes, rekey_seconds, host, port, known_hosts,
-                 x509_trusted_certs, x509_purposes, username, password,
-                 client_keys, gss_host, gss_delegate_creds, agent,
-                 agent_path, auth_waiter):
+                 x509_trusted_certs, x509_trusted_cert_paths, x509_purposes,
+                 username, password, client_keys, gss_host, gss_delegate_creds,
+                 agent, agent_path, auth_waiter):
         super().__init__(client_factory, loop, client_version, kex_algs,
                          encryption_algs, mac_algs, compression_algs,
                          signature_algs, rekey_bytes, rekey_seconds,
@@ -1924,6 +1924,7 @@ class SSHClientConnection(SSHConnection):
         self._port = port if port != _DEFAULT_PORT else None
         self._known_hosts = known_hosts
         self._x509_trusted_certs = x509_trusted_certs
+        self._x509_trusted_cert_paths = x509_trusted_cert_paths
         self._x509_purposes = x509_purposes
         self._username = saslprep(username)
         self._password = password
@@ -1989,7 +1990,7 @@ class SSHClientConnection(SSHConnection):
                 self._x509_trusted_certs = list(self._x509_trusted_certs)
                 self._x509_trusted_certs.extend(server_x509_certs)
 
-                if self._x509_trusted_certs:
+                if self._x509_trusted_certs or self._x509_trusted_cert_paths:
                     self._server_host_key_algs = \
                         get_x509_certificate_algs() + self._server_host_key_algs
 
@@ -2079,6 +2080,7 @@ class SSHClientConnection(SSHConnection):
                 host_principal = self._host
 
             cert.validate_chain(self._x509_trusted_certs,
+                                self._x509_trusted_cert_paths,
                                 self._x509_revoked_certs,
                                 self._x509_purposes,
                                 host_principal=host_principal)
@@ -3184,11 +3186,12 @@ class SSHServerConnection(SSHConnection):
     def __init__(self, server_factory, loop, server_version, kex_algs,
                  encryption_algs, mac_algs, compression_algs, signature_algs,
                  rekey_bytes, rekey_seconds, server_host_keys,
-                 authorized_client_keys, x509_trusted_certs, x509_purposes,
-                 gss_host, allow_pty, line_editor, line_history,
-                 x11_forwarding, x11_auth_path, agent_forwarding,
-                 process_factory, session_factory, session_encoding,
-                 sftp_factory, allow_scp, window, max_pktsize, login_timeout):
+                 authorized_client_keys, x509_trusted_certs,
+                 x509_trusted_cert_paths, x509_purposes, gss_host, allow_pty,
+                 line_editor, line_history, x11_forwarding, x11_auth_path,
+                 agent_forwarding, process_factory, session_factory,
+                 session_encoding, sftp_factory, allow_scp, window,
+                 max_pktsize, login_timeout):
         super().__init__(server_factory, loop, server_version, kex_algs,
                          encryption_algs, mac_algs, compression_algs,
                          signature_algs, rekey_bytes, rekey_seconds,
@@ -3198,6 +3201,7 @@ class SSHServerConnection(SSHConnection):
         self._server_host_key_algs = server_host_keys.keys()
         self._client_keys = authorized_client_keys
         self._x509_trusted_certs = x509_trusted_certs
+        self._x509_trusted_cert_paths = x509_trusted_cert_paths
         self._x509_purposes = x509_purposes
         self._allow_pty = allow_pty
         self._line_editor = line_editor
@@ -3387,7 +3391,8 @@ class SSHServerConnection(SSHConnection):
             trusted_certs = self._x509_trusted_certs
 
         try:
-            cert.validate_chain(trusted_certs, None, self._x509_purposes,
+            cert.validate_chain(trusted_certs, self._x509_trusted_cert_paths,
+                                None, self._x509_purposes,
                                 user_principal=username)
         except ValueError:
             return None
@@ -4261,6 +4266,7 @@ class SSHServerConnection(SSHConnection):
 def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
                       loop=None, tunnel=None, family=0, flags=0,
                       local_addr=None, known_hosts=(), x509_trusted_certs=(),
+                      x509_trusted_cert_paths=(),
                       x509_purposes='secureShellServer', username=None,
                       password=None, client_keys=(), passphrase=None,
                       gss_host=(), gss_delegate_creds=False,
@@ -4343,6 +4349,15 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
                          if they are converted into OpenSSH format.
                          This allows their trust to be limited to only
                          specific host names.
+       :param x509_trusted_cert_paths: (optional)
+           A list of path names to "hash directories" containing certificates
+           which should be trusted for X.509 server certificate authentication.
+           Each certificate should be in a separate file with a name of the
+           form *hash.number*, where *hash* is the OpenSSL hash value of the
+           certificate subject name and *number* is an integer counting up
+           from zero if multiple certificates have the same hash. If no
+           paths are specified, an attempt with be made to use the directory
+           :file:`.ssh/crt` as a certificate hash directory.
        :param x509_purposes: (optional)
            A list of purposes allowed in the ExtendedKeyUsage of a
            certificate used for X.509 server certificate authentication,
@@ -4427,6 +4442,7 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
        :type local_addr: tuple of str and int
        :type known_hosts: *see* :ref:`SpecifyingKnownHosts`
        :type x509_trusted_certs: *see* :ref:`SpecifyingCertificates`
+       :type x509_trusted_cert_paths: list of str
        :type x509_purposes: *see* :ref:`SpecifyingX509Purposes`
        :type client_keys: *see* :ref:`SpecifyingPrivateKeys`
        :type agent_path: str or :class:`SSHServerConnection`
@@ -4448,9 +4464,10 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
                                    compression_algs, signature_algs,
                                    rekey_bytes, rekey_seconds, host, port,
                                    known_hosts, x509_trusted_certs,
-                                   x509_purposes, username, password,
-                                   client_keys, gss_host, gss_delegate_creds,
-                                   agent, agent_path, auth_waiter)
+                                   x509_trusted_cert_paths, x509_purposes,
+                                   username, password, client_keys, gss_host,
+                                   gss_delegate_creds, agent, agent_path,
+                                   auth_waiter)
 
     if not client_factory:
         client_factory = SSHClient
@@ -4472,6 +4489,15 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
             pass
     elif x509_trusted_certs is not None:
         x509_trusted_certs = load_certificates(x509_trusted_certs)
+
+    if x509_trusted_cert_paths is ():
+        path = os.path.join(os.path.expanduser('~'), '.ssh', 'crt')
+        if os.path.isdir(path):
+            x509_trusted_cert_paths = [path]
+    elif x509_trusted_cert_paths:
+        for path in x509_trusted_cert_paths:
+            if not os.path.isdir(path):
+                raise ValueError('Path not a directory: ' + str(path))
 
     if username is None:
         username = getpass.getuser()
@@ -4529,8 +4555,8 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
                   loop=None, family=0, flags=socket.AI_PASSIVE, backlog=100,
                   reuse_address=None, server_host_keys=None, passphrase=None,
                   authorized_client_keys=None, x509_trusted_certs=(),
-                  x509_purposes='secureShellClient', gss_host=(),
-                  allow_pty=True, line_editor=True,
+                  x509_trusted_cert_paths=(), x509_purposes='secureShellClient',
+                  gss_host=(), allow_pty=True, line_editor=True,
                   line_history=_DEFAULT_LINE_HISTORY,
                   x11_forwarding=False, x11_auth_path=None,
                   agent_forwarding=True, process_factory=None,
@@ -4599,6 +4625,13 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
                          specific client IPs or user names and allows
                          SSH functions to be restricted when these
                          certificates are used.
+       :param x509_trusted_cert_paths: (optional)
+           A list of path names to "hash directories" containing certificates
+           which should be trusted for X.509 client certificate authentication.
+           Each certificate should be in a separate file with a name of the
+           form *hash.number*, where *hash* is the OpenSSL hash value of the
+           certificate subject name and *number* is an integer counting up
+           from zero if multiple certificates have the same hash.
        :param x509_purposes: (optional)
            A list of purposes allowed in the ExtendedKeyUsage of a
            certificate used for X.509 client certificate authentication,
@@ -4701,6 +4734,7 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
        :type server_host_keys: *see* :ref:`SpecifyingPrivateKeys`
        :type authorized_client_keys: *see* :ref:`SpecifyingAuthorizedKeys`
        :type x509_trusted_certs: *see* :ref:`SpecifyingCertificates`
+       :type x509_trusted_cert_paths: list of str
        :type x509_purposes: *see* :ref:`SpecifyingX509Purposes`
        :type kex_algs: list of str
        :type encryption_algs: list of str
@@ -4720,13 +4754,13 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
                                    compression_algs, signature_algs,
                                    rekey_bytes, rekey_seconds,
                                    server_host_keys, authorized_client_keys,
-                                   x509_trusted_certs, x509_purposes,
-                                   gss_host, allow_pty, line_editor,
-                                   line_history, x11_forwarding, x11_auth_path,
-                                   agent_forwarding, process_factory,
-                                   session_factory, session_encoding,
-                                   sftp_factory, allow_scp, window,
-                                   max_pktsize, login_timeout)
+                                   x509_trusted_certs, x509_trusted_cert_paths,
+                                   x509_purposes, gss_host, allow_pty,
+                                   line_editor, line_history, x11_forwarding,
+                                   x11_auth_path, agent_forwarding,
+                                   process_factory, session_factory,
+                                   session_encoding, sftp_factory, allow_scp,
+                                   window, max_pktsize, login_timeout)
 
     if not server_factory:
         server_factory = SSHServer
