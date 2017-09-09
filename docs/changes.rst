@@ -3,6 +3,35 @@
 Change Log
 ==========
 
+Release 1.11.0 (9 Sep 2017)
+---------------------------
+
+* Added support for X.509 certificate based client and server authentication,
+  as defined in RFC 6187.
+
+  * DSA, RSA, and ECDSA keys are supported.
+  * New methods are available on SSHKey private keys to generate X.509
+    user, host, and CA certificates.
+  * Authorized key and known host support has been enhanced to support
+    matching on X.509 certificates and X.509 subject names.
+  * New arguments have been added to create_connection() and create_server()
+    to specify X.509 trusted root CAs, X.509 trusted root CA hash directories,
+    and allowed X.509 certificate purposes.
+  * A new load_certificates() function has been added to more easily pre-load
+    a list of certificates from byte strings or files.
+  * Support for including and validating OCSP responses is not yet available,
+    but may be added in a future release.
+  * This support adds a new optional dependency on pyOpenSSL in setup.py.
+
+* Added command, subsystem, and environment properties to SSHProcess,
+  SSHCompletedProcess, and ProcessError classes, as well as stdout and
+  stderr properties in ProcessError which mirror what is already present
+  in SSHCompletedProcess. Thanks go to iforapsy for suggesting this.
+
+* Worked around a datetime.max bug on Windows.
+
+* Increased the build timeout on TravisCI to avoid build failures.
+
 Release 1.10.1 (19 May 2017)
 ----------------------------
 
