@@ -108,7 +108,7 @@ provide a superset of the functionality found in ``asyncio`` transport
 objects.
 
 In addition to the above functions and classes, helper functions for importing
-public and private keys can be found below under :ref:`PublicKeyFunctions`,
+public and private keys can be found below under :ref:`PublicKeySupport`,
 exceptions can be found under :ref:`Exceptions`, supported algorithms can
 be found under :ref:`SupportedAlgorithms`, and some useful constants can be
 found under :ref:`Constants`.
@@ -993,8 +993,8 @@ SFTPName
 
 .. autoclass:: SFTPName()
 
-.. index:: Public key functions
-.. _PublicKeyFunctions:
+.. index:: Public key and certificate support
+.. _PublicKeySupport:
 
 Public Key Support
 ==================
@@ -1006,13 +1006,17 @@ Ed25519 keys are supported if the libnacl package and libsodium library
 are installed.
 
 Supported certificate types include OpenSSH version 01 certificates for
-DSA, RSA, ECDSA, and Ed25519 keys. Support is also available for the
-certificate critical options of force-command and source-address and
-the extensions permit-X11-forwarding, permit-agent-forwarding,
-permit-port-forwarding, and permit-pty.
+DSA, RSA, ECDSA, and Ed25519 keys and X.509 certificates for DSA, RSA,
+and ECDSA keys.
+
+Support is also available for the certificate critical options of
+force-command and source-address and the extensions permit-X11-forwarding,
+permit-agent-forwarding, permit-port-forwarding, and permit-pty in
+OpenSSH certificates.
 
 Several public key and certificate formats are supported including
-PKCS#1 and PKCS#8 DER and PEM, OpenSSH, and RFC4716 formats.
+PKCS#1 and PKCS#8 DER and PEM, OpenSSH, RFC4716, and X.509 DER and
+PEM formats.
 
 PEM and PKCS#8 password-based encryption of private keys is supported, as
 is OpenSSH private key encryption when the bcrypt package is installed.

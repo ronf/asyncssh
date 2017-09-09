@@ -48,6 +48,9 @@ Features
 
 * Password, public key, and keyboard-interactive user authentication methods
 * Many types and formats of `public keys and certificates`__
+
+  * Including support for X.509 certificates as defined in RFC 6187
+
 * Support for accessing keys managed by `ssh-agent`__ on UNIX systems
 
   * Including agent forwarding support on both the client and the server
