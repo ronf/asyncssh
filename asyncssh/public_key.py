@@ -142,6 +142,7 @@ class SSHKey:
     algorithm = None
     sig_algorithms = None
     x509_algorithms = None
+    all_sig_algorithms = None
     pem_name = None
     pkcs8_oid = None
 
@@ -235,6 +236,51 @@ class SSHKey:
                 raise KeyImportError('Invalid characters in comment') from None
 
         self._comment = comment or None
+
+    def sign_der(self, data, sig_algorithm):
+        """Abstract method to compute a DER-encoded signature"""
+
+        raise NotImplementedError
+
+    def verify_der(self, data, sig_algorithm, sig):
+        """Abstract method to verify a DER-encoded signature"""
+
+        raise NotImplementedError
+
+    def sign_ssh(self, data, sig_algorithm):
+        """Abstract method to compute an SSH-encoded signature"""
+
+        raise NotImplementedError
+
+    def verify_ssh(self, data, sig_algorithm, sig):
+        """Abstract method to verify an SSH-encoded signature"""
+
+        raise NotImplementedError
+
+    def sign(self, data, sig_algorithm):
+        """Return an SSH-encoded signature of the specified data"""
+
+        if sig_algorithm not in self.all_sig_algorithms:
+            raise ValueError('Unrecognized signature algorithm')
+
+        return b''.join((String(sig_algorithm),
+                         String(self.sign_ssh(data, sig_algorithm))))
+
+    def verify(self, data, sig):
+        """Verify an SSH signature of the specified data using this key"""
+
+        try:
+            packet = SSHPacket(sig)
+            sig_algorithm = packet.get_string()
+            sig = packet.get_string()
+            packet.check_end()
+
+            if sig_algorithm not in self.all_sig_algorithms:
+                return False
+
+            return self.verify_ssh(data, sig_algorithm, sig)
+        except PacketDecodeError:
+            return False
 
     def encode_pkcs1_private(self):
         """Export parameters associated with a PKCS#1 private key"""
@@ -1607,14 +1653,7 @@ class SSHKeyPair:
         raise NotImplementedError
 
     def sign(self, data):
-        """Sign a block of data with this private key
-
-           :param str data:
-               The data to be signed.
-
-           :returns: bytes containing the signature.
-
-        """
+        """Sign a block of data with this private key"""
 
         raise NotImplementedError
 

@@ -1112,6 +1112,10 @@ class _TestPublicKey(TempDirTestCase):
                         with self.subTest('Bad signature'):
                             self.assertFalse(self.pubkey.verify(data, badsig))
 
+            with self.subTest('Missing signature'):
+                self.assertFalse(self.pubkey.verify(
+                    data, String(self.pubkey.algorithm)))
+
             with self.subTest('Empty signature'):
                 self.assertFalse(self.pubkey.verify(
                     data, String(self.pubkey.algorithm) + String(b'')))
@@ -1120,9 +1124,9 @@ class _TestPublicKey(TempDirTestCase):
                 with self.assertRaises(ValueError):
                     self.privkey.sign(data, 'xxx')
 
-            badalg = String('xxx')
             with self.subTest('Verify with bad algorithm'):
-                self.assertFalse(self.pubkey.verify(data, badalg))
+                self.assertFalse(self.pubkey.verify(
+                    data, String('xxx') + String('')))
 
             with self.subTest('Sign with public key'):
                 with self.assertRaises(ValueError):

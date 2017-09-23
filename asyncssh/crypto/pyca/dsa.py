@@ -17,7 +17,6 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.hashes import SHA1
 from cryptography.hazmat.primitives.asymmetric import dsa
 
-from ...asn1 import der_encode, der_decode
 from .misc import PyCAKey
 
 # Short variable names are used here, matching names in the spec
@@ -93,7 +92,7 @@ class DSAPrivateKey(_DSAKey):
     def sign(self, data):
         """Sign a block of data"""
 
-        return der_decode(self.pyca_key.sign(data, SHA1()))
+        return self.pyca_key.sign(data, SHA1())
 
 
 class DSAPublicKey(_DSAKey):
@@ -113,7 +112,7 @@ class DSAPublicKey(_DSAKey):
         """Verify the signature on a block of data"""
 
         try:
-            self.pyca_key.verify(der_encode(sig), data, SHA1())
+            self.pyca_key.verify(sig, data, SHA1())
             return True
         except InvalidSignature:
             return False

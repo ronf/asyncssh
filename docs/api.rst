@@ -1213,7 +1213,6 @@ SSHKeyPair
    .. automethod:: get_algorithm
    .. automethod:: get_comment
    .. automethod:: set_comment
-   .. automethod:: sign
    ============================= =
 
 SSHCertificate
@@ -1357,7 +1356,6 @@ SSHAgentKeyPair
    .. automethod:: get_algorithm
    .. automethod:: get_comment
    .. automethod:: set_comment
-   .. automethod:: sign
    .. automethod:: remove
    ============================= =
 

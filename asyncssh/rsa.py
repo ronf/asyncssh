@@ -15,7 +15,7 @@
 from .asn1 import ASN1DecodeError, ObjectIdentifier, der_encode, der_decode
 from .crypto import RSAPrivateKey, RSAPublicKey
 from .misc import all_ints
-from .packet import MPInt, String, PacketDecodeError, SSHPacket
+from .packet import MPInt
 from .public_key import SSHKey, SSHOpenSSHCertificateV01, KeyExportError
 from .public_key import register_public_key_alg, register_certificate_alg
 from .public_key import register_x509_certificate_alg
@@ -33,8 +33,7 @@ class _RSAKey(SSHKey):
     sig_algorithms = (b'rsa-sha2-256', b'rsa-sha2-512', b'ssh-rsa')
     x509_sig_algorithms = (b'rsa2048-sha256', b'ssh-rsa')
     x509_algorithms = tuple(b'x509v3-' + alg for alg in x509_sig_algorithms)
-
-    _all_sig_algorithms = set(x509_sig_algorithms + sig_algorithms)
+    all_sig_algorithms = set(x509_sig_algorithms + sig_algorithms)
 
     def __eq__(self, other):
         # This isn't protected access - both objects are _RSAKey instances
@@ -187,35 +186,32 @@ class _RSAKey(SSHKey):
         return b''.join((MPInt(self._key.d), MPInt(self._key.iqmp),
                          MPInt(self._key.p), MPInt(self._key.q)))
 
-    def sign(self, data, algorithm):
-        """Return a signature of the specified data using this key"""
+    def sign_der(self, data, sig_algorithm):
+        """Compute a DER-encoded signature of the specified data"""
+
+        # pylint: disable=unused-argument
 
         if not self._key.d:
             raise ValueError('Private key needed for signing')
 
-        if algorithm not in self._all_sig_algorithms:
-            raise ValueError('Unrecognized signature algorithm')
+        return self._key.sign(data, sig_algorithm)
 
-        sig = self._key.sign(data, algorithm)
-        return b''.join((String(algorithm), String(sig)))
+    def verify_der(self, data, sig_algorithm, sig):
+        """Verify a DER-encoded signature of the specified data"""
 
-    def verify(self, data, sig):
-        """Verify a signature of the specified data using this key"""
+        # pylint: disable=unused-argument
 
-        try:
-            packet = SSHPacket(sig)
+        return self._key.verify(data, sig, sig_algorithm)
 
-            algorithm = packet.get_string()
+    def sign_ssh(self, data, sig_algorithm):
+        """Compute an SSH-encoded signature of the specified data"""
 
-            if algorithm not in self._all_sig_algorithms:
-                return False
+        return self.sign_der(data, sig_algorithm)
 
-            sig = packet.get_string()
-            packet.check_end()
+    def verify_ssh(self, data, sig_algorithm, sig):
+        """Verify an SSH-encoded signature of the specified data"""
 
-            return self._key.verify(data, sig, algorithm)
-        except PacketDecodeError:
-            return False
+        return self.verify_der(data, sig_algorithm, sig)
 
 
 register_public_key_alg(b'ssh-rsa', _RSAKey)

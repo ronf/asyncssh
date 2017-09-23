@@ -15,7 +15,7 @@
 from .asn1 import ASN1DecodeError, ObjectIdentifier, der_encode, der_decode
 from .crypto import DSAPrivateKey, DSAPublicKey
 from .misc import all_ints
-from .packet import MPInt, String, PacketDecodeError, SSHPacket
+from .packet import MPInt
 from .public_key import SSHKey, SSHOpenSSHCertificateV01, KeyExportError
 from .public_key import register_public_key_alg, register_certificate_alg
 from .public_key import register_x509_certificate_alg
@@ -32,6 +32,7 @@ class _DSAKey(SSHKey):
     pkcs8_oid = ObjectIdentifier('1.2.840.10040.4.1')
     sig_algorithms = (algorithm,)
     x509_algorithms = (b'x509v3-' + algorithm,)
+    all_sig_algorithms = set(sig_algorithms)
 
     def __eq__(self, other):
         # This isn't protected access - both objects are _DSAKey instances
@@ -196,41 +197,39 @@ class _DSAKey(SSHKey):
 
         return MPInt(self._key.x)
 
-    def sign(self, data, algorithm):
-        """Return a signature of the specified data using this key"""
+    def sign_der(self, data, sig_algorithm):
+        """Compute a DER-encoded signature of the specified data"""
+
+        # pylint: disable=unused-argument
 
         if not self._key.x:
             raise ValueError('Private key needed for signing')
 
-        if algorithm not in self.sig_algorithms:
-            raise ValueError('Unrecognized signature algorithm')
+        return self._key.sign(data)
 
-        r, s = self._key.sign(data)
-        return b''.join((String(algorithm),
-                         String(r.to_bytes(20, 'big') +
-                                s.to_bytes(20, 'big'))))
+    def verify_der(self, data, sig_algorithm, sig):
+        """Verify a DER-encoded signature of the specified data"""
 
-    def verify(self, data, sig):
-        """Verify a signature of the specified data using this key"""
+        # pylint: disable=unused-argument
 
-        try:
-            packet = SSHPacket(sig)
+        return self._key.verify(data, sig)
 
-            if packet.get_string() not in self.sig_algorithms:
-                return False
+    def sign_ssh(self, data, sig_algorithm):
+        """Compute an SSH-encoded signature of the specified data"""
 
-            sig = packet.get_string()
-            packet.check_end()
+        r, s = der_decode(self.sign_der(data, sig_algorithm))
+        return r.to_bytes(20, 'big') + s.to_bytes(20, 'big')
 
-            if len(sig) != 40:
-                return False
+    def verify_ssh(self, data, sig_algorithm, sig):
+        """Verify an SSH-encoded signature of the specified data"""
 
-            r = int.from_bytes(sig[:20], 'big')
-            s = int.from_bytes(sig[20:], 'big')
-
-            return self._key.verify(data, (r, s))
-        except PacketDecodeError:
+        if len(sig) != 40:
             return False
+
+        r = int.from_bytes(sig[:20], 'big')
+        s = int.from_bytes(sig[20:], 'big')
+
+        return self.verify_der(data, sig_algorithm, der_encode((r, s)))
 
 
 register_public_key_alg(b'ssh-dss', _DSAKey)

@@ -17,7 +17,6 @@ from cryptography.hazmat.backends.openssl import backend
 from cryptography.hazmat.primitives.hashes import SHA256, SHA384, SHA512
 from cryptography.hazmat.primitives.asymmetric import ec
 
-from ...asn1 import der_encode, der_decode
 from .misc import PyCAKey
 
 # Short variable names are used here, matching names in the spec
@@ -119,7 +118,7 @@ class ECDSAPrivateKey(_ECKey):
     def sign(self, data):
         """Sign a block of data"""
 
-        return der_decode(self.pyca_key.sign(data, ec.ECDSA(self._hash_alg())))
+        return self.pyca_key.sign(data, ec.ECDSA(self._hash_alg()))
 
 
 class ECDSAPublicKey(_ECKey):
@@ -140,8 +139,7 @@ class ECDSAPublicKey(_ECKey):
         """Verify the signature on a block of data"""
 
         try:
-            self.pyca_key.verify(der_encode(sig), data,
-                                 ec.ECDSA(self._hash_alg()))
+            self.pyca_key.verify(sig, data, ec.ECDSA(self._hash_alg()))
             return True
         except InvalidSignature:
             return False

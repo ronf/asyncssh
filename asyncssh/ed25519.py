@@ -12,7 +12,7 @@
 
 """Ed25519 public key encryption handler"""
 
-from .packet import String, SSHPacket
+from .packet import String
 from .public_key import SSHKey, SSHOpenSSHCertificateV01, KeyExportError
 from .public_key import register_public_key_alg, register_certificate_alg
 
@@ -25,6 +25,7 @@ class _Ed25519Key(SSHKey):
 
     algorithm = b'ssh-ed25519'
     sig_algorithms = (algorithm,)
+    all_sig_algorithms = set(sig_algorithms)
 
     def __init__(self, vk, sk):
         super().__init__()
@@ -97,35 +98,36 @@ class _Ed25519Key(SSHKey):
 
         return self.encode_ssh_private()
 
-    def sign(self, data, algorithm):
-        """Return a signature of the specified data using this key"""
+    def sign_der(self, data, sig_algorithm):
+        """Return a DER-encoded signature of the specified data"""
 
         # pylint: disable=unused-argument
 
         if self._sk is None:
             raise ValueError('Private key needed for signing')
 
-        if algorithm not in self.sig_algorithms:
-            raise ValueError('Unrecognized signature algorithm')
-
         sig = libnacl.crypto_sign(data, self._sk)
-        return b''.join((String(algorithm), String(sig[:-len(data)])))
+        return sig[:-len(data)]
 
-    def verify(self, data, sig):
-        """Verify a signature of the specified data using this key"""
+    def verify_der(self, data, sig_algorithm, sig):
+        """Verify a DER-encoded signature of the specified data"""
+
+        # pylint: disable=unused-argument
 
         try:
-            packet = SSHPacket(sig)
-
-            if packet.get_string() not in self.sig_algorithms:
-                return False
-
-            sig = packet.get_string()
-            packet.check_end()
-
             return libnacl.crypto_sign_open(sig + data, self._vk) == data
         except ValueError:
             return False
+
+    def sign_ssh(self, data, sig_algorithm):
+        """Return an SSH-encoded signature of the specified data"""
+
+        return self.sign_der(data, sig_algorithm)
+
+    def verify_ssh(self, data, sig_algorithm, sig):
+        """Verify an SSH-encoded signature of the specified data"""
+
+        return self.verify_der(data, sig_algorithm, sig)
 
 
 try:

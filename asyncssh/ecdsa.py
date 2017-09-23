@@ -16,7 +16,7 @@ from .asn1 import ASN1DecodeError, BitString, ObjectIdentifier, TaggedDERObject
 from .asn1 import der_encode, der_decode
 from .crypto import lookup_ec_curve_by_params
 from .crypto import ECDSAPrivateKey, ECDSAPublicKey
-from .packet import MPInt, String, SSHPacket, PacketDecodeError
+from .packet import MPInt, String, SSHPacket
 from .public_key import SSHKey, SSHOpenSSHCertificateV01
 from .public_key import KeyImportError, KeyExportError
 from .public_key import register_public_key_alg, register_certificate_alg
@@ -44,6 +44,7 @@ class _ECKey(SSHKey):
         self.algorithm = b'ecdsa-sha2-' + key.curve_id
         self.sig_algorithms = (self.algorithm,)
         self.x509_algorithms = (b'x509v3-' + self.algorithm,)
+        self.all_sig_algorithms = set(self.sig_algorithms)
 
         self._alg_oid = _alg_oids[key.curve_id]
 
@@ -260,38 +261,38 @@ class _ECKey(SSHKey):
 
         return MPInt(self._key.d)
 
-    def sign(self, data, algorithm):
-        """Return a signature of the specified data using this key"""
+    def sign_der(self, data, sig_algorithm):
+        """Compute a DER-encoded signature of the specified data"""
+
+        # pylint: disable=unused-argument
 
         if not self._key.private_value:
             raise ValueError('Private key needed for signing')
 
-        if algorithm not in self.sig_algorithms:
-            raise ValueError('Unrecognized signature algorithm')
+        return self._key.sign(data)
 
-        r, s = self._key.sign(data)
-        return b''.join((String(algorithm), String(MPInt(r) + MPInt(s))))
+    def verify_der(self, data, sig_algorithm, sig):
+        """Verify a DER-encoded signature of the specified data"""
 
-    def verify(self, data, sig):
-        """Verify a signature of the specified data using this key"""
+        # pylint: disable=unused-argument
 
-        try:
-            packet = SSHPacket(sig)
+        return self._key.verify(data, sig)
 
-            if packet.get_string() not in self.sig_algorithms:
-                return False
+    def sign_ssh(self, data, sig_algorithm):
+        """Compute an SSH-encoded signature of the specified data"""
 
-            sig = packet.get_string()
-            packet.check_end()
+        r, s = der_decode(self.sign_der(data, sig_algorithm))
+        return MPInt(r) + MPInt(s)
 
-            packet = SSHPacket(sig)
-            r = packet.get_mpint()
-            s = packet.get_mpint()
-            packet.check_end()
+    def verify_ssh(self, data, sig_algorithm, sig):
+        """Verify an SSH-encoded signature of the specified data"""
 
-            return self._key.verify(data, (r, s))
-        except PacketDecodeError:
-            return False
+        packet = SSHPacket(sig)
+        r = packet.get_mpint()
+        s = packet.get_mpint()
+        packet.check_end()
+
+        return self.verify_der(data, sig_algorithm, der_encode((r, s)))
 
 
 for _curve_id, _oid in ((b'nistp521', '1.3.132.0.35'),
