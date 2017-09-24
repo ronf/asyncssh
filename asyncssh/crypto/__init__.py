@@ -16,10 +16,11 @@ from .cipher import register_cipher, lookup_cipher
 
 from .ec import lookup_ec_curve_by_params
 
-# Import PyCA versions of DSA, ECDSA, and RSA
+# Import PyCA versions of DSA, ECDSA, RSA, and PBKDF2
 from .pyca.dsa import DSAPrivateKey, DSAPublicKey
 from .pyca.ec import ECDSAPrivateKey, ECDSAPublicKey, ECDH
 from .pyca.rsa import RSAPrivateKey, RSAPublicKey
+from .pyca.kdf import pbkdf2_hmac
 
 # Import pyca module to get ciphers defined there registered
 from . import pyca

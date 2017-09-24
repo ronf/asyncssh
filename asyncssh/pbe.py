@@ -12,13 +12,12 @@
 
 """Asymmetric key password based encryption functions"""
 
-import hmac
 import os
 
-from hashlib import md5, sha1, sha224, sha256, sha384, sha512
+from hashlib import md5, sha1
 
 from .asn1 import ASN1DecodeError, ObjectIdentifier, der_encode, der_decode
-from .crypto import lookup_cipher
+from .crypto import lookup_cipher, pbkdf2_hmac
 
 
 # pylint: disable=bad-whitespace
@@ -48,8 +47,6 @@ _ES2_SHA224     = ObjectIdentifier('1.2.840.113549.2.8')
 _ES2_SHA256     = ObjectIdentifier('1.2.840.113549.2.9')
 _ES2_SHA384     = ObjectIdentifier('1.2.840.113549.2.10')
 _ES2_SHA512     = ObjectIdentifier('1.2.840.113549.2.11')
-_ES2_SHA512_224 = ObjectIdentifier('1.2.840.113549.2.12')
-_ES2_SHA512_256 = ObjectIdentifier('1.2.840.113549.2.13')
 
 # pylint: enable=bad-whitespace
 
@@ -64,13 +61,6 @@ _pkcs8_cipher_suites = {}
 _pbes2_cipher_names = {}
 _pbes2_kdf_names = {}
 _pbes2_prf_names = {}
-
-
-def strxor(a, b):
-    """Return the byte-wise XOR of two strings"""
-
-    c = int.from_bytes(a, 'little') ^ int.from_bytes(b, 'little')
-    return int.to_bytes(c, max(len(a), len(b)), 'little')
 
 
 class KeyEncryptionError(ValueError):
@@ -142,35 +132,6 @@ def _pbkdf1(hash_alg, passphrase, salt, count, key_size):
                              key_size - len(key))
     else:
         return key[:key_size]
-
-
-def _pbkdf2(prf, passphrase, salt, count, key_size):
-    """PKCS#5 v2.0 key derivation function for password-based encryption
-
-       This function implements the PKCS#5 v2.0 algorithm for deriving
-       an encryption key from a passphrase and salt.
-
-    """
-
-    # Short variable names are used here, matching names in the spec
-    # pylint: disable=invalid-name
-
-    if isinstance(passphrase, str):
-        passphrase = passphrase.encode('utf-8')
-
-    key = b''
-    i = 1
-    while len(key) < key_size:
-        u = prf(passphrase, salt + i.to_bytes(4, 'big'))
-        f = u
-        for _ in range(1, count):
-            u = prf(passphrase, u)
-            f = strxor(f, u)
-
-        key += f
-        i += 1
-
-    return key[:key_size]
 
 
 def _pbkdf_p12(hash_alg, passphrase, salt, count, key_size, idx):
@@ -285,17 +246,6 @@ def _pbes2_iv(params, key, cipher):
     return cipher.new(key, params[0])
 
 
-def _pbes2_hmac_prf(hash_alg, digest_size=None):
-    """PKCS#5 v2.0 handler for PBKDF2 psuedo-random function
-
-       This function returns the appropriate PBKDF2 pseudo-random function
-       to use for key derivation.
-
-    """
-
-    return lambda key, msg: hmac.new(key, msg, hash_alg).digest()[:digest_size]
-
-
 def _pbes2_pbkdf2(params, passphrase, default_key_size):
     """PKCS#5 v2.0 handler for PBKDF2 key derivation
 
@@ -326,8 +276,7 @@ def _pbes2_pbkdf2(params, passphrase, default_key_size):
                 isinstance(params[0][0], ObjectIdentifier)):
             prf_alg = params[0][0]
             if prf_alg in _pbes2_prfs:
-                handler, args = _pbes2_prfs[prf_alg]
-                prf = handler(*args)
+                hash_name = _pbes2_prfs[prf_alg]
             else:
                 raise KeyEncryptionError('Unknown PBES2 pseudo-random '
                                          'function')
@@ -335,9 +284,12 @@ def _pbes2_pbkdf2(params, passphrase, default_key_size):
             raise KeyEncryptionError('Invalid PBES2 pseudo-random function '
                                      'parameters')
     else:
-        prf = _pbes2_hmac_prf(sha1)
+        hash_name = 'sha1'
 
-    return _pbkdf2(prf, passphrase, salt, count, key_size)
+    if isinstance(passphrase, str):
+        passphrase = passphrase.encode('utf-8')
+
+    return pbkdf2_hmac(hash_name, passphrase, salt, count, key_size)
 
 
 def _pbes2(params, passphrase):
@@ -412,10 +364,10 @@ def register_pbes2_kdf(kdf_name, alg, handler, *args):
     _pbes2_kdf_names[kdf_name] = alg
 
 
-def register_pbes2_prf(hash_name, alg, handler, *args):
+def register_pbes2_prf(hash_name, alg):
     """Register a PBES2 pseudo-random function"""
 
-    _pbes2_prfs[alg] = (handler, args)
+    _pbes2_prfs[alg] = hash_name
     _pbes2_prf_names[hash_name] = alg
 
 
@@ -474,7 +426,7 @@ def pkcs8_encrypt(data, cipher_name, hash_name, version, passphrase):
 
        Available hashes include:
 
-           md5, sha1, sha256, sha384, sha512, sha512-224, sha512-256
+           md5, sha1, sha256, sha384, sha512
 
        Available versions include 1 for PBES1 and 2 for PBES2.
 
@@ -580,13 +532,11 @@ _pbes2_kdf_list = (
 )
 
 _pbes2_prf_list = (
-    ('sha1',       _ES2_SHA1,       _pbes2_hmac_prf, sha1),
-    ('sha224',     _ES2_SHA224,     _pbes2_hmac_prf, sha224),
-    ('sha256',     _ES2_SHA256,     _pbes2_hmac_prf, sha256),
-    ('sha384',     _ES2_SHA384,     _pbes2_hmac_prf, sha384),
-    ('sha512',     _ES2_SHA512,     _pbes2_hmac_prf, sha512),
-    ('sha512-224', _ES2_SHA512_224, _pbes2_hmac_prf, sha512, 28),
-    ('sha512-256', _ES2_SHA512_256, _pbes2_hmac_prf, sha512, 32)
+    ('sha1',       _ES2_SHA1),
+    ('sha224',     _ES2_SHA224),
+    ('sha256',     _ES2_SHA256),
+    ('sha384',     _ES2_SHA384),
+    ('sha512',     _ES2_SHA512)
 )
 
 for _args in _pkcs1_cipher_list:

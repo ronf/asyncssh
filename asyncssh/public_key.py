@@ -729,7 +729,7 @@ class SSHKey:
 
            Available hashes include:
 
-               md5, sha1, sha256, sha384, sha512, sha512-224, sha512-256
+               md5, sha1, sha256, sha384, sha512
 
            Available PBE versions include 1 for PBES1 and 2 for PBES2.
 
