@@ -2389,7 +2389,7 @@ def import_private_key_and_certs(data, passphrase=None):
         key, end = _decode_pem_private(lines, passphrase)
 
         lines = lines[end:]
-        certs = _decode_pem_certificate_list(lines) if lines else None
+        certs = _decode_pem_certificate_list(lines) if any(lines) else None
     else:
         key, end = _decode_der_private(data, passphrase)
 
