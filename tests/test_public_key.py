@@ -73,6 +73,8 @@ _openssh_available = _openssh_version != b''
 # GCM & Chacha tests require OpenSSH 6.9 due to a bug in earlier versions:
 #     https://bugzilla.mindrot.org/show_bug.cgi?id=2366
 _openssh_supports_gcm_chacha = _openssh_version >= b'OpenSSH_6.9'
+_openssh_supports_arcfour_blowfish_cast = (_openssh_available and
+                                           _openssh_version < b'OpenSSH_7.6')
 
 # pylint: disable=bad-whitespace
 
@@ -108,17 +110,17 @@ pkcs8_ciphers = (
 openssh_ciphers = (
     ('aes128-gcm@openssh.com',  _openssh_supports_gcm_chacha),
     ('aes256-gcm@openssh.com',  _openssh_supports_gcm_chacha),
+    ('arcfour',                 _openssh_supports_arcfour_blowfish_cast),
+    ('arcfour128',              _openssh_supports_arcfour_blowfish_cast),
+    ('arcfour256',              _openssh_supports_arcfour_blowfish_cast),
+    ('blowfish-cbc',            _openssh_supports_arcfour_blowfish_cast),
+    ('cast128-cbc',             _openssh_supports_arcfour_blowfish_cast),
     ('aes128-cbc',              _openssh_available),
     ('aes192-cbc',              _openssh_available),
     ('aes256-cbc',              _openssh_available),
     ('aes128-ctr',              _openssh_available),
     ('aes192-ctr',              _openssh_available),
     ('aes256-ctr',              _openssh_available),
-    ('arcfour',                 _openssh_available),
-    ('arcfour128',              _openssh_available),
-    ('arcfour256',              _openssh_available),
-    ('blowfish-cbc',            _openssh_available),
-    ('cast128-cbc',             _openssh_available),
     ('3des-cbc',                _openssh_available)
 )
 
