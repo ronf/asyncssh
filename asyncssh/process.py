@@ -26,17 +26,27 @@ from .stream import SSHClientStreamSession, SSHServerStreamSession
 from .stream import SSHReader, SSHWriter
 
 
+def _is_regular_file(file):
+    """Return if argument is a regular file or file-like object"""
+
+    try:
+        return stat.S_ISREG(os.fstat(file.fileno()).st_mode)
+    except OSError:
+        return True
+
+
 class _UnicodeReader:
     """Handle buffering partial Unicode data"""
 
-    def __init__(self, encoding):
+    def __init__(self, encoding, textmode=False):
         self._encoding = encoding
+        self._textmode = textmode
         self._partial = b''
 
     def decode(self, data):
-        """Decode received bytes into Unicode"""
+        """Decode Unicode bytes when reading from binary sources"""
 
-        if self._encoding:
+        if self._encoding and not self._textmode:
             data = self._partial + data
             self._partial = b''
 
@@ -72,13 +82,14 @@ class _UnicodeReader:
 class _UnicodeWriter:
     """Handle encoding Unicode data before writing it"""
 
-    def __init__(self, encoding):
+    def __init__(self, encoding, textmode=False):
         self._encoding = encoding
+        self._textmode = textmode
 
     def encode(self, data):
-        """Encode Unicode bytes before writing them"""
+        """Encode Unicode bytes when writing to binary targets"""
 
-        if self._encoding:
+        if self._encoding and not self._textmode:
             data = data.encode(self._encoding)
 
         return data
@@ -88,7 +99,7 @@ class _FileReader(_UnicodeReader):
     """Forward data from a file"""
 
     def __init__(self, process, file, bufsize, datatype, encoding):
-        super().__init__(encoding)
+        super().__init__(encoding, hasattr(file, 'encoding'))
 
         self._process = process
         self._file = file
@@ -130,7 +141,7 @@ class _FileWriter(_UnicodeWriter):
     """Forward data to a file"""
 
     def __init__(self, file, encoding):
-        super().__init__(encoding)
+        super().__init__(encoding, hasattr(file, 'encoding'))
 
         self._file = file
 
@@ -523,18 +534,17 @@ class SSHProcess:
                 file = os.fdopen(source, 'rb', buffering=bufsize)
             elif isinstance(source, socket.socket):
                 file = os.fdopen(source.detach(), 'rb', buffering=bufsize)
-            elif hasattr(source, 'encoding'):
-                # If file provided was opened in text mode, remove that wrapper
-                file = source.buffer
             else:
                 file = source
 
-            mode = os.fstat(file.fileno()).st_mode
-
-            if stat.S_ISREG(mode):
+            if _is_regular_file(file):
                 reader = _FileReader(self, file, bufsize,
                                      datatype, self._encoding)
             else:
+                if hasattr(source, 'buffer'):
+                    # If file was opened in text mode, remove that wrapper
+                    file = source.buffer
+
                 _, reader = \
                     yield from self._loop.connect_read_pipe(pipe_factory, file)
 
@@ -572,17 +582,16 @@ class SSHProcess:
                 file = os.fdopen(target, 'wb', buffering=bufsize)
             elif isinstance(target, socket.socket):
                 file = os.fdopen(target.detach(), 'wb', buffering=bufsize)
-            elif hasattr(target, 'encoding'):
-                # If file was opened in text mode, remove that wrapper
-                file = target.buffer
             else:
                 file = target
 
-            mode = os.fstat(file.fileno()).st_mode
-
-            if stat.S_ISREG(mode):
+            if _is_regular_file(file):
                 writer = _FileWriter(file, self._encoding)
             else:
+                if hasattr(target, 'buffer'):
+                    # If file was opened in text mode, remove that wrapper
+                    file = target.buffer
+
                 _, writer = \
                     yield from self._loop.connect_write_pipe(pipe_factory,
                                                              file)

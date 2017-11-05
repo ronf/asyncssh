@@ -13,6 +13,7 @@
 """Unit tests for AsyncSSH process API"""
 
 import asyncio
+import io
 import os
 import socket
 import sys
@@ -474,6 +475,40 @@ class _TestProcessRedirection(_TestProcess):
         self.assertEqual(result.stderr, data)
 
     @asynctest
+    def test_stdin_stringio(self):
+        """Test with stdin redirected to a StringIO object"""
+
+        data = str(id(self))
+
+        with open('stdin', 'w') as file:
+            file.write(data)
+
+        file = io.StringIO(data)
+
+        with (yield from self.connect()) as conn:
+            result = yield from conn.run('echo', stdin=file)
+
+        self.assertEqual(result.stdout, data)
+        self.assertEqual(result.stderr, data)
+
+    @asynctest
+    def test_stdin_bytesio(self):
+        """Test with stdin redirected to a BytesIO object"""
+
+        data = str(id(self))
+
+        with open('stdin', 'w') as file:
+            file.write(data)
+
+        file = io.BytesIO(data.encode('ascii'))
+
+        with (yield from self.connect()) as conn:
+            result = yield from conn.run('echo', stdin=file)
+
+        self.assertEqual(result.stdout, data)
+        self.assertEqual(result.stderr, data)
+
+    @asynctest
     def test_stdin_process(self):
         """Test with stdin redirected to another SSH process"""
 
@@ -568,6 +603,60 @@ class _TestProcessRedirection(_TestProcess):
 
         self.assertEqual(stdout_data, data)
         self.assertEqual(result.stdout, b'')
+        self.assertEqual(result.stderr, data)
+
+    @asynctest
+    def test_stdout_stringio(self):
+        """Test with stdout redirected to a StringIO"""
+
+        class _StringIOTest(io.StringIO):
+            """Test class for StringIO which preserves output after close"""
+
+            def __init__(self):
+                super().__init__()
+                self.output = None
+
+            def close(self):
+                if self.output is None:
+                    self.output = self.getvalue()
+                    super().close()
+
+        data = str(id(self))
+
+        file = _StringIOTest()
+
+        with (yield from self.connect()) as conn:
+            result = yield from conn.run('echo', input=data, stdout=file)
+
+        self.assertEqual(file.output, data)
+        self.assertEqual(result.stdout, '')
+        self.assertEqual(result.stderr, data)
+
+    @asynctest
+    def test_stdout_bytesio(self):
+        """Test with stdout redirected to a BytesIO"""
+
+        class _BytesIOTest(io.BytesIO):
+            """Test class for BytesIO which preserves output after close"""
+
+            def __init__(self):
+                super().__init__()
+                self.output = None
+
+            def close(self):
+                if self.output is None:
+                    self.output = self.getvalue()
+                    super().close()
+
+        data = str(id(self))
+
+        file = _BytesIOTest()
+
+        with (yield from self.connect()) as conn:
+            result = yield from conn.run('echo', input=data, stdout=file)
+
+        self.assertEqual(file.output, data.encode('ascii'))
+        self.assertEqual(result.stdout, '')
         self.assertEqual(result.stderr, data)
 
     @asynctest
@@ -830,6 +919,26 @@ class _TestProcessPipes(_TestProcess):
         self.assertEqual(result.stderr, data)
 
     @asynctest
+    def test_stdin_text_pipe(self):
+        """Test with stdin redirected to a pipe in text mode"""
+
+        data = str(id(self))
+
+        rpipe, wpipe = os.pipe()
+
+        rpipe = os.fdopen(rpipe, 'r')
+        wpipe = os.fdopen(wpipe, 'w')
+
+        wpipe.write(data)
+        wpipe.close()
+
+        with (yield from self.connect()) as conn:
+            result = yield from conn.run('echo', stdin=rpipe)
+
+        self.assertEqual(result.stdout, data)
+        self.assertEqual(result.stderr, data)
+
+    @asynctest
     def test_stdin_binary_pipe(self):
         """Test with stdin redirected to a pipe in binary mode"""
 
@@ -862,6 +971,27 @@ class _TestProcessPipes(_TestProcess):
         os.close(rpipe)
 
         self.assertEqual(stdout_data.decode(), data)
+        self.assertEqual(result.stdout, '')
+        self.assertEqual(result.stderr, data)
+
+    @asynctest
+    def test_stdout_text_pipe(self):
+        """Test with stdout redirected to a pipe in text mode"""
+
+        data = str(id(self))
+
+        rpipe, wpipe = os.pipe()
+
+        rpipe = os.fdopen(rpipe, 'r')
+        wpipe = os.fdopen(wpipe, 'w')
+
+        with (yield from self.connect()) as conn:
+            result = yield from conn.run('echo', input=data, stdout=wpipe)
+
+        stdout_data = rpipe.read(1024)
+        rpipe.close()
+
+        self.assertEqual(stdout_data, data)
         self.assertEqual(result.stdout, '')
         self.assertEqual(result.stderr, data)
 
