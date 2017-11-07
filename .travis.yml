@@ -27,11 +27,19 @@ matrix:
     - os: linux
       sudo: required
       dist: trusty
-      python: 3.6-dev
+      python: 3.6
       before_install:
         - .travis/build-libsodium.sh
       env:
         - TOXENV=py36
+    - os: linux
+      sudo: required
+      dist: trusty
+      python: "nightly" # currently points to 3.7-rc
+      before_install:
+        - .travis/build-libsodium.sh
+      env:
+        - TOXENV=py37
     - os: osx
       osx_image: xcode8.1
       language: generic
