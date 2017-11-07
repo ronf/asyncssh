@@ -41,7 +41,7 @@ matrix:
       env:
         - TOXENV=py37
     - os: osx
-      osx_image: xcode8.1
+      osx_image: xcode9.1
       language: generic
       env:
         - CPPFLAGS=-I/usr/local/opt/openssl/include
@@ -52,11 +52,11 @@ matrix:
         - brew update
         - brew install libffi libsodium
         - eval "$(pyenv init -)"
-        - pyenv install 3.4.5
-        - pyenv local 3.4.5
+        - pyenv install 3.4.6
+        - pyenv local 3.4.6
         - pyenv rehash
     - os: osx
-      osx_image: xcode8.1
+      osx_image: xcode9.1
       language: generic
       env:
         - CPPFLAGS=-I/usr/local/opt/openssl/include
@@ -67,8 +67,23 @@ matrix:
         - brew update
         - brew install libffi libsodium
         - eval "$(pyenv init -)"
-        - pyenv install 3.5.2
-        - pyenv local 3.5.2
+        - pyenv install 3.5.3
+        - pyenv local 3.5.3
+        - pyenv rehash
+    - os: osx
+      osx_image: xcode9.1
+      language: generic
+      env:
+        - CPPFLAGS=-I/usr/local/opt/openssl/include
+        - LDFLAGS=-L/usr/local/opt/openssl/lib -L/usr/local/opt/libffi/lib
+        - PATH=$HOME/.pyenv/bin:/usr/local/opt/openssl/bin:$PATH
+        - TOXENV=py36
+      before_install:
+        - brew update
+        - brew install libffi libsodium
+        - eval "$(pyenv init -)"
+        - pyenv install 3.6.1
+        - pyenv local 3.6.1
         - pyenv rehash
 
 script: travis_wait 60 tox
