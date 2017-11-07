@@ -5,7 +5,7 @@ install:
 
 matrix:
   allow_failures:
-    - python: 3.6-dev
+    - python: "nightly"
   fast_finish: true
   include:
     - os: linux
