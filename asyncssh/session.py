@@ -255,7 +255,7 @@ class SSHServerSession(SSHSession):
            :param dictionary term_modes:
                POSIX terminal modes to set for this session, where keys
                are taken from :ref:`POSIX terminal modes <PTYModes>` with
-               values defined in section 8 of :rfc:`4254#section-8`.
+               values defined in section 8 of :rfc:`RFC 4254 <4254#section-8>`.
 
            :returns: A bool indicating if the request for a
                      pseudo-terminal was allowed or not

@@ -2498,7 +2498,7 @@ class SSHClientConnection(SSHConnection):
            :param term_modes: (optional)
                POSIX terminal modes to set for this session, where keys
                are taken from :ref:`POSIX terminal modes <PTYModes>` with
-               values defined in section 8 of :rfc:`4254#section-8`.
+               values defined in section 8 of :rfc:`RFC 4254 <4254#section-8>`.
            :param bool x11_forwarding: (optional)
                Whether or not to request X11 forwarding for this session,
                defaulting to ``False``

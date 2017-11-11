@@ -1093,7 +1093,16 @@ class SSHClientChannel(SSHChannel):
 
            This method can be called to deliver a signal to the remote
            process or service. Signal names should be as described in
-           section 6.10 of :rfc:`4254#section-6.10`.
+           section 6.10 of :rfc:`RFC 4254 <4254#section-6.10>`.
+
+           .. note:: OpenSSH's SSH server implementation does not
+                     currently support this message, so attempts to
+                     use :meth:`send_signal`, :meth:`terminate`, or
+                     :meth:`kill` with an OpenSSH SSH server will
+                     end up being ignored. This is currently being
+                     tracked in OpenSSH `bug 1424`__.
+
+                     __ https://bugzilla.mindrot.org/show_bug.cgi?id=1424
 
            :param str signal:
                The signal to deliver
