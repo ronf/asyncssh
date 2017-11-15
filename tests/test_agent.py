@@ -348,8 +348,10 @@ class _TestAPI(AsyncTestCase):
     def test_unknown_key(self, agent):
         """Test failure when signing with an unknown key"""
 
+        key = asyncssh.generate_private_key('ssh-rsa')
+
         with self.assertRaises(ValueError):
-            yield from agent.sign(b'xxx', b'test')
+            yield from agent.sign(key.get_ssh_public_key(), b'test')
 
     @agent_test
     def test_double_close(self, agent):
