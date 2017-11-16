@@ -3,6 +3,26 @@
 Change Log
 ==========
 
+Release 1.11.1 (15 Nov 2017)
+----------------------------
+
+* Switched to using PBKDF2 implementation provided by PyCA, replacing a
+  much slower pure-Python implementation used in earlier releases.
+
+* Improved support for file-like objects in process I/O redirection,
+  properly handling objects which don't support fileno() and allowing
+  both text and binary file objects based on whether they have an
+  'encoding' member.
+
+* Changed PEM parser to be forgiving of trailing blank lines.
+
+* Updated documentation to note lack of support in OpenSSH for send_signal(),
+  terminate(), and kill() channel requests.
+
+* Updated unit tests to work better with OpenSSH 7.6.
+
+* Updated Travis CI config to test with more recent Python versions.
+
 Release 1.11.0 (9 Sep 2017)
 ---------------------------
 
