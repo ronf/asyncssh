@@ -316,11 +316,11 @@ class SSHAgentClient:
                       SSH_AGENTC_ADD_IDENTITY
 
         for keypair in keypairs:
-            comment = keypair.get_comment()
+            comment = keypair.get_comment_bytes()
             resptype, resp = \
                 yield from self._make_request(msgtype,
                                               keypair.get_agent_private_key(),
-                                              String(comment or ''),
+                                              String(comment or b''),
                                               constraints)
 
             if resptype == SSH_AGENT_SUCCESS:

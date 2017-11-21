@@ -1187,6 +1187,7 @@ SSHKey
 
    ============================================== =
    .. automethod:: get_algorithm
+   .. automethod:: get_comment_bytes
    .. automethod:: get_comment
    .. automethod:: set_comment
    .. automethod:: convert_to_public
@@ -1208,12 +1209,13 @@ SSHKeyPair
 
 .. autoclass:: SSHKeyPair()
 
-   ============================= =
+   ================================= =
    .. automethod:: get_key_type
    .. automethod:: get_algorithm
+   .. automethod:: get_comment_bytes
    .. automethod:: get_comment
    .. automethod:: set_comment
-   ============================= =
+   ================================= =
 
 SSHCertificate
 --------------
@@ -1222,6 +1224,7 @@ SSHCertificate
 
    ================================== =
    .. automethod:: get_algorithm
+   .. automethod:: get_comment_bytes
    .. automethod:: get_comment
    .. automethod:: set_comment
    .. automethod:: export_certificate
@@ -1351,13 +1354,14 @@ SSHAgentKeyPair
 
 .. autoclass:: SSHAgentKeyPair()
 
-   ============================= =
+   ================================= =
    .. automethod:: get_key_type
    .. automethod:: get_algorithm
+   .. automethod:: get_comment_bytes
    .. automethod:: get_comment
    .. automethod:: set_comment
    .. automethod:: remove
-   ============================= =
+   ================================= =
 
 connect_agent
 -------------

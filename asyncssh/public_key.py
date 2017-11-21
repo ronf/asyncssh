@@ -211,29 +211,48 @@ class SSHKey:
 
         return self.algorithm.decode('ascii')
 
-    def get_comment(self):
-        """Return the comment associated with this key
+    def get_comment_bytes(self):
+        """Return the comment associated with this key as a byte string
 
-           :returns: `str` or ``None``
+           :returns: :class:`bytes` or ``None``
 
         """
 
         return self._comment
 
-    def set_comment(self, comment):
+    def get_comment(self, encoding='utf-8'):
+        """Return the comment associated with this key as a Unicode string
+
+           :param str encoding:
+               The encoding to use to decode the comment as a Unicode
+               string, defaulting to UTF-8
+
+           :returns: :class:`str` or ``None``
+
+           :raises: :exc:`UnicodeDecodeError` if the comment cannot be
+                    decoded using the specified encoding
+
+        """
+
+        return self._comment.decode(encoding) if self._comment else None
+
+    def set_comment(self, comment, encoding='utf-8'):
         """Set the comment associated with this key
 
            :param comment:
                The new comment to associate with this key
-           :type comment: `str` or ``None``
+           :param str encoding:
+               The Unicode encoding to use to encode the comment,
+               defaulting to UTF-8
+           :type comment: :class:`str`, :class:`bytes`, or ``None``
+
+           :raises: :exc:`UnicodeEncodeError` if the comment cannot be
+                    encoded using the specified encoding
 
         """
 
-        if isinstance(comment, bytes):
-            try:
-                comment = comment.decode('utf-8')
-            except UnicodeDecodeError:
-                raise KeyImportError('Invalid characters in comment') from None
+        if isinstance(comment, str):
+            comment = comment.encode(encoding)
 
         self._comment = comment or None
 
@@ -339,7 +358,7 @@ class SSHKey:
         """
 
         result = decode_ssh_public_key(self.get_ssh_public_key())
-        result.set_comment(self.get_comment())
+        result.set_comment(self.get_comment_bytes())
         return result
 
     def generate_user_certificate(self, user_key, key_id, version=1,
@@ -404,7 +423,7 @@ class SSHKey:
            :type principals: list of strings
            :type force_command: `str` or ``None``
            :type source_address: list of ip_address and ip_network values
-           :type comment: `str` or ``None``
+           :type comment: :class:`str`, :class:`bytes`, or ``None``
 
            :returns: :class:`SSHCertificate`
 
@@ -439,7 +458,7 @@ class SSHKey:
             cert_options['permit-user-rc'] = True
 
         if comment is ():
-            comment = user_key.get_comment()
+            comment = user_key.get_comment_bytes()
 
         return self._generate_certificate(user_key, version, serial,
                                           CERT_TYPE_USER, key_id,
@@ -480,7 +499,7 @@ class SSHKey:
                host_key.
            :type host_key: :class:`SSHKey`
            :type principals: list of strings
-           :type comment: `str` or ``None``
+           :type comment: :class:`str`, :class:`bytes`, or ``None``
 
            :returns: :class:`SSHCertificate`
 
@@ -490,7 +509,7 @@ class SSHKey:
         """
 
         if comment is ():
-            comment = host_key.get_comment()
+            comment = host_key.get_comment_bytes()
 
         return self._generate_certificate(host_key, version, serial,
                                           CERT_TYPE_HOST, key_id,
@@ -546,7 +565,7 @@ class SSHKey:
            :type user_key: :class:`SSHKey`
            :type principals: list of strings
            :type purposes: list of strings or ``None``
-           :type comment: `str` or ``None``
+           :type comment: :class:`str`, :class:`bytes`, or ``None``
 
            :returns: :class:`SSHCertificate`
 
@@ -557,7 +576,7 @@ class SSHKey:
         """
 
         if comment is ():
-            comment = user_key.get_comment()
+            comment = user_key.get_comment_bytes()
 
         return self._generate_x509_certificate(user_key, subject, issuer,
                                                serial, valid_after,
@@ -614,7 +633,7 @@ class SSHKey:
            :type host_key: :class:`SSHKey`
            :type principals: list of strings
            :type purposes: list of strings or ``None``
-           :type comment: `str` or ``None``
+           :type comment: :class:`str`, :class:`bytes`, or ``None``
 
            :returns: :class:`SSHCertificate`
 
@@ -624,7 +643,7 @@ class SSHKey:
         """
 
         if comment is ():
-            comment = host_key.get_comment()
+            comment = host_key.get_comment_bytes()
 
         return self._generate_x509_certificate(host_key, subject, issuer,
                                                serial, valid_after,
@@ -676,7 +695,7 @@ class SSHKey:
                ca_key.
            :type ca_key: :class:`SSHKey`
            :type ca_path_len: `int` or ``None``
-           :type comment: `str` or ``None``
+           :type comment: :class:`str`, :class:`bytes`, or ``None``
 
            :returns: :class:`SSHCertificate`
 
@@ -686,7 +705,7 @@ class SSHKey:
         """
 
         if comment is ():
-            comment = ca_key.get_comment()
+            comment = ca_key.get_comment_bytes()
 
         return self._generate_x509_certificate(ca_key, subject, issuer,
                                                serial, valid_after,
@@ -762,7 +781,7 @@ class SSHKey:
            :param int rounds: (optional)
                The number of KDF rounds to apply to the passphrase.
 
-           :returns: bytes representing the exported private key
+           :returns: :class:`bytes` representing the exported private key
 
         """
 
@@ -813,7 +832,7 @@ class SSHKey:
             nkeys = 1
 
             data = b''.join((check, check, self.get_ssh_private_key(),
-                             String(self.get_comment() or '')))
+                             String(self.get_comment_bytes() or b'')))
 
             if passphrase is not None:
                 try:
@@ -885,7 +904,7 @@ class SSHKey:
            :param str format_name: (optional)
                The format to export the key in.
 
-           :returns: bytes representing the exported public key
+           :returns: :class:`bytes` representing the exported public key
 
         """
 
@@ -914,7 +933,7 @@ class SSHKey:
             data = self.get_ssh_public_key()
 
             if self._comment:
-                comment = b' ' + self._comment.encode('utf-8')
+                comment = b' ' + self._comment
             else:
                 comment = b''
 
@@ -924,8 +943,7 @@ class SSHKey:
             data = self.get_ssh_public_key()
 
             if self._comment:
-                comment = (b'Comment: "' +
-                           self._comment.encode('utf-8') + b'"\n')
+                comment = (b'Comment: "' + self._comment + b'"\n')
             else:
                 comment = b''
 
@@ -1031,29 +1049,50 @@ class SSHCertificate:
 
         return self.algorithm.decode('ascii')
 
-    def get_comment(self):
-        """Return the comment associated with this certificate
+    def get_comment_bytes(self):
+        """Return the comment associated with this certificate as a
+           byte string
 
-           :returns: `str` or ``None``
+           :returns: :class:`bytes` or ``None``
 
         """
 
         return self._comment
 
-    def set_comment(self, comment):
-        """Set the comment associated with this certificate
+    def get_comment(self, encoding='utf-8'):
+        """Return the comment associated with this certificate as a
+           Unicode string
 
-           :param comment:
-               The new comment to associate with this certificate
-           :type comment: `str` or ``None``
+           :param str encoding:
+               The encoding to use to decode the comment as a Unicode
+               string, defaulting to UTF-8
+
+           :returns: :class:`str` or ``None``
+
+           :raises: :exc:`UnicodeDecodeError` if the comment cannot be
+                    decoded using the specified encoding
 
         """
 
-        if isinstance(comment, bytes):
-            try:
-                comment = comment.decode('utf-8')
-            except UnicodeDecodeError:
-                raise KeyImportError('Invalid characters in comment') from None
+        return self._comment.decode(encoding) if self._comment else None
+
+    def set_comment(self, comment, encoding='utf-8'):
+        """Set the comment associated with this certificate
+
+           :param comment:
+               The new comment to associate with this key
+           :param str encoding:
+               The Unicode encoding to use to encode the comment,
+               defaulting to UTF-8
+           :type comment: :class:`str`, :class:`bytes`, or ``None``
+
+           :raises: :exc:`UnicodeEncodeError` if the comment cannot be
+                    encoded using the specified encoding
+
+        """
+
+        if isinstance(comment, str):
+            comment = comment.encode(encoding)
 
         self._comment = comment or None
 
@@ -1070,7 +1109,7 @@ class SSHCertificate:
            :param str format_name: (optional)
                The format to export the certificate in.
 
-           :returns: bytes representing the exported certificate
+           :returns: :class:`bytes` representing the exported certificate
 
         """
 
@@ -1091,7 +1130,7 @@ class SSHCertificate:
                     b'-----END CERTIFICATE-----\n')
         elif format_name == 'openssh':
             if self._comment:
-                comment = b' ' + self._comment.encode('utf-8')
+                comment = b' ' + self._comment
             else:
                 comment = b''
 
@@ -1099,8 +1138,7 @@ class SSHCertificate:
                     binascii.b2a_base64(self.data)[:-1] + comment + b'\n')
         elif format_name == 'rfc4716':
             if self._comment:
-                comment = (b'Comment: "' +
-                           self._comment.encode('utf-8') + b'"\n')
+                comment = (b'Comment: "' + self._comment + b'"\n')
             else:
                 comment = b''
 
@@ -1573,7 +1611,7 @@ class SSHX509CertificateChain(SSHCertificate):
         data = (String(algorithm) + UInt32(len(certs)) +
                 b''.join(String(c.data) for c in certs) + UInt32(0))
 
-        return cls(algorithm, data, certs, (), cert.get_comment())
+        return cls(algorithm, data, certs, (), cert.get_comment_bytes())
 
     def validate_chain(self, trusted_certs, trusted_cert_paths, revoked_certs,
                        purposes, user_principal=None, host_principal=None):
@@ -1621,29 +1659,50 @@ class SSHKeyPair:
 
         return self.algorithm.decode('ascii')
 
-    def get_comment(self):
-        """Return the comment associated with this key pair
+    def get_comment_bytes(self):
+        """Return the comment associated with this key pair as a
+           byte string
 
-           :returns: `str` or ``None``
+           :returns: :class:`bytes` or ``None``
 
         """
 
         return self._comment
 
-    def set_comment(self, comment):
-        """Set the comment associated with this key pair
+    def get_comment(self, encoding='utf-8'):
+        """Return the comment associated with this key pair as a
+           Unicode string
 
-           :param comment:
-               The new comment to associate with this key pair
-           :type comment: `str` or ``None``
+           :param str encoding:
+               The encoding to use to decode the comment as a Unicode
+               string, defaulting to UTF-8
+
+           :returns: :class:`str` or ``None``
+
+           :raises: :exc:`UnicodeDecodeError` if the comment cannot be
+                    decoded using the specified encoding
 
         """
 
-        if isinstance(comment, bytes):
-            try:
-                comment = comment.decode('utf-8')
-            except UnicodeDecodeError:
-                raise KeyImportError('Invalid characters in comment') from None
+        return self._comment.decode(encoding) if self._comment else None
+
+    def set_comment(self, comment, encoding='utf-8'):
+        """Set the comment associated with this key pair
+
+           :param comment:
+               The new comment to associate with this key
+           :param str encoding:
+               The Unicode encoding to use to encode the comment,
+               defaulting to UTF-8
+           :type comment: :class:`str`, :class:`bytes`, or ``None``
+
+           :raises: :exc:`UnicodeEncodeError` if the comment cannot be
+                    encoded using the specified encoding
+
+        """
+
+        if isinstance(comment, str):
+            comment = comment.encode(encoding)
 
         self._comment = comment or None
 
@@ -1671,7 +1730,7 @@ class SSHLocalKeyPair(SSHKeyPair):
 
     def __init__(self, key, cert=None):
         super().__init__(cert.algorithm if cert else key.algorithm,
-                         key.get_comment())
+                         key.get_comment_bytes())
 
         self._key = key
         self._cert = cert
@@ -2326,7 +2385,7 @@ def generate_private_key(alg_name, comment=None, **kwargs):
            The key size in bits for RSA keys.
        :param int exponent: (optional)
            The public exponent for RSA keys.
-       :type comment: `str` or ``None``
+       :type comment: :class:`str`, :class:`bytes`, or ``None``
 
        :returns: An :class:`SSHKey` private key
 
@@ -2522,7 +2581,7 @@ def read_private_key(filename, passphrase=None):
     with open(filename, 'rb') as f:
         key = import_private_key(f.read(), passphrase)
 
-    if not key.get_comment():
+    if not key.get_comment_bytes():
         key.set_comment(filename)
 
     return key
@@ -2534,7 +2593,7 @@ def read_private_key_and_certs(filename, passphrase=None):
     with open(filename, 'rb') as f:
         key, cert = import_private_key_and_certs(f.read(), passphrase)
 
-    if not key.get_comment():
+    if not key.get_comment_bytes():
         key.set_comment(filename)
 
     return key, cert
@@ -2557,7 +2616,7 @@ def read_public_key(filename):
     with open(filename, 'rb') as f:
         key = import_public_key(f.read())
 
-    if not key.get_comment():
+    if not key.get_comment_bytes():
         key.set_comment(filename)
 
     return key
@@ -2617,7 +2676,7 @@ def read_private_key_list(filename, passphrase=None):
             data = data[end:]
 
     for key in keys:
-        if not key.get_comment():
+        if not key.get_comment_bytes():
             key.set_comment(filename)
 
     return keys
@@ -2674,7 +2733,7 @@ def read_public_key_list(filename):
             keys.append(key)
 
     for key in keys:
-        if not key.get_comment():
+        if not key.get_comment_bytes():
             key.set_comment(filename)
 
     return keys
