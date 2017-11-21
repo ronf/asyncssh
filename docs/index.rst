@@ -368,12 +368,15 @@ of the original file name when performing the copy. For instance:
 If the destination path refers to a directory, the origin file name
 will be preserved, but it will be copied into the requested directory.
 
-Wild card patterns are also supported on source paths. For instance, the
-following copies all files with extension "txt":
+Wild card patterns are also supported on local source paths. For instance,
+the following copies all files with extension "txt":
 
    .. code::
 
       await asyncssh.scp('*.txt', 'localhost:')
+
+When copying files from a remote system, any wild card expansion is the
+responsibility of the remote SCP program or the shell which starts it.
 
 Similar to SFTP, SCP also supports options for recursively copying a
 directory and preserving modification times and permissions on files
