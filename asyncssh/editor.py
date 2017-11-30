@@ -459,13 +459,13 @@ class SSHLineEditor:
 class SSHLineEditorChannel:
     """Input line editor channel wrapper
 
-       When creating server channels with ``line_editor`` set to ``True``,
+       When creating server channels with `line_editor` set to `True`,
        this class is wrapped around the channel, providing the caller with
        the ability to enable and disable input line editing and echoing.
 
        .. note:: Line editing is only available when a psuedo-terminal
                  is requested on the server channel and the character
-                 encoding on the channel is not set to ``None``.
+                 encoding on the channel is not set to `None`.
 
     """
 
@@ -497,8 +497,9 @@ class SSHLineEditorChannel:
            only full lines of input are sent to the session, and each
            line of input can be edited before it is sent.
 
-           :param bool line_mode:
+           :param line_mode:
                Whether or not to process input a line at a time
+           :type line_mode: `bool`
 
         """
 
@@ -510,8 +511,9 @@ class SSHLineEditorChannel:
            This method enables or disables echoing of input data when
            input line editing is enabled.
 
-           :param bool echo:
+           :param echo:
                Whether or not input to echo input as it is entered
+           :type echo: `bool`
 
         """
 

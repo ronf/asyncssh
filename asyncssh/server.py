@@ -19,7 +19,7 @@ class SSHServer:
        Applications should subclass this when implementing an SSH server.
        At a minimum, one or more of the authentication handlers will need
        to be overridden to perform authentication, or :meth:`begin_auth`
-       should be overridden to return ``False`` to indicate that no
+       should be overridden to return `False` to indicate that no
        authentication is required.
 
        In addition, one or more of the :meth:`session_requested`,
@@ -54,7 +54,7 @@ class SSHServer:
         """Called when a connection is lost or closed
 
            This method is called when a connection is closed. If the
-           connection is shut down cleanly, *exc* will be ``None``.
+           connection is shut down cleanly, *exc* will be `None`.
            Otherwise, it will be an exception explaining the reason for
            the disconnect.
 
@@ -69,12 +69,15 @@ class SSHServer:
            a debug message. Applications should implement this method if
            they wish to process these debug messages.
 
-           :param str msg:
+           :param msg:
                The debug message sent
-           :param str lang:
+           :param lang:
                The language the message is in
-           :param bool always_display:
+           :param always_display:
                Whether or not to display the message
+           :type msg: `str`
+           :type lang: `str`
+           :type always_display: `bool`
 
         """
 
@@ -88,14 +91,15 @@ class SSHServer:
            prepare whatever state they need to complete the authentication,
            such as loading in the set of authorized keys for that user. If
            no authentication is required for this user, this method should
-           return ``False`` to cause the authentication to immediately
-           succeed. Otherwise, it should return ``True`` to indicate that
+           return `False` to cause the authentication to immediately
+           succeed. Otherwise, it should return `True` to indicate that
            authentication should proceed.
 
-           :param str username:
+           :param username:
                The name of the user being authenticated
+           :type username: `str`
 
-           :returns: A bool indicating whether authentication is required
+           :returns: A `bool` indicating whether authentication is required
 
         """
 
@@ -105,7 +109,7 @@ class SSHServer:
                                host_principal):
         """Return whether a GSS principal is valid for this user
 
-           This method should return ``True`` if the specified user
+           This method should return `True` if the specified user
            principal is valid for the user being authenticated. It can
            be overridden by applications wishing to perform their
            authentication.
@@ -114,19 +118,22 @@ class SSHServer:
            validity of the principal, this method may be defined as a
            coroutine.
 
-           By default, this method will return ``True`` only when the
+           By default, this method will return `True` only when the
            name in the user principal exactly matches the username and
            the domain of the user principal matches the domain of the
            host principal.
 
-           :param str username:
+           :param username:
                The user being authenticated
-           :param str user_principal:
+           :param user_principal:
                The user principal sent by the client
-           :param str host_principal:
+           :param host_principal:
                The host principal sent by the server
+           :type username: `str`
+           :type user_principal: `str`
+           :type host_principal: `str`
 
-           :returns: A bool indicating if the specified user principal
+           :returns: A `bool` indicating if the specified user principal
                      is valid for the user being authenticated
 
         """
@@ -137,16 +144,16 @@ class SSHServer:
     def public_key_auth_supported(self):
         """Return whether or not public key authentication is supported
 
-           This method should return ``True`` if client public key
+           This method should return `True` if client public key
            authentication is supported. Applications wishing to support
-           it must have this method return ``True`` and implement
+           it must have this method return `True` and implement
            :meth:`validate_public_key` to return whether or not the key
            provided by the client is valid for the user being authenticated.
 
-           By default, it returns ``False`` indicating the client public
+           By default, it returns `False` indicating the client public
            key authentication is not supported.
 
-           :returns: A bool indicating if public key authentication is
+           :returns: A `bool` indicating if public key authentication is
                      supported or not
 
         """
@@ -157,14 +164,14 @@ class SSHServer:
         """Return whether key is an authorized client key for this user
 
            Basic key-based client authentication can be supported by
-           passing authorized keys in the ``authorized_client_keys``
+           passing authorized keys in the `authorized_client_keys`
            argument of :func:`create_server`, or by calling
            :meth:`set_authorized_keys
            <SSHServerConnection.set_authorized_keys>` on the server
            connection from the :meth:`begin_auth` method. However, for
            more flexibility in matching on the allowed set of keys, this
            method can be implemented by the application to do the
-           matching itself. It should return ``True`` if the specified
+           matching itself. It should return `True` if the specified
            key is a valid client key for the user being authenticated.
 
            This method may be called multiple times with different keys
@@ -176,7 +183,7 @@ class SSHServer:
            If blocking operations need to be performed to determine the
            validity of the key, this method may be defined as a coroutine.
 
-           By default, this method returns ``False`` for all client keys.
+           By default, this method returns `False` for all client keys.
 
                .. note:: This function only needs to report whether the
                          public key provided is a valid client key for this
@@ -184,13 +191,14 @@ class SSHServer:
                          client possesses the corresponding private key
                          before allowing the authentication to succeed.
 
-           :param str username:
+           :param username:
                The user being authenticated
            :param key:
                The public key sent by the client
+           :type username: `str`
            :type key: :class:`SSHKey` *public key*
 
-           :returns: A bool indicating if the specified key is a valid
+           :returns: A `bool` indicating if the specified key is a valid
                      client key for the user being authenticated
 
         """
@@ -201,14 +209,14 @@ class SSHServer:
         """Return whether key is an authorized CA key for this user
 
            Basic key-based client authentication can be supported by
-           passing authorized keys in the ``authorized_client_keys``
+           passing authorized keys in the `authorized_client_keys`
            argument of :func:`create_server`, or by calling
            :meth:`set_authorized_keys
            <SSHServerConnection.set_authorized_keys>` on the server
            connection from the :meth:`begin_auth` method. However, for
            more flexibility in matching on the allowed set of keys, this
            method can be implemented by the application to do the
-           matching itself. It should return ``True`` if the specified
+           matching itself. It should return `True` if the specified
            key is a valid certificate authority key for the user being
            authenticated.
 
@@ -221,7 +229,7 @@ class SSHServer:
            If blocking operations need to be performed to determine the
            validity of the key, this method may be defined as a coroutine.
 
-           By default, this method returns ``False`` for all CA keys.
+           By default, this method returns `False` for all CA keys.
 
                .. note:: This function only needs to report whether the
                          public key provided is a valid CA key for this
@@ -232,13 +240,14 @@ class SSHServer:
                          corresponding to the public key in the certificate
                          before allowing the authentication to succeed.
 
-           :param str username:
+           :param username:
                The user being authenticated
            :param key:
                The public key which signed the certificate sent by the client
+           :type username: `str`
            :type key: :class:`SSHKey` *public key*
 
-           :returns: A bool indicating if the specified key is a valid
+           :returns: A `bool` indicating if the specified key is a valid
                      CA key for the user being authenticated
 
         """
@@ -248,16 +257,16 @@ class SSHServer:
     def password_auth_supported(self):
         """Return whether or not password authentication is supported
 
-           This method should return ``True`` if password authentication
+           This method should return `True` if password authentication
            is supported. Applications wishing to support it must have
-           this method return ``True`` and implement :meth:`validate_password`
+           this method return `True` and implement :meth:`validate_password`
            to return whether or not the password provided by the client
            is valid for the user being authenticated.
 
-           By default, this method returns ``False`` indicating that
+           By default, this method returns `False` indicating that
            password authentication is not supported.
 
-           :returns: A bool indicating if password authentication is
+           :returns: A `bool` indicating if password authentication is
                      supported or not
 
         """
@@ -267,7 +276,7 @@ class SSHServer:
     def validate_password(self, username, password):
         """Return whether password is valid for this user
 
-           This method should return ``True`` if the specified password
+           This method should return `True` if the specified password
            is a valid password for the user being authenticated. It must
            be overridden by applications wishing to support password
            authentication.
@@ -283,21 +292,23 @@ class SSHServer:
            passwords provided by the client. Applications may wish
            to limit the number of attempts which are allowed. This
            can be done by having :meth:`password_auth_supported` begin
-           returning ``False`` after the maximum number of attempts is
+           returning `False` after the maximum number of attempts is
            exceeded.
 
            If blocking operations need to be performed to determine the
            validity of the password, this method may be defined as a
            coroutine.
 
-           By default, this method returns ``False`` for all passwords.
+           By default, this method returns `False` for all passwords.
 
-           :param str username:
+           :param username:
                The user being authenticated
-           :param str password:
+           :param password:
                The password sent by the client
+           :type username: `str`
+           :type password: `str`
 
-           :returns: A bool indicating if the specified password is
+           :returns: A `bool` indicating if the specified password is
                      valid for the user being authenticated
 
            :raises: :exc:`PasswordChangeRequired` if the password
@@ -317,9 +328,9 @@ class SSHServer:
 
            If the old password provided is valid and the change to
            the new password is successful, this method should
-           return ``True``. If the old password is not valid or
+           return `True`. If the old password is not valid or
            password changes are not supported, it should return
-           ``False``. It may also raise :exc:`PasswordChangeRequired`
+           `False`. It may also raise :exc:`PasswordChangeRequired`
            to request that the client try again if the new password
            is not acceptable for some reason.
 
@@ -327,17 +338,20 @@ class SSHServer:
            validity of the old password or to change to the new password,
            this method may be defined as a coroutine.
 
-           By default, this method returns ``False``, rejecting all
+           By default, this method returns `False`, rejecting all
            password changes.
 
-           :param str username:
+           :param username:
                The user whose password should be changed
-           :param str old_password:
+           :param old_password:
                The user's current password
-           :param str new_password:
+           :param new_password:
                The new password being requested
+           :type username: `str`
+           :type old_password: `str`
+           :type new_password: `str`
 
-           :returns: A bool indicating if the password change
+           :returns: A `bool` indicating if the password change
                      is successful or not
 
            :raises: :exc:`PasswordChangeRequired` if the new password
@@ -352,21 +366,21 @@ class SSHServer:
         """Return whether or not keyboard-interactive authentication
            is supported
 
-           This method should return ``True`` if keyboard-interactive
+           This method should return `True` if keyboard-interactive
            authentication is supported. Applications wishing to support
-           it must have this method return ``True`` and implement
+           it must have this method return `True` and implement
            :meth:`get_kbdint_challenge` and :meth:`validate_kbdint_response`
            to generate the apporiate challenges and validate the responses
            for the user being authenticated.
 
-           By default, this method returns ``NotImplemented`` tying
+           By default, this method returns `NotImplemented` tying
            this authentication to password authentication. If the
            application implements password authentication and this
            method is not overridden, keyboard-interactive authentication
            will be supported by prompting for a password and passing
            that to the password authentication callbacks.
 
-           :returns: A bool indicating if keyboard-interactive
+           :returns: A `bool` indicating if keyboard-interactive
                      authentication is supported or not
 
         """
@@ -376,8 +390,8 @@ class SSHServer:
     def get_kbdint_challenge(self, username, lang, submethods):
         """Return a keyboard-interactive auth challenge
 
-           This method should return ``True`` if authentication should
-           succeed without any challenge, ``False`` if authentication
+           This method should return `True` if authentication should
+           succeed without any challenge, `False` if authentication
            should fail without any challenge, or an auth challenge
            consisting of a challenge name, instructions, a language tag,
            and a list of tuples containing prompt strings and booleans
@@ -387,13 +401,16 @@ class SSHServer:
            If blocking operations need to be performed to determine the
            challenge to issue, this method may be defined as a coroutine.
 
-           :param str username:
+           :param username:
                The user being authenticated
-           :param str lang:
+           :param lang:
                The language requested by the client for the challenge
-           :param str submethods:
+           :param submethods:
                A comma-separated list of the types of challenges the client
                can support, or the empty string if the server should choose
+           :type username: `str`
+           :type lang: `str`
+           :type submethods: `str`
 
            :returns: An authentication challenge as described above
 
@@ -406,8 +423,8 @@ class SSHServer:
            for this user
 
            This method should validate the keyboard-interactive responses
-           provided and return ``True`` if authentication should succeed
-           with no further challenge, ``False`` if authentication should
+           provided and return `True` if authentication should succeed
+           with no further challenge, `False` if authentication should
            fail, or an additional auth challenge in the same format returned
            by :meth:`get_kbdint_challenge`. Any series of challenges can be
            returned this way. To print a message in the middle of a sequence
@@ -420,13 +437,14 @@ class SSHServer:
            validity of the response or the next challenge to issue, this
            method may be defined as a coroutine.
 
-           :param str username:
+           :param username:
                The user being authenticated
            :param responses:
                A list of responses to the last challenge
-           :type responses: list of str
+           :type username: `str`
+           :type responses: `list` of `str`
 
-           :returns: ``True``, ``False``, or the next challenge
+           :returns: `True`, `False`, or the next challenge
 
         """
 
@@ -454,7 +472,7 @@ class SSHServer:
            the session iself. This can be either returned directly or as
            a part of a tuple with an :class:`SSHServerChannel` object.
 
-           To reject this request, this method should return ``False``
+           To reject this request, this method should return `False`
            to send back a "Session refused" response or raise a
            :exc:`ChannelOpenError` exception with the reason for
            the failure.
@@ -472,12 +490,12 @@ class SSHServer:
                          which returns an :class:`SSHServerSession`
                        * A tuple consisting of an :class:`SSHServerChannel`
                          and the above
-                       * A callable or coroutine handler function which
+                       * A `callable` or coroutine handler function which
                          takes AsyncSSH stream objects for stdin, stdout,
                          and stderr as arguments
                        * A tuple consisting of an :class:`SSHServerChannel`
                          and the above
-                       * ``False`` to refuse the request
+                       * `False` to refuse the request
 
            :raises: :exc:`ChannelOpenError` if the session shouldn't
                     be accepted
@@ -495,9 +513,9 @@ class SSHServer:
 
            To allow standard port forwarding of data on the connection
            to the requested destination host and port, this method
-           should return ``True``.
+           should return `True`.
 
-           To reject this request, this method should return ``False``
+           To reject this request, this method should return `False`
            to send back a "Connection refused" response or raise an
            :exc:`ChannelOpenError` exception with the reason for
            the failure.
@@ -520,14 +538,18 @@ class SSHServer:
 
            By default, all connection requests are rejected.
 
-           :param str dest_host:
+           :param dest_host:
                The address the client wishes to connect to
-           :param int dest_port:
+           :param dest_port:
                The port the client wishes to connect to
-           :param str orig_host:
+           :param orig_host:
                The address the connection was originated from
-           :param int orig_port:
+           :param orig_port:
                The port the connection was originated from
+           :type dest_host: `str`
+           :type dest_port: `int`
+           :type orig_host: `str`
+           :type orig_port: `int`
 
            :returns: One of the following:
 
@@ -535,13 +557,13 @@ class SSHServer:
                        which returns an :class:`SSHTCPSession`
                      * A tuple consisting of an :class:`SSHTCPChannel`
                        and the above
-                     * A callable or coroutine handler function which
+                     * A `callable` or coroutine handler function which
                        takes AsyncSSH stream objects for reading from
                        and writing to the connection
                      * A tuple consisting of an :class:`SSHTCPChannel`
                        and the above
-                     * ``True`` to request standard port forwarding
-                     * ``False`` to refuse the connection
+                     * `True` to request standard port forwarding
+                     * `False` to refuse the connection
 
            :raises: :exc:`ChannelOpenError` if the connection shouldn't
                     be accepted
@@ -555,42 +577,44 @@ class SSHServer:
 
            This method is called when a client makes a request to
            listen on an address and port for incoming TCP connections.
-           The port to listen on may be ``0`` to request a dynamically
+           The port to listen on may be `0` to request a dynamically
            allocated port. Applications wishing to allow TCP/IP connection
            forwarding must override this method.
 
            To set up standard port forwarding of connections received
-           on this address and port, this method should return ``True``.
+           on this address and port, this method should return `True`.
 
            If the application wishes to manage listening for incoming
            connections itself, this method should return an
            :class:`SSHListener` object that listens for new connections
            and calls :meth:`create_connection
            <SSHServerConnection.create_connection>` on each of them to
-           forward them back to the client or return ``None`` if the
+           forward them back to the client or return `None` if the
            listener can't be set up.
 
            If blocking operations need to be performed to set up the
            listener, a coroutine which returns an :class:`SSHListener`
            can be returned instead of the listener itself.
 
-           To reject this request, this method should return ``False``.
+           To reject this request, this method should return `False`.
 
            By default, this method rejects all server requests.
 
-           :param str listen_host:
+           :param listen_host:
                The address the server should listen on
-           :param int listen_port:
-               The port the server should listen on, or the value ``0``
+           :param listen_port:
+               The port the server should listen on, or the value `0`
                to request that the server dynamically allocate a port
+           :type listen_host: `str`
+           :type listen_port: `int`
 
            :returns: One of the following:
 
                      * An :class:`SSHListener` object or a coroutine
-                       which returns an :class:`SSHListener` or ``False``
+                       which returns an :class:`SSHListener` or `False`
                        if the listener can't be opened
-                     * ``True`` to set up standard port forwarding
-                     * ``False`` to reject the request
+                     * `True` to set up standard port forwarding
+                     * `False` to reject the request
 
         """
 
@@ -604,9 +628,9 @@ class SSHServer:
            such connections must override this method.
 
            To allow standard path forwarding of data on the connection to the
-           requested destination path, this method should return ``True``.
+           requested destination path, this method should return `True`.
 
-           To reject this request, this method should return ``False``
+           To reject this request, this method should return `False`
            to send back a "Connection refused" response or raise an
            :exc:`ChannelOpenError` exception with the reason for
            the failure.
@@ -629,8 +653,9 @@ class SSHServer:
 
            By default, all connection requests are rejected.
 
-           :param str dest_path:
+           :param dest_path:
                The path the client wishes to connect to
+           :type dest_path: `str`
 
            :returns: One of the following:
 
@@ -638,13 +663,13 @@ class SSHServer:
                        which returns an :class:`SSHUNIXSession`
                      * A tuple consisting of an :class:`SSHUNIXChannel`
                        and the above
-                     * A callable or coroutine handler function which
+                     * A `callable` or coroutine handler function which
                        takes AsyncSSH stream objects for reading from
                        and writing to the connection
                      * A tuple consisting of an :class:`SSHUNIXChannel`
                        and the above
-                     * ``True`` to request standard path forwarding
-                     * ``False`` to refuse the connection
+                     * `True` to request standard path forwarding
+                     * `False` to refuse the connection
 
            :raises: :exc:`ChannelOpenError` if the connection shouldn't
                     be accepted
@@ -662,34 +687,35 @@ class SSHServer:
            must override this method.
 
            To set up standard path forwarding of connections received
-           on this path, this method should return ``True``.
+           on this path, this method should return `True`.
 
            If the application wishes to manage listening for incoming
            connections itself, this method should return an
            :class:`SSHListener` object that listens for new connections
            and calls :meth:`create_unix_connection
            <SSHServerConnection.create_unix_connection>` on each of them to
-           forward them back to the client or return ``None`` if the
+           forward them back to the client or return `None` if the
            listener can't be set up.
 
            If blocking operations need to be performed to set up the
            listener, a coroutine which returns an :class:`SSHListener`
            can be returned instead of the listener itself.
 
-           To reject this request, this method should return ``False``.
+           To reject this request, this method should return `False`.
 
            By default, this method rejects all server requests.
 
-           :param str listen_path:
+           :param listen_path:
                The path the server should listen on
+           :type listen_path: `str`
 
            :returns: One of the following:
 
                      * An :class:`SSHListener` object or a coroutine
-                       which returns an :class:`SSHListener` or ``False``
+                       which returns an :class:`SSHListener` or `False`
                        if the listener can't be opened
-                     * ``True`` to set up standard path forwarding
-                     * ``False`` to reject the request
+                     * `True` to set up standard path forwarding
+                     * `False` to reject the request
 
         """
 

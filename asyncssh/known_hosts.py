@@ -209,12 +209,15 @@ class SSHKnownHosts:
            If the port is not the default port and no match is found
            for it, the lookup is attempted again without a port number.
 
-           :param str host:
+           :param host:
                The hostname of the target host
-           :param str addr:
+           :param addr:
                The IP address of the target host
-           :param int port:
-               The port number on the target host, or ``None`` for the default
+           :param port:
+               The port number on the target host, or `None` for the default
+           :type host: `str`
+           :type addr: `str`
+           :type port: `int`
 
 
            :returns: A tuple of matching host keys, CA keys, and revoked keys
@@ -238,8 +241,9 @@ def import_known_hosts(data):
        This function imports known host patterns and keys in
        OpenSSH known hosts format.
 
-       :param str data:
+       :param data:
            The known hosts data to import
+       :type data: `str`
 
        :returns: An :class:`SSHKnownHosts` object
 
@@ -253,8 +257,9 @@ def read_known_hosts(filename):
        This function reads known host patterns and keys in
        OpenSSH known hosts format from a file.
 
-       :param str filename:
+       :param filename:
            The file to read the known hosts from
+       :type filename: `str`
 
        :returns: An :class:`SSHKnownHosts` object
 
@@ -268,10 +273,10 @@ def match_known_hosts(known_hosts, host, addr, port):
     """Match a host, IP address, and port against a known_hosts list
 
        This function looks up a host, IP address, and port in a list of
-       host patterns in OpenSSH ``known_hosts`` format and returns the
+       host patterns in OpenSSH `known_hosts` format and returns the
        host keys, CA keys, and revoked keys which match.
 
-       The ``known_hosts`` argument can be any of the following:
+       The `known_hosts` argument can be any of the following:
 
            * a string containing the filename to load host patterns from
            * a byte string containing host pattern data to load
@@ -288,12 +293,15 @@ def match_known_hosts(known_hosts, host, addr, port):
 
        :param known_hosts:
            The host patterns to match against
-       :param str host:
+       :param host:
            The hostname of the target host
-       :param str addr:
+       :param addr:
            The IP address of the target host
-       :param int port:
-           The port number on the target host, or ``None`` for the default
+       :param port:
+           The port number on the target host, or `None` for the default
+       :type host: `str`
+       :type addr: `str`
+       :type port: `int`
 
        :returns: A tuple of matching host keys, CA keys, and revoked keys
 

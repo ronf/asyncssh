@@ -68,13 +68,13 @@ class SSHClient:
         """Called when a connection is lost or closed
 
            This method is called when a connection is closed. If the
-           connection is shut down cleanly, *exc* will be ``None``.
+           connection is shut down cleanly, *exc* will be `None`.
            Otherwise, it will be an exception explaining the reason for
            the disconnect.
 
            :param exc:
                The exception which caused the connection to close, or
-               ``None`` if the connection closed cleanly
+               `None` if the connection closed cleanly
            :type exc: :class:`Exception`
 
         """
@@ -88,12 +88,15 @@ class SSHClient:
            a debug message. Applications should implement this method if
            they wish to process these debug messages.
 
-           :param str msg:
+           :param msg:
                The debug message sent
-           :param str lang:
+           :param lang:
                The language the message is in
-           :param bool always_display:
+           :param always_display:
                Whether or not to display the message
+           :type msg: `str`
+           :type lang: `str`
+           :type always_display: `bool`
 
         """
 
@@ -106,10 +109,12 @@ class SSHClient:
            during authentication. Applications should implement this method
            if they wish to do something with the banner.
 
-           :param str msg:
+           :param msg:
                The message the server wanted to display
-           :param str lang:
+           :param lang:
                The language the message is in
+           :type msg: `str`
+           :type lang: `str`
 
         """
 
@@ -136,7 +141,7 @@ class SSHClient:
 
            This method may be called multiple times and can return a
            different key to try each time it is called. When there are
-           no keys left to try, it should return ``None`` to indicate
+           no keys left to try, it should return `None` to indicate
            that some other authentication method should be tried.
 
            If client keys were provided when the connection was opened,
@@ -147,7 +152,7 @@ class SSHClient:
            coroutine.
 
            :returns: A key as described in :ref:`SpecifyingPrivateKeys`
-                     or ``None`` to move on to another authentication
+                     or `None` to move on to another authentication
                      method
 
         """
@@ -163,7 +168,7 @@ class SSHClient:
            return a different password to try each time, but most
            servers have a limit on the number of attempts allowed.
            When there's no password left to try, this method should
-           return ``None`` to indicate that some other authentication
+           return `None` to indicate that some other authentication
            method should be tried.
 
            If a password was provided when the connection was opened,
@@ -174,7 +179,7 @@ class SSHClient:
            a coroutine.
 
            :returns: A string containing the password to authenticate
-                     with or ``None`` to move on to another authentication
+                     with or `None` to move on to another authentication
                      method
 
         """
@@ -188,21 +193,23 @@ class SSHClient:
            attempted and the user's password was expired on the
            server. To request a password change, this method should
            return a tuple or two strings containing the old and new
-           passwords. Otherwise, it should return ``NotImplemented``.
+           passwords. Otherwise, it should return `NotImplemented`.
 
            If blocking operations need to be performed to determine the
            passwords to authenticate with, this method may be defined
            as a coroutine.
 
-           By default, this method returns ``NotImplemented``.
+           By default, this method returns `NotImplemented`.
 
-           :param str prompt:
+           :param prompt:
                The prompt requesting that the user enter a new password
-           :param str lang:
+           :param lang:
                The language that the prompt is in
+           :type prompt: `str`
+           :type lang: `str`
 
            :returns: A tuple of two strings containing the old and new
-                     passwords or ``NotImplemented`` if password changes
+                     passwords or `NotImplemented` if password changes
                      aren't supported
 
         """
@@ -242,7 +249,7 @@ class SSHClient:
            keyboard-interactive authentication. An empty string can be
            returned to let the server pick the type of keyboard-interactive
            authentication to perform. If keyboard-interactive authentication
-           is not supported, ``None`` should be returned.
+           is not supported, `None` should be returned.
 
            By default, keyboard-interactive authentication is supported
            if a password was provided when the :class:`SSHClient` was
@@ -256,7 +263,7 @@ class SSHClient:
            coroutine.
 
            :returns: A string containing the submethods the server should
-                     use for authentication or ``None`` to move on to
+                     use for authentication or `None` to move on to
                      another authentication method
 
         """
@@ -271,7 +278,7 @@ class SSHClient:
 
            The return value should be a list of strings of the same length
            as the number of prompts provided if the challenge can be
-           answered, or ``None`` to indicate that some other form of
+           answered, or `None` to indicate that some other form of
            authentication should be attempted.
 
            If blocking operations need to be performed to determine the
@@ -283,21 +290,24 @@ class SSHClient:
            :meth:`password_auth_requested` to provide the response.
            It will also ignore challenges with no prompts (generally used
            to provide instructions). Any other form of challenge will
-           cause this method to return ``None`` to move on to another
+           cause this method to return `None` to move on to another
            authentication method.
 
-           :param str name:
+           :param name:
                The name of the challenge
-           :param str instruction:
+           :param instruction:
                Instructions to the user about how to respond to the challenge
-           :param str lang:
+           :param lang:
                The language the challenge is in
            :param prompts:
                The challenges the user should respond to and whether or
                not the responses should be echoed when they are entered
-           :type prompts: list of tuples of str and bool
+           :type name: `str`
+           :type instruction: `str`
+           :type lang: `str`
+           :type prompts: `list` of tuples of `str` and `bool`
 
-           :returns: List of string responses to the challenge or ``None``
+           :returns: List of string responses to the challenge or `None`
                      to move on to another authentication method
 
         """

@@ -26,7 +26,7 @@ class SSHListener(asyncio.AbstractServer):
         """Return the port number being listened on
 
            This method returns the port number that the remote listener
-           was bound to. When the requested remote listening port is ``0``
+           was bound to. When the requested remote listening port is `0`
            to indicate a dynamic port, this method can be called to
            determine what listening port was selected. This function
            only applies to TCP listeners.

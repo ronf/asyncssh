@@ -218,13 +218,16 @@ class DisconnectError(Error):
        the SSH connection to be disconnected. Exception codes should be
        taken from :ref:`disconnect reason codes <DisconnectReasons>`.
 
-       :param int code:
+       :param code:
            Disconnect reason, taken from :ref:`disconnect reason
            codes <DisconnectReasons>`
-       :param str reason:
+       :param reason:
            A human-readable reason for the disconnect
-       :param str lang:
+       :param lang:
            The language the reason is in
+       :type code: `int`
+       :type reason: `str`
+       :type lang: `str`
 
     """
 
@@ -238,13 +241,16 @@ class ChannelOpenError(Error):
        This exception is raised by connection handlers to report
        channel open failures.
 
-       :param int code:
+       :param code:
            Channel open failure  reason, taken from :ref:`channel open
            failure reason codes <ChannelOpenFailureReasons>`
-       :param str reason:
+       :param reason:
            A human-readable reason for the channel open failure
-       :param str lang:
+       :param lang:
            The language the reason is in
+       :type code: `int`
+       :type reason: `str`
+       :type lang: `str`
 
     """
 
@@ -260,10 +266,12 @@ class PasswordChangeRequired(Exception):
        shouuld be raised when the password provided is valid but
        expired, to trigger the client to provide a new password.
 
-       :param str prompt:
+       :param prompt:
            The prompt requesting that the user enter a new password
-       :param str lang:
+       :param lang:
            The language that the prompt is in
+       :type prompt: `str`
+       :type lang: `str`
 
     """
 
@@ -279,8 +287,9 @@ class BreakReceived(Exception):
        This exception is raised on an SSH server stdin stream when the
        client sends a break on the channel.
 
-       :param int msec:
+       :param msec:
            The duration of the break in milliseconds
+       :type msec: `int`
 
     """
 
@@ -295,8 +304,9 @@ class SignalReceived(Exception):
        This exception is raised on an SSH server stdin stream when the
        client sends a signal on the channel.
 
-       :param str signal:
+       :param signal:
            The name of the signal sent by the client
+       :type signal: `str`
 
     """
 
@@ -311,14 +321,18 @@ class TerminalSizeChanged(Exception):
        This exception is raised on an SSH server stdin stream when the
        client sends a terminal size change on the channel.
 
-       :param int width:
+       :param width:
            The new terminal width
-       :param int height:
+       :param height:
            The new terminal height
-       :param int pixwidth:
+       :param pixwidth:
            The new terminal width in pixels
-       :param int pixheight:
+       :param pixheight:
            The new terminal height in pixels
+       :type width: `int`
+       :type height: `int`
+       :type pixwidth: `int`
+       :type pixheight: `int`
 
     """
 

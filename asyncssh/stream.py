@@ -73,19 +73,19 @@ class SSHReader:
     def read(self, n=-1):
         """Read data from the stream
 
-           This method is a coroutine which reads up to ``n`` bytes
-           or characters from the stream. If ``n`` is not provided or
-           set to ``-1``, it reads until EOF or a signal is received.
+           This method is a coroutine which reads up to `n` bytes
+           or characters from the stream. If `n` is not provided or
+           set to `-1`, it reads until EOF or a signal is received.
 
            If EOF is received and the receive buffer is empty, an
-           empty bytes or str object is returned.
+           empty `bytes` or `str` object is returned.
 
            If the next data in the stream is a signal, the signal is
            delivered as a raised exception.
 
-           .. note:: Unlike traditional ``asyncio`` stream readers,
-                     the data will be delivered as either bytes or
-                     a str depending on whether an encoding was
+           .. note:: Unlike traditional `asyncio` stream readers,
+                     the data will be delivered as either `bytes` or
+                     a `str` depending on whether an encoding was
                      specified when the underlying channel was opened.
 
         """
@@ -97,11 +97,11 @@ class SSHReader:
         """Read one line from the stream
 
            This method is a coroutine which reads one line, ending in
-           ``'\\n'``.
+           `'\\n'`.
 
-           If EOF is received before ``'\\n'`` is found, the partial
+           If EOF is received before `'\\n'` is found, the partial
            line is returned. If EOF is received and the receive buffer
-           is empty, an empty bytes or str object is returned.
+           is empty, an empty `bytes` or `str` object is returned.
 
            If the next data in the stream is a signal, the signal is
            delivered as a raised exception.
@@ -119,7 +119,7 @@ class SSHReader:
 
     @asyncio.coroutine
     def readuntil(self, separator):
-        """Read data from the stream until ``separator`` is seen
+        """Read data from the stream until `separator` is seen
 
            This method is a coroutine which reads from the stream until
            the requested separator is seen. If a match is found, the
@@ -127,7 +127,7 @@ class SSHReader:
 
            If EOF or a signal is received before a match occurs, an
            :exc:`IncompleteReadError <asyncio.IncompleteReadError>`
-           is raised and its ``partial`` attribute will contain the
+           is raised and its `partial` attribute will contain the
            data in the stream prior to the EOF or signal.
 
            If the next data in the stream is a signal, the signal is
@@ -144,9 +144,9 @@ class SSHReader:
            This method is a coroutine which reads exactly n bytes or
            characters from the stream.
 
-           If EOF or a signal is received in the stream before ``n``
+           If EOF or a signal is received in the stream before `n`
            bytes are read, an :exc:`IncompleteReadError
-           <asyncio.IncompleteReadError>` is raised and its ``partial``
+           <asyncio.IncompleteReadError>` is raised and its `partial`
            attribute will contain the data before the EOF or signal.
 
            If the next data in the stream is a signal, the signal is
@@ -159,7 +159,7 @@ class SSHReader:
     def at_eof(self):
         """Return whether the stream is at EOF
 
-           This method returns ``True`` when EOF has been received and
+           This method returns `True` when EOF has been received and
            all data in the stream has been read.
 
         """
@@ -232,9 +232,9 @@ class SSHWriter:
 
            This method writes bytes or characters to the stream.
 
-           .. note:: Unlike traditional ``asyncio`` stream writers,
-                     the data must be supplied as either bytes or
-                     a str depending on whether an encoding was
+           .. note:: Unlike traditional `asyncio` stream writers,
+                     the data must be supplied as either `bytes` or
+                     a `str` depending on whether an encoding was
                      specified when the underlying channel was opened.
 
         """

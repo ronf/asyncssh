@@ -1573,7 +1573,7 @@ class SSHConnection(SSHPacketHandler):
            sent will be lost and no more data will be received. When the
            the connection is closed, :meth:`connection_lost()
            <SSHClient.connection_lost>` on the associated :class:`SSHClient`
-           object will be called with the value ``None``.
+           object will be called with the value `None`.
 
         """
 
@@ -1609,15 +1609,18 @@ class SSHConnection(SSHPacketHandler):
            sent. No more data will be received. When the connection is
            fully closed, :meth:`connection_lost() <SSHClient.connection_lost>`
            on the associated :class:`SSHClient` or :class:`SSHServer` object
-           will be called with the value ``None``.
+           will be called with the value `None`.
 
-           :param int code:
+           :param code:
                The reason for the disconnect, from
                :ref:`disconnect reason codes <DisconnectReasons>`
-           :param str reason:
+           :param reason:
                A human readable reason for the disconnect
-           :param str lang:
+           :param lang:
                The language the reason is in
+           :type code: `int`
+           :type reason: `str`
+           :type lang: `str`
 
         """
 
@@ -1666,12 +1669,15 @@ class SSHConnection(SSHPacketHandler):
            This method can be called to send a debug message to the
            other end of the connection.
 
-           :param str msg:
+           :param msg:
                The debug message to send
-           :param str lang:
+           :param lang:
                The language the message is in
-           :param bool always_display:
+           :param always_display:
                Whether or not to display the message
+           :type msg: `str`
+           :type lang: `str`
+           :type always_display: `bool`
 
         """
 
@@ -1687,14 +1693,17 @@ class SSHConnection(SSHPacketHandler):
            :class:`SSHTCPChannel` with the desired encoding, window, and
            max packet size for a newly created SSH direct connection.
 
-           :param str encoding: (optional)
+           :param encoding: (optional)
                The Unicode encoding to use for data exchanged on the
-               connection. This defaults to ``None``, allowing the
+               connection. This defaults to `None`, allowing the
                application to send and receive raw bytes.
-           :param int window: (optional)
+           :param window: (optional)
                The receive window size for this session
-           :param int max_pktsize: (optional)
+           :param max_pktsize: (optional)
                The maximum packet size for this session
+           :type encoding: `str`
+           :type window: `int`
+           :type max_pktsize: `int`
 
            :returns: :class:`SSHTCPChannel`
 
@@ -1712,14 +1721,17 @@ class SSHConnection(SSHPacketHandler):
            max packet size for a newly created SSH direct UNIX domain
            socket connection.
 
-           :param str encoding: (optional)
+           :param encoding: (optional)
                The Unicode encoding to use for data exchanged on the
-               connection. This defaults to ``None``, allowing the
+               connection. This defaults to `None`, allowing the
                application to send and receive raw bytes.
-           :param int window: (optional)
+           :param window: (optional)
                The receive window size for this session
-           :param int max_pktsize: (optional)
+           :param max_pktsize: (optional)
                The maximum packet size for this session
+           :type encoding: `str`
+           :type window: `int`
+           :type max_pktsize: `int`
 
            :returns: :class:`SSHUNIXChannel`
 
@@ -1761,13 +1773,15 @@ class SSHConnection(SSHPacketHandler):
         """Forward a tunneled TCP connection
 
            This method is a coroutine which can be returned by a
-           ``session_factory`` to forward connections tunneled over
+           `session_factory` to forward connections tunneled over
            SSH to the specified destination host and port.
 
-           :param str dest_host:
+           :param dest_host:
                The hostname or address to forward the connections to
-           :param int dest_port:
+           :param dest_port:
                The port number to forward the connections to
+           :type dest_host: `str`
+           :type dest_port: `int`
 
            :returns: :class:`SSHTCPSession`
 
@@ -1790,11 +1804,12 @@ class SSHConnection(SSHPacketHandler):
         """Forward a tunneled UNIX domain socket connection
 
            This method is a coroutine which can be returned by a
-           ``session_factory`` to forward connections tunneled over
+           `session_factory` to forward connections tunneled over
            SSH to the specified destination path.
 
-           :param str dest_path:
+           :param dest_path:
                The path to forward the connection to
+           :type dest_path: `str`
 
            :returns: :class:`SSHUNIXSession`
 
@@ -1820,14 +1835,18 @@ class SSHConnection(SSHPacketHandler):
            return value is an :class:`SSHListener` object which can be used
            later to shut down the port forwarding.
 
-           :param str listen_host:
+           :param listen_host:
                The hostname or address on the local host to listen on
-           :param int listen_port:
+           :param listen_port:
                The port number on the local host to listen on
-           :param str dest_host:
+           :param dest_host:
                The hostname or address to forward the connections to
-           :param int dest_port:
+           :param dest_port:
                The port number to forward the connections to
+           :type listen_host: `str`
+           :type listen_port: `int`
+           :type dest_host: `str`
+           :type dest_port: `int`
 
            :returns: :class:`SSHListener`
 
@@ -1858,10 +1877,12 @@ class SSHConnection(SSHPacketHandler):
            return value is an :class:`SSHListener` object which can be used
            later to shut down the UNIX domain socket forwarding.
 
-           :param str listen_path:
+           :param listen_path:
                The path on the local host to listen on
-           :param str dest_path:
+           :param dest_path:
                The path on the remote host to forward the connections to
+           :type listen_path: `str`
+           :type dest_path: `str`
 
            :returns: :class:`SSHListener`
 
@@ -2323,7 +2344,7 @@ class SSHClientConnection(SSHConnection):
             raise DisconnectError(DISC_PROTOCOL_ERROR, 'Invalid forwarded '
                                   'TCP/IP channel open request') from None
 
-        # Some buggy servers send back a port of ``0`` instead of the actual
+        # Some buggy servers send back a port of `0` instead of the actual
         # listening port when reporting connections which arrive on a listener
         # set up on a dynamic port. This lookup attempts to work around that.
         listener = (self._remote_listeners.get((dest_host, dest_port)) or
@@ -2463,22 +2484,22 @@ class SSHClientConnection(SSHConnection):
            By default, this class expects string data in its send and
            receive functions, which it encodes on the SSH connection in
            UTF-8 (ISO 10646) format. An optional encoding argument can
-           be passed in to select a different encoding, or ``None`` can
+           be passed in to select a different encoding, or `None` can
            be passed in if the application wishes to send and receive
            raw bytes.
 
            Other optional arguments include the SSH receive window size and
            max packet size which default to 2 MB and 32 KB, respectively.
 
-           :param callable session_factory:
-               A callable which returns an :class:`SSHClientSession` object
+           :param session_factory:
+               A `callable` which returns an :class:`SSHClientSession` object
                that will be created to handle activity on this session
-           :param str command: (optional)
+           :param command: (optional)
                The remote command to execute. By default, an interactive
                shell is started if no command or subsystem is provided.
-           :param str subsystem: (optional)
+           :param subsystem: (optional)
                The name of a remote subsystem to start up
-           :param dictionary env: (optional)
+           :param env: (optional)
                The set of environment variables to set for this session.
                Keys and values passed in here will be converted to
                Unicode strings encoded as UTF-8 (ISO 10646) for
@@ -2489,7 +2510,7 @@ class SSHClientConnection(SSHConnection):
                          server's configuration may need to be edited
                          before environment variables can be
                          successfully set in the remote environment.
-           :param str term_type: (optional)
+           :param term_type: (optional)
                The terminal type to set for this session. If this is not set,
                a pseudo-terminal will not be requested for this session.
            :param term_size: (optional)
@@ -2499,27 +2520,40 @@ class SSHClientConnection(SSHConnection):
                POSIX terminal modes to set for this session, where keys
                are taken from :ref:`POSIX terminal modes <PTYModes>` with
                values defined in section 8 of :rfc:`RFC 4254 <4254#section-8>`.
-           :param bool x11_forwarding: (optional)
+           :param x11_forwarding: (optional)
                Whether or not to request X11 forwarding for this session,
-               defaulting to ``False``
-           :param str x11_display: (optional)
+               defaulting to `False`
+           :param x11_display: (optional)
                The display that X11 connections should be forwarded to,
-               defaulting to the value in the environment variable ``DISPLAY``
-           :param str x11_auth_path: (optional)
+               defaulting to the value in the environment variable `DISPLAY`
+           :param x11_auth_path: (optional)
                The path to the Xauthority file to read X11 authentication
                data from, defaulting to the value in the environment variable
-               ``XAUTHORITY`` or the file ``.Xauthority`` in the user's
+               `XAUTHORITY` or the file :file:`.Xauthority` in the user's
                home directory if that's not set
-           :param bool x11_single_connection: (optional)
+           :param x11_single_connection: (optional)
                Whether or not to limit X11 forwarding to a single connection,
-               defaulting to ``False``
-           :param str encoding: (optional)
+               defaulting to `False`
+           :param encoding: (optional)
                The Unicode encoding to use for data exchanged on the connection
-           :param int window: (optional)
+           :param window: (optional)
                The receive window size for this session
-           :param int max_pktsize: (optional)
+           :param max_pktsize: (optional)
                The maximum packet size for this session
-           :type term_size: *tuple of 2 or 4 integers*
+           :type session_factory: `callable`
+           :type command: `str`
+           :type subsystem: `str`
+           :type env: `dict`
+           :type term_type: `str`
+           :type term_size: `tuple` of 2 or 4 `int` values
+           :type term_modes: `dict`
+           :type x11_forwarding: `bool`
+           :type x11_display: `str`
+           :type x11_auth_path: `str`
+           :type x11_single_connection: `bool`
+           :type encoding: `str`
+           :type window: `int`
+           :type max_pktsize: `int`
 
            :returns: an :class:`SSHClientChannel` and :class:`SSHClientSession`
 
@@ -2542,12 +2576,12 @@ class SSHClientConnection(SSHConnection):
 
            This method is a coroutine wrapper around :meth:`create_session`
            designed to provide a "high-level" stream interface for creating
-           an SSH client session. Instead of taking a ``session_factory``
+           an SSH client session. Instead of taking a `session_factory`
            argument for constructing an object which will handle activity
            on the session via callbacks, it returns an :class:`SSHWriter`
            and two :class:`SSHReader` objects representing stdin, stdout,
            and stderr which can be used to perform I/O on the session. With
-           the exception of ``session_factory``, all of the arguments to
+           the exception of `session_factory`, all of the arguments to
            :meth:`create_session` are supported and have the same meaning.
 
         """
@@ -2571,41 +2605,41 @@ class SSHClientConnection(SSHConnection):
            other local and remote processes.
 
            By default, the stdin, stdout, and stderr arguments default
-           to the special value ``PIPE`` which means that they can be
+           to the special value `PIPE` which means that they can be
            read and written interactively via stream objects which are
            members of the :class:`SSHClientProcess` object this method
            returns. If other file-like objects are provided as arguments,
            input or output will automatically be redirected to them. The
-           special value ``DEVNULL`` can be used to provide no input or
-           discard all output, and the special value ``STDOUT`` can be
-           provided as ``stderr`` to send its output to the same stream
-           as ``stdout``.
+           special value `DEVNULL` can be used to provide no input or
+           discard all output, and the special value `STDOUT` can be
+           provided as `stderr` to send its output to the same stream
+           as `stdout`.
 
            In addition to the arguments below, all arguments to
-           :meth:`create_session` except for ``session_factory`` are
+           :meth:`create_session` except for `session_factory` are
            supported and have the same meaning.
 
-           :param int bufsize: (optional)
+           :param bufsize: (optional)
                Buffer size to use when feeding data from a file to stdin
            :param input: (optional)
                Input data to feed to standard input of the remote process.
                If specified, this argument takes precedence over stdin.
-               Data should be a str if encoding is set, or bytes if not.
+               Data should be a `str` if encoding is set, or `bytes` if not.
            :param stdin: (optional)
                A filename, file-like object, file descriptor, socket, or
                :class:`SSHReader` to feed to standard input of the remote
-               process, or ``DEVNULL`` to provide no input.
+               process, or `DEVNULL` to provide no input.
            :param stdout: (optional)
                A filename, file-like object, file descriptor, socket, or
                :class:`SSHWriter` to feed standard output of the remote
-               process to, or ``DEVNULL`` to discard this output.
+               process to, or `DEVNULL` to discard this output.
            :param stderr: (optional)
                A filename, file-like object, file descriptor, socket, or
                :class:`SSHWriter` to feed standard error of the remote
-               process to, ``DEVNULL`` to discard this output, or ``STDOUT``
+               process to, `DEVNULL` to discard this output, or `STDOUT`
                to feed standard error to the same place as stdout.
-           :type input:
-               str or bytes
+           :type bufsize: `int`
+           :type input: `str` or `bytes`
 
            :returns: :class:`SSHClientProcess`
 
@@ -2639,16 +2673,17 @@ class SSHClientConnection(SSHConnection):
            object with the exit status or signal information and the
            output to stdout and stderr (if not redirected).
 
-           If the check argument is set to ``True``, a non-zero exit status
+           If the check argument is set to `True`, a non-zero exit status
            from the remote process will trigger the :exc:`ProcessError`
            exception to be raised.
 
            In addition to the argument below, all arguments to
            :meth:`create_process` are supported and have the same meaning.
 
-           :param bool check: (optional)
+           :param check: (optional)
                Whether or not to raise :exc:`ProcessError` when a non-zero
                exit status is returned
+           :type check: `bool`
 
            :returns: :class:`SSHCompletedProcess`
 
@@ -2672,7 +2707,7 @@ class SSHClientConnection(SSHConnection):
            the server open a new outbound TCP connection to the specified
            destination host and port. If the connection is successfully
            opened, a new SSH channel will be opened with data being handled
-           by a :class:`SSHTCPSession` object created by ``session_factory``.
+           by a :class:`SSHTCPSession` object created by `session_factory`.
 
            Optional arguments include the host and port of the original
            client opening the connection when performing TCP port forwarding.
@@ -2685,23 +2720,31 @@ class SSHClientConnection(SSHConnection):
            Other optional arguments include the SSH receive window size and
            max packet size which default to 2 MB and 32 KB, respectively.
 
-           :param callable session_factory:
-               A callable which returns an :class:`SSHClientSession` object
+           :param session_factory:
+               A `callable` which returns an :class:`SSHClientSession` object
                that will be created to handle activity on this session
-           :param str remote_host:
+           :param remote_host:
                The remote hostname or address to connect to
-           :param int remote_port:
+           :param remote_port:
                The remote port number to connect to
-           :param str orig_host: (optional)
+           :param orig_host: (optional)
                The hostname or address of the client requesting the connection
-           :param int orig_port: (optional)
+           :param orig_port: (optional)
                The port number of the client requesting the connection
-           :param str encoding: (optional)
+           :param encoding: (optional)
                The Unicode encoding to use for data exchanged on the connection
-           :param int window: (optional)
+           :param window: (optional)
                The receive window size for this session
-           :param int max_pktsize: (optional)
+           :param max_pktsize: (optional)
                The maximum packet size for this session
+           :type session_factory: `callable`
+           :type remote_host: `str`
+           :type remote_port: `int`
+           :type orig_host: `str`
+           :type orig_port: `int`
+           :type encoding: `str`
+           :type window: `int`
+           :type max_pktsize: `int`
 
            :returns: an :class:`SSHTCPChannel` and :class:`SSHTCPSession`
 
@@ -2723,12 +2766,12 @@ class SSHClientConnection(SSHConnection):
            This method is a coroutine wrapper around :meth:`create_connection`
            designed to provide a "high-level" stream interface for creating
            an SSH TCP direct connection. Instead of taking a
-           ``session_factory`` argument for constructing an object which will
+           `session_factory` argument for constructing an object which will
            handle activity on the session via callbacks, it returns
            :class:`SSHReader` and :class:`SSHWriter` objects which can be
            used to perform I/O on the connection.
 
-           With the exception of ``session_factory``, all of the arguments
+           With the exception of `session_factory`, all of the arguments
            to :meth:`create_connection` are supported and have the same
            meaning here.
 
@@ -2754,28 +2797,33 @@ class SSHClientConnection(SSHConnection):
            incoming TCP connections. If the request is successful, the
            return value is an :class:`SSHListener` object which can be
            used later to shut down the listener. If the request fails,
-           ``None`` is returned.
+           `None` is returned.
 
            :param session_factory:
-               A callable or coroutine which takes arguments of the original
-               host and port of the client and decides whether to accept the
-               connection or not, either returning an :class:`SSHTCPSession`
-               object used to handle activity on that connection or raising
-               :exc:`ChannelOpenError` to indicate that the connection
-               should not be accepted
-           :param str listen_host:
+               A `callable` or coroutine which takes arguments of the
+               original host and port of the client and decides whether
+               to accept the connection or not, either returning an
+               :class:`SSHTCPSession` object used to handle activity on
+               that connection or raising :exc:`ChannelOpenError` to
+               indicate that the connection should not be accepted
+           :param listen_host:
                The hostname or address on the remote host to listen on
-           :param int listen_port:
+           :param listen_port:
                The port number on the remote host to listen on
-           :param str encoding: (optional)
+           :param encoding: (optional)
                The Unicode encoding to use for data exchanged on the connection
-           :param int window: (optional)
+           :param window: (optional)
                The receive window size for this session
-           :param int max_pktsize: (optional)
+           :param max_pktsize: (optional)
                The maximum packet size for this session
-           :type session_factory: callable or coroutine
+           :type session_factory: `callable` or coroutine
+           :type listen_host: `str`
+           :type listen_port: `int`
+           :type encoding: `str`
+           :type window: `int`
+           :type max_pktsize: `int`
 
-           :returns: :class:`SSHListener` or ``None`` if the listener can't
+           :returns: :class:`SSHListener` or `None` if the listener can't
                      be opened
 
         """
@@ -2820,29 +2868,29 @@ class SSHClientConnection(SSHConnection):
 
            This method is a coroutine wrapper around :meth:`create_server`
            designed to provide a "high-level" stream interface for creating
-           remote SSH TCP listeners. Instead of taking a ``session_factory``
+           remote SSH TCP listeners. Instead of taking a `session_factory`
            argument for constructing an object which will handle activity on
-           the session via callbacks, it takes a ``handler_factory`` which
-           returns a callable or coroutine that will be passed
+           the session via callbacks, it takes a `handler_factory` which
+           returns a `callable` or coroutine that will be passed
            :class:`SSHReader` and :class:`SSHWriter` objects which can be
            used to perform I/O on each new connection which arrives. Like
-           :meth:`create_server`, ``handler_factory`` can also raise
+           :meth:`create_server`, `handler_factory` can also raise
            :exc:`ChannelOpenError` if the connection should not be accepted.
 
-           With the exception of ``handler_factory`` replacing
-           ``session_factory``, all of the arguments to :meth:`create_server`
+           With the exception of `handler_factory` replacing
+           `session_factory`, all of the arguments to :meth:`create_server`
            are supported and have the same meaning here.
 
            :param handler_factory:
-               A callable or coroutine which takes arguments of the original
-               host and port of the client and decides whether to accept the
-               connection or not, either returning a callback or coroutine
-               used to handle activity on that connection or raising
-               :exc:`ChannelOpenError` to indicate that the connection
-               should not be accepted
-           :type handler_factory: callable or coroutine
+               A `callable` or coroutine which takes arguments of the
+               original host and port of the client and decides whether to
+               accept the connection or not, either returning a callback
+               or coroutine used to handle activity on that connection
+               or raising :exc:`ChannelOpenError` to indicate that the
+               connection should not be accepted
+           :type handler_factory: `callable` or coroutine
 
-           :returns: :class:`SSHListener` or ``None`` if the listener can't
+           :returns: :class:`SSHListener` or `None` if the listener can't
                      be opened
 
         """
@@ -2865,7 +2913,7 @@ class SSHClientConnection(SSHConnection):
            the server open a new outbound UNIX domain socket connection to
            the specified destination path. If the connection is successfully
            opened, a new SSH channel will be opened with data being handled
-           by a :class:`SSHUNIXSession` object created by ``session_factory``.
+           by a :class:`SSHUNIXSession` object created by `session_factory`.
 
            By default, this class expects data to be sent and received as
            raw bytes. However, an optional encoding argument can be
@@ -2875,17 +2923,22 @@ class SSHClientConnection(SSHConnection):
            Other optional arguments include the SSH receive window size and
            max packet size which default to 2 MB and 32 KB, respectively.
 
-           :param callable session_factory:
-               A callable which returns an :class:`SSHClientSession` object
+           :param session_factory:
+               A `callable` which returns an :class:`SSHClientSession` object
                that will be created to handle activity on this session
-           :param str remote_path:
+           :param remote_path:
                The remote path to connect to
-           :param str encoding: (optional)
+           :param encoding: (optional)
                The Unicode encoding to use for data exchanged on the connection
-           :param int window: (optional)
+           :param window: (optional)
                The receive window size for this session
-           :param int max_pktsize: (optional)
+           :param max_pktsize: (optional)
                The maximum packet size for this session
+           :type session_factory: `callable`
+           :type remote_path: `str`
+           :type encoding: `str`
+           :type window: `int`
+           :type max_pktsize: `int`
 
            :returns: an :class:`SSHUNIXChannel` and :class:`SSHUNIXSession`
 
@@ -2906,12 +2959,12 @@ class SSHClientConnection(SSHConnection):
            This method is a coroutine wrapper around
            :meth:`create_unix_connection` designed to provide a "high-level"
            stream interface for creating an SSH UNIX domain socket direct
-           connection. Instead of taking a ``session_factory`` argument for
+           connection. Instead of taking a `session_factory` argument for
            constructing an object which will handle activity on the session
            via callbacks, it returns :class:`SSHReader` and :class:`SSHWriter`
            objects which can be used to perform I/O on the connection.
 
-           With the exception of ``session_factory``, all of the arguments
+           With the exception of `session_factory`, all of the arguments
            to :meth:`create_unix_connection` are supported and have the same
            meaning here.
 
@@ -2938,26 +2991,30 @@ class SSHClientConnection(SSHConnection):
            domain socket connections. If the request is successful, the
            return value is an :class:`SSHListener` object which can be
            used later to shut down the listener. If the request fails,
-           ``None`` is returned.
+           `None` is returned.
 
            :param session_factory:
-               A callable or coroutine which takes arguments of the original
-               host and port of the client and decides whether to accept the
-               connection or not, either returning an :class:`SSHUNIXSession`
-               object used to handle activity on that connection or raising
-               :exc:`ChannelOpenError` to indicate that the connection
-               should not be accepted
-           :param str listen_path:
+               A `callable` or coroutine which takes arguments of the
+               original host and port of the client and decides whether
+               to accept the connection or not, either returning an
+               :class:`SSHUNIXSession` object used to handle activity
+               on that connection or raising :exc:`ChannelOpenError`
+               to indicate that the connection should not be accepted
+           :param listen_path:
                The path on the remote host to listen on
-           :param str encoding: (optional)
+           :param encoding: (optional)
                The Unicode encoding to use for data exchanged on the connection
-           :param int window: (optional)
+           :param window: (optional)
                The receive window size for this session
-           :param int max_pktsize: (optional)
+           :param max_pktsize: (optional)
                The maximum packet size for this session
-           :type session_factory: callable or coroutine
+           :type session_factory: `callable` or coroutine
+           :type listen_path: `str`
+           :type encoding: `str`
+           :type window: `int`
+           :type max_pktsize: `int`
 
-           :returns: :class:`SSHListener` or ``None`` if the listener can't
+           :returns: :class:`SSHListener` or `None` if the listener can't
                      be opened
 
         """
@@ -2984,30 +3041,30 @@ class SSHClientConnection(SSHConnection):
            This method is a coroutine wrapper around :meth:`create_unix_server`
            designed to provide a "high-level" stream interface for creating
            remote SSH UNIX domain socket listeners. Instead of taking a
-           ``session_factory`` argument for constructing an object which
+           `session_factory` argument for constructing an object which
            will handle activity on the session via callbacks, it takes a
-           ``handler_factory`` which returns a callable or coroutine that
+           `handler_factory` which returns a `callable` or coroutine that
            will be passed :class:`SSHReader` and :class:`SSHWriter` objects
            which can be used to perform I/O on each new connection which
-           arrives. Like :meth:`create_unix_server`, ``handler_factory``
+           arrives. Like :meth:`create_unix_server`, `handler_factory`
            can also raise :exc:`ChannelOpenError` if the connection should
            not be accepted.
 
-           With the exception of ``handler_factory`` replacing
-           ``session_factory``, all of the arguments to
+           With the exception of `handler_factory` replacing
+           `session_factory`, all of the arguments to
            :meth:`create_unix_server` are supported and have the same
            meaning here.
 
            :param handler_factory:
-               A callable or coroutine which takes arguments of the original
-               host and port of the client and decides whether to accept the
-               connection or not, either returning a callback or coroutine
-               used to handle activity on that connection or raising
-               :exc:`ChannelOpenError` to indicate that the connection
-               should not be accepted
-           :type handler_factory: callable or coroutine
+               A `callable` or coroutine which takes arguments of the
+               original host and port of the client and decides whether to
+               accept the connection or not, either returning a callback
+               or coroutine used to handle activity on that connection
+               or raising :exc:`ChannelOpenError` to indicate that the
+               connection should not be accepted
+           :type handler_factory: `callable` or coroutine
 
-           :returns: :class:`SSHListener` or ``None`` if the listener can't
+           :returns: :class:`SSHListener` or `None` if the listener can't
                      be opened
 
         """
@@ -3061,18 +3118,22 @@ class SSHClientConnection(SSHConnection):
            via the SSH connection. If the request is successful, the
            return value is an :class:`SSHListener` object which can be
            used later to shut down the port forwarding. If the request
-           fails, ``None`` is returned.
+           fails, `None` is returned.
 
-           :param str listen_host:
+           :param listen_host:
                The hostname or address on the remote host to listen on
-           :param int listen_port:
+           :param listen_port:
                The port number on the remote host to listen on
-           :param str dest_host:
+           :param dest_host:
                The hostname or address to forward connections to
-           :param int dest_port:
+           :param dest_port:
                The port number to forward connections to
+           :type listen_host: `str`
+           :type listen_port: `int`
+           :type dest_host: `str`
+           :type dest_port: `int`
 
-           :returns: :class:`SSHListener` or ``None`` if the listener can't
+           :returns: :class:`SSHListener` or `None` if the listener can't
                      be opened
 
         """
@@ -3095,14 +3156,16 @@ class SSHClientConnection(SSHConnection):
            via the SSH connection. If the request is successful, the
            return value is an :class:`SSHListener` object which can be
            used later to shut down the port forwarding. If the request
-           fails, ``None`` is returned.
+           fails, `None` is returned.
 
-           :param str listen_path:
+           :param listen_path:
                The path on the remote host to listen on
-           :param str dest_path:
+           :param dest_path:
                The path on the local host to forward connections to
+           :type listen_path: `str`
+           :type dest_path: `str`
 
-           :returns: :class:`SSHListener` or ``None`` if the listener can't
+           :returns: :class:`SSHListener` or `None` if the listener can't
                      be opened
 
         """
@@ -3126,15 +3189,17 @@ class SSHClientConnection(SSHConnection):
 
            An optional Unicode encoding can be specified for sending and
            receiving pathnames, defaulting to UTF-8 with strict error
-           checking. If an encoding of ``None`` is specified, pathnames
+           checking. If an encoding of `None` is specified, pathnames
            will be left as bytes rather than being converted to & from
            strings.
 
-           :param str path_encoding:
+           :param path_encoding:
                The Unicode encoding to apply when sending and receiving
                remote pathnames
-           :param str path_errors:
+           :param path_errors:
                The error handling strategy to apply on encode/decode errors
+           :type path_encoding: `str`
+           :type path_errors: `str`
 
            :returns: :class:`SFTPClient`
 
@@ -3455,8 +3520,8 @@ class SSHServerConnection(SSHConnection):
            This method validates that the public key or certificate provided
            is allowed for the specified user. If msg and signature are
            provided, the key is used to also validate the message signature.
-           It returns ``True`` when the key is allowed and the signature (if
-           present) is valid. Otherwise, it returns ``False``.
+           It returns `True` when the key is allowed and the signature (if
+           present) is valid. Otherwise, it returns `False`.
 
         """
 
@@ -3890,10 +3955,12 @@ class SSHServerConnection(SSHConnection):
            in progress. It is an error to call this method after the
            authentication is complete.
 
-           :param str msg:
+           :param msg:
                The message to display
-           :param str lang:
+           :param lang:
                The language the message is in
+           :type msg: `str`
+           :type lang: `str`
 
            :raises: :exc:`OSError` if authentication is already completed
 
@@ -3942,15 +4009,16 @@ class SSHServerConnection(SSHConnection):
                | principals (list of usernames)
 
            Non-standard options are also supported and will return the
-           value ``True`` if the option is present without a value or
+           value `True` if the option is present without a value or
            return a list of strings containing the values associated
            with each occurrence of that option name. If the option is
            not present, the specified default value is returned.
 
-           :param str option:
+           :param option:
                The name of the option to look up.
            :param default:
                The default value to return if the option is not present.
+           :type option: `str`
 
            :returns: The value of the option in authorized_keys, if set
 
@@ -3983,10 +4051,11 @@ class SSHServerConnection(SSHConnection):
            Non-standard permissions can also be checked, as long as the
            option follows the convention of starting with 'no-'.
 
-           :param str permission:
+           :param permission:
                The name of the permission to check (without the 'no-').
+           :type permission: `str`
 
-           :returns: A bool indicating if the permission is granted.
+           :returns: A `bool` indicating if the permission is granted.
 
         """
 
@@ -4005,10 +4074,11 @@ class SSHServerConnection(SSHConnection):
                | force-command (string)
                | source-address (list of CIDR-style IP network addresses)
 
-           :param str option:
+           :param option:
                The name of the option to look up.
            :param default:
                The default value to return if the option is not present.
+           :type option: `str`
 
            :returns: The value of the option in the user certificate, if set
 
@@ -4025,7 +4095,7 @@ class SSHServerConnection(SSHConnection):
            If a user certificate was presented during authentication,
            this method returns whether the specified permission was
            granted in the certificate. Otherwise, it acts as if all
-           permissions are granted and returns ``True``.
+           permissions are granted and returns `True`.
 
            The following permissions are supported:
 
@@ -4039,10 +4109,11 @@ class SSHServerConnection(SSHConnection):
            and pty permissions but ignores the other values since it does
            not implement those features.
 
-           :param str permission:
+           :param permission:
                The name of the permission to check (without the 'permit-').
+           :type permission: `str`
 
-           :returns: A bool indicating if the permission is granted.
+           :returns: A `bool` indicating if the permission is granted.
 
         """
 
@@ -4060,15 +4131,18 @@ class SSHServerConnection(SSHConnection):
            :class:`SSHServerChannel` with the desired encoding, window,
            and max packet size for a newly created SSH server session.
 
-           :param str encoding: (optional)
+           :param encoding: (optional)
                The Unicode encoding to use for data exchanged on the
-               session, defaulting to UTF-8 (ISO 10646) format. If ``None``
+               session, defaulting to UTF-8 (ISO 10646) format. If `None`
                is passed in, the application can send and receive raw
                bytes.
-           :param int window: (optional)
+           :param window: (optional)
                The receive window size for this session
-           :param int max_pktsize: (optional)
+           :param max_pktsize: (optional)
                The maximum packet size for this session
+           :type encoding: `str`
+           :type window: `int`
+           :type max_pktsize: `int`
 
            :returns: :class:`SSHServerChannel`
 
@@ -4089,7 +4163,7 @@ class SSHServerConnection(SSHConnection):
            client about a new inbound TCP connection arriving on the
            specified remote host and port. If the connection is successfully
            opened, a new SSH channel will be opened with data being handled
-           by a :class:`SSHTCPSession` object created by ``session_factory``.
+           by a :class:`SSHTCPSession` object created by `session_factory`.
 
            Optional arguments include the host and port of the original
            client opening the connection when performing TCP port forwarding.
@@ -4102,23 +4176,31 @@ class SSHServerConnection(SSHConnection):
            Other optional arguments include the SSH receive window size and
            max packet size which default to 2 MB and 32 KB, respectively.
 
-           :param callable session_factory:
-               A callable which returns an :class:`SSHClientSession` object
+           :param session_factory:
+               A `callable` which returns an :class:`SSHClientSession` object
                that will be created to handle activity on this session
-           :param str remote_host:
+           :param remote_host:
                The hostname or address the connection was received on
-           :param int remote_port:
+           :param remote_port:
                The port number the connection was received on
-           :param str orig_host: (optional)
+           :param orig_host: (optional)
                The hostname or address of the client requesting the connection
-           :param int orig_port: (optional)
+           :param orig_port: (optional)
                The port number of the client requesting the connection
-           :param str encoding: (optional)
+           :param encoding: (optional)
                The Unicode encoding to use for data exchanged on the connection
-           :param int window: (optional)
+           :param window: (optional)
                The receive window size for this session
-           :param int max_pktsize: (optional)
+           :param max_pktsize: (optional)
                The maximum packet size for this session
+           :type session_factory: `callable`
+           :type remote_host: `str`
+           :type remote_port: `int`
+           :type orig_host: `str`
+           :type orig_port: `int`
+           :type encoding: `str`
+           :type window: `int`
+           :type max_pktsize: `int`
 
            :returns: an :class:`SSHTCPChannel` and :class:`SSHTCPSession`
 
@@ -4138,12 +4220,12 @@ class SSHServerConnection(SSHConnection):
            This method is a coroutine wrapper around :meth:`create_connection`
            designed to provide a "high-level" stream interface for creating
            an SSH TCP forwarded connection. Instead of taking a
-           ``session_factory`` argument for constructing an object which will
+           `session_factory` argument for constructing an object which will
            handle activity on the session via callbacks, it returns
            :class:`SSHReader` and :class:`SSHWriter` objects which can be
            used to perform I/O on the connection.
 
-           With the exception of ``session_factory``, all of the arguments
+           With the exception of `session_factory`, all of the arguments
            to :meth:`create_connection` are supported and have the same
            meaning here.
 
@@ -4166,7 +4248,7 @@ class SSHServerConnection(SSHConnection):
            client about a new inbound UNIX domain socket connection arriving
            on the specified remote path. If the connection is successfully
            opened, a new SSH channel will be opened with data being handled
-           by a :class:`SSHUNIXSession` object created by ``session_factory``.
+           by a :class:`SSHUNIXSession` object created by `session_factory`.
 
            By default, this class expects data to be sent and received as
            raw bytes. However, an optional encoding argument can be
@@ -4176,17 +4258,22 @@ class SSHServerConnection(SSHConnection):
            Other optional arguments include the SSH receive window size and
            max packet size which default to 2 MB and 32 KB, respectively.
 
-           :param callable session_factory:
-               A callable which returns an :class:`SSHClientSession` object
+           :param session_factory:
+               A `callable` which returns an :class:`SSHClientSession` object
                that will be created to handle activity on this session
-           :param str remote_path:
+           :param remote_path:
                The path the connection was received on
-           :param str encoding: (optional)
+           :param encoding: (optional)
                The Unicode encoding to use for data exchanged on the connection
-           :param int window: (optional)
+           :param window: (optional)
                The receive window size for this session
-           :param int max_pktsize: (optional)
+           :param max_pktsize: (optional)
                The maximum packet size for this session
+           :type session_factory: `callable`
+           :type remote_path: `str`
+           :type encoding: `str`
+           :type window: `int`
+           :type max_pktsize: `int`
 
            :returns: an :class:`SSHTCPChannel` and :class:`SSHUNIXSession`
 
@@ -4205,12 +4292,12 @@ class SSHServerConnection(SSHConnection):
            This method is a coroutine wrapper around
            :meth:`create_unix_connection` designed to provide a "high-level"
            stream interface for creating an SSH UNIX domain socket forwarded
-           connection. Instead of taking a ``session_factory`` argument for
+           connection. Instead of taking a `session_factory` argument for
            constructing an object which will handle activity on the session
            via callbacks, it returns :class:`SSHReader` and :class:`SSHWriter`
            objects which can be used to perform I/O on the connection.
 
-           With the exception of ``session_factory``, all of the arguments
+           With the exception of `session_factory`, all of the arguments
            to :meth:`create_unix_connection` are supported and have the same
            meaning here.
 
@@ -4284,7 +4371,7 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
 
            1. The connection is established and an :class:`SSHClientConnection`
               object is created to represent it.
-           2. The ``client_factory`` is called without arguments and should
+           2. The `client_factory` is called without arguments and should
               return an :class:`SSHClient` object.
            3. The client object is tied to the connection and its
               :meth:`connection_made() <SSHClient.connection_made>` method
@@ -4294,7 +4381,7 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
            5. When authentication completes successfully, the client's
               :meth:`auth_completed() <SSHClient.auth_completed>` method is
               called.
-           6. The coroutine returns the ``(connection, client)`` pair. At
+           6. The coroutine returns the `(connection, client)` pair. At
               this point, the connection is ready for sessions to be opened
               or port forwarding to be set up.
 
@@ -4302,17 +4389,17 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
        open connection and client objects will be cleaned up.
 
        .. note:: Unlike :func:`socket.create_connection`, asyncio calls
-                 to create a connection do not support a ``timeout``
+                 to create a connection do not support a `timeout`
                  parameter. However, asyncio calls can be wrapped in a
                  call to :func:`asyncio.wait_for` or :func:`asyncio.wait`
                  which takes a timeout and provides equivalent functionality.
 
-       :param callable client_factory:
-           A callable which returns an :class:`SSHClient` object that will
+       :param client_factory:
+           A `callable` which returns an :class:`SSHClient` object that will
            be tied to the connection
-       :param str host:
+       :param host:
            The hostname or address to connect to
-       :param int port: (optional)
+       :param port: (optional)
            The port number to connect to. If not specified, the default
            SSH port is used.
        :param loop: (optional)
@@ -4334,14 +4421,14 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
            The list of keys which will be used to validate the server host
            key presented during the SSH handshake. If this is not specified,
            the keys will be looked up in the file :file:`.ssh/known_hosts`.
-           If this is explicitly set to ``None``, server host key validation
+           If this is explicitly set to `None`, server host key validation
            will be disabled.
        :param x509_trusted_certs: (optional)
            A list of certificates which should be trusted for X.509 server
            certificate authentication. If no trusted certificates are
            specified, an attempt will be made to load them from the file
            :file:`.ssh/ca-bundle.crt`. If this argument is explicitly set
-           to ``None``, X.509 server certificate authentication will not
+           to `None`, X.509 server certificate authentication will not
            be performed.
 
                .. note:: X.509 certificates to trust can also be provided
@@ -4362,12 +4449,12 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
            A list of purposes allowed in the ExtendedKeyUsage of a
            certificate used for X.509 server certificate authentication,
            defulting to 'secureShellServer'. If this argument is explicitly
-           set to ``None``, the server certificate's ExtendedKeyUsage will
+           set to `None`, the server certificate's ExtendedKeyUsage will
            not be checked.
-       :param str username: (optional)
+       :param username: (optional)
            Username to authenticate as on the server. If not specified,
            the currently logged in user on the local machine will be used.
-       :param str password: (optional)
+       :param password: (optional)
            The password to use for client password authentication or
            keyboard-interactive authentication which prompts for a password.
            If this is not specified, client password authentication will
@@ -4382,19 +4469,19 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
            directory, with optional certificates loaded from the files
            :file:`.ssh/id_ed25519-cert.pub`, :file:`.ssh/id_ecdsa-cert.pub`,
            :file:`.ssh/id_rsa-cert.pub`, and :file:`.ssh/id_dsa-cert.pub`.
-           If this argument is explicitly set to ``None``, client public
+           If this argument is explicitly set to `None`, client public
            key authentication will not be performed.
-       :param str passphrase: (optional)
+       :param passphrase: (optional)
            The passphrase to use to decrypt client keys when loading them,
            if they are encrypted. If this is not specified, only unencrypted
            client keys can be loaded. If the keys passed into client_keys
            are already loaded, this argument is ignored.
-       :param str gss_host: (optional)
+       :param gss_host: (optional)
            The principal name to use for the host in GSS key exchange and
            authentication. If not specified, this value will be the same
-           as the ``host`` argument. If this argument is explicitly set to
-           ``None``, GSS key exchange and authentication will not be performed.
-       :param bool gss_delegate_creds: (optional)
+           as the `host` argument. If this argument is explicitly set to
+           `None`, GSS key exchange and authentication will not be performed.
+       :param gss_delegate_creds: (optional)
            Whether or not to forward GSS credentials to the server being
            accessed. By default, GSS credential delegation is disabled.
        :param agent_path: (optional)
@@ -4402,17 +4489,17 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
            process which will perform the operations needed for client
            public key authentication, or the :class:`SSHServerConnection`
            to use to forward ssh-agent requests over. If this is not
-           specified and the environment variable ``SSH_AUTH_SOCK`` is
-           set, its value will be used as the path.  If ``client_keys``
-           is specified or this argument is explicitly set to ``None``,
+           specified and the environment variable `SSH_AUTH_SOCK` is
+           set, its value will be used as the path.  If `client_keys`
+           is specified or this argument is explicitly set to `None`,
            an ssh-agent will not be used.
-       :param bool agent_forwarding: (optional)
+       :param agent_forwarding: (optional)
            Whether or not to allow forwarding of ssh-agent requests from
            processes running on the server. By default, ssh-agent forwarding
            requests from the server are not allowed.
-       :param str client_version: (optional)
+       :param client_version: (optional)
            An ASCII string to advertise to the SSH server as the version of
-           this client, defaulting to ``AsyncSSH`` and its version number.
+           this client, defaulting to `'AsyncSSH'` and its version number.
        :param kex_algs: (optional)
            A list of allowed key exchange algorithms in the SSH handshake,
            taken from :ref:`key exchange algorithms <KexAlgs>`
@@ -4425,32 +4512,44 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
        :param compression_algs: (optional)
            A list of compression algorithms to use during the SSH handshake,
            taken from :ref:`compression algorithms <CompressionAlgs>`, or
-           ``None`` to disable compression
+           `None` to disable compression
        :param signature_algs: (optional)
            A list of public key signature algorithms to use during the SSH
            handshake, taken from :ref:`signature algorithms <SignatureAlgs>`
-       :param int rekey_bytes: (optional)
+       :param rekey_bytes: (optional)
            The number of bytes which can be sent before the SSH session
            key is renegotiated. This defaults to 1 GB.
-       :param int rekey_seconds: (optional)
+       :param rekey_seconds: (optional)
            The maximum time in seconds before the SSH session key is
            renegotiated. This defaults to 1 hour.
+       :type client_factory: `callable`
+       :type host: `str`
+       :type port: `int`
+       :type loop: :class:`AbstractEventLoop <asyncio.AbstractEventLoop>`
        :type tunnel: :class:`SSHClientConnection`
-       :type family: ``socket.AF_UNSPEC``, ``socket.AF_INET``, or
-                     ``socket.AF_INET6``
+       :type family: `socket.AF_UNSPEC`, `socket.AF_INET`, or `socket.AF_INET6`
        :type flags: flags to pass to :meth:`getaddrinfo() <socket.getaddrinfo>`
-       :type local_addr: tuple of str and int
+       :type local_addr: tuple of `str` and `int`
        :type known_hosts: *see* :ref:`SpecifyingKnownHosts`
        :type x509_trusted_certs: *see* :ref:`SpecifyingCertificates`
-       :type x509_trusted_cert_paths: list of str
+       :type x509_trusted_cert_paths: `list` of `str`
        :type x509_purposes: *see* :ref:`SpecifyingX509Purposes`
+       :type username: `str`
+       :type password: `str`
        :type client_keys: *see* :ref:`SpecifyingPrivateKeys`
-       :type agent_path: str or :class:`SSHServerConnection`
-       :type kex_algs: list of str
-       :type encryption_algs: list of str
-       :type mac_algs: list of str
-       :type compression_algs: list of str
-       :type signature_algs: list of str
+       :type passphrase: `str`
+       :type gss_host: `str`
+       :type gss_delegate_creds: `bool`
+       :type agent_path: `str` or :class:`SSHServerConnection`
+       :type agent_forwarding: `bool`
+       :type client_version: `str`
+       :type kex_algs: `list` of `str`
+       :type encryption_algs: `list` of `str`
+       :type mac_algs: `list` of `str`
+       :type compression_algs: `list` of `str`
+       :type signature_algs: `list` of `str`
+       :type rekey_bytes: `int`
+       :type rekey_seconds: `int`
 
        :returns: An :class:`SSHClientConnection` and :class:`SSHClient`
 
@@ -4572,16 +4671,16 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
 
        This function is a coroutine which can be run to create an SSH server
        bound to the specified host and port. The return value is an object
-       derived from :class:`asyncio.AbstractServer` which can be used to
-       later shut down the server.
+       derived from :class:`asyncio.Server` which can be used to later shut
+       down the server.
 
-       :param callable server_factory:
-           A callable which returns an :class:`SSHServer` object that will
+       :param server_factory:
+           A `callable` which returns an :class:`SSHServer` object that will
            be created for each new inbound connection
-       :param str host: (optional)
+       :param host: (optional)
            The hostname or address to listen on. If not specified, listeners
            are created for all addresses.
-       :param int port: (optional)
+       :param port: (optional)
            The port number to listen on. If not specified, the default
            SSH port is used.
        :param loop: (optional)
@@ -4592,18 +4691,18 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
            the address families are automatically selected based on the host.
        :param flags: (optional)
            The flags to pass to getaddrinfo() when looking up the host
-       :param int backlog: (optional)
+       :param backlog: (optional)
            The maximum number of queued connections allowed on listeners
-       :param bool reuse_address: (optional)
+       :param reuse_address: (optional)
            Whether or not to reuse a local socket in the TIME_WAIT state
            without waiting for its natural timeout to expire. If not
-           specified, this will be automatically set to ``True`` on UNIX.
+           specified, this will be automatically set to `True` on UNIX.
        :param server_host_keys: (optional)
            A list of private keys and optional certificates which can be
            used by the server as a host key. Either this argument or
-           ``gss_host`` must be specified. If this is not specified,
+           `gss_host` must be specified. If this is not specified,
            only GSS-based key exchange will be supported.
-       :param str passphrase: (optional)
+       :param passphrase: (optional)
            The passphrase to use to decrypt server host keys when loading
            them, if they are encrypted. If this is not specified, only
            unencrypted server host keys can be loaded. If the keys passed
@@ -4615,7 +4714,7 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
        :param x509_trusted_certs: (optional)
            A list of certificates which should be trusted for X.509 client
            certificate authentication.  If this argument is explicitly set
-           to ``None``, X.509 client certificate authentication will not
+           to `None`, X.509 client certificate authentication will not
            be performed.
 
                .. note:: X.509 certificates to trust can also be provided
@@ -4636,73 +4735,73 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
            A list of purposes allowed in the ExtendedKeyUsage of a
            certificate used for X.509 client certificate authentication,
            defulting to 'secureShellClient'. If this argument is explicitly
-           set to ``None``, the client certificate's ExtendedKeyUsage will
+           set to `None`, the client certificate's ExtendedKeyUsage will
            not be checked.
-       :param str gss_host: (optional)
+       :param gss_host: (optional)
            The principal name to use for the host in GSS key exchange and
            authentication. If not specified, the value returned by
            :func:`socket.gethostname` will be used if it is a fully qualified
            name. Otherwise, the value used by :func:`socket.getfqdn` will be
-           used. If this argument is explicitly set to ``None``, GSS
+           used. If this argument is explicitly set to `None`, GSS
            key exchange and authentication will not be performed.
-       :param bool allow_pty: (optional)
+       :param allow_pty: (optional)
            Whether or not to allow allocation of a pseudo-tty in sessions,
-           defaulting to ``True``
-       :param bool line_editor: (optional)
+           defaulting to `True`
+       :param line_editor: (optional)
            Whether or not to enable input line editing on sessions which
-           have a pseudo-tty allocated, defaulting to ``True``
-       :param bool line_history: (int)
+           have a pseudo-tty allocated, defaulting to `True`
+       :param line_history: (int)
            The number of lines of input line history to store in the
            line editor when it is enabled, defaulting to 1000
-       :param bool x11_forwarding: (optional)
+       :param x11_forwarding: (optional)
            Whether or not to allow forwarding of X11 connections back
-           to the client when the client supports it, defaulting to ``False``
-       :param str x11_auth_path: (optional)
+           to the client when the client supports it, defaulting to `False`
+       :param x11_auth_path: (optional)
            The path to the Xauthority file to write X11 authentication
            data to, defaulting to the value in the environment variable
-           ``XAUTHORITY`` or the file ``.Xauthority`` in the user's
+           `XAUTHORITY` or the file :file:`.Xauthority` in the user's
            home directory if that's not set
-       :param bool agent_forwarding: (optional)
+       :param agent_forwarding: (optional)
            Whether or not to allow forwarding of ssh-agent requests back
-           to the client when the client supports it, defaulting to ``True``
-       :param callable process_factory: (optional)
-           A callable or coroutine handler function which takes an AsyncSSH
+           to the client when the client supports it, defaulting to `True`
+       :param process_factory: (optional)
+           A `callable` or coroutine handler function which takes an AsyncSSH
            :class:`SSHServerProcess` argument that will be called each time a
            new shell, exec, or subsystem other than SFTP is requested by the
-           client. If set, this takes precedence over the ``session_factory``
+           client. If set, this takes precedence over the `session_factory`
            argument.
-       :param callable session_factory: (optional)
-           A callable or coroutine handler function which takes AsyncSSH
+       :param session_factory: (optional)
+           A `callable` or coroutine handler function which takes AsyncSSH
            stream objects for stdin, stdout, and stderr that will be called
            each time a new shell, exec, or subsystem other than SFTP is
            requested by the client. If not specified, sessions are rejected
            by default unless the :meth:`session_requested()
            <SSHServer.session_requested>` method is overridden on the
-           :class:`SSHServer` object returned by ``server_factory`` to make
+           :class:`SSHServer` object returned by `server_factory` to make
            this decision.
-       :param str session_encoding: (optional)
+       :param session_encoding: (optional)
            The Unicode encoding to use for data exchanged on sessions on
-           this server, defaulting to UTF-8 (ISO 10646) format. If ``None``
+           this server, defaulting to UTF-8 (ISO 10646) format. If `None`
            is passed in, the application can send and receive raw bytes.
-       :param callable sftp_factory: (optional)
-           A callable which returns an :class:`SFTPServer` object that
+       :param sftp_factory: (optional)
+           A `callable` which returns an :class:`SFTPServer` object that
            will be created each time an SFTP session is requested by the
-           client, or ``True`` to use the base :class:`SFTPServer` class
+           client, or `True` to use the base :class:`SFTPServer` class
            to handle SFTP requests. If not specified, SFTP sessions are
            rejected by default.
-       :param bool allow_scp: (optional)
+       :param allow_scp: (optional)
            Whether or not to allow incoming scp requests to be accepted.
-           This option can only be used in conjunction with ``sftp_factory``.
+           This option can only be used in conjunction with `sftp_factory`.
            If not specified, scp requests will be passed as regular
-           commands to the ``process_factory`` or ``session_factory``.
-           to the client when the client supports it, defaulting to ``True``
-       :param int window: (optional)
+           commands to the `process_factory` or `session_factory`.
+           to the client when the client supports it, defaulting to `True`
+       :param window: (optional)
            The receive window size for sessions on this server
-       :param int max_pktsize: (optional)
+       :param max_pktsize: (optional)
            The maximum packet size for sessions on this server
-       :param str server_version: (optional)
+       :param server_version: (optional)
            An ASCII string to advertise to SSH clients as the version of
-           this server, defaulting to ``AsyncSSH`` and its version number.
+           this server, defaulting to `'AsyncSSH'` and its version number.
        :param kex_algs: (optional)
            A list of allowed key exchange algorithms in the SSH handshake,
            taken from :ref:`key exchange algorithms <KexAlgs>`
@@ -4715,34 +4814,58 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
        :param compression_algs: (optional)
            A list of compression algorithms to use during the SSH handshake,
            taken from :ref:`compression algorithms <CompressionAlgs>`, or
-           ``None`` to disable compression
+           `None` to disable compression
        :param signature_algs: (optional)
            A list of public key signature algorithms to use during the SSH
            handshake, taken from :ref:`signature algorithms <SignatureAlgs>`
-       :param int rekey_bytes: (optional)
+       :param rekey_bytes: (optional)
            The number of bytes which can be sent before the SSH session
            key is renegotiated, defaulting to 1 GB
-       :param int rekey_seconds: (optional)
+       :param rekey_seconds: (optional)
            The maximum time in seconds before the SSH session key is
            renegotiated, defaulting to 1 hour
-       :param int login_timeout: (optional)
+       :param login_timeout: (optional)
            The maximum time in seconds allowed for authentication to
            complete, defaulting to 2 minutes
-       :type family: ``socket.AF_UNSPEC``, ``socket.AF_INET``, or
-                     ``socket.AF_INET6``
+       :type server_factory: `callable`
+       :type host: `str`
+       :type port: `int`
+       :type loop: :class:`AbstractEventLoop <asyncio.AbstractEventLoop>`
+       :type family: `socket.AF_UNSPEC`, `socket.AF_INET`, or `socket.AF_INET6`
        :type flags: flags to pass to :meth:`getaddrinfo() <socket.getaddrinfo>`
+       :type backlog: `int`
+       :type reuse_address: `bool`
        :type server_host_keys: *see* :ref:`SpecifyingPrivateKeys`
+       :type passphrase: `str`
        :type authorized_client_keys: *see* :ref:`SpecifyingAuthorizedKeys`
        :type x509_trusted_certs: *see* :ref:`SpecifyingCertificates`
-       :type x509_trusted_cert_paths: list of str
+       :type x509_trusted_cert_paths: `list` of `str`
        :type x509_purposes: *see* :ref:`SpecifyingX509Purposes`
-       :type kex_algs: list of str
-       :type encryption_algs: list of str
-       :type mac_algs: list of str
-       :type compression_algs: list of str
-       :type signature_algs: list of str
+       :type gss_host: `str`
+       :type allow_pty: `bool`
+       :type line_editor: `bool`
+       :type line_history: `bool`
+       :type x11_forwarding: `bool`
+       :type x11_auth_path: `str`
+       :type agent_forwarding: `bool`
+       :type process_factory: `callable`
+       :type session_factory: `callable`
+       :type session_encoding: `str`
+       :type sftp_factory: `callable`
+       :type allow_scp: `bool`
+       :type window: `int`
+       :type max_pktsize: `int`
+       :type server_version: `str`
+       :type kex_algs: `list` of `str`
+       :type encryption_algs: `list` of `str`
+       :type mac_algs: `list` of `str`
+       :type compression_algs: `list` of `str`
+       :type signature_algs: `list` of `str`
+       :type rekey_bytes: `int`
+       :type rekey_seconds: `int`
+       :type login_timeout: `int`
 
-       :returns: :class:`asyncio.AbstractServer`
+       :returns: :class:`asyncio.Server`
 
     """
 
@@ -4817,7 +4940,7 @@ def connect(host, port=_DEFAULT_PORT, **kwargs):
        This function is a coroutine wrapper around :func:`create_connection`
        which can be used when a custom SSHClient instance is not needed.
        It takes all the same arguments as :func:`create_connection`
-       except for ``client_factory`` and returns only the
+       except for `client_factory` and returns only the
        :class:`SSHClientConnection` object rather than a tuple of
        an :class:`SSHClientConnection` and :class:`SSHClient`.
 
@@ -4847,7 +4970,7 @@ def listen(host=None, port=_DEFAULT_PORT, **kwargs):
        This function is a coroutine wrapper around :func:`create_server`
        which can be used when a custom SSHServer instance is not needed.
        It takes all the same arguments as :func:`create_server` except for
-       ``server_factory``.
+       `server_factory`.
 
        When using this call, the following restrictions apply:
 
@@ -4859,12 +4982,12 @@ def listen(host=None, port=_DEFAULT_PORT, **kwargs):
               to this call, as any authentication callbacks will deny other
               authentication attempts. Currently, this allows only public
               key authentication to be used, by passing in the
-              ``authorized_client_keys`` argument.
+              `authorized_client_keys` argument.
 
            3. Only handlers using the streams API are supported and the same
               handlers must be used for all clients. These handlers must
-              be provided in the ``process_factory``, ``session_factory``,
-              and ``sftp_factory`` arguments to this call.
+              be provided in the `process_factory`, `session_factory`,
+              and `sftp_factory` arguments to this call.
 
            4. Any debug messages sent by the client will be ignored.
 

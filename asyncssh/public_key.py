@@ -214,7 +214,7 @@ class SSHKey:
     def get_comment_bytes(self):
         """Return the comment associated with this key as a byte string
 
-           :returns: :class:`bytes` or ``None``
+           :returns: `bytes` or `None`
 
         """
 
@@ -223,11 +223,12 @@ class SSHKey:
     def get_comment(self, encoding='utf-8'):
         """Return the comment associated with this key as a Unicode string
 
-           :param str encoding:
+           :param encoding:
                The encoding to use to decode the comment as a Unicode
                string, defaulting to UTF-8
+           :type encoding: `str`
 
-           :returns: :class:`str` or ``None``
+           :returns: `str` or `None`
 
            :raises: :exc:`UnicodeDecodeError` if the comment cannot be
                     decoded using the specified encoding
@@ -241,10 +242,11 @@ class SSHKey:
 
            :param comment:
                The new comment to associate with this key
-           :param str encoding:
+           :param encoding:
                The Unicode encoding to use to encode the comment,
                defaulting to UTF-8
-           :type comment: :class:`str`, :class:`bytes`, or ``None``
+           :type comment: `str`, `bytes`, or `None`
+           :type encoding: `str`
 
            :raises: :exc:`UnicodeEncodeError` if the comment cannot be
                     encoded using the specified encoding
@@ -377,11 +379,11 @@ class SSHKey:
 
            :param user_key:
                The user's public key.
-           :param str key_id:
+           :param key_id:
                The key identifier associated with this certificate.
-           :param int version: (optional)
+           :param version: (optional)
                The version of certificate to create, defaulting to 1.
-           :param int serial: (optional)
+           :param serial: (optional)
                The serial number of the certificate, defaulting to 0.
            :param principals: (optional)
                The user names this certificate is valid for. By default,
@@ -400,30 +402,38 @@ class SSHKey:
            :param source_address: (optional)
                A list of source addresses and networks for which the
                certificate is valid, defaulting to all addresses.
-           :param bool permit_x11_forwarding: (optional)
+           :param permit_x11_forwarding: (optional)
                Whether or not to allow this user to use X11 forwarding,
-               defaulting to ``True``.
-           :param bool permit_agent_forwarding: (optional)
+               defaulting to `True`.
+           :param permit_agent_forwarding: (optional)
                Whether or not to allow this user to use agent forwarding,
-               defaulting to ``True``.
-           :param bool permit_port_forwarding: (optional)
+               defaulting to `True`.
+           :param permit_port_forwarding: (optional)
                Whether or not to allow this user to use port forwarding,
-               defaulting to ``True``.
-           :param bool permit_pty: (optional)
+               defaulting to `True`.
+           :param permit_pty: (optional)
                Whether or not to allow this user to allocate a
-               pseudo-terminal, defaulting to ``True``.
-           :param bool permit_user_rc: (optional)
+               pseudo-terminal, defaulting to `True`.
+           :param permit_user_rc: (optional)
                Whether or not to run the user rc file when this certificate
-               is used, defaulting to ``True``.
+               is used, defaulting to `True`.
            :param comment:
                The comment to associate with this certificate. By default,
                the comment will be set to the comment currently set on
                user_key.
            :type user_key: :class:`SSHKey`
-           :type principals: list of strings
-           :type force_command: `str` or ``None``
+           :type key_id: `str`
+           :type version: `int`
+           :type serial: `int`
+           :type principals: `list` of `str`
+           :type force_command: `str` or `None`
            :type source_address: list of ip_address and ip_network values
-           :type comment: :class:`str`, :class:`bytes`, or ``None``
+           :type permit_x11_forwarding: `bool`
+           :type permit_agent_forwarding: `bool`
+           :type permit_port_forwarding: `bool`
+           :type permit_pty: `bool`
+           :type permit_user_rc: `bool`
+           :type comment: `str`, `bytes`, or `None`
 
            :returns: :class:`SSHCertificate`
 
@@ -476,11 +486,11 @@ class SSHKey:
 
            :param host_key:
                The host's public key.
-           :param str key_id:
+           :param key_id:
                The key identifier associated with this certificate.
-           :param int version: (optional)
+           :param version: (optional)
                The version of certificate to create, defaulting to 1.
-           :param int serial: (optional)
+           :param serial: (optional)
                The serial number of the certificate, defaulting to 0.
            :param principals: (optional)
                The host names this certificate is valid for. By default,
@@ -498,8 +508,11 @@ class SSHKey:
                the comment will be set to the comment currently set on
                host_key.
            :type host_key: :class:`SSHKey`
-           :type principals: list of strings
-           :type comment: :class:`str`, :class:`bytes`, or ``None``
+           :type key_id: `str`
+           :type version: `int`
+           :type serial: `int`
+           :type principals: `list` of `str`
+           :type comment: `str`, `bytes`, or `None`
 
            :returns: :class:`SSHCertificate`
 
@@ -529,15 +542,15 @@ class SSHKey:
 
            :param user_key:
                The user's public key.
-           :param str subject:
+           :param subject:
                The subject name in the certificate, expresed as a
-               comma-separated list of X.509 ``name=value`` pairs.
-           :param str issuer: (optional)
+               comma-separated list of X.509 `name=value` pairs.
+           :param issuer: (optional)
                The issuer name in the certificate, expresed as a
-               comma-separated list of X.509 ``name=value`` pairs. If
+               comma-separated list of X.509 `name=value` pairs. If
                not specified, the subject name will be used, creating
                a self-signed certificate.
-           :param int serial: (optional)
+           :param serial: (optional)
                The serial number of the certificate, defaulting to a random
                64-bit value.
            :param principals: (optional)
@@ -552,10 +565,10 @@ class SSHKey:
                no restriction on when the certificate stops being valid.
                See :ref:`SpecifyingTimeValues` for allowed time specifications.
            :param purposes: (optional)
-               The allowed purposes for this certificate or ``None`` to
+               The allowed purposes for this certificate or `None` to
                not restrict the certificate's purpose, defaulting to
                'secureShellClient'
-           :param str hash_alg: (optional)
+           :param hash_alg: (optional)
                The hash algorithm to use when signing the new certificate,
                defaulting to SHA256.
            :param comment: (optional)
@@ -563,9 +576,13 @@ class SSHKey:
                the comment will be set to the comment currently set on
                user_key.
            :type user_key: :class:`SSHKey`
-           :type principals: list of strings
-           :type purposes: list of strings or ``None``
-           :type comment: :class:`str`, :class:`bytes`, or ``None``
+           :type subject: `str`
+           :type issuer: `str`
+           :type serial: `int`
+           :type principals: `list` of `str`
+           :type purposes: `list` of `str` or `None`
+           :type hash_alg: `str`
+           :type comment: `str`, `bytes`, or `None`
 
            :returns: :class:`SSHCertificate`
 
@@ -597,15 +614,15 @@ class SSHKey:
 
            :param host_key:
                The host's public key.
-           :param str subject:
+           :param subject:
                The subject name in the certificate, expresed as a
-               comma-separated list of X.509 ``name=value`` pairs.
-           :param str issuer: (optional)
+               comma-separated list of X.509 `name=value` pairs.
+           :param issuer: (optional)
                The issuer name in the certificate, expresed as a
-               comma-separated list of X.509 ``name=value`` pairs. If
+               comma-separated list of X.509 `name=value` pairs. If
                not specified, the subject name will be used, creating
                a self-signed certificate.
-           :param int serial: (optional)
+           :param serial: (optional)
                The serial number of the certificate, defaulting to a random
                64-bit value.
            :param principals: (optional)
@@ -620,10 +637,10 @@ class SSHKey:
                no restriction on when the certificate stops being valid.
                See :ref:`SpecifyingTimeValues` for allowed time specifications.
            :param purposes: (optional)
-               The allowed purposes for this certificate or ``None`` to
+               The allowed purposes for this certificate or `None` to
                not restrict the certificate's purpose, defaulting to
                'secureShellServer'
-           :param str hash_alg: (optional)
+           :param hash_alg: (optional)
                The hash algorithm to use when signing the new certificate,
                defaulting to SHA256.
            :param comment: (optional)
@@ -631,9 +648,13 @@ class SSHKey:
                the comment will be set to the comment currently set on
                host_key.
            :type host_key: :class:`SSHKey`
-           :type principals: list of strings
-           :type purposes: list of strings or ``None``
-           :type comment: :class:`str`, :class:`bytes`, or ``None``
+           :type subject: `str`
+           :type issuer: `str`
+           :type serial: `int`
+           :type principals: `list` of `str`
+           :type purposes: `list` of `str` or `None`
+           :type hash_alg: `str`
+           :type comment: `str`, `bytes`, or `None`
 
            :returns: :class:`SSHCertificate`
 
@@ -663,15 +684,15 @@ class SSHKey:
 
            :param ca_key:
                The new CA's public key.
-           :param str subject:
+           :param subject:
                The subject name in the certificate, expresed as a
-               comma-separated list of X.509 ``name=value`` pairs.
-           :param str issuer: (optional)
+               comma-separated list of X.509 `name=value` pairs.
+           :param issuer: (optional)
                The issuer name in the certificate, expresed as a
-               comma-separated list of X.509 ``name=value`` pairs. If
+               comma-separated list of X.509 `name=value` pairs. If
                not specified, the subject name will be used, creating
                a self-signed certificate.
-           :param int serial: (optional)
+           :param serial: (optional)
                The serial number of the certificate, defaulting to a random
                64-bit value.
            :param valid_after: (optional)
@@ -684,9 +705,9 @@ class SSHKey:
                See :ref:`SpecifyingTimeValues` for allowed time specifications.
            :param ca_path_len: (optional)
                The maximum number of levels of intermediate CAs allowed
-               below this new CA or ``None`` to not enforce a limit,
+               below this new CA or `None` to not enforce a limit,
                defaulting to no limit.
-           :param str hash_alg: (optional)
+           :param hash_alg: (optional)
                The hash algorithm to use when signing the new certificate,
                defaulting to SHA256.
            :param comment: (optional)
@@ -694,8 +715,12 @@ class SSHKey:
                the comment will be set to the comment currently set on
                ca_key.
            :type ca_key: :class:`SSHKey`
-           :type ca_path_len: `int` or ``None``
-           :type comment: :class:`str`, :class:`bytes`, or ``None``
+           :type subject: `str`
+           :type issuer: `str`
+           :type serial: `int`
+           :type ca_path_len: `int` or `None`
+           :type hash_alg: `str`
+           :type comment: `str`, `bytes`, or `None`
 
            :returns: :class:`SSHCertificate`
 
@@ -768,20 +793,26 @@ class SSHKey:
                      to 8192 total iterations, which is the equivalent of
                      a bcrypt cost factor of 13.
 
-           :param str format_name: (optional)
+           :param format_name: (optional)
                The format to export the key in.
-           :param str passphrase: (optional)
+           :param passphrase: (optional)
                A passphrase to encrypt the private key with.
-           :param str cipher_name: (optional)
+           :param cipher_name: (optional)
                The cipher to use for private key encryption.
-           :param str hash_name: (optional)
+           :param hash_name: (optional)
                The hash to use for private key encryption.
-           :param int pbe_version: (optional)
+           :param pbe_version: (optional)
                The PBE version to use for private key encryption.
-           :param int rounds: (optional)
+           :param rounds: (optional)
                The number of KDF rounds to apply to the passphrase.
+           :type format_name: `str`
+           :type passphrase: `str` or `bytes`
+           :type cipher_name: `str`
+           :type hash_name: `str`
+           :type pbe_version: `int`
+           :type rounds: `int`
 
-           :returns: :class:`bytes` representing the exported private key
+           :returns: `bytes` representing the exported private key
 
         """
 
@@ -901,10 +932,11 @@ class SSHKey:
 
            By default, openssh format will be used.
 
-           :param str format_name: (optional)
+           :param format_name: (optional)
                The format to export the key in.
+           :type format_name: `str`
 
-           :returns: :class:`bytes` representing the exported public key
+           :returns: `bytes` representing the exported public key
 
         """
 
@@ -959,11 +991,12 @@ class SSHKey:
            This method is a simple wrapper around :meth:`export_private_key`
            which writes the exported key data to a file.
 
-           :param str filename:
+           :param filename:
                The filename to write the private key to.
            :param \\*args,\\ \\*\\*kwargs:
                Additional arguments to pass through to
                :meth:`export_private_key`.
+           :type filename: `str`
 
         """
 
@@ -976,11 +1009,12 @@ class SSHKey:
            This method is a simple wrapper around :meth:`export_public_key`
            which writes the exported key data to a file.
 
-           :param str filename:
+           :param filename:
                The filename to write the public key to.
            :param \\*args,\\ \\*\\*kwargs:
                Additional arguments to pass through to
                :meth:`export_public_key`.
+           :type filename: `str`
 
         """
 
@@ -993,11 +1027,12 @@ class SSHKey:
            This method is a simple wrapper around :meth:`export_private_key`
            which appends the exported key data to an existing file.
 
-           :param str filename:
+           :param filename:
                The filename to append the private key to.
            :param \\*args,\\ \\*\\*kwargs:
                Additional arguments to pass through to
                :meth:`export_private_key`.
+           :type filename: `str`
 
         """
 
@@ -1010,11 +1045,12 @@ class SSHKey:
            This method is a simple wrapper around :meth:`export_public_key`
            which appends the exported key data to an existing file.
 
-           :param str filename:
+           :param filename:
                The filename to append the public key to.
            :param \\*args,\\ \\*\\*kwargs:
                Additional arguments to pass through to
                :meth:`export_public_key`.
+           :type filename: `str`
 
         """
 
@@ -1053,7 +1089,7 @@ class SSHCertificate:
         """Return the comment associated with this certificate as a
            byte string
 
-           :returns: :class:`bytes` or ``None``
+           :returns: `bytes` or `None`
 
         """
 
@@ -1063,11 +1099,12 @@ class SSHCertificate:
         """Return the comment associated with this certificate as a
            Unicode string
 
-           :param str encoding:
+           :param encoding:
                The encoding to use to decode the comment as a Unicode
                string, defaulting to UTF-8
+           :type encoding: `str`
 
-           :returns: :class:`str` or ``None``
+           :returns: `str` or `None`
 
            :raises: :exc:`UnicodeDecodeError` if the comment cannot be
                     decoded using the specified encoding
@@ -1081,10 +1118,11 @@ class SSHCertificate:
 
            :param comment:
                The new comment to associate with this key
-           :param str encoding:
+           :param encoding:
                The Unicode encoding to use to encode the comment,
                defaulting to UTF-8
-           :type comment: :class:`str`, :class:`bytes`, or ``None``
+           :type comment: `str`, `bytes`, or `None`
+           :type encoding: `str`
 
            :raises: :exc:`UnicodeEncodeError` if the comment cannot be
                     encoded using the specified encoding
@@ -1106,10 +1144,11 @@ class SSHCertificate:
 
            By default, OpenSSH format will be used.
 
-           :param str format_name: (optional)
+           :param format_name: (optional)
                The format to export the certificate in.
+           :type format_name: `str`
 
-           :returns: :class:`bytes` representing the exported certificate
+           :returns: `bytes` representing the exported certificate
 
         """
 
@@ -1154,11 +1193,12 @@ class SSHCertificate:
            This function is a simple wrapper around export_certificate
            which writes the exported certificate to a file.
 
-           :param str filename:
+           :param filename:
                The filename to write the certificate to.
            :param \\*args,\\ \\*\\*kwargs:
                Additional arguments to pass through to
                :meth:`export_certificate`.
+           :type filename: `str`
 
         """
 
@@ -1171,11 +1211,12 @@ class SSHCertificate:
            This function is a simple wrapper around export_certificate
            which appends the exported certificate to an existing file.
 
-           :param str filename:
+           :param filename:
                The filename to append the certificate to.
            :param \\*args,\\ \\*\\*kwargs:
                Additional arguments to pass through to
                :meth:`export_certificate`.
+           :type filename: `str`
 
         """
 
@@ -1663,7 +1704,7 @@ class SSHKeyPair:
         """Return the comment associated with this key pair as a
            byte string
 
-           :returns: :class:`bytes` or ``None``
+           :returns: `bytes` or `None`
 
         """
 
@@ -1673,11 +1714,12 @@ class SSHKeyPair:
         """Return the comment associated with this key pair as a
            Unicode string
 
-           :param str encoding:
+           :param encoding:
                The encoding to use to decode the comment as a Unicode
                string, defaulting to UTF-8
+           :type encoding: `str`
 
-           :returns: :class:`str` or ``None``
+           :returns: `str` or `None`
 
            :raises: :exc:`UnicodeDecodeError` if the comment cannot be
                     decoded using the specified encoding
@@ -1691,10 +1733,11 @@ class SSHKeyPair:
 
            :param comment:
                The new comment to associate with this key
-           :param str encoding:
+           :param encoding:
                The Unicode encoding to use to encode the comment,
                defaulting to UTF-8
-           :type comment: :class:`str`, :class:`bytes`, or ``None``
+           :type comment: `str`, `bytes`, or `None`
+           :type encoding: `str`
 
            :raises: :exc:`UnicodeEncodeError` if the comment cannot be
                     encoded using the specified encoding
@@ -2366,9 +2409,9 @@ def generate_private_key(alg_name, comment=None, **kwargs):
        For ssh-dss, no parameters are supported. The key size is fixed at
        1024 bits due to the use of SHA1 signatures.
 
-       For ssh-rsa, the key size can be specified using the ``key_size``
+       For ssh-rsa, the key size can be specified using the `key_size`
        parameter, and the RSA public exponent can be changed using the
-       ``exponent`` parameter. By default, generated keys are 2048 bits
+       `exponent` parameter. By default, generated keys are 2048 bits
        with a public exponent of 65537.
 
        For ecdsa, the curve to use is part of the SSH algorithm name
@@ -2377,15 +2420,18 @@ def generate_private_key(alg_name, comment=None, **kwargs):
        For ssh-ed25519, no parameters are supported. The key size is fixed
        by the algorithm at 256 bits.
 
-       :param str alg_name:
+       :param alg_name:
            The SSH algorithm name corresponding to the desired type of key.
        :param comment: (optional)
            A comment to associate with this key.
-       :param int key_size: (optional)
+       :param key_size: (optional)
            The key size in bits for RSA keys.
-       :param int exponent: (optional)
+       :param exponent: (optional)
            The public exponent for RSA keys.
-       :type comment: :class:`str`, :class:`bytes`, or ``None``
+       :type alg_name: `str`
+       :type comment: `str`, `bytes`, or `None`
+       :type key_size: `int`
+       :type exponent: `int`
 
        :returns: An :class:`SSHKey` private key
 
@@ -2416,9 +2462,10 @@ def import_private_key(data, passphrase=None):
 
        :param data:
            The data to import.
-       :param str passphrase: (optional)
+       :param passphrase: (optional)
            The passphrase to use to decrypt the key.
-       :type data: bytes or ASCII string
+       :type data: `bytes` or ASCII `str`
+       :type passphrase: `str` or `bytes`
 
        :returns: An :class:`SSHKey` private key
 
@@ -2471,7 +2518,7 @@ def import_public_key(data):
 
        :param data:
            The data to import.
-       :type data: bytes or ASCII string
+       :type data: `bytes` or ASCII `str`
 
        :returns: An :class:`SSHKey` public key
 
@@ -2514,7 +2561,7 @@ def import_certificate(data):
 
        :param data:
            The data to import.
-       :type data: bytes or ASCII string
+       :type data: `bytes` or ASCII `str`
 
        :returns: An :class:`SSHCertificate` object
 
@@ -2569,10 +2616,12 @@ def read_private_key(filename, passphrase=None):
        :func:`import_private_key` for information about the formats
        supported.
 
-       :param str filename:
+       :param filename:
            The file to read the key from.
-       :param str passphrase: (optional)
+       :param passphrase: (optional)
            The passphrase to use to decrypt the key.
+       :type filename: `str`
+       :type passphrase: `str` or `bytes`
 
        :returns: An :class:`SSHKey` private key
 
@@ -2606,8 +2655,9 @@ def read_public_key(filename):
        :func:`import_public_key` for information about the formats
        supported.
 
-       :param str filename:
+       :param filename:
            The file to read the key from.
+       :type filename: `str`
 
        :returns: An :class:`SSHKey` public key
 
@@ -2629,8 +2679,9 @@ def read_certificate(filename):
        function :func:`import_certificate` for information about the
        formats supported.
 
-       :param str filename:
+       :param filename:
            The file to read the certificate from.
+       :type filename: `str`
 
        :returns: An :class:`SSHCertificate` object
 
@@ -2648,10 +2699,12 @@ def read_private_key_list(filename, passphrase=None):
        formats supported. If any of the keys are encrypted, they must
        all be encrypted with the same passphrase.
 
-       :param str filename:
+       :param filename:
            The file to read the keys from.
-       :param str passphrase: (optional)
+       :param passphrase: (optional)
            The passphrase to use to decrypt the keys.
+       :type filename: `str`
+       :type passphrase: `str` or `bytes`
 
        :returns: A list of :class:`SSHKey` private keys
 
@@ -2689,8 +2742,9 @@ def read_public_key_list(filename):
        function :func:`import_public_key` for information about the
        formats supported.
 
-       :param str filename:
+       :param filename:
            The file to read the keys from.
+       :type filename: `str`
 
        :returns: A list of :class:`SSHKey` public keys
 
@@ -2746,8 +2800,9 @@ def read_certificate_list(filename):
        the function :func:`import_certificate` for information about
        the formats supported.
 
-       :param str filename:
+       :param filename:
            The file to read the certificates from.
+       :type filename: `str`
 
        :returns: A list of :class:`SSHCertificate` certificates
 
@@ -2794,9 +2849,10 @@ def load_keypairs(keylist, passphrase=None):
 
        :param keylist:
            The list of private keys and certificates to load.
-       :param str passphrase: (optional)
+       :param passphrase: (optional)
            The passphrase to use to decrypt private keys.
        :type keylist: *see* :ref:`SpecifyingPrivateKeys`
+       :type passphrase: `str` or `bytes`
 
        :returns: A list of :class:`SSHKeyPair` objects
 

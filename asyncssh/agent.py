@@ -290,17 +290,19 @@ class SSHAgentClient:
                :file:`.ssh/id_ed25519-cert.pub`,
                :file:`.ssh/id_ecdsa-cert.pub`, :file:`.ssh/id_rsa-cert.pub`,
                and :file:`.ssh/id_dsa-cert.pub`.
-           :param str passphrase: (optional)
+           :param passphrase: (optional)
                The passphrase to use to decrypt the keys.
            :param lifetime: (optional)
                The time in seconds after which the keys should be
-               automatically deleted, or ``None`` to store these keys
+               automatically deleted, or `None` to store these keys
                indefinitely (the default).
-           :param bool confirm: (optional)
+           :param confirm: (optional)
                Whether or not to require confirmation for each private
-               key operation which uses these keys, defaulting to ``False``.
+               key operation which uses these keys, defaulting to `False`.
            :type keylist: *see* :ref:`SpecifyingPrivateKeys`
-           :type lifetime: `int` or ``None``
+           :type passphrase: `str`
+           :type lifetime: `int` or `None`
+           :type confirm: `bool`
 
            :raises: :exc:`ValueError` if the keys cannot be added
 
@@ -335,19 +337,21 @@ class SSHAgentClient:
                            lifetime=None, confirm=False):
         """Store keys associated with a smart card in the agent
 
-           :param str provider:
+           :param provider:
                The name of the smart card provider
            :param pin: (optional)
                The PIN to use to unlock the smart card
            :param lifetime: (optional)
                The time in seconds after which the keys should be
-               automatically deleted, or ``None`` to store these keys
+               automatically deleted, or `None` to store these keys
                indefinitely (the default).
-           :param bool confirm: (optional)
+           :param confirm: (optional)
                Whether or not to require confirmation for each private
-               key operation which uses these keys, defaulting to ``False``.
-           :type pin: `str` or ``None``
-           :type lifetime: `int` or ``None``
+               key operation which uses these keys, defaulting to `False`.
+           :type provider: `str`
+           :type pin: `str` or `None`
+           :type lifetime: `int` or `None`
+           :type confirm: `bool`
 
            :raises: :exc:`ValueError` if the keys cannot be added
 
@@ -374,7 +378,7 @@ class SSHAgentClient:
 
            :param keylist:
                The list of keys to remove.
-           :type keylist: list of :class:`SSHKeyPair`
+           :type keylist: `list` of :class:`SSHKeyPair`
 
            :raises: :exc:`ValueError` if any keys are not found
 
@@ -396,11 +400,12 @@ class SSHAgentClient:
     def remove_smartcard_keys(self, provider, pin=None):
         """Remove keys associated with a smart card stored in the agent
 
-           :param str provider:
+           :param provider:
                The name of the smart card provider
            :param pin: (optional)
                The PIN to use to unlock the smart card
-           :type pin: `str` or ``None``
+           :type provider: `str`
+           :type pin: `str` or `None`
 
            :raises: :exc:`ValueError` if the keys are not found
 
@@ -439,8 +444,9 @@ class SSHAgentClient:
     def lock(self, passphrase):
         """Lock the agent using the specified passphrase
 
-           :param str passphrase:
+           :param passphrase:
                The passphrase required to later unlock the agent
+           :type passphrase: `str`
 
            :raises: :exc:`ValueError` if the agent can't be locked
 
@@ -460,8 +466,9 @@ class SSHAgentClient:
     def unlock(self, passphrase):
         """Unlock the agent using the specified passphrase
 
-           :param str passphrase:
+           :param passphrase:
                The passphrase to use to unlock the agent
+           :type passphrase: `str`
 
            :raises: :exc:`ValueError` if the agent can't be unlocked
 
@@ -524,15 +531,15 @@ def connect_agent(agent_path=None, *, loop=None):
     """Make a connection to the SSH agent
 
        This function attempts to connect to an ssh-agent process
-       listening on a UNIX domain socket at ``agent_path``. If not
-       provided, it will attempt to get the path from the ``SSH_AUTH_SOCK``
+       listening on a UNIX domain socket at `agent_path`. If not
+       provided, it will attempt to get the path from the `SSH_AUTH_SOCK`
        environment variable.
 
-       If the connection is successful, an ``SSHAgentClient`` object
+       If the connection is successful, an :class:`SSHAgentClient` object
        is returned that has methods on it you can use to query the
        ssh-agent. If no path is specified and the environment variable
        is not set or the connection to the agent fails, this function
-       returns ``None``.
+       returns `None`.
 
        :param agent_path: (optional)
            The path to use to contact the ssh-agent process, or the
@@ -541,9 +548,10 @@ def connect_agent(agent_path=None, *, loop=None):
        :param loop: (optional)
            The event loop to use when creating the connection. If not
            specified, the default event loop is used.
-       :type agent_path: str or :class:`SSHServerConnection`
+       :type agent_path: `str` or :class:`SSHServerConnection`
+       :type loop: :class:`AbstractEventLoop <asyncio.AbstractEventLoop>`
 
-       :returns: An :class:`SSHAgentClient` or ``None``
+       :returns: An :class:`SSHAgentClient` or `None`
 
     """
 

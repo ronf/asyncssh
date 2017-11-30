@@ -635,16 +635,16 @@ class SSHChannel(SSHPacketHandler):
         """Get additional information about the channel
 
            This method returns extra information about the channel once
-           it is established. Supported values include ``'connection'``
+           it is established. Supported values include `'connection'`
            to return the SSH connection this channel is running over plus
            all of the values supported on that connection.
 
-           For TCP channels, the values ``'local_peername'`` and
-           ``'remote_peername'`` are added to return the local and remote
+           For TCP channels, the values `'local_peername'` and
+           `'remote_peername'` are added to return the local and remote
            host and port information for the tunneled TCP connection.
 
-           For UNIX channels, the values ``'local_peername'`` and
-           ``'remote_peername'`` are added to return the local and remote
+           For UNIX channels, the values `'local_peername'` and
+           `'remote_peername'` are added to return the local and remote
            path information for the tunneled UNIX domain socket connection.
            Since UNIX domain sockets provide no "source" address, only
            one of these will be filled in.
@@ -660,7 +660,7 @@ class SSHChannel(SSHPacketHandler):
     def can_write_eof(self):
         """Return whether the channel supports :meth:`write_eof`
 
-           This method always returns ``True``.
+           This method always returns `True`.
 
         """
 
@@ -681,10 +681,12 @@ class SSHChannel(SSHPacketHandler):
         """Set the high- and low-water limits for write flow control
 
            This method sets the limits used when deciding when to call
-           the ``pause_writing()`` and ``resume_writing()`` methods on
-           SSH sessions. Writing will be paused when the write buffer
-           size exceeds the high-water mark, and resumed when the
+           the :meth:`pause_writing() <SSHClientSession.pause_writing>`
+           and :meth:`resume_writing() <SSHClientSession.resume_writing>`
+           methods on SSH sessions. Writing will be paused when the write
+           buffer size exceeds the high-water mark, and resumed when the
            write buffer size equals or drops below the low-water mark.
+
         """
 
         if high is None:
@@ -712,14 +714,15 @@ class SSHChannel(SSHPacketHandler):
 
            An extended data type can optionally be provided. For
            instance, this is used from a :class:`SSHServerSession`
-           to write data to ``stderr``.
+           to write data to `stderr`.
 
            :param data:
                The data to send on the channel
-           :param int datatype: (optional)
+           :param datatype: (optional)
                The extended data type of the data, from :ref:`extended
                data types <ExtendedDataTypes>`
-           :type data: str or bytes
+           :type data: `str` or `bytes`
+           :type datatype: `int`
 
            :raises: :exc:`OSError` if the channel isn't open for sending
                     or the extended data type is not valid for this type
@@ -752,10 +755,11 @@ class SSHChannel(SSHPacketHandler):
 
            :param list_of_data:
                The data to send on the channel
-           :param int datatype: (optional)
+           :param datatype: (optional)
                The extended data type of the data, from :ref:`extended
                data types <ExtendedDataTypes>`
-           :type list_of_data: iterable of str or bytes objects
+           :type list_of_data: iterable of `str` or `bytes`
+           :type datatype: `int`
 
            :raises: :exc:`OSError` if the channel isn't open for sending
                     or the extended data type is not valid for this type
@@ -840,7 +844,7 @@ class SSHChannel(SSHPacketHandler):
            This method returns the command the client requested to
            execute when the session was opened, if any. If the client
            did not request that a command be executed, this method
-           will return ``None``. On the server, alls to this method
+           will return `None`. On the server, alls to this method
            should only be made after :meth:`session_started
            <SSHServerSession.session_started>` has been called on the
            :class:`SSHServerSession`. When using the stream-based API,
@@ -857,7 +861,7 @@ class SSHChannel(SSHPacketHandler):
            This method returns the subsystem the client requested to
            open when the session was opened, if any. If the client
            did not request that a subsystem be opened, this method will
-           return ``None``. On the server, calls to this method should
+           return `None`. On the server, calls to this method should
            only be made after :meth:`session_started
            <SSHServerSession.session_started>` has been called on the
            :class:`SSHServerSession`. When using the stream-based API,
@@ -1027,7 +1031,7 @@ class SSHClientChannel(SSHChannel):
            been sent. If an exit signal was received, this method
            returns -1 and the exit signal information can be collected
            by calling :meth:`get_exit_signal`. If neither has been sent,
-           this method returns ``None``.
+           this method returns `None`.
 
         """
 
@@ -1045,7 +1049,7 @@ class SSHClientChannel(SSHChannel):
            this session. If an exit signal was sent, a tuple is returned
            containing the signal name, a boolean for whether a core dump
            occurred, a message associated with the signal, and the language
-           the message was in. If no exit signal was sent, ``None`` is
+           the message was in. If no exit signal was sent, `None` is
            returned.
 
         """
@@ -1058,14 +1062,18 @@ class SSHClientChannel(SSHChannel):
            This method changes the width and height of the terminal
            associated with this session.
 
-           :param int width:
+           :param width:
                The width of the terminal in characters
-           :param int height:
+           :param height:
                The height of the terminal in characters
-           :param int pixwidth: (optional)
+           :param pixwidth: (optional)
                The width of the terminal in pixels
-           :param int pixheight: (optional)
+           :param pixheight: (optional)
                The height of the terminal in pixels
+           :type width: `int`
+           :type height: `int`
+           :type pixwidth: `int`
+           :type pixheight: `int`
 
         """
 
@@ -1079,8 +1087,9 @@ class SSHClientChannel(SSHChannel):
            operation on the remote process or service as described in
            :rfc:`4335`.
 
-           :param int msec:
+           :param msec:
                The duration of the break in milliseconds
+           :type msec: `int`
 
            :raises: :exc:`OSError` if the channel is not open
 
@@ -1104,8 +1113,9 @@ class SSHClientChannel(SSHChannel):
 
                      __ https://bugzilla.mindrot.org/show_bug.cgi?id=1424
 
-           :param str signal:
+           :param signal:
                The signal to deliver
+           :type signal: `str`
 
            :raises: :exc:`OSError` if the channel is not open
 
@@ -1117,7 +1127,7 @@ class SSHClientChannel(SSHChannel):
         """Terminate the remote process
 
            This method can be called to terminate the remote process or
-           service by sending it a ``TERM`` signal.
+           service by sending it a `TERM` signal.
 
            :raises: :exc:`OSError` if the channel is not open
 
@@ -1129,7 +1139,7 @@ class SSHClientChannel(SSHChannel):
         """Forcibly kill the remote process
 
            This method can be called to forcibly stop the remote process
-           or service by sending it a ``KILL`` signal.
+           or service by sending it a `KILL` signal.
 
            :raises: :exc:`OSError` if the channel is not open
 
@@ -1376,14 +1386,14 @@ class SSHServerChannel(SSHChannel):
 
            This method returns the terminal type set by the client
            when the session was opened. If the client didn't request
-           a pseudo-terminal, this method will return ``None``. Calls
+           a pseudo-terminal, this method will return `None`. Calls
            to this method should only be made after :meth:`session_started
            <SSHServerSession.session_started>` has been called on the
            :class:`SSHServerSession`. When using the stream-based API,
            calls to this can be made at any time after the handler
            function has started up.
 
-           :returns: A str containing the terminal type or ``None`` if
+           :returns: A `str` containing the terminal type or `None` if
                      no pseudo-terminal was requested
 
         """
@@ -1407,7 +1417,7 @@ class SSHServerChannel(SSHChannel):
            :exc:`TerminalSizeChanged` exception for how to get notified
            when the terminal size changes.
 
-           :returns: A tuple of four integers containing the width and
+           :returns: A tuple of four `int` values containing the width and
                      height of the terminal in characters and the width
                      and height of the terminal in pixels
 
@@ -1421,19 +1431,20 @@ class SSHServerChannel(SSHChannel):
            This method looks up the value of a POSIX terminal mode
            set by the client when the session was opened. If the client
            didn't request a pseudo-terminal or didn't set the requested
-           TTY mode opcode, this method will return ``None``. Calls to
+           TTY mode opcode, this method will return `None`. Calls to
            this method should only be made after :meth:`session_started
            <SSHServerSession.session_started>` has been called on the
            :class:`SSHServerSession`. When using the stream-based API,
            calls to this can be made at any time after the handler
            function has started up.
 
-           :param int mode:
+           :param mode:
                POSIX terminal mode taken from :ref:`POSIX terminal modes
                <PTYModes>` to look up
+           :type mode: `int`
 
-           :returns: An int containing the value of the requested
-                     POSIX terminal mode or ``None`` if the requested
+           :returns: An `int` containing the value of the requested
+                     POSIX terminal mode or `None` if the requested
                      mode was not set
 
         """
@@ -1446,9 +1457,9 @@ class SSHServerChannel(SSHChannel):
            When X11 forwarding has been requested by the client, this
            method returns the X11 display which should be used to open
            a forwarded connection. If the client did not request X11
-           forwarding, this method returns ``None``.
+           forwarding, this method returns `None`.
 
-           :returns: A str containing the X11 display or ``None`` if
+           :returns: A `str` containing the X11 display or `None` if
                      X11 fowarding was not requested
 
         """
@@ -1462,10 +1473,10 @@ class SSHServerChannel(SSHChannel):
            this method returns the path of the listening socket which
            should be used to open a forwarded agent connection. If the
            client did not request agent forwarding, this method returns
-           ``None``.
+           `None`.
 
-           :returns: A str containing the ssh-agent socket path or
-                     ``None`` if agent fowarding was not requested
+           :returns: A `str` containing the ssh-agent socket path or
+                     `None` if agent fowarding was not requested
 
         """
 
@@ -1478,12 +1489,13 @@ class SSHServerChannel(SSHChannel):
            to enable XON/XOFF flow control, indicating that it should
            intercept Control-S and Control-Q coming from its local
            terminal to pause and resume output, respectively.
-           Applications should set client_can_do to ``True`` to
-           enable this functionality or to ``False`` to tell the client
+           Applications should set client_can_do to `True` to
+           enable this functionality or to `False` to tell the client
            to forward Control-S and Control-Q through as normal input.
 
-           :param bool client_can_do:
+           :param client_can_do:
                Whether or not the client should enable XON/XOFF flow control
+           :type client_can_do: `bool`
 
         """
 
@@ -1500,7 +1512,7 @@ class SSHServerChannel(SSHChannel):
 
            :param data:
                The data to send to stderr
-           :type data: str or bytes
+           :type data: `str` or `bytes`
 
            :raises: :exc:`OSError` if the channel isn't open for sending
 
@@ -1528,8 +1540,9 @@ class SSHServerChannel(SSHChannel):
            successful. After reporting the status, the channel is
            closed.
 
-           :param int status:
+           :param status:
                The exit status to report to the client
+           :type status: `int`
 
            :raises: :exc:`OSError` if the channel isn't open
 
@@ -1549,14 +1562,18 @@ class SSHServerChannel(SSHChannel):
            of whether or not the process dumped core. After
            reporting the signal, the channel is closed.
 
-           :param str signal:
+           :param signal:
                The signal which caused the process to exit
-           :param bool core_dumped: (optional)
+           :param core_dumped: (optional)
                Whether or not the process dumped core
-           :param str msg: (optional)
+           :param msg: (optional)
                Details about what error occurred
-           :param str lang: (optional)
+           :param lang: (optional)
                The language the error message is in
+           :type signal: `str`
+           :type core_dumped: `bool`
+           :type msg: `str`
+           :type lang: `str`
 
            :raises: :exc:`OSError` if the channel isn't open
 

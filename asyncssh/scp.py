@@ -661,16 +661,16 @@ def scp(srcpaths, dstpath=None, *, preserve=False, recurse=False,
 
        This function is a coroutine which copies one or more files or
        directories using the SCP protocol. Source and destination paths
-       can be string or bytes values to reference local files or can be
-       a tuple of the form ``(conn, path)`` where ``conn`` is an open
+       can be `str` or `bytes` values to reference local files or can be
+       a tuple of the form `(conn, path)` where `conn` is an open
        :class:`SSHClientConnection` to reference files and directories
        on a remote system.
 
-       For convenience, a host name or tuple of the form ``(host, port)``
+       For convenience, a host name or tuple of the form `(host, port)`
        can be provided in place of the :class:`SSHClientConnection` to
        request that a new SSH connection be opened to a host using
-       default connect arguments. A string or bytes value of the form
-       ``'host:path'`` may also be used in place of the ``(conn, path)``
+       default connect arguments. A `str` or `bytes` value of the form
+       `'host:path'` may also be used in place of the `(conn, path)`
        tuple to make a new connection to the requested host on the
        default SSH port.
 
@@ -692,7 +692,7 @@ def scp(srcpaths, dstpath=None, *, preserve=False, recurse=False,
        a path or the path provided is empty, files are copied into the
        default destination working directory.
 
-       If preserve is ``True``, the access and modification times and
+       If preserve is `True`, the access and modification times and
        permissions of the original files and directories are set on the
        copied files. However, do to the timing of when this information
        is sent, the preserved access time will be what was set on the
@@ -700,7 +700,7 @@ def scp(srcpaths, dstpath=None, *, preserve=False, recurse=False,
        source file will no longer match the destination after the
        transfer completes.
 
-       If recurse is ``True`` and the source path points at a directory,
+       If recurse is `True` and the source path points at a directory,
        the entire subtree under that directory is copied.
 
        Symbolic links found on the source will have the contents of their
@@ -717,14 +717,14 @@ def scp(srcpaths, dstpath=None, *, preserve=False, recurse=False,
        block of a file is successfully copied. The arguments passed to
        this handler will be the relative path of the file being copied,
        bytes copied so far, and total bytes in the file being copied. If
-       multiple source paths are provided or recurse is set to ``True``,
+       multiple source paths are provided or recurse is set to `True`,
        the progress_handler will be called consecutively on each file
        being copied.
 
        If error_handler is specified and an error occurs during the copy,
        this handler will be called with the exception instead of it being
        raised. This is intended to primarily be used when multiple source
-       paths are provided or when recurse is set to ``True``, to allow
+       paths are provided or when recurse is set to `True`, to allow
        error information to be collected without aborting the copy of the
        remaining files. The error handler can raise an exception if it
        wants the copy to completely stop. Otherwise, after an error, the
@@ -734,16 +734,21 @@ def scp(srcpaths, dstpath=None, *, preserve=False, recurse=False,
            The paths of the source files or directories to copy
        :param dstpath: (optional)
            The path of the destination file or directory to copy into
-       :param bool preserve: (optional)
+       :param preserve: (optional)
            Whether or not to preserve the original file attributes
-       :param bool recurse: (optional)
+       :param recurse: (optional)
            Whether or not to recursively copy directories
-       :param int block_size: (optional)
+       :param block_size: (optional)
            The block size to use for file reads and writes
-       :param callable progress_handler: (optional)
+       :param progress_handler: (optional)
            The function to call to report copy progress
-       :param callable error_handler: (optional)
+       :param error_handler: (optional)
            The function to call when an error occurs
+       :type preserve: `bool`
+       :type recurse: `bool`
+       :type block_size: `int`
+       :type progress_handler: `callable`
+       :type error_handler: `callable`
 
        :raises: | :exc:`OSError` if a local file I/O error occurs
                 | :exc:`SFTPError` if the server returns an error

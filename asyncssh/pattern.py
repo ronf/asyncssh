@@ -67,7 +67,7 @@ class _PatternList:
 
        This class is a base class for building a pattern matcher that
        takes a set of comma-separated positive and negative patterns,
-       returning ``True`` if one or more positive patterns match and
+       returning `True` if one or more positive patterns match and
        no negative ones do.
 
        The pattern matching is done by objects returned by the

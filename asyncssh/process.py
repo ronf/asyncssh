@@ -329,28 +329,28 @@ class ProcessError(Error):
        addition to the usual error code, reason, and language, it
        contains the following fields:
 
-         ============ ======================================= ================
+         ============ ======================================= =================
          Field        Description                             Type
-         ============ ======================================= ================
-         env          The environment the client requested    str or ``None``
+         ============ ======================================= =================
+         env          The environment the client requested    `str` or `None`
                       to be set for the process
-         command      The command the client requested the    str or ``None``
+         command      The command the client requested the    `str` or `None`
                       process to execute (if any)
-         subsystem    The subsystem the client requested the  str or ``None``
+         subsystem    The subsystem the client requested the  `str` or `None`
                       process to open (if any)
-         exit_status  The exit status returned, or -1 if an   int
+         exit_status  The exit status returned, or -1 if an   `int`
                       exit signal is sent
-         exit_signal  The exit signal sent (if any) in the    tuple or ``None``
+         exit_signal  The exit signal sent (if any) in the    `tuple` or `None`
                       form of a tuple containing the signal
-                      name, a bool for whether a core dump
+                      name, a `bool` for whether a core dump
                       occurred, a message associated with the
                       signal, and the language the message
                       was in
-         stdout       The output sent by the process to       str or bytes
+         stdout       The output sent by the process to       `str` or `bytes`
                       stdout (if not redirected)
-         stderr       The output sent by the process to       str or bytes
+         stderr       The output sent by the process to       `str` or `bytes`
                       stderr (if not redirected)
-         ============ ======================================= ================
+         ============ ======================================= =================
 
     """
 
@@ -384,28 +384,28 @@ class SSHCompletedProcess(Record):
        method on :class:`SSHClientConnection` when the requested command
        has finished running. It contains the following fields:
 
-         ============ ======================================= ================
+         ============ ======================================= =================
          Field        Description                             Type
-         ============ ======================================= ================
-         env          The environment the client requested    str or ``None``
+         ============ ======================================= =================
+         env          The environment the client requested    `str` or `None`
                       to be set for the process
-         command      The command the client requested the    str or ``None``
+         command      The command the client requested the    `str` or `None`
                       process to execute (if any)
-         subsystem    The subsystem the client requested the  str or ``None``
+         subsystem    The subsystem the client requested the  `str` or `None`
                       process to open (if any)
-         exit_status  The exit status returned, or -1 if an   int
+         exit_status  The exit status returned, or -1 if an   `int`
                       exit signal is sent
-         exit_signal  The exit signal sent (if any) in the    tuple or ``None``
+         exit_signal  The exit signal sent (if any) in the    `tuple` or `None`
                       form of a tuple containing the signal
-                      name, a bool for whether a core dump
+                      name, a `bool` for whether a core dump
                       occurred, a message associated with the
                       signal, and the language the message
                       was in
-         stdout       The output sent by the process to       str or bytes
+         stdout       The output sent by the process to       `str` or `bytes`
                       stdout (if not redirected)
-         stderr       The output sent by the process to       str or bytes
+         stderr       The output sent by the process to       `str` or `bytes`
                       stderr (if not redirected)
-         ============ ======================================= ================
+         ============ ======================================= =================
 
     """
 
@@ -483,9 +483,9 @@ class SSHProcess:
            This method returns the command the client requested to
            execute when the process was started, if any. If the client
            did not request that a command be executed, this method
-           will return ``None``.
+           will return `None`.
 
-           :returns: A str containing the command or ``None`` if
+           :returns: A `str` containing the command or `None` if
                      no command was specified
 
         """
@@ -499,9 +499,9 @@ class SSHProcess:
            This method returns the subsystem the client requested to
            open when the process was started, if any. If the client
            did not request that a subsystem be opened, this method will
-           return ``None``.
+           return `None`.
 
-           :returns: A str containing the subsystem name or ``None``
+           :returns: A `str` containing the subsystem name or `None`
                      if no subsystem was specified
 
         """
@@ -820,34 +820,33 @@ class SSHClientProcess(SSHProcess, SSHClientStreamSession):
            standard input, standard output, and standard error for
            the process.
 
-           The ``stdin`` argument can be any of the following:
+           The `stdin` argument can be any of the following:
 
                * An :class:`SSHReader` object
                * A file object open for read
-               * An int file descriptor open for read
+               * An `int` file descriptor open for read
                * A connected socket object
                * A string containing the name of a file or device to open
-               * ``DEVNULL`` to provide no input to standard input
-               * ``PIPE`` to interactively write standard input
+               * `DEVNULL` to provide no input to standard input
+               * `PIPE` to interactively write standard input
 
-           The ``stdout`` and ``stderr`` arguments can be any of the
-           following:
+           The `stdout` and `stderr` arguments can be any of the following:
 
                * An :class:`SSHWriter` object
                * A file object open for write
-               * An int file descriptor open for write
+               * An `int` file descriptor open for write
                * A connected socket object
                * A string containing the name of a file or device to open
-               * ``DEVNULL`` to discard standard error output
-               * ``PIPE`` to interactively read standard error output
+               * `DEVNULL` to discard standard error output
+               * `PIPE` to interactively read standard error output
 
-           The ``stderr`` argument also accepts the value ``STDOUT`` to
+           The `stderr` argument also accepts the value `STDOUT` to
            request that standard error output be delivered to stdout.
 
            File objects passed in can be associated with plain files, pipes,
            sockets, or ttys.
 
-           The default value of ``None`` means to not change redirection
+           The default value of `None` means to not change redirection
            for that stream.
 
            :param stdin:
@@ -856,12 +855,14 @@ class SSHClientProcess(SSHProcess, SSHClientStreamSession):
                Target to feed data from standard output to
            :param stderr:
                Target to feed data from standard error to
-           :param int bufsize:
+           :param bufsize:
                Buffer size to use when forwarding data from a file
-           :param bool send_eof:
+           :param send_eof:
                Whether or not to send EOF to the channel when redirection
-               is complete, defaulting to ``True``. If set to ``False``,
+               is complete, defaulting to `True`. If set to `False`,
                multiple sources can be sequentially fed to the channel.
+           :type bufsize: `int`
+           :type send_eof: `bool`
 
         """
 
@@ -906,9 +907,9 @@ class SSHClientProcess(SSHProcess, SSHClientStreamSession):
            returning a tuple of the data written to stdout and stderr.
 
            :param input:
-               Input data to feed to standard input of the process.
-               Data should be a str if encoding is set, or bytes if not.
-           :type input: str or bytes
+               Input data to feed to standard input of the process. Data
+               should be a `str` if encoding is set, or `bytes` if not.
+           :type input: `str` or `bytes`
 
            :returns: A tuple of output to stdout and stderr
 
@@ -933,14 +934,18 @@ class SSHClientProcess(SSHProcess, SSHClientStreamSession):
            This method changes the width and height of the terminal
            associated with this process.
 
-           :param int width:
+           :param width:
                The width of the terminal in characters
-           :param int height:
+           :param height:
                The height of the terminal in characters
-           :param int pixwidth: (optional)
+           :param pixwidth: (optional)
                The width of the terminal in pixels
-           :param int pixheight: (optional)
+           :param pixheight: (optional)
                The height of the terminal in pixels
+           :type width: `int`
+           :type height: `int`
+           :type pixwidth: `int`
+           :type pixheight: `int`
 
            :raises: :exc:`OSError` if the SSH channel is not open
 
@@ -951,8 +956,9 @@ class SSHClientProcess(SSHProcess, SSHClientStreamSession):
     def send_break(self, msec):
         """Send a break to the process
 
-           :param int msec:
+           :param msec:
                The duration of the break in milliseconds
+           :type msec: `int`
 
            :raises: :exc:`OSError` if the SSH channel is not open
 
@@ -963,8 +969,9 @@ class SSHClientProcess(SSHProcess, SSHClientStreamSession):
     def send_signal(self, signal):
         """Send a signal to the process
 
-           :param str signal:
+           :param signal:
                The signal to deliver
+           :type signal: `str`
 
            :raises: :exc:`OSError` if the SSH channel is not open
 
@@ -999,16 +1006,17 @@ class SSHClientProcess(SSHProcess, SSHClientStreamSession):
            the exit status or signal information and the output sent
            to stdout and stderr if those are redirected to pipes.
 
-           If the check argument is set to ``True``, a non-zero exit
+           If the check argument is set to `True`, a non-zero exit
            status from the process with trigger the :exc:`ProcessError`
            exception to be raised.
 
-           :param bool check:
+           :param check:
                Whether or not to raise an error on non-zero exit status
+           :type check: `bool`
 
            :returns: :class:`SSHCompletedProcess`
 
-           :raises: :exc:`ProcessError` if check is set to ``True``
+           :raises: :exc:`ProcessError` if check is set to `True`
                     and the process returns a non-zero exit status
 
         """
@@ -1071,31 +1079,30 @@ class SSHServerProcess(SSHProcess, SSHServerStreamSession):
            standard input, standard output, and standard error for
            the process.
 
-           The ``stdin`` argument can be any of the following:
+           The `stdin` argument can be any of the following:
 
                * An :class:`SSHWriter` object
                * A file object open for write
-               * An int file descriptor open for write
+               * An `int` file descriptor open for write
                * A connected socket object
                * A string containing the name of a file or device to open
-               * ``DEVNULL`` to discard standard error output
-               * ``PIPE`` to interactively read standard error output
+               * `DEVNULL` to discard standard error output
+               * `PIPE` to interactively read standard error output
 
-           The ``stdout`` and ``stderr`` arguments can be any of the
-           following:
+           The `stdout` and `stderr` arguments can be any of the following:
 
                * An :class:`SSHReader` object
                * A file object open for read
-               * An int file descriptor open for read
+               * An `int` file descriptor open for read
                * A connected socket object
                * A string containing the name of a file or device to open
-               * ``DEVNULL`` to provide no input to standard input
-               * ``PIPE`` to interactively write standard input
+               * `DEVNULL` to provide no input to standard input
+               * `PIPE` to interactively write standard input
 
            File objects passed in can be associated with plain files, pipes,
            sockets, or ttys.
 
-           The default value of ``None`` means to not change redirection
+           The default value of `None` means to not change redirection
            for that stream.
 
            :param stdin:
@@ -1104,12 +1111,14 @@ class SSHServerProcess(SSHProcess, SSHServerStreamSession):
                Source of data to feed to standard output
            :param stderr:
                Source of data to feed to standard error
-           :param int bufsize:
+           :param bufsize:
                Buffer size to use when forwarding data from a file
-           :param bool send_eof:
+           :param send_eof:
                Whether or not to send EOF to the channel when redirection
-               is complete, defaulting to ``True``. If set to ``False``,
+               is complete, defaulting to `True`. If set to `False`,
                multiple sources can be sequentially fed to the channel.
+           :type bufsize: `int`
+           :type send_eof: `bool`
 
         """
 
@@ -1164,9 +1173,9 @@ class SSHServerProcess(SSHProcess, SSHServerStreamSession):
 
            This method returns the terminal type set by the client
            when the process was started. If the client didn't request
-           a pseudo-terminal, this method will return ``None``.
+           a pseudo-terminal, this method will return `None`.
 
-           :returns: A str containing the terminal type or ``None`` if
+           :returns: A `str` containing the terminal type or `None` if
                      no pseudo-terminal was requested
 
         """
@@ -1180,7 +1189,7 @@ class SSHServerProcess(SSHProcess, SSHServerStreamSession):
            by the client. If the client didn't set any terminal size
            information, all values returned will be zero.
 
-           :returns: A tuple of four integers containing the width and
+           :returns: A tuple of four `int` values containing the width and
                      height of the terminal in characters and the width
                      and height of the terminal in pixels
 
@@ -1194,14 +1203,15 @@ class SSHServerProcess(SSHProcess, SSHServerStreamSession):
            This method looks up the value of a POSIX terminal mode
            set by the client when the process was started. If the client
            didn't request a pseudo-terminal or didn't set the requested
-           TTY mode opcode, this method will return ``None``.
+           TTY mode opcode, this method will return `None`.
 
-           :param int mode:
+           :param mode:
                POSIX terminal mode taken from :ref:`POSIX terminal modes
                <PTYModes>` to look up
+           :type mode: `int`
 
-           :returns: An int containing the value of the requested
-                     POSIX terminal mode or ``None`` if the requested
+           :returns: An `int` containing the value of the requested
+                     POSIX terminal mode or `None` if the requested
                      mode was not set
 
         """
@@ -1214,8 +1224,9 @@ class SSHServerProcess(SSHProcess, SSHServerStreamSession):
            This method can be called to report an exit status for the
            process back to the client and close the channel.
 
-           :param int status:
+           :param status:
                The exit status to report to the client
+           :type status: `int`
 
         """
 
@@ -1231,14 +1242,18 @@ class SSHServerProcess(SSHProcess, SSHServerStreamSession):
            of whether or not the process dumped core. After
            reporting the signal, the channel is closed.
 
-           :param str signal:
+           :param signal:
                The signal which caused the process to exit
-           :param bool core_dumped: (optional)
+           :param core_dumped: (optional)
                Whether or not the process dumped core
-           :param str msg: (optional)
+           :param msg: (optional)
                Details about what error occurred
-           :param str lang: (optional)
+           :param lang: (optional)
                The language the error message is in
+           :type signal: `str`
+           :type core_dumped: `bool`
+           :type msg: `str`
+           :type lang: `str`
 
         """
 
