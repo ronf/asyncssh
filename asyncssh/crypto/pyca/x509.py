@@ -305,7 +305,7 @@ def generate_x509_certificate(signing_key, key, subject, issuer, serial,
         basic_constraints = x509.BasicConstraints(
             ca=True, path_length=ca_path_len)
         key_usage = x509.KeyUsage(
-            digital_signature=True, content_commitment=False,
+            digital_signature=False, content_commitment=False,
             key_encipherment=False, data_encipherment=False,
             key_agreement=False, key_cert_sign=True, crl_sign=True,
             encipher_only=False, decipher_only=False)
@@ -314,11 +314,13 @@ def generate_x509_certificate(signing_key, key, subject, issuer, serial,
         key_usage = x509.KeyUsage(
             digital_signature=True, content_commitment=False,
             key_encipherment=True, data_encipherment=False,
-            key_agreement=False, key_cert_sign=self_signed, crl_sign=False,
+            key_agreement=True, key_cert_sign=False, crl_sign=False,
             encipher_only=False, decipher_only=False)
 
     builder = builder.add_extension(basic_constraints, critical=True)
-    builder = builder.add_extension(key_usage, critical=True)
+
+    if ca or not self_signed:
+        builder = builder.add_extension(key_usage, critical=True)
 
     if purposes:
         builder = builder.add_extension(
