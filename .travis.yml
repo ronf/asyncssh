@@ -27,6 +27,15 @@ matrix:
     - os: linux
       sudo: required
       dist: trusty
+      python: 3.5
+      before_install:
+        - .travis/build-libsodium.sh
+      env:
+        - TOXENV=py35
+          USE_UVLOOP=1
+    - os: linux
+      sudo: required
+      dist: trusty
       python: 3.6
       before_install:
         - .travis/build-libsodium.sh
@@ -35,19 +44,37 @@ matrix:
     - os: linux
       sudo: required
       dist: trusty
+      python: 3.6
+      before_install:
+        - .travis/build-libsodium.sh
+      env:
+        - TOXENV=py36
+          USE_UVLOOP=1
+    - os: linux
+      sudo: required
+      dist: trusty
       python: "nightly" # currently points to 3.7-rc
       before_install:
         - .travis/build-libsodium.sh
       env:
         - TOXENV=py37
+    - os: linux
+      sudo: required
+      dist: trusty
+      python: "nightly" # currently points to 3.7-rc
+      before_install:
+        - .travis/build-libsodium.sh
+      env:
+        - TOXENV=py37
+          USE_UVLOOP=1
     - os: osx
       osx_image: xcode9.1
       language: generic
       env:
         - CPPFLAGS=-I/usr/local/opt/openssl/include
-        - LDFLAGS=-L/usr/local/opt/openssl/lib -L/usr/local/opt/libffi/lib
-        - PATH=$HOME/.pyenv/bin:/usr/local/opt/openssl/bin:$PATH
-        - TOXENV=py34
+          LDFLAGS=-L/usr/local/opt/openssl/lib -L/usr/local/opt/libffi/lib
+          PATH=$HOME/.pyenv/bin:/usr/local/opt/openssl/bin:$PATH
+          TOXENV=py34
       before_install:
         - brew update
         - brew install libffi libsodium
@@ -60,9 +87,9 @@ matrix:
       language: generic
       env:
         - CPPFLAGS=-I/usr/local/opt/openssl/include
-        - LDFLAGS=-L/usr/local/opt/openssl/lib -L/usr/local/opt/libffi/lib
-        - PATH=$HOME/.pyenv/bin:/usr/local/opt/openssl/bin:$PATH
-        - TOXENV=py35
+          LDFLAGS=-L/usr/local/opt/openssl/lib -L/usr/local/opt/libffi/lib
+          PATH=$HOME/.pyenv/bin:/usr/local/opt/openssl/bin:$PATH
+          TOXENV=py35
       before_install:
         - brew update
         - brew install libffi libsodium
@@ -75,9 +102,9 @@ matrix:
       language: generic
       env:
         - CPPFLAGS=-I/usr/local/opt/openssl/include
-        - LDFLAGS=-L/usr/local/opt/openssl/lib -L/usr/local/opt/libffi/lib
-        - PATH=$HOME/.pyenv/bin:/usr/local/opt/openssl/bin:$PATH
-        - TOXENV=py36
+          LDFLAGS=-L/usr/local/opt/openssl/lib -L/usr/local/opt/libffi/lib
+          PATH=$HOME/.pyenv/bin:/usr/local/opt/openssl/bin:$PATH
+          TOXENV=py36
       before_install:
         - brew update
         - brew install libffi libsodium

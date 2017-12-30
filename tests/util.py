@@ -43,6 +43,12 @@ try:
 except ImportError: # pragma: no cover
     x509_available = False
 
+try:
+    import uvloop
+    uvloop_available = True
+except ImportError: # pragma: no cover
+    uvloop_available = False
+
 # pylint: enable=unused-import
 
 from asyncssh.constants import DISC_CONNECTION_LOST
@@ -301,7 +307,11 @@ class AsyncTestCase(TempDirTestCase):
 
         super().setUpClass()
 
-        cls.loop = asyncio.new_event_loop()
+        if uvloop_available and os.environ.get('USE_UVLOOP'): # pragma: no cover
+            cls.loop = uvloop.new_event_loop()
+        else:
+            cls.loop = asyncio.new_event_loop()
+
         asyncio.set_event_loop(cls.loop)
 
         try:
