@@ -104,7 +104,39 @@ matrix:
         - CPPFLAGS=-I/usr/local/opt/openssl/include
           LDFLAGS=-L/usr/local/opt/openssl/lib -L/usr/local/opt/libffi/lib
           PATH=$HOME/.pyenv/bin:/usr/local/opt/openssl/bin:$PATH
+          TOXENV=py35
+          USE_UVLOOP=1
+      before_install:
+        - brew update
+        - brew install libffi libsodium
+        - eval "$(pyenv init -)"
+        - pyenv install 3.5.3
+        - pyenv local 3.5.3
+        - pyenv rehash
+    - os: osx
+      osx_image: xcode9.1
+      language: generic
+      env:
+        - CPPFLAGS=-I/usr/local/opt/openssl/include
+          LDFLAGS=-L/usr/local/opt/openssl/lib -L/usr/local/opt/libffi/lib
+          PATH=$HOME/.pyenv/bin:/usr/local/opt/openssl/bin:$PATH
           TOXENV=py36
+      before_install:
+        - brew update
+        - brew install libffi libsodium
+        - eval "$(pyenv init -)"
+        - pyenv install 3.6.1
+        - pyenv local 3.6.1
+        - pyenv rehash
+    - os: osx
+      osx_image: xcode9.1
+      language: generic
+      env:
+        - CPPFLAGS=-I/usr/local/opt/openssl/include
+          LDFLAGS=-L/usr/local/opt/openssl/lib -L/usr/local/opt/libffi/lib
+          PATH=$HOME/.pyenv/bin:/usr/local/opt/openssl/bin:$PATH
+          TOXENV=py36
+          USE_UVLOOP=1
       before_install:
         - brew update
         - brew install libffi libsodium
