@@ -18,9 +18,8 @@ from .constants import DEFAULT_LANG
 from .constants import DISC_KEY_EXCHANGE_FAILED, DISC_PROTOCOL_ERROR
 from .gss import GSSError
 from .kex import Kex, register_kex_alg, register_gss_kex_alg
-from .logging import logger
-from .misc import DisconnectError, randrange
-from .packet import Boolean, Byte, MPInt, String, UInt32
+from .misc import DisconnectError, get_symbol_names, randrange
+from .packet import Boolean, MPInt, String, UInt32
 
 
 # pylint: disable=bad-whitespace,line-too-long
@@ -126,13 +125,13 @@ class _KexDHBase(Kex):
     def _send_init(self):
         """Send a DH init message"""
 
-        self._conn.send_packet(Byte(self._init_type), MPInt(self._e))
+        self.send_packet(self._init_type, MPInt(self._e))
 
     def _send_reply(self, key_data, sig):
         """Send a DH reply message"""
 
-        self._conn.send_packet(Byte(self._reply_type), String(key_data),
-                               MPInt(self._f), String(sig))
+        self.send_packet(self._reply_type, String(key_data),
+                         MPInt(self._f), String(sig))
 
     def _perform_init(self):
         """Compute e and send init message"""
@@ -221,6 +220,8 @@ class _KexDHBase(Kex):
 class _KexDH(_KexDHBase):
     """Handler for Diffie-Hellman key exchange"""
 
+    _handler_names = get_symbol_names(globals(), 'MSG_KEXDH_')
+
     _init_type = MSG_KEXDH_INIT
     _reply_type = MSG_KEXDH_REPLY
 
@@ -229,7 +230,7 @@ class _KexDH(_KexDHBase):
 
         self._init_group(g, p)
 
-    packet_handlers = {
+    _packet_handlers = {
         MSG_KEXDH_INIT:     _KexDHBase._process_init,
         MSG_KEXDH_REPLY:    _KexDHBase._process_reply
     }
@@ -237,6 +238,8 @@ class _KexDH(_KexDHBase):
 
 class _KexDHGex(_KexDHBase):
     """Handler for Diffie-Hellman group exchange"""
+
+    _handler_names = get_symbol_names(globals(), 'MSG_KEX_DH_GEX_')
 
     _init_type = MSG_KEX_DH_GEX_INIT
     _reply_type = MSG_KEX_DH_GEX_REPLY
@@ -254,15 +257,16 @@ class _KexDHGex(_KexDHBase):
 
         if self._pref_size and not self._max_size:
             # Send old request message for unit test
-            request = (Byte(MSG_KEX_DH_GEX_REQUEST_OLD) +
-                       UInt32(self._pref_size))
+            pkttype = MSG_KEX_DH_GEX_REQUEST_OLD
+            args = UInt32(self._pref_size)
         else:
-            request = (Byte(self._request_type) + UInt32(KEX_DH_GEX_MIN_SIZE) +
-                       UInt32(self._pref_size or KEX_DH_GEX_PREFERRED_SIZE) +
-                       UInt32(self._max_size or KEX_DH_GEX_MAX_SIZE))
+            pkttype = self._request_type
+            args = (UInt32(KEX_DH_GEX_MIN_SIZE) +
+                    UInt32(self._pref_size or KEX_DH_GEX_PREFERRED_SIZE) +
+                    UInt32(self._max_size or KEX_DH_GEX_MAX_SIZE))
 
-        self._gex_data = request[1:]
-        self._conn.send_packet(request)
+        self._gex_data = args
+        self.send_packet(pkttype, args)
 
     def _process_request(self, pkttype, packet):
         """Process a DH gex request message"""
@@ -296,7 +300,7 @@ class _KexDHGex(_KexDHBase):
 
         self._init_group(g, p)
         self._gex_data += MPInt(p) + MPInt(g)
-        self._conn.send_packet(Byte(self._group_type), MPInt(p), MPInt(g))
+        self.send_packet(self._group_type, MPInt(p), MPInt(g))
 
     def _process_group(self, pkttype, packet):
         """Process a DH gex group message"""
@@ -320,7 +324,7 @@ class _KexDHGex(_KexDHBase):
 
         self._send_request()
 
-    packet_handlers = {
+    _packet_handlers = {
         MSG_KEX_DH_GEX_REQUEST_OLD: _process_request,
         MSG_KEX_DH_GEX_GROUP:       _process_group,
         MSG_KEX_DH_GEX_INIT:        _KexDHBase._process_init,
@@ -355,8 +359,7 @@ class _KexGSSBase(_KexDHBase):
             raise DisconnectError(DISC_PROTOCOL_ERROR,
                                   'Empty GSS token in init')
 
-        self._conn.send_packet(Byte(MSG_KEXGSS_INIT), String(self._token),
-                               MPInt(self._e))
+        self.send_packet(MSG_KEXGSS_INIT, String(self._token), MPInt(self._e))
 
     def _send_reply(self, key_data, sig):
         """Send a GSS reply message"""
@@ -366,8 +369,8 @@ class _KexGSSBase(_KexDHBase):
         else:
             token_data = Boolean(False)
 
-        self._conn.send_packet(Byte(MSG_KEXGSS_COMPLETE), MPInt(self._f),
-                               String(sig), token_data)
+        self.send_packet(MSG_KEXGSS_COMPLETE, MPInt(self._f),
+                         String(sig), token_data)
 
     def _send_continue(self):
         """Send a GSS continue message"""
@@ -376,7 +379,7 @@ class _KexGSSBase(_KexDHBase):
             raise DisconnectError(DISC_PROTOCOL_ERROR,
                                   'Empty GSS token in continue')
 
-        self._conn.send_packet(Byte(MSG_KEXGSS_CONTINUE), String(self._token))
+        self.send_packet(MSG_KEXGSS_CONTINUE, String(self._token))
 
     def _process_token(self, token=None):
         """Process a GSS token"""
@@ -385,15 +388,12 @@ class _KexGSSBase(_KexDHBase):
             self._token = self._gss.step(token)
         except GSSError as exc:
             if self._conn.is_server():
-                self._conn.send_packet(Byte(MSG_KEXGSS_ERROR),
-                                       UInt32(exc.maj_code),
-                                       UInt32(exc.min_code),
-                                       String(str(exc)),
-                                       String(DEFAULT_LANG))
+                self.send_packet(MSG_KEXGSS_ERROR, UInt32(exc.maj_code),
+                                 UInt32(exc.min_code), String(str(exc)),
+                                 String(DEFAULT_LANG))
 
             if exc.token:
-                self._conn.send_packet(Byte(MSG_KEXGSS_CONTINUE),
-                                       String(exc.token))
+                self.send_packet(MSG_KEXGSS_CONTINUE, String(exc.token))
 
             raise DisconnectError(DISC_KEY_EXCHANGE_FAILED, str(exc))
 
@@ -414,8 +414,7 @@ class _KexGSSBase(_KexDHBase):
 
         if host_key:
             self._host_key_data = host_key.public_data
-            self._conn.send_packet(Byte(MSG_KEXGSS_HOSTKEY),
-                                   String(self._host_key_data))
+            self.send_packet(MSG_KEXGSS_HOSTKEY, String(self._host_key_data))
         else:
             self._host_key_data = b''
 
@@ -505,7 +504,8 @@ class _KexGSSBase(_KexDHBase):
         _ = packet.get_string()         # lang
         packet.check_end()
 
-        logger.warning('GSS error: %s', msg.decode('utf-8', errors='ignore'))
+        self._conn.logger.warning('GSS error: %s',
+                                  msg.decode('utf-8', errors='ignore'))
         self._got_error = True
 
     def start(self):
@@ -518,7 +518,9 @@ class _KexGSSBase(_KexDHBase):
 class _KexGSS(_KexGSSBase, _KexDH):
     """Handler for GSS key exchange"""
 
-    packet_handlers = {
+    _handler_names = get_symbol_names(globals(), 'MSG_KEXGSS_')
+
+    _packet_handlers = {
         MSG_KEXGSS_INIT:     _KexGSSBase._process_init,
         MSG_KEXGSS_CONTINUE: _KexGSSBase._process_continue,
         MSG_KEXGSS_COMPLETE: _KexGSSBase._process_complete,
@@ -530,10 +532,12 @@ class _KexGSS(_KexGSSBase, _KexDH):
 class _KexGSSGex(_KexGSSBase, _KexDHGex):
     """Handler for GSS group exchange"""
 
+    _handler_names = get_symbol_names(globals(), 'MSG_KEXGSS_')
+
     _request_type = MSG_KEXGSS_GROUPREQ
     _group_type = MSG_KEXGSS_GROUP
 
-    packet_handlers = {
+    _packet_handlers = {
         MSG_KEXGSS_INIT:     _KexGSSBase._process_init,
         MSG_KEXGSS_CONTINUE: _KexGSSBase._process_continue,
         MSG_KEXGSS_COMPLETE: _KexGSSBase._process_complete,

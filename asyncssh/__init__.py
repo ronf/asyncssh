@@ -41,7 +41,7 @@ from .known_hosts import match_known_hosts
 
 from .listener import SSHListener
 
-from .logging import logger
+from .logging import logger, set_log_level, set_sftp_log_level, set_debug_level
 
 from .misc import Error, DisconnectError, ChannelOpenError
 from .misc import PasswordChangeRequired

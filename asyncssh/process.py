@@ -463,6 +463,12 @@ class SSHProcess:
         return self._chan
 
     @property
+    def logger(self):
+        """The logger associated with the process"""
+
+        return self._chan.logger
+
+    @property
     def env(self):
         """The environment set by the client for the process
 

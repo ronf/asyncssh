@@ -456,6 +456,7 @@ class SSHLineEditor:
         self._end_column = self._cursor
         self._draw_input()
 
+
 class SSHLineEditorChannel:
     """Input line editor channel wrapper
 
@@ -503,6 +504,9 @@ class SSHLineEditorChannel:
 
         """
 
+        self._orig_chan.logger.info('%s line editor',
+                                    'Enabling' if line_mode else 'Disabling')
+
         self._editor.set_line_mode(line_mode)
 
     def set_echo(self, echo):
@@ -516,6 +520,9 @@ class SSHLineEditorChannel:
            :type echo: `bool`
 
         """
+
+        self._orig_chan.logger.info('%s echo',
+                                    'Enabling' if echo else 'Disabling')
 
         self._editor.set_echo(echo)
 

@@ -57,6 +57,12 @@ class SSHReader:
 
         return self._chan
 
+    @property
+    def logger(self):
+        """The SSH logger associated with this stream"""
+
+        return self._chan.logger
+
     def get_extra_info(self, name, default=None):
         """Return additional information about this stream
 
@@ -185,6 +191,12 @@ class SSHWriter:
         """The SSH channel associated with this stream"""
 
         return self._chan
+
+    @property
+    def logger(self):
+        """The SSH logger associated with this stream"""
+
+        return self._chan.logger
 
     def get_extra_info(self, name, default=None):
         """Return additional information about this stream
@@ -588,7 +600,7 @@ class SSHServerStreamSession(SSHStreamSession, SSHServerSession):
             handler = self._session_factory(stdin, stdout, stderr)
 
         if asyncio.iscoroutine(handler):
-            self._conn.create_task(handler)
+            self._conn.create_task(handler, stdin.logger)
 
     def break_received(self, msec):
         """Handle an incoming break on the channel"""
@@ -622,11 +634,13 @@ class SSHSocketStreamSession(SSHStreamSession):
         """Start a session for this newly opened socket channel"""
 
         if self._handler_factory:
-            handler = self._handler_factory(SSHReader(self, self._chan),
-                                            SSHWriter(self, self._chan))
+            reader = SSHReader(self, self._chan)
+            writer = SSHWriter(self, self._chan)
+
+            handler = self._handler_factory(reader, writer)
 
             if asyncio.iscoroutine(handler):
-                self._conn.create_task(handler)
+                self._conn.create_task(handler, reader.logger)
 
 
 class SSHTCPStreamSession(SSHSocketStreamSession, SSHTCPSession):

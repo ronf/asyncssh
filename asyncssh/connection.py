@@ -21,6 +21,7 @@ import sys
 import time
 
 from collections import OrderedDict
+from functools import partial
 
 from .agent import connect_agent, create_agent_listener
 
@@ -78,8 +79,8 @@ from .logging import logger
 from .mac import get_mac_algs, get_mac_params, get_mac
 
 from .misc import ChannelOpenError, DisconnectError, PasswordChangeRequired
-from .misc import async_context_manager, create_task, ip_address
-from .misc import load_default_keypairs, map_handler_name
+from .misc import async_context_manager, create_task, get_symbol_names
+from .misc import ip_address, load_default_keypairs, map_handler_name
 
 from .packet import Boolean, Byte, NameList, String, UInt32, UInt64
 from .packet import PacketDecodeError, SSHPacket, SSHPacketHandler
@@ -193,13 +194,35 @@ def _validate_algs(kex_algs, enc_algs, mac_algs, cmp_algs,
 class SSHConnection(SSHPacketHandler):
     """Parent class for SSH connections"""
 
+    # Don't log received packets of these types at the connection level.
+    # Instead, wait and log them at the channel level.
+    _excluded_recv_pkttypes = {MSG_CHANNEL_WINDOW_ADJUST, MSG_CHANNEL_DATA,
+                               MSG_CHANNEL_EXTENDED_DATA, MSG_CHANNEL_EOF,
+                               MSG_CHANNEL_CLOSE, MSG_CHANNEL_REQUEST,
+                               MSG_CHANNEL_SUCCESS, MSG_CHANNEL_FAILURE}
+
+    _handler_names = get_symbol_names(globals(), 'MSG_')
+
+    _next_conn = 0    # Next connection number, for logging
+
+    @classmethod
+    def _get_next_conn(cls):
+        """Return the next available connection number (for logging)"""
+
+        next_conn = cls._next_conn
+        cls._next_conn += 1
+        return next_conn
+
     def __init__(self, protocol_factory, loop, version, kex_algs,
                  encryption_algs, mac_algs, compression_algs, signature_algs,
                  rekey_bytes, rekey_seconds, server):
         self._protocol_factory = protocol_factory
         self._loop = loop
         self._transport = None
+        self._local_addr = None
+        self._local_port = None
         self._peer_addr = None
+        self._peer_port = None
         self._owner = None
         self._extra = {}
         self._server = server
@@ -298,6 +321,9 @@ class SSHConnection(SSHPacketHandler):
 
         self._server_host_key_algs = []
 
+        self._logger = logger.get_child(context='conn=%d' %
+                                        self._get_next_conn())
+
     def __enter__(self):
         """Allow SSHConnection to be used as a context manager"""
 
@@ -332,6 +358,12 @@ class SSHConnection(SSHPacketHandler):
         self.__exit__()
         yield from self.wait_closed()
 
+    @property
+    def logger(self):
+        """A logger associated with this connection"""
+
+        return self._logger
+
     def _cleanup(self, exc):
         """Clean up this connection"""
 
@@ -364,7 +396,7 @@ class SSHConnection(SSHPacketHandler):
 
         self._loop.call_soon(self._cleanup, exc)
 
-    def _reap_task(self, task):
+    def _reap_task(self, task_logger, task):
         """Collect result of an async task, reporting errors"""
 
         # pylint: disable=broad-except
@@ -376,13 +408,13 @@ class SSHConnection(SSHPacketHandler):
             self._send_disconnect(exc.code, exc.reason, exc.lang)
             self._force_close(exc)
         except Exception:
-            self.internal_error()
+            self.internal_error(error_logger=task_logger)
 
-    def create_task(self, coro):
+    def create_task(self, coro, task_logger=None):
         """Create an asynchronous task which catches and reports errors"""
 
         task = create_task(coro, loop=self._loop)
-        task.add_done_callback(self._reap_task)
+        task.add_done_callback(partial(self._reap_task, task_logger))
         return task
 
     def is_client(self):
@@ -423,8 +455,11 @@ class SSHConnection(SSHPacketHandler):
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
         sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 
+        sockname = transport.get_extra_info('sockname')
+        self._local_addr, self._local_port = sockname[:2]
+
         peername = transport.get_extra_info('peername')
-        self._peer_addr = peername[0] if peername else None
+        self._peer_addr, self._peer_port = peername[:2]
 
         self._owner = self._protocol_factory()
         self._protocol_factory = None
@@ -447,13 +482,16 @@ class SSHConnection(SSHPacketHandler):
 
         self._force_close(exc)
 
-    def internal_error(self, exc_info=None):
+    def internal_error(self, exc_info=None, error_logger=None):
         """Handle a fatal error in connection processing"""
 
         if not exc_info:
             exc_info = sys.exc_info()
 
-        logger.debug('Uncaught exception', exc_info=exc_info)
+        if not error_logger:
+            error_logger = self.logger
+
+        error_logger.debug1('Uncaught exception', exc_info=exc_info)
         self._force_close(exc_info[1])
 
     def session_started(self):
@@ -703,12 +741,15 @@ class SSHConnection(SSHPacketHandler):
                   MSG_USERAUTH_FIRST <= pkttype <= MSG_USERAUTH_LAST):
                 processed = self._auth.process_packet(pkttype, packet)
             else:
-                processed = self.process_packet(pkttype, packet)
+                processed = self.process_packet(pkttype, packet,
+                                                pkttype not in
+                                                self._excluded_recv_pkttypes)
         except PacketDecodeError as exc:
             raise DisconnectError(DISC_PROTOCOL_ERROR, str(exc)) from None
 
         if not processed:
-            self.send_packet(Byte(MSG_UNIMPLEMENTED), UInt32(self._recv_seq))
+            self.logger.debug1('Unknown packet type %d received', pkttype)
+            self.send_packet(MSG_UNIMPLEMENTED, UInt32(self._recv_seq))
 
         if self._transport:
             self._recv_seq = (self._recv_seq + 1) & 0xffffffff
@@ -716,11 +757,8 @@ class SSHConnection(SSHPacketHandler):
 
         return True
 
-    def send_packet(self, *args):
+    def send_packet(self, pkttype, *args, handler_names=_handler_names):
         """Send an SSH packet"""
-
-        payload = b''.join(args)
-        pkttype = payload[0]
 
         if (self._auth_complete and self._kex_complete and
                 (self._rekey_bytes_sent >= self._rekey_bytes or
@@ -733,13 +771,16 @@ class SSHConnection(SSHPacketHandler):
                 (pkttype == MSG_USERAUTH_BANNER and
                  not (self._auth_in_progress or self._auth_complete)) or
                 (pkttype > MSG_USERAUTH_LAST and not self._auth_complete)):
-            self._deferred_packets.append(payload)
+            self._deferred_packets.append((pkttype, args))
             return
 
         # If we're encrypting and we have no data outstanding, insert an
         # ignore packet into the stream
-        if self._send_cipher and payload[0] != MSG_IGNORE:
-            self.send_packet(Byte(MSG_IGNORE), String(b''))
+        if self._send_cipher and pkttype != MSG_IGNORE:
+            self.send_packet(MSG_IGNORE, String(b''))
+
+        payload = Byte(pkttype) + b''.join(args)
+        log_data = payload
 
         if self._compressor and (self._auth_complete or
                                  not self._compress_after_auth):
@@ -784,19 +825,23 @@ class SSHConnection(SSHPacketHandler):
         if self._kex_complete:
             self._rekey_bytes_sent += pktlen
 
+        self.log_sent_packet(pkttype, log_data, handler_names)
+
     def _send_deferred_packets(self):
         """Send packets deferred due to key exchange or auth"""
 
         deferred_packets = self._deferred_packets
         self._deferred_packets = []
 
-        for packet in deferred_packets:
-            self.send_packet(packet)
+        for pkttype, args in deferred_packets:
+            self.send_packet(pkttype, *args)
 
     def _send_disconnect(self, code, reason, lang):
         """Send a disconnect packet"""
 
-        self.send_packet(Byte(MSG_DISCONNECT), UInt32(code),
+        self.logger.info('Sending disconnect: %s (%d)', reason, code)
+
+        self.send_packet(MSG_DISCONNECT, UInt32(code),
                          String(reason), String(lang))
 
     def _send_kexinit(self):
@@ -810,9 +855,18 @@ class SSHConnection(SSHPacketHandler):
         kex_algs = expand_kex_algs(self._kex_algs, gss_mechs,
                                    bool(self._server_host_key_algs))
 
+        host_key_algs = self._server_host_key_algs or [b'null']
+
+        self.logger.debug1('Requesting key exchange')
+        self.logger.debug2('  Key exchange algs: %s', kex_algs)
+        self.logger.debug2('  Host key algs: %s', host_key_algs)
+        self.logger.debug2('  Encryption algs: %s', self._enc_algs)
+        self.logger.debug2('  MAC algs: %s', self._mac_algs)
+        self.logger.debug2('  Compression algs: %s', self._cmp_algs)
+
         cookie = os.urandom(16)
         kex_algs = NameList(kex_algs + self._get_ext_info_kex_alg())
-        host_key_algs = NameList(self._server_host_key_algs or [b'null'])
+        host_key_algs = NameList(host_key_algs)
         enc_algs = NameList(self._enc_algs)
         mac_algs = NameList(self._mac_algs)
         cmp_algs = NameList(self._cmp_algs)
@@ -827,18 +881,21 @@ class SSHConnection(SSHPacketHandler):
         else:
             self._client_kexinit = packet
 
-        self.send_packet(packet)
+        self.send_packet(MSG_KEXINIT, packet[1:])
 
     def _send_ext_info(self):
         """Send extension information"""
 
-        packet = b''.join((Byte(MSG_EXT_INFO),
-                           UInt32(len(self._extensions_sent))))
+        packet = UInt32(len(self._extensions_sent))
+
+        self.logger.debug2('Sending extension info')
 
         for name, value in self._extensions_sent.items():
             packet += String(name) + String(value)
 
-        self.send_packet(packet)
+            self.logger.debug2('  %s: %s', name, value)
+
+        self.send_packet(MSG_EXT_INFO, packet)
 
     def send_newkeys(self, k, h):
         """Finish a key exchange and send a new keys message"""
@@ -899,7 +956,7 @@ class SSHConnection(SSHPacketHandler):
         else:
             next_mac_sc = get_mac(self._mac_alg_sc, mac_key_sc)
 
-        self.send_packet(Byte(MSG_NEWKEYS))
+        self.send_packet(MSG_NEWKEYS)
 
         if self.is_client():
             self._send_cipher = next_cipher_cs
@@ -951,7 +1008,7 @@ class SSHConnection(SSHPacketHandler):
             self._next_service = _USERAUTH_SERVICE
 
             if self._can_send_ext_info:
-                self._extensions_sent['server-sig-algs'] = \
+                self._extensions_sent[b'server-sig-algs'] = \
                     b','.join(self._sig_algs)
                 self._send_ext_info()
 
@@ -961,8 +1018,10 @@ class SSHConnection(SSHPacketHandler):
     def send_service_request(self, service):
         """Send a service request"""
 
+        self.logger.debug2('Requesting service %s', service)
+
         self._next_service = service
-        self.send_packet(Byte(MSG_SERVICE_REQUEST), String(service))
+        self.send_packet(MSG_SERVICE_REQUEST, String(service))
 
     def _get_userauth_request_packet(self, method, args):
         """Get packet data for a user authentication request"""
@@ -990,20 +1049,25 @@ class SSHConnection(SSHPacketHandler):
 
             packet += String(sig)
 
-        self.send_packet(packet)
+        self.send_packet(MSG_USERAUTH_REQUEST, packet[1:])
 
     def send_userauth_failure(self, partial_success):
         """Send a user authentication failure response"""
 
+        methods = get_server_auth_methods(self)
+
+        self.logger.debug2('Remaining auth methods: %s', methods or 'None')
+
         self._auth = None
-        self.send_packet(Byte(MSG_USERAUTH_FAILURE),
-                         NameList(get_server_auth_methods(self)),
+        self.send_packet(MSG_USERAUTH_FAILURE, NameList(methods),
                          Boolean(partial_success))
 
     def send_userauth_success(self):
         """Send a user authentication success response"""
 
-        self.send_packet(Byte(MSG_USERAUTH_SUCCESS))
+        self.logger.info('Auth for user %s succeeded', self._username)
+
+        self.send_packet(MSG_USERAUTH_SUCCESS)
         self._auth = None
         self._auth_in_progress = False
         self._auth_complete = True
@@ -1019,15 +1083,14 @@ class SSHConnection(SSHPacketHandler):
                                        *result_args):
         """Send a channel open confirmation"""
 
-        self.send_packet(Byte(MSG_CHANNEL_OPEN_CONFIRMATION),
-                         UInt32(send_chan), UInt32(recv_chan),
-                         UInt32(recv_window), UInt32(recv_pktsize),
-                         *result_args)
+        self.send_packet(MSG_CHANNEL_OPEN_CONFIRMATION, UInt32(send_chan),
+                         UInt32(recv_chan), UInt32(recv_window),
+                         UInt32(recv_pktsize), *result_args)
 
     def send_channel_open_failure(self, send_chan, code, reason, lang):
         """Send a channel open failure"""
 
-        self.send_packet(Byte(MSG_CHANNEL_OPEN_FAILURE), UInt32(send_chan),
+        self.send_packet(MSG_CHANNEL_OPEN_FAILURE, UInt32(send_chan),
                          UInt32(code), String(reason), String(lang))
 
     @asyncio.coroutine
@@ -1040,7 +1103,7 @@ class SSHConnection(SSHPacketHandler):
         waiter = asyncio.Future(loop=self._loop)
         self._global_request_waiters.append(waiter)
 
-        self.send_packet(Byte(MSG_GLOBAL_REQUEST), String(request),
+        self.send_packet(MSG_GLOBAL_REQUEST, String(request),
                          Boolean(True), *args)
 
         return (yield from waiter)
@@ -1053,9 +1116,9 @@ class SSHConnection(SSHPacketHandler):
         if want_reply: # pragma: no branch
             if result:
                 response = b'' if result is True else result
-                self.send_packet(Byte(MSG_REQUEST_SUCCESS), response)
+                self.send_packet(MSG_REQUEST_SUCCESS, response)
             else:
-                self.send_packet(Byte(MSG_REQUEST_FAILURE))
+                self.send_packet(MSG_REQUEST_FAILURE)
 
         if self._global_request_queue:
             self._service_next_global_request()
@@ -1090,6 +1153,8 @@ class SSHConnection(SSHPacketHandler):
         except UnicodeDecodeError:
             raise DisconnectError(DISC_PROTOCOL_ERROR,
                                   'Invalid disconnect message') from None
+
+        self.logger.debug1('Received disconnect: %s (%d)', reason, code)
 
         if code != DISC_BY_APPLICATION:
             exc = DisconnectError(code, reason, lang)
@@ -1135,6 +1200,9 @@ class SSHConnection(SSHPacketHandler):
             raise DisconnectError(DISC_PROTOCOL_ERROR,
                                   'Invalid debug message') from None
 
+        self.logger.debug1('Received debug message: %s%s', msg,
+                           ' (always display)' if always_display else '')
+
         self._owner.debug_msg_received(msg, lang, always_display)
 
     def _process_service_request(self, pkttype, packet):
@@ -1146,8 +1214,10 @@ class SSHConnection(SSHPacketHandler):
         packet.check_end()
 
         if service == self._next_service:
+            self.logger.debug2('Accepting request for service %s', service)
+
             self._next_service = None
-            self.send_packet(Byte(MSG_SERVICE_ACCEPT), String(service))
+            self.send_packet(MSG_SERVICE_ACCEPT, String(service))
 
             if (self.is_server() and               # pragma: no branch
                     service == _USERAUTH_SERVICE):
@@ -1166,10 +1236,14 @@ class SSHConnection(SSHPacketHandler):
         packet.check_end()
 
         if service == self._next_service:
+            self.logger.debug2('Request for service %s accepted', service)
+
             self._next_service = None
 
             if (self.is_client() and               # pragma: no branch
                     service == _USERAUTH_SERVICE):
+                self.logger.info('Beginning auth for user %s', self._username)
+
                 self._auth_in_progress = True
 
                 # This method is only in SSHClientConnection
@@ -1186,11 +1260,15 @@ class SSHConnection(SSHPacketHandler):
 
         extensions = {}
 
+        self.logger.debug2('Received extension info')
+
         num_extensions = packet.get_uint32()
         for _ in range(num_extensions):
             name = packet.get_string()
             value = packet.get_string()
             extensions[name] = value
+
+            self.logger.debug2('  %s: %s', name, value)
 
         packet.check_end()
 
@@ -1268,6 +1346,17 @@ class SSHConnection(SSHPacketHandler):
         self._cmp_alg_sc = self._choose_alg('compression', self._cmp_algs,
                                             cmp_algs_sc)
 
+        self.logger.debug1('Beginning key exchange')
+        self.logger.debug2('  Key exchange alg: %s', self._kex.algorithm)
+        self.logger.debug2('  Client to server:')
+        self.logger.debug2('    Encryption alg: %s', self._enc_alg_cs)
+        self.logger.debug2('    MAC alg: %s', self._mac_alg_cs)
+        self.logger.debug2('    Compression alg: %s', self._cmp_alg_cs)
+        self.logger.debug2('  Server to client:')
+        self.logger.debug2('    Encryption alg: %s', self._enc_alg_sc)
+        self.logger.debug2('    MAC alg: %s', self._mac_alg_sc)
+        self.logger.debug2('    Compression alg: %s', self._cmp_alg_sc)
+
         if self.is_client():
             self._kex.start()
 
@@ -1291,6 +1380,8 @@ class SSHConnection(SSHPacketHandler):
         else:
             raise DisconnectError(DISC_PROTOCOL_ERROR,
                                   'New keys not negotiated')
+
+        self.logger.debug1('Completed key exchange')
 
         if self.is_client() and not (self._auth_in_progress or
                                      self._auth_complete):
@@ -1319,10 +1410,12 @@ class SSHConnection(SSHPacketHandler):
             raise DisconnectError(DISC_PROTOCOL_ERROR,
                                   'Unexpected userauth request')
         elif self._auth_complete:
-            # Silent ignore requests if we're already authenticated
+            # Silently ignore requests if we're already authenticated
             pass
         else:
             if username != self._username:
+                self.logger.info('Beginning auth for user %s', username)
+
                 self._username = username
 
                 if not self._owner.begin_auth(username):
@@ -1343,6 +1436,9 @@ class SSHConnection(SSHPacketHandler):
         self._auth_methods = packet.get_namelist()
         partial_success = packet.get_boolean()
         packet.check_end()
+
+        self.logger.debug2('Remaining auth methods: %s',
+                           self._auth_methods or 'None')
 
         if self.is_client() and self._auth:
             if partial_success: # pragma: no cover
@@ -1366,6 +1462,8 @@ class SSHConnection(SSHPacketHandler):
         packet.check_end()
 
         if self.is_client() and self._auth:
+            self.logger.info('Auth for user %s succeeded', self._username)
+
             self._auth.auth_succeeded()
             self._auth.cancel()
             self._auth = None
@@ -1405,6 +1503,8 @@ class SSHConnection(SSHPacketHandler):
             raise DisconnectError(DISC_PROTOCOL_ERROR,
                                   'Invalid userauth banner') from None
 
+        self.logger.debug1('Received auth banner')
+
         if self.is_client():
             self._owner.auth_banner_received(msg, lang)
         else:
@@ -1427,6 +1527,9 @@ class SSHConnection(SSHPacketHandler):
 
         name = '_process_' + map_handler_name(request) + '_global_request'
         handler = getattr(self, name, None)
+
+        if not handler:
+            self.logger.debug1('Received unknown global request: %s', request)
 
         self._global_request_queue.append((handler, packet, want_reply))
         if len(self._global_request_queue) == 1:
@@ -1472,6 +1575,9 @@ class SSHConnection(SSHPacketHandler):
                 raise ChannelOpenError(OPEN_UNKNOWN_CHANNEL_TYPE,
                                        'Unknown channel type')
         except ChannelOpenError as exc:
+            self.logger.debug1('Open failed for channel type %s: %s',
+                               chantype, exc.reason)
+
             self.send_channel_open_failure(send_chan, exc.code,
                                            exc.reason, exc.lang)
 
@@ -1490,6 +1596,9 @@ class SSHConnection(SSHPacketHandler):
             chan.process_open_confirmation(send_chan, send_window,
                                            send_pktsize, packet)
         else:
+            self.logger.debug1('Received open confirmation for unknown '
+                               'channel %d', recv_chan)
+
             raise DisconnectError(DISC_PROTOCOL_ERROR,
                                   'Invalid channel number')
 
@@ -1515,6 +1624,9 @@ class SSHConnection(SSHPacketHandler):
         if chan:
             chan.process_open_failure(code, reason, lang)
         else:
+            self.logger.debug1('Received open failure for unknown '
+                               'channel %d', recv_chan)
+
             raise DisconnectError(DISC_PROTOCOL_ERROR,
                                   'Invalid channel number')
 
@@ -1527,10 +1639,13 @@ class SSHConnection(SSHPacketHandler):
         if chan:
             chan.process_packet(pkttype, packet)
         else:
+            self.logger.debug1('Received channel message for unknown '
+                               'channel %d', recv_chan)
+
             raise DisconnectError(DISC_PROTOCOL_ERROR,
                                   'Invalid channel number')
 
-    packet_handlers = {
+    _packet_handlers = {
         MSG_DISCONNECT:                 _process_disconnect,
         MSG_IGNORE:                     _process_ignore,
         MSG_UNIMPLEMENTED:              _process_unimplemented,
@@ -1577,6 +1692,8 @@ class SSHConnection(SSHPacketHandler):
 
         """
 
+        self.logger.info('Aborting connection')
+
         self._force_close(None)
 
     def close(self):
@@ -1587,6 +1704,8 @@ class SSHConnection(SSHPacketHandler):
            application.
 
         """
+
+        self.logger.info('Closing connection')
 
         self.disconnect(DISC_BY_APPLICATION, 'Disconnected by application')
 
@@ -1681,7 +1800,10 @@ class SSHConnection(SSHPacketHandler):
 
         """
 
-        self.send_packet(Byte(MSG_DEBUG), Boolean(always_display),
+        self.logger.debug1('Sending debug message: %s%s', msg,
+                           ' (always display)' if always_display else '')
+
+        self.send_packet(MSG_DEBUG, Boolean(always_display),
                          String(msg), String(lang))
 
     def create_tcp_channel(self, encoding=None, window=_DEFAULT_WINDOW,
@@ -1794,6 +1916,9 @@ class SSHConnection(SSHPacketHandler):
             _, peer = yield from self._loop.create_connection(SSHForwarder,
                                                               dest_host,
                                                               dest_port)
+
+            self.logger.info('  Forwarding TCP connection to %s',
+                             (dest_host, dest_port))
         except OSError as exc:
             raise ChannelOpenError(OPEN_CONNECT_FAILED, str(exc)) from None
 
@@ -1819,6 +1944,8 @@ class SSHConnection(SSHPacketHandler):
             _, peer = \
                 yield from self._loop.create_unix_connection(SSHForwarder,
                                                              dest_path)
+
+            self.logger.info('  Forwarding UNIX connection to %s', dest_path)
         except OSError as exc:
             raise ChannelOpenError(OPEN_CONNECT_FAILED, str(exc)) from None
 
@@ -1862,10 +1989,17 @@ class SSHConnection(SSHPacketHandler):
                                                       dest_host, dest_port,
                                                       orig_host, orig_port))
 
-        return (yield from create_tcp_forward_listener(self, self._loop,
-                                                       tunnel_connection,
-                                                       listen_host,
-                                                       listen_port))
+        self.logger.info('Creating local TCP forwarder from %s to %s',
+                         (listen_host, listen_port), (dest_host, dest_port))
+
+        try:
+            return (yield from create_tcp_forward_listener(self, self._loop,
+                                                           tunnel_connection,
+                                                           listen_host,
+                                                           listen_port))
+        except OSError as exc:
+            self.logger.debug1('Failed to create local TCP listener: %s', exc)
+            raise
 
     @asyncio.coroutine
     def forward_local_path(self, listen_path, dest_path):
@@ -1897,9 +2031,16 @@ class SSHConnection(SSHPacketHandler):
             return (yield from self.create_unix_connection(session_factory,
                                                            dest_path))
 
-        return (yield from create_unix_forward_listener(self, self._loop,
-                                                        tunnel_connection,
-                                                        listen_path))
+        self.logger.info('Creating local UNIX forwarder from %s to %s',
+                         listen_path, dest_path)
+
+        try:
+            return (yield from create_unix_forward_listener(self, self._loop,
+                                                            tunnel_connection,
+                                                            listen_path))
+        except OSError as exc:
+            self.logger.debug1('Failed to create local UNIX listener: %s', exc)
+            raise
 
 
 class SSHClientConnection(SSHConnection):
@@ -1942,7 +2083,7 @@ class SSHClientConnection(SSHConnection):
                          server=False)
 
         self._host = host
-        self._port = port if port != _DEFAULT_PORT else None
+        self._port = port
         self._known_hosts = known_hosts
         self._x509_trusted_certs = x509_trusted_certs
         self._x509_trusted_cert_paths = x509_trusted_cert_paths
@@ -1985,8 +2126,9 @@ class SSHClientConnection(SSHConnection):
                 self._known_hosts = os.path.join(os.path.expanduser('~'),
                                                  '.ssh', 'known_hosts')
 
+            port = self._port if self._port != _DEFAULT_PORT else None
             known_hosts = match_known_hosts(self._known_hosts, self._host,
-                                            self._peer_addr, self._port)
+                                            self._peer_addr, port)
 
             server_host_keys, server_ca_keys, revoked_server_keys, \
                 server_x509_certs, revoked_x509_certs, \
@@ -2034,6 +2176,12 @@ class SSHClientConnection(SSHConnection):
                 raise DisconnectError(DISC_HOST_KEY_NOT_VERIFYABLE,
                                       'No trusted server host keys available')
 
+        self.logger.info('Connection to %s succeeded', (self._host, self._port))
+
+        self.logger.info('  Local address: %s',
+                         (self._local_addr, self._local_port))
+
+
     def _cleanup(self, exc):
         """Clean up this client connection"""
 
@@ -2053,6 +2201,9 @@ class SSHClientConnection(SSHConnection):
                 self._auth_waiter.set_exception(exc)
 
             self._auth_waiter = None
+
+        reason = 'lost: ' + str(exc) if exc else 'closed'
+        self.logger.info('Connection %s', reason)
 
         super()._cleanup(exc)
 
@@ -2154,8 +2305,11 @@ class SSHClientConnection(SSHConnection):
             method = self._auth_methods.pop(0)
 
             self._auth = lookup_client_auth(self, method)
+
             if self._auth:
                 return
+
+        self.logger.info('Auth failed for user %s', self._username)
 
         self._force_close(DisconnectError(DISC_NO_MORE_AUTH_METHODS_AVAILABLE,
                                           'Permission denied'))
@@ -2351,7 +2505,13 @@ class SSHClientConnection(SSHConnection):
                     self._dynamic_remote_listeners.get(dest_host))
 
         if listener:
-            return listener.process_connection(orig_host, orig_port)
+            chan, session = listener.process_connection(orig_host, orig_port)
+
+            self.logger.info('Accepted forwarded TCP connection on %s',
+                             (dest_host, dest_port))
+            self.logger.info('  Client address: %s', (orig_host, orig_port))
+
+            return chan, session
         else:
             raise ChannelOpenError(OPEN_CONNECT_FAILED, 'No such listener')
 
@@ -2361,6 +2521,9 @@ class SSHClientConnection(SSHConnection):
 
         yield from self._make_global_request(
             b'cancel-tcpip-forward', String(listen_host), UInt32(listen_port))
+
+        self.logger.info('Closed remote TCP listener on %s',
+                         (listen_host, listen_port))
 
         listener = self._remote_listeners.get((listen_host, listen_port))
 
@@ -2399,7 +2562,11 @@ class SSHClientConnection(SSHConnection):
         listener = self._remote_listeners.get(dest_path)
 
         if listener:
-            return listener.process_connection()
+            chan, session = listener.process_connection()
+
+            self.logger.info('Accepted remote UNIX connection on %s', dest_path)
+
+            return chan, session
         else:
             raise ChannelOpenError(OPEN_CONNECT_FAILED, 'No such listener')
 
@@ -2409,6 +2576,8 @@ class SSHClientConnection(SSHConnection):
 
         yield from self._make_global_request(
             b'cancel-streamlocal-forward@openssh.com', String(listen_path))
+
+        self.logger.info('Closed UNIX listener on %s', listen_path)
 
         if listen_path in self._remote_listeners:
             del self._remote_listeners[listen_path]
@@ -2422,6 +2591,9 @@ class SSHClientConnection(SSHConnection):
         packet.check_end()
 
         if self._x11_listener:
+            self.logger.info('Accepted X11 connection')
+            self.logger.info('  Client address: %s', (orig_host, orig_port))
+
             chan = self.create_x11_channel()
 
             chan.set_inbound_peer_names(orig_host, orig_port)
@@ -2437,6 +2609,8 @@ class SSHClientConnection(SSHConnection):
         packet.check_end()
 
         if self._agent_path:
+            self.logger.info('Accepted SSH agent connection')
+
             return (self.create_unix_channel(),
                     self.forward_unix_connection(self._agent_path))
         else:
@@ -2752,6 +2926,10 @@ class SSHClientConnection(SSHConnection):
 
         """
 
+        self.logger.info('Opening direct TCP connection to %s',
+                         (remote_host, remote_port))
+        self.logger.info('  Client address: %s', (orig_host, orig_port))
+
         chan = self.create_tcp_channel(encoding, window, max_pktsize)
 
         session = yield from chan.connect(session_factory, remote_host,
@@ -2830,6 +3008,9 @@ class SSHClientConnection(SSHConnection):
 
         listen_host = listen_host.lower()
 
+        self.logger.info('Creating remote TCP listener on %s',
+                         (listen_host, listen_port))
+
         pkttype, packet = yield from self._make_global_request(
             b'tcpip-forward', String(listen_host), UInt32(listen_port))
 
@@ -2854,12 +3035,15 @@ class SSHClientConnection(SSHConnection):
                                             encoding, window, max_pktsize)
 
             if dynamic:
+                self.logger.debug1('Assigning dynamic port %d', listen_port)
+
                 self._dynamic_remote_listeners[listen_host] = listener
 
             self._remote_listeners[listen_host, listen_port] = listener
             return listener
         else:
             packet.check_end()
+            self.logger.debug1('Failed to create remote TCP listener')
             return None
 
     @asyncio.coroutine
@@ -2946,6 +3130,8 @@ class SSHClientConnection(SSHConnection):
 
         """
 
+        self.logger.info('Opening direct UNIX connection to %s', remote_path)
+
         chan = self.create_unix_channel(encoding, window, max_pktsize)
 
         session = yield from chan.connect(session_factory, remote_path)
@@ -3019,6 +3205,8 @@ class SSHClientConnection(SSHConnection):
 
         """
 
+        self.logger.info('Creating remote UNIX listener on %s', listen_path)
+
         pkttype, packet = yield from self._make_global_request(
             b'streamlocal-forward@openssh.com', String(listen_path))
 
@@ -3032,6 +3220,7 @@ class SSHClientConnection(SSHConnection):
             self._remote_listeners[listen_path] = listener
             return listener
         else:
+            self.logger.debug1('Failed to create remote UNIX listener')
             return None
 
     @asyncio.coroutine
@@ -3144,6 +3333,9 @@ class SSHClientConnection(SSHConnection):
             # pylint: disable=unused-argument
             return self.forward_connection(dest_host, dest_port)
 
+        self.logger.info('Creating remote TCP forwarder from %s to %s',
+                         (listen_host, listen_port), (dest_host, dest_port))
+
         return (yield from self.create_server(session_factory, listen_host,
                                               listen_port))
 
@@ -3174,6 +3366,9 @@ class SSHClientConnection(SSHConnection):
             """Return an SSHUNIXSession used to do remote path forwarding"""
 
             return self.forward_unix_connection(dest_path)
+
+        self.logger.info('Creating remote UNIX forwarder from %s to %s',
+                         listen_path, dest_path)
 
         return (yield from self.create_unix_server(session_factory,
                                                    listen_path))
@@ -3263,7 +3458,7 @@ class SSHServerConnection(SSHConnection):
                          server=True)
 
         self._server_host_keys = server_host_keys
-        self._server_host_key_algs = server_host_keys.keys()
+        self._server_host_key_algs = list(server_host_keys.keys())
         self._client_keys = authorized_client_keys
         self._x509_trusted_certs = x509_trusted_certs
         self._x509_trusted_cert_paths = x509_trusted_cert_paths
@@ -3330,7 +3525,10 @@ class SSHServerConnection(SSHConnection):
     def _connection_made(self):
         """Handle the opening of a new connection"""
 
-        pass
+        self.logger.info('Accepted SSH connection on %s',
+                         (self._local_addr, self._local_port))
+        self.logger.info('  Client address: %s',
+                         (self._peer_addr, self._peer_port))
 
     def _choose_server_host_key(self, peer_host_key_algs):
         """Choose the server host key to use
@@ -3707,6 +3905,10 @@ class SSHServerConnection(SSHConnection):
         else:
             session = result
 
+        self.logger.info('Accepted direct TCP connection on %s',
+                         (dest_host, dest_port))
+        self.logger.info('  Client address: %s', (orig_host, orig_port))
+
         chan.set_inbound_peer_names(dest_host, dest_port, orig_host, orig_port)
 
         return chan, session
@@ -3726,14 +3928,24 @@ class SSHServerConnection(SSHConnection):
 
         if not self.check_key_permission('port-forwarding') or \
            not self.check_certificate_permission('port-forwarding'):
+            self.logger.info('Request for TCP listener on %s denied: port '
+                             'forwarding not permitted',
+                             (listen_host, listen_port))
+
             self._report_global_response(False)
             return
 
         result = self._owner.server_requested(listen_host, listen_port)
 
         if not result:
+            self.logger.info('Request for TCP listener on %s denied by '
+                             'application', (listen_host, listen_port))
+
             self._report_global_response(False)
             return
+
+        self.logger.info('Creating TCP listener on %s',
+                         (listen_host, listen_port))
 
         if result is True:
             result = self.forward_local_port(listen_host, listen_port,
@@ -3763,6 +3975,7 @@ class SSHServerConnection(SSHConnection):
 
             self._report_global_response(result)
         else:
+            self.logger.debug1('Failed to create TCP listener')
             self._report_global_response(False)
 
     def _process_cancel_tcpip_forward_global_request(self, packet):
@@ -3783,6 +3996,9 @@ class SSHServerConnection(SSHConnection):
         except KeyError:
             raise DisconnectError(DISC_PROTOCOL_ERROR, 'TCP/IP listener '
                                   'not found') from None
+
+        self.logger.info('Closed TCP listener on %s',
+                         (listen_host, listen_port))
 
         listener.close()
 
@@ -3828,6 +4044,8 @@ class SSHServerConnection(SSHConnection):
         else:
             session = result
 
+        self.logger.info('Accepted direct UNIX connection on %s', dest_path)
+
         chan.set_inbound_peer_names(dest_path)
 
         return chan, session
@@ -3847,14 +4065,22 @@ class SSHServerConnection(SSHConnection):
 
         if not self.check_key_permission('port-forwarding') or \
            not self.check_certificate_permission('port-forwarding'):
+            self.logger.info('Request for UNIX listener on %s denied: port '
+                             'forwarding not permitted', listen_path)
+
             self._report_global_response(False)
             return
 
         result = self._owner.unix_server_requested(listen_path)
 
         if not result:
+            self.logger.info('Request for UNIX listener on %s denied by '
+                             'application', listen_path)
+
             self._report_global_response(False)
             return
+
+        self.logger.info('Creating UNIX listener on %s', listen_path)
 
         if result is True:
             result = self.forward_local_path(listen_path, listen_path)
@@ -3875,6 +4101,7 @@ class SSHServerConnection(SSHConnection):
             self._local_listeners[listen_path] = listener
             self._report_global_response(True)
         else:
+            self.logger.debug1('Failed to create UNIX listener')
             self._report_global_response(False)
 
     def _process_cancel_streamlocal_forward_at_openssh_dot_com_global_request(
@@ -3896,6 +4123,8 @@ class SSHServerConnection(SSHConnection):
             raise DisconnectError(DISC_PROTOCOL_ERROR, 'UNIX domain listener '
                                   'not found') from None
 
+        self.logger.info('Closed UNIX listener on %s', listen_path)
+
         listener.close()
 
         self._report_global_response(True)
@@ -3907,6 +4136,9 @@ class SSHServerConnection(SSHConnection):
         if (not self._x11_forwarding or
                 not self.check_key_permission('X11-forwarding') or
                 not self.check_certificate_permission('X11-forwarding')):
+            self.logger.info('X11 forwarding request denied: X11 '
+                             'forwarding not permitted')
+
             return None
 
         if not self._x11_listener:
@@ -3931,6 +4163,9 @@ class SSHServerConnection(SSHConnection):
         if (not self._agent_forwarding or
                 not self.check_key_permission('agent-forwarding') or
                 not self.check_certificate_permission('agent-forwarding')):
+            self.logger.info('Agent forwarding request denied: Agent '
+                             'forwarding not permitted')
+
             return False
 
         if not self._agent_listener:
@@ -3969,7 +4204,9 @@ class SSHServerConnection(SSHConnection):
         if self._auth_complete:
             raise OSError('Authentication already completed')
 
-        self.send_packet(Byte(MSG_USERAUTH_BANNER), String(msg), String(lang))
+        self.logger.debug1('Sending authentication banner')
+
+        self.send_packet(MSG_USERAUTH_BANNER, String(msg), String(lang))
 
     def set_authorized_keys(self, authorized_keys):
         """Set the keys trusted for client public key authentication
@@ -4206,6 +4443,10 @@ class SSHServerConnection(SSHConnection):
 
         """
 
+        self.logger.info('Opening forwarded TCP connection to %s',
+                         (remote_host, remote_port))
+        self.logger.info('  Client address: %s', (orig_host, orig_port))
+
         chan = self.create_tcp_channel(encoding, window, max_pktsize)
 
         session = yield from chan.accept(session_factory, remote_host,
@@ -4279,6 +4520,8 @@ class SSHServerConnection(SSHConnection):
 
         """
 
+        self.logger.info('Opening forwarded UNIX connection to %s', remote_path)
+
         chan = self.create_unix_channel(encoding, window, max_pktsize)
 
         session = yield from chan.accept(session_factory, remote_path)
@@ -4317,6 +4560,8 @@ class SSHServerConnection(SSHConnection):
                               max_pktsize=_DEFAULT_MAX_PKTSIZE):
         """Create an SSH X11 forwarded connection"""
 
+        self.logger.info('Opening forwarded X11 connection')
+
         chan = self.create_x11_channel(None, window, max_pktsize)
 
         session = yield from chan.open(session_factory, orig_host, orig_port)
@@ -4332,6 +4577,8 @@ class SSHServerConnection(SSHConnection):
         if not self._agent_listener:
             raise ChannelOpenError(OPEN_ADMINISTRATIVELY_PROHIBITED,
                                    'Agent forwarding not permitted')
+
+        self.logger.info('Opening forwarded agent connection')
 
         chan = self.create_agent_channel(encoding, window, max_pktsize)
 
@@ -4631,9 +4878,12 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
     # pylint: disable=broad-except
     try:
         if tunnel:
+            tunnel_logger = getattr(tunnel, 'logger', logger)
+            tunnel_logger.info('Opening SSH tunnel to %s', (host, port))
             _, conn = yield from tunnel.create_connection(conn_factory, host,
                                                           port)
         else:
+            logger.info('Opening SSH connection to %s', (host, port))
             _, conn = yield from loop.create_connection(conn_factory, host,
                                                         port, family=family,
                                                         flags=flags,
@@ -4926,6 +5176,8 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
 
     if x509_trusted_certs is not None:
         x509_trusted_certs = load_certificates(x509_trusted_certs)
+
+    logger.info('Creating SSH server on %s', (host, port))
 
     return (yield from loop.create_server(conn_factory, host, port,
                                           family=family, flags=flags,

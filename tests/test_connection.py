@@ -32,7 +32,7 @@ from asyncssh.compression import get_compression_algs
 from asyncssh.crypto.pyca.cipher import GCMShim
 from asyncssh.kex import get_kex_algs
 from asyncssh.mac import _HMAC, _mac_handlers, get_mac_algs
-from asyncssh.packet import Boolean, Byte, NameList, String, UInt32
+from asyncssh.packet import Boolean, NameList, String, UInt32
 
 from .server import Server, ServerTestCase
 from .util import asynctest, gss_available, patch_gss, x509_available
@@ -56,7 +56,7 @@ class _ReplayKexClientConnection(asyncssh.SSHClientConnection):
     def replay_kex(self):
         """Replay last kexinit packet"""
 
-        self.send_packet(self._client_kexinit)
+        self.send_packet(MSG_KEXINIT, self._client_kexinit[1:])
 
 
 class _VersionedServerConnection(asyncssh.SSHServerConnection):
@@ -688,7 +688,7 @@ class _TestConnection(ServerTestCase):
 
         conn = yield from self.connect()
 
-        conn.send_packet(Byte(MSG_SERVICE_REQUEST), String('xxx'))
+        conn.send_packet(MSG_SERVICE_REQUEST, String('xxx'))
 
         yield from conn.wait_closed()
 
@@ -698,7 +698,7 @@ class _TestConnection(ServerTestCase):
 
         conn = yield from self.connect()
 
-        conn.send_packet(Byte(MSG_SERVICE_ACCEPT), String('xxx'))
+        conn.send_packet(MSG_SERVICE_ACCEPT, String('xxx'))
 
         yield from conn.wait_closed()
 
@@ -708,7 +708,7 @@ class _TestConnection(ServerTestCase):
 
         conn = yield from self.connect()
 
-        conn.send_packet(Byte(MSG_DEBUG))
+        conn.send_packet(MSG_DEBUG)
 
         yield from conn.wait_closed()
 
@@ -717,7 +717,7 @@ class _TestConnection(ServerTestCase):
         """Test unknown SSH packet"""
 
         with (yield from self.connect()) as conn:
-            conn.send_packet(b'\xff')
+            conn.send_packet(0xff)
             yield from asyncio.sleep(0.1)
 
         yield from conn.wait_closed()
@@ -752,7 +752,7 @@ class _TestConnection(ServerTestCase):
 
         conn = yield from self.connect()
 
-        conn.send_packet(Byte(MSG_KEXINIT), os.urandom(16), NameList([b'xxx']),
+        conn.send_packet(MSG_KEXINIT, os.urandom(16), NameList([b'xxx']),
                          NameList([]), NameList([]), NameList([]),
                          NameList([]), NameList([]), NameList([]),
                          NameList([]), NameList([]), NameList([]),
@@ -766,7 +766,7 @@ class _TestConnection(ServerTestCase):
 
         conn = yield from self.connect()
 
-        conn.send_packet(Byte(MSG_KEXINIT), os.urandom(16),
+        conn.send_packet(MSG_KEXINIT, os.urandom(16),
                          NameList([b'ecdh-sha2-nistp521']), NameList([b'xxx']),
                          NameList([]), NameList([]), NameList([]),
                          NameList([]), NameList([]), NameList([]),
@@ -780,7 +780,7 @@ class _TestConnection(ServerTestCase):
 
         conn = yield from self.connect()
 
-        conn.send_packet(Byte(MSG_NEWKEYS))
+        conn.send_packet(MSG_NEWKEYS)
 
         yield from conn.wait_closed()
 
@@ -790,7 +790,7 @@ class _TestConnection(ServerTestCase):
 
         conn = yield from self.connect()
 
-        conn.send_packet(Byte(MSG_USERAUTH_REQUEST), String('guest'),
+        conn.send_packet(MSG_USERAUTH_REQUEST, String('guest'),
                          String('xxx'), String('none'))
 
         yield from conn.wait_closed()
@@ -801,7 +801,7 @@ class _TestConnection(ServerTestCase):
 
         conn = yield from self.connect()
 
-        conn.send_packet(Byte(MSG_USERAUTH_REQUEST), String(b'\xff'),
+        conn.send_packet(MSG_USERAUTH_REQUEST, String(b'\xff'),
                          String('ssh-connection'), String('none'))
 
         yield from conn.wait_closed()
@@ -811,7 +811,7 @@ class _TestConnection(ServerTestCase):
         """Test userauth request after auth is complete"""
 
         with (yield from self.connect()) as conn:
-            conn.send_packet(Byte(MSG_USERAUTH_REQUEST), String('guest'),
+            conn.send_packet(MSG_USERAUTH_REQUEST, String('guest'),
                              String('ssh-connection'), String('none'))
             yield from asyncio.sleep(0.1)
 
@@ -823,7 +823,7 @@ class _TestConnection(ServerTestCase):
 
         conn = yield from self.connect()
 
-        conn.send_packet(Byte(MSG_USERAUTH_SUCCESS))
+        conn.send_packet(MSG_USERAUTH_SUCCESS)
 
         yield from conn.wait_closed()
 
@@ -833,8 +833,7 @@ class _TestConnection(ServerTestCase):
 
         conn = yield from self.connect()
 
-        conn.send_packet(Byte(MSG_USERAUTH_FAILURE), NameList([]),
-                         Boolean(False))
+        conn.send_packet(MSG_USERAUTH_FAILURE, NameList([]), Boolean(False))
 
         yield from conn.wait_closed()
 
@@ -844,7 +843,7 @@ class _TestConnection(ServerTestCase):
 
         conn = yield from self.connect()
 
-        conn.send_packet(Byte(MSG_USERAUTH_BANNER), String(''), String(''))
+        conn.send_packet(MSG_USERAUTH_BANNER, String(''), String(''))
 
         yield from conn.wait_closed()
 
@@ -854,7 +853,7 @@ class _TestConnection(ServerTestCase):
 
         conn = yield from self.connect()
 
-        conn.send_packet(Byte(MSG_GLOBAL_REQUEST), String(b'\xff'),
+        conn.send_packet(MSG_GLOBAL_REQUEST, String(b'\xff'),
                          Boolean(True))
 
         yield from conn.wait_closed()
@@ -865,8 +864,7 @@ class _TestConnection(ServerTestCase):
 
         conn = yield from self.connect()
 
-        conn.send_packet(Byte(MSG_GLOBAL_REQUEST), String('xxx'),
-                         Boolean(True))
+        conn.send_packet(MSG_GLOBAL_REQUEST, String('xxx'), Boolean(True))
 
         yield from conn.wait_closed()
 
@@ -876,7 +874,7 @@ class _TestConnection(ServerTestCase):
 
         conn = yield from self.connect()
 
-        conn.send_packet(Byte(MSG_CHANNEL_OPEN), String(b'\xff'),
+        conn.send_packet(MSG_CHANNEL_OPEN, String(b'\xff'),
                          UInt32(0), UInt32(0), UInt32(0))
 
         yield from conn.wait_closed()
@@ -887,7 +885,7 @@ class _TestConnection(ServerTestCase):
 
         conn = yield from self.connect()
 
-        conn.send_packet(Byte(MSG_CHANNEL_OPEN), String('xxx'),
+        conn.send_packet(MSG_CHANNEL_OPEN, String('xxx'),
                          UInt32(0), UInt32(0), UInt32(0))
 
         yield from conn.wait_closed()
@@ -898,7 +896,7 @@ class _TestConnection(ServerTestCase):
 
         conn = yield from self.connect()
 
-        conn.send_packet(Byte(MSG_CHANNEL_OPEN_CONFIRMATION), UInt32(0xff),
+        conn.send_packet(MSG_CHANNEL_OPEN_CONFIRMATION, UInt32(0xff),
                          UInt32(0), UInt32(0), UInt32(0))
 
         yield from conn.wait_closed()
@@ -909,7 +907,7 @@ class _TestConnection(ServerTestCase):
 
         conn = yield from self.connect()
 
-        conn.send_packet(Byte(MSG_CHANNEL_OPEN_FAILURE), UInt32(0xff),
+        conn.send_packet(MSG_CHANNEL_OPEN_FAILURE, UInt32(0xff),
                          UInt32(0), String(''), String(''))
 
         yield from conn.wait_closed()
@@ -920,7 +918,7 @@ class _TestConnection(ServerTestCase):
 
         conn = yield from self.connect()
 
-        conn.send_packet(Byte(MSG_CHANNEL_OPEN_FAILURE), UInt32(0),
+        conn.send_packet(MSG_CHANNEL_OPEN_FAILURE, UInt32(0),
                          UInt32(0), String(b'\xff'), String(''))
 
         yield from conn.wait_closed()
@@ -931,7 +929,7 @@ class _TestConnection(ServerTestCase):
 
         conn = yield from self.connect()
 
-        conn.send_packet(Byte(MSG_CHANNEL_OPEN_FAILURE), UInt32(0),
+        conn.send_packet(MSG_CHANNEL_OPEN_FAILURE, UInt32(0),
                          UInt32(0), String(''), String(b'\xff'))
 
         yield from conn.wait_closed()
@@ -942,7 +940,7 @@ class _TestConnection(ServerTestCase):
 
         conn = yield from self.connect()
 
-        conn.send_packet(Byte(MSG_CHANNEL_DATA), String(''))
+        conn.send_packet(MSG_CHANNEL_DATA, String(''))
 
         yield from conn.wait_closed()
 

@@ -46,9 +46,10 @@ from .constants import FX_OK, FX_EOF, FX_NO_SUCH_FILE, FX_PERMISSION_DENIED
 from .constants import FX_FAILURE, FX_BAD_MESSAGE, FX_NO_CONNECTION
 from .constants import FX_CONNECTION_LOST, FX_OP_UNSUPPORTED
 
-from .misc import async_context_manager, Error, Record
+from .misc import Error, Record, async_context_manager, get_symbol_names
 
-from .packet import Byte, String, UInt32, UInt64, PacketDecodeError, SSHPacket
+from .packet import Byte, String, UInt32, UInt64, PacketDecodeError
+from .packet import SSHPacket, SSHPacketLogger
 
 SFTP_BLOCK_SIZE = 16384
 
@@ -661,8 +662,12 @@ class SFTPName(Record):
         return cls(filename, longname, attrs)
 
 
-class SFTPHandler:
+class SFTPHandler(SSHPacketLogger):
     """SFTP session handler"""
+
+    _data_pkttypes = {FXP_WRITE, FXP_DATA}
+
+    _handler_names = get_symbol_names(globals(), 'FXP_')
 
     # SFTP implementations with broken order for SYMLINK arguments
     _nonstandard_symlink_impls = ['OpenSSH', 'paramiko']
@@ -687,6 +692,14 @@ class SFTPHandler:
         self._reader = reader
         self._writer = writer
 
+        self._logger = reader.logger.get_child('sftp')
+
+    @property
+    def logger(self):
+        """A logger associated with this SFTP client"""
+
+        return self._logger
+
     @asyncio.coroutine
     def _cleanup(self, exc):
         """Clean up this SFTP session"""
@@ -704,15 +717,18 @@ class SFTPHandler:
 
         raise NotImplementedError
 
-    def send_packet(self, *args):
+    def send_packet(self, pkttype, *args):
         """Send an SFTP packet"""
 
-        payload = b''.join(args)
+        payload = Byte(pkttype) + b''.join(args)
 
         try:
             self._writer.write(UInt32(len(payload)) + payload)
         except ConnectionError as exc:
             raise SFTPError(FX_CONNECTION_LOST, str(exc)) from None
+
+        self.log_sent_packet(pkttype, payload,
+                             handler_names=self._handler_names)
 
     @asyncio.coroutine
     def recv_packet(self):
@@ -782,6 +798,9 @@ class SFTPClientHandler(SFTPHandler):
     def _process_packet(self, pkttype, pktid, packet):
         """Process incoming SFTP responses"""
 
+        self.log_received_packet(pkttype, packet.get_full_payload(),
+                                 self._handler_names)
+
         try:
             waiter = self._requests.pop(pktid)
         except KeyError:
@@ -803,11 +822,12 @@ class SFTPClientHandler(SFTPHandler):
         self._requests[pktid] = waiter
 
         if isinstance(pkttype, bytes):
-            hdr = Byte(FXP_EXTENDED) + UInt32(pktid) + String(pkttype)
+            hdr = UInt32(pktid) + String(pkttype)
+            pkttype = FXP_EXTENDED
         else:
-            hdr = Byte(pkttype) + UInt32(pktid)
+            hdr = UInt32(pktid)
 
-        self.send_packet(hdr, *args)
+        self.send_packet(pkttype, hdr, *args)
 
     @asyncio.coroutine
     def _make_request(self, pkttype, *args):
@@ -911,7 +931,7 @@ class SFTPClientHandler(SFTPHandler):
         extensions = (String(name) + String(data)
                       for name, data in self._extensions)
 
-        self.send_packet(Byte(FXP_INIT), UInt32(_SFTP_VERSION), *extensions)
+        self.send_packet(FXP_INIT, UInt32(_SFTP_VERSION), *extensions)
 
         resp = yield from self.recv_packet()
 
@@ -1574,6 +1594,12 @@ class SFTPClient:
 
         self.__exit__()
         yield from self.wait_closed()
+
+    @property
+    def logger(self):
+        """A logger associated with this SFTP client"""
+
+        return self._handler.logger
 
     def encode(self, path):
         """Encode path name using configured path encoding
@@ -2916,6 +2942,9 @@ class SFTPServerHandler(SFTPHandler):
 
         # pylint: disable=broad-except
         try:
+            self.log_received_packet(pkttype, packet.get_remaining_payload(),
+                                     self._handler_names)
+
             if pkttype == FXP_EXTENDED:
                 pkttype = packet.get_string()
 
@@ -2972,7 +3001,7 @@ class SFTPServerHandler(SFTPHandler):
                       String('Uncaught exception: %s' % str(exc)) +
                       String(DEFAULT_LANG))
 
-        self.send_packet(Byte(return_type), UInt32(pktid), result)
+        self.send_packet(return_type, UInt32(pktid), result)
 
     @asyncio.coroutine
     def _process_open(self, packet):
@@ -3437,7 +3466,7 @@ class SFTPServerHandler(SFTPHandler):
                       for name, data in self._extensions)
 
         try:
-            self.send_packet(Byte(FXP_VERSION), UInt32(version), *extensions)
+            self.send_packet(FXP_VERSION, UInt32(version), *extensions)
         except SFTPError as exc:
             yield from self._cleanup(exc)
             return
@@ -3485,10 +3514,24 @@ class SFTPServer:
     def __init__(self, conn, chroot=None):
         # pylint: disable=unused-argument
 
+        self._logger = None
+
         if chroot:
             self._chroot = _from_local_path(os.path.realpath(chroot))
         else:
             self._chroot = None
+
+    @property
+    def logger(self):
+        """A logger associated with this SFTP server"""
+
+        return self._logger
+
+    @logger.setter
+    def logger(self, logger):
+        """Set the logger associated with this SFTP server"""
+
+        self._logger = logger
 
     def format_user(self, uid):
         """Return the user name associated with a uid
@@ -4274,9 +4317,11 @@ def start_sftp_client(conn, loop, reader, writer, path_encoding, path_errors):
 
     handler = SFTPClientHandler(loop, reader, writer)
 
+    handler.logger.info('Starting SFTP client')
+
     yield from handler.start()
 
-    conn.create_task(handler.recv_packets())
+    conn.create_task(handler.recv_packets(), handler.logger)
 
     return SFTPClient(loop, handler, path_encoding, path_errors)
 
@@ -4285,6 +4330,10 @@ def start_sftp_client(conn, loop, reader, writer, path_encoding, path_errors):
 def run_sftp_server(sftp_server, reader, writer):
     """Return a handler for an SFTP server session"""
 
+    sftp_server.logger = reader.logger
+
     handler = SFTPServerHandler(sftp_server, reader, writer)
+
+    handler.logger.info('Starting SFTP server')
 
     yield from handler.run()

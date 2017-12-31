@@ -33,7 +33,7 @@ from asyncssh import FX_OK, FX_PERMISSION_DENIED, FX_FAILURE
 from asyncssh import scp
 
 from asyncssh.misc import python35
-from asyncssh.packet import SSHPacket, Byte, String, UInt32
+from asyncssh.packet import SSHPacket, String, UInt32
 from asyncssh.sftp import LocalFile, SFTPHandler, SFTPServerHandler
 
 from .server import ServerTestCase
@@ -1714,7 +1714,7 @@ class _TestSFTP(_CheckSFTP):
         def _no_init_start(self):
             """Send a non-init request at start"""
 
-            self.send_packet(Byte(FXP_OPEN), UInt32(0))
+            self.send_packet(FXP_OPEN, UInt32(0))
 
         with patch('asyncssh.sftp.SFTPClientHandler.start', _no_init_start):
             sftp_test(lambda self, sftp: None)(self)
@@ -1726,7 +1726,7 @@ class _TestSFTP(_CheckSFTP):
         def _missing_version_start(self):
             """Send an init request with missing version"""
 
-            self.send_packet(Byte(FXP_INIT))
+            self.send_packet(FXP_INIT)
 
         with patch('asyncssh.sftp.SFTPClientHandler.start',
                    _missing_version_start):
@@ -1748,7 +1748,7 @@ class _TestSFTP(_CheckSFTP):
             """Send a non-version response to init"""
 
             packet = yield from SFTPHandler.recv_packet(self)
-            self.send_packet(Byte(FXP_STATUS))
+            self.send_packet(FXP_STATUS)
             return packet
 
         with patch('asyncssh.sftp.SFTPServerHandler.recv_packet',
@@ -1764,7 +1764,7 @@ class _TestSFTP(_CheckSFTP):
             """Send an unsupported version in response to init"""
 
             packet = yield from SFTPHandler.recv_packet(self)
-            self.send_packet(Byte(FXP_VERSION), UInt32(4))
+            self.send_packet(FXP_VERSION, UInt32(4))
             return packet
 
         with patch('asyncssh.sftp.SFTPServerHandler.recv_packet',
@@ -1786,7 +1786,7 @@ class _TestSFTP(_CheckSFTP):
         def _close_after_init_start(self):
             """Send a close immediately after init request at start"""
 
-            self.send_packet(Byte(FXP_INIT), UInt32(3))
+            self.send_packet(FXP_INIT, UInt32(3))
             yield from self._cleanup(None)
 
         with patch('asyncssh.sftp.SFTPClientHandler.start',
@@ -1835,7 +1835,7 @@ class _TestSFTP(_CheckSFTP):
 
             # pylint: disable=unused-argument
 
-            self.send_packet(Byte(FXP_OPEN))
+            self.send_packet(FXP_OPEN)
 
         with patch('asyncssh.sftp.SFTPClientHandler.open', _missing_pktid):
             yield from sftp.open('file')
@@ -1882,8 +1882,7 @@ class _TestSFTP(_CheckSFTP):
 
             # pylint: disable=unused-argument
 
-            self.send_packet(Byte(FXP_HANDLE), UInt32(0xffffffff),
-                             String(''))
+            self.send_packet(FXP_HANDLE, UInt32(0xffffffff), String(''))
 
         with patch('asyncssh.sftp.SFTPServerHandler._process_packet',
                    _unrecognized_response_pktid):
@@ -1900,8 +1899,7 @@ class _TestSFTP(_CheckSFTP):
 
             # pylint: disable=unused-argument
 
-            self.send_packet(Byte(FXP_DATA), UInt32(pktid),
-                             String(''))
+            self.send_packet(FXP_DATA, UInt32(pktid), String(''))
 
         with patch('asyncssh.sftp.SFTPServerHandler._process_packet',
                    _bad_response_type):
@@ -1918,7 +1916,7 @@ class _TestSFTP(_CheckSFTP):
 
             # pylint: disable=unused-argument
 
-            self.send_packet(Byte(FXP_STATUS), UInt32(pktid), UInt32(FX_OK),
+            self.send_packet(FXP_STATUS, UInt32(pktid), UInt32(FX_OK),
                              String(''), String(''))
 
         with patch('asyncssh.sftp.SFTPServerHandler._process_packet',
@@ -1936,7 +1934,7 @@ class _TestSFTP(_CheckSFTP):
 
             # pylint: disable=unused-argument
 
-            self.send_packet(Byte(FXP_STATUS), UInt32(pktid), UInt32(FX_OK),
+            self.send_packet(FXP_STATUS, UInt32(pktid), UInt32(FX_OK),
                              String(b'\xff'), String(''))
 
         with patch('asyncssh.sftp.SFTPServerHandler._process_packet',

@@ -253,6 +253,12 @@ SSHClientConnection
 
 .. autoclass:: SSHClientConnection()
 
+   ========================= =
+   Connection attributes
+   ========================= =
+   .. autoattribute:: logger
+   ========================= =
+
    ============================== =
    General connection methods
    ============================== =
@@ -308,6 +314,12 @@ SSHServerConnection
 -------------------
 
 .. autoclass:: SSHServerConnection()
+
+   ========================= =
+   Connection attributes
+   ========================= =
+   .. autoattribute:: logger
+   ========================= =
 
    ============================== =
    General connection methods
@@ -372,6 +384,7 @@ SSHClientProcess
    Client process attributes
    ============================== =
    .. autoattribute:: channel
+   .. autoattribute:: logger
    .. autoattribute:: env
    .. autoattribute:: command
    .. autoattribute:: subsystem
@@ -411,6 +424,7 @@ SSHServerProcess
    Server process attributes
    ============================== =
    .. autoattribute:: channel
+   .. autoattribute:: logger
    .. autoattribute:: env
    .. autoattribute:: command
    .. autoattribute:: subsystem
@@ -586,6 +600,12 @@ SSHClientChannel
 
 .. autoclass:: SSHClientChannel()
 
+   ========================= =
+   Channel attributes
+   ========================= =
+   .. autoattribute:: logger
+   ========================= =
+
    =============================== =
    General channel info methods
    =============================== =
@@ -637,6 +657,12 @@ SSHServerChannel
 ----------------
 
 .. autoclass:: SSHServerChannel()
+
+   ========================= =
+   Channel attributes
+   ========================= =
+   .. autoattribute:: logger
+   ========================= =
 
    =============================== =
    General channel info methods
@@ -710,6 +736,12 @@ SSHTCPChannel
 
 .. autoclass:: SSHTCPChannel()
 
+   ========================= =
+   Channel attributes
+   ========================= =
+   .. autoattribute:: logger
+   ========================= =
+
    ============================== =
    General channel info methods
    ============================== =
@@ -746,6 +778,12 @@ SSHUNIXChannel
 --------------
 
 .. autoclass:: SSHUNIXChannel()
+
+   ========================= =
+   Channel attributes
+   ========================= =
+   .. autoattribute:: logger
+   ========================= =
 
    ============================== =
    General channel info methods
@@ -803,6 +841,7 @@ SSHReader
 
    ============================== =
    .. autoattribute:: channel
+   .. autoattribute:: logger
    .. automethod:: get_extra_info
    .. automethod:: at_eof
    .. automethod:: read
@@ -818,6 +857,7 @@ SSHWriter
 
    ============================== =
    .. autoattribute:: channel
+   .. autoattribute:: logger
    .. automethod:: get_extra_info
    .. automethod:: can_write_eof
    .. automethod:: close
@@ -834,6 +874,12 @@ SFTPClient
 ----------
 
 .. autoclass:: SFTPClient()
+
+   ========================= =
+   SFTP client attributes
+   ========================= =
+   .. autoattribute:: logger
+   ========================= =
 
    ===================== =
    File transfer methods
@@ -925,6 +971,12 @@ SFTPServer
 ----------
 
 .. autoclass:: SFTPServer
+
+   ========================= =
+   SFTP server attributes
+   ========================= =
+   .. autoattribute:: logger
+   ========================= =
 
    ================================== =
    Path remapping and display methods
@@ -1487,6 +1539,45 @@ read_authorized_keys
 --------------------
 
 .. autofunction:: read_authorized_keys
+
+.. index:: Logging
+.. _Logging:
+
+Logging
+=======
+
+AsyncSSH supports logging through the standard Python `logging` package.
+Logging is done under the logger named `'asyncssh'` as well as a child
+logger named `'asyncssh.sftp'` to allow different log levels to be set
+for SFTP related log messages.
+
+The base AsyncSSH log level can be set using the :func:`set_log_level`
+function and the SFTP log level can be set using the :func:`set_sftp_log_level`
+function. In addition, when either of these loggers is set to level DEBUG,
+AsyncSSH provides fine-grained control over the level of debug logging
+via the :func:`set_debug_level` function.
+
+AsyncSSH also provides logger objects as members of connection, channel,
+stream, and process objects that automatically log additional context about
+the connection or channel the logger is a member of. These objects can
+be used by application code to output custom log information associated
+with a particular connection or channel. Logger objects are also provided
+as members of SFTP client and server objects.
+
+set_log_level
+-------------
+
+.. autofunction:: set_log_level
+
+set_sftp_log_level
+------------------
+
+.. autofunction:: set_sftp_log_level
+
+set_debug_level
+---------------
+
+.. autofunction:: set_debug_level
 
 .. index:: Exceptions
 .. _Exceptions:

@@ -12,6 +12,7 @@
 
 """SSH packet encoding and decoding functions"""
 
+
 class PacketDecodeError(ValueError):
     """Packet decoding error"""
 
@@ -92,6 +93,11 @@ class SSHPacket:
 
         return self._packet[self._idx:]
 
+    def get_full_payload(self):
+        """Return the full packet"""
+
+        return self._packet
+
     def get_bytes(self, size):
         """Extract the requested number of bytes from the packet"""
 
@@ -139,27 +145,62 @@ class SSHPacket:
         return namelist.split(b',') if namelist else []
 
 
-class SSHPacketHandler:
-    """Parent class for SSH packet handlers
+class SSHPacketLogger:
+    """Parent class for SSH packet loggers"""
 
-       Classes wishing to decode SSH packets can inherit from this class,
-       defining the class variable packet_handlers as a dictionary which
-       maps SSH packet types to handler methods in the class and then
-       calling process_packet() to run the corresponding packet handler.
+    _handler_names = {}
 
-       The process_packet() function will return True if a handler was
-       found and False otherwise.
+    @property
+    def logger(self):
+        """The logger to use for packet logging"""
 
-    """
+        raise NotImplementedError
 
-    packet_handlers = {}
+    def _log_packet(self, msg, pkttype, payload, handler_names):
+        """Log a sent/received packet"""
 
-    def process_packet(self, pkttype, packet):
-        """Call the packet handler defined for the specified packet.
-           Return True if a handler was found, or False otherwise."""
+        try:
+            name = '%s (%d)' % (handler_names[pkttype], pkttype)
+        except KeyError:
+            name = 'packet type %d' % pkttype
 
-        if pkttype in self.packet_handlers:
-            self.packet_handlers[pkttype](self, pkttype, packet)
+        count = len(payload)
+        count = '%d byte%s' % (count, 's' if count > 1 else '')
+
+        self.logger.packet(payload, '%s %s, %s', msg, name, count)
+
+    def log_sent_packet(self, pkttype, payload, handler_names):
+        """Log a sent packet"""
+
+        self._log_packet('Sent', pkttype, payload, handler_names)
+
+
+    def log_received_packet(self, pkttype, payload, handler_names):
+        """Log a received packet"""
+
+        self._log_packet('Received', pkttype, payload, handler_names)
+
+
+class SSHPacketHandler(SSHPacketLogger):
+    """Parent class for SSH packet handlers"""
+
+    _packet_handlers = {}
+
+    @property
+    def logger(self):
+        """The logger associated with this packet handler"""
+
+        raise NotImplementedError
+
+    def process_packet(self, pkttype, packet, log=True):
+        """Log and process a received packet"""
+
+        if log:
+            self.log_received_packet(pkttype, packet.get_full_payload(),
+                                     self._handler_names)
+
+        if pkttype in self._packet_handlers:
+            self._packet_handlers[pkttype](self, pkttype, packet)
             return True
         else:
             return False

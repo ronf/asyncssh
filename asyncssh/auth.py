@@ -15,10 +15,13 @@
 import asyncio
 
 from .constants import DEFAULT_LANG, DISC_PROTOCOL_ERROR
+
 from .gss import GSSError
-from .logging import logger
-from .misc import DisconnectError, PasswordChangeRequired
-from .packet import Boolean, Byte, String, UInt32, SSHPacketHandler
+
+from .misc import DisconnectError, PasswordChangeRequired, get_symbol_names
+
+from .packet import Boolean, String, UInt32, SSHPacketHandler
+
 from .saslprep import saslprep, SASLPrepError
 
 
@@ -35,12 +38,12 @@ MSG_USERAUTH_GSSAPI_MIC               = 66
 # SSH message values for public key auth
 MSG_USERAUTH_PK_OK                    = 60
 
-# SSH message values for password auth
-MSG_USERAUTH_PASSWD_CHANGEREQ         = 60
-
-# SSH message values for 'keyboard-interactive' auth
+# SSH message values for keyboard-interactive auth
 MSG_USERAUTH_INFO_REQUEST             = 60
 MSG_USERAUTH_INFO_RESPONSE            = 61
+
+# SSH message values for password auth
+MSG_USERAUTH_PASSWD_CHANGEREQ         = 60
 
 # pylint: enable=bad-whitespace
 
@@ -54,7 +57,20 @@ class _Auth(SSHPacketHandler):
 
     def __init__(self, conn, coro):
         self._conn = conn
+        self._logger = conn.logger
         self._coro = conn.create_task(coro)
+
+    def send_packet(self, pkttype, *args):
+        """Send an auth packet"""
+
+        self._conn.send_packet(pkttype, *args,
+                               handler_names=self._handler_names)
+
+    @property
+    def logger(self):
+        """A logger associated with this authentication handler"""
+
+        return self._logger
 
     def create_task(self, coro):
         """Create an asynchronous auth task"""
@@ -117,6 +133,8 @@ class _ClientGSSKexAuth(_ClientAuth):
         """Start client GSS key exchange authentication"""
 
         if self._conn.gss_kex_auth_requested():
+            self.logger.debug1('Trying GSS key exchange auth')
+
             yield from self.send_request(key=self._conn.get_gss_context())
         else:
             self._conn.try_next_auth()
@@ -124,6 +142,8 @@ class _ClientGSSKexAuth(_ClientAuth):
 
 class _ClientGSSMICAuth(_ClientAuth):
     """Client side implementation of GSS MIC auth"""
+
+    _handler_names = get_symbol_names(globals(), 'MSG_USERAUTH_GSSAPI_')
 
     def __init__(self, conn, method):
         super().__init__(conn, method)
@@ -136,6 +156,8 @@ class _ClientGSSMICAuth(_ClientAuth):
         """Start client GSS MIC authentication"""
 
         if self._conn.gss_mic_auth_requested():
+            self.logger.debug1('Trying GSS MIC auth')
+
             self._gss = self._conn.get_gss_context()
             mechs = b''.join((String(mech) for mech in self._gss.mechs))
             yield from self.send_request(UInt32(len(self._gss.mechs)), mechs)
@@ -148,10 +170,10 @@ class _ClientGSSMICAuth(_ClientAuth):
         if self._gss.provides_integrity:
             data = self._conn.get_userauth_request_data(self._method)
 
-            self._conn.send_packet(Byte(MSG_USERAUTH_GSSAPI_MIC),
-                                   String(self._gss.sign(data)))
+            self.send_packet(MSG_USERAUTH_GSSAPI_MIC,
+                             String(self._gss.sign(data)))
         else:
-            self._conn.send_packet(Byte(MSG_USERAUTH_GSSAPI_EXCHANGE_COMPLETE))
+            self.send_packet(MSG_USERAUTH_GSSAPI_EXCHANGE_COMPLETE)
 
     def _process_response(self, pkttype, packet):
         """Process a GSS response from the server"""
@@ -167,15 +189,13 @@ class _ClientGSSMICAuth(_ClientAuth):
         try:
             token = self._gss.step()
 
-            self._conn.send_packet(Byte(MSG_USERAUTH_GSSAPI_TOKEN),
-                                   String(token))
+            self.send_packet(MSG_USERAUTH_GSSAPI_TOKEN, String(token))
 
             if self._gss.complete:
                 self._finish()
         except GSSError as exc:
             if exc.token:
-                self._conn.send_packet(Byte(MSG_USERAUTH_GSSAPI_ERRTOK),
-                                       String(exc.token))
+                self.send_packet(MSG_USERAUTH_GSSAPI_ERRTOK, String(exc.token))
 
             self._conn.try_next_auth()
 
@@ -193,15 +213,13 @@ class _ClientGSSMICAuth(_ClientAuth):
             token = self._gss.step(token)
 
             if token:
-                self._conn.send_packet(Byte(MSG_USERAUTH_GSSAPI_TOKEN),
-                                       String(token))
+                self.send_packet(MSG_USERAUTH_GSSAPI_TOKEN, String(token))
 
             if self._gss.complete:
                 self._finish()
         except GSSError as exc:
             if exc.token:
-                self._conn.send_packet(Byte(MSG_USERAUTH_GSSAPI_ERRTOK),
-                                       String(exc.token))
+                self.send_packet(MSG_USERAUTH_GSSAPI_ERRTOK, String(exc.token))
 
             self._conn.try_next_auth()
 
@@ -218,8 +236,7 @@ class _ClientGSSMICAuth(_ClientAuth):
         _ = packet.get_string()         # lang
         packet.check_end()
 
-        logger.warning('GSS error from server: %s',
-                       msg.decode('utf-8', errors='ignore'))
+        self.logger.warning('GSS error from server: %s', msg)
         self._got_error = True
 
         return True
@@ -236,24 +253,22 @@ class _ClientGSSMICAuth(_ClientAuth):
             self._gss.step(token)
         except GSSError as exc:
             if not self._got_error: # pragma: no cover
-                logger.warning('GSS error from server: %s', str(exc))
+                self.logger.warning('GSS error from server: %s', str(exc))
 
         return True
 
-    # pylint: disable=bad-whitespace
-
-    packet_handlers = {
+    _packet_handlers = {
         MSG_USERAUTH_GSSAPI_RESPONSE: _process_response,
         MSG_USERAUTH_GSSAPI_TOKEN:    _process_token,
         MSG_USERAUTH_GSSAPI_ERROR:    _process_error,
         MSG_USERAUTH_GSSAPI_ERRTOK:   _process_error_token
     }
 
-    # pylint: enable=bad-whitespace
-
 
 class _ClientPublicKeyAuth(_ClientAuth):
     """Client side implementation of public key auth"""
+
+    _handler_names = get_symbol_names(globals(), 'MSG_USERAUTH_PK_')
 
     @asyncio.coroutine
     def _start(self):
@@ -265,6 +280,9 @@ class _ClientPublicKeyAuth(_ClientAuth):
             self._conn.try_next_auth()
             return
 
+        self.logger.debug1('Trying public key auth with %s key',
+                           self._keypair.algorithm)
+
         yield from self.send_request(Boolean(False),
                                      String(self._keypair.algorithm),
                                      String(self._keypair.public_data))
@@ -272,6 +290,9 @@ class _ClientPublicKeyAuth(_ClientAuth):
     @asyncio.coroutine
     def _send_signed_request(self):
         """Send signed public key request"""
+
+        self.logger.debug1('Signing request with %s key',
+                           self._keypair.algorithm)
 
         yield from self.send_request(Boolean(True),
                                      String(self._keypair.algorithm),
@@ -294,13 +315,15 @@ class _ClientPublicKeyAuth(_ClientAuth):
         self.create_task(self._send_signed_request())
         return True
 
-    packet_handlers = {
+    _packet_handlers = {
         MSG_USERAUTH_PK_OK: _process_public_key_ok
     }
 
 
 class _ClientKbdIntAuth(_ClientAuth):
     """Client side implementation of keyboard-interactive auth"""
+
+    _handler_names = get_symbol_names(globals(), 'MSG_USERAUTH_INFO_')
 
     @asyncio.coroutine
     def _start(self):
@@ -311,6 +334,8 @@ class _ClientKbdIntAuth(_ClientAuth):
         if submethods is None:
             self._conn.try_next_auth()
             return
+
+        self.logger.debug1('Trying keyboard-interactive auth')
 
         yield from self.send_request(String(''), String(submethods))
 
@@ -326,9 +351,8 @@ class _ClientKbdIntAuth(_ClientAuth):
             self._conn.try_next_auth()
             return
 
-        self._conn.send_packet(Byte(MSG_USERAUTH_INFO_RESPONSE),
-                               UInt32(len(responses)),
-                               b''.join(String(r) for r in responses))
+        self.send_packet(MSG_USERAUTH_INFO_RESPONSE, UInt32(len(responses)),
+                         b''.join(String(r) for r in responses))
 
     def _process_info_request(self, pkttype, packet):
         """Process a keyboard interactive authentication request"""
@@ -366,13 +390,15 @@ class _ClientKbdIntAuth(_ClientAuth):
 
         return True
 
-    packet_handlers = {
+    _packet_handlers = {
         MSG_USERAUTH_INFO_REQUEST: _process_info_request
     }
 
 
 class _ClientPasswordAuth(_ClientAuth):
     """Client side implementation of password auth"""
+
+    _handler_names = get_symbol_names(globals(), 'MSG_USERAUTH_PASSWD_')
 
     def __init__(self, conn, method):
         super().__init__(conn, method)
@@ -389,6 +415,8 @@ class _ClientPasswordAuth(_ClientAuth):
             self._conn.try_next_auth()
             return
 
+        self.logger.debug1('Trying password auth')
+
         yield from self.send_request(Boolean(False), String(password))
 
     @asyncio.coroutine
@@ -401,6 +429,8 @@ class _ClientPasswordAuth(_ClientAuth):
             # Password change not supported - move on to the next auth method
             self._conn.try_next_auth()
             return
+
+        self.logger.debug1('Trying to chsnge password')
 
         old_password, new_password = result
 
@@ -440,7 +470,7 @@ class _ClientPasswordAuth(_ClientAuth):
 
         return True
 
-    packet_handlers = {
+    _packet_handlers = {
         MSG_USERAUTH_PASSWD_CHANGEREQ: _process_password_change
     }
 
@@ -508,6 +538,8 @@ class _ServerGSSKexAuth(_ServerAuth):
         mic = packet.get_string()
         packet.check_end()
 
+        self.logger.debug1('Trying GSS key exchange auth')
+
         data = self._conn.get_userauth_request_data(self._method)
 
         if (self._gss.complete and self._gss.verify(data, mic) and
@@ -521,6 +553,8 @@ class _ServerGSSKexAuth(_ServerAuth):
 
 class _ServerGSSMICAuth(_ServerAuth):
     """Server side implementation of GSS MIC auth"""
+
+    _handler_names = get_symbol_names(globals(), 'MSG_USERAUTH_GSSAPI_')
 
     def __init__(self, conn, username, method, packet):
         super().__init__(conn, username, method, packet)
@@ -555,8 +589,9 @@ class _ServerGSSMICAuth(_ServerAuth):
             self.send_failure()
             return
 
-        self._conn.send_packet(Byte(MSG_USERAUTH_GSSAPI_RESPONSE),
-                               String(match))
+        self.logger.debug1('Trying GSS MIC auth')
+
+        self.send_packet(MSG_USERAUTH_GSSAPI_RESPONSE, String(match))
 
     @asyncio.coroutine
     def _finish(self):
@@ -581,16 +616,14 @@ class _ServerGSSMICAuth(_ServerAuth):
             token = self._gss.step(token)
 
             if token:
-                self._conn.send_packet(Byte(MSG_USERAUTH_GSSAPI_TOKEN),
-                                       String(token))
+                self.send_packet(MSG_USERAUTH_GSSAPI_TOKEN, String(token))
         except GSSError as exc:
-            self._conn.send_packet(Byte(MSG_USERAUTH_GSSAPI_ERROR),
-                                   UInt32(exc.maj_code), UInt32(exc.min_code),
-                                   String(str(exc)), String(DEFAULT_LANG))
+            self.send_packet(MSG_USERAUTH_GSSAPI_ERROR, UInt32(exc.maj_code),
+                             UInt32(exc.min_code), String(str(exc)),
+                             String(DEFAULT_LANG))
 
             if exc.token:
-                self._conn.send_packet(Byte(MSG_USERAUTH_GSSAPI_ERRTOK),
-                                       String(exc.token))
+                self.send_packet(MSG_USERAUTH_GSSAPI_ERRTOK, String(exc.token))
 
             self.send_failure()
 
@@ -621,7 +654,7 @@ class _ServerGSSMICAuth(_ServerAuth):
         try:
             self._gss.step(token)
         except GSSError as exc:
-            logger.warning('GSS error from client: %s', str(exc))
+            self.logger.warning('GSS error from client: %s', str(exc))
 
         return True
 
@@ -643,16 +676,12 @@ class _ServerGSSMICAuth(_ServerAuth):
 
         return True
 
-    # pylint: disable=bad-whitespace
-
-    packet_handlers = {
+    _packet_handlers = {
         MSG_USERAUTH_GSSAPI_TOKEN:             _process_token,
         MSG_USERAUTH_GSSAPI_EXCHANGE_COMPLETE: _process_exchange_complete,
         MSG_USERAUTH_GSSAPI_ERRTOK:            _process_error_token,
         MSG_USERAUTH_GSSAPI_MIC:               _process_mic
     }
-
-    # pylint: enable=bad-whitespace
 
 
 class _ServerPublicKeyAuth(_ServerAuth):
@@ -681,19 +710,26 @@ class _ServerPublicKeyAuth(_ServerAuth):
 
         packet.check_end()
 
+        if sig_present:
+            self.logger.debug1('Verifying request with %s key', algorithm)
+        else:
+            self.logger.debug1('Trying public key auth with %s key', algorithm)
+
         if (yield from self._conn.validate_public_key(self._username, key_data,
                                                       msg, signature)):
             if sig_present:
                 self.send_success()
             else:
-                self._conn.send_packet(Byte(MSG_USERAUTH_PK_OK),
-                                       String(algorithm), String(key_data))
+                self.send_packet(MSG_USERAUTH_PK_OK, String(algorithm),
+                                 String(key_data))
         else:
             self.send_failure()
 
 
 class _ServerKbdIntAuth(_ServerAuth):
     """Server side implementation of keyboard-interactive auth"""
+
+    _handler_names = get_symbol_names(globals(), 'MSG_USERAUTH_INFO_')
 
     @classmethod
     def supported(cls, conn):
@@ -716,6 +752,8 @@ class _ServerKbdIntAuth(_ServerAuth):
             raise DisconnectError(DISC_PROTOCOL_ERROR, 'Invalid keyboard '
                                   'interactive auth request') from None
 
+        self.logger.debug1('Trying keyboard-interactive auth')
+
         challenge = yield from self._conn.get_kbdint_challenge(self._username,
                                                                lang,
                                                                submethods)
@@ -731,10 +769,9 @@ class _ServerKbdIntAuth(_ServerAuth):
             prompts = (String(prompt) + Boolean(echo)
                        for prompt, echo in prompts)
 
-            self._conn.send_packet(Byte(MSG_USERAUTH_INFO_REQUEST),
-                                   String(name), String(instruction),
-                                   String(lang), UInt32(num_prompts),
-                                   *prompts)
+            self.send_packet(MSG_USERAUTH_INFO_REQUEST, String(name),
+                             String(instruction), String(lang),
+                             UInt32(num_prompts), *prompts)
         elif challenge:
             self.send_success()
         else:
@@ -772,7 +809,7 @@ class _ServerKbdIntAuth(_ServerAuth):
         self.create_task(self._validate_response(responses))
         return True
 
-    packet_handlers = {
+    _packet_handlers = {
         MSG_USERAUTH_INFO_RESPONSE: _process_info_response
     }
 
@@ -804,10 +841,14 @@ class _ServerPasswordAuth(_ServerAuth):
 
         try:
             if password_change:
+                self.logger.debug1('Trying to chsnge password')
+
                 result = yield from self._conn.change_password(self._username,
                                                                password,
                                                                new_password)
             else:
+                self.logger.debug1('Trying password auth')
+
                 result = \
                     yield from self._conn.validate_password(self._username,
                                                             password)
@@ -817,8 +858,8 @@ class _ServerPasswordAuth(_ServerAuth):
             else:
                 self.send_failure()
         except PasswordChangeRequired as exc:
-            self._conn.send_packet(Byte(MSG_USERAUTH_PASSWD_CHANGEREQ),
-                                   String(exc.prompt), String(exc.lang))
+            self.send_packet(MSG_USERAUTH_PASSWD_CHANGEREQ,
+                             String(exc.prompt), String(exc.lang))
 
 
 def register_auth_method(alg, client_handler, server_handler):

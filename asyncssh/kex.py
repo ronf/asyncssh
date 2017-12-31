@@ -32,7 +32,21 @@ class Kex(SSHPacketHandler):
         self.algorithm = alg
 
         self._conn = conn
+        self._logger = conn.logger
         self._hash_alg = hash_alg
+
+
+    def send_packet(self, pkttype, *args):
+        """Send a kex packet"""
+
+        self._conn.send_packet(pkttype, *args,
+                               handler_names=self._handler_names)
+
+    @property
+    def logger(self):
+        """A logger associated with this connection"""
+
+        return self._logger
 
     def compute_key(self, k, h, x, session_id, keylen):
         """Compute keys from output of key exchange"""

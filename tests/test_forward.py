@@ -76,6 +76,14 @@ def _pause(reader, writer):
     writer.close()
 
 
+@asyncio.coroutine
+def _async_runtime_error(reader, writer):
+    """Raise a runtime error"""
+
+    # pylint: disable=unused-argument
+
+    raise RuntimeError('Async internal error')
+
 class _ClientConn(asyncssh.SSHClientConnection):
     """Patched SSH client connection for unit testing"""
 
@@ -157,6 +165,8 @@ class _TCPConnectionServer(Server):
         elif dest_port == 9:
             self._conn.close()
             return (self._conn.create_tcp_channel(), echo)
+        elif dest_port == 10:
+            return _async_runtime_error
         else:
             return False
 
@@ -657,6 +667,17 @@ class _TestTCPForwarding(_CheckForwarding):
         with (yield from self.connect()) as conn:
             with self.assertRaises(asyncssh.ChannelOpenError):
                 yield from conn.open_connection('', 9)
+
+        yield from conn.wait_closed()
+
+    @asynctest
+    def test_async_runtime_error(self):
+        """Test runtime error in async listener"""
+
+        with (yield from self.connect()) as conn:
+            reader, _ = yield from conn.open_connection('', 10)
+            with self.assertRaises(asyncssh.DisconnectError):
+                yield from reader.read()
 
         yield from conn.wait_closed()
 

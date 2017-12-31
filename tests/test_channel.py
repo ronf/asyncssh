@@ -143,11 +143,6 @@ class _ServerChannel(asyncssh.SSHServerChannel):
 
         asyncio.get_event_loop().call_later(0.1, self._report_response, True)
 
-    def send_packet(self, pkttype, *args):
-        """Send a packet for unit testing (bypassing state checks)"""
-
-        self._send_packet(pkttype, *args)
-
     @asyncio.coroutine
     def open_session(self):
         """Attempt to open a session on the client"""
@@ -385,7 +380,7 @@ class _ChannelServer(Server):
             stdin.channel.send_packet(MSG_CHANNEL_CLOSE)
             stdin.channel.exit(1)
         elif action == 'unexpected_auth':
-            self._conn.send_packet(Byte(MSG_USERAUTH_REQUEST), String('guest'),
+            self._conn.send_packet(MSG_USERAUTH_REQUEST, String('guest'),
                                    String('ssh-connection'), String('none'))
         elif action == 'invalid_response':
             stdin.channel.send_packet(MSG_CHANNEL_SUCCESS)
@@ -662,6 +657,18 @@ class _TestChannel(ServerTestCase):
             yield from chan.wait_closed()
 
         yield from conn.wait_closed()
+
+    @asynctest
+    def test_unknown_channel_request(self):
+        """Test sending unknown channel request"""
+
+        with patch('asyncssh.connection.SSHClientChannel', _ClientChannel):
+            with (yield from self.connect()) as conn:
+                chan, _ = yield from _create_session(conn)
+
+                self.assertFalse((yield from chan.make_request('unknown')))
+
+            yield from conn.wait_closed()
 
     @asynctest
     def test_invalid_channel_request(self):
@@ -1188,6 +1195,20 @@ class _TestChannel(ServerTestCase):
             chan.change_terminal_size(80, 24)
             yield from chan.wait_closed()
             self.assertEqual(session.exit_signal_msg, '(80, 24, 0, 0)')
+
+        yield from conn.wait_closed()
+
+    @asynctest
+    def test_full_terminal_size_change(self):
+        """Test sending full terminal size change"""
+
+        with (yield from self.connect()) as conn:
+            chan, session = yield from _create_session(conn, 'signals',
+                                                       term_type='ansi')
+
+            chan.change_terminal_size(80, 24, 480, 240)
+            yield from chan.wait_closed()
+            self.assertEqual(session.exit_signal_msg, '(80, 24, 480, 240)')
 
         yield from conn.wait_closed()
 

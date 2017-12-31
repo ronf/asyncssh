@@ -15,6 +15,8 @@
 import codecs
 import unittest
 
+from asyncssh.logging import logger
+
 from asyncssh.packet import Byte, Boolean, UInt32, UInt64, String, MPInt
 from asyncssh.packet import NameList, PacketDecodeError, SSHPacket
 from asyncssh.packet import SSHPacketHandler
@@ -167,10 +169,16 @@ class _TestPacket(unittest.TestCase):
         class _TestPacketHandler(SSHPacketHandler):
             """Class for unit testing SSHPacketHandler"""
 
+            @property
+            def logger(self):
+                """A logger associated with this packet handler"""
+
+                return logger
+
             def _handler1(self, pkttype, packet):
                 """Packet handler for unit testing"""
 
-            packet_handlers = {
+            _packet_handlers = {
                 1: _handler1
             }
 

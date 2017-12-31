@@ -16,8 +16,8 @@ from hashlib import sha256, sha384, sha512
 
 from .constants import DISC_KEY_EXCHANGE_FAILED, DISC_PROTOCOL_ERROR
 from .kex import Kex, register_kex_alg
-from .misc import DisconnectError
-from .packet import Byte, MPInt, String
+from .misc import DisconnectError, get_symbol_names
+from .packet import MPInt, String
 
 # pylint: disable=bad-whitespace
 
@@ -30,6 +30,8 @@ MSG_KEX_ECDH_REPLY = 31
 
 class _KexECDH(Kex):
     """Handler for elliptic curve Diffie-Hellman key exchange"""
+
+    _handler_names = get_symbol_names(globals(), 'MSG_KEX_ECDH_')
 
     def __init__(self, alg, conn, hash_alg, ecdh_class, *args):
         super().__init__(alg, conn, hash_alg)
@@ -45,8 +47,7 @@ class _KexECDH(Kex):
     def start(self):
         """Start ECDH key exchange"""
 
-        self._conn.send_packet(Byte(MSG_KEX_ECDH_INIT),
-                               String(self._client_pub))
+        self.send_packet(MSG_KEX_ECDH_INIT, String(self._client_pub))
 
     def _compute_hash(self, host_key_data, k):
         """Compute a hash of key information associated with the connection"""
@@ -82,9 +83,8 @@ class _KexECDH(Kex):
         h = self._compute_hash(host_key.public_data, k)
         sig = host_key.sign(h)
 
-        self._conn.send_packet(Byte(MSG_KEX_ECDH_REPLY),
-                               String(host_key.public_data),
-                               String(self._server_pub), String(sig))
+        self.send_packet(MSG_KEX_ECDH_REPLY, String(host_key.public_data),
+                         String(self._server_pub), String(sig))
 
         self._conn.send_newkeys(k, h)
 
@@ -117,7 +117,7 @@ class _KexECDH(Kex):
 
         self._conn.send_newkeys(k, h)
 
-    packet_handlers = {
+    _packet_handlers = {
         MSG_KEX_ECDH_INIT:  _process_init,
         MSG_KEX_ECDH_REPLY: _process_reply
     }

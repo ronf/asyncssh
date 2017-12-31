@@ -52,6 +52,13 @@ def all_ints(seq):
     return all(isinstance(i, int) for i in seq)
 
 
+def get_symbol_names(symbols, prefix):
+    """Return a mapping from values to symbol names for logging"""
+
+    return {value: name for name, value in symbols.items()
+            if name.startswith(prefix)}
+
+
 # Default file names in .ssh directory to read private keys from
 _DEFAULT_KEY_FILES = ('id_ed25519', 'id_ecdsa', 'id_rsa', 'id_dsa')
 

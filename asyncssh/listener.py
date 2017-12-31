@@ -245,6 +245,7 @@ def create_tcp_forward_listener(conn, loop, coro, listen_host, listen_port):
 
         if listen_port == 0:
             listen_port = sock.getsockname()[1]
+            conn.logger.debug1('Assigning dynamic port %d', listen_port)
 
         server = yield from loop.create_server(protocol_factory, sock=sock)
         servers.append(server)

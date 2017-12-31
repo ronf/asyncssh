@@ -561,7 +561,7 @@ def connect_agent(agent_path=None, *, loop=None):
         yield from agent.connect()
         return agent
     except (OSError, ChannelOpenError) as exc:
-        logger.debug('Unable to contact agent: %s', exc)
+        logger.warning('Unable to contact agent: %s', exc)
         return None
 
 

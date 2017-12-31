@@ -28,8 +28,6 @@ from .util import asynctest, echo
 def _handle_client(process):
     """Handle a new client request"""
 
-    # pylint: disable=no-self-use
-
     action = process.command or process.subsystem
     if not action:
         action = 'echo'

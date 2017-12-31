@@ -38,23 +38,24 @@ except (ImportError, OSError, AttributeError): # pragma: no cover
     libnacl_available = False
 
 try:
-    from asyncssh.crypto import X509Name
-    x509_available = True
-except ImportError: # pragma: no cover
-    x509_available = False
-
-try:
     import uvloop
     uvloop_available = True
 except ImportError: # pragma: no cover
     uvloop_available = False
 
+try:
+    from asyncssh.crypto import X509Name
+    x509_available = True
+except ImportError: # pragma: no cover
+    x509_available = False
+
 # pylint: enable=unused-import
 
 from asyncssh.constants import DISC_CONNECTION_LOST
 from asyncssh.gss import gss_available
+from asyncssh.logging import logger
 from asyncssh.misc import DisconnectError, SignalReceived, create_task
-from asyncssh.packet import String, UInt32, UInt64
+from asyncssh.packet import Byte, String, UInt32, UInt64
 
 
 def asynctest(func):
@@ -196,6 +197,14 @@ class ConnectionStub:
             self._packet_queue = None
             self._queue_task = None
 
+        self._logger = logger.get_child(context='conn=99')
+
+    @property
+    def logger(self):
+        """A logger associated with this connection"""
+
+        return self._logger
+
     @asyncio.coroutine
     def _run_task(self, coro):
         """Run an asynchronous task"""
@@ -258,11 +267,13 @@ class ConnectionStub:
 
         self._packet_queue.put_nowait(data)
 
-    def send_packet(self, *args):
+    def send_packet(self, pkttype, *args, **kwargs):
         """Send a packet to this connection's peer"""
 
+        # pylint: disable=unused-argument
+
         if self._peer:
-            self._peer.queue_packet(b''.join(args))
+            self._peer.queue_packet(Byte(pkttype) + b''.join(args))
 
     def close(self):
         """Close the connection, stopping processing of incoming packets"""
