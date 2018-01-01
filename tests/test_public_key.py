@@ -517,13 +517,14 @@ class _TestPublicKey(TempDirTestCase):
             shutil.copy('priv', 'new')
 
             if cipher:
-                run('ssh-keygen -p -a 128 -N passphrase -Z %s -o -f new' %
+                run('ssh-keygen -p -a 1 -N passphrase -Z %s -o -f new' %
                     cipher)
             else:
                 run('ssh-keygen -p -N "" -o -f new')
         else: # pragma: no cover
             self.privkey.write_private_key('new', 'openssh',
-                                           select_passphrase(cipher), cipher)
+                                           select_passphrase(cipher), cipher,
+                                           rounds=1, ignore_few_rounds=True)
 
         self.check_private('openssh', select_passphrase(cipher))
 
@@ -531,7 +532,8 @@ class _TestPublicKey(TempDirTestCase):
         """Check export of an OpenSSH private key"""
 
         self.privkey.write_private_key('new', 'openssh',
-                                       select_passphrase(cipher), cipher)
+                                       select_passphrase(cipher), cipher,
+                                       rounds=1, ignore_few_rounds=True)
 
         if use_openssh: # pragma: no branch
             os.chmod('new', 0o600)

@@ -740,7 +740,7 @@ class SSHKey:
 
     def export_private_key(self, format_name='openssh', passphrase=None,
                            cipher_name='aes256-cbc', hash_name='sha256',
-                           pbe_version=2, rounds=128):
+                           pbe_version=2, rounds=128, ignore_few_rounds=False):
         """Export a private key in the requested format
 
            This method returns this object's private key encoded in the
@@ -886,7 +886,8 @@ class SSHKey:
                     passphrase = passphrase.encode('utf-8')
 
                 # pylint: disable=no-member
-                key = bcrypt.kdf(passphrase, salt, key_size + iv_size, rounds)
+                key = bcrypt.kdf(passphrase, salt, key_size + iv_size,
+                                 rounds, ignore_few_rounds)
                 # pylint: enable=no-member
 
                 cipher = get_cipher(alg, key[:key_size], key[key_size:])
@@ -1949,7 +1950,8 @@ def _decode_openssh_private(data, passphrase):
 
             try:
                 # pylint: disable=no-member
-                key = bcrypt.kdf(passphrase, salt, key_size + iv_size, rounds)
+                key = bcrypt.kdf(passphrase, salt, key_size + iv_size,
+                                 rounds, ignore_few_rounds=True)
                 # pylint: enable=no-member
             except ValueError:
                 raise KeyEncryptionError('Invalid OpenSSH '
