@@ -25,6 +25,8 @@ import unittest
 
 from unittest.mock import patch
 
+import asyncssh
+
 from asyncssh import SFTPError, SFTPAttrs, SFTPVFSAttrs, SFTPName, SFTPServer
 from asyncssh import SEEK_CUR, SEEK_END
 from asyncssh import FXP_INIT, FXP_VERSION, FXP_OPEN, FXP_CLOSE
@@ -1695,6 +1697,35 @@ class _TestSFTP(_CheckSFTP):
         with (yield from sftp.open('nonblocking_file', 'w')):
             pass
 
+    def test_unexpected_client_close(self):
+        """Test an unexpected connection close from client"""
+
+        @asyncio.coroutine
+        def _unexpected_client_close(self):
+            """Close the SSH connection before sending an init request"""
+
+            self._writer.channel.get_connection().abort()
+
+        with patch('asyncssh.sftp.SFTPClientHandler.start',
+                   _unexpected_client_close):
+            sftp_test(lambda self, sftp: None)(self)
+
+    def test_unexpected_server_close(self):
+        """Test an unexpected connection close from server"""
+
+        @asyncio.coroutine
+        def _unexpected_server_close(self):
+            """Close the SSH connection before sending a version response"""
+
+            packet = yield from SFTPHandler.recv_packet(self)
+            self._writer.channel.get_connection().abort()
+            return packet
+
+        with patch('asyncssh.sftp.SFTPServerHandler.recv_packet',
+                   _unexpected_server_close):
+            with self.assertRaises(SFTPError):
+                sftp_test(lambda self, sftp: None)(self) # pragma: no branch
+
     def test_immediate_client_close(self):
         """Test closing SFTP channel immediately after opening"""
 
@@ -1714,23 +1745,39 @@ class _TestSFTP(_CheckSFTP):
         def _no_init_start(self):
             """Send a non-init request at start"""
 
-            self.send_packet(FXP_OPEN, UInt32(0))
+            self.send_packet(FXP_OPEN, 0, UInt32(0))
 
         with patch('asyncssh.sftp.SFTPClientHandler.start', _no_init_start):
             sftp_test(lambda self, sftp: None)(self)
 
-    def test_missing_version(self):
+    def test_incomplete_init_request(self):
         """Test sending init with missing version"""
 
         @asyncio.coroutine
         def _missing_version_start(self):
             """Send an init request with missing version"""
 
-            self.send_packet(FXP_INIT)
+            self.send_packet(FXP_INIT, None)
 
         with patch('asyncssh.sftp.SFTPClientHandler.start',
                    _missing_version_start):
             sftp_test(lambda self, sftp: None)(self)
+
+    def test_incomplete_version_response(self):
+        """Test sending an incomplete version response"""
+
+        @asyncio.coroutine
+        def _incomplete_version_response(self):
+            """Send an incomplete version response"""
+
+            packet = yield from SFTPHandler.recv_packet(self)
+            self.send_packet(FXP_VERSION, None)
+            return packet
+
+        with patch('asyncssh.sftp.SFTPServerHandler.recv_packet',
+                   _incomplete_version_response):
+            with self.assertRaises(SFTPError):
+                sftp_test(lambda self, sftp: None)(self) # pragma: no branch
 
     def test_nonstandard_version(self):
         """Test sending init with non-standard version"""
@@ -1748,7 +1795,7 @@ class _TestSFTP(_CheckSFTP):
             """Send a non-version response to init"""
 
             packet = yield from SFTPHandler.recv_packet(self)
-            self.send_packet(FXP_STATUS)
+            self.send_packet(FXP_STATUS, None)
             return packet
 
         with patch('asyncssh.sftp.SFTPServerHandler.recv_packet',
@@ -1764,13 +1811,20 @@ class _TestSFTP(_CheckSFTP):
             """Send an unsupported version in response to init"""
 
             packet = yield from SFTPHandler.recv_packet(self)
-            self.send_packet(FXP_VERSION, UInt32(4))
+            self.send_packet(FXP_VERSION, None, UInt32(4))
             return packet
 
         with patch('asyncssh.sftp.SFTPServerHandler.recv_packet',
                    _unsupported_version_response):
             with self.assertRaises(SFTPError):
                 sftp_test(lambda self, sftp: None)(self) # pragma: no branch
+
+    def test_unknown_extension_request(self):
+        """Test sending an unknown extension in init request"""
+
+        with patch('asyncssh.sftp.SFTPClientHandler._extensions',
+                   [(b'xxx', b'1')]):
+            sftp_test(lambda self, sftp: None)(self)
 
     def test_unknown_extension_response(self):
         """Test sending an unknown extension in version response"""
@@ -1786,7 +1840,7 @@ class _TestSFTP(_CheckSFTP):
         def _close_after_init_start(self):
             """Send a close immediately after init request at start"""
 
-            self.send_packet(FXP_INIT, UInt32(3))
+            self.send_packet(FXP_INIT, None, UInt32(3))
             yield from self._cleanup(None)
 
         with patch('asyncssh.sftp.SFTPClientHandler.start',
@@ -1835,7 +1889,7 @@ class _TestSFTP(_CheckSFTP):
 
             # pylint: disable=unused-argument
 
-            self.send_packet(FXP_OPEN)
+            self.send_packet(FXP_OPEN, None)
 
         with patch('asyncssh.sftp.SFTPClientHandler.open', _missing_pktid):
             yield from sftp.open('file')
@@ -1882,7 +1936,8 @@ class _TestSFTP(_CheckSFTP):
 
             # pylint: disable=unused-argument
 
-            self.send_packet(FXP_HANDLE, UInt32(0xffffffff), String(''))
+            self.send_packet(FXP_HANDLE, 0xffffffff,
+                             UInt32(0xffffffff), String(''))
 
         with patch('asyncssh.sftp.SFTPServerHandler._process_packet',
                    _unrecognized_response_pktid):
@@ -1899,7 +1954,7 @@ class _TestSFTP(_CheckSFTP):
 
             # pylint: disable=unused-argument
 
-            self.send_packet(FXP_DATA, UInt32(pktid), String(''))
+            self.send_packet(FXP_DATA, pktid, UInt32(pktid), String(''))
 
         with patch('asyncssh.sftp.SFTPServerHandler._process_packet',
                    _bad_response_type):
@@ -1916,7 +1971,7 @@ class _TestSFTP(_CheckSFTP):
 
             # pylint: disable=unused-argument
 
-            self.send_packet(FXP_STATUS, UInt32(pktid), UInt32(FX_OK),
+            self.send_packet(FXP_STATUS, pktid, UInt32(pktid), UInt32(FX_OK),
                              String(''), String(''))
 
         with patch('asyncssh.sftp.SFTPServerHandler._process_packet',
@@ -1934,7 +1989,7 @@ class _TestSFTP(_CheckSFTP):
 
             # pylint: disable=unused-argument
 
-            self.send_packet(FXP_STATUS, UInt32(pktid), UInt32(FX_OK),
+            self.send_packet(FXP_STATUS, pktid, UInt32(pktid), UInt32(FX_OK),
                              String(b'\xff'), String(''))
 
         with patch('asyncssh.sftp.SFTPServerHandler._process_packet',
@@ -2032,6 +2087,19 @@ class _TestSFTP(_CheckSFTP):
         with patch('asyncssh.sftp.SFTPServerHandler',
                    _NonblockingCloseServerHandler):
             sftp_test(_nonblocking_close)(self)
+
+    @sftp_test
+    def test_log_formatting(self, sftp):
+        """Exercise log formatting of SFTP objects"""
+
+        asyncssh.set_sftp_log_level('INFO')
+
+        with self.assertLogs(level='INFO'):
+            yield from sftp.realpath('.')
+            yield from sftp.stat('.')
+            yield from sftp.statvfs('.')
+
+        asyncssh.set_sftp_log_level('WARNING')
 
 
 class _TestSFTPChroot(_CheckSFTP):

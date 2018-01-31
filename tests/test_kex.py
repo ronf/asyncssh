@@ -66,7 +66,7 @@ class _KexConnectionStub(ConnectionStub):
 
         packet = SSHPacket(data)
         pkttype = packet.get_byte()
-        self._kex.process_packet(pkttype, packet)
+        self._kex.process_packet(pkttype, None, packet)
 
     def get_hash_prefix(self):
         """Return the bytes used in calculating unique connection hashes"""

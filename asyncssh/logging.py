@@ -23,27 +23,29 @@ class _SSHLogger(logging.LoggerAdapter):
     _pkg_logger = logging.getLogger(__package__)
 
     def __init__(self, parent=_pkg_logger, child=None, context=''):
-        self._context = '[' + context + '] ' if context else ''
+        self._context = context
         self._logger = parent.getChild(child) if child else parent
 
         super().__init__(self._logger, {})
 
+    def _extend_context(self, context):
+        """Extend context provided by this logger"""
+
+        if context:
+            if self._context:
+                context = self._context + ', ' + context
+        else:
+            context = self._context
+
+        return context
+
     def get_child(self, child=None, context=None):
         """Return child logger with optional added context"""
 
-        if self._context:
-            new_context = self._context[1:-2]
-
-            if context:
-                new_context += ', ' + context
-        else:
-            new_context = context
-
-        return type(self)(self._logger, child, new_context)
+        return type(self)(self._logger, child, self._extend_context(context))
 
     def log(self, level, msg, *args, **kwargs):
         """Log a message to the underlying logger"""
-
 
         def _text(arg):
             """Convert a log argument to text"""
@@ -71,10 +73,14 @@ class _SSHLogger(logging.LoggerAdapter):
     def process(self, msg, kwargs):
         """Add context to log message"""
 
+        extra = kwargs.get('extra', {})
+
+        context = self._extend_context(extra.get('context'))
+        context = '[' + context + '] ' if context else ''
+
+        packet = extra.get('packet')
         pktdata = ''
         offset = 0
-
-        packet = kwargs.get('extra', {}).get('packet')
 
         while packet:
             line = '\n  %08x:' % offset
@@ -99,7 +105,7 @@ class _SSHLogger(logging.LoggerAdapter):
             packet = packet[16:]
             offset += 16
 
-        return self._context + msg + pktdata, kwargs
+        return context + msg + pktdata, kwargs
 
     @classmethod
     def set_debug_level(cls, level):
@@ -121,12 +127,17 @@ class _SSHLogger(logging.LoggerAdapter):
         if self._debug_level >= 2:
             self.debug(msg, *args, **kwargs)
 
-    def packet(self, packet, msg, *args, **kwargs):
+    def packet(self, pktid, packet, msg, *args, **kwargs):
         """Write a control packet debug log message"""
 
         if self._debug_level >= 3:
             kwargs.setdefault('extra', {})
+
+            if pktid is not None:
+                kwargs['extra'].update(context='pktid=%d' % pktid)
+
             kwargs['extra'].update(packet=packet)
+
             self.debug(msg, *args, **kwargs)
 
 

@@ -80,7 +80,7 @@ class _TestLogging(ServerTestCase):
                 with self.assertLogs(level='DEBUG') as log:
                     logger.debug1('DEBUG')
                     logger.debug2('DEBUG')
-                    logger.packet(b'', 'DEBUG')
+                    logger.packet(None, b'', 'DEBUG')
 
                 self.assertEqual(len(log.records), debug_level)
 
@@ -95,9 +95,9 @@ class _TestLogging(ServerTestCase):
         asyncssh.set_debug_level(3)
 
         with self.assertLogs(level='DEBUG') as log:
-            logger.packet(bytes(range(0x10, 0x30)), 'CONTROL')
+            logger.packet(0, bytes(range(0x10, 0x30)), 'CONTROL')
 
-        self.assertEqual(log.records[0].msg, 'CONTROL\n' +
+        self.assertEqual(log.records[0].msg, '[pktid=0] CONTROL\n' +
                          '  00000000: 10 11 12 13 14 15 16 17 18 ' +
                          '19 1a 1b 1c 1d 1e 1f  ................\n' +
                          '  00000010: 20 21 22 23 24 25 26 27 28 ' +
@@ -169,6 +169,8 @@ class _TestLogging(ServerTestCase):
             process.stdin.write_eof()
             yield from process.wait()
 
+        asyncssh.set_log_level('WARNING')
+
         self.assertEqual(len(log.records), 1)
         self.assertRegex(log.records[0].msg, r'\[conn=\d+, chan=0\] Test')
 
@@ -176,19 +178,22 @@ class _TestLogging(ServerTestCase):
     def test_sftp_log(self):
         """Test sftp-level logger"""
 
-        asyncssh.set_log_level('WARNING')
         asyncssh.set_sftp_log_level('INFO')
 
         with (yield from self.connect()) as conn:
-            with self.assertLogs(level='INFO') as log:
-                with (yield from conn.start_sftp_client()) as sftp:
+            with (yield from conn.start_sftp_client()) as sftp:
+                with self.assertLogs(level='INFO') as log:
                     sftp.logger.info('Test')
-                    yield from sftp.stat('.')
 
-        self.assertEqual(len(log.records), 3)
-        self.assertEqual(log.records[2].name, 'asyncssh.sftp')
-        self.assertRegex(log.records[2].msg,
-                         r'\[conn=\d+, chan=0\] Test')
+                yield from sftp.stat('.')
+
+            yield from sftp.wait_closed()
+
+        asyncssh.set_sftp_log_level('WARNING')
+
+        self.assertEqual(len(log.records), 1)
+        self.assertEqual(log.records[0].name, 'asyncssh.sftp')
+        self.assertRegex(log.records[0].msg, r'\[conn=\d+, chan=0\] Test')
 
     @asynctest
     def test_invalid_debug_level(self):

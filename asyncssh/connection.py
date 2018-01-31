@@ -203,14 +203,14 @@ class SSHConnection(SSHPacketHandler):
 
     _handler_names = get_symbol_names(globals(), 'MSG_')
 
-    _next_conn = 0    # Next connection number, for logging
+    next_conn = 0    # Next connection number, for logging
 
-    @classmethod
-    def _get_next_conn(cls):
+    @staticmethod
+    def _get_next_conn():
         """Return the next available connection number (for logging)"""
 
-        next_conn = cls._next_conn
-        cls._next_conn += 1
+        next_conn = SSHConnection.next_conn
+        SSHConnection.next_conn += 1
         return next_conn
 
     def __init__(self, protocol_factory, loop, version, kex_algs,
@@ -374,7 +374,8 @@ class SSHConnection(SSHPacketHandler):
             listener.close()
 
         while self._global_request_waiters:
-            self._process_global_response(MSG_REQUEST_FAILURE, SSHPacket(b''))
+            self._process_global_response(MSG_REQUEST_FAILURE, None,
+                                          SSHPacket(b''))
 
         if self._owner: # pragma: no branch
             self._owner.connection_lost(exc)
@@ -677,6 +678,7 @@ class SSHConnection(SSHPacketHandler):
             return False
 
         rest = self._inpbuf[:rem-self._recv_macsize]
+        seq = self._recv_seq
 
         if self._recv_mode in ('chacha', 'gcm'):
             packet = self._packet + rest
@@ -686,7 +688,7 @@ class SSHConnection(SSHPacketHandler):
             packet = packet[4:]
 
             if self._recv_mode == 'chacha':
-                nonce = UInt64(self._recv_seq)
+                nonce = UInt64(seq)
                 packet = self._recv_cipher.verify_and_decrypt(hdr, packet,
                                                               nonce, mac)
             else:
@@ -699,7 +701,7 @@ class SSHConnection(SSHPacketHandler):
             packet = self._packet + rest
             mac = self._inpbuf[rem-self._recv_macsize:rem]
 
-            if not self._recv_mac.verify(self._recv_seq, packet, mac):
+            if not self._recv_mac.verify(seq, packet, mac):
                 raise DisconnectError(DISC_MAC_ERROR,
                                       'MAC verification failed')
 
@@ -712,7 +714,7 @@ class SSHConnection(SSHPacketHandler):
             mac = self._inpbuf[rem-self._recv_macsize:rem]
 
             if self._recv_mac:
-                if not self._recv_mac.verify(self._recv_seq, packet, mac):
+                if not self._recv_mac.verify(seq, packet, mac):
                     raise DisconnectError(DISC_MAC_ERROR,
                                           'MAC verification failed')
 
@@ -736,12 +738,12 @@ class SSHConnection(SSHPacketHandler):
                     self._ignore_first_kex = False
                     processed = True
                 else:
-                    processed = self._kex.process_packet(pkttype, packet)
+                    processed = self._kex.process_packet(pkttype, seq, packet)
             elif (self._auth and
                   MSG_USERAUTH_FIRST <= pkttype <= MSG_USERAUTH_LAST):
-                processed = self._auth.process_packet(pkttype, packet)
+                processed = self._auth.process_packet(pkttype, seq, packet)
             else:
-                processed = self.process_packet(pkttype, packet,
+                processed = self.process_packet(pkttype, seq, packet,
                                                 pkttype not in
                                                 self._excluded_recv_pkttypes)
         except PacketDecodeError as exc:
@@ -749,10 +751,10 @@ class SSHConnection(SSHPacketHandler):
 
         if not processed:
             self.logger.debug1('Unknown packet type %d received', pkttype)
-            self.send_packet(MSG_UNIMPLEMENTED, UInt32(self._recv_seq))
+            self.send_packet(MSG_UNIMPLEMENTED, UInt32(seq))
 
         if self._transport:
-            self._recv_seq = (self._recv_seq + 1) & 0xffffffff
+            self._recv_seq = (seq + 1) & 0xffffffff
             self._recv_handler = self._recv_pkthdr
 
         return True
@@ -795,9 +797,10 @@ class SSHConnection(SSHPacketHandler):
         packet = Byte(padlen) + payload + os.urandom(padlen)
         pktlen = len(packet)
         hdr = UInt32(pktlen)
+        seq = self._send_seq
 
         if self._send_mode == 'chacha':
-            nonce = UInt64(self._send_seq)
+            nonce = UInt64(seq)
             hdr = self._send_cipher.crypt_len(hdr, nonce)
             packet, mac = self._send_cipher.encrypt_and_sign(hdr, packet,
                                                              nonce)
@@ -807,12 +810,12 @@ class SSHConnection(SSHPacketHandler):
             packet = hdr + packet
         elif self._send_mode == 'etm':
             packet = hdr + self._send_cipher.encrypt(packet)
-            mac = self._send_mac.sign(self._send_seq, packet)
+            mac = self._send_mac.sign(seq, packet)
         else:
             packet = hdr + packet
 
             if self._send_mac:
-                mac = self._send_mac.sign(self._send_seq, packet)
+                mac = self._send_mac.sign(seq, packet)
             else:
                 mac = b''
 
@@ -820,12 +823,12 @@ class SSHConnection(SSHPacketHandler):
                 packet = self._send_cipher.encrypt(packet)
 
         self._send(packet + mac)
-        self._send_seq = (self._send_seq + 1) & 0xffffffff
+        self._send_seq = (seq + 1) & 0xffffffff
 
         if self._kex_complete:
             self._rekey_bytes_sent += pktlen
 
-        self.log_sent_packet(pkttype, log_data, handler_names)
+        self.log_sent_packet(pkttype, seq, log_data, handler_names)
 
     def _send_deferred_packets(self):
         """Send packets deferred due to key exchange or auth"""
@@ -1137,7 +1140,7 @@ class SSHConnection(SSHPacketHandler):
 
         raise NotImplementedError
 
-    def _process_disconnect(self, pkttype, packet):
+    def _process_disconnect(self, pkttype, pktid, packet):
         """Process a disconnect message"""
 
         # pylint: disable=unused-argument
@@ -1163,7 +1166,7 @@ class SSHConnection(SSHPacketHandler):
 
         self._force_close(exc)
 
-    def _process_ignore(self, pkttype, packet):
+    def _process_ignore(self, pkttype, pktid, packet):
         """Process an ignore message"""
 
         # pylint: disable=no-self-use,unused-argument
@@ -1173,7 +1176,7 @@ class SSHConnection(SSHPacketHandler):
 
         # Do nothing
 
-    def _process_unimplemented(self, pkttype, packet):
+    def _process_unimplemented(self, pkttype, pktid, packet):
         """Process an unimplemented message response"""
 
         # pylint: disable=no-self-use,unused-argument
@@ -1183,7 +1186,7 @@ class SSHConnection(SSHPacketHandler):
 
         # Ignore this
 
-    def _process_debug(self, pkttype, packet):
+    def _process_debug(self, pkttype, pktid, packet):
         """Process a debug message"""
 
         # pylint: disable=unused-argument
@@ -1205,7 +1208,7 @@ class SSHConnection(SSHPacketHandler):
 
         self._owner.debug_msg_received(msg, lang, always_display)
 
-    def _process_service_request(self, pkttype, packet):
+    def _process_service_request(self, pkttype, pktid, packet):
         """Process a service request"""
 
         # pylint: disable=unused-argument
@@ -1227,7 +1230,7 @@ class SSHConnection(SSHPacketHandler):
             raise DisconnectError(DISC_SERVICE_NOT_AVAILABLE,
                                   'Unexpected service request received')
 
-    def _process_service_accept(self, pkttype, packet):
+    def _process_service_accept(self, pkttype, pktid, packet):
         """Process a service accept response"""
 
         # pylint: disable=unused-argument
@@ -1253,7 +1256,7 @@ class SSHConnection(SSHPacketHandler):
             raise DisconnectError(DISC_SERVICE_NOT_AVAILABLE,
                                   'Unexpected service accept received')
 
-    def _process_ext_info(self, pkttype, packet):
+    def _process_ext_info(self, pkttype, pktid, packet):
         """Process extension information"""
 
         # pylint: disable=unused-argument
@@ -1276,7 +1279,7 @@ class SSHConnection(SSHPacketHandler):
             self._server_sig_algs = \
                 extensions.get(b'server-sig-algs').split(b',')
 
-    def _process_kexinit(self, pkttype, packet):
+    def _process_kexinit(self, pkttype, pktid, packet):
         """Process a key exchange request"""
 
         # pylint: disable=unused-argument
@@ -1360,7 +1363,7 @@ class SSHConnection(SSHPacketHandler):
         if self.is_client():
             self._kex.start()
 
-    def _process_newkeys(self, pkttype, packet):
+    def _process_newkeys(self, pkttype, pktid, packet):
         """Process a new keys message, finishing a key exchange"""
 
         # pylint: disable=unused-argument
@@ -1387,7 +1390,7 @@ class SSHConnection(SSHPacketHandler):
                                      self._auth_complete):
             self.send_service_request(_USERAUTH_SERVICE)
 
-    def _process_userauth_request(self, pkttype, packet):
+    def _process_userauth_request(self, pkttype, pktid, packet):
         """Process a user authentication request"""
 
         # pylint: disable=unused-argument
@@ -1428,7 +1431,7 @@ class SSHConnection(SSHPacketHandler):
             self._auth = lookup_server_auth(self, self._username,
                                             method, packet)
 
-    def _process_userauth_failure(self, pkttype, packet):
+    def _process_userauth_failure(self, pkttype, pktid, packet):
         """Process a user authentication failure response"""
 
         # pylint: disable=unused-argument
@@ -1454,7 +1457,7 @@ class SSHConnection(SSHPacketHandler):
             raise DisconnectError(DISC_PROTOCOL_ERROR,
                                   'Unexpected userauth response')
 
-    def _process_userauth_success(self, pkttype, packet):
+    def _process_userauth_success(self, pkttype, pktid, packet):
         """Process a user authentication success response"""
 
         # pylint: disable=unused-argument
@@ -1487,7 +1490,7 @@ class SSHConnection(SSHPacketHandler):
             raise DisconnectError(DISC_PROTOCOL_ERROR,
                                   'Unexpected userauth response')
 
-    def _process_userauth_banner(self, pkttype, packet):
+    def _process_userauth_banner(self, pkttype, pktid, packet):
         """Process a user authentication banner message"""
 
         # pylint: disable=unused-argument
@@ -1511,7 +1514,7 @@ class SSHConnection(SSHPacketHandler):
             raise DisconnectError(DISC_PROTOCOL_ERROR,
                                   'Unexpected userauth banner')
 
-    def _process_global_request(self, pkttype, packet):
+    def _process_global_request(self, pkttype, pktid, packet):
         """Process a global request"""
 
         # pylint: disable=unused-argument
@@ -1535,7 +1538,7 @@ class SSHConnection(SSHPacketHandler):
         if len(self._global_request_queue) == 1:
             self._service_next_global_request()
 
-    def _process_global_response(self, pkttype, packet):
+    def _process_global_response(self, pkttype, pktid, packet):
         """Process a global response"""
 
         # pylint: disable=unused-argument
@@ -1548,7 +1551,7 @@ class SSHConnection(SSHPacketHandler):
             raise DisconnectError(DISC_PROTOCOL_ERROR,
                                   'Unexpected global response')
 
-    def _process_channel_open(self, pkttype, packet):
+    def _process_channel_open(self, pkttype, pktid, packet):
         """Process a channel open request"""
 
         # pylint: disable=unused-argument
@@ -1581,7 +1584,7 @@ class SSHConnection(SSHPacketHandler):
             self.send_channel_open_failure(send_chan, exc.code,
                                            exc.reason, exc.lang)
 
-    def _process_channel_open_confirmation(self, pkttype, packet):
+    def _process_channel_open_confirmation(self, pkttype, pktid, packet):
         """Process a channel open confirmation response"""
 
         # pylint: disable=unused-argument
@@ -1602,7 +1605,7 @@ class SSHConnection(SSHPacketHandler):
             raise DisconnectError(DISC_PROTOCOL_ERROR,
                                   'Invalid channel number')
 
-    def _process_channel_open_failure(self, pkttype, packet):
+    def _process_channel_open_failure(self, pkttype, pktid, packet):
         """Process a channel open failure response"""
 
         # pylint: disable=unused-argument
@@ -1630,14 +1633,14 @@ class SSHConnection(SSHPacketHandler):
             raise DisconnectError(DISC_PROTOCOL_ERROR,
                                   'Invalid channel number')
 
-    def _process_channel_msg(self, pkttype, packet):
+    def _process_channel_msg(self, pkttype, pktid, packet):
         """Process a channel-specific message"""
 
         recv_chan = packet.get_uint32()
 
         chan = self._channels.get(recv_chan)
         if chan:
-            chan.process_packet(pkttype, packet)
+            chan.process_packet(pkttype, pktid, packet)
         else:
             self.logger.debug1('Received channel message for unknown '
                                'channel %d', recv_chan)

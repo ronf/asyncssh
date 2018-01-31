@@ -33,8 +33,8 @@ from .misc import get_symbol_names, map_handler_name
 from .packet import Boolean, Byte, String, UInt32, SSHPacketHandler
 
 
-_pty_mode_names = get_symbol_names(constants, 'PTY_')
-_data_type_names = get_symbol_names(constants, 'EXTENDED_DATA_')
+_pty_mode_names = get_symbol_names(constants, 'PTY_', 4)
+_data_type_names = get_symbol_names(constants, 'EXTENDED_DATA_', 14)
 
 
 class SSHChannel(SSHPacketHandler):
@@ -165,8 +165,8 @@ class SSHChannel(SSHPacketHandler):
         self._close_event.set()
 
         if self._conn: # pragma: no branch
-            reason = ': ' + str(exc) if exc else ''
-            self.logger.info('Channel closed%s', reason)
+            self.logger.info('Channel closed%s',
+                             ': ' + str(exc) if exc else '')
 
             self._conn.remove_channel(self._recv_chan)
             self._recv_chan = None
@@ -333,7 +333,7 @@ class SSHChannel(SSHPacketHandler):
             raise DisconnectError(DISC_PROTOCOL_ERROR, 'Window exceeded')
 
         if datatype:
-            typename = ' from %s' % _data_type_names[datatype][14:]
+            typename = ' from %s' % _data_type_names[datatype]
         else:
             typename = ''
 
@@ -477,7 +477,7 @@ class SSHChannel(SSHPacketHandler):
         self._open_waiter = None
         self._loop.call_soon(self._cleanup)
 
-    def _process_window_adjust(self, pkttype, packet):
+    def _process_window_adjust(self, pkttype, pktid, packet):
         """Process a send window adjustment"""
 
         # pylint: disable=unused-argument
@@ -495,7 +495,7 @@ class SSHChannel(SSHPacketHandler):
 
         self._flush_send_buf()
 
-    def _process_data(self, pkttype, packet):
+    def _process_data(self, pkttype, pktid, packet):
         """Process incoming data"""
 
         # pylint: disable=unused-argument
@@ -509,7 +509,7 @@ class SSHChannel(SSHPacketHandler):
 
         self._accept_data(data)
 
-    def _process_extended_data(self, pkttype, packet):
+    def _process_extended_data(self, pkttype, pktid, packet):
         """Process incoming extended data"""
 
         # pylint: disable=unused-argument
@@ -528,7 +528,7 @@ class SSHChannel(SSHPacketHandler):
 
         self._accept_data(data, datatype)
 
-    def _process_eof(self, pkttype, packet):
+    def _process_eof(self, pkttype, pktid, packet):
         """Process an incoming end of file"""
 
         # pylint: disable=unused-argument
@@ -544,7 +544,7 @@ class SSHChannel(SSHPacketHandler):
         self._recv_state = 'eof_pending'
         self._flush_recv_buf()
 
-    def _process_close(self, pkttype, packet):
+    def _process_close(self, pkttype, pktid, packet):
         """Process an incoming channel close"""
 
         # pylint: disable=unused-argument
@@ -561,7 +561,7 @@ class SSHChannel(SSHPacketHandler):
         self._recv_state = 'close_pending'
         self._flush_recv_buf()
 
-    def _process_request(self, pkttype, packet):
+    def _process_request(self, pkttype, pktid, packet):
         """Process an incoming channel request"""
 
         # pylint: disable=unused-argument
@@ -582,8 +582,10 @@ class SSHChannel(SSHPacketHandler):
         if len(self._request_queue) == 1:
             self._service_next_request()
 
-    def _process_response(self, pkttype, packet):
+    def _process_response(self, pkttype, pktid, packet):
         """Process a success or failure response"""
+
+        # pylint: disable=unused-argument
 
         packet.check_end()
 
@@ -823,7 +825,7 @@ class SSHChannel(SSHPacketHandler):
             data = data.encode(self._encoding)
 
         if datatype:
-            typename = ' to %s' % _data_type_names[datatype][14:]
+            typename = ' to %s' % _data_type_names[datatype]
         else:
             typename = ''
 
@@ -1033,7 +1035,7 @@ class SSHClientChannel(SSHChannel):
                     raise ValueError('Invalid pty mode: %s' % mode)
 
                 name = _pty_mode_names.get(mode, str(mode))
-                self.logger.debug1('  Mode %s: %s', name[4:], value)
+                self.logger.debug1('  Mode %s: %s', name, value)
                 modes += Byte(mode) + UInt32(value)
 
             modes += Byte(PTY_OP_END)
@@ -1362,7 +1364,7 @@ class SSHServerChannel(SSHChannel):
             if idx+4 <= len(modes):
                 name = _pty_mode_names.get(mode, str(mode))
                 value = int.from_bytes(modes[idx:idx+4], 'big')
-                self.logger.debug1('  Mode %s: %s', name[4:], value)
+                self.logger.debug1('  Mode %s: %s', name, value)
                 term_modes[mode] = value
                 idx += 4
             else:

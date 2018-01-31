@@ -175,7 +175,7 @@ class _ClientGSSMICAuth(_ClientAuth):
         else:
             self.send_packet(MSG_USERAUTH_GSSAPI_EXCHANGE_COMPLETE)
 
-    def _process_response(self, pkttype, packet):
+    def _process_response(self, pkttype, pktid, packet):
         """Process a GSS response from the server"""
 
         # pylint: disable=unused-argument
@@ -201,7 +201,7 @@ class _ClientGSSMICAuth(_ClientAuth):
 
         return True
 
-    def _process_token(self, pkttype, packet):
+    def _process_token(self, pkttype, pktid, packet):
         """Process a GSS token from the server"""
 
         # pylint: disable=unused-argument
@@ -225,7 +225,7 @@ class _ClientGSSMICAuth(_ClientAuth):
 
         return True
 
-    def _process_error(self, pkttype, packet):
+    def _process_error(self, pkttype, pktid, packet):
         """Process a GSS error from the server"""
 
         # pylint: disable=unused-argument
@@ -241,7 +241,7 @@ class _ClientGSSMICAuth(_ClientAuth):
 
         return True
 
-    def _process_error_token(self, pkttype, packet):
+    def _process_error_token(self, pkttype, pktid, packet):
         """Process a GSS error token from the server"""
 
         # pylint: disable=no-self-use,unused-argument
@@ -299,7 +299,7 @@ class _ClientPublicKeyAuth(_ClientAuth):
                                      String(self._keypair.public_data),
                                      key=self._keypair)
 
-    def _process_public_key_ok(self, pkttype, packet):
+    def _process_public_key_ok(self, pkttype, pktid, packet):
         """Process a public key ok response"""
 
         # pylint: disable=unused-argument
@@ -354,7 +354,7 @@ class _ClientKbdIntAuth(_ClientAuth):
         self.send_packet(MSG_USERAUTH_INFO_RESPONSE, UInt32(len(responses)),
                          b''.join(String(r) for r in responses))
 
-    def _process_info_request(self, pkttype, packet):
+    def _process_info_request(self, pkttype, pktid, packet):
         """Process a keyboard interactive authentication request"""
 
         # pylint: disable=unused-argument
@@ -450,7 +450,7 @@ class _ClientPasswordAuth(_ClientAuth):
             self._password_change = False
             self._conn.password_change_failed()
 
-    def _process_password_change(self, pkttype, packet):
+    def _process_password_change(self, pkttype, pktid, packet):
         """Process a password change request"""
 
         # pylint: disable=unused-argument
@@ -604,7 +604,7 @@ class _ServerGSSMICAuth(_ServerAuth):
         else:
             self.send_failure()
 
-    def _process_token(self, pkttype, packet):
+    def _process_token(self, pkttype, pktid, packet):
         """Process a GSS token from the client"""
 
         # pylint: disable=unused-argument
@@ -629,7 +629,7 @@ class _ServerGSSMICAuth(_ServerAuth):
 
         return True
 
-    def _process_exchange_complete(self, pkttype, packet):
+    def _process_exchange_complete(self, pkttype, pktid, packet):
         """Process a GSS exchange complete message from the client"""
 
         # pylint: disable=unused-argument
@@ -643,7 +643,7 @@ class _ServerGSSMICAuth(_ServerAuth):
 
         return True
 
-    def _process_error_token(self, pkttype, packet):
+    def _process_error_token(self, pkttype, pktid, packet):
         """Process a GSS error token from the client"""
 
         # pylint: disable=unused-argument
@@ -658,7 +658,7 @@ class _ServerGSSMICAuth(_ServerAuth):
 
         return True
 
-    def _process_mic(self, pkttype, packet):
+    def _process_mic(self, pkttype, pktid, packet):
         """Process a GSS MIC from the client"""
 
         # pylint: disable=unused-argument
@@ -786,7 +786,7 @@ class _ServerKbdIntAuth(_ServerAuth):
                                                            responses)
         self._send_challenge(next_challenge)
 
-    def _process_info_response(self, pkttype, packet):
+    def _process_info_response(self, pkttype, pktid, packet):
         """Process a keyboard interactive authentication response"""
 
         # pylint: disable=unused-argument

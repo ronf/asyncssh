@@ -135,7 +135,7 @@ class _AuthClientStub(_AuthConnectionStub):
             self._auth = None
             self._auth_waiter = None
         else:
-            self._auth.process_packet(pkttype, packet)
+            self._auth.process_packet(pkttype, None, packet)
 
     def get_auth_result(self):
         """Return the result of the authentication"""
@@ -282,7 +282,7 @@ class _AuthServerStub(_AuthConnectionStub):
             else:
                 self._auth = lookup_server_auth(self, 'user', method, packet)
         else:
-            self._auth.process_packet(pkttype, packet)
+            self._auth.process_packet(pkttype, None, packet)
 
     def send_userauth_failure(self, partial_success):
         """Send a user authentication failure response"""

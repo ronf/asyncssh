@@ -179,7 +179,7 @@ class _KexDHBase(Kex):
 
         self._conn.send_newkeys(k, h)
 
-    def _process_init(self, pkttype, packet):
+    def _process_init(self, pkttype, pktid, packet):
         """Process a DH init message"""
 
         # pylint: disable=unused-argument
@@ -194,7 +194,7 @@ class _KexDHBase(Kex):
         host_key = self._conn.get_server_host_key()
         self._perform_reply(host_key, host_key.public_data)
 
-    def _process_reply(self, pkttype, packet):
+    def _process_reply(self, pkttype, pktid, packet):
         """Process a DH reply message"""
 
         # pylint: disable=unused-argument
@@ -268,8 +268,10 @@ class _KexDHGex(_KexDHBase):
         self._gex_data = args
         self.send_packet(pkttype, args)
 
-    def _process_request(self, pkttype, packet):
+    def _process_request(self, pkttype, pktid, packet):
         """Process a DH gex request message"""
+
+        # pylint: disable=unused-argument
 
         if self._conn.is_client():
             raise DisconnectError(DISC_PROTOCOL_ERROR,
@@ -302,7 +304,7 @@ class _KexDHGex(_KexDHBase):
         self._gex_data += MPInt(p) + MPInt(g)
         self.send_packet(self._group_type, MPInt(p), MPInt(g))
 
-    def _process_group(self, pkttype, packet):
+    def _process_group(self, pkttype, pktid, packet):
         """Process a DH gex group message"""
 
         # pylint: disable=unused-argument
@@ -397,7 +399,7 @@ class _KexGSSBase(_KexDHBase):
 
             raise DisconnectError(DISC_KEY_EXCHANGE_FAILED, str(exc))
 
-    def _process_init(self, pkttype, packet):
+    def _process_init(self, pkttype, pktid, packet):
         """Process a GSS init message"""
 
         # pylint: disable=unused-argument
@@ -427,7 +429,7 @@ class _KexGSSBase(_KexDHBase):
         else:
             self._send_continue()
 
-    def _process_continue(self, pkttype, packet):
+    def _process_continue(self, pkttype, pktid, packet):
         """Process a GSS continue message"""
 
         # pylint: disable=unused-argument
@@ -447,7 +449,7 @@ class _KexGSSBase(_KexDHBase):
         else:
             self._send_continue()
 
-    def _process_complete(self, pkttype, packet):
+    def _process_complete(self, pkttype, pktid, packet):
         """Process a GSS complete message"""
 
         # pylint: disable=unused-argument
@@ -481,7 +483,7 @@ class _KexGSSBase(_KexDHBase):
         self._verify_reply(self._gss, self._host_key_data, mic)
         self._conn.enable_gss_kex_auth()
 
-    def _process_hostkey(self, pkttype, packet):
+    def _process_hostkey(self, pkttype, pktid, packet):
         """Process a GSS hostkey message"""
 
         # pylint: disable=unused-argument
@@ -489,7 +491,7 @@ class _KexGSSBase(_KexDHBase):
         self._host_key_data = packet.get_string()
         packet.check_end()
 
-    def _process_error(self, pkttype, packet):
+    def _process_error(self, pkttype, pktid, packet):
         """Process a GSS error message"""
 
         # pylint: disable=unused-argument

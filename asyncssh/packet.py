@@ -156,7 +156,7 @@ class SSHPacketLogger:
 
         raise NotImplementedError
 
-    def _log_packet(self, msg, pkttype, payload, handler_names):
+    def _log_packet(self, msg, pkttype, pktid, payload, handler_names):
         """Log a sent/received packet"""
 
         try:
@@ -167,18 +167,18 @@ class SSHPacketLogger:
         count = len(payload)
         count = '%d byte%s' % (count, 's' if count > 1 else '')
 
-        self.logger.packet(payload, '%s %s, %s', msg, name, count)
+        self.logger.packet(pktid, payload, '%s %s, %s', msg, name, count)
 
-    def log_sent_packet(self, pkttype, payload, handler_names):
+    def log_sent_packet(self, pkttype, pktid, payload, handler_names):
         """Log a sent packet"""
 
-        self._log_packet('Sent', pkttype, payload, handler_names)
+        self._log_packet('Sent', pkttype, pktid, payload, handler_names)
 
 
-    def log_received_packet(self, pkttype, payload, handler_names):
+    def log_received_packet(self, pkttype, pktid, payload, handler_names):
         """Log a received packet"""
 
-        self._log_packet('Received', pkttype, payload, handler_names)
+        self._log_packet('Received', pkttype, pktid, payload, handler_names)
 
 
 class SSHPacketHandler(SSHPacketLogger):
@@ -192,15 +192,15 @@ class SSHPacketHandler(SSHPacketLogger):
 
         raise NotImplementedError
 
-    def process_packet(self, pkttype, packet, log=True):
+    def process_packet(self, pkttype, pktid, packet, log=True):
         """Log and process a received packet"""
 
         if log:
-            self.log_received_packet(pkttype, packet.get_full_payload(),
+            self.log_received_packet(pkttype, pktid, packet.get_full_payload(),
                                      self._handler_names)
 
         if pkttype in self._packet_handlers:
-            self._packet_handlers[pkttype](self, pkttype, packet)
+            self._packet_handlers[pkttype](self, pkttype, pktid, packet)
             return True
         else:
             return False

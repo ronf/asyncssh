@@ -175,7 +175,7 @@ class _TestPacket(unittest.TestCase):
 
                 return logger
 
-            def _handler1(self, pkttype, packet):
+            def _handler1(self, pkttype, pktid, packet):
                 """Packet handler for unit testing"""
 
             _packet_handlers = {
@@ -184,5 +184,5 @@ class _TestPacket(unittest.TestCase):
 
         handler = _TestPacketHandler()
         packet = SSHPacket(b'')
-        self.assertTrue(handler.process_packet(1, packet))
-        self.assertFalse(handler.process_packet(2, packet))
+        self.assertTrue(handler.process_packet(1, 1, packet))
+        self.assertFalse(handler.process_packet(2, 2, packet))

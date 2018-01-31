@@ -52,10 +52,10 @@ def all_ints(seq):
     return all(isinstance(i, int) for i in seq)
 
 
-def get_symbol_names(symbols, prefix):
+def get_symbol_names(symbols, prefix, strip_leading=0):
     """Return a mapping from values to symbol names for logging"""
 
-    return {value: name for name, value in symbols.items()
+    return {value: name[strip_leading:] for name, value in symbols.items()
             if name.startswith(prefix)}
 
 
@@ -206,6 +206,19 @@ class Record:
         return '%s(%s)' % (type(self).__name__,
                            ', '.join('%s=%r' % (k, getattr(self, k))
                                      for k in self.__slots__))
+
+    def __str__(self):
+        values = ((k, self._format(k, getattr(self, k)))
+                  for k in self.__slots__)
+
+        return ', '.join('%s: %s' % (k, v) for k, v in values if v is not None)
+
+    def _format(self, k, v):
+        """Format a field as a string"""
+
+        # pylint: disable=no-self-use,unused-argument
+
+        return str(v)
 
 
 class Error(Exception):

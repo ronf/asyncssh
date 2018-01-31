@@ -60,7 +60,7 @@ class _KexECDH(Kex):
         hash_obj.update(MPInt(k))
         return hash_obj.digest()
 
-    def _process_init(self, pkttype, packet):
+    def _process_init(self, pkttype, pktid, packet):
         """Process an ECDH init message"""
 
         # pylint: disable=unused-argument
@@ -88,7 +88,7 @@ class _KexECDH(Kex):
 
         self._conn.send_newkeys(k, h)
 
-    def _process_reply(self, pkttype, packet):
+    def _process_reply(self, pkttype, pktid, packet):
         """Process an ECDH reply message"""
 
         # pylint: disable=unused-argument
