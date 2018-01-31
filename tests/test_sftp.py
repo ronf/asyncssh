@@ -2097,7 +2097,9 @@ class _TestSFTP(_CheckSFTP):
         with self.assertLogs(level='INFO'):
             yield from sftp.realpath('.')
             yield from sftp.stat('.')
-            yield from sftp.statvfs('.')
+
+            if sys.platform != 'win32': # pragma: no cover
+                yield from sftp.statvfs('.')
 
         asyncssh.set_sftp_log_level('WARNING')
 
