@@ -43,7 +43,7 @@ randrange = _random.randrange
 if python344:
     create_task = asyncio.ensure_future
 else: # pragma: no cover
-    create_task = asyncio.async    # pylint: disable=no-member
+    create_task = getattr(asyncio, 'async')
 
 
 def all_ints(seq):
