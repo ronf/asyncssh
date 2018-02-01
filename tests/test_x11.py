@@ -180,6 +180,7 @@ class _X11Server(Server):
         length = len(data) % 4
         return data + ((4 - length) * b'\00' if length else b'')
 
+    @asyncio.coroutine
     def _open_x11(self, chan, endian, bad):
         """Open an X11 connection back to the client"""
 

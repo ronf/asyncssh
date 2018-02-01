@@ -24,7 +24,7 @@ import asyncssh
 from .server import ServerTestCase
 from .util import asynctest, echo
 
-
+@asyncio.coroutine
 def _handle_client(process):
     """Handle a new client request"""
 

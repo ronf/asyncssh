@@ -153,8 +153,11 @@ class SSHChannel(SSHPacketHandler):
 
         if self._request_waiters:
             for waiter in self._request_waiters:
-                if not waiter.cancelled(): # pragma: no branch
-                    waiter.set_exception(exc)
+                if not waiter.cancelled(): # pragma: no cover
+                    if exc:
+                        waiter.set_exception(exc)
+                    else:
+                        waiter.set_result(False)
 
             self._request_waiters = []
 
