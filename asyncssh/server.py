@@ -95,6 +95,10 @@ class SSHServer:
            succeed. Otherwise, it should return `True` to indicate that
            authentication should proceed.
 
+           If blocking operations need to be performed to prepare the
+           state needed to complete the authentication, this method may
+           be defined as a coroutine.
+
            :param username:
                The name of the user being authenticated
            :type username: `str`

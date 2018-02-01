@@ -109,6 +109,12 @@ class _AsyncPublicKeyServer(_PublicKeyServer):
     """Server for testing async public key authentication"""
 
     @asyncio.coroutine
+    def begin_auth(self, username):
+        """Handle client authentication request"""
+
+        return super().begin_auth(username)
+
+    @asyncio.coroutine
     def validate_public_key(self, username, key):
         """Return whether key is an authorized client key for this user"""
 

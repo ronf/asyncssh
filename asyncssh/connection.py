@@ -377,6 +377,10 @@ class SSHConnection(SSHPacketHandler):
             self._process_global_response(MSG_REQUEST_FAILURE, None,
                                           SSHPacket(b''))
 
+        if self._auth:
+            self._auth.cancel()
+            self._auth = None
+
         if self._owner: # pragma: no branch
             self._owner.connection_lost(exc)
             self._owner = None
@@ -1421,15 +1425,27 @@ class SSHConnection(SSHPacketHandler):
 
                 self._username = username
 
-                if not self._owner.begin_auth(username):
-                    self.send_userauth_success()
-                    return
+                result = self._owner.begin_auth(username)
+            else:
+                result = True
 
-            if self._auth:
-                self._auth.cancel()
+            self.create_task(self._finish_userauth(result, method, packet))
 
-            self._auth = lookup_server_auth(self, self._username,
-                                            method, packet)
+    @asyncio.coroutine
+    def _finish_userauth(self, result, method, packet):
+        """Finish processing a user authentication request"""
+
+        if asyncio.iscoroutine(result):
+            result = yield from result
+
+        if not result:
+            self.send_userauth_success()
+            return
+
+        if self._auth:
+            self._auth.cancel()
+
+        self._auth = lookup_server_auth(self, self._username, method, packet)
 
     def _process_userauth_failure(self, pkttype, pktid, packet):
         """Process a user authentication failure response"""
