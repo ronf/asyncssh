@@ -1522,7 +1522,7 @@ class SSHConnection(SSHPacketHandler):
             raise DisconnectError(DISC_PROTOCOL_ERROR,
                                   'Invalid userauth banner') from None
 
-        self.logger.debug1('Received auth banner')
+        self.logger.debug1('Received authentication banner')
 
         if self.is_client():
             self._owner.auth_banner_received(msg, lang)
