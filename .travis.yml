@@ -1,148 +1,81 @@
-language: python
+language:
+  - python
 
 install:
-  - pip install tox
+  - .travis/install.sh
+
+script:
+  - export PATH="/usr/local/opt/openssl/bin:$PATH"
+  - export PATH="$HOME/.pyenv/shims:$HOME/.pyenv/bin:$PATH"
+  - travis_wait 60 tox
 
 matrix:
   allow_failures:
-    - python: "nightly"
+    - python: nightly
+    - env: PYENV_VERSION=3.7-dev TOXENV=py37
+    - env: PYENV_VERSION=3.7-dev TOXENV=py37 USE_UVLOOP=1
   fast_finish: true
   include:
     - os: linux
       sudo: required
       dist: trusty
       python: 3.4
-      before_install:
-        - .travis/build-libsodium.sh
-      env:
-        - TOXENV=py34
+      env: TOXENV=py34
     - os: linux
       sudo: required
       dist: trusty
       python: 3.5
-      before_install:
-        - .travis/build-libsodium.sh
-      env:
-        - TOXENV=py35
+      env: TOXENV=py35
     - os: linux
       sudo: required
       dist: trusty
       python: 3.5
-      before_install:
-        - .travis/build-libsodium.sh
-      env:
-        - TOXENV=py35
-          USE_UVLOOP=1
+      env: TOXENV=py35 USE_UVLOOP=1
     - os: linux
       sudo: required
       dist: trusty
       python: 3.6
-      before_install:
-        - .travis/build-libsodium.sh
-      env:
-        - TOXENV=py36
+      env: TOXENV=py36
     - os: linux
       sudo: required
       dist: trusty
       python: 3.6
-      before_install:
-        - .travis/build-libsodium.sh
-      env:
-        - TOXENV=py36
-          USE_UVLOOP=1
+      env: TOXENV=py36 USE_UVLOOP=1
     - os: linux
       sudo: required
       dist: trusty
-      python: "nightly" # currently points to 3.7-rc
-      before_install:
-        - .travis/build-libsodium.sh
-      env:
-        - TOXENV=py37
+      python: nightly
+      env: TOXENV=py37
     - os: linux
       sudo: required
       dist: trusty
-      python: "nightly" # currently points to 3.7-rc
-      before_install:
-        - .travis/build-libsodium.sh
-      env:
-        - TOXENV=py37
-          USE_UVLOOP=1
+      python: nightly
+      env: TOXENV=py37 USE_UVLOOP=1
     - os: osx
       osx_image: xcode9.1
       language: generic
-      env:
-        - CPPFLAGS=-I/usr/local/opt/openssl/include
-          LDFLAGS=-L/usr/local/opt/openssl/lib -L/usr/local/opt/libffi/lib
-          PATH=$HOME/.pyenv/bin:/usr/local/opt/openssl/bin:$PATH
-          TOXENV=py34
-      before_install:
-        - brew update
-        - brew install libffi libsodium
-        - eval "$(pyenv init -)"
-        - pyenv install 3.4.6
-        - pyenv local 3.4.6
-        - pyenv rehash
+      env: PYENV_VERSION=3.4-dev TOXENV=py34
     - os: osx
       osx_image: xcode9.1
       language: generic
-      env:
-        - CPPFLAGS=-I/usr/local/opt/openssl/include
-          LDFLAGS=-L/usr/local/opt/openssl/lib -L/usr/local/opt/libffi/lib
-          PATH=$HOME/.pyenv/bin:/usr/local/opt/openssl/bin:$PATH
-          TOXENV=py35
-      before_install:
-        - brew update
-        - brew install libffi libsodium
-        - eval "$(pyenv init -)"
-        - pyenv install 3.5.3
-        - pyenv local 3.5.3
-        - pyenv rehash
+      env: PYENV_VERSION=3.5-dev TOXENV=py35
     - os: osx
       osx_image: xcode9.1
       language: generic
-      env:
-        - CPPFLAGS=-I/usr/local/opt/openssl/include
-          LDFLAGS=-L/usr/local/opt/openssl/lib -L/usr/local/opt/libffi/lib
-          PATH=$HOME/.pyenv/bin:/usr/local/opt/openssl/bin:$PATH
-          TOXENV=py35
-          USE_UVLOOP=1
-      before_install:
-        - brew update
-        - brew install libffi libsodium
-        - eval "$(pyenv init -)"
-        - pyenv install 3.5.3
-        - pyenv local 3.5.3
-        - pyenv rehash
+      env: PYENV_VERSION=3.5-dev TOXENV=py35 USE_UVLOOP=1
     - os: osx
       osx_image: xcode9.1
       language: generic
-      env:
-        - CPPFLAGS=-I/usr/local/opt/openssl/include
-          LDFLAGS=-L/usr/local/opt/openssl/lib -L/usr/local/opt/libffi/lib
-          PATH=$HOME/.pyenv/bin:/usr/local/opt/openssl/bin:$PATH
-          TOXENV=py36
-      before_install:
-        - brew update
-        - brew install libffi libsodium
-        - eval "$(pyenv init -)"
-        - pyenv install 3.6.1
-        - pyenv local 3.6.1
-        - pyenv rehash
+      env: PYENV_VERSION=3.6-dev TOXENV=py36
     - os: osx
       osx_image: xcode9.1
       language: generic
-      env:
-        - CPPFLAGS=-I/usr/local/opt/openssl/include
-          LDFLAGS=-L/usr/local/opt/openssl/lib -L/usr/local/opt/libffi/lib
-          PATH=$HOME/.pyenv/bin:/usr/local/opt/openssl/bin:$PATH
-          TOXENV=py36
-          USE_UVLOOP=1
-      before_install:
-        - brew update
-        - brew install libffi libsodium
-        - eval "$(pyenv init -)"
-        - pyenv install 3.6.1
-        - pyenv local 3.6.1
-        - pyenv rehash
-
-script: travis_wait 60 tox
+      env: PYENV_VERSION=3.6-dev TOXENV=py36 USE_UVLOOP=1
+    - os: osx
+      osx_image: xcode9.1
+      language: generic
+      env: PYENV_VERSION=3.7-dev TOXENV=py37
+    - os: osx
+      osx_image: xcode9.1
+      language: generic
+      env: PYENV_VERSION=3.7-dev TOXENV=py37 USE_UVLOOP=1
