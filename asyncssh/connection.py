@@ -4482,11 +4482,12 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
                        signature_algs, x509_trusted_certs is not None)
 
     if x509_trusted_certs is ():
-        try:
-            x509_trusted_certs = load_certificates(
-                os.path.join(os.path.expanduser('~'), '.ssh', 'ca-bundle.crt'))
-        except OSError:
-            pass
+        ca_bandle = os.path.join(os.path.expanduser('~'), '.ssh', 'ca-bundle.crt')
+        if os.path.exists(ca_bandle):
+            try:
+                x509_trusted_certs = load_certificates(ca_bandle)
+            except OSError:
+                pass
     elif x509_trusted_certs is not None:
         x509_trusted_certs = load_certificates(x509_trusted_certs)
 
