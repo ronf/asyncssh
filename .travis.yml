@@ -71,11 +71,3 @@ matrix:
       osx_image: xcode9.1
       language: generic
       env: PYENV_VERSION=3.6-dev TOXENV=py36 USE_UVLOOP=1
-    - os: osx
-      osx_image: xcode9.1
-      language: generic
-      env: PYENV_VERSION=3.7-dev TOXENV=py37
-    - os: osx
-      osx_image: xcode9.1
-      language: generic
-      env: PYENV_VERSION=3.7-dev TOXENV=py37 USE_UVLOOP=1
