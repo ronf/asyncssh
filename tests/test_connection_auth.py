@@ -221,7 +221,7 @@ class _KbdintClient(asyncssh.SSHClient):
 
         # pylint: disable=unused-argument
 
-        if len(prompts) == 0:
+        if not prompts:
             return []
         elif self._responses:
             result = self._responses

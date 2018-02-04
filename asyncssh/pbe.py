@@ -210,7 +210,7 @@ def _pbe_p12(params, passphrase, hash_alg, cipher, key_size):
     """
 
     if (not isinstance(params, tuple) or len(params) != 2 or
-            not isinstance(params[0], bytes) or len(params[0]) == 0 or
+            not isinstance(params[0], bytes) or not params[0] or
             not isinstance(params[1], int) or params[1] == 0):
         raise KeyEncryptionError('Invalid PBES1 PKCS#12 encryption parameters')
 

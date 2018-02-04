@@ -61,13 +61,13 @@ class ServerTestCase(AsyncTestCase):
                       server_host_keys=(), gss_host=None, **kwargs):
         """Create an SSH server for the tests to use"""
 
-        if loop is ():
+        if loop == ():
             loop = cls.loop
 
-        if server_factory is ():
+        if server_factory == ():
             server_factory = Server
 
-        if server_host_keys is ():
+        if server_host_keys == ():
             server_host_keys = ['skey']
 
         return (yield from asyncssh.create_server(
@@ -277,7 +277,7 @@ class ServerTestCase(AsyncTestCase):
                           gss_host=None, **kwargs):
         """Create a connection to the test server"""
 
-        if loop is ():
+        if loop == ():
             loop = self.loop
 
         return (yield from asyncssh.create_connection(client_factory,

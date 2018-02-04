@@ -70,7 +70,7 @@ class _ECKey(SSHKey):
             try:
                 curve_id = _alg_oid_map[alg_params]
             except KeyError:
-                raise KeyImportError('Unknown elliptic curve OID %s',
+                raise KeyImportError('Unknown elliptic curve OID %s' %
                                      alg_params) from None
         elif (isinstance(alg_params, tuple) and len(alg_params) >= 5 and
               alg_params[0] == 1 and isinstance(alg_params[1], tuple) and
@@ -103,20 +103,20 @@ class _ECKey(SSHKey):
         return cls(ECDSAPrivateKey.generate(algorithm[11:]))
 
     @classmethod
-    def make_private(cls, curve_id, private_key, public_key):
+    def make_private(cls, curve_id, private_value, public_value):
         """Construct an EC private key"""
 
-        if isinstance(private_key, bytes):
-            private_key = int.from_bytes(private_key, 'big')
+        if isinstance(private_value, bytes):
+            private_value = int.from_bytes(private_value, 'big')
 
-        return cls(ECDSAPrivateKey.construct(curve_id, public_key,
-                                             private_key))
+        return cls(ECDSAPrivateKey.construct(curve_id, public_value,
+                                             private_value))
 
     @classmethod
-    def make_public(cls, curve_id, public_key):
+    def make_public(cls, curve_id, public_value):
         """Construct an EC public key"""
 
-        return cls(ECDSAPublicKey.construct(curve_id, public_key))
+        return cls(ECDSAPublicKey.construct(curve_id, public_value))
 
     @classmethod
     def decode_pkcs1_private(cls, key_data):

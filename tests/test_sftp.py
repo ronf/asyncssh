@@ -128,7 +128,7 @@ class _NotImplSFTPServer(SFTPServer):
     """Return an error that a request is not implemented"""
 
     @asyncio.coroutine
-    def symlink(self, old_path, new_path):
+    def symlink(self, oldpath, newpath):
         """Return that symlinks aren't implemented"""
 
         raise NotImplementedError
@@ -217,10 +217,10 @@ class _ChownSFTPServer(SFTPServer):
 class _SymlinkSFTPServer(SFTPServer):
     """Implement symlink with non-standard argument order"""
 
-    def symlink(self, newpath, oldpath):
+    def symlink(self, oldpath, newpath):
         """Create a symbolic link"""
 
-        return super().symlink(oldpath, newpath)
+        return super().symlink(newpath, oldpath)
 
 
 class _SFTPAttrsSFTPServer(SFTPServer):
@@ -406,7 +406,7 @@ class _CheckSFTP(ServerTestCase):
     def _create_file(self, name, data=(), mode=None, utime=None):
         """Create a test file"""
 
-        if data is ():
+        if data == ():
             data = str(id(self))
 
         with open(name, 'w') as f:

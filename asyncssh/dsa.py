@@ -58,16 +58,16 @@ class _DSAKey(SSHKey):
         return cls(DSAPrivateKey.generate(key_size=1024))
 
     @classmethod
-    def make_private(cls, *args):
+    def make_private(cls, p, q, g, y, x):
         """Construct a DSA private key"""
 
-        return cls(DSAPrivateKey.construct(*args))
+        return cls(DSAPrivateKey.construct(p, q, g, y, x))
 
     @classmethod
-    def make_public(cls, *args):
+    def make_public(cls, p, q, g, y):
         """Construct a DSA public key"""
 
-        return cls(DSAPublicKey.construct(*args))
+        return cls(DSAPublicKey.construct(p, q, g, y))
 
     @classmethod
     def decode_pkcs1_private(cls, key_data):

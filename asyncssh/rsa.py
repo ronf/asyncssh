@@ -57,16 +57,16 @@ class _RSAKey(SSHKey):
         return cls(RSAPrivateKey.generate(key_size, exponent))
 
     @classmethod
-    def make_private(cls, *args):
+    def make_private(cls, n, e, d, p, q, dmp1, dmq1, iqmp):
         """Construct an RSA private key"""
 
-        return cls(RSAPrivateKey.construct(*args))
+        return cls(RSAPrivateKey.construct(n, e, d, p, q, dmp1, dmq1, iqmp))
 
     @classmethod
-    def make_public(cls, *args):
+    def make_public(cls, n, e):
         """Construct an RSA public key"""
 
-        return cls(RSAPublicKey.construct(*args))
+        return cls(RSAPublicKey.construct(n, e))
 
     @classmethod
     def decode_pkcs1_private(cls, key_data):

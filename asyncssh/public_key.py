@@ -467,7 +467,7 @@ class SSHKey:
         if permit_user_rc:
             cert_options['permit-user-rc'] = True
 
-        if comment is ():
+        if comment == ():
             comment = user_key.get_comment_bytes()
 
         return self._generate_certificate(user_key, version, serial,
@@ -521,7 +521,7 @@ class SSHKey:
                       parameters are unsupported
         """
 
-        if comment is ():
+        if comment == ():
             comment = host_key.get_comment_bytes()
 
         return self._generate_certificate(host_key, version, serial,
@@ -592,7 +592,7 @@ class SSHKey:
 
         """
 
-        if comment is ():
+        if comment == ():
             comment = user_key.get_comment_bytes()
 
         return self._generate_x509_certificate(user_key, subject, issuer,
@@ -663,7 +663,7 @@ class SSHKey:
                       parameters are unsupported
         """
 
-        if comment is ():
+        if comment == ():
             comment = host_key.get_comment_bytes()
 
         return self._generate_x509_certificate(host_key, subject, issuer,
@@ -729,7 +729,7 @@ class SSHKey:
                       parameters are unsupported
         """
 
-        if comment is ():
+        if comment == ():
             comment = ca_key.get_comment_bytes()
 
         return self._generate_x509_certificate(ca_key, subject, issuer,

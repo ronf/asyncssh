@@ -564,6 +564,9 @@ class SSHServerStreamSession(SSHStreamSession, SSHServerSession):
     def exec_requested(self, command):
         """Return whether execution of a command can be requested"""
 
+        # Avoid incorrect pylint suggestion to use ternary
+        # pylint: disable=consider-using-ternary
+
         return ((self._allow_scp and command.startswith('scp ')) or
                 bool(self._session_factory))
 
@@ -615,10 +618,11 @@ class SSHServerStreamSession(SSHStreamSession, SSHServerSession):
         self._recv_buf[None].append(SignalReceived(signal))
         self._unblock_read(None)
 
-    def terminal_size_changed(self, *args):
+    def terminal_size_changed(self, width, height, pixwidth, pixheight):
         """Handle an incoming terminal size change on the channel"""
 
-        self._recv_buf[None].append(TerminalSizeChanged(*args))
+        self._recv_buf[None].append(TerminalSizeChanged(width, height,
+                                                        pixwidth, pixheight))
         self._unblock_read(None)
 
 

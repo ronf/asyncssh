@@ -41,6 +41,8 @@ class SSPIContext:
 
         if attr == SECPKG_ATTR_NATIVE_NAMES:
             return ['user@TEST', 'host@TEST']
+        else:
+            return None
 
 
 class SSPIAuth:

@@ -1409,6 +1409,7 @@ class SSHServerChannel(SSHChannel):
         self._conn.create_task(self._finish_x11_req_request(auth_proto,
                                                             auth_data, screen),
                                self.logger)
+        return None
 
     @asyncio.coroutine
     def _finish_x11_req_request(self, auth_proto, auth_data, screen):
@@ -1794,7 +1795,7 @@ class SSHForwardChannel(SSHChannel):
             self.resume_reading()
 
     @asyncio.coroutine
-    def _open(self, session_factory, chantype, *args):
+    def _open_forward(self, session_factory, chantype, *args):
         """Open a forward channel"""
 
         packet = yield from super()._open(chantype, *args)
@@ -1823,9 +1824,10 @@ class SSHTCPChannel(SSHForwardChannel):
         self._extra['local_peername'] = (orig_host, orig_port)
         self._extra['remote_peername'] = (host, port)
 
-        return (yield from super()._open(session_factory, chantype,
-                                         String(host), UInt32(port),
-                                         String(orig_host), UInt32(orig_port)))
+        return (yield from super()._open_forward(session_factory, chantype,
+                                                 String(host), UInt32(port),
+                                                 String(orig_host),
+                                                 UInt32(orig_port)))
 
     @asyncio.coroutine
     def connect(self, session_factory, host, port, orig_host, orig_port):
@@ -1859,8 +1861,8 @@ class SSHUNIXChannel(SSHForwardChannel):
         self._extra['local_peername'] = ''
         self._extra['remote_peername'] = path
 
-        return (yield from super()._open(session_factory, chantype,
-                                         String(path), *args))
+        return (yield from super()._open_forward(session_factory, chantype,
+                                                 String(path), *args))
 
     @asyncio.coroutine
     def connect(self, session_factory, path):
@@ -1898,8 +1900,9 @@ class SSHX11Channel(SSHForwardChannel):
         self._extra['local_peername'] = (orig_host, orig_port)
         self._extra['remote_peername'] = (None, None)
 
-        return (yield from self._open(session_factory, b'x11',
-                                      String(orig_host), UInt32(orig_port)))
+        return (yield from self._open_forward(session_factory, b'x11',
+                                              String(orig_host),
+                                              UInt32(orig_port)))
 
     def set_inbound_peer_names(self, orig_host, orig_port):
         """Set local and remote peer name for inbound connections"""
@@ -1915,5 +1918,5 @@ class SSHAgentChannel(SSHForwardChannel):
     def open(self, session_factory):
         """Open an SSH agent channel"""
 
-        return (yield from self._open(session_factory,
-                                      b'auth-agent@openssh.com'))
+        return (yield from self._open_forward(session_factory,
+                                              b'auth-agent@openssh.com'))

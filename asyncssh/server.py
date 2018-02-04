@@ -40,11 +40,15 @@ class SSHServer:
 
     # pylint: disable=no-self-use,unused-argument
 
-    def connection_made(self, connection):
+    def connection_made(self, conn):
         """Called when a connection is made
 
            This method is called when a new TCP connection is accepted. The
-           connection parameter should be stored if needed for later use.
+           `conn` parameter should be stored if needed for later use.
+
+           :param conn:
+               The connection which was successfully opened
+           :type conn: :class:`SSHServerConnection`
 
         """
 

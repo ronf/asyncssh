@@ -131,7 +131,7 @@ _DEFAULT_LINE_HISTORY = 1000        # 1000 lines
 def _validate_version(version):
     """Validate requested SSH version"""
 
-    if version is ():
+    if version == ():
         from .version import __version__
 
         version = b'AsyncSSH_' + __version__.encode('ascii')
@@ -2459,7 +2459,7 @@ class SSHClientConnection(SSHConnection):
         """Return responses to a keyboard-interactive auth challenge"""
 
         if self._kbdint_password_auth:
-            if len(prompts) == 0:
+            if not prompts:
                 # Silently drop any empty challenges used to print messages
                 result = []
             elif len(prompts) == 1 and 'password' in prompts[0][0].lower():
@@ -3286,8 +3286,8 @@ class SSHClientConnection(SSHConnection):
                                                    *args, **kwargs))
 
     @asyncio.coroutine
-    def create_ssh_connection(self, client_factory, host, port=_DEFAULT_PORT,
-                              *args, **kwargs):
+    def create_ssh_connection(self, client_factory, host,
+                              port=_DEFAULT_PORT, **kwargs):
         """Create a tunneled SSH client connection
 
            This method is a coroutine which can be called to open an
@@ -3300,10 +3300,10 @@ class SSHClientConnection(SSHConnection):
         """
 
         return (yield from create_connection(client_factory, host, port,
-                                             *args, tunnel=self, **kwargs))
+                                             tunnel=self, **kwargs))
 
     @asyncio.coroutine
-    def connect_ssh(self, host, port=_DEFAULT_PORT, *args, **kwargs):
+    def connect_ssh(self, host, port=_DEFAULT_PORT, **kwargs):
         """Make a tunneled SSH client connection
 
            This method is a coroutine which can be called to open an
@@ -3314,7 +3314,7 @@ class SSHClientConnection(SSHConnection):
 
         """
 
-        return (yield from connect(host, port, *args, tunnel=self, **kwargs))
+        return (yield from connect(host, port, tunnel=self, **kwargs))
 
     @asyncio.coroutine
     def forward_remote_port(self, listen_host, listen_port,
@@ -4846,7 +4846,7 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
         _validate_algs(kex_algs, encryption_algs, mac_algs, compression_algs,
                        signature_algs, x509_trusted_certs is not None)
 
-    if x509_trusted_certs is ():
+    if x509_trusted_certs == ():
         try:
             x509_trusted_certs = load_certificates(
                 os.path.join(os.path.expanduser('~'), '.ssh', 'ca-bundle.crt'))
@@ -4855,7 +4855,7 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
     elif x509_trusted_certs is not None:
         x509_trusted_certs = load_certificates(x509_trusted_certs)
 
-    if x509_trusted_cert_paths is ():
+    if x509_trusted_cert_paths == ():
         path = os.path.join(os.path.expanduser('~'), '.ssh', 'crt')
         if os.path.isdir(path):
             x509_trusted_cert_paths = [path]
@@ -4867,17 +4867,17 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
     if username is None:
         username = getpass.getuser()
 
-    if gss_host is ():
+    if gss_host == ():
         gss_host = host
 
     agent = None
 
-    if agent_path is ():
+    if agent_path == ():
         agent_path = os.environ.get('SSH_AUTH_SOCK', None)
 
     if client_keys:
         client_keys = load_keypairs(client_keys, passphrase)
-    elif client_keys is ():
+    elif client_keys == ():
         if agent_path:
             agent = yield from connect_agent(agent_path, loop=loop)
 
@@ -5165,7 +5165,7 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
 
     server_version = _validate_version(server_version)
 
-    if gss_host is ():
+    if gss_host == ():
         gss_host = socket.gethostname()
 
         if '.' not in gss_host:

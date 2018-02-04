@@ -50,15 +50,15 @@ class SSHClient:
 
     # pylint: disable=no-self-use,unused-argument
 
-    def connection_made(self, connection):
+    def connection_made(self, conn):
         """Called when a connection is made
 
-           This method is called as soon as the TCP connection completes. The
-           connection parameter should be stored if needed for later use.
+           This method is called as soon as the TCP connection completes.
+           The `conn` parameter should be stored if needed for later use.
 
-           :param connection:
+           :param conn:
                The connection which was successfully opened
-           :type connection: :class:`SSHClientConnection`
+           :type conn: :class:`SSHClientConnection`
 
         """
 
@@ -270,7 +270,7 @@ class SSHClient:
 
         return NotImplemented # pragma: no cover
 
-    def kbdint_challenge_received(self, name, instruction, lang, prompts):
+    def kbdint_challenge_received(self, name, instructions, lang, prompts):
         """A keyboard-interactive auth challenge has been received
 
            This method is called when the server sends a keyboard-interactive
@@ -295,7 +295,7 @@ class SSHClient:
 
            :param name:
                The name of the challenge
-           :param instruction:
+           :param instructions:
                Instructions to the user about how to respond to the challenge
            :param lang:
                The language the challenge is in
@@ -303,7 +303,7 @@ class SSHClient:
                The challenges the user should respond to and whether or
                not the responses should be echoed when they are entered
            :type name: `str`
-           :type instruction: `str`
+           :type instructions: `str`
            :type lang: `str`
            :type prompts: `list` of tuples of `str` and `bool`
 
