@@ -3,6 +3,45 @@
 Change Log
 ==========
 
+Release 1.12.0 (5 Feb 2018)
+---------------------------
+
+* Enhanced AsyncSSH logging framework to provide detailed logging of
+  events in the connection, channel, key exchange, authentication,
+  sftp, and scp modules. Both high-level information logs and more
+  detailed debug logs are available, and debug logging supports
+  multiple debug levels with different amounts of verboseness.
+  Logger objects are also available on various AsyncSSH classes to
+  allow applications to report their own log events in a manner that
+  can be tied back to a specific SSH connection or channel.
+
+* Added support for begin_auth() to be a coroutine, so asynchronous
+  operations can be performed within it to load state needed to
+  perform SSH authentication.
+
+* Adjusted key usage flags set on generated X.509 certificates to be more
+  RFC compliant and work around an issue with OpenSSL validation of
+  self-signed non-CA certificates.
+
+* Updated key and certificate comment handling to be less sensitive to
+  the encoding of non-ASCII characters. The get_comment() and set_comment()
+  functions now take an optional encoding paramter, defaulting to UTF-8
+  but allowing for others encodings. There's also a get_comment_bytes()
+  function to get the comment data as bytes without performing Unicode
+  decoding.
+
+* Updated AsyncSSH to be compatible with beta release of Python 3.7.
+
+* Updated code to address warnings reported by the latest version of pylint.
+
+* Cleaned up various formatting issues in Sphinx documentation.
+
+* Significantly reduced time it takes to run unit tests by decreasing
+  the rounds of bcrypt encryption used when unit testing encrypted
+  OpenSSH private keys.
+
+* Added support for testing against uvloop in Travis CI.
+
 Release 1.11.1 (15 Nov 2017)
 ----------------------------
 
