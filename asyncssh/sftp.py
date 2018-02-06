@@ -15,7 +15,6 @@
 """SFTP handlers"""
 
 import asyncio
-import codecs
 from collections import OrderedDict
 import errno
 from fnmatch import fnmatch
@@ -48,6 +47,7 @@ from .constants import FX_FAILURE, FX_BAD_MESSAGE, FX_NO_CONNECTION
 from .constants import FX_CONNECTION_LOST, FX_OP_UNSUPPORTED
 
 from .misc import Error, Record, async_context_manager, get_symbol_names
+from .misc import hide_empty, plural, to_hex
 
 from .packet import Byte, String, UInt32, UInt64, PacketDecodeError
 from .packet import SSHPacket, SSHPacketLogger
@@ -69,24 +69,6 @@ _open_modes = {
     'a+': FXF_READ | FXF_WRITE | FXF_CREAT | FXF_APPEND,
     'x+': FXF_READ | FXF_WRITE | FXF_CREAT | FXF_EXCL
 }
-
-
-def _hex(data):
-    """Convert binary data to a hex string"""
-
-    return codecs.encode(data, 'hex')
-
-
-def _hide_empty(value, prefix=', '):
-    """Return a string with optional prefix if value is non-empty"""
-
-    value = str(value)
-    return prefix + value if value else ''
-
-def _plural(length, label, suffix='s'):
-    """Return a label with an optional plural suffix"""
-
-    return '%d %s%s' % (length, label, suffix if length != 1 else '')
 
 
 def _mode_to_pflags(mode):
@@ -739,7 +721,7 @@ class SFTPHandler(SSHPacketLogger):
 
     @property
     def logger(self):
-        """A logger associated with this SFTP client"""
+        """A logger associated with this SFTP handler"""
 
         return self._logger
 
@@ -907,7 +889,7 @@ class SFTPClientHandler(SFTPHandler):
         packet.check_end()
 
         if code == FX_OK:
-            self.logger.info('Received OK')
+            self.logger.debug1('Received OK')
             return None
         else:
             raise SFTPError(code, reason, lang)
@@ -920,7 +902,7 @@ class SFTPClientHandler(SFTPHandler):
         handle = packet.get_string()
         packet.check_end()
 
-        self.logger.info('Received handle %s', _hex(handle))
+        self.logger.debug1('Received handle %s', to_hex(handle))
 
         return handle
 
@@ -932,7 +914,7 @@ class SFTPClientHandler(SFTPHandler):
         data = packet.get_string()
         packet.check_end()
 
-        self.logger.info('Received %s', _plural(len(data), 'data byte'))
+        self.logger.debug1('Received %s', plural(len(data), 'data byte'))
 
         return data
 
@@ -945,10 +927,10 @@ class SFTPClientHandler(SFTPHandler):
         names = [SFTPName.decode(packet) for i in range(count)]
         packet.check_end()
 
-        self.logger.info('Received %s', _plural(len(names), 'name'))
+        self.logger.debug1('Received %s', plural(len(names), 'name'))
 
         for name in names:
-            self.logger.info('  %s', name)
+            self.logger.debug1('  %s', name)
 
         return names
 
@@ -960,7 +942,7 @@ class SFTPClientHandler(SFTPHandler):
         attrs = SFTPAttrs().decode(packet)
         packet.check_end()
 
-        self.logger.info('Received %s', attrs)
+        self.logger.debug1('Received %s', attrs)
 
         return attrs
 
@@ -985,11 +967,11 @@ class SFTPClientHandler(SFTPHandler):
     def start(self):
         """Start an SFTP client"""
 
-        self.logger.info('Sending init, version=%d%s', _SFTP_VERSION,
-                         ', extensions:' if self._extensions else '')
+        self.logger.debug1('Sending init, version=%d%s', _SFTP_VERSION,
+                           ', extensions:' if self._extensions else '')
 
         for name, data in self._extensions: # pragma: no cover
-            self.logger.info('  %s: %s', name, data)
+            self.logger.debug1('  %s: %s', name, data)
 
         extensions = (String(name) + String(data)
                       for name, data in self._extensions)
@@ -1026,11 +1008,11 @@ class SFTPClientHandler(SFTPHandler):
         except (asyncio.IncompleteReadError, Error) as exc:
             raise SFTPError(FX_FAILURE, str(exc))
 
-        self.logger.info('Received version=%d%s', version,
-                         ', extensions:' if extensions else '')
+        self.logger.debug1('Received version=%d%s', version,
+                           ', extensions:' if extensions else '')
 
         for name, data in extensions:
-            self.logger.info('  %s: %s', name, data)
+            self.logger.debug1('  %s: %s', name, data)
 
             if name == b'posix-rename@openssh.com' and data == b'1':
                 self._supports_posix_rename = True
@@ -1049,16 +1031,16 @@ class SFTPClientHandler(SFTPHandler):
             server_version = self._reader.get_extra_info('server_version', '')
             if any(name in server_version
                    for name in self._nonstandard_symlink_impls):
-                self.logger.info('Adjusting for non-standard symlink '
-                                 'implementation')
+                self.logger.debug1('Adjusting for non-standard symlink '
+                                   'implementation')
                 self._nonstandard_symlink = True
 
     @asyncio.coroutine
     def open(self, filename, pflags, attrs):
         """Make an SFTP open request"""
 
-        self.logger.info('Sending open for %s, mode 0x%02x%s',
-                         filename, pflags, _hide_empty(attrs))
+        self.logger.debug1('Sending open for %s, mode 0x%02x%s',
+                           filename, pflags, hide_empty(attrs))
 
         return (yield from self._make_request(FXP_OPEN, String(filename),
                                               UInt32(pflags), attrs.encode()))
@@ -1067,15 +1049,15 @@ class SFTPClientHandler(SFTPHandler):
     def close(self, handle):
         """Make an SFTP close request"""
 
-        self.logger.info('Sending close for handle %s', _hex(handle))
+        self.logger.debug1('Sending close for handle %s', to_hex(handle))
 
         return (yield from self._make_request(FXP_CLOSE, String(handle)))
 
     def nonblocking_close(self, handle):
         """Send an SFTP close request without blocking on the response"""
 
-        self.logger.info('Sending non-blocking close for handle %s',
-                         _hex(handle))
+        self.logger.debug1('Sending non-blocking close for handle %s',
+                           to_hex(handle))
 
         # Used by context managers, since they can't block to wait for a reply
         self._send_request(FXP_CLOSE, String(handle))
@@ -1084,8 +1066,8 @@ class SFTPClientHandler(SFTPHandler):
     def read(self, handle, offset, length):
         """Make an SFTP read request"""
 
-        self.logger.info('Sending read for %s at offset %d in handle %s',
-                         _plural(length, 'byte'), offset, _hex(handle))
+        self.logger.debug1('Sending read for %s at offset %d in handle %s',
+                           plural(length, 'byte'), offset, to_hex(handle))
 
         return (yield from self._make_request(FXP_READ, String(handle),
                                               UInt64(offset), UInt32(length)))
@@ -1094,8 +1076,8 @@ class SFTPClientHandler(SFTPHandler):
     def write(self, handle, offset, data):
         """Make an SFTP write request"""
 
-        self.logger.info('Sending write for %s at offset %d in handle %s',
-                         _plural(len(data), 'byte'), offset, _hex(handle))
+        self.logger.debug1('Sending write for %s at offset %d in handle %s',
+                           plural(len(data), 'byte'), offset, to_hex(handle))
 
         return (yield from self._make_request(FXP_WRITE, String(handle),
                                               UInt64(offset), String(data)))
@@ -1104,7 +1086,7 @@ class SFTPClientHandler(SFTPHandler):
     def stat(self, path):
         """Make an SFTP stat request"""
 
-        self.logger.info('Sending stat for %s', path)
+        self.logger.debug1('Sending stat for %s', path)
 
         return (yield from self._make_request(FXP_STAT, String(path)))
 
@@ -1112,7 +1094,7 @@ class SFTPClientHandler(SFTPHandler):
     def lstat(self, path):
         """Make an SFTP lstat request"""
 
-        self.logger.info('Sending lstat for %s', path)
+        self.logger.debug1('Sending lstat for %s', path)
 
         return (yield from self._make_request(FXP_LSTAT, String(path)))
 
@@ -1120,7 +1102,7 @@ class SFTPClientHandler(SFTPHandler):
     def fstat(self, handle):
         """Make an SFTP fstat request"""
 
-        self.logger.info('Sending fstat for handle %s', _hex(handle))
+        self.logger.debug1('Sending fstat for handle %s', to_hex(handle))
 
         return (yield from self._make_request(FXP_FSTAT, String(handle)))
 
@@ -1128,7 +1110,7 @@ class SFTPClientHandler(SFTPHandler):
     def setstat(self, path, attrs):
         """Make an SFTP setstat request"""
 
-        self.logger.info('Sending setstat for %s%s', path, _hide_empty(attrs))
+        self.logger.debug1('Sending setstat for %s%s', path, hide_empty(attrs))
 
         return (yield from self._make_request(FXP_SETSTAT, String(path),
                                               attrs.encode()))
@@ -1137,8 +1119,8 @@ class SFTPClientHandler(SFTPHandler):
     def fsetstat(self, handle, attrs):
         """Make an SFTP fsetstat request"""
 
-        self.logger.info('Sending fsetstat for handle %s%s',
-                         _hex(handle), _hide_empty(attrs))
+        self.logger.debug1('Sending fsetstat for handle %s%s',
+                           to_hex(handle), hide_empty(attrs))
 
         return (yield from self._make_request(FXP_FSETSTAT, String(handle),
                                               attrs.encode()))
@@ -1148,14 +1130,14 @@ class SFTPClientHandler(SFTPHandler):
         """Make an SFTP statvfs request"""
 
         if self._supports_statvfs:
-            self.logger.info('Sending statvfs for %s', path)
+            self.logger.debug1('Sending statvfs for %s', path)
 
             packet = yield from self._make_request(b'statvfs@openssh.com',
                                                    String(path))
             vfsattrs = SFTPVFSAttrs.decode(packet)
             packet.check_end()
 
-            self.logger.info('Received %s', vfsattrs)
+            self.logger.debug1('Received %s', vfsattrs)
 
             return vfsattrs
         else:
@@ -1166,14 +1148,14 @@ class SFTPClientHandler(SFTPHandler):
         """Make an SFTP fstatvfs request"""
 
         if self._supports_fstatvfs:
-            self.logger.info('Sending fstatvfs for handle %s', _hex(handle))
+            self.logger.debug1('Sending fstatvfs for handle %s', to_hex(handle))
 
             packet = yield from self._make_request(b'fstatvfs@openssh.com',
                                                    String(handle))
             vfsattrs = SFTPVFSAttrs.decode(packet)
             packet.check_end()
 
-            self.logger.info('Received %s', vfsattrs)
+            self.logger.debug1('Received %s', vfsattrs)
 
             return vfsattrs
         else:
@@ -1183,7 +1165,7 @@ class SFTPClientHandler(SFTPHandler):
     def remove(self, path):
         """Make an SFTP remove request"""
 
-        self.logger.info('Sending remove for %s', path)
+        self.logger.debug1('Sending remove for %s', path)
 
         return (yield from self._make_request(FXP_REMOVE, String(path)))
 
@@ -1191,8 +1173,8 @@ class SFTPClientHandler(SFTPHandler):
     def rename(self, oldpath, newpath):
         """Make an SFTP rename request"""
 
-        self.logger.info('Sending rename request from %s to %s',
-                         oldpath, newpath)
+        self.logger.debug1('Sending rename request from %s to %s',
+                           oldpath, newpath)
 
         return (yield from self._make_request(FXP_RENAME, String(oldpath),
                                               String(newpath)))
@@ -1202,8 +1184,8 @@ class SFTPClientHandler(SFTPHandler):
         """Make an SFTP POSIX rename request"""
 
         if self._supports_posix_rename:
-            self.logger.info('Sending POSIX rename request from %s to %s',
-                             oldpath, newpath)
+            self.logger.debug1('Sending POSIX rename request from %s to %s',
+                               oldpath, newpath)
 
             return (yield from self._make_request(b'posix-rename@openssh.com',
                                                   String(oldpath),
@@ -1215,7 +1197,7 @@ class SFTPClientHandler(SFTPHandler):
     def opendir(self, path):
         """Make an SFTP opendir request"""
 
-        self.logger.info('Sending opendir for %s', path)
+        self.logger.debug1('Sending opendir for %s', path)
 
         return (yield from self._make_request(FXP_OPENDIR, String(path)))
 
@@ -1223,7 +1205,7 @@ class SFTPClientHandler(SFTPHandler):
     def readdir(self, handle):
         """Make an SFTP readdir request"""
 
-        self.logger.info('Sending readdir for handle %s', _hex(handle))
+        self.logger.debug1('Sending readdir for handle %s', to_hex(handle))
 
         return (yield from self._make_request(FXP_READDIR, String(handle)))
 
@@ -1231,7 +1213,7 @@ class SFTPClientHandler(SFTPHandler):
     def mkdir(self, path, attrs):
         """Make an SFTP mkdir request"""
 
-        self.logger.info('Sending mkdir for %s', path)
+        self.logger.debug1('Sending mkdir for %s', path)
 
         return (yield from self._make_request(FXP_MKDIR, String(path),
                                               attrs.encode()))
@@ -1240,7 +1222,7 @@ class SFTPClientHandler(SFTPHandler):
     def rmdir(self, path):
         """Make an SFTP rmdir request"""
 
-        self.logger.info('Sending rmdir for %s', path)
+        self.logger.debug1('Sending rmdir for %s', path)
 
         return (yield from self._make_request(FXP_RMDIR, String(path)))
 
@@ -1248,7 +1230,7 @@ class SFTPClientHandler(SFTPHandler):
     def realpath(self, path):
         """Make an SFTP realpath request"""
 
-        self.logger.info('Sending realpath for %s', path)
+        self.logger.debug1('Sending realpath for %s', path)
 
         return (yield from self._make_request(FXP_REALPATH, String(path)))
 
@@ -1256,7 +1238,7 @@ class SFTPClientHandler(SFTPHandler):
     def readlink(self, path):
         """Make an SFTP readlink request"""
 
-        self.logger.info('Sending readlink for %s', path)
+        self.logger.debug1('Sending readlink for %s', path)
 
         return (yield from self._make_request(FXP_READLINK, String(path)))
 
@@ -1264,8 +1246,8 @@ class SFTPClientHandler(SFTPHandler):
     def symlink(self, oldpath, newpath):
         """Make an SFTP symlink request"""
 
-        self.logger.info('Sending symlink request from %s to %s',
-                         oldpath, newpath)
+        self.logger.debug1('Sending symlink request from %s to %s',
+                           oldpath, newpath)
 
         if self._nonstandard_symlink:
             args = String(oldpath) + String(newpath)
@@ -1279,8 +1261,8 @@ class SFTPClientHandler(SFTPHandler):
         """Make an SFTP link request"""
 
         if self._supports_hardlink:
-            self.logger.info('Sending hardlink request from %s to %s',
-                             oldpath, newpath)
+            self.logger.debug1('Sending hardlink request from %s to %s',
+                               oldpath, newpath)
 
             return (yield from self._make_request(b'hardlink@openssh.com',
                                                   String(oldpath),
@@ -1293,7 +1275,7 @@ class SFTPClientHandler(SFTPHandler):
         """Make an SFTP fsync request"""
 
         if self._supports_fsync:
-            self.logger.info('Sending fsync for handle %s', _hex(handle))
+            self.logger.debug1('Sending fsync for handle %s', to_hex(handle))
 
             return (yield from self._make_request(b'fsync@openssh.com',
                                                   String(handle)))
@@ -1843,6 +1825,9 @@ class SFTPClient:
                     raise SFTPError(FX_FAILURE, '%s is a directory' %
                                     srcpath.decode('utf-8', errors='replace'))
 
+                self.logger.info('  Starting copy of directory %s to %s',
+                                 srcpath, dstpath)
+
                 if not (yield from dstfs.isdir(dstpath)):
                     yield from dstfs.mkdir(dstpath)
 
@@ -1859,21 +1844,33 @@ class SFTPClient:
                                           dstfile, preserve, recurse,
                                           follow_symlinks, block_size,
                                           progress_handler, error_handler)
+
+                self.logger.info('  Finished copy of directory %s to %s',
+                                 srcpath, dstpath)
+
             elif stat.S_ISLNK(srcattrs.permissions):
                 targetpath = yield from srcfs.readlink(srcpath)
+
+                self.logger.info('  Copying symlink %s to %s', srcpath, dstpath)
+                self.logger.info('    Target path: %s', targetpath)
+
                 yield from dstfs.symlink(targetpath, dstpath)
             else:
+                self.logger.info('  Copying file %s to %s', srcpath, dstpath)
+
                 yield from _SFTPFileCopier(self._loop).copy(
                     srcfs, dstfs, srcpath, dstpath, srcattrs.size,
                     block_size, progress_handler)
 
             if preserve:
-                srcattrs = yield from srcfs.stat(srcpath)
+                attrs = yield from srcfs.stat(srcpath)
 
-                yield from dstfs.setstat(
-                    dstpath, SFTPAttrs(permissions=srcattrs.permissions,
-                                       atime=srcattrs.atime,
-                                       mtime=srcattrs.mtime))
+                attrs = SFTPAttrs(permissions=attrs.permissions,
+                                  atime=attrs.atime, mtime=attrs.mtime)
+
+                self.logger.info('    Preserving attrs: %s', attrs)
+
+                yield from dstfs.setstat(dstpath, attrs)
         except (OSError, SFTPError) as exc:
             # pylint: disable=attribute-defined-outside-init
             exc.srcpath = srcpath
@@ -2004,6 +2001,9 @@ class SFTPClient:
 
         """
 
+        self.logger.info('Starting SFTP get of %s to %s',
+                         remotepaths, localpath)
+
         yield from self._begin_copy(self, LocalFile, remotepaths, localpath,
                                     preserve, recurse, follow_symlinks,
                                     block_size, progress_handler,
@@ -2096,6 +2096,9 @@ class SFTPClient:
                     | :exc:`SFTPError` if the server returns an error
 
         """
+
+        self.logger.info('Starting SFTP put of %s to %s',
+                         localpaths, remotepath)
 
         yield from self._begin_copy(LocalFile, self, localpaths, remotepath,
                                     preserve, recurse, follow_symlinks,
@@ -2190,6 +2193,9 @@ class SFTPClient:
 
         """
 
+        self.logger.info('Starting SFTP remote copy of %s to %s',
+                         srcpaths, dstpath)
+
         yield from self._begin_copy(self, self, srcpaths, dstpath, preserve,
                                     recurse, follow_symlinks, block_size,
                                     progress_handler, error_handler)
@@ -2208,6 +2214,9 @@ class SFTPClient:
            '*' and '?' wildcard characters.
 
         """
+
+        self.logger.info('Starting SFTP mget of %s to %s',
+                         remotepaths, localpath)
 
         matches = yield from self._glob(self, remotepaths, error_handler)
 
@@ -2231,6 +2240,9 @@ class SFTPClient:
 
         """
 
+        self.logger.info('Starting SFTP mput of %s to %s',
+                         localpaths, remotepath)
+
         matches = yield from self._glob(LocalFile, localpaths, error_handler)
 
         yield from self._begin_copy(LocalFile, self, matches, remotepath,
@@ -2252,6 +2264,9 @@ class SFTPClient:
            '*' and '?' wildcard characters.
 
         """
+
+        self.logger.info('Starting SFTP remote mcopy of %s to %s',
+                         srcpaths, dstpath)
 
         matches = yield from self._glob(self, srcpaths, error_handler)
 
@@ -3099,23 +3114,23 @@ class SFTPServerHandler(SFTPHandler):
             result = yield from handler(self, packet)
 
             if return_type == FXP_STATUS:
-                self.logger.info('Sending OK')
+                self.logger.debug1('Sending OK')
 
                 result = UInt32(FX_OK) + String('') + String('')
             elif return_type == FXP_HANDLE:
-                self.logger.info('Sending handle %s', _hex(result))
+                self.logger.debug1('Sending handle %s', to_hex(result))
 
                 result = String(result)
             elif return_type == FXP_DATA:
-                self.logger.info('Sending %s', _plural(len(result),
-                                                       'data byte'))
+                self.logger.debug1('Sending %s', plural(len(result),
+                                                        'data byte'))
 
                 result = String(result)
             elif return_type == FXP_NAME:
-                self.logger.info('Sending %s', _plural(len(result), 'name'))
+                self.logger.debug1('Sending %s', plural(len(result), 'name'))
 
                 for name in result:
-                    self.logger.info('  %s', name)
+                    self.logger.debug1('  %s', name)
 
                 result = (UInt32(len(result)) +
                           b''.join(name.encode() for name in result))
@@ -3126,29 +3141,29 @@ class SFTPServerHandler(SFTPHandler):
                     result = SFTPVFSAttrs.from_local(result)
 
                 if isinstance(result, SFTPAttrs):
-                    self.logger.info('Sending %s', result)
+                    self.logger.debug1('Sending %s', result)
                 elif isinstance(result, SFTPVFSAttrs): # pragma: no branch
-                    self.logger.info('Sending %s', result)
+                    self.logger.debug1('Sending %s', result)
 
                 result = result.encode()
         except PacketDecodeError as exc:
             return_type = FXP_STATUS
 
-            self.logger.info('Sending bad message error: %s', str(exc))
+            self.logger.debug1('Sending bad message error: %s', str(exc))
 
             result = (UInt32(FX_BAD_MESSAGE) + String(str(exc)) +
                       String(DEFAULT_LANG))
         except SFTPError as exc:
             return_type = FXP_STATUS
 
-            self.logger.info('Sending error: %s', str(exc.reason))
+            self.logger.debug1('Sending error: %s', str(exc.reason))
 
             result = UInt32(exc.code) + String(exc.reason) + String(exc.lang)
         except NotImplementedError as exc:
             return_type = FXP_STATUS
             name = handler.__name__[9:]
 
-            self.logger.info('Sending operation not supported: %s', name)
+            self.logger.debug1('Sending operation not supported: %s', name)
 
             result = (UInt32(FX_OP_UNSUPPORTED) +
                       String('Operation not supported: %s' % name) +
@@ -3158,15 +3173,15 @@ class SFTPServerHandler(SFTPHandler):
             reason = exc.strerror or str(exc)
 
             if exc.errno in (errno.ENOENT, errno.ENOTDIR):
-                self.logger.info('Sending no such file error: %s', reason)
+                self.logger.debug1('Sending no such file error: %s', reason)
 
                 code = FX_NO_SUCH_FILE
             elif exc.errno == errno.EACCES:
-                self.logger.info('Sending permission denied: %s', reason)
+                self.logger.debug1('Sending permission denied: %s', reason)
 
                 code = FX_PERMISSION_DENIED
             else:
-                self.logger.info('Sending failure: %s', reason)
+                self.logger.debug1('Sending failure: %s', reason)
 
                 code = FX_FAILURE
 
@@ -3175,7 +3190,7 @@ class SFTPServerHandler(SFTPHandler):
             return_type = FXP_STATUS
             reason = 'Uncaught exception: %s' % str(exc)
 
-            self.logger.info('Sending failure: %s', reason)
+            self.logger.debug1('Sending failure: %s', reason)
 
             result = UInt32(FX_FAILURE) + String(reason) + String(DEFAULT_LANG)
 
@@ -3190,8 +3205,8 @@ class SFTPServerHandler(SFTPHandler):
         attrs = SFTPAttrs.decode(packet)
         packet.check_end()
 
-        self.logger.info('Received open request for %s, mode 0x%02x%s',
-                         path, pflags, _hide_empty(attrs))
+        self.logger.debug1('Received open request for %s, mode 0x%02x%s',
+                           path, pflags, hide_empty(attrs))
 
         result = self._server.open(path, pflags, attrs)
 
@@ -3209,7 +3224,7 @@ class SFTPServerHandler(SFTPHandler):
         handle = packet.get_string()
         packet.check_end()
 
-        self.logger.info('Received close for handle %s', _hex(handle))
+        self.logger.debug1('Received close for handle %s', to_hex(handle))
 
         file_obj = self._file_handles.pop(handle, None)
         if file_obj:
@@ -3234,8 +3249,8 @@ class SFTPServerHandler(SFTPHandler):
         length = packet.get_uint32()
         packet.check_end()
 
-        self.logger.info('Received read for %s at offset %d in handle %s',
-                         _plural(length, 'byte'), offset, _hex(handle))
+        self.logger.debug1('Received read for %s at offset %d in handle %s',
+                           plural(length, 'byte'), offset, to_hex(handle))
 
         file_obj = self._file_handles.get(handle)
 
@@ -3261,8 +3276,8 @@ class SFTPServerHandler(SFTPHandler):
         data = packet.get_string()
         packet.check_end()
 
-        self.logger.info('Received write for %s at offset %d in handle %s',
-                         _plural(len(data), 'byte'), offset, _hex(handle))
+        self.logger.debug1('Received write for %s at offset %d in handle %s',
+                           plural(len(data), 'byte'), offset, to_hex(handle))
 
         file_obj = self._file_handles.get(handle)
 
@@ -3283,7 +3298,7 @@ class SFTPServerHandler(SFTPHandler):
         path = packet.get_string()
         packet.check_end()
 
-        self.logger.info('Received lstat for %s', path)
+        self.logger.debug1('Received lstat for %s', path)
 
         result = self._server.lstat(path)
 
@@ -3299,7 +3314,7 @@ class SFTPServerHandler(SFTPHandler):
         handle = packet.get_string()
         packet.check_end()
 
-        self.logger.info('Received fstat for handle %s', _hex(handle))
+        self.logger.debug1('Received fstat for handle %s', to_hex(handle))
 
         file_obj = self._file_handles.get(handle)
 
@@ -3321,7 +3336,7 @@ class SFTPServerHandler(SFTPHandler):
         attrs = SFTPAttrs.decode(packet)
         packet.check_end()
 
-        self.logger.info('Received setstat for %s%s', path, _hide_empty(attrs))
+        self.logger.debug1('Received setstat for %s%s', path, hide_empty(attrs))
 
         result = self._server.setstat(path, attrs)
 
@@ -3338,8 +3353,8 @@ class SFTPServerHandler(SFTPHandler):
         attrs = SFTPAttrs.decode(packet)
         packet.check_end()
 
-        self.logger.info('Received fsetstat for handle %s%s',
-                         _hex(handle), _hide_empty(attrs))
+        self.logger.debug1('Received fsetstat for handle %s%s',
+                           to_hex(handle), hide_empty(attrs))
 
         file_obj = self._file_handles.get(handle)
 
@@ -3360,7 +3375,7 @@ class SFTPServerHandler(SFTPHandler):
         path = packet.get_string()
         packet.check_end()
 
-        self.logger.info('Received opendir for %s', path)
+        self.logger.debug1('Received opendir for %s', path)
 
         listdir_result = self._server.listdir(path)
 
@@ -3404,7 +3419,7 @@ class SFTPServerHandler(SFTPHandler):
         handle = packet.get_string()
         packet.check_end()
 
-        self.logger.info('Received readdir for handle %s', _hex(handle))
+        self.logger.debug1('Received readdir for handle %s', to_hex(handle))
 
         names = self._dir_handles.get(handle)
         if names:
@@ -3421,7 +3436,7 @@ class SFTPServerHandler(SFTPHandler):
         path = packet.get_string()
         packet.check_end()
 
-        self.logger.info('Received remove for %s', path)
+        self.logger.debug1('Received remove for %s', path)
 
         result = self._server.remove(path)
 
@@ -3438,7 +3453,7 @@ class SFTPServerHandler(SFTPHandler):
         attrs = SFTPAttrs.decode(packet)
         packet.check_end()
 
-        self.logger.info('Received mkdir for %s', path)
+        self.logger.debug1('Received mkdir for %s', path)
 
         result = self._server.mkdir(path, attrs)
 
@@ -3454,7 +3469,7 @@ class SFTPServerHandler(SFTPHandler):
         path = packet.get_string()
         packet.check_end()
 
-        self.logger.info('Received rmdir for %s', path)
+        self.logger.debug1('Received rmdir for %s', path)
 
         result = self._server.rmdir(path)
 
@@ -3470,7 +3485,7 @@ class SFTPServerHandler(SFTPHandler):
         path = packet.get_string()
         packet.check_end()
 
-        self.logger.info('Received realpath for %s', path)
+        self.logger.debug1('Received realpath for %s', path)
 
         result = self._server.realpath(path)
 
@@ -3486,7 +3501,7 @@ class SFTPServerHandler(SFTPHandler):
         path = packet.get_string()
         packet.check_end()
 
-        self.logger.info('Received stat for %s', path)
+        self.logger.debug1('Received stat for %s', path)
 
         result = self._server.stat(path)
 
@@ -3503,8 +3518,8 @@ class SFTPServerHandler(SFTPHandler):
         newpath = packet.get_string()
         packet.check_end()
 
-        self.logger.info('Received rename request from %s to %s',
-                         oldpath, newpath)
+        self.logger.debug1('Received rename request from %s to %s',
+                           oldpath, newpath)
 
         result = self._server.rename(oldpath, newpath)
 
@@ -3520,7 +3535,7 @@ class SFTPServerHandler(SFTPHandler):
         path = packet.get_string()
         packet.check_end()
 
-        self.logger.info('Received readlink for %s', path)
+        self.logger.debug1('Received readlink for %s', path)
 
         result = self._server.readlink(path)
 
@@ -3542,8 +3557,8 @@ class SFTPServerHandler(SFTPHandler):
 
         packet.check_end()
 
-        self.logger.info('Received symlink request from %s to %s',
-                         oldpath, newpath)
+        self.logger.debug1('Received symlink request from %s to %s',
+                           oldpath, newpath)
 
         result = self._server.symlink(oldpath, newpath)
 
@@ -3560,8 +3575,8 @@ class SFTPServerHandler(SFTPHandler):
         newpath = packet.get_string()
         packet.check_end()
 
-        self.logger.info('Received POSIX rename request from %s to %s',
-                         oldpath, newpath)
+        self.logger.debug1('Received POSIX rename request from %s to %s',
+                           oldpath, newpath)
 
         result = self._server.posix_rename(oldpath, newpath)
 
@@ -3577,7 +3592,7 @@ class SFTPServerHandler(SFTPHandler):
         path = packet.get_string()
         packet.check_end()
 
-        self.logger.info('Received statvfs for %s', path)
+        self.logger.debug1('Received statvfs for %s', path)
 
         result = self._server.statvfs(path)
 
@@ -3593,7 +3608,7 @@ class SFTPServerHandler(SFTPHandler):
         handle = packet.get_string()
         packet.check_end()
 
-        self.logger.info('Received fstatvfs for handle %s', _hex(handle))
+        self.logger.debug1('Received fstatvfs for handle %s', to_hex(handle))
 
         file_obj = self._file_handles.get(handle)
 
@@ -3615,8 +3630,8 @@ class SFTPServerHandler(SFTPHandler):
         newpath = packet.get_string()
         packet.check_end()
 
-        self.logger.info('Received hardlink request from %s to %s',
-                         oldpath, newpath)
+        self.logger.debug1('Received hardlink request from %s to %s',
+                           oldpath, newpath)
 
         result = self._server.link(oldpath, newpath)
 
@@ -3632,7 +3647,7 @@ class SFTPServerHandler(SFTPHandler):
         handle = packet.get_string()
         packet.check_end()
 
-        self.logger.info('Received fsync for handle %s', _hex(handle))
+        self.logger.debug1('Received fsync for handle %s', to_hex(handle))
 
         file_obj = self._file_handles.get(handle)
 
@@ -3705,19 +3720,19 @@ class SFTPServerHandler(SFTPHandler):
                                                'Expected init message'))
             return
 
-        self.logger.info('Received init, version=%d%s', version,
-                         ', extensions:' if extensions else '')
+        self.logger.debug1('Received init, version=%d%s', version,
+                           ', extensions:' if extensions else '')
 
         for name, data in extensions:
-            self.logger.info('  %s: %s', name, data)
+            self.logger.debug1('  %s: %s', name, data)
 
         reply_version = min(version, _SFTP_VERSION)
 
-        self.logger.info('Sending version=%d%s', reply_version,
-                         ', extensions:' if self._extensions else '')
+        self.logger.debug1('Sending version=%d%s', reply_version,
+                           ', extensions:' if self._extensions else '')
 
         for name, data in self._extensions:
-            self.logger.info('  %s: %s', name, data)
+            self.logger.debug1('  %s: %s', name, data)
 
         extensions = (String(name) + String(data)
                       for name, data in self._extensions)
@@ -3735,8 +3750,8 @@ class SFTPServerHandler(SFTPHandler):
             client_version = self._reader.get_extra_info('client_version', '')
             if any(name in client_version
                    for name in self._nonstandard_symlink_impls):
-                self.logger.info('Adjusting for non-standard symlink '
-                                 'implementation')
+                self.logger.debug1('Adjusting for non-standard symlink '
+                                   'implementation')
                 self._nonstandard_symlink = True
 
         yield from self.recv_packets()

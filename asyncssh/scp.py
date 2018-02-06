@@ -23,6 +23,8 @@ import stat
 from .constants import DEFAULT_LANG
 from .constants import FX_BAD_MESSAGE, FX_CONNECTION_LOST, FX_FAILURE
 
+from .misc import plural
+
 from .sftp import LocalFile, match_glob
 from .sftp import SFTP_BLOCK_SIZE, SFTPAttrs, SFTPError, SFTPServerFile
 
@@ -41,7 +43,7 @@ def _parse_t_args(args):
     """Parse argument to an SCP time request"""
 
     try:
-        atime, _, mtime, _ = args.split()
+        mtime, _, atime, _ = args.split()
         return int(atime), int(mtime)
     except ValueError:
         raise SCPError(FX_BAD_MESSAGE, 'Invalid time request') from None
@@ -88,6 +90,9 @@ def _start_remote(conn, source, must_be_dir, preserve, recurse, path):
                (b'-d ' if must_be_dir else b'') +
                (b'-p ' if preserve else b'') +
                (b'-r ' if recurse else b'') + path)
+
+    conn.logger.get_child('sftp').info('Starting remote SCP, args: %s',
+                                       command[4:])
 
     writer, reader, _ = yield from conn.open_session(command, encoding=None)
 
@@ -147,6 +152,14 @@ class _SCPHandler:
         self._writer = writer
         self._error_handler = error_handler
 
+        self._logger = reader.logger.get_child('sftp')
+
+    @property
+    def logger(self):
+        """A logger associated with this SCP handler"""
+
+        return self._logger
+
     @asyncio.coroutine
     def await_response(self):
         """Wait for an SCP response"""
@@ -166,12 +179,18 @@ class _SCPHandler:
             return SCPError(FX_FAILURE, reason[:-1], fatal=result != b'\x01',
                             suppress_send=True)
 
+        self.logger.debug1('Received SCP OK')
+
         return None
 
     def send_request(self, *args):
         """Send an SCP request"""
 
-        self._writer.write(b''.join(args) + b'\n')
+        request = b''.join(args)
+
+        self.logger.debug1('Sending SCP request: %s', request)
+
+        self._writer.write(request + b'\n')
 
     @asyncio.coroutine
     def make_request(self, *args):
@@ -188,11 +207,15 @@ class _SCPHandler:
     def send_data(self, data):
         """Send SCP file data"""
 
+        self.logger.debug1('Sending %s', plural(len(data), 'SCP data byte'))
+
         self._writer.write(data)
         yield from self._writer.drain()
 
     def send_ok(self):
         """Send an SCP OK response"""
+
+        self.logger.debug1('Sending SCP OK')
 
         self._writer.write(b'\0')
 
@@ -214,6 +237,9 @@ class _SCPHandler:
 
         fatal = getattr(exc, 'fatal', False)
 
+        self.logger.debug1('Sending SCP %serror: %s',
+                           'fatal ' if fatal else '', reason)
+
         self._writer.write((b'\x02' if fatal else b'\x01') +
                            b'scp: ' + reason + b'\n')
 
@@ -226,14 +252,26 @@ class _SCPHandler:
         if not request:
             return None, None
 
-        return request[:1], request[1:-1]
+        action, args = request[:1], request[1:-1]
+
+        if action not in b'\x01\x02':
+            self.logger.debug1('Received SCP request: %s%s', action, args)
+        else:
+            self.logger.debug1('Received SCP %serror: %s',
+                               'fatal ' if action != b'\x01'  else '', args)
+
+        return action, args
 
 
     @asyncio.coroutine
     def recv_data(self, n):
         """Receive SCP file data"""
 
-        return (yield from self._reader.read(n))
+        data = (yield from self._reader.read(n))
+
+        self.logger.debug1('Received %s', plural(len(data), 'SCP data byte'))
+
+        return data
 
     def handle_error(self, exc):
         """Handle an SCP error"""
@@ -245,15 +283,20 @@ class _SCPHandler:
         if not getattr(exc, 'suppress_send', False):
             self.send_error(exc)
 
+        self.logger.debug1('Handling SCP error: %s', exc)
+
         if getattr(exc, 'fatal', False) or self._error_handler is None:
             raise exc from None
         elif self._error_handler:
             self._error_handler(exc)
 
+    @asyncio.coroutine
     def close(self):
         """Close an SCP session"""
 
+        self.logger.info('Stopping remote SCP')
         self._writer.close()
+        yield from self._writer.channel.wait_closed()
 
 
 class _SCPSource(_SCPHandler):
@@ -282,7 +325,10 @@ class _SCPSource(_SCPHandler):
     def _make_t_request(self, attrs):
         """Make an SCP time request"""
 
-        args = '%d 0 %d 0' % (attrs.atime, attrs.mtime)
+        self.logger.info('    Preserving attrs: %s',
+                         SFTPAttrs(atime=attrs.atime, mtime=attrs.mtime))
+
+        args = '%d 0 %d 0' % (attrs.mtime, attrs.atime)
         yield from self.make_request(b'T', args.encode('ascii'))
 
     @asyncio.coroutine
@@ -293,6 +339,8 @@ class _SCPSource(_SCPHandler):
         size = attrs.size
         local_exc = None
         offset = 0
+
+        self.logger.info('  Sending file %s, size %d', srcpath, size)
 
         try:
             yield from self._make_cd_request(b'C', attrs, size, srcpath)
@@ -335,6 +383,8 @@ class _SCPSource(_SCPHandler):
     def _send_dir(self, srcpath, dstpath, attrs):
         """Send directory over SCP"""
 
+        self.logger.info('  Starting send of directory %s', srcpath)
+
         yield from self._make_cd_request(b'D', attrs, 0, srcpath)
 
         for name in (yield from self._fs.listdir(srcpath)):
@@ -345,6 +395,8 @@ class _SCPSource(_SCPHandler):
                                         posixpath.join(dstpath, name))
 
         yield from self.make_request(b'E')
+
+        self.logger.info('  Finished send of directory %s', srcpath)
 
     @asyncio.coroutine
     def _send_files(self, srcpath, dstpath):
@@ -383,7 +435,7 @@ class _SCPSource(_SCPHandler):
         except (OSError, SFTPError) as exc:
             self.handle_error(exc)
         finally:
-            self.close()
+            yield from self.close()
 
 
 class _SCPSink(_SCPHandler):
@@ -408,6 +460,8 @@ class _SCPSink(_SCPHandler):
         file_obj = yield from self._fs.open(dstpath, 'wb')
         local_exc = None
         offset = 0
+
+        self.logger.info('  Receiving file %s, size %d', dstpath, size)
 
         try:
             self.send_ok()
@@ -453,6 +507,8 @@ class _SCPSink(_SCPHandler):
         if not self._recurse:
             raise SCPError(FX_BAD_MESSAGE, 'Directory received without recurse')
 
+        self.logger.info('  Starting receive of directory %s', dstpath)
+
         if (yield from self._fs.exists(dstpath)):
             if not (yield from self._fs.isdir(dstpath)):
                 raise SCPError(FX_FAILURE, 'Not a directory', dstpath)
@@ -460,6 +516,8 @@ class _SCPSink(_SCPHandler):
             yield from self._fs.mkdir(dstpath)
 
         yield from self._recv_files(srcpath, dstpath)
+
+        self.logger.info('  Finished receive of directory %s', dstpath)
 
     @asyncio.coroutine
     def _recv_files(self, srcpath, dstpath):
@@ -504,6 +562,7 @@ class _SCPSink(_SCPHandler):
                                                        new_dstpath, size)
 
                         if self._preserve:
+                            self.logger.info('    Preserving attrs: %s', attrs)
                             yield from self._fs.setstat(new_dstpath, attrs)
                     finally:
                         attrs = SFTPAttrs()
@@ -528,7 +587,7 @@ class _SCPSink(_SCPHandler):
         except (OSError, SFTPError, ValueError) as exc:
             self.handle_error(exc)
         finally:
-            self.close()
+            yield from self.close()
 
 
 class _SCPCopier:
@@ -539,15 +598,24 @@ class _SCPCopier:
                  error_handler=None):
         self._source = _SCPHandler(src_reader, src_writer)
         self._sink = _SCPHandler(dst_reader, dst_writer)
+        self._logger = self._source.logger
         self._block_size = block_size
         self._progress_handler = progress_handler
         self._error_handler = error_handler
+
+    @property
+    def logger(self):
+        """A logger associated with this SCP handler"""
+
+        return self._logger
 
     def _handle_error(self, exc):
         """Handle an SCP error"""
 
         if isinstance(exc, BrokenPipeError):
             exc = SCPError(FX_CONNECTION_LOST, 'Connection lost', fatal=True)
+
+        self.logger.debug1('Handling SCP error: %s', exc)
 
         if self._error_handler and not getattr(exc, 'fatal', False):
             self._error_handler(exc)
@@ -576,6 +644,8 @@ class _SCPCopier:
     def _copy_file(self, path, size):
         """Copy a file from one remote SCP server to another"""
 
+        self.logger.info('  Copying file %s, size %d', path, size)
+
         offset = 0
 
         while offset < size:
@@ -601,57 +671,80 @@ class _SCPCopier:
             self._handle_error(exc)
 
     @asyncio.coroutine
-    def run(self):
-        """Start SCP remote-to-remote transfer"""
+    def _copy_files(self):
+        """Copy files from one SCP server to another"""
 
-        paths = []
+        exc = yield from self._forward_response(self._sink, self._source)
 
-        try:
-            exc = yield from self._forward_response(self._sink, self._source)
+        if exc:
+            self._handle_error(exc)
+
+        pathlist = []
+        attrlist = []
+        attrs = SFTPAttrs()
+
+        while True:
+            action, args = yield from self._source.recv_request()
+
+            if not action:
+                break
+
+            self._sink.send_request(action, args)
+
+            if action in b'\x01\x02':
+                exc = SCPError(FX_FAILURE, args, fatal=action != b'\x01')
+                self._handle_error(exc)
+                continue
+
+            exc = yield from self._forward_response(self._sink,
+                                                    self._source)
 
             if exc:
                 self._handle_error(exc)
+                continue
 
-            while True:
-                action, args = yield from self._source.recv_request()
-
-                if not action:
-                    break
-
-                self._sink.send_request(action, args)
-
-                if action in b'\x01\x02':
-                    exc = SCPError(FX_FAILURE, args, fatal=action != b'\x01')
-                    self._handle_error(exc)
-                    continue
-
-                exc = yield from self._forward_response(self._sink,
-                                                        self._source)
-
-                if exc:
-                    self._handle_error(exc)
-                    continue
-
-                if action in b'CD':
-                    _, size, name = _parse_cd_args(args)
+            if action in b'CD':
+                try:
+                    attrs.permissions, size, name = _parse_cd_args(args)
 
                     if action == b'C':
-                        path = b'/'.join(paths + [name])
+                        path = b'/'.join(pathlist + [name])
                         yield from self._copy_file(path, size)
+                        self.logger.info('    Preserving attrs: %s', attrs)
                     else:
-                        paths.append(name)
-                elif action == b'E':
-                    if paths:
-                        paths.pop()
-                    else:
-                        break
-                elif action != b'T':
-                    raise SCPError(FX_BAD_MESSAGE, 'Unknown SCP action')
+                        pathlist.append(name)
+                        attrlist.append(attrs)
+                        self.logger.info('  Starting copy of directory %s',
+                                         b'/'.join(pathlist))
+                finally:
+                    attrs = SFTPAttrs()
+            elif action == b'E':
+                if pathlist:
+                    self.logger.info('  Finished copy of directory %s',
+                                     b'/'.join(pathlist))
+
+                    pathlist.pop()
+                    attrs = attrlist.pop()
+
+                    self.logger.info('    Preserving attrs: %s', attrs)
+                else:
+                    break
+            elif action == b'T':
+                attrs.atime, attrs.mtime = _parse_t_args(args)
+            else:
+                raise SCPError(FX_BAD_MESSAGE, 'Unknown SCP action')
+
+    @asyncio.coroutine
+    def run(self):
+        """Start SCP remote-to-remote transfer"""
+
+        try:
+            yield from self._copy_files()
         except (OSError, SFTPError) as exc:
             self._handle_error(exc)
         finally:
-            self._source.close()
-            self._sink.close()
+            yield from self._source.close()
+            yield from self._sink.close()
 
 
 @asyncio.coroutine
@@ -818,9 +911,12 @@ def run_scp_server(sftp_server, command, stdin, stdout, stderr):
     try:
         args = _SCPArgParser().parse(command)
     except ValueError as exc:
+        stdin.logger.info('Error starting SCP server: %s', str(exc))
         stderr.write(b'scp: ' + str(exc).encode('utf-8') + b'\n')
         stderr.channel.exit(1)
         return
+
+    stdin.logger.info('Starting SCP server, args: %s', command[4:].strip())
 
     fs = SFTPServerFile(sftp_server)
 

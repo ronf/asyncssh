@@ -13,6 +13,7 @@
 """Miscellaneous utility classes and functions"""
 
 import asyncio
+import codecs
 import functools
 import ipaddress
 import os
@@ -44,6 +45,25 @@ if python344:
     create_task = asyncio.ensure_future
 else: # pragma: no cover
     create_task = getattr(asyncio, 'async')
+
+
+def hide_empty(value, prefix=', '):
+    """Return a string with optional prefix if value is non-empty"""
+
+    value = str(value)
+    return prefix + value if value else ''
+
+
+def plural(length, label, suffix='s'):
+    """Return a label with an optional plural suffix"""
+
+    return '%d %s%s' % (length, label, suffix if length != 1 else '')
+
+
+def to_hex(data):
+    """Convert binary data to a hex string"""
+
+    return codecs.encode(data, 'hex')
 
 
 def all_ints(seq):

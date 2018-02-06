@@ -2092,9 +2092,9 @@ class _TestSFTP(_CheckSFTP):
     def test_log_formatting(self, sftp):
         """Exercise log formatting of SFTP objects"""
 
-        asyncssh.set_sftp_log_level('INFO')
+        asyncssh.set_sftp_log_level('DEBUG')
 
-        with self.assertLogs(level='INFO'):
+        with self.assertLogs(level='DEBUG'):
             yield from sftp.realpath('.')
             yield from sftp.stat('.')
 
