@@ -466,6 +466,20 @@ class SSHTCPSession(SSHSession):
 
     """
 
+    def connection_made(self, chan):
+        """Called when a channel is opened successfully
+
+           This method is called when a channel is opened successfully. The
+           channel parameter should be stored if needed for later use.
+
+           :param chan:
+               The channel which was successfully opened.
+           :type chan: :class:`SSHTCPChannel`
+
+        """
+
+        pass # pragma: no cover
+
 
 class SSHUNIXSession(SSHSession):
     """SSH UNIX domain socket session handler
@@ -498,3 +512,17 @@ class SSHUNIXSession(SSHSession):
        Received data will be passed to the :meth:`data_received` method.
 
     """
+
+    def connection_made(self, chan):
+        """Called when a channel is opened successfully
+
+           This method is called when a channel is opened successfully. The
+           channel parameter should be stored if needed for later use.
+
+           :param chan:
+               The channel which was successfully opened.
+           :type chan: :class:`SSHUNIXChannel`
+
+        """
+
+        pass # pragma: no cover
