@@ -16,19 +16,6 @@
 class SSHSession:
     """SSH session handler"""
 
-    def connection_made(self, chan):
-        """Called when a channel is opened successfully
-
-           This method is called when a channel is opened successfully. The
-           channel parameter should be stored if needed for later use.
-
-           :param chan:
-               The channel which was successfully opened.
-           :type chan: :class:`SSHClientChannel`
-
-        """
-        pass # pragma: no cover
-
     def connection_lost(self, exc):
         """Called when a channel is closed
 
@@ -141,6 +128,20 @@ class SSHClientSession(SSHSession):
 
     """
 
+    def connection_made(self, chan):
+        """Called when a channel is opened successfully
+
+           This method is called when a channel is opened successfully. The
+           channel parameter should be stored if needed for later use.
+
+           :param chan:
+               The channel which was successfully opened.
+           :type chan: :class:`SSHClientChannel`
+
+        """
+
+        pass # pragma: no cover
+
     def xon_xoff_requested(self, client_can_do):
         """XON/XOFF flow control has been enabled or disabled
 
@@ -231,6 +232,20 @@ class SSHServerSession(SSHSession):
        is called when the client sends a break.
 
     """
+
+    def connection_made(self, chan):
+        """Called when a channel is opened successfully
+
+           This method is called when a channel is opened successfully. The
+           channel parameter should be stored if needed for later use.
+
+           :param chan:
+               The channel which was successfully opened.
+           :type chan: :class:`SSHServerChannel`
+
+        """
+
+        pass # pragma: no cover
 
     def pty_requested(self, term_type, term_size, term_modes):
         """A psuedo-terminal has been requested
