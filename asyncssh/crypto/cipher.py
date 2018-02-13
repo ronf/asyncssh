@@ -1,4 +1,4 @@
-# Copyright (c) 2014-2015 by Ron Frederick <ronf@timeheart.net>.
+# Copyright (c) 2014-2018 by Ron Frederick <ronf@timeheart.net>.
 # All rights reserved.
 #
 # This program and the accompanying materials are made available under
@@ -24,8 +24,6 @@ def register_cipher(cipher_name, mode_name, cipher):
     """
 
     if (cipher_name, mode_name) not in _ciphers: # pragma: no branch
-        cipher.cipher_name = cipher_name
-        cipher.mode_name = mode_name
         _ciphers[cipher_name, mode_name] = cipher
 
 

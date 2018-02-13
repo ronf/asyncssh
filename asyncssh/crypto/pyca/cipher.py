@@ -1,4 +1,4 @@
-# Copyright (c) 2014-2015 by Ron Frederick <ronf@timeheart.net>.
+# Copyright (c) 2014-2018 by Ron Frederick <ronf@timeheart.net>.
 # All rights reserved.
 #
 # This program and the accompanying materials are made available under
@@ -38,12 +38,10 @@ _ciphers = {'aes':      (AES,       {'cbc': CBC, 'ctr': CTR, 'gcm': GCM}),
 class GCMShim:
     """Shim for PyCA AES-GCM ciphers"""
 
-    def __init__(self, cipher, block_size, key, iv):
+    def __init__(self, cipher, key, iv):
         self._cipher = cipher
         self._key = key
         self._iv = iv
-
-        self.block_size = block_size
 
     def _update_iv(self):
         """Update the IV after each encrypt/decrypt operation"""
@@ -89,7 +87,7 @@ class GCMShim:
 class CipherShim:
     """Shim for other PyCA ciphers"""
 
-    def __init__(self, cipher, mode, block_size, key, iv, initial_bytes):
+    def __init__(self, cipher, mode, key, iv, initial_bytes):
         if mode:
             mode = mode(iv)
 
@@ -97,9 +95,6 @@ class CipherShim:
         self._initial_bytes = initial_bytes
         self._encryptor = None
         self._decryptor = None
-
-        self.block_size = block_size
-        self.mode_name = None                   # set by register_cipher()
 
     def encrypt(self, data):
         """Encrypt a block of data"""
@@ -138,10 +133,9 @@ class CipherFactory:
         """Construct a new symmetric cipher object"""
 
         if self._mode == GCM:
-            return GCMShim(self._cipher, self.block_size, key, iv)
+            return GCMShim(self._cipher, key, iv)
         else:
-            return CipherShim(self._cipher, self._mode, self.block_size,
-                              key, iv, initial_bytes)
+            return CipherShim(self._cipher, self._mode, key, iv, initial_bytes)
 
 
 for _cipher_name, (_cipher, _modes) in _ciphers.items():

@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2015 by Ron Frederick <ronf@timeheart.net>.
+# Copyright (c) 2013-2018 by Ron Frederick <ronf@timeheart.net>.
 # All rights reserved.
 #
 # This program and the accompanying materials are made available under
@@ -82,8 +82,8 @@ class _RFC1423Pad:
 
     """
 
-    def __init__(self, cipher):
-        self._cipher = cipher
+    def __init__(self, cipher, key, iv):
+        self._cipher = cipher.new(key, iv)
         self._block_size = cipher.block_size
 
     def encrypt(self, data):
@@ -196,7 +196,7 @@ def _pbes1(params, passphrase, hash_alg, cipher, key_size):
                   key_size + cipher.block_size)
     key, iv = key[:key_size], key[key_size:]
 
-    return _RFC1423Pad(cipher.new(key, iv))
+    return _RFC1423Pad(cipher, key, iv)
 
 
 def _pbe_p12(params, passphrase, hash_alg, cipher, key_size):
@@ -217,13 +217,12 @@ def _pbe_p12(params, passphrase, hash_alg, cipher, key_size):
     salt, count = params
     key = _pbkdf_p12(hash_alg, passphrase, salt, count, key_size, 1)
 
-    if cipher.cipher_name == 'arc4':
+    if cipher.block_size == 1:
         cipher = cipher.new(key)
     else:
         iv = _pbkdf_p12(hash_alg, passphrase, salt, count,
                         cipher.block_size, 2)
-
-        cipher = _RFC1423Pad(cipher.new(key, iv))
+        cipher = _RFC1423Pad(cipher, key, iv)
 
     return cipher
 
@@ -243,7 +242,7 @@ def _pbes2_iv(params, key, cipher):
     if len(params[0]) != cipher.block_size:
         raise KeyEncryptionError('Invalid length IV for PBES2 encryption')
 
-    return cipher.new(key, params[0])
+    return _RFC1423Pad(cipher, key, params[0])
 
 
 def _pbes2_pbkdf2(params, passphrase, default_key_size):
@@ -323,7 +322,7 @@ def _pbes2(params, passphrase):
     enc_handler, cipher, default_key_size = _pbes2_ciphers[enc_alg]
 
     key = kdf_handler(kdf_params, passphrase, default_key_size, *kdf_args)
-    return _RFC1423Pad(enc_handler(enc_params, key, cipher))
+    return enc_handler(enc_params, key, cipher)
 
 
 def register_pkcs1_cipher(cipher_name, alg, cipher, mode, key_size):
@@ -388,7 +387,7 @@ def pkcs1_encrypt(data, cipher, passphrase):
         iv = os.urandom(cipher.block_size)
         key = _pbkdf1(md5, passphrase, iv[:8], 1, key_size)
 
-        cipher = _RFC1423Pad(cipher.new(key, iv))
+        cipher = _RFC1423Pad(cipher, key, iv)
         return alg, iv, cipher.encrypt(data)
     else:
         raise KeyEncryptionError('Unknown PKCS#1 encryption algorithm')
@@ -407,7 +406,7 @@ def pkcs1_decrypt(data, alg, iv, passphrase):
         cipher, key_size = _pkcs1_ciphers[alg]
         key = _pbkdf1(md5, passphrase, iv[:8], 1, key_size)
 
-        cipher = _RFC1423Pad(cipher.new(key, iv))
+        cipher = _RFC1423Pad(cipher, key, iv)
         return cipher.decrypt(data)
     else:
         raise KeyEncryptionError('Unknown PKCS#1 encryption algorithm')

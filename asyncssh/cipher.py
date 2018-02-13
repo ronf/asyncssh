@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2015 by Ron Frederick <ronf@timeheart.net>.
+# Copyright (c) 2013-2018 by Ron Frederick <ronf@timeheart.net>.
 # All rights reserved.
 #
 # This program and the accompanying materials are made available under
@@ -28,7 +28,7 @@ def register_encryption_alg(alg, cipher_name, mode_name, key_size,
     if cipher: # pragma: no branch
         _enc_algs.append(alg)
         _enc_params[alg] = (key_size, cipher.iv_size,
-                            cipher.block_size, cipher.mode_name)
+                            cipher.block_size, mode_name)
         _enc_ciphers[alg] = (cipher, initial_bytes)
 
 

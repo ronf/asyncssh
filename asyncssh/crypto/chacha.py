@@ -1,4 +1,4 @@
-# Copyright (c) 2015 by Ron Frederick <ronf@timeheart.net>.
+# Copyright (c) 2015-2018 by Ron Frederick <ronf@timeheart.net>.
 # All rights reserved.
 #
 # This program and the accompanying materials are made available under
@@ -20,22 +20,12 @@ from .cipher import register_cipher
 class _Chacha20Poly1305Cipher:
     """Handler for Chacha20-Poly1305 symmetric encryption"""
 
-    block_size = 1
-    iv_size = 0
-
     def __init__(self, key):
         if len(key) != 2 * _CHACHA20_KEYBYTES:
             raise ValueError('Invalid chacha20-poly1305 key size')
 
         self._key = key[:_CHACHA20_KEYBYTES]
         self._adkey = key[_CHACHA20_KEYBYTES:]
-
-    @classmethod
-    def new(cls, key, iv=None, initial_bytes=0):
-        """Construct a new chacha20-poly1305 cipher object"""
-
-        # pylint: disable=unused-argument
-        return cls(key)
 
     def _crypt(self, key, data, nonce, ctr=0):
         """Encrypt/decrypt a block of data"""
@@ -115,6 +105,20 @@ class _Chacha20Poly1305Cipher:
 
         return plaintext
 
+
+class _Chacha20Poly1305Factory:
+    """A factory which returns a shim for ChaCha20-Poly1305 encryption"""
+
+    block_size = 1
+    iv_size = 0
+
+    def new(self, key, iv=None, initial_bytes=0):
+        """Construct a new chacha20-poly1305 cipher object"""
+
+        # pylint: disable=no-self-use,unused-argument
+        return _Chacha20Poly1305Cipher(key)
+
+
 try:
     # pylint: disable=wrong-import-position,wrong-import-order
     from libnacl import nacl
@@ -133,4 +137,4 @@ try:
 except (ImportError, OSError, AttributeError): # pragma: no cover
     pass
 else:
-    register_cipher('chacha20-poly1305', 'chacha', _Chacha20Poly1305Cipher)
+    register_cipher('chacha20-poly1305', 'chacha', _Chacha20Poly1305Factory())
