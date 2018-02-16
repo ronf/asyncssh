@@ -775,7 +775,9 @@ class SSHClientProcess(SSHProcess, SSHClientStreamSession):
         recv_buf = self._recv_buf[datatype]
 
         if recv_buf and isinstance(recv_buf[-1], Exception):
-            recv_buf = recv_buf[:-1]
+            recv_buf, self._recv_buf[datatype] = recv_buf[:-1], recv_buf[-1:]
+        else:
+            self._recv_buf[datatype] = []
 
         buf = '' if self._encoding else b''
         return buf.join(recv_buf)
@@ -903,6 +905,21 @@ class SSHClientProcess(SSHProcess, SSHClientStreamSession):
 
         yield from self.redirect(None, None, target, bufsize, send_eof)
 
+    def collect_output(self):
+        """Collect output from the process without blocking
+
+           This method returns a tuple of the output that the process
+           has written to stdout and stderr which has not yet been read.
+           It is intended to be called instead of read() by callers
+           that want to collect received data without blocking.
+
+           :returns: A tuple of output to stdout and stderr
+
+        """
+
+        return (self._collect_output(),
+                self._collect_output(EXTENDED_DATA_STDERR))
+
     # pylint: disable=redefined-builtin
     @asyncio.coroutine
     def communicate(self, input=None):
@@ -930,8 +947,7 @@ class SSHClientProcess(SSHProcess, SSHClientStreamSession):
 
         yield from self._chan.wait_closed()
 
-        return (self._collect_output(),
-                self._collect_output(EXTENDED_DATA_STDERR))
+        return self.collect_output()
     # pylint: enable=redefined-builtin
 
     def change_terminal_size(self, width, height, pixwidth=0, pixheight=0):

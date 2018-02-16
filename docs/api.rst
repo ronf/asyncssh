@@ -399,6 +399,7 @@ SSHClientProcess
    Other client process methods
    ==================================== =
    .. automethod:: redirect
+   .. automethod:: collect_output
    .. automethod:: communicate
    .. automethod:: wait
    .. automethod:: change_terminal_size
