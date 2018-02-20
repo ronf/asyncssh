@@ -492,7 +492,7 @@ def pkcs8_decrypt(key_data, passphrase):
 
     try:
         return der_decode(cipher.decrypt(data))
-    except ASN1DecodeError:
+    except (ASN1DecodeError, UnicodeDecodeError):
         raise KeyEncryptionError('Invalid PKCS#8 encrypted key data')
 
 
