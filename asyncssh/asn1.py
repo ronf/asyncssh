@@ -466,10 +466,10 @@ class IA5String:
         self.value = value
 
     def __str__(self):
-        return self.value
+        return '%s' % self.value
 
     def __repr__(self):
-        return "IA5String('%s')" % self.value
+        return 'IA5String(%r)' % self.value
 
     def __eq__(self, other):
         return isinstance(other, type(self)) and self.value == other.value
@@ -481,14 +481,12 @@ class IA5String:
         """Encode a DER IA5 string"""
 
         # ASN.1 defines this type as only containing ASCII characters, but
-        # some tools expecting ASN.1 allow IA5Strings to contain UTF-8
-        # characters, so we leave it up to the caller whether to resrict
-        # the data to plain ASCII or not.
+        # some tools expecting ASN.1 allow IA5Strings to contain other
+        # characters, so we leave it up to the caller to pass in a byte
+        # string which has already done the appropriate encoding of any
+        # non-ASCII characters.
 
-        if isinstance(self.value, str):
-            return self.value.encode('utf-8')
-        else:
-            return self.value
+        return self.value
 
     @classmethod
     def decode(cls, constructed, content):
@@ -497,7 +495,11 @@ class IA5String:
         if constructed:
             raise ASN1DecodeError('IA5 STRING should not be constructed')
 
-        return cls(content.decode('utf-8'))
+        # As noted in the encode method above, the decoded value for this
+        # type is a byte string, leaving the decoding of any non-ASCII
+        # characters up to the caller.
+
+        return cls(content)
 
 
 @DERTag(OBJECT_IDENTIFIER)

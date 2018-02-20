@@ -1216,9 +1216,10 @@ class _TestPublicKey(TempDirTestCase):
                 self.assertEqual(cert.get_comment(), 'comment')
 
                 cert = self.privca.generate_host_certificate(
-                    self.pubkey, 'name', comment='cert_comment')
-                self.assertEqual(cert.get_comment_bytes(), b'cert_comment')
-                self.assertEqual(cert.get_comment(), 'cert_comment')
+                    self.pubkey, 'name', comment=b'\xff')
+                self.assertEqual(cert.get_comment_bytes(), b'\xff')
+                with self.assertRaises(UnicodeDecodeError):
+                    cert.get_comment()
 
                 cert.set_comment('new_comment')
                 self.assertEqual(cert.get_comment_bytes(), b'new_comment')

@@ -1567,6 +1567,9 @@ class SSHX509Certificate(SSHCertificate):
 
         key = key.convert_to_public()
 
+        if isinstance(comment, str):
+            comment = comment.encode('utf-8')
+
         x509_cert = generate_x509_certificate(signing_key, key, subject, issuer,
                                               serial, valid_after, valid_before,
                                               ca, ca_path_len, purposes,

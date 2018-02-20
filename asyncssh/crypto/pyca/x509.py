@@ -239,11 +239,9 @@ class X509Certificate:
 
         try:
             comment = cert.extensions.get_extension_for_oid(_nscomment_oid)
-            self.comment = str(der_decode(comment.value.value))
+            self.comment = der_decode(comment.value.value).value
         except x509.ExtensionNotFound:
             self.comment = None
-        except UnicodeDecodeError:
-            raise ValueError('Invalid character in comment') from None
 
     def __eq__(self, other):
         return isinstance(other, type(self)) and self.data == other.data

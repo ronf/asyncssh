@@ -75,9 +75,9 @@ class _TestASN1(unittest.TestCase):
         (BitString('10000001'),               '03020081'),
         (BitString('100000000'),              '0303078000'),
 
-        (IA5String(''),                       '1600'),
-        (IA5String('\0'),                     '160100'),
-        (IA5String('abc'),                    '1603616263'),
+        (IA5String(b''),                      '1600'),
+        (IA5String(b'\0'),                    '160100'),
+        (IA5String(b'abc'),                   '1603616263'),
 
         (ObjectIdentifier('0.0'),             '060100'),
         (ObjectIdentifier('1.2'),             '06012a'),

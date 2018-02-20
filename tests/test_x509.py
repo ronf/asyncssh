@@ -108,12 +108,6 @@ class _TestX509(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.generate_certificate(hash_alg='xxx')
 
-    def test_invalid_comment(self):
-        """Test X.509 certificate generation with invalid comment"""
-
-        with self.assertRaises(ValueError):
-            self.generate_certificate(comment=b'\xff')
-
     def test_valid_self(self):
         """Test validation of X.509 self-signed certificate"""
 
