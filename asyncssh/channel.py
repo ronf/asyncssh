@@ -425,6 +425,9 @@ class SSHChannel(SSHPacketHandler):
                 session = yield from session
 
             chan, self._session = self._wrap_session(session)
+            if not self._session:
+                raise ChannelOpenError(OPEN_CONNECT_FAILED,
+                                       'Connection refused')
 
             self.logger.debug2('  Initial recv window %d, packet size %d',
                                self._recv_window, self._recv_pktsize)
