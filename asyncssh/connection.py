@@ -746,6 +746,10 @@ class SSHConnection(SSHPacketHandler):
             elif (self._auth and
                   MSG_USERAUTH_FIRST <= pkttype <= MSG_USERAUTH_LAST):
                 processed = self._auth.process_packet(pkttype, seq, packet)
+            elif pkttype > MSG_USERAUTH_LAST and not self._auth_complete:
+                raise DisconnectError(DISC_PROTOCOL_ERROR,
+                                      'Invalid request received before '
+                                      'authentication was complete')
             else:
                 processed = self.process_packet(pkttype, seq, packet,
                                                 pkttype not in

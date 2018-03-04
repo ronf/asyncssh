@@ -130,6 +130,28 @@ class _FailingGCMShim(GCMShim):
         return super().verify_and_decrypt(header, data + b'\xff', tag)
 
 
+class _PreAuthRequestClient(asyncssh.SSHClient):
+    """Test sending a request prior to auth complete"""
+
+    def __init__(self):
+        self._conn = None
+
+    def connection_made(self, conn):
+        """Save connection for use later"""
+
+        self._conn = conn
+
+    def password_auth_requested(self):
+        """Attempt to execute a command before authentication is complete"""
+
+        # pylint: disable=protected-access
+        self._conn._auth_complete = True
+
+        self._conn.send_packet(MSG_GLOBAL_REQUEST, String(b'\xff'),
+                               Boolean(True))
+        return 'pw'
+
+
 class _InternalErrorClient(asyncssh.SSHClient):
     """Test of internal error exception handler"""
 
@@ -970,8 +992,8 @@ class _TestConnectionAbort(ServerTestCase):
             yield from self.connect()
 
 
-class _TestConnectionCloseDurngAuth(ServerTestCase):
-    """Unit test for connection close during long auth callback"""
+class _TestDuringAuth(ServerTestCase):
+    """Unit test for operations during auth"""
 
     @classmethod
     @asyncio.coroutine
@@ -987,6 +1009,15 @@ class _TestConnectionCloseDurngAuth(ServerTestCase):
         with self.assertRaises(asyncio.TimeoutError):
             yield from asyncio.wait_for(self.connect(username='user',
                                                      password=''), 0.5)
+
+    @asynctest
+    def test_request_during_auth(self):
+        """Test sending a request prior to auth complete"""
+
+        with self.assertRaises(asyncssh.DisconnectError):
+            yield from self.create_connection(_PreAuthRequestClient,
+                                              username='user',
+                                              compression_algs=['none'])
 
 
 @unittest.skipUnless(x509_available, 'X.509 not available')
