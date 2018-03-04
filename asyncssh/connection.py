@@ -1668,11 +1668,11 @@ class SSHConnection(SSHPacketHandler):
         if chan:
             chan.process_packet(pkttype, pktid, packet)
         else:
-            self.logger.debug1('Received channel message for unknown '
-                               'channel %d', recv_chan)
-
             self.log_unprocessed_packet(pkttype, pktid, packet,
                                         'invalid channel number')
+
+            self.logger.debug1('Received channel message for unknown '
+                               'channel %d', recv_chan)
 
             raise DisconnectError(DISC_PROTOCOL_ERROR,
                                   'Invalid channel number')
