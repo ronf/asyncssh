@@ -12,6 +12,8 @@
 
 """SSH packet encoding and decoding functions"""
 
+from .misc import plural
+
 
 class PacketDecodeError(ValueError):
     """Packet decoding error"""
@@ -156,7 +158,7 @@ class SSHPacketLogger:
 
         raise NotImplementedError
 
-    def _log_packet(self, msg, pkttype, pktid, payload, handler_names):
+    def _log_packet(self, msg, note, pkttype, pktid, payload, handler_names):
         """Log a sent/received packet"""
 
         try:
@@ -164,21 +166,28 @@ class SSHPacketLogger:
         except KeyError:
             name = 'packet type %d' % pkttype
 
-        count = len(payload)
-        count = '%d byte%s' % (count, 's' if count > 1 else '')
+        count = plural(len(payload), 'byte')
 
-        self.logger.packet(pktid, payload, '%s %s, %s', msg, name, count)
+        if note:
+            note = ' (%s)' % note
 
-    def log_sent_packet(self, pkttype, pktid, payload, handler_names):
+        self.logger.packet(pktid, payload, '%s %s, %s%s',
+                           msg, name, count, note)
+
+    def log_sent_packet(self, pkttype, pktid, payload,
+                        handler_names, note=''):
         """Log a sent packet"""
 
-        self._log_packet('Sent', pkttype, pktid, payload, handler_names)
+        self._log_packet('Sent', note, pkttype, pktid,
+                         payload, handler_names)
 
 
-    def log_received_packet(self, pkttype, pktid, payload, handler_names):
+    def log_received_packet(self, pkttype, pktid, payload,
+                            handler_names, note=''):
         """Log a received packet"""
 
-        self._log_packet('Received', pkttype, pktid, payload, handler_names)
+        self._log_packet('Received', note, pkttype, pktid,
+                         payload, handler_names)
 
 
 class SSHPacketHandler(SSHPacketLogger):
@@ -204,3 +213,9 @@ class SSHPacketHandler(SSHPacketLogger):
             return True
         else:
             return False
+
+    def log_unprocessed_packet(self, pkttype, pktid, packet, note):
+        """Log a received packet we decided not to process"""
+
+        self.log_received_packet(pkttype, pktid, packet.get_full_payload(),
+                                 self._handler_names, note)

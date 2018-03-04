@@ -739,6 +739,9 @@ class SSHConnection(SSHPacketHandler):
 
             if self._kex and MSG_KEX_FIRST <= pkttype <= MSG_KEX_LAST:
                 if self._ignore_first_kex: # pragma: no cover
+                    self.log_unprocessed_packet(pkttype, seq, packet,
+                                                'ignored first kex')
+
                     self._ignore_first_kex = False
                     processed = True
                 else:
@@ -747,6 +750,9 @@ class SSHConnection(SSHPacketHandler):
                   MSG_USERAUTH_FIRST <= pkttype <= MSG_USERAUTH_LAST):
                 processed = self._auth.process_packet(pkttype, seq, packet)
             elif pkttype > MSG_USERAUTH_LAST and not self._auth_complete:
+                self.log_unprocessed_packet(pkttype, seq, packet,
+                                            'rejected prior to auth')
+
                 raise DisconnectError(DISC_PROTOCOL_ERROR,
                                       'Invalid request received before '
                                       'authentication was complete')
@@ -1664,6 +1670,9 @@ class SSHConnection(SSHPacketHandler):
         else:
             self.logger.debug1('Received channel message for unknown '
                                'channel %d', recv_chan)
+
+            self.log_unprocessed_packet(pkttype, pktid, packet,
+                                        'invalid channel number')
 
             raise DisconnectError(DISC_PROTOCOL_ERROR,
                                   'Invalid channel number')
