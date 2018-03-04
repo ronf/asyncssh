@@ -47,6 +47,7 @@ MSG_REQUEST_FAILURE                 = 82
 MSG_CHANNEL_OPEN                    = 90
 MSG_CHANNEL_OPEN_CONFIRMATION       = 91
 MSG_CHANNEL_OPEN_FAILURE            = 92
+
 MSG_CHANNEL_WINDOW_ADJUST           = 93
 MSG_CHANNEL_DATA                    = 94
 MSG_CHANNEL_EXTENDED_DATA           = 95
@@ -55,6 +56,10 @@ MSG_CHANNEL_CLOSE                   = 97
 MSG_CHANNEL_REQUEST                 = 98
 MSG_CHANNEL_SUCCESS                 = 99
 MSG_CHANNEL_FAILURE                 = 100
+
+# Messages 90-92 are excluded here as they relate to opening a new channel
+MSG_CHANNEL_FIRST                   = 93
+MSG_CHANNEL_LAST                    = 127
 
 # SSH disconnect reason codes
 DISC_HOST_NOT_ALLOWED_TO_CONNECT    = 1

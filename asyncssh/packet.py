@@ -201,12 +201,11 @@ class SSHPacketHandler(SSHPacketLogger):
 
         raise NotImplementedError
 
-    def process_packet(self, pkttype, pktid, packet, log=True):
+    def process_packet(self, pkttype, pktid, packet):
         """Log and process a received packet"""
 
-        if log:
-            self.log_received_packet(pkttype, pktid, packet.get_full_payload(),
-                                     self._handler_names)
+        self.log_received_packet(pkttype, pktid, packet.get_full_payload(),
+                                 self._handler_names)
 
         if pkttype in self._packet_handlers:
             self._packet_handlers[pkttype](self, pkttype, pktid, packet)

@@ -50,10 +50,8 @@ from .constants import EXTENDED_DATA_STDERR
 from .constants import MSG_DISCONNECT, MSG_IGNORE, MSG_UNIMPLEMENTED, MSG_DEBUG
 from .constants import MSG_SERVICE_REQUEST, MSG_SERVICE_ACCEPT, MSG_EXT_INFO
 from .constants import MSG_CHANNEL_OPEN, MSG_CHANNEL_OPEN_CONFIRMATION
-from .constants import MSG_CHANNEL_OPEN_FAILURE, MSG_CHANNEL_WINDOW_ADJUST
-from .constants import MSG_CHANNEL_DATA, MSG_CHANNEL_EXTENDED_DATA
-from .constants import MSG_CHANNEL_EOF, MSG_CHANNEL_CLOSE, MSG_CHANNEL_REQUEST
-from .constants import MSG_CHANNEL_SUCCESS, MSG_CHANNEL_FAILURE
+from .constants import MSG_CHANNEL_OPEN_FAILURE
+from .constants import MSG_CHANNEL_FIRST, MSG_CHANNEL_LAST
 from .constants import MSG_KEXINIT, MSG_NEWKEYS, MSG_KEX_FIRST, MSG_KEX_LAST
 from .constants import MSG_USERAUTH_REQUEST, MSG_USERAUTH_FAILURE
 from .constants import MSG_USERAUTH_SUCCESS, MSG_USERAUTH_BANNER
@@ -193,13 +191,6 @@ def _validate_algs(kex_algs, enc_algs, mac_algs, cmp_algs,
 
 class SSHConnection(SSHPacketHandler):
     """Parent class for SSH connections"""
-
-    # Don't log received packets of these types at the connection level.
-    # Instead, wait and log them at the channel level.
-    _excluded_recv_pkttypes = {MSG_CHANNEL_WINDOW_ADJUST, MSG_CHANNEL_DATA,
-                               MSG_CHANNEL_EXTENDED_DATA, MSG_CHANNEL_EOF,
-                               MSG_CHANNEL_CLOSE, MSG_CHANNEL_REQUEST,
-                               MSG_CHANNEL_SUCCESS, MSG_CHANNEL_FAILURE}
 
     _handler_names = get_symbol_names(globals(), 'MSG_')
 
@@ -733,39 +724,51 @@ class SSHConnection(SSHPacketHandler):
                                    not self._decompress_after_auth):
             payload = self._decompressor.decompress(payload)
 
-        try:
-            packet = SSHPacket(payload)
-            pkttype = packet.get_byte()
+        packet = SSHPacket(payload)
+        pkttype = packet.get_byte()
+        handler = self
+        note = None
+        exc = None
 
-            if self._kex and MSG_KEX_FIRST <= pkttype <= MSG_KEX_LAST:
-                if self._ignore_first_kex: # pragma: no cover
-                    self.log_unprocessed_packet(pkttype, seq, packet,
-                                                'ignored first kex')
-
-                    self._ignore_first_kex = False
-                    processed = True
-                else:
-                    processed = self._kex.process_packet(pkttype, seq, packet)
-            elif (self._auth and
-                  MSG_USERAUTH_FIRST <= pkttype <= MSG_USERAUTH_LAST):
-                processed = self._auth.process_packet(pkttype, seq, packet)
-            elif pkttype > MSG_USERAUTH_LAST and not self._auth_complete:
-                self.log_unprocessed_packet(pkttype, seq, packet,
-                                            'rejected prior to auth')
-
-                raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                      'Invalid request received before '
-                                      'authentication was complete')
+        if self._kex and MSG_KEX_FIRST <= pkttype <= MSG_KEX_LAST:
+            if self._ignore_first_kex: # pragma: no cover
+                handler = None
+                note = 'ignored first kex'
+                self._ignore_first_kex = False
             else:
-                processed = self.process_packet(pkttype, seq, packet,
-                                                pkttype not in
-                                                self._excluded_recv_pkttypes)
-        except PacketDecodeError as exc:
-            raise DisconnectError(DISC_PROTOCOL_ERROR, str(exc)) from None
+                handler = self._kex
+        elif (self._auth and
+              MSG_USERAUTH_FIRST <= pkttype <= MSG_USERAUTH_LAST):
+            handler = self._auth
+        elif pkttype > MSG_USERAUTH_LAST and not self._auth_complete:
+            handler = None
+            note = 'rejected prior to auth'
+            exc = DisconnectError(DISC_PROTOCOL_ERROR,
+                                  'Invalid request received before '
+                                  'authentication was complete')
+        elif MSG_CHANNEL_FIRST <= pkttype <= MSG_CHANNEL_LAST:
+            recv_chan = packet.get_uint32()
+            handler = self._channels.get(recv_chan)
 
-        if not processed:
-            self.logger.debug1('Unknown packet type %d received', pkttype)
-            self.send_packet(MSG_UNIMPLEMENTED, UInt32(seq))
+            if not handler:
+                note = 'invalid channel number'
+                exc = DisconnectError(DISC_PROTOCOL_ERROR,
+                                      'Invalid channel number received')
+
+        if handler:
+            try:
+                processed = handler.process_packet(pkttype, seq, packet)
+            except PacketDecodeError as exc:
+                raise DisconnectError(DISC_PROTOCOL_ERROR, str(exc)) from None
+
+            if not processed:
+                self.logger.debug1('Unknown packet type %d received', pkttype)
+                self.send_packet(MSG_UNIMPLEMENTED, UInt32(seq))
+        else:
+            self.log_unprocessed_packet(pkttype, seq, packet, note)
+
+            if exc: # pragma: no branch
+                raise exc # pylint: disable=raising-bad-type
 
         if self._transport:
             self._recv_seq = (seq + 1) & 0xffffffff
@@ -1659,24 +1662,6 @@ class SSHConnection(SSHPacketHandler):
             raise DisconnectError(DISC_PROTOCOL_ERROR,
                                   'Invalid channel number')
 
-    def _process_channel_msg(self, pkttype, pktid, packet):
-        """Process a channel-specific message"""
-
-        recv_chan = packet.get_uint32()
-
-        chan = self._channels.get(recv_chan)
-        if chan:
-            chan.process_packet(pkttype, pktid, packet)
-        else:
-            self.log_unprocessed_packet(pkttype, pktid, packet,
-                                        'invalid channel number')
-
-            self.logger.debug1('Received channel message for unknown '
-                               'channel %d', recv_chan)
-
-            raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Invalid channel number')
-
     _packet_handlers = {
         MSG_DISCONNECT:                 _process_disconnect,
         MSG_IGNORE:                     _process_ignore,
@@ -1700,15 +1685,7 @@ class SSHConnection(SSHPacketHandler):
 
         MSG_CHANNEL_OPEN:               _process_channel_open,
         MSG_CHANNEL_OPEN_CONFIRMATION:  _process_channel_open_confirmation,
-        MSG_CHANNEL_OPEN_FAILURE:       _process_channel_open_failure,
-        MSG_CHANNEL_WINDOW_ADJUST:      _process_channel_msg,
-        MSG_CHANNEL_DATA:               _process_channel_msg,
-        MSG_CHANNEL_EXTENDED_DATA:      _process_channel_msg,
-        MSG_CHANNEL_EOF:                _process_channel_msg,
-        MSG_CHANNEL_CLOSE:              _process_channel_msg,
-        MSG_CHANNEL_REQUEST:            _process_channel_msg,
-        MSG_CHANNEL_SUCCESS:            _process_channel_msg,
-        MSG_CHANNEL_FAILURE:            _process_channel_msg
+        MSG_CHANNEL_OPEN_FAILURE:       _process_channel_open_failure
     }
 
     def abort(self):
