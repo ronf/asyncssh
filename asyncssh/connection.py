@@ -727,8 +727,8 @@ class SSHConnection(SSHPacketHandler):
         packet = SSHPacket(payload)
         pkttype = packet.get_byte()
         handler = self
-        skip_reason = None
-        exc_reason = None
+        skip_reason = ''
+        exc_reason = ''
 
         if self._kex and MSG_KEX_FIRST <= pkttype <= MSG_KEX_LAST:
             if self._ignore_first_kex: # pragma: no cover
@@ -753,8 +753,7 @@ class SSHConnection(SSHPacketHandler):
                 skip_reason = 'incomplete channel request'
                 exc_reason = 'Incomplete channel request received'
 
-        handler.log_received_packet(pkttype, seq,
-                                    packet.get_full_payload(), skip_reason)
+        handler.log_received_packet(pkttype, seq, packet, skip_reason)
 
         if not skip_reason:
             try:

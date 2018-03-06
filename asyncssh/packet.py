@@ -158,32 +158,35 @@ class SSHPacketLogger:
 
         raise NotImplementedError
 
-    def _log_packet(self, msg, pkttype, pktid, payload, note):
+    def _log_packet(self, msg, pkttype, pktid, packet, note):
         """Log a sent/received packet"""
+
+        if isinstance(packet, SSHPacket):
+            packet = packet.get_full_payload()
 
         try:
             name = '%s (%d)' % (self._handler_names[pkttype], pkttype)
         except KeyError:
             name = 'packet type %d' % pkttype
 
-        count = plural(len(payload), 'byte')
+        count = plural(len(packet), 'byte')
 
         if note:
             note = ' (%s)' % note
 
-        self.logger.packet(pktid, payload, '%s %s, %s%s',
+        self.logger.packet(pktid, packet, '%s %s, %s%s',
                            msg, name, count, note)
 
-    def log_sent_packet(self, pkttype, pktid, payload, note=''):
+    def log_sent_packet(self, pkttype, pktid, packet, note=''):
         """Log a sent packet"""
 
-        self._log_packet('Sent', pkttype, pktid, payload, note)
+        self._log_packet('Sent', pkttype, pktid, packet, note)
 
 
-    def log_received_packet(self, pkttype, pktid, payload, note=''):
+    def log_received_packet(self, pkttype, pktid, packet, note=''):
         """Log a received packet"""
 
-        self._log_packet('Received', pkttype, pktid, payload, note)
+        self._log_packet('Received', pkttype, pktid, packet, note)
 
 
 class SSHPacketHandler(SSHPacketLogger):

@@ -775,8 +775,7 @@ class SFTPHandler(SSHPacketLogger):
                 pkttype = packet.get_byte()
                 pktid = packet.get_uint32()
 
-                self.log_received_packet(pkttype, pktid,
-                                         packet.get_full_payload())
+                self.log_received_packet(pkttype, pktid, packet)
 
                 yield from self._process_packet(pkttype, pktid, packet)
         except PacketDecodeError as exc:
@@ -983,7 +982,7 @@ class SFTPClientHandler(SFTPHandler):
 
             resptype = resp.get_byte()
 
-            self.log_received_packet(resptype, None, resp.get_full_payload())
+            self.log_received_packet(resptype, None, resp)
 
             if resptype != FXP_VERSION:
                 raise SFTPError(FX_BAD_MESSAGE, 'Expected version message')
@@ -3692,7 +3691,7 @@ class SFTPServerHandler(SFTPHandler):
 
             pkttype = packet.get_byte()
 
-            self.log_received_packet(pkttype, None, packet.get_full_payload())
+            self.log_received_packet(pkttype, None, packet)
 
             version = packet.get_uint32()
 
