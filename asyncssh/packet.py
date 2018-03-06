@@ -158,11 +158,11 @@ class SSHPacketLogger:
 
         raise NotImplementedError
 
-    def _log_packet(self, msg, note, pkttype, pktid, payload, handler_names):
+    def _log_packet(self, msg, pkttype, pktid, payload, note):
         """Log a sent/received packet"""
 
         try:
-            name = '%s (%d)' % (handler_names[pkttype], pkttype)
+            name = '%s (%d)' % (self._handler_names[pkttype], pkttype)
         except KeyError:
             name = 'packet type %d' % pkttype
 
@@ -174,20 +174,16 @@ class SSHPacketLogger:
         self.logger.packet(pktid, payload, '%s %s, %s%s',
                            msg, name, count, note)
 
-    def log_sent_packet(self, pkttype, pktid, payload,
-                        handler_names, note=''):
+    def log_sent_packet(self, pkttype, pktid, payload, note=''):
         """Log a sent packet"""
 
-        self._log_packet('Sent', note, pkttype, pktid,
-                         payload, handler_names)
+        self._log_packet('Sent', pkttype, pktid, payload, note)
 
 
-    def log_received_packet(self, pkttype, pktid, payload,
-                            handler_names, note=''):
+    def log_received_packet(self, pkttype, pktid, payload, note=''):
         """Log a received packet"""
 
-        self._log_packet('Received', note, pkttype, pktid,
-                         payload, handler_names)
+        self._log_packet('Received', pkttype, pktid, payload, note)
 
 
 class SSHPacketHandler(SSHPacketLogger):
@@ -204,17 +200,8 @@ class SSHPacketHandler(SSHPacketLogger):
     def process_packet(self, pkttype, pktid, packet):
         """Log and process a received packet"""
 
-        self.log_received_packet(pkttype, pktid, packet.get_full_payload(),
-                                 self._handler_names)
-
         if pkttype in self._packet_handlers:
             self._packet_handlers[pkttype](self, pkttype, pktid, packet)
             return True
         else:
             return False
-
-    def log_unprocessed_packet(self, pkttype, pktid, packet, note):
-        """Log a received packet we decided not to process"""
-
-        self.log_received_packet(pkttype, pktid, packet.get_full_payload(),
-                                 self._handler_names, note)

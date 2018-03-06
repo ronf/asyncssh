@@ -63,8 +63,7 @@ class _Auth(SSHPacketHandler):
     def send_packet(self, pkttype, *args):
         """Send an auth packet"""
 
-        self._conn.send_packet(pkttype, *args,
-                               handler_names=self._handler_names)
+        self._conn.send_packet(pkttype, *args, handler=self)
 
     @property
     def logger(self):

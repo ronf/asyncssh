@@ -752,7 +752,7 @@ class SFTPHandler(SSHPacketLogger):
         except ConnectionError as exc:
             raise SFTPError(FX_CONNECTION_LOST, str(exc)) from None
 
-        self.log_sent_packet(pkttype, pktid, payload, self._handler_names)
+        self.log_sent_packet(pkttype, pktid, payload)
 
     @asyncio.coroutine
     def recv_packet(self):
@@ -774,6 +774,9 @@ class SFTPHandler(SSHPacketLogger):
 
                 pkttype = packet.get_byte()
                 pktid = packet.get_uint32()
+
+                self.log_received_packet(pkttype, pktid,
+                                         packet.get_full_payload())
 
                 yield from self._process_packet(pkttype, pktid, packet)
         except PacketDecodeError as exc:
@@ -820,9 +823,6 @@ class SFTPClientHandler(SFTPHandler):
     @asyncio.coroutine
     def _process_packet(self, pkttype, pktid, packet):
         """Process incoming SFTP responses"""
-
-        self.log_received_packet(pkttype, pktid, packet.get_full_payload(),
-                                 self._handler_names)
 
         try:
             waiter = self._requests.pop(pktid)
@@ -983,8 +983,7 @@ class SFTPClientHandler(SFTPHandler):
 
             resptype = resp.get_byte()
 
-            self.log_received_packet(resptype, None, resp.get_full_payload(),
-                                     self._handler_names)
+            self.log_received_packet(resptype, None, resp.get_full_payload())
 
             if resptype != FXP_VERSION:
                 raise SFTPError(FX_BAD_MESSAGE, 'Expected version message')
@@ -3099,9 +3098,6 @@ class SFTPServerHandler(SFTPHandler):
 
         # pylint: disable=broad-except
         try:
-            self.log_received_packet(pkttype, pktid, packet.get_full_payload(),
-                                     self._handler_names)
-
             if pkttype == FXP_EXTENDED:
                 pkttype = packet.get_string()
 
@@ -3696,8 +3692,7 @@ class SFTPServerHandler(SFTPHandler):
 
             pkttype = packet.get_byte()
 
-            self.log_received_packet(pkttype, None, packet.get_full_payload(),
-                                     self._handler_names)
+            self.log_received_packet(pkttype, None, packet.get_full_payload())
 
             version = packet.get_uint32()
 
@@ -3707,7 +3702,6 @@ class SFTPServerHandler(SFTPHandler):
                 name = packet.get_string()
                 data = packet.get_string()
                 extensions.append((name, data))
-
         except PacketDecodeError as exc:
             yield from self._cleanup(SFTPError(FX_BAD_MESSAGE, str(exc)))
             return

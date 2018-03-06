@@ -626,8 +626,7 @@ class SSHChannel(SSHPacketHandler):
         self._conn.send_packet(MSG_CHANNEL_OPEN, String(chantype),
                                UInt32(self._recv_chan),
                                UInt32(self._recv_window),
-                               UInt32(self._recv_pktsize), *args,
-                               handler_names=self._handler_names)
+                               UInt32(self._recv_pktsize), *args, handler=self)
 
         return (yield from self._open_waiter)
 
@@ -639,8 +638,7 @@ class SSHChannel(SSHPacketHandler):
 
         payload = UInt32(self._send_chan) + b''.join(args)
 
-        self._conn.send_packet(pkttype, payload,
-                               handler_names=self._handler_names)
+        self._conn.send_packet(pkttype, payload, handler=self)
 
     def _send_request(self, request, *args, want_reply=False):
         """Send a channel request"""

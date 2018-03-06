@@ -727,13 +727,12 @@ class SSHConnection(SSHPacketHandler):
         packet = SSHPacket(payload)
         pkttype = packet.get_byte()
         handler = self
-        note = None
-        exc = None
+        skip_reason = None
+        exc_reason = None
 
         if self._kex and MSG_KEX_FIRST <= pkttype <= MSG_KEX_LAST:
             if self._ignore_first_kex: # pragma: no cover
-                handler = None
-                note = 'ignored first kex'
+                skip_reason = 'ignored first kex'
                 self._ignore_first_kex = False
             else:
                 handler = self._kex
@@ -741,21 +740,23 @@ class SSHConnection(SSHPacketHandler):
               MSG_USERAUTH_FIRST <= pkttype <= MSG_USERAUTH_LAST):
             handler = self._auth
         elif pkttype > MSG_USERAUTH_LAST and not self._auth_complete:
-            handler = None
-            note = 'rejected prior to auth'
-            exc = DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Invalid request received before '
-                                  'authentication was complete')
+            skip_reason = 'invalid request before auth complete'
+            exc_reason = 'Invalid request before authentication was complete'
         elif MSG_CHANNEL_FIRST <= pkttype <= MSG_CHANNEL_LAST:
-            recv_chan = packet.get_uint32()
-            handler = self._channels.get(recv_chan)
+            try:
+                recv_chan = packet.get_uint32()
+                handler = self._channels[recv_chan]
+            except KeyError:
+                skip_reason = 'invalid channel number'
+                exc_reason = 'Invalid channel number %d received' % recv_chan
+            except PacketDecodeError:
+                skip_reason = 'incomplete channel request'
+                exc_reason = 'Incomplete channel request received'
 
-            if not handler:
-                note = 'invalid channel number'
-                exc = DisconnectError(DISC_PROTOCOL_ERROR,
-                                      'Invalid channel number received')
+        handler.log_received_packet(pkttype, seq,
+                                    packet.get_full_payload(), skip_reason)
 
-        if handler:
+        if not skip_reason:
             try:
                 processed = handler.process_packet(pkttype, seq, packet)
             except PacketDecodeError as exc:
@@ -764,11 +765,9 @@ class SSHConnection(SSHPacketHandler):
             if not processed:
                 self.logger.debug1('Unknown packet type %d received', pkttype)
                 self.send_packet(MSG_UNIMPLEMENTED, UInt32(seq))
-        else:
-            self.log_unprocessed_packet(pkttype, seq, packet, note)
 
-            if exc: # pragma: no branch
-                raise exc # pylint: disable=raising-bad-type
+        if exc_reason:
+            raise DisconnectError(DISC_PROTOCOL_ERROR, exc_reason)
 
         if self._transport:
             self._recv_seq = (seq + 1) & 0xffffffff
@@ -776,7 +775,7 @@ class SSHConnection(SSHPacketHandler):
 
         return True
 
-    def send_packet(self, pkttype, *args, handler_names=_handler_names):
+    def send_packet(self, pkttype, *args, handler=None):
         """Send an SSH packet"""
 
         if (self._auth_complete and self._kex_complete and
@@ -845,7 +844,10 @@ class SSHConnection(SSHPacketHandler):
         if self._kex_complete:
             self._rekey_bytes_sent += pktlen
 
-        self.log_sent_packet(pkttype, seq, log_data, handler_names)
+        if not handler:
+            handler = self
+
+        handler.log_sent_packet(pkttype, seq, log_data)
 
     def _send_deferred_packets(self):
         """Send packets deferred due to key exchange or auth"""

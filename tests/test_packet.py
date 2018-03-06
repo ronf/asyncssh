@@ -15,11 +15,8 @@
 import codecs
 import unittest
 
-from asyncssh.logging import logger
-
 from asyncssh.packet import Byte, Boolean, UInt32, UInt64, String, MPInt
 from asyncssh.packet import NameList, PacketDecodeError, SSHPacket
-from asyncssh.packet import SSHPacketHandler
 
 
 class _TestPacket(unittest.TestCase):
@@ -162,27 +159,3 @@ class _TestPacket(unittest.TestCase):
         """Unit test encoding of UTF-8 string"""
 
         self.assertEqual(String('\u2000'), b'\x00\x00\x00\x03\xe2\x80\x80')
-
-    def test_handler(self):
-        """Unit test SSH packet handler"""
-
-        class _TestPacketHandler(SSHPacketHandler):
-            """Class for unit testing SSHPacketHandler"""
-
-            @property
-            def logger(self):
-                """A logger associated with this packet handler"""
-
-                return logger
-
-            def _handler1(self, pkttype, pktid, packet):
-                """Packet handler for unit testing"""
-
-            _packet_handlers = {
-                1: _handler1
-            }
-
-        handler = _TestPacketHandler()
-        packet = SSHPacket(b'')
-        self.assertTrue(handler.process_packet(1, 1, packet))
-        self.assertFalse(handler.process_packet(2, 2, packet))

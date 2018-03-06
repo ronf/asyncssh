@@ -957,12 +957,22 @@ class _TestConnection(ServerTestCase):
         yield from conn.wait_closed()
 
     @asynctest
+    def test_missing_data_channel_number(self):
+        """Test missing channel number in channel data message"""
+
+        conn = yield from self.connect()
+
+        conn.send_packet(MSG_CHANNEL_DATA)
+
+        yield from conn.wait_closed()
+
+    @asynctest
     def test_invalid_data_channel_number(self):
         """Test invalid channel number in channel data message"""
 
         conn = yield from self.connect()
 
-        conn.send_packet(MSG_CHANNEL_DATA, String(''))
+        conn.send_packet(MSG_CHANNEL_DATA, UInt32(99), String(''))
 
         yield from conn.wait_closed()
 

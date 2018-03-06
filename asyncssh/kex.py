@@ -39,8 +39,7 @@ class Kex(SSHPacketHandler):
     def send_packet(self, pkttype, *args):
         """Send a kex packet"""
 
-        self._conn.send_packet(pkttype, *args,
-                               handler_names=self._handler_names)
+        self._conn.send_packet(pkttype, *args, handler=self)
 
     @property
     def logger(self):
