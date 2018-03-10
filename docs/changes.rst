@@ -3,6 +3,41 @@
 Change Log
 ==========
 
+Release 1.12.1 (10 Mar 2018)
+----------------------------
+
+* Implemented a fix for CVE-2018-7749, where a modified SSH client could
+  request that an AsyncSSH server perform operations before authentication
+  had completed. Thanks go to Matthijs Kooijman for discovering and
+  reporting this issue and helping to review the fix.
+
+* Added a non-blocking collect_output() method to SSHClientProcess to
+  allow applications to retrieve data received on an output stream
+  without blocking. This call can be called multiple times and freely
+  intermixed with regular read calls with a guarantee that output will
+  always be returned in order and without duplication.
+
+* Updated debug logging implementation to make it more maintainable, and
+  to fix an issue where unprocessed packets were not logged in some cases.
+
+* Extended the support below for non-ASCII characters in comments to apply
+  to X.509 certificates, allowing an optional encoding to be passed in to
+  get_comment() and set_comment() and a get_comment_bytes() function to
+  get the raw comment bytes without performing Unicode decoding.
+
+* Fixed an issue where a UnicodeDecodeError could be reported in some
+  cases instead of a KeyEncryptionError when a private key was imported
+  using the wrong passphrase.
+
+* Fixed the reporting of the MAC algorithm selected during key exchange to
+  properly report the cipher name for GCM and Chacha ciphers that don't
+  use a separate MAC algorithm. The correct value was being returned in
+  queries after the key exchange was complete, but the logging was being
+  done before this adjustment was made.
+
+* Fixed the documentation of connection_made() in SSHSession subclasses
+  to properly reflect the type of SSHChannel objects passed to them.
+
 Release 1.12.0 (5 Feb 2018)
 ---------------------------
 
