@@ -977,6 +977,15 @@ class SSHConnection(SSHPacketHandler):
         else:
             next_mac_sc = get_mac(self._mac_alg_sc, mac_key_sc)
 
+        self.logger.debug2('  Client to server:')
+        self.logger.debug2('    Encryption alg: %s', self._enc_alg_cs)
+        self.logger.debug2('    MAC alg: %s', self._mac_alg_cs)
+        self.logger.debug2('    Compression alg: %s', self._cmp_alg_cs)
+        self.logger.debug2('  Server to client:')
+        self.logger.debug2('    Encryption alg: %s', self._enc_alg_sc)
+        self.logger.debug2('    MAC alg: %s', self._mac_alg_sc)
+        self.logger.debug2('    Compression alg: %s', self._cmp_alg_sc)
+
         self.send_packet(MSG_NEWKEYS)
 
         if self.is_client():
@@ -1369,14 +1378,6 @@ class SSHConnection(SSHPacketHandler):
 
         self.logger.debug1('Beginning key exchange')
         self.logger.debug2('  Key exchange alg: %s', self._kex.algorithm)
-        self.logger.debug2('  Client to server:')
-        self.logger.debug2('    Encryption alg: %s', self._enc_alg_cs)
-        self.logger.debug2('    MAC alg: %s', self._mac_alg_cs)
-        self.logger.debug2('    Compression alg: %s', self._cmp_alg_cs)
-        self.logger.debug2('  Server to client:')
-        self.logger.debug2('    Encryption alg: %s', self._enc_alg_sc)
-        self.logger.debug2('    MAC alg: %s', self._mac_alg_sc)
-        self.logger.debug2('    Compression alg: %s', self._cmp_alg_sc)
 
         if self.is_client():
             self._kex.start()
