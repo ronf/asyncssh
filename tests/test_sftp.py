@@ -16,13 +16,13 @@ import asyncio
 import errno
 import functools
 import os
+from pathlib import Path
 import posixpath
 import shutil
 import stat
 import sys
 import time
 import unittest
-
 from unittest.mock import patch
 
 import asyncssh
@@ -645,6 +645,24 @@ class _TestSFTP(_CheckSFTP):
                     os.mkdir('dst')
 
                     yield from getattr(sftp, method)(b'src*', b'dst')
+
+                    self._check_file('src1', 'dst/src1')
+                    self._check_file('src2', 'dst/src2')
+                finally:
+                    remove('src1 src2 dst')
+
+    @sftp_test
+    def test_multiple_copy_pathlib_path(self, sftp):
+        """Test copying multiple files with pathlib paths over SFTP"""
+
+        for method in ('mget', 'mput', 'mcopy'):
+            with self.subTest(method=method):
+                try:
+                    self._create_file('src1', 'xxx')
+                    self._create_file('src2', 'yyy')
+                    os.mkdir('dst')
+
+                    yield from getattr(sftp, method)(Path('src*'), Path('dst'))
 
                     self._check_file('src1', 'dst/src1')
                     self._check_file('src2', 'dst/src2')

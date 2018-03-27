@@ -20,6 +20,7 @@ import errno
 from fnmatch import fnmatch
 import os
 from os import SEEK_SET, SEEK_CUR, SEEK_END
+from pathlib import PurePath
 import posixpath
 import stat
 import sys
@@ -89,7 +90,7 @@ def _mode_to_pflags(mode):
 
 
 def _from_local_path(path):
-    """Convert SFTP path to local path"""
+    """Convert local path to SFTP path"""
 
     path = os.fsencode(path)
 
@@ -103,7 +104,10 @@ def _from_local_path(path):
 
 
 def _to_local_path(path):
-    """Convert local path to SFTP path"""
+    """Convert SFTP path to local path"""
+
+    if isinstance(path, PurePath): # pragma: no branch
+        path = str(path)
 
     if sys.platform == 'win32': # pragma: no cover
         path = os.fsdecode(path)
@@ -213,6 +217,9 @@ class LocalFile:
            This method has no effect if the path is already bytes.
 
         """
+
+        if isinstance(path, PurePath): # pragma: no branch
+            path = str(path)
 
         return os.fsencode(path)
 
@@ -1728,6 +1735,9 @@ class SFTPClient:
 
         """
 
+        if isinstance(path, PurePath): # pragma: no branch
+            path = str(path)
+
         if isinstance(path, str):
             if self._path_encoding:
                 path = path.encode(self._path_encoding, self._path_errors)
@@ -1789,7 +1799,7 @@ class SFTPClient:
 
         # pylint: disable=no-self-use
 
-        if isinstance(patterns, (str, bytes)):
+        if isinstance(patterns, (str, bytes, PurePath)):
             patterns = [patterns]
 
         result = []
@@ -1800,7 +1810,7 @@ class SFTPClient:
 
             names = yield from match_glob(fs, fs.encode(pattern), error_handler)
 
-            if isinstance(pattern, str):
+            if isinstance(pattern, (str, PurePath)):
                 names = [fs.decode(name) for name in names]
 
             result.extend(names)
@@ -1985,8 +1995,10 @@ class SFTPClient:
            :param error_handler: (optional)
                The function to call when an error occurs
            :type remotepaths:
-               `str` or `bytes`, or a sequence of these
-           :type localpath: `str` or `bytes`
+               :class:`PurePath <pathlib.PurePath>`, `str`, or `bytes`,
+               or a sequence of these
+           :type localpath:
+               :class:`PurePath <pathlib.PurePath>`, `str`, or `bytes`
            :type preserve: `bool`
            :type recurse: `bool`
            :type follow_symlinks: `bool`
@@ -2081,8 +2093,10 @@ class SFTPClient:
            :param error_handler: (optional)
                The function to call when an error occurs
            :type localpaths:
-               `str` or `bytes`, or a sequence of these
-           :type remotepath: `str` or `bytes`
+               :class:`PurePath <pathlib.PurePath>`, `str`, or `bytes`,
+               or a sequence of these
+           :type remotepath:
+               :class:`PurePath <pathlib.PurePath>`, `str`, or `bytes`
            :type preserve: `bool`
            :type recurse: `bool`
            :type follow_symlinks: `bool`
@@ -2177,8 +2191,10 @@ class SFTPClient:
            :param error_handler: (optional)
                The function to call when an error occurs
            :type srcpaths:
-               `str` or `bytes`, or a sequence of these
-           :type dstpath: `str` or `bytes`
+               :class:`PurePath <pathlib.PurePath>`, `str`, or `bytes`,
+               or a sequence of these
+           :type dstpath:
+               :class:`PurePath <pathlib.PurePath>`, `str`, or `bytes`
            :type preserve: `bool`
            :type recurse: `bool`
            :type follow_symlinks: `bool`
@@ -2300,7 +2316,8 @@ class SFTPClient:
            :param error_handler: (optional)
                The function to call when an error occurs
            :type patterns:
-               `str` or `bytes`, or a sequence of these
+               :class:`PurePath <pathlib.PurePath>`, `str`, or `bytes`,
+               or a sequence of these
            :type error_handler: `callable`
 
            :raises: :exc:`SFTPError` if the server returns an error
@@ -2384,7 +2401,7 @@ class SFTPClient:
                The error-handling mode if an invalid Unicode byte
                sequence is detected, defaulting to 'strict' which
                raises an exception
-           :type path: `str` or `bytes`
+           :type path: :class:`PurePath <pathlib.PurePath>`, `str`, or `bytes`
            :type pflags_or_mode: `int` or `str`
            :type attrs: :class:`SFTPAttrs`
            :type encoding: `str`
@@ -2422,7 +2439,7 @@ class SFTPClient:
 
            :param path:
                The path of the remote file or directory to get attributes for
-           :type path: `str` or `bytes`
+           :type path: :class:`PurePath <pathlib.PurePath>`, `str`, or `bytes`
 
            :returns: An :class:`SFTPAttrs` containing the file attributes
 
@@ -2445,7 +2462,7 @@ class SFTPClient:
            :param path:
                The path of the remote file, directory, or link to get
                attributes for
-           :type path: `str` or `bytes`
+           :type path: :class:`PurePath <pathlib.PurePath>`, `str`, or `bytes`
 
            :returns: An :class:`SFTPAttrs` containing the file attributes
 
@@ -2470,7 +2487,7 @@ class SFTPClient:
                The path of the remote file or directory to set attributes for
            :param attrs:
                File attributes to set
-           :type path: `str` or `bytes`
+           :type path: :class:`PurePath <pathlib.PurePath>`, `str`, or `bytes`
            :type attrs: :class:`SFTPAttrs`
 
            :raises: :exc:`SFTPError` if the server returns an error
@@ -2489,7 +2506,7 @@ class SFTPClient:
 
            :param path:
                The path of the remote file system to get attributes for
-           :type path: `str` or `bytes`
+           :type path: :class:`PurePath <pathlib.PurePath>`, `str`, or `bytes`
 
            :returns: An :class:`SFTPVFSAttrs` containing the file system
                      attributes
@@ -2514,7 +2531,7 @@ class SFTPClient:
                The path of the remote file to be truncated
            :param size:
                The desired size of the file, in bytes
-           :type path: `str` or `bytes`
+           :type path: :class:`PurePath <pathlib.PurePath>`, `str`, or `bytes`
            :type size: `int`
 
            :raises: :exc:`SFTPError` if the server returns an error
@@ -2537,7 +2554,7 @@ class SFTPClient:
                The new user id to assign to the file
            :param gid:
                The new group id to assign to the file
-           :type path: `str` or `bytes`
+           :type path: :class:`PurePath <pathlib.PurePath>`, `str`, or `bytes`
            :type uid: `int`
            :type gid: `int`
 
@@ -2559,7 +2576,7 @@ class SFTPClient:
                The path of the remote file to change
            :param mode:
                The new file permissions, expressed as an int
-           :type path: `str` or `bytes`
+           :type path: :class:`PurePath <pathlib.PurePath>`, `str`, or `bytes`
            :type mode: `int`
 
            :raises: :exc:`SFTPError` if the server returns an error
@@ -2583,7 +2600,7 @@ class SFTPClient:
            :param times: (optional)
                The new access and modify times, as seconds relative to
                the UNIX epoch
-           :type path: `str` or `bytes`
+           :type path: :class:`PurePath <pathlib.PurePath>`, `str`, or `bytes`
            :type times: tuple of two `int` or `float` values
 
            :raises: :exc:`SFTPError` if the server returns an error
@@ -2604,7 +2621,7 @@ class SFTPClient:
 
            :param path:
                The remote path to check
-           :type path: `str` or `bytes`
+           :type path: :class:`PurePath <pathlib.PurePath>`, `str`, or `bytes`
 
            :raises: :exc:`SFTPError` if the server returns an error
 
@@ -2618,7 +2635,7 @@ class SFTPClient:
 
            :param path:
                The remote path to check
-           :type path: `str` or `bytes`
+           :type path: :class:`PurePath <pathlib.PurePath>`, `str`, or `bytes`
 
            :raises: :exc:`SFTPError` if the server returns an error
 
@@ -2632,7 +2649,7 @@ class SFTPClient:
 
            :param path:
                The remote path to check
-           :type path: `str` or `bytes`
+           :type path: :class:`PurePath <pathlib.PurePath>`, `str`, or `bytes`
 
            :raises: :exc:`SFTPError` if the server returns an error
 
@@ -2646,7 +2663,7 @@ class SFTPClient:
 
            :param path:
                The remote path to check
-           :type path: `str` or `bytes`
+           :type path: :class:`PurePath <pathlib.PurePath>`, `str`, or `bytes`
 
            :raises: :exc:`SFTPError` if the server returns an error
 
@@ -2660,7 +2677,7 @@ class SFTPClient:
 
            :param path:
                The remote path to check
-           :type path: `str` or `bytes`
+           :type path: :class:`PurePath <pathlib.PurePath>`, `str`, or `bytes`
 
            :raises: :exc:`SFTPError` if the server returns an error
 
@@ -2674,7 +2691,7 @@ class SFTPClient:
 
            :param path:
                The remote path to check
-           :type path: `str` or `bytes`
+           :type path: :class:`PurePath <pathlib.PurePath>`, `str`, or `bytes`
 
            :raises: :exc:`SFTPError` if the server returns an error
 
@@ -2688,7 +2705,7 @@ class SFTPClient:
 
            :param path:
                The remote path to check
-           :type path: `str` or `bytes`
+           :type path: :class:`PurePath <pathlib.PurePath>`, `str`, or `bytes`
 
            :raises: :exc:`SFTPError` if the server returns an error
 
@@ -2702,7 +2719,7 @@ class SFTPClient:
 
            :param path:
                The remote path to check
-           :type path: `str` or `bytes`
+           :type path: :class:`PurePath <pathlib.PurePath>`, `str`, or `bytes`
 
            :raises: :exc:`SFTPError` if the server returns an error
 
@@ -2718,7 +2735,7 @@ class SFTPClient:
 
            :param path:
                The path of the remote file or link to remove
-           :type path: `str` or `bytes`
+           :type path: :class:`PurePath <pathlib.PurePath>`, `str`, or `bytes`
 
            :raises: :exc:`SFTPError` if the server returns an error
 
@@ -2749,8 +2766,10 @@ class SFTPClient:
                The path of the remote file, directory, or link to rename
            :param newpath:
                The new name for this file, directory, or link
-           :type oldpath: `str` or `bytes`
-           :type newpath: `str` or `bytes`
+           :type oldpath:
+               :class:`PurePath <pathlib.PurePath>`, `str`, or `bytes`
+           :type newpath:
+               :class:`PurePath <pathlib.PurePath>`, `str`, or `bytes`
 
            :raises: :exc:`SFTPError` if the server returns an error
 
@@ -2774,8 +2793,10 @@ class SFTPClient:
                The path of the remote file, directory, or link to rename
            :param newpath:
                The new name for this file, directory, or link
-           :type oldpath: `str` or `bytes`
-           :type newpath: `str` or `bytes`
+           :type oldpath:
+               :class:`PurePath <pathlib.PurePath>`, `str`, or `bytes`
+           :type newpath:
+               :class:`PurePath <pathlib.PurePath>`, `str`, or `bytes`
 
            :raises: :exc:`SFTPError` if the server doesn't support this
                     extension or returns an error
@@ -2797,7 +2818,7 @@ class SFTPClient:
 
            :param path: (optional)
                The path of the remote directory to read
-           :type path: `str` or `bytes`
+           :type path: :class:`PurePath <pathlib.PurePath>`, `str`, or `bytes`
 
            :returns: A list of :class:`SFTPName` entries, with path
                      names matching the type used to pass in the path
@@ -2837,7 +2858,7 @@ class SFTPClient:
 
            :param path: (optional)
                The path of the remote directory to read
-           :type path: `str` or `bytes`
+           :type path: :class:`PurePath <pathlib.PurePath>`, `str`, or `bytes`
 
            :returns: A list of file/subdirectory names, matching the
                      type used to pass in the path
@@ -2860,7 +2881,7 @@ class SFTPClient:
                The path of where the new remote directory should be created
            :param attrs: (optional)
                The file attributes to use when creating the directory
-           :type path: `str` or `bytes`
+           :type path: :class:`PurePath <pathlib.PurePath>`, `str`, or `bytes`
            :type attrs: :class:`SFTPAttrs`
 
            :raises: :exc:`SFTPError` if the server returns an error
@@ -2879,7 +2900,7 @@ class SFTPClient:
 
            :param path:
                The path of the remote directory to remove
-           :type path: `str` or `bytes`
+           :type path: :class:`PurePath <pathlib.PurePath>`, `str`, or `bytes`
 
            :raises: :exc:`SFTPError` if the server returns an error
 
@@ -2896,7 +2917,7 @@ class SFTPClient:
 
            :param path: (optional)
                The path of the remote directory to canonicalize
-           :type path: `str` or `bytes`
+           :type path: :class:`PurePath <pathlib.PurePath>`, `str`, or `bytes`
 
            :returns: The canonical path as a `str` or `bytes`, matching
                      the type used to pass in the path
@@ -2911,7 +2932,7 @@ class SFTPClient:
         if len(names) > 1:
             raise SFTPError(FX_BAD_MESSAGE, 'Too many names returned')
 
-        return self.decode(names[0].filename, isinstance(path, str))
+        return self.decode(names[0].filename, isinstance(path, (str, PurePath)))
 
     @asyncio.coroutine
     def getcwd(self):
@@ -2935,7 +2956,7 @@ class SFTPClient:
 
            :param path:
                The path to set as the new remote working directory
-           :type path: `str` or `bytes`
+           :type path: :class:`PurePath <pathlib.PurePath>`, `str`, or `bytes`
 
            :raises: :exc:`SFTPError` if the server returns an error
 
@@ -2951,7 +2972,7 @@ class SFTPClient:
 
            :param path:
                The path of the remote symbolic link to follow
-           :type path: `str` or `bytes`
+           :type path: :class:`PurePath <pathlib.PurePath>`, `str`, or `bytes`
 
            :returns: The target path of the link as a `str` or `bytes`
 
@@ -2982,8 +3003,10 @@ class SFTPClient:
                The path the link should point to
            :param newpath:
                The path of where to create the remote symbolic link
-           :type oldpath: `str` or `bytes`
-           :type newpath: `str` or `bytes`
+           :type oldpath:
+               :class:`PurePath <pathlib.PurePath>`, `str`, or `bytes`
+           :type newpath:
+               :class:`PurePath <pathlib.PurePath>`, `str`, or `bytes`
 
            :raises: :exc:`SFTPError` if the server returns an error
 
@@ -3006,8 +3029,10 @@ class SFTPClient:
                The path of the remote file the hard link should point to
            :param newpath:
                The path of where to create the remote hard link
-           :type oldpath: `str` or `bytes`
-           :type newpath: `str` or `bytes`
+           :type oldpath:
+               :class:`PurePath <pathlib.PurePath>`, `str`, or `bytes`
+           :type newpath:
+               :class:`PurePath <pathlib.PurePath>`, `str`, or `bytes`
 
            :raises: :exc:`SFTPError` if the server doesn't support this
                     extension or returns an error
