@@ -1041,6 +1041,7 @@ class SSHConnection(SSHPacketHandler):
                 self._extensions_sent[b'server-sig-algs'] = \
                     b','.join(self._sig_algs)
                 self._send_ext_info()
+                self._can_send_ext_info = False
 
         self._kex_complete = True
         self._send_deferred_packets()
@@ -1333,7 +1334,7 @@ class SSHConnection(SSHPacketHandler):
         if self.is_server():
             self._client_kexinit = packet.get_consumed_payload()
 
-            if b'ext-info-c' in peer_kex_algs:
+            if b'ext-info-c' in peer_kex_algs and not self._session_id:
                 self._can_send_ext_info = True
         else:
             self._server_kexinit = packet.get_consumed_payload()
