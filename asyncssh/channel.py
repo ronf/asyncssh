@@ -171,6 +171,8 @@ class SSHChannel(SSHPacketHandler):
             self.logger.info('Channel closed%s',
                              ': ' + str(exc) if exc else '')
 
+            self._conn.detach_x11_listener(self)
+
             self._conn.remove_channel(self._recv_chan)
             self._recv_chan = None
             self._conn = None
@@ -424,6 +426,10 @@ class SSHChannel(SSHPacketHandler):
             if asyncio.iscoroutine(session):
                 session = yield from session
 
+            if not self._conn:
+                raise ChannelOpenError(OPEN_CONNECT_FAILED,
+                                       'SSH connection closed')
+
             chan, self._session = self._wrap_session(session)
 
             self.logger.debug2('  Initial recv window %d, packet size %d',
@@ -439,8 +445,10 @@ class SSHChannel(SSHPacketHandler):
 
             self._session.connection_made(chan)
         except ChannelOpenError as exc:
-            self._conn.send_channel_open_failure(self._send_chan, exc.code,
-                                                 exc.reason, exc.lang)
+            if self._conn:
+                self._conn.send_channel_open_failure(self._send_chan, exc.code,
+                                                     exc.reason, exc.lang)
+
             self._loop.call_soon(self._cleanup)
 
     def process_open_confirmation(self, send_chan, send_window,
@@ -981,14 +989,6 @@ class SSHClientChannel(SSHChannel):
         self._exit_status = None
         self._exit_signal = None
 
-    def _cleanup(self, exc=None):
-        """Clean up this channel"""
-
-        if self._conn: # pragma: no branch
-            self._conn.detach_x11_listener(self)
-
-        super()._cleanup(exc)
-
     @asyncio.coroutine
     def create(self, session_factory, command, subsystem, env, term_type,
                term_size, term_modes, x11_forwarding, x11_display,
@@ -1068,7 +1068,9 @@ class SSHClientChannel(SSHChannel):
                 String(binascii.b2a_hex(remote_auth)), UInt32(screen))
 
             if not result:
-                self._conn.detach_x11_listener(self)
+                if self._conn: # pragma: no branch
+                    self._conn.detach_x11_listener(self)
+
                 raise ChannelOpenError(OPEN_REQUEST_X11_FORWARDING_FAILED,
                                        'X11 forwarding request failed')
 
@@ -1302,13 +1304,6 @@ class SSHServerChannel(SSHChannel):
         self._x11_display = None
 
         self.logger.info('New SSH session requested')
-
-    def _cleanup(self, exc=None):
-        """Clean up this channel"""
-
-        self._conn.detach_x11_listener(self)
-
-        super()._cleanup(exc)
 
     def _wrap_session(self, session):
         """Wrap a line editor around the session if enabled"""

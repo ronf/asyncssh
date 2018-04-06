@@ -85,10 +85,7 @@ class SSHForwarder:
         # pylint: disable=unused-argument
 
         if self._peer:
-            try:
-                self._peer.write(data)
-            except OSError: # pragma: no cover
-                pass
+            self._peer.write(data)
         else:
             self._inpbuf += data
 
@@ -98,14 +95,11 @@ class SSHForwarder:
         self._eof_received = True
 
         if self._peer:
-            try:
-                self._peer.write_eof()
-            except OSError: # pragma: no cover
-                pass
+            self._peer.write_eof()
 
             return not self._peer.was_eof_received()
         else:
-            return False
+            return True
 
     def pause_writing(self):
         """Pause writing by asking peer to pause reading"""
@@ -154,8 +148,11 @@ class SSHLocalForwarder(SSHForwarder):
             return
 
         if self._inpbuf:
-            self.data_received(self._inpbuf)
+            self._peer.write(self._inpbuf)
             self._inpbuf = b''
+
+        if self._eof_received:
+            self._peer.write_eof()
 
 
 class SSHLocalPortForwarder(SSHLocalForwarder):

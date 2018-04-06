@@ -2001,14 +2001,23 @@ class SSHConnection(SSHPacketHandler):
                                                       dest_host, dest_port,
                                                       orig_host, orig_port))
 
-        self.logger.info('Creating local TCP forwarder from %s to %s',
-                         (listen_host, listen_port), (dest_host, dest_port))
+        if (listen_host, listen_port) == (dest_host, dest_port):
+            self.logger.info('Creating local TCP forwarder on %s',
+                             (listen_host, listen_port))
+        else:
+            self.logger.info('Creating local TCP forwarder from %s to %s',
+                             (listen_host, listen_port), (dest_host, dest_port))
 
         try:
-            return (yield from create_tcp_forward_listener(self, self._loop,
-                                                           tunnel_connection,
-                                                           listen_host,
-                                                           listen_port))
+            listener = yield from create_tcp_forward_listener(self, self._loop,
+                                                              tunnel_connection,
+                                                              listen_host,
+                                                              listen_port)
+
+            if dest_port == 0:
+                dest_port = listener.get_port()
+
+            return listener
         except OSError as exc:
             self.logger.debug1('Failed to create local TCP listener: %s', exc)
             raise
@@ -3917,7 +3926,7 @@ class SSHServerConnection(SSHConnection):
         else:
             session = result
 
-        self.logger.info('Accepted direct TCP connection on %s',
+        self.logger.info('Accepted direct TCP connection request to %s',
                          (dest_host, dest_port))
         self.logger.info('  Client address: %s', (orig_host, orig_port))
 
@@ -3956,9 +3965,6 @@ class SSHServerConnection(SSHConnection):
             self._report_global_response(False)
             return
 
-        self.logger.info('Creating TCP listener on %s',
-                         (listen_host, listen_port))
-
         if result is True:
             result = self.forward_local_port(listen_host, listen_port,
                                              listen_host, listen_port)
@@ -3984,6 +3990,9 @@ class SSHServerConnection(SSHConnection):
                 result = True
 
             self._local_listeners[listen_host, listen_port] = listener
+
+            self.logger.info('Created TCP listener on %s',
+                             (listen_host, listen_port))
 
             self._report_global_response(result)
         else:

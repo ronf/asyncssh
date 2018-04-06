@@ -390,10 +390,19 @@ class _ChannelServer(Server):
         stdin.channel.close()
         yield from stdin.channel.wait_closed()
 
+    @asyncio.coroutine
+    def _conn_close(self):
+        """Close the connection during a channel open"""
+
+        self._conn.close()
+        yield from asyncio.sleep(0.1)
+        return _EchoServerSession()
+
     def begin_auth(self, username):
         """Handle client authentication request"""
 
-        return username not in {'guest', 'conn_close', 'close', 'echo',
+        return username not in {'guest', 'conn_close_startup',
+                                'conn_close_open', 'close', 'echo',
                                 'no_channels', 'no_pty', 'task_error'}
 
     def session_requested(self):
@@ -404,9 +413,11 @@ class _ChannelServer(Server):
         with patch('asyncssh.connection.SSHServerChannel', _ServerChannel):
             channel = self._conn.create_server_channel()
 
-            if username == 'conn_close':
+            if username == 'conn_close_startup':
                 self._conn.close()
                 return False
+            elif username == 'conn_close_open':
+                return (channel, self._conn_close())
             elif username in {'close', 'echo', 'no_pty', 'task_error'}:
                 return (channel, _EchoServerSession())
             elif username != 'no_channels':
@@ -584,7 +595,17 @@ class _TestChannel(ServerTestCase):
     def test_conn_close_during_startup(self):
         """Test connection close during channel startup"""
 
-        with (yield from self.connect(username='conn_close')) as conn:
+        with (yield from self.connect(username='conn_close_startup')) as conn:
+            with self.assertRaises(asyncssh.ChannelOpenError):
+                yield from _create_session(conn)
+
+        yield from conn.wait_closed()
+
+    @asynctest
+    def test_conn_close_during_open(self):
+        """Test connection close during channel open"""
+
+        with (yield from self.connect(username='conn_close_open')) as conn:
             with self.assertRaises(asyncssh.ChannelOpenError):
                 yield from _create_session(conn)
 
