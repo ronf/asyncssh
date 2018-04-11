@@ -1265,6 +1265,11 @@ class SSHClientChannel(SSHChannel):
 
            :raises: :exc:`OSError` if the channel is not open
 
+           .. note:: If your server-side runs on OpenSSH,
+                     this might be ineffective;
+                     for more details, see the note in
+                     :meth:`send_signal`
+
         """
 
         self.send_signal('TERM')
@@ -1276,6 +1281,11 @@ class SSHClientChannel(SSHChannel):
            or service by sending it a `KILL` signal.
 
            :raises: :exc:`OSError` if the channel is not open
+
+           .. note:: If your server-side runs on OpenSSH,
+                     this might be ineffective;
+                     for more details, see the note in
+                     :meth:`send_signal`
 
         """
 
