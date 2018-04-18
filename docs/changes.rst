@@ -3,6 +3,26 @@
 Change Log
 ==========
 
+Release 1.12.2 (17 Apr 2018)
+----------------------------
+
+* Added support for using pathlib objects as paths in calls to SFTP
+  methods, in addition to Unicode and byte strings. This is mainly
+  intended for use in constructing local paths, but it can also be
+  used for remote paths as long as POSIX-style pathlib objects are
+  used and an appropriate path encoding is set to handle the
+  conversion from Unicode to bytes.
+
+* Changed server EXT_INFO message to only be sent after the first SSH key
+  exchange, to match the specification recently published in RFC 8308.
+
+* Fixed edge case in TCP connection forwarding where data received
+  on a forward TCP connection was not delivered if the connection was
+  closed or half-closed before the corresponding SSH tunnel was fully
+  established.
+
+* Made note about OpenSSH not properly handling send_signal more visible.
+
 Release 1.12.1 (10 Mar 2018)
 ----------------------------
 
