@@ -179,24 +179,6 @@ class _TestStream(ServerTestCase):
         yield from conn.wait_closed()
 
     @asynctest
-    def test_multiple_read(self):
-        """Test calling blocking read multiple times"""
-
-        with (yield from self.connect()) as conn:
-            stdin, stdout, _ = yield from conn.open_session()
-
-            done, _ = yield from asyncio.wait(
-                [stdout.read(), stdout.read()],
-                return_when=asyncio.FIRST_EXCEPTION)
-
-            with self.assertRaises(RuntimeError):
-                yield from done
-
-            stdin.close()
-
-        yield from conn.wait_closed()
-
-    @asynctest
     def test_read_exception(self):
         """Test read returning an exception"""
 
@@ -228,6 +210,28 @@ class _TestStream(ServerTestCase):
             with self.assertRaises(asyncssh.DisconnectError):
                 yield from stdout.readline()
 
+            stdin.channel.abort()
+
+        yield from conn.wait_closed()
+
+    @asynctest
+    def test_readline_timeout(self):
+        """Test receiving a timeout while calling readline"""
+
+        with (yield from self.connect()) as conn:
+            stdin, stdout, _ = yield from conn.open_session()
+
+            stdin.write('ab')
+
+            try:
+                yield from asyncio.wait_for(stdout.readline(), timeout=0.1)
+            except asyncio.TimeoutError:
+                pass
+
+            stdin.write('c\n')
+
+            self.assertEqual((yield from stdout.readline()), 'abc\n')
+
             stdin.close()
 
         yield from conn.wait_closed()
@@ -246,26 +250,6 @@ class _TestStream(ServerTestCase):
 
             yield from asyncio.sleep(0.01)
             yield from stdout.read(1)
-
-            stdin.channel.abort()
-
-        yield from conn.wait_closed()
-
-    @asynctest
-    def test_pause_readline(self):
-        """Test pause reading while calling readline"""
-
-        with (yield from self.connect()) as conn:
-            stdin, stdout, _ = yield from conn.open_session()
-
-            stdin.write('\n'+2*1024*1024*'\0')
-            stdin.write_eof()
-
-            yield from asyncio.sleep(0.01)
-            yield from stdout.readline()
-
-            yield from asyncio.sleep(0.01)
-            yield from stdout.readline()
 
             stdin.channel.abort()
 

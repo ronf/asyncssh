@@ -293,6 +293,7 @@ class SSHStreamSession:
         self._connection_lost = False
         self._recv_buf = {None: []}
         self._recv_buf_len = 0
+        self._read_locks = {None: asyncio.Lock(loop=self._loop)}
         self._read_waiters = {None: None}
         self._read_paused = False
         self._write_paused = False
@@ -301,10 +302,6 @@ class SSHStreamSession:
     @asyncio.coroutine
     def _block_read(self, datatype):
         """Wait for more data to arrive on the stream"""
-
-        if self._read_waiters[datatype]:
-            raise RuntimeError('read called while another coroutine is '
-                               'already waiting to read')
 
         try:
             waiter = asyncio.Future(loop=self._loop)
@@ -371,6 +368,7 @@ class SSHStreamSession:
 
         for datatype in chan.get_read_datatypes():
             self._recv_buf[datatype] = []
+            self._read_locks[datatype] = asyncio.Lock(loop=self._loop)
             self._read_waiters[datatype] = None
 
         for datatype in chan.get_write_datatypes():
@@ -436,33 +434,35 @@ class SSHStreamSession:
         buf = '' if self._encoding else b''
         data = []
 
-        while True:
-            while recv_buf and n != 0:
-                if isinstance(recv_buf[0], Exception):
-                    if data:
-                        break
-                    else:
-                        raise recv_buf.pop(0)
+        with (yield from self._read_locks[datatype]):
+            while True:
+                while recv_buf and n != 0:
+                    if isinstance(recv_buf[0], Exception):
+                        if data:
+                            break
+                        else:
+                            raise recv_buf.pop(0)
 
-                l = len(recv_buf[0])
-                if n > 0 and l > n:
-                    data.append(recv_buf[0][:n])
-                    recv_buf[0] = recv_buf[0][n:]
-                    self._recv_buf_len -= n
-                    n = 0
+                    l = len(recv_buf[0])
+                    if n > 0 and l > n:
+                        data.append(recv_buf[0][:n])
+                        recv_buf[0] = recv_buf[0][n:]
+                        self._recv_buf_len -= n
+                        n = 0
+                        break
+
+                    data.append(recv_buf.pop(0))
+                    self._recv_buf_len -= l
+                    n -= l
+
+                if self._maybe_resume_reading():
+                    continue
+
+                if n == 0 or (n > 0 and data and not exact) or \
+                        self._eof_received:
                     break
 
-                data.append(recv_buf.pop(0))
-                self._recv_buf_len -= l
-                n -= l
-
-            if self._maybe_resume_reading():
-                continue
-
-            if n == 0 or (n > 0 and data and not exact) or self._eof_received:
-                break
-
-            yield from self._block_read(datatype)
+                yield from self._block_read(datatype)
 
         buf = buf.join(data)
         if n > 0 and exact:
@@ -482,43 +482,45 @@ class SSHStreamSession:
         seplen = len(separator)
         recv_buf = self._recv_buf[datatype]
         buf = '' if self._encoding else b''
+        curbuf = 0
         buflen = 0
 
-        while True:
-            while recv_buf:
-                if isinstance(recv_buf[0], Exception):
-                    if buf:
-                        raise asyncio.IncompleteReadError(buf, None)
-                    else:
-                        raise recv_buf.pop(0)
+        with (yield from self._read_locks[datatype]):
+            while True:
+                while curbuf < len(recv_buf):
+                    if isinstance(recv_buf[curbuf], Exception):
+                        if buf:
+                            recv_buf[:curbuf] = []
+                            self._recv_buf_len -= buflen
+                            raise asyncio.IncompleteReadError(buf, None)
+                        else:
+                            raise recv_buf.pop(0)
 
-                buf += recv_buf[0]
-                start = max(buflen + 1 - seplen, 0)
-                idx = buf.find(separator, start)
-                if idx >= 0:
-                    idx += seplen
-                    recv_buf[0] = buf[idx:]
-                    buf = buf[:idx]
-                    self._recv_buf_len -= idx
+                    buf += recv_buf[curbuf]
+                    start = max(buflen + 1 - seplen, 0)
+                    idx = buf.find(separator, start)
+                    if idx >= 0:
+                        idx += seplen
+                        recv_buf[:curbuf] = []
+                        recv_buf[0] = buf[idx:]
+                        buf = buf[:idx]
+                        self._recv_buf_len -= idx
 
-                    if not recv_buf[0]:
-                        recv_buf.pop(0)
+                        if not recv_buf[0]:
+                            recv_buf.pop(0)
 
-                    self._maybe_resume_reading()
-                    return buf
+                        self._maybe_resume_reading()
+                        return buf
 
-                l = len(recv_buf[0])
-                buflen += l
-                self._recv_buf_len -= l
-                recv_buf.pop(0)
+                    buflen += len(recv_buf[curbuf])
+                    curbuf += 1
 
-            if self._maybe_resume_reading():
-                continue
+                if self._eof_received:
+                    recv_buf[:curbuf] = []
+                    self._recv_buf_len -= buflen
+                    raise asyncio.IncompleteReadError(buf, None)
 
-            if self._eof_received:
-                raise asyncio.IncompleteReadError(buf, None)
-
-            yield from self._block_read(datatype)
+                yield from self._block_read(datatype)
 
     @asyncio.coroutine
     def drain(self, datatype):
