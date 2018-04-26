@@ -215,6 +215,25 @@ class _TestStream(ServerTestCase):
         yield from conn.wait_closed()
 
     @asynctest
+    def test_readuntil_bigger_than_window(self):
+        """Test readuntil getting data bigger than the receive window"""
+
+        with (yield from self.connect()) as conn:
+            stdin, stdout, _ = yield from conn.open_session()
+
+            stdin.write(4*1024*1024*'\0')
+
+            with self.assertRaises(asyncio.IncompleteReadError) as exc:
+                yield from stdout.readuntil('\n')
+
+            self.assertEqual(exc.exception.partial,
+                             stdin.channel.get_recv_window()*'\0')
+
+            stdin.close()
+
+        yield from conn.wait_closed()
+
+    @asynctest
     def test_readline_timeout(self):
         """Test receiving a timeout while calling readline"""
 

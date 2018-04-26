@@ -515,7 +515,7 @@ class SSHStreamSession:
                     buflen += len(recv_buf[curbuf])
                     curbuf += 1
 
-                if self._eof_received:
+                if self._read_paused or self._eof_received:
                     recv_buf[:curbuf] = []
                     self._recv_buf_len -= buflen
                     raise asyncio.IncompleteReadError(buf, None)
