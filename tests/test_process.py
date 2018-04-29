@@ -24,6 +24,12 @@ import asyncssh
 from .server import ServerTestCase
 from .util import asynctest, echo
 
+try:
+    import aiofiles
+    _aiofiles_available = True
+except ImportError:
+    _aiofiles_available = False
+
 @asyncio.coroutine
 def _handle_client(process):
     """Handle a new client request"""
@@ -893,6 +899,100 @@ class _TestProcessRedirection(_TestProcess):
 
         self.assertEqual(result.stdout, data+data)
         self.assertEqual(result.stderr, data+data)
+
+
+@unittest.skipUnless(_aiofiles_available, 'Async file I/O not available')
+class _TestAsyncFileRedirection(_TestProcess):
+    """Unit tests for AsyncSSH async file redirection"""
+
+    @asynctest
+    def test_stdin_aiofile(self):
+        """Test with stdin redirected to an aiofile"""
+
+        data = str(id(self))
+
+        with open('stdin', 'w') as file:
+            file.write(data)
+
+        file = yield from aiofiles.open('stdin', 'r')
+
+        with (yield from self.connect()) as conn:
+            result = yield from conn.run('echo', stdin=file)
+
+        self.assertEqual(result.stdout, data)
+        self.assertEqual(result.stderr, data)
+
+    @asynctest
+    def test_stdin_binary_aiofile(self):
+        """Test with stdin redirected to an aiofile in binary mode"""
+
+        data = str(id(self)).encode() + b'\xff'
+
+        with open('stdin', 'wb') as file:
+            file.write(data)
+
+        file = yield from aiofiles.open('stdin', 'rb')
+
+        with (yield from self.connect()) as conn:
+            result = yield from conn.run('echo', stdin=file,
+                                         encoding=None)
+
+        self.assertEqual(result.stdout, data)
+        self.assertEqual(result.stderr, data)
+
+    @asynctest
+    def test_stdout_aiofile(self):
+        """Test with stdout redirected to an aiofile"""
+
+        data = str(id(self))
+
+        file = open('stdout', 'w')
+
+        with (yield from self.connect()) as conn:
+            result = yield from conn.run('echo', input=data, stdout=file)
+
+        with open('stdout', 'r') as file:
+            stdout_data = file.read()
+
+        self.assertEqual(stdout_data, data)
+        self.assertEqual(result.stdout, '')
+        self.assertEqual(result.stderr, data)
+
+    @asynctest
+    def test_stdout_binary_aiofile(self):
+        """Test with stdout redirected to an aiofile in binary mode"""
+
+        data = str(id(self)).encode() + b'\xff'
+
+        file = yield from aiofiles.open('stdout', 'wb')
+
+        with (yield from self.connect()) as conn:
+            result = yield from conn.run('echo', input=data, stdout=file,
+                                         encoding=None)
+
+        with open('stdout', 'rb') as file:
+            stdout_data = file.read()
+
+        self.assertEqual(stdout_data, data)
+        self.assertEqual(result.stdout, b'')
+        self.assertEqual(result.stderr, data)
+
+    @asynctest
+    def test_pause_async_file_reader(self):
+        """Test pausing and resuming reading from an aiofile"""
+
+        data = 4*1024*1024*'*'
+
+        with open('stdin', 'w') as file:
+            file.write(data)
+
+        file = yield from aiofiles.open('stdin', 'r')
+
+        with (yield from self.connect()) as conn:
+            result = yield from conn.run('delay', stdin=file,
+                                         stderr=asyncssh.DEVNULL)
+
+        self.assertEqual(result.stdout, data)
 
 
 @unittest.skipIf(sys.platform == 'win32', 'skip pipe tests on Windows')

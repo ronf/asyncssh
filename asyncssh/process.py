@@ -137,6 +137,39 @@ class _FileReader(_UnicodeReader):
         self._file.close()
 
 
+class _AsyncFileReader(_FileReader):
+    """Forward data from an aiofile"""
+
+    def __init__(self, process, file, bufsize, datatype, encoding):
+        super().__init__(process, file, bufsize, datatype, encoding)
+
+        self._conn = process.channel.get_connection()
+
+    @asyncio.coroutine
+    def _feed(self):
+        """Feed file data"""
+
+        while not self._paused:
+            data = yield from self._file.read(self._bufsize)
+
+            if data:
+                self._process.feed_data(self.decode(data), self._datatype)
+            else:
+                self.check_partial()
+                self._process.feed_eof(self._datatype)
+                break
+
+    def feed(self):
+        """Start feeding file data"""
+
+        self._conn.create_task(self._feed())
+
+    def close(self):
+        """Stop forwarding data from the file"""
+
+        self._conn.create_task(self._file.close())
+
+
 class _FileWriter(_UnicodeWriter):
     """Forward data to a file"""
 
@@ -159,6 +192,25 @@ class _FileWriter(_UnicodeWriter):
         """Stop forwarding data to the file"""
 
         self._file.close()
+
+
+class _AsyncFileWriter(_FileWriter):
+    """Forward data to an aiofile"""
+
+    def __init__(self, process, file, encoding):
+        super().__init__(file, encoding)
+
+        self._conn = process.channel.get_connection()
+
+    def write(self, data):
+        """Write data to the file"""
+
+        self._conn.create_task(self._file.write(self.encode(data)))
+
+    def close(self):
+        """Stop forwarding data to the file"""
+
+        self._conn.create_task(self._file.close())
 
 
 class _PipeReader(_UnicodeReader, asyncio.Protocol):
@@ -543,7 +595,10 @@ class SSHProcess:
             else:
                 file = source
 
-            if _is_regular_file(file):
+            if hasattr(file, 'read') and asyncio.iscoroutinefunction(file.read):
+                reader = _AsyncFileReader(self, file, bufsize,
+                                          datatype, self._encoding)
+            elif _is_regular_file(file):
                 reader = _FileReader(self, file, bufsize,
                                      datatype, self._encoding)
             else:
@@ -591,7 +646,10 @@ class SSHProcess:
             else:
                 file = target
 
-            if _is_regular_file(file):
+            if hasattr(file, 'write') and \
+                    asyncio.iscoroutinefunction(file.write):
+                writer = _AsyncFileWriter(self, file, self._encoding)
+            elif _is_regular_file(file):
                 writer = _FileWriter(file, self._encoding)
             else:
                 if hasattr(target, 'buffer'):
