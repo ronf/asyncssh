@@ -15,6 +15,7 @@
 import asyncio
 import io
 import os
+from pathlib import Path
 import socket
 import sys
 import unittest
@@ -27,7 +28,7 @@ from .util import asynctest, echo
 try:
     import aiofiles
     _aiofiles_available = True
-except ImportError:
+except ImportError: # pragma: no cover
     _aiofiles_available = False
 
 @asyncio.coroutine
@@ -444,6 +445,21 @@ class _TestProcessRedirection(_TestProcess):
         self.assertEqual(result.stderr, data)
 
     @asynctest
+    def test_stdin_pathlib(self):
+        """Test with stdin redirected to a file name specified by pathlib"""
+
+        data = str(id(self))
+
+        with open('stdin', 'w') as file:
+            file.write(data)
+
+        with (yield from self.connect()) as conn:
+            result = yield from conn.run('echo', stdin=Path('stdin'))
+
+        self.assertEqual(result.stdout, data)
+        self.assertEqual(result.stderr, data)
+
+    @asynctest
     def test_stdin_open_file(self):
         """Test with stdin redirected to an open file"""
 
@@ -570,6 +586,23 @@ class _TestProcessRedirection(_TestProcess):
 
         self.assertEqual(stdout_data, data)
         self.assertEqual(result.stdout, b'')
+        self.assertEqual(result.stderr, data)
+
+    @asynctest
+    def test_stdout_pathlib(self):
+        """Test with stdout redirected to a file name specified by pathlib"""
+
+        data = str(id(self))
+
+        with (yield from self.connect()) as conn:
+            result = yield from conn.run('echo', input=data,
+                                         stdout=Path('stdout'))
+
+        with open('stdout', 'r') as file:
+            stdout_data = file.read()
+
+        self.assertEqual(stdout_data, data)
+        self.assertEqual(result.stdout, '')
         self.assertEqual(result.stderr, data)
 
     @asynctest

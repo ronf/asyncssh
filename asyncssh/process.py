@@ -17,6 +17,7 @@ from asyncio.subprocess import DEVNULL, PIPE, STDOUT
 from collections import OrderedDict
 import io
 import os
+from pathlib import PurePath
 import socket
 import stat
 
@@ -588,6 +589,8 @@ class SSHProcess:
         else:
             if isinstance(source, str):
                 file = open(source, 'rb', buffering=bufsize)
+            elif isinstance(source, PurePath):
+                file = open(str(source), 'rb', buffering=bufsize)
             elif isinstance(source, int):
                 file = os.fdopen(source, 'rb', buffering=bufsize)
             elif isinstance(source, socket.socket):
@@ -639,6 +642,8 @@ class SSHProcess:
         else:
             if isinstance(target, str):
                 file = open(target, 'wb', buffering=bufsize)
+            elif isinstance(target, PurePath):
+                file = open(str(target), 'wb', buffering=bufsize)
             elif isinstance(target, int):
                 file = os.fdopen(target, 'wb', buffering=bufsize)
             elif isinstance(target, socket.socket):
@@ -892,7 +897,8 @@ class SSHClientProcess(SSHProcess, SSHClientStreamSession):
                * A file object open for read
                * An `int` file descriptor open for read
                * A connected socket object
-               * A string containing the name of a file or device to open
+               * A string or :class:`PurePath <pathlib.PurePath>` containing
+                 the name of a file or device to open
                * `DEVNULL` to provide no input to standard input
                * `PIPE` to interactively write standard input
 
@@ -902,7 +908,8 @@ class SSHClientProcess(SSHProcess, SSHClientStreamSession):
                * A file object open for write
                * An `int` file descriptor open for write
                * A connected socket object
-               * A string containing the name of a file or device to open
+               * A string or :class:`PurePath <pathlib.PurePath>` containing
+                 the name of a file or device to open
                * `DEVNULL` to discard standard error output
                * `PIPE` to interactively read standard error output
 
@@ -1165,7 +1172,8 @@ class SSHServerProcess(SSHProcess, SSHServerStreamSession):
                * A file object open for write
                * An `int` file descriptor open for write
                * A connected socket object
-               * A string containing the name of a file or device to open
+               * A string or :class:`PurePath <pathlib.PurePath>` containing
+                 the name of a file or device to open
                * `DEVNULL` to discard standard error output
                * `PIPE` to interactively read standard error output
 
@@ -1175,7 +1183,8 @@ class SSHServerProcess(SSHProcess, SSHServerStreamSession):
                * A file object open for read
                * An `int` file descriptor open for read
                * A connected socket object
-               * A string containing the name of a file or device to open
+               * A string or :class:`PurePath <pathlib.PurePath>` containing
+                 the name of a file or device to open
                * `DEVNULL` to provide no input to standard input
                * `PIPE` to interactively write standard input
 
