@@ -78,6 +78,11 @@ UNIX domain socket forwarding by calling :meth:`forward_local_path()
 the channels is managed automatically by AsyncSSH whenever new connections
 are opened, so custom session objects are not required.
 
+Dynamic TCP port forwarding can be set up by calling :meth:`forward_socks()
+<SSHClientConnection.forward_socks>`. The SOCKS listener set up by
+AsyncSSH on the requested port accepts SOCKS connect requests and is
+compatible with SOCKS versions 4, 4a, and 5.
+
 When an SSH server receives a new connection and authentication is successful,
 handlers such as :meth:`session_requested() <SSHServer.session_requested>`,
 :meth:`connection_requested() <SSHServer.connection_requested>`,
@@ -299,6 +304,7 @@ SSHClientConnection
    .. automethod:: forward_local_path
    .. automethod:: forward_remote_port
    .. automethod:: forward_remote_path
+   .. automethod:: forward_socks
    =================================== =
 
    =========================== =

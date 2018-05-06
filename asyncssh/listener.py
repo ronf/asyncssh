@@ -17,6 +17,7 @@ import errno
 import socket
 
 from .forward import SSHLocalPortForwarder, SSHLocalPathForwarder
+from .socks import SSHSOCKSForwarder
 
 
 class SSHListener(asyncio.AbstractServer):
@@ -190,13 +191,9 @@ class SSHForwardListener(SSHListener):
 
 
 @asyncio.coroutine
-def create_tcp_forward_listener(conn, loop, coro, listen_host, listen_port):
-    """Create a listener to forward traffic from local ports over SSH"""
-
-    def protocol_factory():
-        """Start a port forwarder for each new local connection"""
-
-        return SSHLocalPortForwarder(conn, coro)
+def create_tcp_local_listener(conn, loop, protocol_factory,
+                              listen_host, listen_port):
+    """Create a listener to forward traffic from a local TCP port over SSH"""
 
     if listen_host == '':
         listen_host = None
@@ -254,6 +251,19 @@ def create_tcp_forward_listener(conn, loop, coro, listen_host, listen_port):
 
 
 @asyncio.coroutine
+def create_tcp_forward_listener(conn, loop, coro, listen_host, listen_port):
+    """Create a listener to forward traffic from a local TCP port over SSH"""
+
+    def protocol_factory():
+        """Start a port forwarder for each new local connection"""
+
+        return SSHLocalPortForwarder(conn, coro)
+
+    return create_tcp_local_listener(conn, loop, protocol_factory,
+                                     listen_host, listen_port)
+
+
+@asyncio.coroutine
 def create_unix_forward_listener(conn, loop, coro, listen_path):
     """Create a listener to forward a local UNIX domain socket over SSH"""
 
@@ -265,3 +275,16 @@ def create_unix_forward_listener(conn, loop, coro, listen_path):
     server = yield from loop.create_unix_server(protocol_factory, listen_path)
 
     return SSHForwardListener([server])
+
+
+@asyncio.coroutine
+def create_socks_listener(conn, loop, coro, listen_host, listen_port):
+    """Create a SOCKS listener to forward traffic over SSH"""
+
+    def protocol_factory():
+        """Start a port forwarder for each new SOCKS connection"""
+
+        return SSHSOCKSForwarder(conn, coro)
+
+    return create_tcp_local_listener(conn, loop, protocol_factory,
+                                     listen_host, listen_port)

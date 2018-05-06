@@ -143,8 +143,8 @@ class SSHLocalForwarder(SSHForwarder):
 
         try:
             yield from self._coro(session_factory, *args)
-        except ChannelOpenError:
-            self.close()
+        except ChannelOpenError as exc:
+            self.connection_lost(exc)
             return
 
         if self._inpbuf:
@@ -153,6 +153,11 @@ class SSHLocalForwarder(SSHForwarder):
 
         if self._eof_received:
             self._peer.write_eof()
+
+    def forward(self, *args):
+        """Start a task to begin local forwarding"""
+
+        self._conn.create_task(self._forward(*args))
 
 
 class SSHLocalPortForwarder(SSHLocalForwarder):
@@ -164,7 +169,7 @@ class SSHLocalPortForwarder(SSHLocalForwarder):
         super().connection_made(transport)
 
         orig_host, orig_port = transport.get_extra_info('peername')[:2]
-        self._conn.create_task(self._forward(orig_host, orig_port))
+        self.forward(orig_host, orig_port)
 
 
 class SSHLocalPathForwarder(SSHLocalForwarder):
@@ -174,5 +179,4 @@ class SSHLocalPathForwarder(SSHLocalForwarder):
         """Handle a newly opened connection"""
 
         super().connection_made(transport)
-
-        self._conn.create_task(self._forward())
+        self.forward()

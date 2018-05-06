@@ -69,8 +69,9 @@ from .kex import get_kex_algs, expand_kex_algs, get_kex
 
 from .known_hosts import match_known_hosts
 
-from .listener import SSHTCPClientListener, create_tcp_forward_listener
-from .listener import SSHUNIXClientListener, create_unix_forward_listener
+from .listener import SSHTCPClientListener, SSHUNIXClientListener
+from .listener import create_tcp_forward_listener, create_unix_forward_listener
+from .listener import create_socks_listener
 
 from .logging import logger
 
@@ -3393,6 +3394,53 @@ class SSHClientConnection(SSHConnection):
 
         return (yield from self.create_unix_server(session_factory,
                                                    listen_path))
+
+    @asyncio.coroutine
+    def forward_socks(self, listen_host, listen_port):
+        """Set up local port forwarding via SOCKS
+
+           This method is a coroutine which attempts to set up dynamic
+           port forwarding via SOCKS on the specified local host and
+           port. Each SOCKS request contains the destination host and
+           port to connect to and triggers a request to tunnel traffic
+           to the requested host and port via the SSH connection.
+
+           If the request is successful, the return value is an
+           :class:`SSHListener` object which can be used later to shut
+           down the port forwarding.
+
+           :param listen_host:
+               The hostname or address on the local host to listen on
+           :param listen_port:
+               The port number on the local host to listen on
+           :type listen_host: `str`
+           :type listen_port: `int`
+
+           :returns: :class:`SSHListener`
+
+           :raises: :exc:`OSError` if the listener can't be opened
+
+        """
+
+        @asyncio.coroutine
+        def tunnel_socks(session_factory, dest_host, dest_port,
+                         orig_host, orig_port):
+            """Forward a local SOCKS connection over SSH"""
+
+            return (yield from self.create_connection(session_factory,
+                                                      dest_host, dest_port,
+                                                      orig_host, orig_port))
+
+        self.logger.info('Creating local SOCKS forwarder on %s',
+                         (listen_host, listen_port))
+
+        try:
+            return (yield from create_socks_listener(self, self._loop,
+                                                     tunnel_socks, listen_host,
+                                                     listen_port))
+        except OSError as exc:
+            self.logger.debug1('Failed to create local SOCKS listener: %s', exc)
+            raise
 
     @async_context_manager
     def start_sftp_client(self, path_encoding='utf-8', path_errors='strict'):

@@ -13,6 +13,7 @@
 """Unit tests for AsyncSSH forwarding API"""
 
 import asyncio
+import codecs
 import os
 import socket
 import sys
@@ -23,6 +24,8 @@ from unittest.mock import patch
 import asyncssh
 from asyncssh.packet import String, UInt32
 from asyncssh.public_key import CERT_TYPE_USER
+from asyncssh.socks import SOCKS5, SOCKS5_AUTH_NONE
+from asyncssh.socks import SOCKS4_OK_RESPONSE, SOCKS5_OK_RESPONSE
 
 from .server import Server, ServerTestCase
 from .util import asynctest, echo, make_certificate
@@ -249,7 +252,7 @@ class _TestTCPForwarding(_CheckForwarding):
     @classmethod
     @asyncio.coroutine
     def start_server(cls):
-        """Start an SSH server which supports UNIX connection forwarding"""
+        """Start an SSH server which supports TCP connection forwarding"""
 
         return (yield from cls.create_server(
             _TCPConnectionServer, authorized_client_keys='authorized_keys'))
@@ -962,3 +965,159 @@ class _TestUNIXForwarding(_CheckForwarding):
                 self.assertEqual(pkttype, asyncssh.MSG_REQUEST_FAILURE)
 
             yield from conn.wait_closed()
+
+
+class _TestSOCKSForwarding(_CheckForwarding):
+    """Unit tests for AsyncSSH SOCKS dynamic port forwarding"""
+
+    @classmethod
+    @asyncio.coroutine
+    def start_server(cls):
+        """Start an SSH server which supports TCP connection forwarding"""
+
+        return (yield from cls.create_server(
+            _TCPConnectionServer, authorized_client_keys='authorized_keys'))
+
+    @asyncio.coroutine
+    def _check_early_error(self, reader, writer, data):
+        """Check errors in the initial SOCKS message"""
+
+        writer.write(data)
+
+        self.assertEqual((yield from reader.read()), b'')
+
+    @asyncio.coroutine
+    def _check_socks5_error(self, reader, writer, data):
+        """Check SOCKSv5 errors after auth"""
+
+        writer.write(bytes((SOCKS5, 1, SOCKS5_AUTH_NONE)))
+        self.assertEqual((yield from reader.readexactly(2)),
+                         bytes((SOCKS5, SOCKS5_AUTH_NONE)))
+
+        writer.write(data)
+
+        self.assertEqual((yield from reader.read()), b'')
+
+    @asyncio.coroutine
+    def _check_socks4_connect(self, reader, writer, data, result):
+        """Check SOCKSv4 connect requests"""
+
+        writer.write(data)
+
+        response = yield from reader.readexactly(len(SOCKS4_OK_RESPONSE))
+        self.assertEqual(response, SOCKS4_OK_RESPONSE)
+
+        if result:
+            yield from self._check_echo_line(reader, writer)
+        else:
+            self.assertEqual((yield from reader.read()), b'')
+
+    @asyncio.coroutine
+    def _check_socks5_connect(self, reader, writer, data, result):
+        """Check SOCKSv5 connect_requests"""
+
+        writer.write(bytes((SOCKS5, 1, SOCKS5_AUTH_NONE)))
+        self.assertEqual((yield from reader.readexactly(2)),
+                         bytes((SOCKS5, SOCKS5_AUTH_NONE)))
+
+        writer.write(data[:20])
+        yield from asyncio.sleep(0.1)
+        writer.write(data[20:])
+
+        response = yield from reader.readexactly(len(SOCKS5_OK_RESPONSE))
+        self.assertEqual(response, SOCKS5_OK_RESPONSE)
+
+        if result:
+            yield from self._check_echo_line(reader, writer)
+        else:
+            self.assertEqual((yield from reader.read()), b'')
+
+    @asyncio.coroutine
+    def _check_socks(self, handler, listen_port, msg, data, *args):
+        """Unit test SOCKS dynamic port forwarding"""
+
+        with self.subTest(msg=msg, data=data):
+            data = codecs.decode(data, 'hex')
+
+            reader, writer = \
+                yield from asyncio.open_connection(None, listen_port)
+
+            try:
+                yield from handler(reader, writer, data, *args)
+            finally:
+                writer.close()
+
+    @asynctest
+    def test_forward_socks(self):
+        """Test dynamic port forwarding via SOCKS"""
+
+        # pylint: disable=bad-whitespace
+
+        _socks_early_errors = [
+            ('Bad version',               '0000'),
+            ('Bad SOCKSv4 command',       '0400'),
+            ('Bad SOCKSv4 Unicode data',  '040100010000000100ff00'),
+            ('SOCKSv4 hostname too long', '040100010000000100' + 256 * 'ff'),
+            ('Bad SOCKSv5 auth list',     '050101')
+        ]
+
+        _socks5_postauth_errors = [
+            ('Bad command',      '05000001'),
+            ('Bad address',      '05010000'),
+            ('Bad Unicode data', '0501000301ff0007')
+        ]
+
+        _socks4_connects = [
+            ('IPv4',          '040100077f00000100',                     True),
+            ('Hostname',      '0401000700000001006c6f63616c686f737400', True),
+            ('Rejected',      '04010001000000010000',                   False)
+        ]
+
+        _socks5_connects = [
+            ('IPv4',        '050100017f0000010007',             True),
+            ('Hostname',    '05010003096c6f63616c686f73740007', True),
+            ('IPv6',        '05010004' + 15*'00' + '010007',    True),
+            ('Rejected',    '05010003000001',                   False)
+        ]
+
+        # pylint: enable=bad-whitespace
+
+        with (yield from self.connect()) as conn:
+            listener = yield from conn.forward_socks('', 0)
+            listen_port = listener.get_port()
+
+            for msg, data in _socks_early_errors:
+                yield from self._check_socks(self._check_early_error,
+                                             listen_port, msg, data)
+
+            for msg, data in _socks5_postauth_errors:
+                yield from self._check_socks(self._check_socks5_error,
+                                             listen_port, msg, data)
+
+            for msg, data, result in _socks4_connects:
+                yield from self._check_socks(self._check_socks4_connect,
+                                             listen_port, msg, data, result)
+
+            for msg, data, result in _socks5_connects:
+                yield from self._check_socks(self._check_socks5_connect,
+                                             listen_port, msg, data, result)
+
+            listener.close()
+            yield from listener.wait_closed()
+
+        yield from conn.wait_closed()
+
+    @asynctest
+    def test_forward_bind_error_socks(self):
+        """Test error binding a local dynamic forwarding port"""
+
+        with (yield from self.connect()) as conn:
+            listener = yield from conn.forward_socks('0.0.0.0', 0)
+
+            with self.assertRaises(OSError):
+                yield from conn.forward_socks(None, listener.get_port())
+
+            listener.close()
+            yield from listener.wait_closed()
+
+        yield from conn.wait_closed()
