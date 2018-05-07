@@ -1107,12 +1107,14 @@ class _TestSOCKSForwarding(_CheckForwarding):
 
         yield from conn.wait_closed()
 
+    @unittest.skipIf(sys.platform == 'win32',
+                     'Avoid issue with SO_REUSEADDR on Windows')
     @asynctest
     def test_forward_bind_error_socks(self):
         """Test error binding a local dynamic forwarding port"""
 
         with (yield from self.connect()) as conn:
-            listener = yield from conn.forward_socks('0.0.0.0', 0)
+            listener = yield from conn.forward_socks(None, 0)
 
             with self.assertRaises(OSError):
                 yield from conn.forward_socks(None, listener.get_port())
