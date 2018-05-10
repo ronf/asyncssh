@@ -51,7 +51,7 @@ setup(name = 'asyncssh',
           'pyOpenSSL':  ['pyOpenSSL >= 17.0.0'],
           'pypiwin32':  ['pypiwin32 >= 219']
       },
-      packages = ['asyncssh', 'asyncssh.crypto', 'asyncssh.crypto.pyca'],
+      packages = ['asyncssh', 'asyncssh.crypto'],
       scripts = [],
       test_suite = 'tests',
       classifiers = [
