@@ -106,12 +106,10 @@ def __build_umac(size):
     globals()[_name] = _UMAC.new
 
 
-digest_size = None
+_nettle_lib = 'libnettle-6' if sys.platform == 'win32' \
+                            else ctypes.util.find_library('nettle')
 
-if sys.platform == 'win32': # pragma: no cover
-    _nettle = ctypes.cdll.LoadLibrary('libnettle-6')
-else:
-    _nettle = ctypes.cdll.LoadLibrary(ctypes.util.find_library('nettle'))
+_nettle = ctypes.cdll.LoadLibrary(_nettle_lib)
 
 for _size in (32, 64, 96, 128):
     __build_umac(_size)

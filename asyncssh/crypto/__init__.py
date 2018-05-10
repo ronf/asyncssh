@@ -1,4 +1,4 @@
-# Copyright (c) 2014-2017 by Ron Frederick <ronf@timeheart.net>.
+# Copyright (c) 2014-2018 by Ron Frederick <ronf@timeheart.net>.
 # All rights reserved.
 #
 # This program and the accompanying materials are made available under
@@ -12,21 +12,20 @@
 
 """A shim for accessing cryptographic primitives needed by asyncssh"""
 
-from .cipher import register_cipher, lookup_cipher
+from .cipher import BasicCipher, GCMCipher, register_cipher, get_cipher_params
 
-from .ec import lookup_ec_curve_by_params
+from .dsa import DSAPrivateKey, DSAPublicKey
 
-# Import PyCA versions of DSA, ECDSA, RSA, and PBKDF2
-from .pyca.dsa import DSAPrivateKey, DSAPublicKey
-from .pyca.ec import ECDSAPrivateKey, ECDSAPublicKey, ECDH
-from .pyca.rsa import RSAPrivateKey, RSAPublicKey
-from .pyca.kdf import pbkdf2_hmac
+from .ec import ECDSAPrivateKey, ECDSAPublicKey, ECDH
 
-# Import pyca module to get ciphers defined there registered
-from . import pyca
+from .ec_params import lookup_ec_curve_by_params
+
+from .kdf import pbkdf2_hmac
+
+from .rsa import RSAPrivateKey, RSAPublicKey
 
 # Import chacha20-poly1305 cipher if available
-from . import chacha
+from .chacha import ChachaCipher
 
 # Import curve25519 DH if available
 try:
@@ -42,7 +41,7 @@ except (ImportError, AttributeError, OSError): # pragma: no cover
 
 # Import X.509 certificate support if available
 try:
-    from .pyca.x509 import X509Name, X509NamePattern
-    from .pyca.x509 import generate_x509_certificate, import_x509_certificate
+    from .x509 import X509Name, X509NamePattern
+    from .x509 import generate_x509_certificate, import_x509_certificate
 except ImportError: # pragma: no cover
     pass

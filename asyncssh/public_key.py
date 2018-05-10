@@ -31,13 +31,15 @@ except ImportError: # pragma: no cover
     _bcrypt_available = False
 
 from .asn1 import ASN1DecodeError, BitString, der_encode, der_decode
-from .cipher import get_encryption_params, get_cipher
+from .encryption import get_encryption_params, get_encryption
 from .misc import ip_network
 from .packet import NameList, String, UInt32, UInt64
 from .packet import PacketDecodeError, SSHPacket
 from .pbe import KeyEncryptionError, pkcs1_encrypt, pkcs8_encrypt
 from .pbe import pkcs1_decrypt, pkcs8_decrypt
 
+# Default file names in .ssh directory to read private keys from
+_DEFAULT_KEY_FILES = ('id_ed25519', 'id_ecdsa', 'id_rsa', 'id_dsa')
 
 _public_key_algs = []
 _certificate_algs = []
@@ -868,7 +870,7 @@ class SSHKey:
             if passphrase is not None:
                 try:
                     alg = cipher_name.encode('ascii')
-                    key_size, iv_size, block_size, mode = \
+                    key_size, iv_size, block_size, _, _, _ = \
                         get_encryption_params(alg)
                 except (KeyError, UnicodeEncodeError):
                     raise KeyEncryptionError('Unknown cipher: %s' %
@@ -890,7 +892,7 @@ class SSHKey:
                                  rounds, ignore_few_rounds)
                 # pylint: enable=no-member
 
-                cipher = get_cipher(alg, key[:key_size], key[key_size:])
+                cipher = get_encryption(alg, key[:key_size], key[key_size:])
                 block_size = max(block_size, 8)
             else:
                 cipher = None
@@ -905,12 +907,9 @@ class SSHKey:
                 data = data + bytes(range(1, block_size + 1 - pad))
 
             if cipher:
-                if mode == 'chacha':
-                    data, mac = cipher.encrypt_and_sign(b'', data, UInt64(0))
-                elif mode == 'gcm':
-                    data, mac = cipher.encrypt_and_sign(b'', data)
-                else:
-                    data, mac = cipher.encrypt(data), b''
+                data, mac = cipher.encrypt_packet(0, b'', data)
+            else:
+                mac = b''
 
             data = b''.join((_OPENSSH_KEY_V1, String(alg), String(kdf),
                              String(kdf_data), UInt32(nkeys),
@@ -1685,8 +1684,9 @@ class SSHKeyPair:
 
     _key_type = 'unknown'
 
-    def __init__(self, algorithm, comment):
+    def __init__(self, algorithm, public_data, comment):
         self.algorithm = algorithm
+        self.public_data = public_data
         self.set_comment(comment)
 
     def get_key_type(self):
@@ -1777,6 +1777,7 @@ class SSHLocalKeyPair(SSHKeyPair):
 
     def __init__(self, key, cert=None):
         super().__init__(cert.algorithm if cert else key.algorithm,
+                         cert.data if cert else key.get_ssh_public_key(),
                          key.get_comment_bytes())
 
         self._key = key
@@ -1790,11 +1791,9 @@ class SSHLocalKeyPair(SSHKeyPair):
 
             self.sig_algorithms = cert.sig_algorithms
             self.host_key_algorithms = cert.host_key_algorithms
-            self.public_data = cert.data
         else:
             self.sig_algorithms = key.sig_algorithms
             self.host_key_algorithms = key.sig_algorithms
-            self.public_data = key.get_ssh_public_key()
 
     def get_agent_private_key(self):
         """Return binary encoding of keypair for upload to SSH agent"""
@@ -1929,7 +1928,7 @@ def _decode_openssh_private(data, passphrase):
                                      'encrypted private keys')
 
             try:
-                key_size, iv_size, block_size, mode = \
+                key_size, iv_size, block_size, _, _, _ = \
                     get_encryption_params(cipher_name)
             except KeyError:
                 raise KeyEncryptionError('Unknown cipher: %s' %
@@ -1960,17 +1959,9 @@ def _decode_openssh_private(data, passphrase):
                 raise KeyEncryptionError('Invalid OpenSSH '
                                          'private key') from None
 
-            cipher = get_cipher(cipher_name, key[:key_size], key[key_size:])
+            cipher = get_encryption(cipher_name, key[:key_size], key[key_size:])
 
-            if mode == 'chacha':
-                key_data = cipher.verify_and_decrypt(b'', key_data,
-                                                     UInt64(0), mac)
-                mac = b''
-            elif mode == 'gcm':
-                key_data = cipher.verify_and_decrypt(b'', key_data, mac)
-                mac = b''
-            else:
-                key_data = cipher.decrypt(key_data)
+            key_data = cipher.decrypt_packet(0, b'', key_data, 0, mac)
 
             if key_data is None:
                 raise KeyEncryptionError('Incorrect passphrase')
@@ -1978,9 +1969,6 @@ def _decode_openssh_private(data, passphrase):
             block_size = max(block_size, 8)
         else:
             block_size = 8
-
-        if mac:
-            raise KeyImportError('Invalid OpenSSH private key')
 
         packet = SSHPacket(key_data)
 
@@ -2933,6 +2921,25 @@ def load_keypairs(keylist, passphrase=None):
                 result.append(SSHLocalKeyPair(key, cert))
 
             result.append(SSHLocalKeyPair(key, None))
+
+    return result
+
+
+def load_default_keypairs(passphrase=None):
+    """Return a list of default keys from the user's home directory"""
+
+    result = []
+
+    for file in _DEFAULT_KEY_FILES:
+        try:
+            file = os.path.join(os.path.expanduser('~'), '.ssh', file)
+            result.extend(load_keypairs(file, passphrase))
+        except KeyImportError as exc:
+            # Ignore encrypted default keys if a passphrase isn't provided
+            if not str(exc).startswith('Passphrase'):
+                raise
+        except OSError:
+            pass
 
     return result
 

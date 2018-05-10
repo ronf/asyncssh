@@ -34,8 +34,6 @@ from .channel import SSHClientChannel, SSHServerChannel
 from .channel import SSHTCPChannel, SSHUNIXChannel
 from .channel import SSHX11Channel, SSHAgentChannel
 
-from .cipher import get_encryption_algs, get_encryption_params, get_cipher
-
 from .client import SSHClient
 
 from .compression import get_compression_algs, get_compression_params
@@ -61,6 +59,9 @@ from .constants import MSG_REQUEST_FAILURE
 from .constants import OPEN_ADMINISTRATIVELY_PROHIBITED, OPEN_CONNECT_FAILED
 from .constants import OPEN_UNKNOWN_CHANNEL_TYPE
 
+from .encryption import get_encryption_algs, get_encryption_params
+from .encryption import get_encryption
+
 from .forward import SSHForwarder
 
 from .gss import GSSClient, GSSServer, GSSError
@@ -75,13 +76,13 @@ from .listener import create_socks_listener
 
 from .logging import logger
 
-from .mac import get_mac_algs, get_mac_params, get_mac
+from .mac import get_mac_algs
 
 from .misc import ChannelOpenError, DisconnectError, PasswordChangeRequired
 from .misc import async_context_manager, create_task, get_symbol_names
-from .misc import ip_address, load_default_keypairs, map_handler_name
+from .misc import ip_address, map_handler_name
 
-from .packet import Boolean, Byte, NameList, String, UInt32, UInt64
+from .packet import Boolean, Byte, NameList, String, UInt32
 from .packet import PacketDecodeError, SSHPacket, SSHPacketHandler
 
 from .process import PIPE, SSHClientProcess, SSHServerProcess
@@ -90,7 +91,7 @@ from .public_key import CERT_TYPE_HOST, CERT_TYPE_USER, KeyImportError
 from .public_key import decode_ssh_public_key, decode_ssh_certificate
 from .public_key import get_public_key_algs, get_certificate_algs
 from .public_key import get_x509_certificate_algs
-from .public_key import load_keypairs, load_certificates
+from .public_key import load_keypairs, load_default_keypairs, load_certificates
 
 from .saslprep import saslprep, SASLPrepError
 
@@ -230,28 +231,23 @@ class SSHConnection(SSHPacketHandler):
         self._session_id = None
 
         self._send_seq = 0
-        self._send_cipher = None
+        self._send_encryption = None
+        self._send_enchdrlen = 5
         self._send_blocksize = 8
-        self._send_mac = None
-        self._send_mode = None
         self._compressor = None
         self._compress_after_auth = False
         self._deferred_packets = []
 
         self._recv_handler = self._recv_version
         self._recv_seq = 0
-        self._recv_cipher = None
+        self._recv_encryption = None
         self._recv_blocksize = 8
-        self._recv_mac = None
         self._recv_macsize = 0
-        self._recv_mode = None
         self._decompressor = None
         self._decompress_after_auth = None
-        self._next_recv_cipher = None
+        self._next_recv_encryption = None
         self._next_recv_blocksize = 0
-        self._next_recv_mac = None
         self._next_recv_macsize = 0
-        self._next_recv_mode = None
         self._next_decompressor = None
         self._next_decompress_after_auth = None
 
@@ -652,15 +648,12 @@ class SSHConnection(SSHPacketHandler):
         self._packet = self._inpbuf[:self._recv_blocksize]
         self._inpbuf = self._inpbuf[self._recv_blocksize:]
 
-        pktlen = self._packet[:4]
-
-        if self._recv_cipher: # pragma: no branch
-            if self._recv_mode == 'chacha':
-                nonce = UInt64(self._recv_seq)
-                pktlen = self._recv_cipher.crypt_len(pktlen, nonce)
-            elif self._recv_mode not in ('gcm', 'etm'):
-                self._packet = self._recv_cipher.decrypt(self._packet)
-                pktlen = self._packet[:4]
+        if self._recv_encryption:
+            self._packet, pktlen = \
+                self._recv_encryption.decrypt_header(self._recv_seq,
+                                                     self._packet, 4)
+        else:
+            pktlen = self._packet[:4]
 
         self._pktlen = int.from_bytes(pktlen, 'big')
         self._recv_handler = self._recv_packet
@@ -673,48 +666,18 @@ class SSHConnection(SSHPacketHandler):
         if len(self._inpbuf) < rem:
             return False
 
-        rest = self._inpbuf[:rem-self._recv_macsize]
         seq = self._recv_seq
+        rest = self._inpbuf[:rem-self._recv_macsize]
+        mac = self._inpbuf[rem-self._recv_macsize:rem]
 
-        if self._recv_mode in ('chacha', 'gcm'):
-            packet = self._packet + rest
-            mac = self._inpbuf[rem-self._recv_macsize:rem]
-
-            hdr = packet[:4]
-            packet = packet[4:]
-
-            if self._recv_mode == 'chacha':
-                nonce = UInt64(seq)
-                packet = self._recv_cipher.verify_and_decrypt(hdr, packet,
-                                                              nonce, mac)
-            else:
-                packet = self._recv_cipher.verify_and_decrypt(hdr, packet, mac)
+        if self._recv_encryption:
+            packet = self._recv_encryption.decrypt_packet(seq, self._packet,
+                                                          rest, 4, mac)
 
             if not packet:
-                raise DisconnectError(DISC_MAC_ERROR,
-                                      'MAC verification failed')
-        elif self._recv_mode == 'etm':
-            packet = self._packet + rest
-            mac = self._inpbuf[rem-self._recv_macsize:rem]
-
-            if not self._recv_mac.verify(seq, packet, mac):
-                raise DisconnectError(DISC_MAC_ERROR,
-                                      'MAC verification failed')
-
-            packet = self._recv_cipher.decrypt(packet[4:])
+                raise DisconnectError(DISC_MAC_ERROR, 'MAC verification failed')
         else:
-            if self._recv_cipher:
-                rest = self._recv_cipher.decrypt(rest)
-
-            packet = self._packet + rest
-            mac = self._inpbuf[rem-self._recv_macsize:rem]
-
-            if self._recv_mac:
-                if not self._recv_mac.verify(seq, packet, mac):
-                    raise DisconnectError(DISC_MAC_ERROR,
-                                          'MAC verification failed')
-
-            packet = packet[4:]
+            packet = self._packet[4:] + rest
 
         self._inpbuf = self._inpbuf[rem:]
         self._packet = b''
@@ -794,7 +757,7 @@ class SSHConnection(SSHPacketHandler):
 
         # If we're encrypting and we have no data outstanding, insert an
         # ignore packet into the stream
-        if self._send_cipher and pkttype != MSG_IGNORE:
+        if self._send_encryption and pkttype != MSG_IGNORE:
             self.send_packet(MSG_IGNORE, String(b''))
 
         payload = Byte(pkttype) + b''.join(args)
@@ -804,9 +767,7 @@ class SSHConnection(SSHPacketHandler):
                                  not self._compress_after_auth):
             payload = self._compressor.compress(payload)
 
-        hdrlen = 1 if self._send_mode in ('chacha', 'gcm', 'etm') else 5
-
-        padlen = -(hdrlen + len(payload)) % self._send_blocksize
+        padlen = -(self._send_enchdrlen + len(payload)) % self._send_blocksize
         if padlen < 4:
             padlen += self._send_blocksize
 
@@ -815,28 +776,11 @@ class SSHConnection(SSHPacketHandler):
         hdr = UInt32(pktlen)
         seq = self._send_seq
 
-        if self._send_mode == 'chacha':
-            nonce = UInt64(seq)
-            hdr = self._send_cipher.crypt_len(hdr, nonce)
-            packet, mac = self._send_cipher.encrypt_and_sign(hdr, packet,
-                                                             nonce)
-            packet = hdr + packet
-        elif self._send_mode == 'gcm':
-            packet, mac = self._send_cipher.encrypt_and_sign(hdr, packet)
-            packet = hdr + packet
-        elif self._send_mode == 'etm':
-            packet = hdr + self._send_cipher.encrypt(packet)
-            mac = self._send_mac.sign(seq, packet)
+        if self._send_encryption:
+            packet, mac = self._send_encryption.encrypt_packet(seq, hdr, packet)
         else:
             packet = hdr + packet
-
-            if self._send_mac:
-                mac = self._send_mac.sign(seq, packet)
-            else:
-                mac = b''
-
-            if self._send_cipher:
-                packet = self._send_cipher.encrypt(packet)
+            mac = b''
 
         self._send(packet + mac)
         self._send_seq = (seq + 1) & 0xffffffff
@@ -925,29 +869,31 @@ class SSHConnection(SSHPacketHandler):
         if not self._session_id:
             self._session_id = h
 
-        enc_keysize_cs, enc_ivsize_cs, enc_blocksize_cs, mode_cs = \
-            get_encryption_params(self._enc_alg_cs)
-        enc_keysize_sc, enc_ivsize_sc, enc_blocksize_sc, mode_sc = \
-            get_encryption_params(self._enc_alg_sc)
+        enc_keysize_cs, enc_ivsize_cs, enc_blocksize_cs, \
+        mac_keysize_cs, mac_hashsize_cs, etm_cs = \
+            get_encryption_params(self._enc_alg_cs, self._mac_alg_cs)
 
-        if mode_cs in ('chacha', 'gcm'):
-            mac_keysize_cs, mac_hashsize_cs = 0, 16
-        else:
-            mac_keysize_cs, mac_hashsize_cs, etm_cs = \
-                get_mac_params(self._mac_alg_cs)
-            if etm_cs:
-                mode_cs = 'etm'
+        enc_keysize_sc, enc_ivsize_sc, enc_blocksize_sc, \
+        mac_keysize_sc, mac_hashsize_sc, etm_sc = \
+            get_encryption_params(self._enc_alg_sc, self._mac_alg_sc)
 
-        if mode_sc in ('chacha', 'gcm'):
-            mac_keysize_sc, mac_hashsize_sc = 0, 16
-        else:
-            mac_keysize_sc, mac_hashsize_sc, etm_sc = \
-                get_mac_params(self._mac_alg_sc)
-            if etm_sc:
-                mode_sc = 'etm'
+        if mac_keysize_cs == 0:
+            self._mac_alg_cs = self._enc_alg_cs
+
+        if mac_keysize_sc == 0:
+            self._mac_alg_sc = self._enc_alg_sc
 
         cmp_after_auth_cs = get_compression_params(self._cmp_alg_cs)
         cmp_after_auth_sc = get_compression_params(self._cmp_alg_sc)
+
+        self.logger.debug2('  Client to server:')
+        self.logger.debug2('    Encryption alg: %s', self._enc_alg_cs)
+        self.logger.debug2('    MAC alg: %s', self._mac_alg_cs)
+        self.logger.debug2('    Compression alg: %s', self._cmp_alg_cs)
+        self.logger.debug2('  Server to client:')
+        self.logger.debug2('    Encryption alg: %s', self._enc_alg_sc)
+        self.logger.debug2('    MAC alg: %s', self._mac_alg_sc)
+        self.logger.debug2('    Compression alg: %s', self._cmp_alg_sc)
 
         iv_cs = self._kex.compute_key(k, h, b'A', self._session_id,
                                       enc_ivsize_cs)
@@ -963,45 +909,23 @@ class SSHConnection(SSHPacketHandler):
                                            mac_keysize_sc)
         self._kex = None
 
-        next_cipher_cs = get_cipher(self._enc_alg_cs, enc_key_cs, iv_cs)
-        next_cipher_sc = get_cipher(self._enc_alg_sc, enc_key_sc, iv_sc)
-
-        if mode_cs in ('chacha', 'gcm'):
-            self._mac_alg_cs = self._enc_alg_cs
-            next_mac_cs = None
-        else:
-            next_mac_cs = get_mac(self._mac_alg_cs, mac_key_cs)
-
-        if mode_sc in ('chacha', 'gcm'):
-            self._mac_alg_sc = self._enc_alg_sc
-            next_mac_sc = None
-        else:
-            next_mac_sc = get_mac(self._mac_alg_sc, mac_key_sc)
-
-        self.logger.debug2('  Client to server:')
-        self.logger.debug2('    Encryption alg: %s', self._enc_alg_cs)
-        self.logger.debug2('    MAC alg: %s', self._mac_alg_cs)
-        self.logger.debug2('    Compression alg: %s', self._cmp_alg_cs)
-        self.logger.debug2('  Server to client:')
-        self.logger.debug2('    Encryption alg: %s', self._enc_alg_sc)
-        self.logger.debug2('    MAC alg: %s', self._mac_alg_sc)
-        self.logger.debug2('    Compression alg: %s', self._cmp_alg_sc)
+        next_enc_cs = get_encryption(self._enc_alg_cs, enc_key_cs, iv_cs,
+                                     self._mac_alg_cs, mac_key_cs, etm_cs)
+        next_enc_sc = get_encryption(self._enc_alg_sc, enc_key_sc, iv_sc,
+                                     self._mac_alg_sc, mac_key_sc, etm_sc)
 
         self.send_packet(MSG_NEWKEYS)
 
         if self.is_client():
-            self._send_cipher = next_cipher_cs
+            self._send_encryption = next_enc_cs
+            self._send_enchdrlen = 1 if etm_cs else 5
             self._send_blocksize = max(8, enc_blocksize_cs)
-            self._send_mac = next_mac_cs
-            self._send_mode = mode_cs
             self._compressor = get_compressor(self._cmp_alg_cs)
             self._compress_after_auth = cmp_after_auth_cs
 
-            self._next_recv_cipher = next_cipher_sc
+            self._next_recv_encryption = next_enc_sc
             self._next_recv_blocksize = max(8, enc_blocksize_sc)
-            self._next_recv_mac = next_mac_sc
             self._next_recv_macsize = mac_hashsize_sc
-            self._next_recv_mode = mode_sc
             self._next_decompressor = get_decompressor(self._cmp_alg_sc)
             self._next_decompress_after_auth = cmp_after_auth_sc
 
@@ -1013,18 +937,15 @@ class SSHConnection(SSHPacketHandler):
                 recv_mac=self._mac_alg_sc.decode('ascii'),
                 recv_compression=self._cmp_alg_sc.decode('ascii'))
         else:
-            self._send_cipher = next_cipher_sc
+            self._send_encryption = next_enc_sc
+            self._send_enchdrlen = 1 if etm_sc else 5
             self._send_blocksize = max(8, enc_blocksize_sc)
-            self._send_mac = next_mac_sc
-            self._send_mode = mode_sc
             self._compressor = get_compressor(self._cmp_alg_sc)
             self._compress_after_auth = cmp_after_auth_sc
 
-            self._next_recv_cipher = next_cipher_cs
+            self._next_recv_encryption = next_enc_cs
             self._next_recv_blocksize = max(8, enc_blocksize_cs)
-            self._next_recv_mac = next_mac_cs
             self._next_recv_macsize = mac_hashsize_cs
-            self._next_recv_mode = mode_cs
             self._next_decompressor = get_decompressor(self._cmp_alg_cs)
             self._next_decompress_after_auth = cmp_after_auth_cs
 
@@ -1391,16 +1312,14 @@ class SSHConnection(SSHPacketHandler):
 
         packet.check_end()
 
-        if self._next_recv_cipher:
-            self._recv_cipher = self._next_recv_cipher
+        if self._next_recv_encryption:
+            self._recv_encryption = self._next_recv_encryption
             self._recv_blocksize = self._next_recv_blocksize
-            self._recv_mac = self._next_recv_mac
-            self._recv_mode = self._next_recv_mode
             self._recv_macsize = self._next_recv_macsize
             self._decompressor = self._next_decompressor
             self._decompress_after_auth = self._next_decompress_after_auth
 
-            self._next_recv_cipher = None
+            self._next_recv_encryption = None
         else:
             raise DisconnectError(DISC_PROTOCOL_ERROR,
                                   'New keys not negotiated')
@@ -2385,14 +2304,6 @@ class SSHClientConnection(SSHConnection):
     def password_auth_requested(self):
         """Return a password to authenticate with"""
 
-        # Only allow password auth if the connection supports encryption
-        # and a MAC -- Disable this for now: we don't allow null ciphers/macs
-        #
-        # if (not self._send_cipher or
-        #         (not self._send_mac and
-        #          self._send_mode not in ('chacha', 'gcm'))):
-        #     return None
-
         if self._password is not None:
             result = self._password
             self._password = None
@@ -2434,14 +2345,6 @@ class SSHClientConnection(SSHConnection):
            will allow sending the password via keyboard-interactive auth.
 
         """
-
-        # Only allow password auth if the connection supports encryption
-        # and a MAC -- Disable this for now: we don't allow null ciphers/macs
-        #
-        # if (not self._send_cipher or
-        #         (not self._send_mac and
-        #          self._send_mode not in ('chacha', 'gcm'))):
-        #     return None
 
         result = self._owner.kbdint_auth_requested()
 

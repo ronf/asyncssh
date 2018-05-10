@@ -16,14 +16,11 @@ import asyncio
 import codecs
 import functools
 import ipaddress
-import os
 import platform
 import socket
 
 from collections import OrderedDict
 from random import SystemRandom
-
-import asyncssh
 
 from .constants import DEFAULT_LANG
 
@@ -77,28 +74,6 @@ def get_symbol_names(symbols, prefix, strip_leading=0):
 
     return {value: name[strip_leading:] for name, value in symbols.items()
             if name.startswith(prefix)}
-
-
-# Default file names in .ssh directory to read private keys from
-_DEFAULT_KEY_FILES = ('id_ed25519', 'id_ecdsa', 'id_rsa', 'id_dsa')
-
-def load_default_keypairs(passphrase=None):
-    """Return a list of default keys from the user's home directory"""
-
-    result = []
-
-    for file in _DEFAULT_KEY_FILES:
-        try:
-            file = os.path.join(os.path.expanduser('~'), '.ssh', file)
-            result.extend(asyncssh.load_keypairs(file, passphrase))
-        except asyncssh.KeyImportError as exc:
-            # Ignore encrypted default keys if a passphrase isn't provided
-            if not str(exc).startswith('Passphrase'):
-                raise
-        except OSError:
-            pass
-
-    return result
 
 
 # Punctuation to map when creating handler names

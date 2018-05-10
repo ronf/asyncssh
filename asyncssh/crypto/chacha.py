@@ -17,13 +17,10 @@ import ctypes
 from .cipher import register_cipher
 
 
-class _Chacha20Poly1305Cipher:
-    """Handler for Chacha20-Poly1305 symmetric encryption"""
+class ChachaCipher:
+    """Shim for Chacha20-Poly1305 symmetric encryption"""
 
     def __init__(self, key):
-        if len(key) != 2 * _CHACHA20_KEYBYTES:
-            raise ValueError('Invalid chacha20-poly1305 key size')
-
         self._key = key[:_CHACHA20_KEYBYTES]
         self._adkey = key[_CHACHA20_KEYBYTES:]
 
@@ -73,50 +70,36 @@ class _Chacha20Poly1305Cipher:
 
         return _poly1305_verify(tag, data, datalen, polykey) == 0
 
-    def crypt_len(self, data, nonce):
-        """Encrypt/decrypt an SSH packet length value"""
+    def _crypt_len(self, header, nonce):
+        """Encrypt/decrypt header data"""
 
-        if len(nonce) != _CHACHA20_NONCEBYTES:
-            raise ValueError('Invalid chacha20-poly1305 nonce size')
-
-        return self._crypt(self._adkey, data, nonce)
+        return self._crypt(self._adkey, header, nonce)
 
     def encrypt_and_sign(self, header, data, nonce):
         """Encrypt and sign a block of data"""
 
-        if len(nonce) != _CHACHA20_NONCEBYTES:
-            raise ValueError('Invalid chacha20-poly1305 nonce size')
+        if header:
+            header = self._crypt_len(header, nonce)
 
-        ciphertext = self._crypt(self._key, data, nonce, 1)
-        tag = self._compute_tag(header + ciphertext, nonce)
+        data = self._crypt(self._key, data, nonce, 1)
+        tag = self._compute_tag(header + data, nonce)
 
-        return ciphertext, tag
+        return header + data, tag
 
-    def verify_and_decrypt(self, header, data, nonce, tag):
+    def decrypt_header(self, header, nonce):
+        """Decrypt header data"""
+
+        return self._crypt_len(header, nonce)
+
+    def verify_and_decrypt(self, header, data, nonce, mac):
         """Verify the signature of and decrypt a block of data"""
 
-        if len(nonce) != _CHACHA20_NONCEBYTES:
-            raise ValueError('Invalid chacha20-poly1305 nonce size')
-
-        if self._verify_tag(header + data, nonce, tag):
-            plaintext = self._crypt(self._key, data, nonce, 1)
+        if self._verify_tag(header + data, nonce, mac):
+            data = self._crypt(self._key, data, nonce, 1)
         else:
-            plaintext = None
+            data = None
 
-        return plaintext
-
-
-class _Chacha20Poly1305Factory:
-    """A factory which returns a shim for ChaCha20-Poly1305 encryption"""
-
-    block_size = 1
-    iv_size = 0
-
-    def new(self, key, iv=None, initial_bytes=0):
-        """Construct a new chacha20-poly1305 cipher object"""
-
-        # pylint: disable=no-self-use,unused-argument
-        return _Chacha20Poly1305Cipher(key)
+        return data
 
 
 try:
@@ -124,7 +107,6 @@ try:
     from libnacl import nacl
 
     _CHACHA20_KEYBYTES = nacl.crypto_stream_chacha20_keybytes()
-    _CHACHA20_NONCEBYTES = nacl.crypto_stream_chacha20_noncebytes()
 
     _chacha20 = nacl.crypto_stream_chacha20
     _chacha20_xor_ic = nacl.crypto_stream_chacha20_xor_ic
@@ -137,4 +119,4 @@ try:
 except (ImportError, OSError, AttributeError): # pragma: no cover
     pass
 else:
-    register_cipher('chacha20-poly1305', 'chacha', _Chacha20Poly1305Factory())
+    register_cipher('chacha20-poly1305', 64, 0, 1)

@@ -1,4 +1,4 @@
-# Copyright (c) 2014-2017 by Ron Frederick <ronf@timeheart.net>.
+# Copyright (c) 2014-2018 by Ron Frederick <ronf@timeheart.net>.
 # All rights reserved.
 #
 # This program and the accompanying materials are made available under
@@ -19,6 +19,7 @@ from cryptography.hazmat.primitives.hashes import SHA1, SHA256, SHA512
 from cryptography.hazmat.primitives.asymmetric import rsa
 
 from .misc import PyCAKey
+
 
 # Short variable names are used here, matching names in the spec
 # pylint: disable=invalid-name
@@ -120,7 +121,8 @@ class RSAPrivateKey(_RSAKey):
     def sign(self, data, algorithm):
         """Sign a block of data"""
 
-        return self.pyca_key.sign(data, PKCS1v15(), self.get_hash(algorithm))
+        priv_key = self.pyca_key
+        return priv_key.sign(data, PKCS1v15(), self.get_hash(algorithm))
 
 
 class RSAPublicKey(_RSAKey):
@@ -139,8 +141,8 @@ class RSAPublicKey(_RSAKey):
         """Verify the signature on a block of data"""
 
         try:
-            self.pyca_key.verify(sig, data, PKCS1v15(),
-                                 self.get_hash(algorithm))
+            pub_key = self.pyca_key
+            pub_key.verify(sig, data, PKCS1v15(), self.get_hash(algorithm))
             return True
         except InvalidSignature:
             return False

@@ -1,4 +1,4 @@
-# Copyright (c) 2016 by Ron Frederick <ronf@timeheart.net>.
+# Copyright (c) 2016-2018 by Ron Frederick <ronf@timeheart.net>.
 # All rights reserved.
 #
 # This program and the accompanying materials are made available under
@@ -20,7 +20,11 @@ import tempfile
 
 import asyncssh
 
+from .listener import create_unix_forward_listener
 from .logging import logger
+from .misc import ChannelOpenError
+from .packet import Byte, String, UInt32, PacketDecodeError, SSHPacket
+from .public_key import SSHKeyPair, load_default_keypairs
 
 
 try:
@@ -29,17 +33,13 @@ try:
     else:
         from .agent_unix import open_agent
 except ImportError as exc: # pragma: no cover
+    @asyncio.coroutine
     def open_agent(loop, agent_path, reason=str(exc)):
         """Dummy function if we're unable to import agent support"""
 
         # pylint: disable=unused-argument
 
         raise OSError(errno.ENOENT, 'Agent support unavailable: %s' % reason)
-
-from .listener import create_unix_forward_listener
-from .misc import ChannelOpenError, load_default_keypairs
-from .packet import Byte, String, UInt32, PacketDecodeError, SSHPacket
-from .public_key import SSHKeyPair
 
 
 # pylint: disable=bad-whitespace
@@ -77,7 +77,7 @@ SSH_AGENT_RSA_SHA2_512                   = 4
 # pylint: enable=bad-whitespace
 
 
-class _X11AgentListener:
+class _AgentListener:
     """Listener used to forward agent connections"""
 
     def __init__(self, tempdir, path, unix_listener):
@@ -103,7 +103,7 @@ class SSHAgentKeyPair(SSHKeyPair):
     _key_type = 'agent'
 
     def __init__(self, agent, algorithm, public_data, comment):
-        super().__init__(algorithm, comment)
+        super().__init__(algorithm, public_data, comment)
 
         self._agent = agent
         self.public_data = public_data
@@ -575,6 +575,6 @@ def create_agent_listener(conn, loop):
         unix_listener = yield from create_unix_forward_listener(
             conn, loop, conn.create_agent_connection, path)
 
-        return _X11AgentListener(tempdir, path, unix_listener)
+        return _AgentListener(tempdir, path, unix_listener)
     except OSError:
         return None

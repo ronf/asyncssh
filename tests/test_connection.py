@@ -1,4 +1,4 @@
-# Copyright (c) 2016-2017 by Ron Frederick <ronf@timeheart.net>.
+# Copyright (c) 2016-2018 by Ron Frederick <ronf@timeheart.net>.
 # All rights reserved.
 #
 # This program and the accompanying materials are made available under
@@ -19,7 +19,6 @@ import unittest
 from unittest.mock import patch
 
 import asyncssh
-from asyncssh.cipher import get_encryption_algs
 from asyncssh.constants import MSG_DEBUG
 from asyncssh.constants import MSG_SERVICE_REQUEST, MSG_SERVICE_ACCEPT
 from asyncssh.constants import MSG_KEXINIT, MSG_NEWKEYS
@@ -29,9 +28,10 @@ from asyncssh.constants import MSG_GLOBAL_REQUEST
 from asyncssh.constants import MSG_CHANNEL_OPEN, MSG_CHANNEL_OPEN_CONFIRMATION
 from asyncssh.constants import MSG_CHANNEL_OPEN_FAILURE, MSG_CHANNEL_DATA
 from asyncssh.compression import get_compression_algs
-from asyncssh.crypto.pyca.cipher import GCMShim
+from asyncssh.crypto.cipher import GCMCipher
+from asyncssh.encryption import get_encryption_algs
 from asyncssh.kex import get_kex_algs
-from asyncssh.mac import _HMAC, _mac_handlers, get_mac_algs
+from asyncssh.mac import _HMAC, _mac_handler, get_mac_algs
 from asyncssh.packet import Boolean, NameList, String, UInt32
 
 from .server import Server, ServerTestCase
@@ -117,17 +117,17 @@ def _failing_get_mac(alg, key):
 
             return super().verify(seq, packet + b'\xff', sig)
 
-    _, hash_size, args = _mac_handlers[alg]
+    _, hash_size, args = _mac_handler[alg]
     return _FailingMAC(key, hash_size, *args)
 
 
-class _FailingGCMShim(GCMShim):
+class _FailingGCMCipher(GCMCipher):
     """Test error in GCM tag verification"""
 
-    def verify_and_decrypt(self, header, data, tag):
+    def verify_and_decrypt(self, header, data, mac):
         """Verify the signature of and decrypt a block of data"""
 
-        return super().verify_and_decrypt(header, data + b'\xff', tag)
+        return super().verify_and_decrypt(header, data + b'\xff', mac)
 
 
 class _PreAuthRequestClient(asyncssh.SSHClient):
@@ -607,7 +607,7 @@ class _TestConnection(ServerTestCase):
     def test_mac_verify_error(self):
         """Test MAC validation failure"""
 
-        with patch('asyncssh.connection.get_mac', _failing_get_mac):
+        with patch('asyncssh.encryption.get_mac', _failing_get_mac):
             for mac in ('hmac-sha2-256-etm@openssh.com', 'hmac-sha2-256'):
                 with self.subTest(mac_alg=mac):
                     with self.assertRaises(asyncssh.DisconnectError):
@@ -618,7 +618,7 @@ class _TestConnection(ServerTestCase):
     def test_gcm_verify_error(self):
         """Test GCM tag validation failure"""
 
-        with patch('asyncssh.crypto.pyca.cipher.GCMShim', _FailingGCMShim):
+        with patch('asyncssh.encryption.GCMCipher', _FailingGCMCipher):
             with self.assertRaises(asyncssh.DisconnectError):
                 yield from self.connect(
                     encryption_algs=['aes128-gcm@openssh.com'])

@@ -1,4 +1,4 @@
-# Copyright (c) 2014-2017 by Ron Frederick <ronf@timeheart.net>.
+# Copyright (c) 2014-2018 by Ron Frederick <ronf@timeheart.net>.
 # All rights reserved.
 #
 # This program and the accompanying materials are made available under
@@ -18,6 +18,7 @@ from cryptography.hazmat.primitives.hashes import SHA1
 from cryptography.hazmat.primitives.asymmetric import dsa
 
 from .misc import PyCAKey
+
 
 # Short variable names are used here, matching names in the spec
 # pylint: disable=invalid-name
@@ -92,7 +93,8 @@ class DSAPrivateKey(_DSAKey):
     def sign(self, data):
         """Sign a block of data"""
 
-        return self.pyca_key.sign(data, SHA1())
+        priv_key = self.pyca_key
+        return priv_key.sign(data, SHA1())
 
 
 class DSAPublicKey(_DSAKey):
@@ -112,7 +114,8 @@ class DSAPublicKey(_DSAKey):
         """Verify the signature on a block of data"""
 
         try:
-            self.pyca_key.verify(sig, data, SHA1())
+            pub_key = self.pyca_key
+            pub_key.verify(sig, data, SHA1())
             return True
         except InvalidSignature:
             return False

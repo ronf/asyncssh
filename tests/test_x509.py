@@ -59,6 +59,10 @@ class _TestX509(unittest.TestCase):
         self.assertEqual(cert.subject, X509Name(subject))
         self.assertEqual(cert.issuer, X509Name(issuer if issuer else subject))
         self.assertEqual(cert.key_data, self._pubdata)
+
+        if isinstance(comment, str):
+            comment = comment.encode('utf-8')
+
         self.assertEqual(cert.comment, comment)
 
         return cert
@@ -101,6 +105,12 @@ class _TestX509(unittest.TestCase):
 
         self.assertEqual(cert.user_principals, ['name'])
         self.assertEqual(cert.host_principals, ['name'])
+
+    def test_comment(self):
+        """Test X.509 certificate generation with comment"""
+
+        self.generate_certificate(comment=b'comment')
+        self.generate_certificate(comment='comment')
 
     def test_unknown_hash(self):
         """Test X.509 certificate generation with unknown hash"""

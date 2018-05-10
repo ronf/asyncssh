@@ -1,4 +1,4 @@
-# Copyright (c) 2015 by Ron Frederick <ronf@timeheart.net>.
+# Copyright (c) 2015-2018 by Ron Frederick <ronf@timeheart.net>.
 # All rights reserved.
 #
 # This program and the accompanying materials are made available under
@@ -24,15 +24,15 @@ class _TestMAC(unittest.TestCase):
     def test_mac_algs(self):
         """Unit test MAC algorithms"""
 
-        for alg in get_mac_algs():
-            with self.subTest(alg=alg):
-                keysize, _, _ = get_mac_params(alg)
+        for mac_alg in get_mac_algs():
+            with self.subTest(mac_alg=mac_alg):
+                mac_keysize, _, _ = get_mac_params(mac_alg)
 
-                key = os.urandom(keysize)
+                mac_key = os.urandom(mac_keysize)
                 packet = os.urandom(256)
 
-                enc_mac = get_mac(alg, key)
-                dec_mac = get_mac(alg, key)
+                enc_mac = get_mac(mac_alg, mac_key)
+                dec_mac = get_mac(mac_alg, mac_key)
 
                 badpacket = bytearray(packet)
                 badpacket[-1] ^= 0xff
@@ -54,9 +54,9 @@ class _TestMAC(unittest.TestCase):
         except ImportError: # pragma: no cover
             self.skipTest('umac not available')
 
-        key = os.urandom(16)
+        mac_key = os.urandom(16)
 
-        mac1 = umac32(key)
+        mac1 = umac32(mac_key)
         mac1.update(b'test')
 
         mac2 = mac1.copy()

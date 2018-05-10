@@ -17,7 +17,7 @@ import os
 from hashlib import md5, sha1
 
 from .asn1 import ASN1DecodeError, ObjectIdentifier, der_encode, der_decode
-from .crypto import lookup_cipher, pbkdf2_hmac
+from .crypto import BasicCipher, get_cipher_params, pbkdf2_hmac
 
 
 # pylint: disable=bad-whitespace
@@ -50,17 +50,20 @@ _ES2_SHA512     = ObjectIdentifier('1.2.840.113549.2.11')
 
 # pylint: enable=bad-whitespace
 
-_pkcs1_ciphers = {}
-_pkcs8_ciphers = {}
-_pbes2_ciphers = {}
-_pbes2_kdfs = {}
-_pbes2_prfs = {}
+_pkcs1_cipher = {}
+_pkcs1_dek_name = {}
 
-_pkcs1_cipher_names = {}
-_pkcs8_cipher_suites = {}
-_pbes2_cipher_names = {}
-_pbes2_kdf_names = {}
-_pbes2_prf_names = {}
+_pkcs8_handler = {}
+_pkcs8_cipher_oid = {}
+
+_pbes2_cipher = {}
+_pbes2_cipher_oid = {}
+
+_pbes2_kdf = {}
+_pbes2_kdf_oid = {}
+
+_pbes2_prf = {}
+_pbes2_prf_oid = {}
 
 
 class KeyEncryptionError(ValueError):
@@ -82,9 +85,9 @@ class _RFC1423Pad:
 
     """
 
-    def __init__(self, cipher, key, iv):
-        self._cipher = cipher.new(key, iv)
-        self._block_size = cipher.block_size
+    def __init__(self, cipher_name, block_size, key, iv):
+        self._cipher = BasicCipher(cipher_name, key, iv)
+        self._block_size = block_size
 
     def encrypt(self, data):
         """Pad data before encrypting it"""
@@ -176,7 +179,7 @@ def _pbkdf_p12(hash_alg, passphrase, salt, count, key_size, idx):
     return key[:key_size]
 
 
-def _pbes1(params, passphrase, hash_alg, cipher, key_size):
+def _pbes1(params, passphrase, hash_alg, cipher_name):
     """PKCS#5 v1.5 cipher selection function for password-based encryption
 
        This function implements the PKCS#5 v1.5 algorithm for password-based
@@ -192,14 +195,15 @@ def _pbes1(params, passphrase, hash_alg, cipher, key_size):
         raise KeyEncryptionError('Invalid PBES1 encryption parameters')
 
     salt, count = params
-    key = _pbkdf1(hash_alg, passphrase, salt, count,
-                  key_size + cipher.block_size)
+
+    key_size, iv_size, block_size = get_cipher_params(cipher_name)
+    key = _pbkdf1(hash_alg, passphrase, salt, count, key_size + iv_size)
     key, iv = key[:key_size], key[key_size:]
 
-    return _RFC1423Pad(cipher, key, iv)
+    return _RFC1423Pad(cipher_name, block_size, key, iv)
 
 
-def _pbe_p12(params, passphrase, hash_alg, cipher, key_size):
+def _pbe_p12(params, passphrase, hash_alg, cipher_name):
     """PKCS#12 cipher selection function for password-based encryption
 
        This function implements the PKCS#12 algorithm for password-based
@@ -215,19 +219,20 @@ def _pbe_p12(params, passphrase, hash_alg, cipher, key_size):
         raise KeyEncryptionError('Invalid PBES1 PKCS#12 encryption parameters')
 
     salt, count = params
+
+    key_size, iv_size, block_size = get_cipher_params(cipher_name)
     key = _pbkdf_p12(hash_alg, passphrase, salt, count, key_size, 1)
 
-    if cipher.block_size == 1:
-        cipher = cipher.new(key)
+    if block_size == 1:
+        cipher = BasicCipher(cipher_name, key, b'')
     else:
-        iv = _pbkdf_p12(hash_alg, passphrase, salt, count,
-                        cipher.block_size, 2)
-        cipher = _RFC1423Pad(cipher, key, iv)
+        iv = _pbkdf_p12(hash_alg, passphrase, salt, count, iv_size, 2)
+        cipher = _RFC1423Pad(cipher_name, block_size, key, iv)
 
     return cipher
 
 
-def _pbes2_iv(params, key, cipher):
+def _pbes2_iv(enc_params, cipher_name, key):
     """PKCS#5 v2.0 handler for PBES2 ciphers with an IV as a parameter
 
        This function returns the appropriate cipher object to use for
@@ -236,16 +241,18 @@ def _pbes2_iv(params, key, cipher):
 
     """
 
-    if len(params) != 1 or not isinstance(params[0], bytes):
+    _, iv_size, block_size = get_cipher_params(cipher_name)
+
+    if len(enc_params) != 1 or not isinstance(enc_params[0], bytes):
         raise KeyEncryptionError('Invalid PBES2 encryption parameters')
 
-    if len(params[0]) != cipher.block_size:
+    if len(enc_params[0]) != iv_size:
         raise KeyEncryptionError('Invalid length IV for PBES2 encryption')
 
-    return _RFC1423Pad(cipher, key, params[0])
+    return _RFC1423Pad(cipher_name, block_size, key, enc_params[0])
 
 
-def _pbes2_pbkdf2(params, passphrase, default_key_size):
+def _pbes2_pbkdf2(kdf_params, passphrase, default_key_size):
     """PKCS#5 v2.0 handler for PBKDF2 key derivation
 
        This function parses the PBKDF2 arguments from a PKCS#8 encrypted key
@@ -253,29 +260,30 @@ def _pbes2_pbkdf2(params, passphrase, default_key_size):
 
     """
 
-    if (len(params) != 1 or not isinstance(params[0], tuple) or
-            len(params[0]) < 2):
+    if (len(kdf_params) != 1 or not isinstance(kdf_params[0], tuple) or
+            len(kdf_params[0]) < 2):
         raise KeyEncryptionError('Invalid PBES2 key derivation parameters')
 
-    params = list(params[0])
+    kdf_params = list(kdf_params[0])
 
-    if not isinstance(params[0], bytes) or not isinstance(params[1], int):
+    if (not isinstance(kdf_params[0], bytes) or
+            not isinstance(kdf_params[1], int)):
         raise KeyEncryptionError('Invalid PBES2 key derivation parameters')
 
-    salt = params.pop(0)
-    count = params.pop(0)
+    salt = kdf_params.pop(0)
+    count = kdf_params.pop(0)
 
-    if params and isinstance(params[0], int):
-        key_size = params.pop(0)    # pragma: no cover, used only by RC2
+    if kdf_params and isinstance(kdf_params[0], int):
+        key_size = kdf_params.pop(0)    # pragma: no cover, used only by RC2
     else:
         key_size = default_key_size
 
-    if params:
-        if (isinstance(params[0], tuple) and len(params[0]) == 2 and
-                isinstance(params[0][0], ObjectIdentifier)):
-            prf_alg = params[0][0]
-            if prf_alg in _pbes2_prfs:
-                hash_name = _pbes2_prfs[prf_alg]
+    if kdf_params:
+        if (isinstance(kdf_params[0], tuple) and len(kdf_params[0]) == 2 and
+                isinstance(kdf_params[0][0], ObjectIdentifier)):
+            prf_alg = kdf_params[0][0]
+            if prf_alg in _pbes2_prf:
+                hash_name = _pbes2_prf[prf_alg]
             else:
                 raise KeyEncryptionError('Unknown PBES2 pseudo-random '
                                          'function')
@@ -309,68 +317,61 @@ def _pbes2(params, passphrase):
     kdf_params = list(params[0])
 
     kdf_alg = kdf_params.pop(0)
-    if kdf_alg not in _pbes2_kdfs:
+    if kdf_alg not in _pbes2_kdf:
         raise KeyEncryptionError('Unknown PBES2 key derivation function')
 
     enc_params = list(params[1])
 
     enc_alg = enc_params.pop(0)
-    if enc_alg not in _pbes2_ciphers:
+    if enc_alg not in _pbes2_cipher:
         raise KeyEncryptionError('Unknown PBES2 encryption algorithm')
 
-    kdf_handler, kdf_args = _pbes2_kdfs[kdf_alg]
-    enc_handler, cipher, default_key_size = _pbes2_ciphers[enc_alg]
+    kdf_handler, kdf_args = _pbes2_kdf[kdf_alg]
+    enc_handler, cipher_name = _pbes2_cipher[enc_alg]
+    default_key_size, _, _ = get_cipher_params(cipher_name)
 
     key = kdf_handler(kdf_params, passphrase, default_key_size, *kdf_args)
-    return enc_handler(enc_params, key, cipher)
+    return enc_handler(enc_params, cipher_name, key)
 
 
-def register_pkcs1_cipher(cipher_name, alg, cipher, mode, key_size):
+def register_pkcs1_cipher(pkcs1_cipher_name, pkcs1_dek_name, cipher_name):
     """Register a cipher used for PKCS#1 private key encryption"""
 
-    cipher = lookup_cipher(cipher, mode)
-
-    if cipher: # pragma: no branch
-        _pkcs1_ciphers[alg] = (cipher, key_size)
-        _pkcs1_cipher_names[cipher_name] = alg
+    _pkcs1_cipher[pkcs1_dek_name] = cipher_name
+    _pkcs1_dek_name[pkcs1_cipher_name] = pkcs1_dek_name
 
 
-def register_pkcs8_cipher(cipher_name, hash_name, alg, handler, hash_alg,
-                          cipher, mode, key_size):
+def register_pkcs8_cipher(pkcs8_cipher_name, hash_name, pkcs8_cipher_oid,
+                          handler, hash_alg, cipher_name):
     """Register a cipher used for PKCS#8 private key encryption"""
 
-    cipher = lookup_cipher(cipher, mode)
-
-    if cipher: # pragma: no branch
-        _pkcs8_ciphers[alg] = (handler, hash_alg, cipher, key_size)
-        _pkcs8_cipher_suites[cipher_name, hash_name] = alg
+    _pkcs8_handler[pkcs8_cipher_oid] = (handler, hash_alg, cipher_name)
+    _pkcs8_cipher_oid[pkcs8_cipher_name, hash_name] = pkcs8_cipher_oid
 
 
-def register_pbes2_cipher(cipher_name, alg, handler, cipher, mode, key_size):
+def register_pbes2_cipher(pbes2_cipher_name, pbes2_cipher_oid,
+                          handler, cipher_name):
     """Register a PBES2 encryption algorithm"""
 
-    cipher = lookup_cipher(cipher, mode)
-
-    if cipher: # pragma: no branch
-        _pbes2_ciphers[alg] = (handler, cipher, key_size)
-        _pbes2_cipher_names[cipher_name] = (alg, key_size)
+    _pbes2_cipher[pbes2_cipher_oid] = (handler, cipher_name)
+    _pbes2_cipher_oid[pbes2_cipher_name] = pbes2_cipher_oid
 
 
-def register_pbes2_kdf(kdf_name, alg, handler, *args):
+def register_pbes2_kdf(kdf_name, kdf_oid, handler, *args):
     """Register a PBES2 key derivation function"""
 
-    _pbes2_kdfs[alg] = (handler, args)
-    _pbes2_kdf_names[kdf_name] = alg
+    _pbes2_kdf[kdf_oid] = (handler, args)
+    _pbes2_kdf_oid[kdf_name] = kdf_oid
 
 
-def register_pbes2_prf(hash_name, alg):
+def register_pbes2_prf(hash_name, prf_oid):
     """Register a PBES2 pseudo-random function"""
 
-    _pbes2_prfs[alg] = hash_name
-    _pbes2_prf_names[hash_name] = alg
+    _pbes2_prf[prf_oid] = hash_name
+    _pbes2_prf_oid[hash_name] = prf_oid
 
 
-def pkcs1_encrypt(data, cipher, passphrase):
+def pkcs1_encrypt(data, pkcs1_cipher_name, passphrase):
     """Encrypt PKCS#1 key data
 
        This function encrypts PKCS#1 key data using the specified cipher
@@ -380,20 +381,21 @@ def pkcs1_encrypt(data, cipher, passphrase):
 
     """
 
-    if cipher in _pkcs1_cipher_names:
-        alg = _pkcs1_cipher_names[cipher]
-        cipher, key_size = _pkcs1_ciphers[alg]
+    if pkcs1_cipher_name in _pkcs1_dek_name:
+        pkcs1_dek_name = _pkcs1_dek_name[pkcs1_cipher_name]
+        cipher_name = _pkcs1_cipher[pkcs1_dek_name]
+        key_size, iv_size, block_size = get_cipher_params(cipher_name)
 
-        iv = os.urandom(cipher.block_size)
+        iv = os.urandom(iv_size)
         key = _pbkdf1(md5, passphrase, iv[:8], 1, key_size)
 
-        cipher = _RFC1423Pad(cipher, key, iv)
-        return alg, iv, cipher.encrypt(data)
+        cipher = _RFC1423Pad(cipher_name, block_size, key, iv)
+        return pkcs1_dek_name, iv, cipher.encrypt(data)
     else:
         raise KeyEncryptionError('Unknown PKCS#1 encryption algorithm')
 
 
-def pkcs1_decrypt(data, alg, iv, passphrase):
+def pkcs1_decrypt(data, pkcs1_dek_name, iv, passphrase):
     """Decrypt PKCS#1 key data
 
        This function decrypts PKCS#1 key data using the specified algorithm,
@@ -402,17 +404,18 @@ def pkcs1_decrypt(data, alg, iv, passphrase):
 
     """
 
-    if alg in _pkcs1_ciphers:
-        cipher, key_size = _pkcs1_ciphers[alg]
+    if pkcs1_dek_name in _pkcs1_cipher:
+        cipher_name = _pkcs1_cipher[pkcs1_dek_name]
+        key_size, _, block_size = get_cipher_params(cipher_name)
         key = _pbkdf1(md5, passphrase, iv[:8], 1, key_size)
 
-        cipher = _RFC1423Pad(cipher, key, iv)
+        cipher = _RFC1423Pad(cipher_name, block_size, key, iv)
         return cipher.decrypt(data)
     else:
         raise KeyEncryptionError('Unknown PKCS#1 encryption algorithm')
 
 
-def pkcs8_encrypt(data, cipher_name, hash_name, version, passphrase):
+def pkcs8_encrypt(data, pkcs8_cipher_name, hash_name, version, passphrase):
     """Encrypt PKCS#8 key data
 
        This function encrypts PKCS#8 key data using the specified cipher,
@@ -433,24 +436,25 @@ def pkcs8_encrypt(data, cipher_name, hash_name, version, passphrase):
 
     """
 
-    if version == 1 and (cipher_name, hash_name) in _pkcs8_cipher_suites:
-        alg = _pkcs8_cipher_suites[cipher_name, hash_name]
-        handler, hash_alg, cipher, key_size = _pkcs8_ciphers[alg]
+    if version == 1 and (pkcs8_cipher_name, hash_name) in _pkcs8_cipher_oid:
+        pkcs8_cipher_oid = _pkcs8_cipher_oid[pkcs8_cipher_name, hash_name]
+        handler, hash_alg, cipher_name = _pkcs8_handler[pkcs8_cipher_oid]
 
+        alg = pkcs8_cipher_oid
         params = (os.urandom(8), 2048)
-        cipher = handler(params, passphrase, hash_alg, cipher, key_size)
-        return der_encode(((alg, params), cipher.encrypt(data)))
-    elif version == 2 and cipher_name in _pbes2_cipher_names:
-        enc_alg, key_size = _pbes2_cipher_names[cipher_name]
-        _, cipher, _ = _pbes2_ciphers[enc_alg]
+        cipher = handler(params, passphrase, hash_alg, cipher_name)
+    elif version == 2 and pkcs8_cipher_name in _pbes2_cipher_oid:
+        pbes2_cipher_oid = _pbes2_cipher_oid[pkcs8_cipher_name]
+        _, cipher_name = _pbes2_cipher[pbes2_cipher_oid]
+        _, iv_size, _ = get_cipher_params(cipher_name)
 
         kdf_params = [os.urandom(8), 2048]
-        iv = os.urandom(cipher.block_size)
-        enc_params = (enc_alg, iv)
+        iv = os.urandom(iv_size)
+        enc_params = (pbes2_cipher_oid, iv)
 
         if hash_name != 'sha1':
-            if hash_name in _pbes2_prf_names:
-                kdf_params.append((_pbes2_prf_names[hash_name], None))
+            if hash_name in _pbes2_prf_oid:
+                kdf_params.append((_pbes2_prf_oid[hash_name], None))
             else:
                 raise KeyEncryptionError('Unknown PBES2 hash function')
 
@@ -484,9 +488,9 @@ def pkcs8_decrypt(key_data, passphrase):
 
     if alg == _ES2:
         cipher = _pbes2(params, passphrase)
-    elif alg in _pkcs8_ciphers:
-        handler, hash_alg, cipher, key_size = _pkcs8_ciphers[alg]
-        cipher = handler(params, passphrase, hash_alg, cipher, key_size)
+    elif alg in _pkcs8_handler:
+        handler, hash_alg, cipher_name = _pkcs8_handler[alg]
+        cipher = handler(params, passphrase, hash_alg, cipher_name)
     else:
         raise KeyEncryptionError('Unknown PKCS#8 encryption algorithm')
 
@@ -499,31 +503,31 @@ def pkcs8_decrypt(key_data, passphrase):
 # pylint: disable=bad-whitespace
 
 _pkcs1_cipher_list = (
-    ('aes128-cbc', b'AES-128-CBC',  'aes',  'cbc', 16),
-    ('aes192-cbc', b'AES-192-CBC',  'aes',  'cbc', 24),
-    ('aes256-cbc', b'AES-256-CBC',  'aes',  'cbc', 32),
-    ('des-cbc',    b'DES-CBC',      'des',  'cbc', 8),
-    ('des3-cbc',   b'DES-EDE3-CBC', 'des3', 'cbc', 24)
+    ('aes128-cbc', b'AES-128-CBC',  'aes128-cbc'),
+    ('aes192-cbc', b'AES-192-CBC',  'aes192-cbc'),
+    ('aes256-cbc', b'AES-256-CBC',  'aes256-cbc'),
+    ('des-cbc',    b'DES-CBC',      'des-cbc'),
+    ('des3-cbc',   b'DES-EDE3-CBC', 'des3-cbc')
 )
 
 _pkcs8_cipher_list = (
-    ('des-cbc',     'md5',  _ES1_MD5_DES,  _pbes1,   md5,  'des',  'cbc', 8),
-    ('des-cbc',     'sha1', _ES1_SHA1_DES, _pbes1,   sha1, 'des',  'cbc', 8),
+    ('des-cbc', 'md5',  _ES1_MD5_DES,  _pbes1,   md5,  'des-cbc'),
+    ('des-cbc', 'sha1', _ES1_SHA1_DES, _pbes1,   sha1, 'des-cbc'),
 
-    ('des2-cbc',    'sha1', _P12_DES2,     _pbe_p12, sha1, 'des3', 'cbc', 16),
-    ('des3-cbc',    'sha1', _P12_DES3,     _pbe_p12, sha1, 'des3', 'cbc', 24),
-    ('rc4-40',      'sha1', _P12_RC4_40,   _pbe_p12, sha1, 'arc4', None,  5),
-    ('rc4-128',     'sha1', _P12_RC4_128,  _pbe_p12, sha1, 'arc4', None,  16)
+    ('des2-cbc','sha1', _P12_DES2,     _pbe_p12, sha1, 'des2-cbc'),
+    ('des3-cbc','sha1', _P12_DES3,     _pbe_p12, sha1, 'des3-cbc'),
+    ('rc4-40',  'sha1', _P12_RC4_40,   _pbe_p12, sha1, 'arcfour40'),
+    ('rc4-128', 'sha1', _P12_RC4_128,  _pbe_p12, sha1, 'arcfour')
 )
 
 _pbes2_cipher_list = (
-    ('aes128-cbc',   _ES2_AES128,  _pbes2_iv,  'aes',      'cbc', 16),
-    ('aes192-cbc',   _ES2_AES192,  _pbes2_iv,  'aes',      'cbc', 24),
-    ('aes256-cbc',   _ES2_AES256,  _pbes2_iv,  'aes',      'cbc', 32),
-    ('blowfish-cbc', _ES2_BF,      _pbes2_iv,  'blowfish', 'cbc', 16),
-    ('cast128-cbc',  _ES2_CAST128, _pbes2_iv,  'cast',     'cbc', 16),
-    ('des-cbc',      _ES2_DES,     _pbes2_iv,  'des',      'cbc', 8),
-    ('des3-cbc',     _ES2_DES3,    _pbes2_iv,  'des3',     'cbc', 24)
+    ('aes128-cbc',   _ES2_AES128,  _pbes2_iv,  'aes128-cbc'),
+    ('aes192-cbc',   _ES2_AES192,  _pbes2_iv,  'aes192-cbc'),
+    ('aes256-cbc',   _ES2_AES256,  _pbes2_iv,  'aes256-cbc'),
+    ('blowfish-cbc', _ES2_BF,      _pbes2_iv,  'blowfish-cbc'),
+    ('cast128-cbc',  _ES2_CAST128, _pbes2_iv,  'cast128-cbc'),
+    ('des-cbc',      _ES2_DES,     _pbes2_iv,  'des-cbc'),
+    ('des3-cbc',     _ES2_DES3,    _pbes2_iv,  'des3-cbc')
 )
 
 _pbes2_kdf_list = (
@@ -531,24 +535,24 @@ _pbes2_kdf_list = (
 )
 
 _pbes2_prf_list = (
-    ('sha1',       _ES2_SHA1),
-    ('sha224',     _ES2_SHA224),
-    ('sha256',     _ES2_SHA256),
-    ('sha384',     _ES2_SHA384),
-    ('sha512',     _ES2_SHA512)
+    ('sha1',   _ES2_SHA1),
+    ('sha224', _ES2_SHA224),
+    ('sha256', _ES2_SHA256),
+    ('sha384', _ES2_SHA384),
+    ('sha512', _ES2_SHA512)
 )
 
-for _args in _pkcs1_cipher_list:
-    register_pkcs1_cipher(*_args)
+for _pkcs1_cipher_args in _pkcs1_cipher_list:
+    register_pkcs1_cipher(*_pkcs1_cipher_args)
 
-for _args in _pkcs8_cipher_list:
-    register_pkcs8_cipher(*_args)
+for _pkcs8_cipher_args in _pkcs8_cipher_list:
+    register_pkcs8_cipher(*_pkcs8_cipher_args)
 
-for _args in _pbes2_cipher_list:
-    register_pbes2_cipher(*_args)
+for _pbes2_cipher_args in _pbes2_cipher_list:
+    register_pbes2_cipher(*_pbes2_cipher_args)
 
-for _args in _pbes2_kdf_list:
-    register_pbes2_kdf(*_args)
+for _pbes2_kdf_args in _pbes2_kdf_list:
+    register_pbes2_kdf(*_pbes2_kdf_args)
 
-for _args in _pbes2_prf_list:
-    register_pbes2_prf(*_args)
+for _pbes2_prf_args in _pbes2_prf_list:
+    register_pbes2_prf(*_pbes2_prf_args)
