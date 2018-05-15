@@ -281,7 +281,7 @@ class X509Certificate:
 def generate_x509_certificate(signing_key, key, subject, issuer, serial,
                               valid_after, valid_before, ca, ca_path_len,
                               purposes, user_principals, host_principals,
-                              hash_alg_, comment):
+                              hash_alg, comment):
     """Generate a new X.509 certificate"""
 
     builder = x509.CertificateBuilder()
@@ -350,7 +350,7 @@ def generate_x509_certificate(signing_key, key, subject, issuer, serial,
             x509.UnrecognizedExtension(_nscomment_oid, comment), critical=False)
 
     try:
-        hash_alg = _hashes[hash_alg_]()
+        hash_alg = _hashes[hash_alg]()
     except KeyError:
         raise ValueError('Unknown hash algorithm') from None
 
