@@ -143,7 +143,14 @@ def _setstat(path, attrs):
 def _glob(fs, basedir, patlist, result):
     """Recursively match a glob pattern"""
 
-    pattern, patlist = patlist[0], patlist[1:]
+    pattern, newpatlist = patlist[0], patlist[1:]
+
+    if not pattern and not newpatlist:
+        result.append(basedir)
+        return
+
+    if pattern == b'**':
+        yield from _glob(fs, basedir, newpatlist, result)
 
     names = yield from fs.listdir(basedir or b'.')
 
@@ -160,13 +167,16 @@ def _glob(fs, basedir, patlist, result):
             else:
                 newbase = name
 
-            if not patlist:
+            if not newpatlist:
                 result.append(newbase)
             else:
                 attrs = yield from fs.stat(newbase)
 
                 if stat.S_ISDIR(attrs.permissions):
-                    yield from _glob(fs, newbase, patlist, result)
+                    if pattern == b'**':
+                        yield from _glob(fs, newbase, patlist, result)
+                    else:
+                        yield from _glob(fs, newbase, newpatlist, result)
 
 
 @asyncio.coroutine
@@ -176,7 +186,7 @@ def match_glob(fs, pattern, error_handler=None):
     names = []
 
     try:
-        if any(c in pattern for c in b'*?'):
+        if any(c in pattern for c in b'*?[]'):
             patlist = pattern.split(b'/')
 
             if not patlist[0]:
@@ -2225,7 +2235,7 @@ class SFTPClient:
 
            The arguments to this method are identical to the :meth:`get`
            method, except that the remote paths specified can contain
-           '*' and '?' wildcard characters.
+           wildcard patterns.
 
         """
 
@@ -2250,7 +2260,7 @@ class SFTPClient:
 
            The arguments to this method are identical to the :meth:`put`
            method, except that the local paths specified can contain
-           '*' and '?' wildcard characters.
+           wildcard patterns.
 
         """
 
@@ -2275,7 +2285,7 @@ class SFTPClient:
 
            The arguments to this method are identical to the :meth:`copy`
            method, except that the source paths specified can contain
-           '*' and '?' wildcard characters.
+           wildcard patterns.
 
         """
 
@@ -2295,6 +2305,12 @@ class SFTPClient:
            This method matches remote files against one or more glob
            patterns. Either a single pattern or a sequence of patterns
            can be provided to match against.
+
+           Supported wildcard characters include '*', '?', and
+           character ranges in square brackets. In addition, '**'
+           can be used to trigger a recursive directory search at
+           that point in the pattern, and a trailing slash can be
+           used to request that only directories get returned.
 
            If error_handler is specified and an error occurs during
            the match, this handler will be called with the exception

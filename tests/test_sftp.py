@@ -728,6 +728,12 @@ class _TestSFTP(_CheckSFTP):
                              ['file1', 'filedir'])
             self.assertEqual(sorted((yield from sftp.glob(['file*/*2']))),
                              ['filedir/file2'])
+            self.assertEqual(sorted((yield from sftp.glob(['file*/*[3-9]']))),
+                             ['filedir/file3'])
+            self.assertEqual(sorted((yield from sftp.glob(['**/file[12]']))),
+                             ['file1', 'filedir/file2'])
+            self.assertEqual(sorted((yield from sftp.glob(['**/file*/']))),
+                             ['filedir'])
             self.assertEqual((yield from sftp.glob([b'fil*1', 'fil*dir'])),
                              [b'file1', 'filedir'])
         finally:
