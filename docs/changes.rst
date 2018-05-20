@@ -3,6 +3,54 @@
 Change Log
 ==========
 
+Release 1.13.0 (20 May 2018)
+----------------------------
+
+* Added support for dynamic port forwarding via SOCKS, where AsyncSSH
+  will open a listener which understands SOCKS connect requests and
+  for each request open a TCP/IP tunnel over SSH to the requested host
+  and port.
+
+* Added support in SSHProcess for I/O redirection to file objects that
+  implement read(), write(), and close() functions as coroutines, such
+  as the "aiofiles" package. In such cases, AsyncSSH will automaically
+  detect that it needs to make async calls to these methods when it
+  performs I/O.
+
+* Added support for using pathlib objects in SSHProcess I/O redirection.
+
+* Added multiple improvements to pattern matching support in the SFTPClient
+  glob(), mget(), mput(), and mcopy() methods. AsyncSSH now allows you
+  to use '**' in a pattern to do a recursive directory search, allows
+  character ranges in square brackets in a pattern, and allows a trailing
+  slash in a pattern to be specified to request that only directories
+  matching the pattern should be returned.
+
+* Fixed an issue with calling readline() and readuntil() with a timeout,
+  where partial data received before the timeout was sometimes discarded.
+  Any partial data which was received when a timeout occurs will now be
+  left in the input buffer, so it is still available to future read()
+  calls.
+
+* Fixed a race condition where trying to restart a read() after a timeout
+  could sometimes raise an exception about multiple simultaneous reads.
+
+* Changed readuntil() in SSHReader to raise IncompleteReadError if the
+  receive window fills up before a delimiter match is found. This also
+  applies to readline(), which will return a partial line without a
+  newline at the end when this occurs. To support longer lines, a caller
+  can call readuntil() or readline() as many times as they'd like,
+  appending the data returned to the previous partial data until a
+  delimiter is found or some maximum size is exceeded. Since the default
+  window size is 2 MBytes, though, it's very unlikely this will be needed
+  in most applications.
+
+* Reworked the crypto support in AsyncSSH to separate packet encryption
+  and decryption into its own module and simplified the directory
+  structure of the asyncssh.crypto package, eliminating a pyca subdirectory
+  that was created back when AsyncSSH used a mix of PyCA and PyCrypto.
+
+
 Release 1.12.2 (17 Apr 2018)
 ----------------------------
 
