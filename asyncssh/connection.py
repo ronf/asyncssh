@@ -2445,7 +2445,7 @@ class SSHClientConnection(SSHConnection):
         """Close a remote TCP/IP listener"""
 
         yield from self._make_global_request(
-            b'cancel-tcpip-forward', String(listen_host), UInt32(listen_port))
+            b'cancel-tcpip-forward', listen_host.encode(), UInt32(listen_port))
 
         self.logger.info('Closed remote TCP listener on %s',
                          (listen_host, listen_port))
