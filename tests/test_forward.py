@@ -660,16 +660,17 @@ class _TestTCPForwarding(_CheckForwarding):
         with (yield from self.connect()) as conn:
             listener = yield from conn.forward_remote_port('', 0, '',
                                                            server_port)
-
+        
             yield from self._check_local_connection(listener.get_port())
-
+            used_port = listener.get_port()
             listener.close()
             yield from listener.wait_closed()
             # Verify the port is available again.            
-            listener = yield from conn.forward_remote_port('', 0, '',
+            listener = yield from conn.forward_remote_port('', used_port, '',
                                                            server_port)
-            
-            yield from self._check_local_connection(listener.get_port())
+            self.assertIsNotNone(listener)
+            yield from listener.close()
+            yield from listener.wait_closed()
 
         yield from conn.wait_closed()
 
