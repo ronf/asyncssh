@@ -665,7 +665,9 @@ class _TestTCPForwarding(_CheckForwarding):
             used_port = listener.get_port()
             listener.close()
             yield from listener.wait_closed()
+            
             # Verify the port is available again.            
+            yield from asyncio.sleep(0.5)
             listener = yield from conn.forward_remote_port('', used_port, '',
                                                            server_port)
             self.assertIsNotNone(listener)
