@@ -649,7 +649,33 @@ class _TestTCPForwarding(_CheckForwarding):
             self.assertIsNone(listener)
 
         yield from conn.wait_closed()
+    
+    @asynctest
+    def test_forward_remote_port_closed(self):
+        """Test forward remote port closes currectly."""
+        server = yield from asyncio.start_server(echo, None, 0,
+                                                 family=socket.AF_INET)
+        server_port = server.sockets[0].getsockname()[1]
 
+        with (yield from self.connect()) as conn:
+            listener = yield from conn.forward_remote_port('', 0, '',
+                                                           server_port)
+
+            yield from self._check_local_connection(listener.get_port())
+
+            listener.close()
+            yield from listener.wait_closed()
+            # Verify the port is available again.            
+            listener = yield from conn.forward_remote_port('', 0, '',
+                                                           server_port)
+            
+            yield from self._check_local_connection(listener.get_port())
+
+        yield from conn.wait_closed()
+
+        server.close()
+        yield from server.wait_closed()
+        
     @asynctest
     def test_cancel_forward_remote_port_invalid_unicode(self):
         """Test canceling TCP/IP forwarding with invalid Unicode in host"""
