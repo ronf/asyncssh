@@ -1273,6 +1273,18 @@ class SSHConnection(SSHPacketHandler):
         kex_algs = expand_kex_algs(self._kex_algs, gss_mechs,
                                    bool(self._server_host_key_algs))
 
+        self.logger.debug1('Received key exchange request')
+        self.logger.debug2('  Key exchange algs: %s', peer_kex_algs)
+        self.logger.debug2('  Host key algs: %s', peer_host_key_algs)
+        self.logger.debug2('  Client to server:')
+        self.logger.debug2('    Encryption algs: %s', enc_algs_cs)
+        self.logger.debug2('    MAC algs: %s', mac_algs_cs)
+        self.logger.debug2('    Compression algs: %s', cmp_algs_cs)
+        self.logger.debug2('  Server to client:')
+        self.logger.debug2('    Encryption algs: %s', enc_algs_sc)
+        self.logger.debug2('    MAC algs: %s', mac_algs_sc)
+        self.logger.debug2('    Compression algs: %s', cmp_algs_sc)
+
         kex_alg = self._choose_alg('key exchange', kex_algs, peer_kex_algs)
         self._kex = get_kex(self, kex_alg)
         self._ignore_first_kex = (first_kex_follows and
