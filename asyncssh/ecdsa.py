@@ -297,7 +297,8 @@ class _ECKey(SSHKey):
 
 for _curve_id, _oid in ((b'nistp521', '1.3.132.0.35'),
                         (b'nistp384', '1.3.132.0.34'),
-                        (b'nistp256', '1.2.840.10045.3.1.7')):
+                        (b'nistp256', '1.2.840.10045.3.1.7'),
+                        (b'1.3.132.0.10', '1.3.132.0.10')):
     _algorithm = b'ecdsa-sha2-' + _curve_id
     _cert_algorithm = _algorithm + b'-cert-v01@openssh.com'
     _x509_algorithm = b'x509v3-' + _algorithm

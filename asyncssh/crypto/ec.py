@@ -23,9 +23,10 @@ from .misc import PyCAKey
 # Short variable names are used here, matching names in the spec
 # pylint: disable=invalid-name
 
-_curves = {b'nistp256': (ec.SECP256R1, SHA256),
-           b'nistp384': (ec.SECP384R1, SHA384),
-           b'nistp521': (ec.SECP521R1, SHA512)} # type: _Curves
+_curves = {b'1.3.132.0.10': (ec.SECP256K1, SHA256),
+           b'nistp256':     (ec.SECP256R1, SHA256),
+           b'nistp384':     (ec.SECP384R1, SHA384),
+           b'nistp521':     (ec.SECP521R1, SHA512)}
 
 
 class _ECKey(PyCAKey):

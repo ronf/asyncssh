@@ -141,6 +141,7 @@ except ImportError: # pragma: no cover
 else:
     for _curve_id, _hash_alg in ((b'nistp521', sha512),
                                  (b'nistp384', sha384),
-                                 (b'nistp256', sha256)):
+                                 (b'nistp256', sha256),
+                                 (b'1.3.132.0.10', sha256)):
         register_kex_alg(b'ecdh-sha2-' + _curve_id, _KexECDH,
                          _hash_alg, ECDH, _curve_id)
