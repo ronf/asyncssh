@@ -1778,6 +1778,7 @@ AsyncSSH:
   | x509v3-ecdsa-sha2-nistp521
   | x509v3-ecdsa-sha2-nistp384
   | x509v3-ecdsa-sha2-nistp256
+  | x509v3-ecdsa-sha2-1.3.132.0.10
   | x509v3-rsa2048-sha256
   | x509v3-ssh-rsa
   | x509v3-ssh-dss
@@ -1785,6 +1786,7 @@ AsyncSSH:
   | ecdsa-sha2-nistp521
   | ecdsa-sha2-nistp384
   | ecdsa-sha2-nistp256
+  | ecdsa-sha2-1.3.132.0.10
   | rsa-sha2-256
   | rsa-sha2-512
   | ssh-rsa
@@ -1802,6 +1804,7 @@ supported by AsyncSSH:
   | x509v3-ecdsa-sha2-nistp521
   | x509v3-ecdsa-sha2-nistp384
   | x509v3-ecdsa-sha2-nistp256
+  | x509v3-ecdsa-sha2-1.3.132.0.10
   | x509v3-rsa2048-sha256
   | x509v3-ssh-rsa
   | x509v3-ssh-dss
@@ -1815,6 +1818,7 @@ supported by AsyncSSH:
   | ecdsa-sha2-nistp521
   | ecdsa-sha2-nistp384
   | ecdsa-sha2-nistp256
+  | ecdsa-sha2-1.3.132.0.10
   | rsa-sha2-256
   | rsa-sha2-512
   | ssh-rsa
