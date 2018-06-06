@@ -1689,6 +1689,8 @@ The following are the key exchange algorithms currently supported by AsyncSSH:
   | diffie-hellman-group16-sha512
   | diffie-hellman-group17-sha512
   | diffie-hellman-group18-sha512
+  | rsa2048-sha256
+  | rsa1024-sha1
 
 Curve25519 support is only available when the libnacl package and libsodium
 library are installed.
