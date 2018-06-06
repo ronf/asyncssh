@@ -76,4 +76,5 @@ from .sftp import SEEK_SET, SEEK_CUR, SEEK_END
 from .stream import SSHReader, SSHWriter
 
 # Import these explicitly to trigger register calls in them
-from . import ed25519, ecdsa, rsa, dsa, ecdh, dh
+from . import ed25519, ecdsa, rsa, dsa
+from . import kex_ecdh, kex_dh, kex_rsa

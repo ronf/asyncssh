@@ -213,6 +213,16 @@ class _RSAKey(SSHKey):
 
         return self.verify_der(data, sig_algorithm, sig)
 
+    def encrypt(self, data, algorithm):
+        """Encrypt a block of data with this key"""
+
+        return self._key.encrypt(data, algorithm)
+
+    def decrypt(self, data, algorithm):
+        """Decrypt a block of data with this key"""
+
+        return self._key.decrypt(data, algorithm)
+
 
 register_public_key_alg(b'ssh-rsa', _RSAKey)
 

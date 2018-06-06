@@ -14,6 +14,7 @@
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives.asymmetric.padding import MGF1, OAEP
 from cryptography.hazmat.primitives.asymmetric.padding import PKCS1v15
 from cryptography.hazmat.primitives.hashes import SHA1, SHA256, SHA512
 from cryptography.hazmat.primitives.asymmetric import rsa
@@ -118,6 +119,16 @@ class RSAPrivateKey(_RSAKey):
 
         return cls(priv_key, pub, priv)
 
+    def decrypt(self, data, algorithm):
+        """Decrypt a block of data"""
+
+        try:
+            hash_alg = self.get_hash(algorithm)
+            priv_key = self.pyca_key
+            return priv_key.decrypt(data, OAEP(MGF1(hash_alg), hash_alg, None))
+        except ValueError:
+            return None
+
     def sign(self, data, algorithm):
         """Sign a block of data"""
 
@@ -136,6 +147,16 @@ class RSAPublicKey(_RSAKey):
         pub_key = pub.public_key(default_backend())
 
         return cls(pub_key, pub)
+
+    def encrypt(self, data, algorithm):
+        """Encrypt a block of data"""
+
+        try:
+            hash_alg = self.get_hash(algorithm)
+            pub_key = self.pyca_key
+            return pub_key.encrypt(data, OAEP(MGF1(hash_alg), hash_alg, None))
+        except ValueError:
+            return None
 
     def verify(self, data, sig, algorithm):
         """Verify the signature on a block of data"""

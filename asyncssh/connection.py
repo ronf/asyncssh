@@ -1314,8 +1314,7 @@ class SSHConnection(SSHPacketHandler):
         self.logger.debug1('Beginning key exchange')
         self.logger.debug2('  Key exchange alg: %s', self._kex.algorithm)
 
-        if self.is_client():
-            self._kex.start()
+        self._kex.start()
 
     def _process_newkeys(self, pkttype, pktid, packet):
         """Process a new keys message, finishing a key exchange"""

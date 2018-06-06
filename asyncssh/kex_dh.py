@@ -214,7 +214,8 @@ class _KexDHBase(Kex):
     def start(self):
         """Start DH key exchange"""
 
-        self._perform_init()
+        if self._conn.is_client():
+            self._perform_init()
 
 
 class _KexDH(_KexDHBase):
@@ -324,7 +325,8 @@ class _KexDHGex(_KexDHBase):
     def start(self):
         """Start DH group exchange"""
 
-        self._send_request()
+        if self._conn.is_client():
+            self._send_request()
 
     _packet_handlers = {
         MSG_KEX_DH_GEX_REQUEST_OLD: _process_request,
@@ -513,8 +515,9 @@ class _KexGSSBase(_KexDHBase):
     def start(self):
         """Start GSS key or group exchange"""
 
-        self._process_token()
-        super().start()
+        if self._conn.is_client():
+            self._process_token()
+            super().start()
 
 
 class _KexGSS(_KexGSSBase, _KexDH):

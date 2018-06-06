@@ -1974,3 +1974,18 @@ class _TestPublicKeyTopLevel(TempDirTestCase):
 
         with self.assertRaises(asyncssh.KeyGenerationError):
             privca.generate_x509_user_certificate(pubkey, 'OU=user')
+
+    def test_rsa_encrypt_error(self):
+        """Test RSA encryption error"""
+
+        privkey = asyncssh.generate_private_key('ssh-rsa', 2048)
+        pubkey = privkey.convert_to_public()
+
+        self.assertIsNone(pubkey.encrypt(os.urandom(256), pubkey.algorithm))
+
+    def test_rsa_decrypt_error(self):
+        """Test RSA decryption error"""
+
+        privkey = asyncssh.generate_private_key('ssh-rsa', 2048)
+
+        self.assertIsNone(privkey.decrypt(b'', privkey.algorithm))

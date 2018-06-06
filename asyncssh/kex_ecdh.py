@@ -47,7 +47,8 @@ class _KexECDH(Kex):
     def start(self):
         """Start ECDH key exchange"""
 
-        self.send_packet(MSG_KEX_ECDH_INIT, String(self._client_pub))
+        if self._conn.is_client():
+            self.send_packet(MSG_KEX_ECDH_INIT, String(self._client_pub))
 
     def _compute_hash(self, host_key_data, k):
         """Compute a hash of key information associated with the connection"""

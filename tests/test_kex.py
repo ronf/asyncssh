@@ -19,11 +19,14 @@ from hashlib import sha1
 
 import asyncssh
 
-from asyncssh.dh import MSG_KEXDH_INIT, MSG_KEXDH_REPLY
-from asyncssh.dh import _KexDHGex, MSG_KEX_DH_GEX_REQUEST, MSG_KEX_DH_GEX_GROUP
-from asyncssh.dh import MSG_KEX_DH_GEX_INIT, MSG_KEX_DH_GEX_REPLY
-from asyncssh.dh import MSG_KEXGSS_INIT, MSG_KEXGSS_COMPLETE, MSG_KEXGSS_ERROR
-from asyncssh.ecdh import MSG_KEX_ECDH_INIT, MSG_KEX_ECDH_REPLY
+from asyncssh.kex_dh import MSG_KEXDH_INIT, MSG_KEXDH_REPLY
+from asyncssh.kex_dh import MSG_KEX_DH_GEX_REQUEST, MSG_KEX_DH_GEX_GROUP
+from asyncssh.kex_dh import MSG_KEX_DH_GEX_INIT, MSG_KEX_DH_GEX_REPLY, _KexDHGex
+from asyncssh.kex_dh import MSG_KEXGSS_INIT, MSG_KEXGSS_COMPLETE
+from asyncssh.kex_dh import MSG_KEXGSS_ERROR
+from asyncssh.kex_ecdh import MSG_KEX_ECDH_INIT, MSG_KEX_ECDH_REPLY
+from asyncssh.kex_rsa import MSG_KEXRSA_PUBKEY, MSG_KEXRSA_SECRET
+from asyncssh.kex_rsa import MSG_KEXRSA_DONE
 from asyncssh.gss import GSSClient, GSSServer
 from asyncssh.kex import register_kex_alg, get_kex_algs, get_kex
 from asyncssh.misc import DisconnectError
@@ -48,8 +51,10 @@ class _KexConnectionStub(ConnectionStub):
 
         self._kex = get_kex(self, alg)
 
-        if self.is_client():
-            self._kex.start()
+    def start(self):
+        """Start key exchange"""
+
+        self._kex.start()
 
     def connection_lost(self, exc):
         """Handle the closing of a connection"""
@@ -137,6 +142,22 @@ class _KexConnectionStub(ConnectionStub):
                                       String(host_key_data),
                                       String(server_pub), String(sig))))
 
+    def simulate_rsa_pubkey(self, host_key_data, trans_key_data):
+        """Simulate receiving an RSA pubkey packet"""
+
+        self.process_packet(Byte(MSG_KEXRSA_PUBKEY) + String(host_key_data) +
+                            String(trans_key_data))
+
+    def simulate_rsa_secret(self, encrypted_k):
+        """Simulate receiving an RSA secret packet"""
+
+        self.process_packet(Byte(MSG_KEXRSA_SECRET) + String(encrypted_k))
+
+    def simulate_rsa_done(self, sig):
+        """Simulate receiving an RSA done packet"""
+
+        self.process_packet(Byte(MSG_KEXRSA_DONE) + String(sig))
+
 
 class _KexClientStub(_KexConnectionStub):
     """Stub class for client connection"""
@@ -151,16 +172,12 @@ class _KexClientStub(_KexConnectionStub):
     def __init__(self, alg, gss_host):
         server_conn = _KexServerStub(alg, gss_host, self)
 
-        try:
-            if gss_host:
-                gss = GSSClient(gss_host, 'delegate' in gss_host)
-            else:
-                gss = None
+        if gss_host:
+            gss = GSSClient(gss_host, 'delegate' in gss_host)
+        else:
+            gss = None
 
-            super().__init__(alg, gss, server_conn)
-        except DisconnectError:
-            server_conn.close()
-            raise
+        super().__init__(alg, gss, server_conn)
 
     def connection_lost(self, exc):
         """Handle the closing of a connection"""
@@ -216,6 +233,9 @@ class _TestKex(AsyncTestCase):
         client_conn, server_conn = _KexClientStub.make_pair(alg, gss_host)
 
         try:
+            client_conn.start()
+            server_conn.start()
+
             self.assertEqual((yield from client_conn.get_key()),
                              (yield from server_conn.get_key()))
         finally:
@@ -301,10 +321,12 @@ class _TestKex(AsyncTestCase):
 
         with self.subTest('Invalid f value'):
             with self.assertRaises(DisconnectError):
+                client_conn.start()
                 client_conn.simulate_dh_reply(host_key.public_data, 0, b'')
 
         with self.subTest('Invalid signature'):
             with self.assertRaises(DisconnectError):
+                client_conn.start()
                 client_conn.simulate_dh_reply(host_key.public_data, 1, b'')
 
         client_conn.close()
@@ -481,6 +503,45 @@ class _TestKex(AsyncTestCase):
                 server_pub = Curve25519DH().get_public()
                 client_conn.simulate_ecdh_reply(host_key.public_data,
                                                 server_pub, b'')
+
+        client_conn.close()
+        server_conn.close()
+
+    @asynctest
+    def test_rsa_errors(self):
+        """Unit test error conditions in RSA key exchange"""
+
+        client_conn, server_conn = \
+            _KexClientStub.make_pair(b'rsa2048-sha256')
+
+        with self.subTest('Pubkey sent to server'):
+            with self.assertRaises(DisconnectError):
+                server_conn.simulate_rsa_pubkey(b'', b'')
+
+        with self.subTest('Secret sent to client'):
+            with self.assertRaises(DisconnectError):
+                client_conn.simulate_rsa_secret(b'')
+
+        with self.subTest('Done sent to server'):
+            with self.assertRaises(DisconnectError):
+                server_conn.simulate_rsa_done(b'')
+
+        with self.subTest('Invalid transient public key'):
+            with self.assertRaises(DisconnectError):
+                client_conn.simulate_rsa_pubkey(b'', b'')
+
+        with self.subTest('Invalid encrypted secret'):
+            with self.assertRaises(DisconnectError):
+                server_conn.start()
+                server_conn.simulate_rsa_secret(b'')
+
+        with self.subTest('Invalid signature'):
+            with self.assertRaises(DisconnectError):
+                host_key = server_conn.get_server_host_key()
+                trans_key = asyncssh.generate_private_key('ssh-rsa', 2048)
+                client_conn.simulate_rsa_pubkey(host_key.public_data,
+                                                trans_key.get_ssh_public_key())
+                client_conn.simulate_rsa_done(b'')
 
         client_conn.close()
         server_conn.close()
