@@ -14,6 +14,7 @@
 
 import asyncio
 from asyncio.subprocess import DEVNULL, PIPE, STDOUT
+import codecs
 from collections import OrderedDict
 import io
 import os
@@ -40,41 +41,28 @@ class _UnicodeReader:
     """Handle buffering partial Unicode data"""
 
     def __init__(self, encoding, textmode=False):
-        self._encoding = encoding
-        self._textmode = textmode
-        self._partial = b''
+        if encoding and not textmode:
+            self._decoder = codecs.getincrementaldecoder(encoding)()
+        else:
+            self._decoder = None
 
-    def decode(self, data):
+    def decode(self, data, final=False):
         """Decode Unicode bytes when reading from binary sources"""
 
-        if self._encoding and not self._textmode:
-            data = self._partial + data
-            self._partial = b''
-
+        if self._decoder:
             try:
-                data = data.decode(self._encoding)
-            except UnicodeDecodeError as exc:
-                if exc.start > 0:
-                    # Avoid pylint false positive
-                    # pylint: disable=invalid-slice-index
-                    self._partial = data[exc.start:]
-                    data = data[:exc.start].decode(self._encoding)
-                elif exc.reason == 'unexpected end of data':
-                    self._partial = data
-                    data = ''
-                else:
-                    self.close()
-                    raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                          'Unicode decode error')
+                data = self._decoder.decode(data, final)
+            except UnicodeDecodeError:
+                self.close()
+                raise DisconnectError(DISC_PROTOCOL_ERROR,
+                                      'Unicode decode error')
 
         return data
 
     def check_partial(self):
         """Check if there's partial Unicode data left at EOF"""
 
-        if self._partial:
-            self.close()
-            raise DisconnectError(DISC_PROTOCOL_ERROR, 'Unicode decode error')
+        self.decode(b'', True)
 
     def close(self):
         """Perform necessary cleanup on error (provided by derived classes)"""
@@ -84,14 +72,16 @@ class _UnicodeWriter:
     """Handle encoding Unicode data before writing it"""
 
     def __init__(self, encoding, textmode=False):
-        self._encoding = encoding
-        self._textmode = textmode
+        if encoding and not textmode:
+            self._encoder = codecs.getincrementalencoder(encoding)()
+        else:
+            self._encoder = None
 
     def encode(self, data):
         """Encode Unicode bytes when writing to binary targets"""
 
-        if self._encoding and not self._textmode:
-            data = data.encode(self._encoding)
+        if self._encoder:
+            data = self._encoder.encode(data)
 
         return data
 
