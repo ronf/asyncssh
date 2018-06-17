@@ -3,6 +3,25 @@
 Change Log
 ==========
 
+Release 1.13.1 (16 Jun 2018)
+----------------------------
+
+* Added client and server support for host-based SSH authentication.
+  If enabled, this will allow all users from a given host to be
+  authenticated by a shared host key, rather than each user needing
+  their own key. This should only be used with hosts which are trusted
+  to keep their host keys secure and provide accurate client usernames.
+
+* Added support for RSA key exchange algorithms (rsa2048-sha256 and
+  rsa1024-sha1) available in PuTTY and some mobile SSH clients.
+
+* Added support for the SECP256K1 elliptic curve for ECDSA keys and
+  ECDH key exchange. This curve is supported by the Bitvise SSH client
+  and server.
+
+* Added debug logging of the algorithms listed in a received kexinit
+  message.
+
 Release 1.13.0 (20 May 2018)
 ----------------------------
 
