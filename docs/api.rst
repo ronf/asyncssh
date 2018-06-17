@@ -1686,6 +1686,7 @@ The following are the key exchange algorithms currently supported by AsyncSSH:
   | ecdh-sha2-nistp521
   | ecdh-sha2-nistp384
   | ecdh-sha2-nistp256
+  | ecdh-sha2-1.3.132.0.10
   | diffie-hellman-group-exchange-sha256
   | diffie-hellman-group-exchange-sha1
   | diffie-hellman-group1-sha1
@@ -1820,6 +1821,7 @@ supported by AsyncSSH:
   | ecdsa-sha2-nistp521-cert-v01\@openssh.com
   | ecdsa-sha2-nistp384-cert-v01\@openssh.com
   | ecdsa-sha2-nistp256-cert-v01\@openssh.com
+  | ecdsa-sha2-1.3.132.0.10-cert-v01\@openssh.com
   | ssh-rsa-cert-v01\@openssh.com
   | ssh-dss-cert-v01\@openssh.com
   | ssh-ed25519
