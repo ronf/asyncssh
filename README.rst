@@ -47,7 +47,9 @@ Features
 
   * Including OpenSSH variant to delay compression until after auth
 
-* Password, public key, and keyboard-interactive user authentication methods
+* User and host-based public key, password, and keyboard-interactive
+  authentication methods
+
 * Many types and formats of `public keys and certificates`__
 
   * Including support for X.509 certificates as defined in RFC 6187

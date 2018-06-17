@@ -216,6 +216,12 @@ SSHServer
    .. automethod:: validate_gss_principal
    ====================================== =
 
+   ======================================== =
+   Host-based authentication handlers
+   ======================================== =
+   .. automethod:: validate_host_based_user
+   ======================================== =
+
    ========================================= =
    Public key authentication handlers
    ========================================= =

@@ -119,7 +119,7 @@ class SSHServer:
 
            This method should return `True` if the specified user
            principal is valid for the user being authenticated. It can
-           be overridden by applications wishing to perform their
+           be overridden by applications wishing to perform their own
            authentication.
 
            If blocking operations need to be performed to determine the
@@ -148,6 +148,39 @@ class SSHServer:
 
         host_domain = host_principal.rsplit('@')[-1]
         return user_principal == username + '@' + host_domain
+
+    def validate_host_based_user(self, username, client_host, client_username):
+        """Return whether remote host and user is authorized for this user
+
+           This method should return `True` if the specified client host
+           and user is valid for the user being authenticated. It can be
+           overridden by applications wishing to enforce restrictions on
+           which remote users are allowed to authenticate as particular
+           local users.
+
+           If blocking operations need to be performed to determine the
+           validity of the client host and user, this method may be defined
+           as a coroutine.
+
+           By default, this method will return `True` when the client
+           username matches the name of the user being authenticated.
+
+           :param username:
+               The user being authenticated
+           :param client_host:
+               The hostname of the client host making the request
+           :param client_username:
+               The username of the user on the client host
+           :type username: `str`
+           :type client_host: `str`
+           :type client_username: `str`
+
+           :returns: A `bool` indicating if the specified client host
+                     and user is valid for the user being authenticated
+
+        """
+
+        return username == client_username
 
     def public_key_auth_supported(self):
         """Return whether or not public key authentication is supported

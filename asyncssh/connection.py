@@ -206,7 +206,8 @@ class SSHConnection(SSHPacketHandler):
         SSHConnection.next_conn += 1
         return next_conn
 
-    def __init__(self, protocol_factory, loop, version, kex_algs,
+    def __init__(self, protocol_factory, loop, version, x509_trusted_certs,
+                 x509_trusted_cert_paths, x509_purposes, kex_algs,
                  encryption_algs, mac_algs, compression_algs, signature_algs,
                  rekey_bytes, rekey_seconds, server):
         self._protocol_factory = protocol_factory
@@ -250,6 +251,18 @@ class SSHConnection(SSHPacketHandler):
         self._next_recv_macsize = 0
         self._next_decompressor = None
         self._next_decompress_after_auth = None
+
+        self._trusted_host_keys = set()
+        self._trusted_host_key_algs = []
+        self._trusted_ca_keys = set()
+        self._revoked_host_keys = set()
+
+        self._x509_trusted_certs = x509_trusted_certs
+        self._x509_trusted_cert_paths = x509_trusted_cert_paths
+        self._x509_revoked_certs = []
+        self._x509_trusted_subjects = []
+        self._x509_revoked_subjects = []
+        self._x509_purposes = x509_purposes
 
         self._kex_algs = kex_algs
         self._enc_algs = encryption_algs
@@ -438,6 +451,101 @@ class SSHConnection(SSHPacketHandler):
                          String(self._server_version),
                          String(self._client_kexinit),
                          String(self._server_kexinit)))
+
+    def _match_known_hosts(self, known_hosts, host, addr, port):
+        """Determine the set of trusted host keys and certificates"""
+
+        trusted_host_keys, trusted_ca_keys, revoked_host_keys, \
+            trusted_x509_certs, revoked_x509_certs, \
+            trusted_x509_subjects, revoked_x509_subjects = \
+                match_known_hosts(known_hosts, host, addr, port)
+
+        for key in trusted_host_keys:
+            self._trusted_host_keys.add(key)
+
+            if key.algorithm not in self._trusted_host_key_algs:
+                self._trusted_host_key_algs.extend(key.sig_algorithms)
+
+        self._trusted_ca_keys = set(trusted_ca_keys)
+        self._revoked_host_keys = set(revoked_host_keys)
+
+        if self._x509_trusted_certs is not None:
+            self._x509_trusted_certs = list(self._x509_trusted_certs)
+            self._x509_trusted_certs.extend(trusted_x509_certs)
+            self._x509_revoked_certs = set(revoked_x509_certs)
+
+            self._x509_trusted_subjects = trusted_x509_subjects
+            self._x509_revoked_subjects = revoked_x509_subjects
+
+    def _validate_openssh_host_certificate(self, host, cert):
+        """Validate an OpenSSH host certificate"""
+
+        if cert.signing_key in self._revoked_host_keys:
+            raise ValueError('Host CA key is revoked')
+
+        if self._trusted_ca_keys is not None and \
+           cert.signing_key not in self._trusted_ca_keys:
+            raise ValueError('Host CA key is not trusted')
+
+        cert.validate(CERT_TYPE_HOST, host)
+
+        return cert.key
+
+    def _validate_x509_host_certificate_chain(self, host, cert):
+        """Validate an X.509 host certificate"""
+
+        if (self._x509_revoked_subjects and
+                any(pattern.matches(cert.subject)
+                    for pattern in self._x509_revoked_subjects)):
+            raise ValueError('X.509 subject name is revoked')
+
+        if (self._x509_trusted_subjects and
+                not any(pattern.matches(cert.subject)
+                        for pattern in self._x509_trusted_subjects)):
+            raise ValueError('X.509 subject name is not trusted')
+
+        # Only validate hostname against X.509 certificate host
+        # principals when there are no X.509 trusted subject
+        # entries matched in known_hosts.
+        if self._x509_trusted_subjects:
+            host = None
+
+        cert.validate_chain(self._x509_trusted_certs,
+                            self._x509_trusted_cert_paths,
+                            self._x509_revoked_certs,
+                            self._x509_purposes,
+                            host_principal=host)
+
+        return cert.key
+
+    def _validate_host_key(self, host, key_data):
+        """Validate and return a trusted host key"""
+
+        try:
+            cert = decode_ssh_certificate(key_data)
+        except KeyImportError:
+            pass
+        else:
+            if cert.is_x509_chain:
+                return self._validate_x509_host_certificate_chain(host, cert)
+            else:
+                return self._validate_openssh_host_certificate(host, cert)
+
+        try:
+            key = decode_ssh_public_key(key_data)
+        except KeyImportError:
+            pass
+        else:
+            if key in self._revoked_host_keys:
+                raise ValueError('Host key is revoked')
+
+            if self._trusted_host_keys is not None and \
+               key not in self._trusted_host_keys:
+                raise ValueError('Host key is not trusted')
+
+            return key
+
+        raise ValueError('Unable to decode host key')
 
     def connection_made(self, transport):
         """Handle a newly opened connection"""
@@ -2023,25 +2131,27 @@ class SSHClientConnection(SSHConnection):
 
     """
 
-    def __init__(self, client_factory, loop, client_version, kex_algs,
-                 encryption_algs, mac_algs, compression_algs, signature_algs,
-                 rekey_bytes, rekey_seconds, host, port, known_hosts,
+    def __init__(self, client_factory, loop, client_version,
                  x509_trusted_certs, x509_trusted_cert_paths, x509_purposes,
-                 username, password, client_keys, gss_host, gss_delegate_creds,
-                 agent, agent_path, auth_waiter):
-        super().__init__(client_factory, loop, client_version, kex_algs,
-                         encryption_algs, mac_algs, compression_algs,
-                         signature_algs, rekey_bytes, rekey_seconds,
-                         server=False)
+                 kex_algs, encryption_algs, mac_algs, compression_algs,
+                 signature_algs, rekey_bytes, rekey_seconds, host, port,
+                 known_hosts, username, password, client_host_keys,
+                 client_host, client_username, client_keys, gss_host,
+                 gss_delegate_creds, agent, agent_path, auth_waiter):
+        super().__init__(client_factory, loop, client_version,
+                         x509_trusted_certs, x509_trusted_cert_paths,
+                         x509_purposes, kex_algs, encryption_algs, mac_algs,
+                         compression_algs, signature_algs, rekey_bytes,
+                         rekey_seconds, server=False)
 
         self._host = host
         self._port = port
         self._known_hosts = known_hosts
-        self._x509_trusted_certs = x509_trusted_certs
-        self._x509_trusted_cert_paths = x509_trusted_cert_paths
-        self._x509_purposes = x509_purposes
-        self._username = saslprep(username)
+        self._username = username
         self._password = password
+        self._client_host_keys = client_host_keys
+        self._client_host = client_host
+        self._client_username = client_username
         self._client_keys = client_keys
         self._agent = agent
         self._agent_path = agent_path
@@ -2054,14 +2164,6 @@ class SSHClientConnection(SSHConnection):
             except GSSError:
                 pass
 
-        self._server_host_keys = set()
-        self._server_ca_keys = set()
-        self._revoked_server_keys = set()
-
-        self._x509_revoked_certs = []
-        self._x509_trusted_subjects = []
-        self._x509_revoked_subjects = []
-
         self._kbdint_password_auth = False
 
         self._remote_listeners = {}
@@ -2071,48 +2173,29 @@ class SSHClientConnection(SSHConnection):
         """Handle the opening of a new connection"""
 
         if self._known_hosts is None:
-            self._server_host_keys = None
-            self._server_ca_keys = None
+            self._trusted_host_keys = None
+            self._trusted_ca_keys = None
         else:
             if not self._known_hosts:
                 self._known_hosts = os.path.join(os.path.expanduser('~'),
                                                  '.ssh', 'known_hosts')
 
             port = self._port if self._port != _DEFAULT_PORT else None
-            known_hosts = match_known_hosts(self._known_hosts, self._host,
-                                            self._peer_addr, port)
 
-            server_host_keys, server_ca_keys, revoked_server_keys, \
-                server_x509_certs, revoked_x509_certs, \
-                server_x509_subjects, revoked_x509_subjects = known_hosts
+            self._match_known_hosts(self._known_hosts, self._host,
+                                    self._peer_addr, port)
 
-            self._server_host_keys = set()
-            self._server_host_key_algs = []
+            self._server_host_key_algs = self._trusted_host_key_algs
 
-            for key in server_host_keys:
-                self._server_host_keys.add(key)
-                if key.algorithm not in self._server_host_key_algs:
-                    self._server_host_key_algs.extend(key.sig_algorithms)
-
-            if server_ca_keys:
+            if self._trusted_ca_keys:
                 self._server_host_key_algs = \
                     get_certificate_algs() + self._server_host_key_algs
 
-            self._server_ca_keys = set(server_ca_keys)
-            self._revoked_server_keys = set(revoked_server_keys)
-
             if self._x509_trusted_certs is not None:
-                self._x509_trusted_certs = list(self._x509_trusted_certs)
-                self._x509_trusted_certs.extend(server_x509_certs)
-
                 if self._x509_trusted_certs or self._x509_trusted_cert_paths:
                     self._server_host_key_algs = \
-                        get_x509_certificate_algs() + self._server_host_key_algs
-
-                self._x509_revoked_certs = set(revoked_x509_certs)
-
-                self._x509_trusted_subjects = server_x509_subjects
-                self._x509_revoked_subjects = revoked_x509_subjects
+                        get_x509_certificate_algs() + \
+                        self._server_host_key_algs
 
         if not self._server_host_key_algs:
             if self._known_hosts is None:
@@ -2159,92 +2242,25 @@ class SSHClientConnection(SSHConnection):
 
         super()._cleanup(exc)
 
-    def _validate_server_openssh_certificate(self, cert):
-        """Validate the server's OpenSSH certificate"""
 
-        if cert.signing_key in self._revoked_server_keys:
-            raise DisconnectError(DISC_HOST_KEY_NOT_VERIFYABLE,
-                                  'Revoked server CA key')
+    def _choose_signature_alg(self, keypair):
+        """Choose signature algorithm to use for key-based authentication"""
 
-        if self._server_ca_keys is not None and \
-           cert.signing_key not in self._server_ca_keys:
-            raise DisconnectError(DISC_HOST_KEY_NOT_VERIFYABLE,
-                                  'Untrusted server CA key')
+        if self._server_sig_algs:
+            for alg in keypair.sig_algorithms:
+                if alg in self._sig_algs and alg in self._server_sig_algs:
+                    keypair.set_sig_algorithm(alg)
+                    return True
 
-        try:
-            cert.validate(CERT_TYPE_HOST, self._host)
-        except ValueError as exc:
-            raise DisconnectError(DISC_HOST_KEY_NOT_VERIFYABLE,
-                                  str(exc)) from None
+        return keypair.sig_algorithms[-1] in self._sig_algs
 
-        return cert.key
-
-    def _validate_server_x509_certificate_chain(self, cert):
-        """Validate the server's X.509 certificate"""
-
-        if (self._x509_revoked_subjects and
-                any(pattern.matches(cert.subject)
-                    for pattern in self._x509_revoked_subjects)):
-            raise DisconnectError(DISC_HOST_KEY_NOT_VERIFYABLE,
-                                  'Revoked server X.509 subject name')
-
-        if (self._x509_trusted_subjects and
-                not any(pattern.matches(cert.subject)
-                        for pattern in self._x509_trusted_subjects)):
-            raise DisconnectError(DISC_HOST_KEY_NOT_VERIFYABLE,
-                                  'Untrusted server X.509 subject name')
-
-        try:
-            # Only validate hostname against X.509 certificate host
-            # principals when there are no X.509 trusted subject
-            # entries matched in known_hosts.
-            if self._x509_trusted_subjects:
-                host_principal = None
-            else:
-                host_principal = self._host
-
-            cert.validate_chain(self._x509_trusted_certs,
-                                self._x509_trusted_cert_paths,
-                                self._x509_revoked_certs,
-                                self._x509_purposes,
-                                host_principal=host_principal)
-        except ValueError as exc:
-            raise DisconnectError(DISC_HOST_KEY_NOT_VERIFYABLE,
-                                  str(exc)) from None
-
-        return cert.key
-
-    def validate_server_host_key(self, data):
+    def validate_server_host_key(self, key_data):
         """Validate and return the server's host key"""
 
         try:
-            cert = decode_ssh_certificate(data)
-        except KeyImportError:
-            pass
-        else:
-            if cert.is_x509_chain:
-                return self._validate_server_x509_certificate_chain(cert)
-            else:
-                return self._validate_server_openssh_certificate(cert)
-
-        try:
-            key = decode_ssh_public_key(data)
-        except KeyImportError:
-            pass
-        else:
-            if key in self._revoked_server_keys:
-                raise DisconnectError(DISC_HOST_KEY_NOT_VERIFYABLE,
-                                      'Revoked server host key')
-
-            if self._server_host_keys is not None and \
-               key not in self._server_host_keys:
-                raise DisconnectError(DISC_HOST_KEY_NOT_VERIFYABLE,
-                                      'Untrusted server host key')
-
-            return key
-
-        raise DisconnectError(DISC_HOST_KEY_NOT_VERIFYABLE,
-                              'Unable to decode server host key')
+            return self._validate_host_key(self._host, key_data)
+        except ValueError as exc:
+            raise DisconnectError(DISC_HOST_KEY_NOT_VERIFYABLE, str(exc))
 
     def try_next_auth(self):
         """Attempt client authentication using the next compatible method"""
@@ -2285,6 +2301,26 @@ class SSHClientConnection(SSHConnection):
             return False
 
     @asyncio.coroutine
+    def host_based_auth_requested(self):
+        """Return a host key pair, host, and user to authenticate with"""
+
+        while True:
+            try:
+                keypair = self._client_host_keys.pop(0)
+            except IndexError:
+                keypair = None
+                break
+
+            if self._choose_signature_alg(keypair):
+                break
+
+        if self._client_host is None:
+            self._client_host, _ = yield from self._loop.getnameinfo(
+                self.get_extra_info('sockname'), socket.NI_NUMERICSERV)
+
+        return keypair, self._client_host, self._client_username
+
+    @asyncio.coroutine
     def public_key_auth_requested(self):
         """Return a client key pair to authenticate with"""
 
@@ -2302,13 +2338,7 @@ class SSHClientConnection(SSHConnection):
 
             keypair = self._client_keys.pop(0)
 
-            if self._server_sig_algs:
-                for alg in keypair.sig_algorithms:
-                    if alg in self._sig_algs and alg in self._server_sig_algs:
-                        keypair.set_sig_algorithm(alg)
-                        return keypair
-
-            if keypair.sig_algorithms[-1] in self._sig_algs:
+            if self._choose_signature_alg(keypair):
                 return keypair
 
     @asyncio.coroutine
@@ -3426,26 +3456,26 @@ class SSHServerConnection(SSHConnection):
 
     """
 
-    def __init__(self, server_factory, loop, server_version, kex_algs,
-                 encryption_algs, mac_algs, compression_algs, signature_algs,
-                 rekey_bytes, rekey_seconds, server_host_keys,
-                 authorized_client_keys, x509_trusted_certs,
-                 x509_trusted_cert_paths, x509_purposes, gss_host, allow_pty,
-                 line_editor, line_history, x11_forwarding, x11_auth_path,
-                 agent_forwarding, process_factory, session_factory,
-                 session_encoding, sftp_factory, allow_scp, window,
-                 max_pktsize, login_timeout):
-        super().__init__(server_factory, loop, server_version, kex_algs,
-                         encryption_algs, mac_algs, compression_algs,
-                         signature_algs, rekey_bytes, rekey_seconds,
-                         server=True)
+    def __init__(self, server_factory, loop, server_version,
+                 x509_trusted_certs, x509_trusted_cert_paths, x509_purposes,
+                 kex_algs, encryption_algs, mac_algs, compression_algs,
+                 signature_algs, rekey_bytes, rekey_seconds,
+                 server_host_keys, known_client_hosts, trust_client_host,
+                 authorized_client_keys, gss_host, allow_pty, line_editor,
+                 line_history, x11_forwarding, x11_auth_path, agent_forwarding,
+                 process_factory, session_factory, session_encoding,
+                 sftp_factory, allow_scp, window, max_pktsize, login_timeout):
+        super().__init__(server_factory, loop, server_version,
+                         x509_trusted_certs, x509_trusted_cert_paths,
+                         x509_purposes, kex_algs, encryption_algs, mac_algs,
+                         compression_algs, signature_algs, rekey_bytes,
+                         rekey_seconds, server=True)
 
         self._server_host_keys = server_host_keys
         self._server_host_key_algs = list(server_host_keys.keys())
+        self._known_client_hosts = known_client_hosts
+        self._trust_client_host = trust_client_host
         self._client_keys = authorized_client_keys
-        self._x509_trusted_certs = x509_trusted_certs
-        self._x509_trusted_cert_paths = x509_trusted_cert_paths
-        self._x509_purposes = x509_purposes
         self._allow_pty = allow_pty
         self._line_editor = line_editor
         self._line_history = line_history
@@ -3571,6 +3601,51 @@ class SSHServerConnection(SSHConnection):
 
         return result
 
+    def host_based_auth_supported(self):
+        """Return whether or not host based authentication is supported"""
+
+        return bool(self._known_client_hosts)
+
+    @asyncio.coroutine
+    def validate_host_based_auth(self, username, key_data, client_host,
+                                 client_username, msg, signature):
+        """Validate host based authentication for the specified host and user"""
+
+        # Remove a trailing '.' from the client host if present
+        if client_host[-1:] == '.':
+            client_host = client_host[:-1]
+
+        if self._trust_client_host:
+            resolved_host = client_host
+        else:
+            resolved_host, _ = yield from self._loop.getnameinfo(
+                self.get_extra_info('peername'), socket.NI_NUMERICSERV)
+
+            if resolved_host != client_host:
+                self.logger.info('Client host mismatch: received %s, '
+                                 'resolved %s', client_host, resolved_host)
+
+        self._match_known_hosts(self._known_client_hosts, resolved_host,
+                                self._peer_addr, None)
+
+        try:
+            key = self._validate_host_key(client_host, key_data)
+        except ValueError as exc:
+            self.logger.debug1('Invalid host key: %s', exc)
+            return False
+
+        if not key.verify(String(self._session_id) + msg, signature):
+            self.logger.debug1('Invalid host-based auth signature')
+            return False
+
+        result = self._owner.validate_host_based_user(username, client_host,
+                                                      client_username)
+
+        if asyncio.iscoroutine(result):
+            result = yield from result
+
+        return result
+
     @asyncio.coroutine
     def _validate_openssh_certificate(self, username, cert):
         """Validate an OpenSSH client certificate for the specified user"""
@@ -3603,7 +3678,7 @@ class SSHServerConnection(SSHConnection):
         except ValueError:
             return None
 
-        allowed_addresses = self.get_certificate_option('source-address')
+        allowed_addresses = cert.options.get('source-address')
         if allowed_addresses:
             ip = ip_address(self._peer_addr)
             if not any(ip in network for network in allowed_addresses):
@@ -4585,7 +4660,8 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
                       local_addr=None, known_hosts=(), x509_trusted_certs=(),
                       x509_trusted_cert_paths=(),
                       x509_purposes='secureShellServer', username=None,
-                      password=None, client_keys=(), passphrase=None,
+                      password=None, client_host_keys=None, client_host=None,
+                      client_username=None, client_keys=(), passphrase=None,
                       gss_host=(), gss_delegate_creds=False,
                       agent_path=(), agent_forwarding=False,
                       client_version=(), kex_algs=(), encryption_algs=(),
@@ -4689,6 +4765,19 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
            keyboard-interactive authentication which prompts for a password.
            If this is not specified, client password authentication will
            not be performed.
+       :param client_host_keys: (optional)
+           A list of keys to use to authenticate this client via host-based
+           authentication. If this is not specified, host-based public key
+           authentication will not be performed.
+       :param client_host: (optional)
+           The host name to use when performing host-based authentication.
+           If not specified, the value returned by :func:`socket.gethostname`
+           will be used if it is a fully qualified name. Otherwise, the value
+           used by :func:`socket.getfqdn` will be used.
+       :param client_username: (optional)
+           Username of the user on the local machine, used for host-based
+           authentication. If not specified, the username of the currently
+           logged in user will be used.
        :param client_keys: (optional)
            A list of keys which will be used to authenticate this client
            via public key authentication. If no client keys are specified,
@@ -4766,6 +4855,9 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
        :type x509_purposes: *see* :ref:`SpecifyingX509Purposes`
        :type username: `str`
        :type password: `str`
+       :type client_host_keys: *see* :ref:`SpecifyingPrivateKeys`
+       :type client_host: `str`
+       :type client_username: `str`
        :type client_keys: *see* :ref:`SpecifyingPrivateKeys`
        :type passphrase: `str`
        :type gss_host: `str`
@@ -4789,12 +4881,13 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
         """Return an SSH client connection handler"""
 
         return SSHClientConnection(client_factory, loop, client_version,
-                                   kex_algs, encryption_algs, mac_algs,
-                                   compression_algs, signature_algs,
+                                   x509_trusted_certs, x509_trusted_cert_paths,
+                                   x509_purposes, kex_algs, encryption_algs,
+                                   mac_algs, compression_algs, signature_algs,
                                    rekey_bytes, rekey_seconds, host, port,
-                                   known_hosts, x509_trusted_certs,
-                                   x509_trusted_cert_paths, x509_purposes,
-                                   username, password, client_keys, gss_host,
+                                   known_hosts, username, password,
+                                   client_host_keys, client_host,
+                                   client_username, client_keys, gss_host,
                                    gss_delegate_creds, agent, agent_path,
                                    auth_waiter)
 
@@ -4830,6 +4923,15 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
 
     if username is None:
         username = getpass.getuser()
+
+    username = saslprep(username)
+
+    client_host_keys = load_keypairs(client_host_keys, passphrase)
+
+    if client_username is None:
+        client_username = getpass.getuser()
+
+    client_username = saslprep(client_username)
 
     if gss_host == ():
         gss_host = host
@@ -4886,6 +4988,7 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
 def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
                   loop=None, family=0, flags=socket.AI_PASSIVE, backlog=100,
                   reuse_address=None, server_host_keys=None, passphrase=None,
+                  known_client_hosts=None, trust_client_host=False,
                   authorized_client_keys=None, x509_trusted_certs=(),
                   x509_trusted_cert_paths=(), x509_purposes='secureShellClient',
                   gss_host=(), allow_pty=True, line_editor=True,
@@ -4941,6 +5044,16 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
            unencrypted server host keys can be loaded. If the keys passed
            into server_host_keys are already loaded, this argument is
            ignored.
+       :param known_client_hosts: (optional)
+           A list of client hosts which should be trusted to perform
+           host-based client authentication. If this is not specified,
+           host-based client authentication will be not be performed.
+       :param trust_client_host: (optional)
+           Whether or not to use the hostname provided by the client
+           when performing host-based authentication. By default, the
+           client-provided hostname is not trusted and is instead
+           determined by doing a reverse lookup of the IP address the
+           client connected from.
        :param authorized_client_keys: (optional)
            A list of authorized user and CA public keys which should be
            trusted for certifcate-based client public key authentication.
@@ -5070,6 +5183,8 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
        :type reuse_address: `bool`
        :type server_host_keys: *see* :ref:`SpecifyingPrivateKeys`
        :type passphrase: `str`
+       :type known_client_hosts: *see* :ref:`SpecifyingKnownHosts`
+       :type trust_client_host: `bool`
        :type authorized_client_keys: *see* :ref:`SpecifyingAuthorizedKeys`
        :type x509_trusted_certs: *see* :ref:`SpecifyingCertificates`
        :type x509_trusted_cert_paths: `list` of `str`
@@ -5106,17 +5221,18 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
         """Return an SSH server connection handler"""
 
         return SSHServerConnection(server_factory, loop, server_version,
-                                   kex_algs, encryption_algs, mac_algs,
-                                   compression_algs, signature_algs,
-                                   rekey_bytes, rekey_seconds,
-                                   server_host_keys, authorized_client_keys,
                                    x509_trusted_certs, x509_trusted_cert_paths,
-                                   x509_purposes, gss_host, allow_pty,
-                                   line_editor, line_history, x11_forwarding,
-                                   x11_auth_path, agent_forwarding,
-                                   process_factory, session_factory,
-                                   session_encoding, sftp_factory, allow_scp,
-                                   window, max_pktsize, login_timeout)
+                                   x509_purposes, kex_algs, encryption_algs,
+                                   mac_algs, compression_algs, signature_algs,
+                                   rekey_bytes, rekey_seconds,
+                                   server_host_keys, known_client_hosts,
+                                   trust_client_host, authorized_client_keys,
+                                   gss_host, allow_pty, line_editor,
+                                   line_history, x11_forwarding, x11_auth_path,
+                                   agent_forwarding, process_factory,
+                                   session_factory, session_encoding,
+                                   sftp_factory, allow_scp, window,
+                                   max_pktsize, login_timeout)
 
     if not server_factory:
         server_factory = SSHServer

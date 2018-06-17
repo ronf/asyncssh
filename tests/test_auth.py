@@ -69,18 +69,23 @@ class _AuthClientStub(_AuthConnectionStub):
         return client_conn, client_conn.get_peer()
 
     def __init__(self, method, gss_host=None, override_gss_mech=False,
-                 public_key_auth=False, client_key=None, client_cert=None,
-                 override_pk_ok=False, password_auth=False, password=None,
-                 password_change=NotImplemented, password_change_prompt=None,
-                 kbdint_auth=False, kbdint_submethods=None,
-                 kbdint_challenge=None, kbdint_response=None, success=False):
+                 host_based_auth=False, client_host_key=None,
+                 client_host_cert=None, public_key_auth=False, client_key=None,
+                 client_cert=None, override_pk_ok=False, password_auth=False,
+                 password=None, password_change=NotImplemented,
+                 password_change_prompt=None, kbdint_auth=False,
+                 kbdint_submethods=None, kbdint_challenge=None,
+                 kbdint_response=None, success=False):
         super().__init__(_AuthServerStub(self, gss_host, override_gss_mech,
-                                         public_key_auth, override_pk_ok,
-                                         password_auth, password_change_prompt,
-                                         kbdint_auth, kbdint_challenge,
-                                         success), False)
+                                         host_based_auth, public_key_auth,
+                                         override_pk_ok, password_auth,
+                                         password_change_prompt, kbdint_auth,
+                                         kbdint_challenge, success), False)
 
         self._gss = GSSClient(gss_host, False) if gss_host else None
+
+        self._client_host_key = client_host_key
+        self._client_host_cert = client_host_cert
 
         self._client_key = client_key
         self._client_cert = client_cert
@@ -172,6 +177,18 @@ class _AuthClientStub(_AuthConnectionStub):
         return bool(self._gss)
 
     @asyncio.coroutine
+    def host_based_auth_requested(self):
+        """Return a host key pair, host, and user to authenticate with"""
+
+        if self._client_host_key:
+            keypair = SSHLocalKeyPair(self._client_host_key,
+                                      self._client_host_cert)
+        else:
+            keypair = None
+
+        return keypair, 'host', 'user'
+
+    @asyncio.coroutine
     def public_key_auth_requested(self):
         """Return key to use for public key authentication"""
 
@@ -231,13 +248,16 @@ class _AuthServerStub(_AuthConnectionStub):
     """Stub class for server connection"""
 
     def __init__(self, peer=None, gss_host=None, override_gss_mech=False,
-                 public_key_auth=False, override_pk_ok=False,
-                 password_auth=False, password_change_prompt=None,
-                 kbdint_auth=False, kbdint_challenge=False, success=False):
+                 host_based_auth=False, public_key_auth=False,
+                 override_pk_ok=False, password_auth=False,
+                 password_change_prompt=None, kbdint_auth=False,
+                 kbdint_challenge=False, success=False):
         super().__init__(peer, True)
 
         self._gss = GSSServer(gss_host) if gss_host else None
         self._override_gss_mech = override_gss_mech
+
+        self._host_based_auth = host_based_auth
 
         self._public_key_auth = public_key_auth
         self._override_pk_ok = override_pk_ok
@@ -317,6 +337,20 @@ class _AuthServerStub(_AuthConnectionStub):
     @asyncio.coroutine
     def validate_gss_principal(self, username, user_principal, host_principal):
         """Validate the GSS principal name for the specified user"""
+
+        # pylint: disable=unused-argument
+
+        return self._success
+
+    def host_based_auth_supported(self):
+        """Return whether or not host-based authentication is supported"""
+
+        return self._host_based_auth
+
+    @asyncio.coroutine
+    def validate_host_based_auth(self, username, key_data, client_host,
+                                 client_username, msg, signature):
+        """Validate host based authentication for the specified host and user"""
 
         # pylint: disable=unused-argument
 
@@ -422,17 +456,18 @@ class _TestAuth(AsyncTestCase):
         with self.subTest('All auth methods'):
             gss_host = '1' if gss_available else None
             server_conn = _AuthServerStub(gss_host=gss_host,
+                                          host_based_auth=True,
                                           public_key_auth=True,
                                           password_auth=True, kbdint_auth=True)
             if gss_available: # pragma: no branch
                 self.assertEqual(get_server_auth_methods(server_conn),
                                  [b'gssapi-keyex', b'gssapi-with-mic',
-                                  b'publickey', b'keyboard-interactive',
-                                  b'password'])
+                                  b'hostbased', b'publickey',
+                                  b'keyboard-interactive', b'password'])
             else: # pragma: no cover
                 self.assertEqual(get_server_auth_methods(server_conn),
-                                 [b'publickey', b'keyboard-interactive',
-                                  b'password'])
+                                 [b'hostbased', b'publickey',
+                                  b'keyboard-interactive', b'password'])
             server_conn.close()
 
         with self.subTest('Unknown auth method'):
@@ -491,6 +526,33 @@ class _TestAuth(AsyncTestCase):
             with self.assertRaises(DisconnectError):
                 yield from self.check_auth(b'gssapi-with-mic', (False, None),
                                            gss_host='1', override_gss_mech=True)
+
+    @asynctest
+    def test_hostbased_auth(self):
+        """Unit test host-based authentication"""
+
+        hkey = asyncssh.generate_private_key('ssh-rsa')
+        cert = hkey.generate_host_certificate(hkey, 'host')
+
+        with self.subTest('Host-based auth not available'):
+            yield from self.check_auth(b'hostbased', (False, None))
+
+        with self.subTest('Untrusted key'):
+            yield from self.check_auth(b'hostbased', (False, None),
+                                       client_host_key=hkey,
+                                       host_based_auth=True)
+
+        with self.subTest('Trusted key'):
+            yield from self.check_auth(b'hostbased', (True, None),
+                                       client_host_key=hkey,
+                                       host_based_auth=True,
+                                       success=True)
+
+        with self.subTest('Trusted certificate'):
+            yield from self.check_auth(b'hostbased', (True, None),
+                                       client_host_key=hkey,
+                                       client_host_cert=cert,
+                                       host_based_auth=True, success=True)
 
     @asynctest
     def test_publickey_auth(self):

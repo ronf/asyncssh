@@ -264,6 +264,30 @@ class _ClientGSSMICAuth(_ClientAuth):
     }
 
 
+class _ClientHostBasedAuth(_ClientAuth):
+    """Client side implementation of host based auth"""
+
+    @asyncio.coroutine
+    def _start(self):
+        """Start client host based authentication"""
+
+        keypair, client_host, client_username = \
+            yield from self._conn.host_based_auth_requested()
+
+        if keypair is None:
+            self._conn.try_next_auth()
+            return
+
+        self.logger.debug1('Trying host based auth of user %s on host %s '
+                           'with %s host key', client_username, client_host,
+                           keypair.algorithm)
+
+        yield from self.send_request(String(keypair.algorithm),
+                                     String(keypair.public_data),
+                                     String(client_host),
+                                     String(client_username), key=keypair)
+
+
 class _ClientPublicKeyAuth(_ClientAuth):
     """Client side implementation of public key auth"""
 
@@ -683,6 +707,49 @@ class _ServerGSSMICAuth(_ServerAuth):
     }
 
 
+class _ServerHostBasedAuth(_ServerAuth):
+    """Server side implementation of host based auth"""
+
+    @classmethod
+    def supported(cls, conn):
+        """Return whether host based authentication is supported"""
+
+        return conn.host_based_auth_supported()
+
+    @asyncio.coroutine
+    def _start(self, packet):
+        """Start server host based authentication"""
+
+        algorithm = packet.get_string()
+        key_data = packet.get_string()
+        client_host = packet.get_string()
+        client_username = packet.get_string()
+        msg = packet.get_consumed_payload()
+        signature = packet.get_string()
+
+        packet.check_end()
+
+        try:
+            client_host = client_host.decode('utf-8')
+            client_username = saslprep(client_username.decode('utf-8'))
+        except (UnicodeDecodeError, SASLPrepError):
+            raise DisconnectError(DISC_PROTOCOL_ERROR, 'Invalid host-based '
+                                  'auth request') from None
+
+        self.logger.debug1('Verifying host based auth of user %s '
+                           'on host %s with %s host key', client_username,
+                           client_host, algorithm)
+
+        if (yield from self._conn.validate_host_based_auth(self._username,
+                                                           key_data,
+                                                           client_host,
+                                                           client_username,
+                                                           msg, signature)):
+            self.send_success()
+        else:
+            self.send_failure()
+
+
 class _ServerPublicKeyAuth(_ServerAuth):
     """Server side implementation of public key auth"""
 
@@ -908,6 +975,7 @@ _auth_method_list = (
     (b'none',                 _ClientNullAuth,      _ServerNullAuth),
     (b'gssapi-keyex',         _ClientGSSKexAuth,    _ServerGSSKexAuth),
     (b'gssapi-with-mic',      _ClientGSSMICAuth,    _ServerGSSMICAuth),
+    (b'hostbased',            _ClientHostBasedAuth, _ServerHostBasedAuth),
     (b'publickey',            _ClientPublicKeyAuth, _ServerPublicKeyAuth),
     (b'keyboard-interactive', _ClientKbdIntAuth,    _ServerKbdIntAuth),
     (b'password',             _ClientPasswordAuth,  _ServerPasswordAuth)

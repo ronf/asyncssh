@@ -20,11 +20,26 @@ from unittest.mock import patch
 
 import asyncssh
 from asyncssh.packet import String
-from asyncssh.public_key import CERT_TYPE_USER
+from asyncssh.public_key import CERT_TYPE_USER, CERT_TYPE_HOST
 
 from .server import Server, ServerTestCase
 from .util import asynctest, gss_available, patch_gss, make_certificate
 from .util import x509_available
+
+
+class _FailValidateHostSSHServerConnection(asyncssh.SSHServerConnection):
+    """Test error in validating host key signature"""
+
+    @asyncio.coroutine
+    def validate_host_based_auth(self, username, key_data, client_host,
+                                 client_username, msg, signature):
+        """Validate host based authentication for the specified host and user"""
+
+        return (yield from super().validate_host_based_auth(username, key_data,
+                                                            client_host,
+                                                            client_username,
+                                                            msg + b'\xff',
+                                                            signature))
 
 
 class _AsyncGSSServer(asyncssh.SSHServer):
@@ -36,6 +51,38 @@ class _AsyncGSSServer(asyncssh.SSHServer):
 
         return super().validate_gss_principal(username, user_principal,
                                               host_principal)
+
+
+class _HostBasedServer(Server):
+    """Server for testing host-based authentication"""
+
+    def validate_host_based_user(self, username, client_host, client_username):
+        """Return whether remote host and user is authorized for this user"""
+
+        return client_username == 'user'
+
+
+class _AsyncHostBasedServer(Server):
+    """Server for testing async host-based authentication"""
+
+    @asyncio.coroutine
+    def validate_host_based_user(self, username, client_host, client_username):
+        """Return whether remote host and user is authorized for this user"""
+
+        return super().validate_host_based_user(username, client_host,
+                                                client_username)
+
+
+class _InvalidUsernameClientConnection(asyncssh.connection.SSHClientConnection):
+    """Test sending a client username with invalid Unicode to the server"""
+
+    @asyncio.coroutine
+    def host_based_auth_requested(self):
+        """Return a host key pair, host, and user to authenticate with"""
+
+        keypair, host, _ = yield from super().host_based_auth_requested()
+
+        return keypair, host, b'\xff'
 
 
 class _PublicKeyClient(asyncssh.SSHClient):
@@ -408,6 +455,252 @@ class _TestGSSFQDN(ServerTestCase):
         yield from conn.wait_closed()
 
 
+class _TestHostBasedAuth(ServerTestCase):
+    """Unit tests for host-based authentication"""
+
+    @classmethod
+    @asyncio.coroutine
+    def start_server(cls):
+        """Start an SSH server which supports host-based authentication"""
+
+        return (yield from cls.create_server(
+            _HostBasedServer, known_client_hosts='known_hosts'))
+
+    @asynctest
+    def test_client_host_auth(self):
+        """Test connecting with host-based authentication"""
+
+        with (yield from self.connect(username='user', client_host_keys='skey',
+                                      client_username='user')) as conn:
+            pass
+
+        yield from conn.wait_closed()
+
+    @asynctest
+    def test_client_host_key_bytes(self):
+        """Test client host key passed in as bytes"""
+
+        with open('skey', 'rb') as f:
+            skey = f.read()
+
+        with (yield from self.connect(username='user', client_host_keys=[skey],
+                                      client_username='user')) as conn:
+            pass
+
+        yield from conn.wait_closed()
+
+    @asynctest
+    def test_client_host_key_sshkey(self):
+        """Test client host key passed in as an SSHKey"""
+
+        skey = asyncssh.read_private_key('skey')
+
+        with (yield from self.connect(username='user', client_host_keys=[skey],
+                                      client_username='user')) as conn:
+            pass
+
+        yield from conn.wait_closed()
+
+    @asynctest
+    def test_client_host_key_keypairs(self):
+        """Test client host keys passed in as a list of SSHKeyPairs"""
+
+        keys = asyncssh.load_keypairs('skey')
+
+        with (yield from self.connect(username='user', client_host_keys=keys,
+                                      client_username='user')) as conn:
+            pass
+
+        yield from conn.wait_closed()
+
+    @asynctest
+    def test_client_host_signature_algs(self):
+        """Test host based authentication with specific signature algorithms"""
+
+        for alg in ('ssh-rsa', 'rsa-sha2-256', 'rsa-sha2-512'):
+            with (yield from self.connect(username='user',
+                                          client_host_keys='skey',
+                                          client_username='user',
+                                          signature_algs=[alg])) as conn:
+                pass
+
+            yield from conn.wait_closed()
+
+    @asynctest
+    def test_no_server_signature_algs(self):
+        """Test a server which doesn't advertise signature algorithms"""
+
+        def skip_ext_info(self):
+            """Don't send extension information"""
+
+            # pylint: disable=unused-argument
+
+            return []
+
+        with patch('asyncssh.connection.SSHConnection._get_ext_info_kex_alg',
+                   skip_ext_info):
+            with (yield from self.connect(username='user',
+                                          client_host_keys='skey',
+                                          client_username='user')) as conn:
+                pass
+
+        yield from conn.wait_closed()
+
+    @asynctest
+    def test_untrusted_client_host_key(self):
+        """Test untrusted client host key"""
+
+        with self.assertRaises(asyncssh.DisconnectError):
+            yield from self.connect(username='user', client_host_keys='ckey',
+                                    client_username='user')
+
+    @asynctest
+    def test_missing_cert(self):
+        """Test missing client host certificate"""
+
+        with self.assertRaises(OSError):
+            yield from self.connect(username='user',
+                                    client_host_keys=[('skey', 'xxx')],
+                                    client_username='user')
+
+    @asynctest
+    def test_invalid_client_host_signature(self):
+        """Test invalid client host signature"""
+
+        with patch('asyncssh.connection.SSHServerConnection',
+                   _FailValidateHostSSHServerConnection):
+            with self.assertRaises(asyncssh.DisconnectError):
+                yield from self.connect(username='user',
+                                        client_host_keys='skey',
+                                        client_username='user')
+
+    @asynctest
+    def test_client_host_trailing_dot(self):
+        """Test stripping of trailing dot from client host"""
+
+        with (yield from self.connect(username='user', client_host_keys='skey',
+                                      client_host=self._client_host + '.',
+                                      client_username='user')) as conn:
+            pass
+
+        yield from conn.wait_closed()
+
+    @asynctest
+    def test_mismatched_client_host(self):
+        """Test ignoring of mismatched client host due to canonicalization"""
+
+        with (yield from self.connect(username='user', client_host_keys='skey',
+                                      client_host='xxx',
+                                      client_username='user')) as conn:
+            pass
+
+        yield from conn.wait_closed()
+
+    @asynctest
+    def test_mismatched_client_username(self):
+        """Test mismatched client username"""
+
+        with self.assertRaises(asyncssh.DisconnectError):
+            yield from self.connect(username='user', client_host_keys='skey',
+                                    client_username='xxx')
+
+    @asynctest
+    def test_invalid_client_username(self):
+        """Test invalid client username"""
+
+        with patch('asyncssh.connection.SSHClientConnection',
+                   _InvalidUsernameClientConnection):
+            with self.assertRaises(asyncssh.DisconnectError):
+                yield from self.connect(username='user',
+                                        client_host_keys='skey')
+
+    @asynctest
+    def test_expired_cert(self):
+        """Test expired certificate"""
+
+        ckey = asyncssh.read_private_key('ckey')
+        skey = asyncssh.read_private_key('skey')
+
+        cert = make_certificate('ssh-rsa-cert-v01@openssh.com',
+                                CERT_TYPE_HOST, ckey, skey, ['localhost'],
+                                valid_before=1)
+
+        with self.assertRaises(asyncssh.DisconnectError):
+            yield from self.connect(username='user',
+                                    client_host_keys=[(ckey, cert)],
+                                    client_username='user')
+
+    @asynctest
+    def test_untrusted_ca(self):
+        """Test untrusted CA"""
+
+        ckey = asyncssh.read_private_key('ckey')
+
+        cert = make_certificate('ssh-rsa-cert-v01@openssh.com',
+                                CERT_TYPE_HOST, ckey, ckey, ['localhost'])
+
+        with self.assertRaises(asyncssh.DisconnectError):
+            yield from self.connect(username='user',
+                                    client_host_keys=[(ckey, cert)],
+                                    client_username='user')
+
+
+class _TestHostBasedAsyncServerAuth(_TestHostBasedAuth):
+    """Unit tests for host-based authentication with async server callbacks"""
+
+    @classmethod
+    @asyncio.coroutine
+    def start_server(cls):
+        """Start an SSH server which supports async host-based auth"""
+
+        return (yield from cls.create_server(
+            _AsyncHostBasedServer, known_client_hosts='known_hosts',
+            trust_client_host=True))
+
+    @asynctest
+    def test_mismatched_client_host(self):
+        """Test mismatch of trusted client host"""
+
+        with self.assertRaises(asyncssh.DisconnectError):
+            yield from self.connect(username='user', client_host_keys='skey',
+                                    client_host='xxx',
+                                    client_username='user')
+
+
+class _TestLimitedHostBasedSignatureAlgs(ServerTestCase):
+    """Unit tests for limited host key signature algorithms"""
+
+    @classmethod
+    @asyncio.coroutine
+    def start_server(cls):
+        """Start an SSH server which supports host-based authentication"""
+
+        return (yield from cls.create_server(
+            _HostBasedServer, known_client_hosts='known_hosts',
+            signature_algs=['ssh-rsa', 'rsa-sha2-512']))
+
+    @asynctest
+    def test_mismatched_host_signature_algs(self):
+        """Test mismatched host key signature algorithms"""
+
+        with self.assertRaises(asyncssh.DisconnectError):
+            yield from self.connect(username='ckey', client_host_keys='skey',
+                                    client_username='user',
+                                    signature_algs=['rsa-sha2-256'])
+
+    @asynctest
+    def test_host_signature_alg_fallback(self):
+        """Test fall back to default host key signature algorithm"""
+
+        with (yield from self.connect(username='ckey', client_host_keys='skey',
+                                      client_username='user',
+                                      signature_algs=['rsa-sha2-256',
+                                                      'ssh-rsa'])) as conn:
+            pass
+
+        yield from conn.wait_closed()
+
+
 class _TestPublicKeyAuth(ServerTestCase):
     """Unit tests for public key authentication"""
 
@@ -670,9 +963,22 @@ class _TestPublicKeyAuth(ServerTestCase):
         cert = make_certificate('ssh-rsa-cert-v01@openssh.com',
                                 CERT_TYPE_USER, skey, skey, ['skey'])
 
+        with self.assertRaises(asyncssh.DisconnectError):
+            yield from self.connect(username='ckey', client_keys=[(skey, cert)])
+
+    @asynctest
+    def test_mismatched_ca(self):
+        """Test mismatched CA"""
+
+        ckey = asyncssh.read_private_key('ckey')
+        skey = asyncssh.read_private_key('skey')
+
+        cert = make_certificate('ssh-rsa-cert-v01@openssh.com',
+                                CERT_TYPE_USER, skey, skey, ['skey'])
+
         with self.assertRaises(ValueError):
             yield from self.connect(username='ckey',
-                                    client_keys=[('ckey', cert)])
+                                    client_keys=[(ckey, cert)])
 
     @asynctest
     def test_callback(self):
@@ -730,7 +1036,7 @@ class _TestPublicKeyAsyncServerAuth(_TestPublicKeyAuth):
         """Start an SSH server which supports async public key auth"""
 
         def server_factory():
-            """Return an SSH server which calls set_authorized_keys"""
+            """Return an SSH server which trusts specific client keys"""
 
             return _AsyncPublicKeyServer(client_keys=['ckey.pub',
                                                       'ckey_ecdsa.pub'])
@@ -738,7 +1044,7 @@ class _TestPublicKeyAsyncServerAuth(_TestPublicKeyAuth):
         return (yield from cls.create_server(server_factory))
 
 
-class _TestLimitedSignatureAlgs(ServerTestCase):
+class _TestLimitedPublicKeySignatureAlgs(ServerTestCase):
     """Unit tests for limited public key signature algorithms"""
 
     @classmethod
@@ -751,16 +1057,16 @@ class _TestLimitedSignatureAlgs(ServerTestCase):
             signature_algs=['ssh-rsa', 'rsa-sha2-512']))
 
     @asynctest
-    def test_mismatched_signature_algs(self):
-        """Test mismatched signature algorithms"""
+    def test_mismatched_client_signature_algs(self):
+        """Test mismatched client key signature algorithms"""
 
         with self.assertRaises(asyncssh.DisconnectError):
             yield from self.connect(username='ckey', client_keys='ckey',
                                     signature_algs=['rsa-sha2-256'])
 
     @asynctest
-    def test_signature_alg_fallback(self):
-        """Test fall back to default signature algorithm"""
+    def test_client_signature_alg_fallback(self):
+        """Test fall back to default client key signature algorithm"""
 
         with (yield from self.connect(username='ckey', client_keys='ckey',
                                       signature_algs=['rsa-sha2-256',
