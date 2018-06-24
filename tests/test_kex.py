@@ -540,7 +540,7 @@ class _TestKex(AsyncTestCase):
                 host_key = server_conn.get_server_host_key()
                 trans_key = asyncssh.generate_private_key('ssh-rsa', 2048)
                 client_conn.simulate_rsa_pubkey(host_key.public_data,
-                                                trans_key.get_ssh_public_key())
+                                                trans_key.public_data)
                 client_conn.simulate_rsa_done(b'')
 
         client_conn.close()

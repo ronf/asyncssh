@@ -351,7 +351,7 @@ class _TestAPI(AsyncTestCase):
         key = asyncssh.generate_private_key('ssh-rsa')
 
         with self.assertRaises(ValueError):
-            yield from agent.sign(key.get_ssh_public_key(), b'test')
+            yield from agent.sign(key.public_data, b'test')
 
     @agent_test
     def test_double_close(self, agent):

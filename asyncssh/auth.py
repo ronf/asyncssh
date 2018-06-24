@@ -282,10 +282,14 @@ class _ClientHostBasedAuth(_ClientAuth):
                            'with %s host key', client_username, client_host,
                            keypair.algorithm)
 
-        yield from self.send_request(String(keypair.algorithm),
-                                     String(keypair.public_data),
-                                     String(client_host),
-                                     String(client_username), key=keypair)
+        try:
+            yield from self.send_request(String(keypair.algorithm),
+                                         String(keypair.public_data),
+                                         String(client_host),
+                                         String(client_username), key=keypair)
+        except ValueError as exc:
+            self.logger.debug1('Host based auth failed: %s', exc)
+            self._conn.try_next_auth()
 
 
 class _ClientPublicKeyAuth(_ClientAuth):

@@ -59,6 +59,7 @@ Features
   * Including agent forwarding support on both the client and the server
 
 * Support for accessing keys managed by PuTTY's Pageant agent on Windows
+* Support for accessing host keys via OpenSSH's ssh-keysign
 * OpenSSH-style `known_hosts file`__ support
 * OpenSSH-style `authorized_keys file`__ support
 * Compatibility with OpenSSH "Encrypt then MAC" option for better security

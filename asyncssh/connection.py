@@ -68,6 +68,8 @@ from .gss import GSSClient, GSSServer, GSSError
 
 from .kex import get_kex_algs, expand_kex_algs, get_kex
 
+from .keysign import find_keysign, get_keysign_keys
+
 from .known_hosts import match_known_hosts
 
 from .listener import SSHTCPClientListener, SSHUNIXClientListener
@@ -91,7 +93,9 @@ from .public_key import CERT_TYPE_HOST, CERT_TYPE_USER, KeyImportError
 from .public_key import decode_ssh_public_key, decode_ssh_certificate
 from .public_key import get_public_key_algs, get_certificate_algs
 from .public_key import get_x509_certificate_algs
-from .public_key import load_keypairs, load_default_keypairs, load_certificates
+from .public_key import load_keypairs, load_default_keypairs
+from .public_key import load_public_keys, load_default_host_public_keys
+from .public_key import load_certificates
 
 from .saslprep import saslprep, SASLPrepError
 
@@ -2135,9 +2139,10 @@ class SSHClientConnection(SSHConnection):
                  x509_trusted_certs, x509_trusted_cert_paths, x509_purposes,
                  kex_algs, encryption_algs, mac_algs, compression_algs,
                  signature_algs, rekey_bytes, rekey_seconds, host, port,
-                 known_hosts, username, password, client_host_keys,
-                 client_host, client_username, client_keys, gss_host,
-                 gss_delegate_creds, agent, agent_path, auth_waiter):
+                 known_hosts, username, password, client_host_keysign,
+                 client_host_keys, client_host, client_username,
+                 client_keys, gss_host, gss_delegate_creds, agent,
+                 agent_path, auth_waiter):
         super().__init__(client_factory, loop, client_version,
                          x509_trusted_certs, x509_trusted_cert_paths,
                          x509_purposes, kex_algs, encryption_algs, mac_algs,
@@ -2149,6 +2154,7 @@ class SSHClientConnection(SSHConnection):
         self._known_hosts = known_hosts
         self._username = username
         self._password = password
+        self._client_host_keysign = client_host_keysign
         self._client_host_keys = client_host_keys
         self._client_host = client_host
         self._client_username = client_username
@@ -2171,6 +2177,12 @@ class SSHClientConnection(SSHConnection):
 
     def _connection_made(self):
         """Handle the opening of a new connection"""
+
+        if self._client_host_keysign:
+            sock = self._transport.get_extra_info('socket')
+            self._client_host_keys = get_keysign_keys(self._client_host_keysign,
+                                                      sock.fileno(),
+                                                      self._client_host_keys)
 
         if self._known_hosts is None:
             self._trusted_host_keys = None
@@ -2317,6 +2329,11 @@ class SSHClientConnection(SSHConnection):
         if self._client_host is None:
             self._client_host, _ = yield from self._loop.getnameinfo(
                 self.get_extra_info('sockname'), socket.NI_NUMERICSERV)
+
+        # Add a trailing '.' to the client host to be compatible with
+        # ssh-keysign from OpenSSH
+        if self._client_host_keysign and self._client_host[-1:] != '.':
+            self._client_host += '.'
 
         return keypair, self._client_host, self._client_username
 
@@ -4660,7 +4677,8 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
                       local_addr=None, known_hosts=(), x509_trusted_certs=(),
                       x509_trusted_cert_paths=(),
                       x509_purposes='secureShellServer', username=None,
-                      password=None, client_host_keys=None, client_host=None,
+                      password=None, client_host_keysign=False,
+                      client_host_keys=None, client_host=None,
                       client_username=None, client_keys=(), passphrase=None,
                       gss_host=(), gss_delegate_creds=False,
                       agent_path=(), agent_forwarding=False,
@@ -4765,17 +4783,27 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
            keyboard-interactive authentication which prompts for a password.
            If this is not specified, client password authentication will
            not be performed.
+       :param client_host_keysign: (optional)
+           Whether or not to use `ssh-keysign` to sign host-based
+           authentication requests. If set to `True`, an attempt will be
+           made to find `ssh-keysign` in its typical locations. If set to
+           a string, that will be used as the `ssh-keysign` path. When set,
+           client_host_keys should be a list of public keys. Otherwise,
+           client_host_keys should be a list of private keys with optional
+           paired certificates.
        :param client_host_keys: (optional)
            A list of keys to use to authenticate this client via host-based
-           authentication. If this is not specified, host-based public key
-           authentication will not be performed.
+           authentication. If `client_host_keysign` is set and no host keys
+           or certificates are specified, an attempt will be made to find
+           them in their typical locations. If `client_host_keysign` is
+           not set, host private keys must be specified explicitly or
+           host-based authentication will not be performed.
        :param client_host: (optional)
-           The host name to use when performing host-based authentication.
-           If not specified, the value returned by :func:`socket.gethostname`
-           will be used if it is a fully qualified name. Otherwise, the value
-           used by :func:`socket.getfqdn` will be used.
+           The local hostname to use when performing host-based
+           authentication. If not specified, the hostname associated with
+           the local IP address of the SSH connection will be used.
        :param client_username: (optional)
-           Username of the user on the local machine, used for host-based
+           The local username to use when performing host-based
            authentication. If not specified, the username of the currently
            logged in user will be used.
        :param client_keys: (optional)
@@ -4855,7 +4883,9 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
        :type x509_purposes: *see* :ref:`SpecifyingX509Purposes`
        :type username: `str`
        :type password: `str`
-       :type client_host_keys: *see* :ref:`SpecifyingPrivateKeys`
+       :type client_host_keysign: `bool` or `str`
+       :type client_host_keys:
+           *see* :ref:`SpecifyingPrivateKeys` or :ref:`SpecifyingPublicKeys`
        :type client_host: `str`
        :type client_username: `str`
        :type client_keys: *see* :ref:`SpecifyingPrivateKeys`
@@ -4886,10 +4916,10 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
                                    mac_algs, compression_algs, signature_algs,
                                    rekey_bytes, rekey_seconds, host, port,
                                    known_hosts, username, password,
-                                   client_host_keys, client_host,
-                                   client_username, client_keys, gss_host,
-                                   gss_delegate_creds, agent, agent_path,
-                                   auth_waiter)
+                                   client_host_keysign, client_host_keys,
+                                   client_host, client_username, client_keys,
+                                   gss_host, gss_delegate_creds, agent,
+                                   agent_path, auth_waiter)
 
     if not client_factory:
         client_factory = SSHClient
@@ -4926,7 +4956,15 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
 
     username = saslprep(username)
 
-    client_host_keys = load_keypairs(client_host_keys, passphrase)
+    if client_host_keysign:
+        client_host_keysign = find_keysign(client_host_keysign)
+
+        if client_host_keys:
+            client_host_keys = load_public_keys(client_host_keys)
+        else:
+            client_host_keys = load_default_host_public_keys()
+    else:
+        client_host_keys = load_keypairs(client_host_keys, passphrase)
 
     if client_username is None:
         client_username = getpass.getuser()

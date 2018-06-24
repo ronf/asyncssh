@@ -63,7 +63,7 @@ class _KexRSA(Kex):
 
             self._trans_key = asyncssh.generate_private_key('ssh-rsa',
                                                             self._key_size)
-            self._trans_key_data = self._trans_key.get_ssh_public_key()
+            self._trans_key_data = self._trans_key.public_data
 
             self.send_packet(MSG_KEXRSA_PUBKEY, String(self._host_key_data),
                              String(self._trans_key_data))

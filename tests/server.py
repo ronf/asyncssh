@@ -253,6 +253,9 @@ class ServerTestCase(AsyncTestCase):
             yield from agent.add_keys([ckey_ecdsa, (ckey, ckey_cert)])
             agent.close()
 
+        with open('ssh-keysign', 'wb'):
+            pass
+
     @classmethod
     @asyncio.coroutine
     def asyncTearDownClass(cls):

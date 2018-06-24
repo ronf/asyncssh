@@ -15,6 +15,7 @@
 import binascii
 from datetime import datetime, timedelta
 import os
+from pathlib import Path, PurePath
 import re
 import time
 
@@ -40,6 +41,13 @@ from .pbe import pkcs1_decrypt, pkcs8_decrypt
 
 # Default file names in .ssh directory to read private keys from
 _DEFAULT_KEY_FILES = ('id_ed25519', 'id_ecdsa', 'id_rsa', 'id_dsa')
+
+# Default directories and file names to read host keys from
+_DEFAULT_HOST_KEY_DIRS = ('/opt/local/etc', '/opt/local/etc/ssh',
+                          '/usr/local/etc', '/usr/local/etc/ssh',
+                          '/etc', '/etc/ssh')
+_DEFAULT_HOST_KEY_FILES = ('ssh_host_ed25519_key', 'ssh_host_ecdsa_key',
+                           'ssh_host_rsa_key', 'ssh_host_dsa_key')
 
 _public_key_algs = []
 _certificate_algs = []
@@ -151,6 +159,18 @@ class SSHKey:
     def __init__(self, key=None):
         self._key = key
         self._comment = None
+
+    @property
+    def private_data(self):
+        """Return private key data in OpenSSH binary format"""
+
+        return String(self.algorithm) + self.encode_ssh_private()
+
+    @property
+    def public_data(self):
+        """Return public key data in OpenSSH binary format"""
+
+        return String(self.algorithm) + self.encode_ssh_public()
 
     @property
     def pyca_key(self):
@@ -341,16 +361,6 @@ class SSHKey:
         # pylint: disable=no-self-use
         raise KeyExportError('OpenSSH public key export not supported')
 
-    def get_ssh_private_key(self):
-        """Return OpenSSH private key in binary format"""
-
-        return String(self.algorithm) + self.encode_ssh_private()
-
-    def get_ssh_public_key(self):
-        """Return OpenSSH public key in binary format"""
-
-        return String(self.algorithm) + self.encode_ssh_public()
-
     def convert_to_public(self):
         """Return public key corresponding to this key
 
@@ -361,8 +371,8 @@ class SSHKey:
 
         """
 
-        result = decode_ssh_public_key(self.get_ssh_public_key())
-        result.set_comment(self.get_comment_bytes())
+        result = decode_ssh_public_key(self.public_data)
+        result.set_comment(self._comment)
         return result
 
     def generate_user_certificate(self, user_key, key_id, version=1,
@@ -864,8 +874,8 @@ class SSHKey:
             check = os.urandom(4)
             nkeys = 1
 
-            data = b''.join((check, check, self.get_ssh_private_key(),
-                             String(self.get_comment_bytes() or b'')))
+            data = b''.join((check, check, self.private_data,
+                             String(self._comment or b'')))
 
             if passphrase is not None:
                 try:
@@ -913,8 +923,7 @@ class SSHKey:
 
             data = b''.join((_OPENSSH_KEY_V1, String(alg), String(kdf),
                              String(kdf_data), UInt32(nkeys),
-                             String(self.get_ssh_public_key()),
-                             String(data), mac))
+                             String(self.public_data), String(data), mac))
 
             return (b'-----BEGIN OPENSSH PRIVATE KEY-----\n' +
                     _wrap_base64(data, _OPENSSH_WRAP_LEN) +
@@ -962,25 +971,22 @@ class SSHKey:
 
             return data
         elif format_name == 'openssh':
-            data = self.get_ssh_public_key()
-
             if self._comment:
                 comment = b' ' + self._comment
             else:
                 comment = b''
 
             return (self.algorithm + b' ' +
-                    binascii.b2a_base64(data)[:-1] + comment + b'\n')
+                    binascii.b2a_base64(self.public_data)[:-1] +
+                    comment + b'\n')
         elif format_name == 'rfc4716':
-            data = self.get_ssh_public_key()
-
             if self._comment:
                 comment = (b'Comment: "' + self._comment + b'"\n')
             else:
                 comment = b''
 
             return (b'---- BEGIN SSH2 PUBLIC KEY ----\n' +
-                    comment + _wrap_base64(data) +
+                    comment + _wrap_base64(self.public_data) +
                     b'---- END SSH2 PUBLIC KEY ----\n')
         else:
             raise KeyExportError('Unknown export format')
@@ -996,9 +1002,12 @@ class SSHKey:
            :param \\*args,\\ \\*\\*kwargs:
                Additional arguments to pass through to
                :meth:`export_private_key`.
-           :type filename: `str`
+           :type filename: :class:`PurePath <pathlib.PurePath>` or `str`
 
         """
+
+        if isinstance(filename, PurePath):
+            filename = str(filename)
 
         with open(filename, 'wb') as f:
             f.write(self.export_private_key(*args, **kwargs))
@@ -1014,9 +1023,12 @@ class SSHKey:
            :param \\*args,\\ \\*\\*kwargs:
                Additional arguments to pass through to
                :meth:`export_public_key`.
-           :type filename: `str`
+           :type filename: :class:`PurePath <pathlib.PurePath>` or `str`
 
         """
+
+        if isinstance(filename, PurePath):
+            filename = str(filename)
 
         with open(filename, 'wb') as f:
             f.write(self.export_public_key(*args, **kwargs))
@@ -1032,9 +1044,12 @@ class SSHKey:
            :param \\*args,\\ \\*\\*kwargs:
                Additional arguments to pass through to
                :meth:`export_private_key`.
-           :type filename: `str`
+           :type filename: :class:`PurePath <pathlib.PurePath>` or `str`
 
         """
+
+        if isinstance(filename, PurePath):
+            filename = str(filename)
 
         with open(filename, 'ab') as f:
             f.write(self.export_private_key(*args, **kwargs))
@@ -1050,9 +1065,12 @@ class SSHKey:
            :param \\*args,\\ \\*\\*kwargs:
                Additional arguments to pass through to
                :meth:`export_public_key`.
-           :type filename: `str`
+           :type filename: :class:`PurePath <pathlib.PurePath>` or `str`
 
         """
+
+        if isinstance(filename, PurePath):
+            filename = str(filename)
 
         with open(filename, 'ab') as f:
             f.write(self.export_public_key(*args, **kwargs))
@@ -1065,20 +1083,21 @@ class SSHCertificate:
     is_x509_chain = False
 
     def __init__(self, algorithm, sig_algorithms, host_key_algorithms,
-                 key, data, comment):
+                 key, public_data, comment):
         self.algorithm = algorithm
         self.sig_algorithms = sig_algorithms
         self.host_key_algorithms = host_key_algorithms
         self.key = key
-        self.data = data
+        self.public_data = public_data
 
         self.set_comment(comment)
 
     def __eq__(self, other):
-        return isinstance(other, type(self)) and self.data == other.data
+        return (isinstance(other, type(self)) and
+                self.public_data == other.public_data)
 
     def __hash__(self):
-        return hash(self.data)
+        return hash(self.public_data)
 
     def get_algorithm(self):
         """Return the algorithm associated with this certificate"""
@@ -1162,10 +1181,10 @@ class SSHCertificate:
                                      'for OpenSSH certificates')
 
         if format_name == 'der':
-            return self.data
+            return self.public_data
         elif format_name == 'pem':
             return (b'-----BEGIN CERTIFICATE-----\n' +
-                    _wrap_base64(self.data) +
+                    _wrap_base64(self.public_data) +
                     b'-----END CERTIFICATE-----\n')
         elif format_name == 'openssh':
             if self._comment:
@@ -1174,7 +1193,8 @@ class SSHCertificate:
                 comment = b''
 
             return (self.algorithm + b' ' +
-                    binascii.b2a_base64(self.data)[:-1] + comment + b'\n')
+                    binascii.b2a_base64(self.public_data)[:-1] +
+                    comment + b'\n')
         elif format_name == 'rfc4716':
             if self._comment:
                 comment = (b'Comment: "' + self._comment + b'"\n')
@@ -1182,7 +1202,7 @@ class SSHCertificate:
                 comment = b''
 
             return (b'---- BEGIN SSH2 PUBLIC KEY ----\n' +
-                    comment + _wrap_base64(self.data) +
+                    comment + _wrap_base64(self.public_data) +
                     b'---- END SSH2 PUBLIC KEY ----\n')
         else:
             raise KeyExportError('Unknown export format')
@@ -1198,9 +1218,12 @@ class SSHCertificate:
            :param \\*args,\\ \\*\\*kwargs:
                Additional arguments to pass through to
                :meth:`export_certificate`.
-           :type filename: `str`
+           :type filename: :class:`PurePath <pathlib.PurePath>` or `str`
 
         """
+
+        if isinstance(filename, PurePath):
+            filename = str(filename)
 
         with open(filename, 'wb') as f:
             f.write(self.export_certificate(*args, **kwargs))
@@ -1216,9 +1239,12 @@ class SSHCertificate:
            :param \\*args,\\ \\*\\*kwargs:
                Additional arguments to pass through to
                :meth:`export_certificate`.
-           :type filename: `str`
+           :type filename: :class:`PurePath <pathlib.PurePath>` or `str`
 
         """
+
+        if isinstance(filename, PurePath):
+            filename = str(filename)
 
         with open(filename, 'ab') as f:
             f.write(self.export_certificate(*args, **kwargs))
@@ -1279,7 +1305,7 @@ class SSHOpenSSHCertificate(SSHCertificate):
                                      cert_principals, valid_after,
                                      valid_before, cert_options,
                                      cert_extensions),
-                         String(signing_key.get_ssh_public_key())))
+                         String(signing_key.public_data)))
 
         data += String(signing_key.sign(data, signing_key.algorithm))
 
@@ -1545,7 +1571,7 @@ class SSHX509Certificate(SSHCertificate):
 
             try:
                 while True:
-                    cert_path = os.path.join(path, issuer_hash + '.' + str(idx))
+                    cert_path = Path(path, issuer_hash + '.' + str(idx))
                     idx += 1
 
                     c = read_certificate(cert_path)
@@ -1653,7 +1679,7 @@ class SSHX509CertificateChain(SSHCertificate):
         cert = certs[0]
         algorithm = cert.algorithm
         data = (String(algorithm) + UInt32(len(certs)) +
-                b''.join(String(c.data) for c in certs) + UInt32(0))
+                b''.join(String(c.public_data) for c in certs) + UInt32(0))
 
         return cls(algorithm, data, certs, (), cert.get_comment_bytes())
 
@@ -1777,7 +1803,7 @@ class SSHLocalKeyPair(SSHKeyPair):
 
     def __init__(self, key, cert=None):
         super().__init__(cert.algorithm if cert else key.algorithm,
-                         cert.data if cert else key.get_ssh_public_key(),
+                         cert.public_data if cert else key.public_data,
                          key.get_comment_bytes())
 
         self._key = key
@@ -1786,7 +1812,7 @@ class SSHLocalKeyPair(SSHKeyPair):
         self.sig_algorithm = key.algorithm
 
         if cert:
-            if key.get_ssh_public_key() != cert.key.get_ssh_public_key():
+            if key.public_data != cert.key.public_data:
                 raise ValueError('Certificate key mismatch')
 
             self.sig_algorithms = cert.sig_algorithms
@@ -2613,12 +2639,15 @@ def read_private_key(filename, passphrase=None):
            The file to read the key from.
        :param passphrase: (optional)
            The passphrase to use to decrypt the key.
-       :type filename: `str`
+       :type filename: :class:`PurePath <pathlib.PurePath>` or `str`
        :type passphrase: `str` or `bytes`
 
        :returns: An :class:`SSHKey` private key
 
     """
+
+    if isinstance(filename, PurePath):
+        filename = str(filename)
 
     with open(filename, 'rb') as f:
         key = import_private_key(f.read(), passphrase)
@@ -2631,6 +2660,9 @@ def read_private_key(filename, passphrase=None):
 
 def read_private_key_and_certs(filename, passphrase=None):
     """Read a private key and optional certificate chain from a file"""
+
+    if isinstance(filename, PurePath):
+        filename = str(filename)
 
     with open(filename, 'rb') as f:
         key, cert = import_private_key_and_certs(f.read(), passphrase)
@@ -2650,11 +2682,14 @@ def read_public_key(filename):
 
        :param filename:
            The file to read the key from.
-       :type filename: `str`
+       :type filename: :class:`PurePath <pathlib.PurePath>` or `str`
 
        :returns: An :class:`SSHKey` public key
 
     """
+
+    if isinstance(filename, PurePath):
+        filename = str(filename)
 
     with open(filename, 'rb') as f:
         key = import_public_key(f.read())
@@ -2674,11 +2709,14 @@ def read_certificate(filename):
 
        :param filename:
            The file to read the certificate from.
-       :type filename: `str`
+       :type filename: :class:`PurePath <pathlib.PurePath>` or `str`
 
        :returns: An :class:`SSHCertificate` object
 
     """
+
+    if isinstance(filename, PurePath):
+        filename = str(filename)
 
     with open(filename, 'rb') as f:
         return import_certificate(f.read())
@@ -2696,12 +2734,15 @@ def read_private_key_list(filename, passphrase=None):
            The file to read the keys from.
        :param passphrase: (optional)
            The passphrase to use to decrypt the keys.
-       :type filename: `str`
+       :type filename: :class:`PurePath <pathlib.PurePath>` or `str`
        :type passphrase: `str` or `bytes`
 
        :returns: A list of :class:`SSHKey` private keys
 
     """
+
+    if isinstance(filename, PurePath):
+        filename = str(filename)
 
     with open(filename, 'rb') as f:
         data = f.read()
@@ -2737,11 +2778,14 @@ def read_public_key_list(filename):
 
        :param filename:
            The file to read the keys from.
-       :type filename: `str`
+       :type filename: :class:`PurePath <pathlib.PurePath>` or `str`
 
        :returns: A list of :class:`SSHKey` public keys
 
     """
+
+    if isinstance(filename, PurePath):
+        filename = str(filename)
 
     with open(filename, 'rb') as f:
         data = f.read()
@@ -2795,11 +2839,14 @@ def read_certificate_list(filename):
 
        :param filename:
            The file to read the certificates from.
-       :type filename: `str`
+       :type filename: :class:`PurePath <pathlib.PurePath>` or `str`
 
        :returns: A list of :class:`SSHCertificate` certificates
 
     """
+
+    if isinstance(filename, PurePath):
+        filename = str(filename)
 
     with open(filename, 'rb') as f:
         data = f.read()
@@ -2853,7 +2900,7 @@ def load_keypairs(keylist, passphrase=None):
 
     result = []
 
-    if isinstance(keylist, str):
+    if isinstance(keylist, (PurePath, str)):
         try:
             keys = read_private_key_list(keylist, passphrase)
 
@@ -2876,9 +2923,9 @@ def load_keypairs(keylist, passphrase=None):
             default_cert_file = None
             ignore_missing_cert = False
 
-            if isinstance(key, str):
+            if isinstance(key, (PurePath, str)):
                 allow_certs = True
-                default_cert_file = key + '-cert.pub'
+                default_cert_file = str(key) + '-cert.pub'
                 ignore_missing_cert = True
             elif isinstance(key, bytes):
                 allow_certs = True
@@ -2887,7 +2934,7 @@ def load_keypairs(keylist, passphrase=None):
             else:
                 certs = None
 
-            if isinstance(key, str):
+            if isinstance(key, (PurePath, str)):
                 if allow_certs:
                     key, certs = read_private_key_and_certs(key, passphrase)
 
@@ -2932,7 +2979,7 @@ def load_default_keypairs(passphrase=None):
 
     for file in _DEFAULT_KEY_FILES:
         try:
-            file = os.path.join(os.path.expanduser('~'), '.ssh', file)
+            file = Path(os.path.expanduser('~'), '.ssh', file)
             result.extend(load_keypairs(file, passphrase))
         except KeyImportError as exc:
             # Ignore encrypted default keys if a passphrase isn't provided
@@ -2957,13 +3004,13 @@ def load_public_keys(keylist):
 
     """
 
-    if isinstance(keylist, str):
+    if isinstance(keylist, (PurePath, str)):
         return read_public_key_list(keylist)
     else:
         result = []
 
         for key in keylist:
-            if isinstance(key, str):
+            if isinstance(key, (PurePath, str)):
                 key = read_public_key(key)
             elif isinstance(key, bytes):
                 key = import_public_key(key)
@@ -2971,6 +3018,32 @@ def load_public_keys(keylist):
             result.append(key)
 
         return result
+
+
+def load_default_host_public_keys():
+    """Return a list of default host public keys or certificates"""
+
+    result = []
+
+    for host_key_dir in _DEFAULT_HOST_KEY_DIRS:
+        for file in _DEFAULT_HOST_KEY_FILES:
+            try:
+                cert = read_certificate(Path(host_key_dir, file + '-cert.pub'))
+            except (OSError, KeyImportError):
+                pass
+            else:
+                result.append(cert)
+
+    for host_key_dir in _DEFAULT_HOST_KEY_DIRS:
+        for file in _DEFAULT_HOST_KEY_FILES:
+            try:
+                key = read_public_key(Path(host_key_dir, file + '.pub'))
+            except (OSError, KeyImportError):
+                pass
+            else:
+                result.append(key)
+
+    return result
 
 
 def load_certificates(certlist):
@@ -2988,13 +3061,13 @@ def load_certificates(certlist):
 
     if isinstance(certlist, SSHCertificate):
         return [certlist]
-    elif isinstance(certlist, (bytes, str)):
+    elif isinstance(certlist, (PurePath, str, bytes)):
         certlist = [certlist]
 
     result = []
 
     for cert in certlist:
-        if isinstance(cert, str):
+        if isinstance(cert, (PurePath, str)):
             certs = read_certificate_list(cert)
         elif isinstance(cert, bytes):
             certs = [import_certificate(cert)]

@@ -22,6 +22,7 @@
 import binascii
 from datetime import datetime
 import os
+from pathlib import Path
 import shutil
 import subprocess
 import sys
@@ -193,7 +194,7 @@ class _TestPublicKey(TempDirTestCase):
             cert.validate_chain([self.rootx509], [], [], 'any', None, None)
 
         chain = SSHX509CertificateChain.construct_from_certs([cert])
-        self.assertEqual(chain, decode_ssh_certificate(chain.data))
+        self.assertEqual(chain, decode_ssh_certificate(chain.public_data))
 
         self.assertIsNone(chain.validate_chain([self.rootx509], [], [], 'any',
                                                user_principal, None))
@@ -215,7 +216,7 @@ class _TestPublicKey(TempDirTestCase):
         newkey = asyncssh.read_private_key('new', passphrase)
         algorithm = newkey.get_algorithm()
         keydata = newkey.export_private_key()
-        pubdata = newkey.get_ssh_public_key()
+        pubdata = newkey.public_data
 
         self.assertEqual(newkey, self.privkey)
         self.assertEqual(hash(newkey), hash(self.privkey))
@@ -253,6 +254,15 @@ class _TestPublicKey(TempDirTestCase):
         keypair = asyncssh.load_keypairs([('new', None)], passphrase)[0]
         self.assertEqual(keypair.public_data, pubdata)
 
+        keypair = asyncssh.load_keypairs(Path('new'), passphrase)[0]
+        self.assertEqual(keypair.public_data, pubdata)
+
+        keypair = asyncssh.load_keypairs([Path('new')], passphrase)[0]
+        self.assertEqual(keypair.public_data, pubdata)
+
+        keypair = asyncssh.load_keypairs([(Path('new'), None)], passphrase)[0]
+        self.assertEqual(keypair.public_data, pubdata)
+
         keylist = asyncssh.load_keypairs([])
         self.assertEqual(keylist, [])
 
@@ -268,6 +278,13 @@ class _TestPublicKey(TempDirTestCase):
             self.assertEqual(keylist[0].public_data, pubdata)
             self.assertEqual(keylist[1].public_data, pubdata)
 
+            newkey.write_private_key(Path('list'), format_name)
+            newkey.append_private_key(Path('list'), format_name)
+
+            keylist = asyncssh.load_keypairs(Path('list'))
+            self.assertEqual(keylist[0].public_data, pubdata)
+            self.assertEqual(keylist[1].public_data, pubdata)
+
         if self.x509_supported and format_name[-4:] == '-pem':
             cert = newkey.generate_x509_user_certificate(newkey, 'OU=user')
             chain = SSHX509CertificateChain.construct_from_certs([cert])
@@ -275,14 +292,14 @@ class _TestPublicKey(TempDirTestCase):
             cert.write_certificate('new_cert')
 
             keypair = asyncssh.load_keypairs(('new', 'new_cert'), passphrase)[0]
-            self.assertEqual(keypair.public_data, chain.data)
+            self.assertEqual(keypair.public_data, chain.public_data)
             self.assertIsNotNone(keypair.get_agent_private_key())
 
             newkey.write_private_key('new_bundle', format_name, passphrase)
             cert.append_certificate('new_bundle', 'pem')
 
             keypair = asyncssh.load_keypairs('new_bundle', passphrase)[0]
-            self.assertEqual(keypair.public_data, chain.data)
+            self.assertEqual(keypair.public_data, chain.public_data)
 
             with self.assertRaises(OSError):
                 asyncssh.load_keypairs(('new', 'not_found'), passphrase)
@@ -308,10 +325,23 @@ class _TestPublicKey(TempDirTestCase):
         keypair = asyncssh.load_public_keys(['new'])[0]
         self.assertEqual(keypair, newkey)
 
+        keypair = asyncssh.load_public_keys(Path('new'))[0]
+        self.assertEqual(keypair, newkey)
+
+        keypair = asyncssh.load_public_keys([Path('new')])[0]
+        self.assertEqual(keypair, newkey)
+
         newkey.write_public_key('list', format_name)
         newkey.append_public_key('list', format_name)
 
         keylist = asyncssh.load_public_keys('list')
+        self.assertEqual(keylist[0], newkey)
+        self.assertEqual(keylist[1], newkey)
+
+        newkey.write_public_key(Path('list'), format_name)
+        newkey.append_public_key(Path('list'), format_name)
+
+        keylist = asyncssh.load_public_keys(Path('list'))
         self.assertEqual(keylist[0], newkey)
         self.assertEqual(keylist[1], newkey)
 
@@ -345,10 +375,26 @@ class _TestPublicKey(TempDirTestCase):
         certlist = asyncssh.load_certificates([certdata])
         self.assertEqual(certlist[0], cert)
 
+        certlist = asyncssh.load_certificates('cert')
+        self.assertEqual(certlist[0], cert)
+
+        certlist = asyncssh.load_certificates(Path('cert'))
+        self.assertEqual(certlist[0], cert)
+
+        certlist = asyncssh.load_certificates([Path('cert')])
+        self.assertEqual(certlist[0], cert)
+
         cert.write_certificate('list', format_name)
         cert.append_certificate('list', format_name)
 
         certlist = asyncssh.load_certificates('list')
+        self.assertEqual(certlist[0], cert)
+        self.assertEqual(certlist[1], cert)
+
+        cert.write_certificate(Path('list'), format_name)
+        cert.append_certificate(Path('list'), format_name)
+
+        certlist = asyncssh.load_certificates(Path('list'))
         self.assertEqual(certlist[0], cert)
         self.assertEqual(certlist[1], cert)
 
@@ -1510,7 +1556,7 @@ class _TestPublicKey(TempDirTestCase):
 
             cert.write_certificate('cert')
             cert2 = asyncssh.read_certificate('cert')
-            self.assertEqual(cert2.data, cert.data)
+            self.assertEqual(cert2.public_data, cert.public_data)
 
     def check_certificate_errors(self, cert_type):
         """Check general and OpenSSH certificate error cases"""

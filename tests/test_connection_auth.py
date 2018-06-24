@@ -22,6 +22,7 @@ import asyncssh
 from asyncssh.packet import String
 from asyncssh.public_key import CERT_TYPE_USER, CERT_TYPE_HOST
 
+from .keysign_stub import create_subprocess_exec_stub
 from .server import Server, ServerTestCase
 from .util import asynctest, gss_available, patch_gss, make_certificate
 from .util import x509_available
@@ -643,6 +644,109 @@ class _TestHostBasedAuth(ServerTestCase):
             yield from self.connect(username='user',
                                     client_host_keys=[(ckey, cert)],
                                     client_username='user')
+
+
+class _TestKeysignHostBasedAuth(ServerTestCase):
+    """Unit tests for host-based authentication using ssh-keysign"""
+
+    @classmethod
+    @asyncio.coroutine
+    def start_server(cls):
+        """Start an SSH server which supports host-based authentication"""
+
+        return (yield from cls.create_server(
+            _HostBasedServer, known_client_hosts='known_hosts'))
+
+    @asyncio.coroutine
+    def _connect_keysign(self, client_host_keysign=True,
+                         client_host_keys=None, keysign_dirs=('.',)):
+        """Open a connection to test host-based auth using ssh-keysign"""
+
+        with patch('asyncio.create_subprocess_exec',
+                   create_subprocess_exec_stub):
+            with patch('asyncssh.keysign._DEFAULT_KEYSIGN_DIRS', keysign_dirs):
+                with patch('asyncssh.public_key._DEFAULT_HOST_KEY_DIRS', ['.']):
+                    with patch('asyncssh.public_key._DEFAULT_HOST_KEY_FILES',
+                               ['skey', 'xxx']):
+                        return (yield from self.connect(
+                            username='user',
+                            client_host_keysign=client_host_keysign,
+                            client_host_keys=client_host_keys,
+                            client_username='user'))
+
+    @asynctest
+    def test_keysign(self):
+        """Test host-based authentication using ssh-keysign"""
+
+        with (yield from self._connect_keysign()) as conn:
+            pass
+
+        yield from conn.wait_closed()
+
+    @asynctest
+    def test_explciit_keysign(self):
+        """Test ssh-keysign with an explicit path"""
+
+        with (yield from self._connect_keysign(
+            client_host_keysign='.')) as conn:
+            pass
+
+        yield from conn.wait_closed()
+
+    @asynctest
+    def test_keysign_explicit_host_keys(self):
+        """Test ssh-keysign with explicit host public keys"""
+
+        with (yield from self._connect_keysign(
+            client_host_keys='skey.pub')) as conn:
+            pass
+
+        yield from conn.wait_closed()
+
+    @asynctest
+    def test_invalid_keysign_response(self):
+        """Test invalid ssh-keysign response"""
+
+        with patch('asyncssh.keysign.KEYSIGN_VERSION', 0):
+            with self.assertRaises(asyncssh.DisconnectError):
+                yield from self._connect_keysign()
+
+    @asynctest
+    def test_keysign_error(self):
+        """Test ssh-keysign error response"""
+
+        with patch('asyncssh.keysign.KEYSIGN_VERSION', 1):
+            with self.assertRaises(asyncssh.DisconnectError):
+                yield from self._connect_keysign()
+
+    @asynctest
+    def test_invalid_keysign_version(self):
+        """Test invalid version in ssh-keysign request"""
+
+        with patch('asyncssh.keysign.KEYSIGN_VERSION', 99):
+            with self.assertRaises(asyncssh.DisconnectError):
+                yield from self._connect_keysign()
+
+    @asynctest
+    def test_keysign_not_found(self):
+        """Test ssh-keysign executable not being found"""
+
+        with self.assertRaises(ValueError):
+            yield from self._connect_keysign(keysign_dirs=())
+
+    @asynctest
+    def test_explicit_keysign_not_found(self):
+        """Test explicit ssh-keysign executable not being found"""
+
+        with self.assertRaises(ValueError):
+            yield from self._connect_keysign(client_host_keysign='xxx')
+
+    @asynctest
+    def test_keysign_dir_not_present(self):
+        """Test ssh-keysign executable not in a keysign dir"""
+
+        with self.assertRaises(ValueError):
+            yield from self._connect_keysign(keysign_dirs=('xxx',))
 
 
 class _TestHostBasedAsyncServerAuth(_TestHostBasedAuth):
