@@ -581,7 +581,7 @@ class _TestHostBasedAuth(ServerTestCase):
         """Test stripping of trailing dot from client host"""
 
         with (yield from self.connect(username='user', client_host_keys='skey',
-                                      client_host=self._client_host + '.',
+                                      client_host='localhost.',
                                       client_username='user')) as conn:
             pass
 

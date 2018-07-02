@@ -208,12 +208,10 @@ class ServerTestCase(AsyncTestCase):
         cls._server = yield from cls.start_server()
 
         sock = cls._server.sockets[0]
-        cls._client_host, _ = yield from cls.loop.getnameinfo(('127.0.0.1', 0))
         cls._server_addr = '127.0.0.1'
         cls._server_port = sock.getsockname()[1]
 
-        host = '[%s]:%d,%s ' % (cls._server_addr, cls._server_port,
-                                cls._client_host)
+        host = '[%s]:%d,localhost ' % (cls._server_addr, cls._server_port)
 
         with open('known_hosts', 'w') as known_hosts:
             known_hosts.write(host)
