@@ -13,13 +13,13 @@
 """Unit tests for matching against authorized_keys file"""
 
 import unittest
-from unittest.mock import patch
 
 import asyncssh
 
-from .util import TempDirTestCase, x509_available
+from .util import TempDirTestCase, patch_getnameinfo, x509_available
 
 
+@patch_getnameinfo
 class _TestAuthorizedKeys(TempDirTestCase):
     """Unit tests for auth_keys module"""
 
@@ -69,36 +69,22 @@ class _TestAuthorizedKeys(TempDirTestCase):
     def match_keys(self, tests, x509=False):
         """Match against authorized keys"""
 
-        def getnameinfo(sockaddr, flags):
-            """Mock reverse DNS lookup of client address"""
+        for keys, matches in tests:
+            auth_keys = self.build_keys(keys, x509)
+            for (msg, keynum, client_addr, cert_principals, match) in matches:
+                with self.subTest(msg, x509=x509):
+                    if x509:
+                        result, trusted_cert = auth_keys.validate_x509(
+                            self.imported_certlist[keynum], client_addr)
+                        if (trusted_cert and trusted_cert.subject !=
+                                self.imported_certlist[keynum].subject):
+                            result = None
+                    else:
+                        result = auth_keys.validate(
+                            self.imported_keylist[keynum], client_addr,
+                            cert_principals, keynum == 1)
 
-            # pylint: disable=unused-argument
-
-            host, port = sockaddr
-
-            if host == '127.0.0.1':
-                return ('localhost', port)
-            else:
-                return sockaddr
-
-        with patch('socket.getnameinfo', getnameinfo):
-            for keys, matches in tests:
-                auth_keys = self.build_keys(keys, x509)
-                for (msg, keynum, client_addr,
-                     cert_principals, match) in matches:
-                    with self.subTest(msg, x509=x509):
-                        if x509:
-                            result, trusted_cert = auth_keys.validate_x509(
-                                self.imported_certlist[keynum], client_addr)
-                            if (trusted_cert and trusted_cert.subject !=
-                                    self.imported_certlist[keynum].subject):
-                                result = None
-                        else:
-                            result = auth_keys.validate(
-                                self.imported_keylist[keynum], client_addr,
-                                cert_principals, keynum == 1)
-
-                        self.assertEqual(result is not None, match)
+                    self.assertEqual(result is not None, match)
 
     def test_matches(self):
         """Test authorized keys matching"""

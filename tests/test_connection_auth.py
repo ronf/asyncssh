@@ -24,8 +24,8 @@ from asyncssh.public_key import CERT_TYPE_USER, CERT_TYPE_HOST
 
 from .keysign_stub import create_subprocess_exec_stub
 from .server import Server, ServerTestCase
-from .util import asynctest, gss_available, patch_gss, make_certificate
-from .util import x509_available
+from .util import asynctest, gss_available, patch_getnameinfo, patch_gss
+from .util import make_certificate, x509_available
 
 
 class _FailValidateHostSSHServerConnection(asyncssh.SSHServerConnection):
@@ -456,6 +456,7 @@ class _TestGSSFQDN(ServerTestCase):
         yield from conn.wait_closed()
 
 
+@patch_getnameinfo
 class _TestHostBasedAuth(ServerTestCase):
     """Unit tests for host-based authentication"""
 
@@ -646,6 +647,7 @@ class _TestHostBasedAuth(ServerTestCase):
                                     client_username='user')
 
 
+@patch_getnameinfo
 class _TestKeysignHostBasedAuth(ServerTestCase):
     """Unit tests for host-based authentication using ssh-keysign"""
 
@@ -749,6 +751,7 @@ class _TestKeysignHostBasedAuth(ServerTestCase):
             yield from self._connect_keysign(keysign_dirs=('xxx',))
 
 
+@patch_getnameinfo
 class _TestHostBasedAsyncServerAuth(_TestHostBasedAuth):
     """Unit tests for host-based authentication with async server callbacks"""
 
@@ -771,6 +774,7 @@ class _TestHostBasedAsyncServerAuth(_TestHostBasedAuth):
                                     client_username='user')
 
 
+@patch_getnameinfo
 class _TestLimitedHostBasedSignatureAlgs(ServerTestCase):
     """Unit tests for limited host key signature algorithms"""
 

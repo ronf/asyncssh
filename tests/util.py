@@ -84,6 +84,24 @@ def asynctest35(func):
     return async_wrapper
 
 
+def patch_getnameinfo(cls):
+    """Decorator for patching socket.getnameinfo"""
+
+    def getnameinfo(sockaddr, flags):
+        """Mock reverse DNS lookup of client address"""
+
+        # pylint: disable=unused-argument
+
+        host, port = sockaddr
+
+        if host == '127.0.0.1':
+            return ('localhost', port)
+        else:
+            return sockaddr
+
+    return patch('socket.getnameinfo', getnameinfo)(cls)
+
+
 def patch_gss(cls):
     """Decorator for patching GSSAPI classes"""
 
