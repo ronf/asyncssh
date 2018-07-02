@@ -1143,6 +1143,8 @@ class SSHConnection(SSHPacketHandler):
         # pylint: disable=no-member
         self._cancel_login_timer()
 
+        self._owner.auth_completed()
+
     def send_channel_open_confirmation(self, send_chan, recv_chan,
                                        recv_window, recv_pktsize,
                                        *result_args):

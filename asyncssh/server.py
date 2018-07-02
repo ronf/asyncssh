@@ -16,18 +16,19 @@
 class SSHServer:
     """SSH server protocol handler
 
-       Applications should subclass this when implementing an SSH server.
-       At a minimum, one or more of the authentication handlers will need
-       to be overridden to perform authentication, or :meth:`begin_auth`
-       should be overridden to return `False` to indicate that no
-       authentication is required.
+       Applications may subclass this when implementing an SSH server to
+       provide custom authentication and request handlers.
 
-       In addition, one or more of the :meth:`session_requested`,
+       THe method :meth:`begin_auth` can be overridden decide whether
+       or not authentication is required, and additional callbacks are
+       provided for each form of authentication in cases where authentication
+       information is not provided in the call to :func:`create_server`.
+
+       In addition, the methods :meth:`session_requested`,
        :meth:`connection_requested`, :meth:`server_requested`,
        :meth:`unix_connection_requested`, or :meth:`unix_server_requested`
-       methods will need to be overridden to handle requests to open
-       sessions or direct connections or set up listeners for forwarded
-       connections.
+       can be overridden to handle requests to open sessions or direct
+       connections or set up listeners for forwarded connections.
 
        .. note:: The authentication callbacks described here can be
                  defined as coroutines. However, they may be cancelled if
@@ -112,6 +113,20 @@ class SSHServer:
         """
 
         return True # pragma: no cover
+
+    def auth_completed(self):
+        """Authentication was completed successfully
+
+           This method is called when authentication has completed
+           succesfully. Applications may use this method to perform
+           processing based on the authenticated username or options in
+           the authorized keys list or certificate associated with the
+           user before any sessions are opened or forwarding requests
+           are handled.
+
+        """
+
+        pass # pragma: no cover
 
     def validate_gss_principal(self, username, user_principal,
                                host_principal):

@@ -208,6 +208,7 @@ SSHServer
    General authentication handlers
    =============================== =
    .. automethod:: begin_auth
+   .. automethod:: auth_completed
    =============================== =
 
    ====================================== =

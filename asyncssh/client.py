@@ -16,12 +16,9 @@
 class SSHClient:
     """SSH client protocol handler
 
-       Applications should subclass this when implementing an SSH client.
-       The functions listed below should be overridden to define
-       application-specific behavior. In particular, the method
-       :meth:`auth_completed` should be defined to open the desired
-       SSH channels on this connection once authentication has been
-       completed.
+       Applications may subclass this when implementing an SSH client
+       to receive callbacks when certain events occur on the SSH
+       connection.
 
        For simple password or public key based authentication, nothing
        needs to be defined here if the password or client keys are passed
@@ -128,6 +125,10 @@ class SSHClient:
            whatever client sessions and direct TCP/IP or UNIX domain
            connections are needed and/or set up listeners for incoming
            TCP/IP or UNIX domain connections coming from the server.
+           However, :func:`create_connection` now blocks until
+           authentication is complete, so any code which wishes to
+           use the SSH connection can simply follow that call and
+           doesn't need to be performed in a callback.
 
         """
 
