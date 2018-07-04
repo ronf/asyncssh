@@ -3,6 +3,26 @@
 Change Log
 ==========
 
+Release 1.13.2 (3 Jul 2018)
+---------------------------
+
+* Added support for accessing client host keys via the OpenSSH
+  ssh-keysign program when doing host-based authentication. If
+  ssh-keysign is present and enabled on the system, an AsyncSSH
+  based SSH client can use host-based authentication without
+  access to the host private keys.
+
+* Added support for using pathlib path objects when reading and
+  writing private and public keys and certificates.
+
+* Added support for auth_completed() callback in the SSHServer
+  class which runs when authentication completes successfully
+  on each new connection.
+
+* Fixed host-based authentication unit tests to mock out calls
+  to getnameinfo() to avoid failures on systems with restricted
+  network functionality.
+
 Release 1.13.1 (16 Jun 2018)
 ----------------------------
 
