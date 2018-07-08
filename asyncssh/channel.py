@@ -311,8 +311,9 @@ class SSHChannel(SSHPacketHandler):
         if self._encoding:
             try:
                 data = self._decoder.decode(data)
-            except UnicodeDecodeError as exc:
-                raise DisconnectError(DISC_PROTOCOL_ERROR, str(exc)) from None
+            except UnicodeDecodeError as unicode_exc:
+                raise DisconnectError(DISC_PROTOCOL_ERROR,
+                                      str(unicode_exc)) from None
 
         if self._session:
             self._session.data_received(data, datatype)
@@ -1409,8 +1410,6 @@ class SSHServerChannel(SSHChannel):
                                                             auth_data, screen),
                                self.logger)
 
-        return None
-
     @asyncio.coroutine
     def _finish_x11_req_request(self, auth_proto, auth_data, screen):
         """Finish processing request to enable X11 forwarding"""
@@ -1431,8 +1430,6 @@ class SSHServerChannel(SSHChannel):
         packet.check_end()
 
         self._conn.create_task(self._finish_agent_req_request(), self.logger)
-
-        return None
 
     @asyncio.coroutine
     def _finish_agent_req_request(self):
