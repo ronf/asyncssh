@@ -52,10 +52,9 @@ class _UnicodeReader:
         if self._decoder:
             try:
                 data = self._decoder.decode(data, final)
-            except UnicodeDecodeError:
-                self.close()
+            except UnicodeDecodeError as unicode_exc:
                 raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                      'Unicode decode error')
+                                      str(unicode_exc)) from None
 
         return data
 

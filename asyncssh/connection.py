@@ -1800,18 +1800,11 @@ class SSHConnection(SSHPacketHandler):
 
         """
 
-        if not self._transport:
-            return
-
         for chan in list(self._channels.values()):
             chan.close()
 
         self._send_disconnect(code, reason, lang)
-
-        self._transport.close()
-        self._transport = None
-
-        self._loop.call_soon(self._cleanup, None)
+        self._force_close(None)
 
     def get_extra_info(self, name, default=None):
         """Get additional information about the connection
@@ -2723,11 +2716,13 @@ class SSHClientConnection(SSHConnection):
         chan = SSHClientChannel(self, self._loop, encoding,
                                 window, max_pktsize)
 
-        return (yield from chan.create(session_factory, command, subsystem,
-                                       env, term_type, term_size, term_modes,
-                                       x11_forwarding, x11_display,
-                                       x11_auth_path, x11_single_connection,
-                                       bool(self._agent_path)))
+        session = yield from chan.create(session_factory, command, subsystem,
+                                         env, term_type, term_size, term_modes,
+                                         x11_forwarding, x11_display,
+                                         x11_auth_path, x11_single_connection,
+                                         bool(self._agent_path))
+
+        return chan, session
 
     @asyncio.coroutine
     def open_session(self, *args, **kwargs):

@@ -632,8 +632,6 @@ class _TestChannel(ServerTestCase):
             chan.write('\n')
             yield from asyncio.sleep(0.1)
             conn.close()
-            yield from asyncio.sleep(0.1)
-            chan.resume_reading()
 
             yield from chan.wait_closed()
 
@@ -650,8 +648,22 @@ class _TestChannel(ServerTestCase):
             chan.write('\n')
             yield from asyncio.sleep(0.1)
             conn.close()
+
+            yield from chan.wait_closed()
+
+        yield from conn.wait_closed()
+
+    @asynctest
+    def test_close_while_read_paused(self):
+        """Test closing a remotely closed channel while reading is paused"""
+
+        with (yield from self.connect()) as conn:
+            chan, _ = yield from _create_session(conn, 'close')
+
+            chan.pause_reading()
+            chan.write('\n')
             yield from asyncio.sleep(0.1)
-            chan.resume_reading()
+            chan.close()
 
             yield from chan.wait_closed()
 
@@ -793,6 +805,7 @@ class _TestChannel(ServerTestCase):
 
         with (yield from self.connect()) as conn:
             chan, _ = yield from _create_session(conn)
+            yield from asyncio.sleep(0.1)
             chan.resume_reading()
             chan.close()
 
@@ -1367,8 +1380,10 @@ class _TestChannel(ServerTestCase):
         """Test receiving bad Unicode data"""
 
         with (yield from self.connect()) as conn:
-            with self.assertRaises(asyncssh.DisconnectError):
-                yield from _create_session(conn, 'unicode_error')
+            chan, session = yield from _create_session(conn, 'unicode_error')
+
+            yield from chan.wait_closed()
+            self.assertIsInstance(session.exc, asyncssh.DisconnectError)
 
         yield from conn.wait_closed()
 

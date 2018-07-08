@@ -14,6 +14,7 @@
 
 import asyncio
 import binascii
+import codecs
 
 from .constants import DEFAULT_LANG, DISC_PROTOCOL_ERROR, EXTENDED_DATA_STDERR
 from .constants import MSG_CHANNEL_OPEN, MSG_CHANNEL_WINDOW_ADJUST
@@ -62,7 +63,6 @@ class SSHChannel(SSHPacketHandler):
         self._conn = conn
         self._loop = loop
         self._session = None
-        self._encoding = encoding
         self._extra = {'connection': conn}
 
         self._env = {}
@@ -81,9 +81,8 @@ class SSHChannel(SSHPacketHandler):
         self._init_recv_window = window
         self._recv_window = window
         self._recv_pktsize = max_pktsize
-        self._recv_paused = True
+        self._recv_paused = 'starting'
         self._recv_buf = []
-        self._recv_partial = {}
 
         self._request_queue = []
 
@@ -97,6 +96,7 @@ class SSHChannel(SSHPacketHandler):
         self._logger = conn.logger.get_child(context='chan=%d' %
                                              self._recv_chan)
 
+        self.set_encoding(encoding)
         self.set_write_buffer_limits()
 
     @property
@@ -124,6 +124,13 @@ class SSHChannel(SSHPacketHandler):
         """Set the encoding on this channel"""
 
         self._encoding = encoding
+
+        if encoding:
+            self._encoder = codecs.getincrementalencoder(encoding)()
+            self._decoder = codecs.getincrementaldecoder(encoding)()
+        else:
+            self._encoder = None
+            self._decoder = None
 
     def get_recv_window(self):
         """Return the configured receive window for this channel"""
@@ -174,6 +181,7 @@ class SSHChannel(SSHPacketHandler):
             self._conn.detach_x11_listener(self)
 
             self._conn.remove_channel(self._recv_chan)
+            self._send_chan = None
             self._recv_chan = None
             self._conn = None
 
@@ -200,6 +208,18 @@ class SSHChannel(SSHPacketHandler):
         if self._recv_state == 'close_pending':
             self._recv_state = 'closed'
             self._loop.call_soon(self._cleanup)
+
+    @asyncio.coroutine
+    def _start_reading(self):
+        """Start processing data on a new connection"""
+
+        # If owner of the channel  didn't explicitly pause it at
+        # startup, begin processing incoming data.
+
+        if self._recv_paused == 'starting':
+            self.logger.debug2('Reading from channel started')
+            self._recv_paused = False
+            self._flush_recv_buf()
 
     def _pause_resume_writing(self):
         """Pause or resume writing based on send buffer low/high water marks"""
@@ -256,6 +276,14 @@ class SSHChannel(SSHPacketHandler):
             self._deliver_data(*self._recv_buf.pop(0))
 
         if not self._recv_buf:
+            if self._encoding and not exc and \
+                    self._recv_state in ('eof_pending', 'close_pending'):
+                try:
+                    self._decoder.decode(b'', True)
+                except UnicodeDecodeError as unicode_exc:
+                    raise DisconnectError(DISC_PROTOCOL_ERROR,
+                                          str(unicode_exc)) from None
+
             if self._recv_state == 'eof_pending':
                 self._recv_state = 'eof'
 
@@ -264,11 +292,6 @@ class SSHChannel(SSHPacketHandler):
                     self.write_eof()
             elif self._recv_state == 'close_pending':
                 self._recv_state = 'closed'
-
-                if self._recv_partial and not exc:
-                    exc = DisconnectError(DISC_PROTOCOL_ERROR,
-                                          'Unicode decode error')
-
                 self._loop.call_soon(self._cleanup, exc)
 
     def _deliver_data(self, data, datatype):
@@ -286,32 +309,12 @@ class SSHChannel(SSHPacketHandler):
             self._recv_window = self._init_recv_window
 
         if self._encoding:
-            if datatype in self._recv_partial:
-                encdata = self._recv_partial.pop(datatype) + data
-            else:
-                encdata = data
+            try:
+                data = self._decoder.decode(data)
+            except UnicodeDecodeError as exc:
+                raise DisconnectError(DISC_PROTOCOL_ERROR, str(exc)) from None
 
-            while encdata:
-                try:
-                    data = encdata.decode(self._encoding)
-                    encdata = b''
-                except UnicodeDecodeError as exc:
-                    if exc.start > 0:
-                        # Avoid pylint false positive
-                        # pylint: disable=invalid-slice-index
-                        data = encdata[:exc.start].decode()
-                        encdata = encdata[exc.start:]
-                    elif exc.reason == 'unexpected end of data':
-                        break
-                    else:
-                        raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                              'Unicode decode error')
-
-                self._session.data_received(data, datatype)
-
-            if encdata:
-                self._recv_partial[datatype] = encdata
-        else:
+        if self._session:
             self._session.data_received(data, datatype)
 
     def _accept_data(self, data, datatype=None):
@@ -390,14 +393,7 @@ class SSHChannel(SSHPacketHandler):
 
         self.logger.info('Closing channel due to connection close')
 
-        if self._send_state != 'closed':
-            self._send_state = 'closed'
-
-        if self._recv_state not in {'close_pending', 'closed'}:
-            self._recv_state = 'close_pending'
-            self._flush_recv_buf(exc)
-        elif self._recv_state == 'closed':
-            self._loop.call_soon(self._cleanup, exc)
+        self._cleanup(exc)
 
     def process_open(self, send_chan, send_window, send_pktsize, session):
         """Process a channel open request"""
@@ -831,7 +827,7 @@ class SSHChannel(SSHPacketHandler):
             return
 
         if self._encoding:
-            data = data.encode(self._encoding)
+            data = self._encoder.encode(data)
 
         if datatype:
             typename = ' to %s' % _data_type_names[datatype]
@@ -1095,9 +1091,9 @@ class SSHClientChannel(SSHChannel):
                                    'Session request failed')
 
         self._session.session_started()
-        self.resume_reading()
+        self._conn.create_task(self._start_reading(), self.logger)
 
-        return self, self._session
+        return self._session
 
     def _process_xon_xoff_request(self, packet):
         """Process a request to set up XON/XOFF processing"""
@@ -1412,6 +1408,7 @@ class SSHServerChannel(SSHChannel):
         self._conn.create_task(self._finish_x11_req_request(auth_proto,
                                                             auth_data, screen),
                                self.logger)
+
         return None
 
     @asyncio.coroutine
@@ -1434,6 +1431,8 @@ class SSHServerChannel(SSHChannel):
         packet.check_end()
 
         self._conn.create_task(self._finish_agent_req_request(), self.logger)
+
+        return None
 
     @asyncio.coroutine
     def _finish_agent_req_request(self):
@@ -1808,9 +1807,8 @@ class SSHForwardChannel(SSHChannel):
 
         self._session = session_factory()
         self._session.connection_made(self)
-
         self._session.session_started()
-        self.resume_reading()
+        self._conn.create_task(self._start_reading(), self.logger)
 
         return self._session
 

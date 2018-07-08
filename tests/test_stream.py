@@ -210,8 +210,6 @@ class _TestStream(ServerTestCase):
             with self.assertRaises(asyncssh.DisconnectError):
                 yield from stdout.readline()
 
-            stdin.channel.abort()
-
         yield from conn.wait_closed()
 
     @asynctest
@@ -270,8 +268,6 @@ class _TestStream(ServerTestCase):
             yield from asyncio.sleep(0.01)
             yield from stdout.read(1)
 
-            stdin.channel.abort()
-
         yield from conn.wait_closed()
 
     @asynctest
@@ -313,6 +309,30 @@ class _TestStream(ServerTestCase):
                 yield from stdout.readuntil('')
 
             stdin.close()
+
+        yield from conn.wait_closed()
+
+    @asynctest
+    def test_abort(self):
+        """Test abort on a channel"""
+
+        with (yield from self.connect()) as conn:
+            stdin, _, _ = yield from conn.open_session()
+
+            stdin.channel.abort()
+
+        yield from conn.wait_closed()
+
+    @asynctest
+    def test_abort_closed(self):
+        """Test abort on an already-closed channel"""
+
+        with (yield from self.connect()) as conn:
+            stdin, stdout, _ = yield from conn.open_session('close')
+
+            stdin.write('\n')
+            yield from stdout.read()
+            stdin.channel.abort()
 
         yield from conn.wait_closed()
 
