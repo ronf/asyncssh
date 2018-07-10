@@ -1,4 +1,4 @@
-# Copyright (c) 2016 by Ron Frederick <ronf@timeheart.net>.
+# Copyright (c) 2016-2018 by Ron Frederick <ronf@timeheart.net>.
 # All rights reserved.
 #
 # This program and the accompanying materials are made available under
@@ -245,7 +245,7 @@ class _ChannelServer(Server):
                 stdout.channel.exit(1)
         elif action == 'rejected_session':
             chan = _ServerChannel(self._conn, asyncio.get_event_loop(),
-                                  False, False, 0, None, 1, 32768)
+                                  False, False, 0, None, 'strict', 1, 32768)
 
             try:
                 yield from chan.open_session()

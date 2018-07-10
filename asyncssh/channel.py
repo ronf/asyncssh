@@ -46,7 +46,7 @@ class SSHChannel(SSHPacketHandler):
     _read_datatypes = set()
     _write_datatypes = set()
 
-    def __init__(self, conn, loop, encoding, window, max_pktsize):
+    def __init__(self, conn, loop, encoding, errors, window, max_pktsize):
         """Initialize an SSH channel
 
            If encoding is set, data sent and received will be in the form
@@ -96,7 +96,7 @@ class SSHChannel(SSHPacketHandler):
         self._logger = conn.logger.get_child(context='chan=%d' %
                                              self._recv_chan)
 
-        self.set_encoding(encoding)
+        self.set_encoding(encoding, errors)
         self.set_write_buffer_limits()
 
     @property
@@ -118,16 +118,17 @@ class SSHChannel(SSHPacketHandler):
     def get_encoding(self):
         """Return the encoding used by this channel"""
 
-        return self._encoding
+        return self._encoding, self._errors
 
-    def set_encoding(self, encoding):
+    def set_encoding(self, encoding, errors='strict'):
         """Set the encoding on this channel"""
 
         self._encoding = encoding
+        self._errors = errors
 
         if encoding:
-            self._encoder = codecs.getincrementalencoder(encoding)()
-            self._decoder = codecs.getincrementaldecoder(encoding)()
+            self._encoder = codecs.getincrementalencoder(encoding)(errors)
+            self._decoder = codecs.getincrementaldecoder(encoding)(errors)
         else:
             self._encoder = None
             self._decoder = None
@@ -980,8 +981,8 @@ class SSHClientChannel(SSHChannel):
 
     _read_datatypes = {EXTENDED_DATA_STDERR}
 
-    def __init__(self, conn, loop, encoding, window, max_pktsize):
-        super().__init__(conn, loop, encoding, window, max_pktsize)
+    def __init__(self, conn, loop, encoding, errors, window, max_pktsize):
+        super().__init__(conn, loop, encoding, errors, window, max_pktsize)
 
         self._exit_status = None
         self._exit_signal = None
@@ -1295,10 +1296,10 @@ class SSHServerChannel(SSHChannel):
     _write_datatypes = {EXTENDED_DATA_STDERR}
 
     def __init__(self, conn, loop, allow_pty, line_editor, line_history,
-                 encoding, window, max_pktsize):
+                 encoding, errors, window, max_pktsize):
         """Initialize an SSH server channel"""
 
-        super().__init__(conn, loop, encoding, window, max_pktsize)
+        super().__init__(conn, loop, encoding, errors, window, max_pktsize)
 
         self._env = conn.get_key_option('environment', {})
 

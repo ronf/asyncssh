@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2016 by Ron Frederick <ronf@timeheart.net>.
+# Copyright (c) 2013-2018 by Ron Frederick <ronf@timeheart.net>.
 # All rights reserved.
 #
 # This program and the accompanying materials are made available under
@@ -66,10 +66,11 @@ class SSHClientListener(SSHListener):
     """Client listener used to accept inbound forwarded connections"""
 
     def __init__(self, conn, loop, session_factory,
-                 encoding, window, max_pktsize):
+                 encoding, errors, window, max_pktsize):
         self._conn = conn
         self._session_factory = session_factory
         self._encoding = encoding
+        self._errors = errors
         self._window = window
         self._max_pktsize = max_pktsize
         self._close_event = asyncio.Event(loop=loop)
@@ -98,9 +99,9 @@ class SSHTCPClientListener(SSHClientListener):
     """Client listener used to accept inbound forwarded TCP connections"""
 
     def __init__(self, conn, loop, session_factory, listen_host, listen_port,
-                 encoding, window, max_pktsize):
-        super().__init__(conn, loop, session_factory,
-                         encoding, window, max_pktsize)
+                 encoding, errors, window, max_pktsize):
+        super().__init__(conn, loop, session_factory, encoding,
+                         errors, window, max_pktsize)
 
         self._listen_host = listen_host
         self._listen_port = listen_port
@@ -118,8 +119,8 @@ class SSHTCPClientListener(SSHClientListener):
     def process_connection(self, orig_host, orig_port):
         """Process a forwarded TCP connection"""
 
-        chan = self._conn.create_tcp_channel(self._encoding, self._window,
-                                             self._max_pktsize)
+        chan = self._conn.create_tcp_channel(self._encoding, self._errors,
+                                             self._window, self._max_pktsize)
 
         chan.set_inbound_peer_names(self._listen_host, self._listen_port,
                                     orig_host, orig_port)
@@ -136,9 +137,9 @@ class SSHUNIXClientListener(SSHClientListener):
     """Client listener used to accept inbound forwarded UNIX connections"""
 
     def __init__(self, conn, loop, session_factory, listen_path,
-                 encoding, window, max_pktsize):
-        super().__init__(conn, loop, session_factory,
-                         encoding, window, max_pktsize)
+                 encoding, errors, window, max_pktsize):
+        super().__init__(conn, loop, session_factory, encoding,
+                         errors, window, max_pktsize)
 
         self._listen_path = listen_path
 
@@ -154,8 +155,8 @@ class SSHUNIXClientListener(SSHClientListener):
     def process_connection(self):
         """Process a forwarded UNIX connection"""
 
-        chan = self._conn.create_unix_channel(self._encoding, self._window,
-                                              self._max_pktsize)
+        chan = self._conn.create_unix_channel(self._encoding, self._errors,
+                                              self._window, self._max_pktsize)
 
         chan.set_inbound_peer_names(self._listen_path)
 

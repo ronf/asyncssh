@@ -1,4 +1,4 @@
-# Copyright (c) 2016 by Ron Frederick <ronf@timeheart.net>.
+# Copyright (c) 2016-2018 by Ron Frederick <ronf@timeheart.net>.
 # All rights reserved.
 #
 # This program and the accompanying materials are made available under
@@ -26,8 +26,8 @@ def _handle_session(stdin, stdout, stderr):
     # pylint: disable=unused-argument
 
     break_count = 0
-    prefix = '>>>' if stdin.channel.get_encoding() else b'>>>'
-    data = '' if stdin.channel.get_encoding() else b''
+    prefix = '>>>' if stdin.channel.get_encoding()[0] else b'>>>'
+    data = '' if stdin.channel.get_encoding()[0] else b''
 
     while not stdin.at_eof():
         try:

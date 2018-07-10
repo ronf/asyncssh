@@ -242,13 +242,16 @@ class SSHKey:
 
         return self._comment
 
-    def get_comment(self, encoding='utf-8'):
+    def get_comment(self, encoding='utf-8', errors='strict'):
         """Return the comment associated with this key as a Unicode string
 
            :param encoding:
                The encoding to use to decode the comment as a Unicode
                string, defaulting to UTF-8
+           :param errors:
+               The error handling scheme to use for Unicode decode errors
            :type encoding: `str`
+           :type errors: `str`
 
            :returns: `str` or `None`
 
@@ -257,9 +260,9 @@ class SSHKey:
 
         """
 
-        return self._comment.decode(encoding) if self._comment else None
+        return self._comment.decode(encoding, errors) if self._comment else None
 
-    def set_comment(self, comment, encoding='utf-8'):
+    def set_comment(self, comment, encoding='utf-8', errors='strict'):
         """Set the comment associated with this key
 
            :param comment:
@@ -267,8 +270,11 @@ class SSHKey:
            :param encoding:
                The Unicode encoding to use to encode the comment,
                defaulting to UTF-8
+           :param errors:
+               The error handling scheme to use for Unicode encode errors
            :type comment: `str`, `bytes`, or `None`
            :type encoding: `str`
+           :type errors: `str`
 
            :raises: :exc:`UnicodeEncodeError` if the comment cannot be
                     encoded using the specified encoding
@@ -276,7 +282,7 @@ class SSHKey:
         """
 
         if isinstance(comment, str):
-            comment = comment.encode(encoding)
+            comment = comment.encode(encoding, errors)
 
         self._comment = comment or None
 
@@ -1114,14 +1120,17 @@ class SSHCertificate:
 
         return self._comment
 
-    def get_comment(self, encoding='utf-8'):
+    def get_comment(self, encoding='utf-8', errors='strict'):
         """Return the comment associated with this certificate as a
            Unicode string
 
            :param encoding:
                The encoding to use to decode the comment as a Unicode
                string, defaulting to UTF-8
+           :param errors:
+               The error handling scheme to use for Unicode decode errors
            :type encoding: `str`
+           :type errors: `str`
 
            :returns: `str` or `None`
 
@@ -1130,9 +1139,9 @@ class SSHCertificate:
 
         """
 
-        return self._comment.decode(encoding) if self._comment else None
+        return self._comment.decode(encoding, errors) if self._comment else None
 
-    def set_comment(self, comment, encoding='utf-8'):
+    def set_comment(self, comment, encoding='utf-8', errors='strict'):
         """Set the comment associated with this certificate
 
            :param comment:
@@ -1140,8 +1149,11 @@ class SSHCertificate:
            :param encoding:
                The Unicode encoding to use to encode the comment,
                defaulting to UTF-8
+           :param errors:
+               The error handling scheme to use for Unicode encode errors
            :type comment: `str`, `bytes`, or `None`
            :type encoding: `str`
+           :type errors: `str`
 
            :raises: :exc:`UnicodeEncodeError` if the comment cannot be
                     encoded using the specified encoding
@@ -1149,7 +1161,7 @@ class SSHCertificate:
         """
 
         if isinstance(comment, str):
-            comment = comment.encode(encoding)
+            comment = comment.encode(encoding, errors)
 
         self._comment = comment or None
 
@@ -1740,14 +1752,17 @@ class SSHKeyPair:
 
         return self._comment
 
-    def get_comment(self, encoding='utf-8'):
+    def get_comment(self, encoding='utf-8', errors='strict'):
         """Return the comment associated with this key pair as a
            Unicode string
 
            :param encoding:
                The encoding to use to decode the comment as a Unicode
                string, defaulting to UTF-8
+           :param errors:
+               The error handling scheme to use for Unicode decode errors
            :type encoding: `str`
+           :type errors: `str`
 
            :returns: `str` or `None`
 
@@ -1756,9 +1771,9 @@ class SSHKeyPair:
 
         """
 
-        return self._comment.decode(encoding) if self._comment else None
+        return self._comment.decode(encoding, errors) if self._comment else None
 
-    def set_comment(self, comment, encoding='utf-8'):
+    def set_comment(self, comment, encoding='utf-8', errors='strict'):
         """Set the comment associated with this key pair
 
            :param comment:
@@ -1766,8 +1781,11 @@ class SSHKeyPair:
            :param encoding:
                The Unicode encoding to use to encode the comment,
                defaulting to UTF-8
+           :param errors:
+               The error handling scheme to use for Unicode encode errors
            :type comment: `str`, `bytes`, or `None`
            :type encoding: `str`
+           :type errors: `str`
 
            :raises: :exc:`UnicodeEncodeError` if the comment cannot be
                     encoded using the specified encoding
@@ -1775,7 +1793,7 @@ class SSHKeyPair:
         """
 
         if isinstance(comment, str):
-            comment = comment.encode(encoding)
+            comment = comment.encode(encoding, errors)
 
         self._comment = comment or None
 

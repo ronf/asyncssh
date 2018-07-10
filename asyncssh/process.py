@@ -1,4 +1,4 @@
-# Copyright (c) 2016-2017 by Ron Frederick <ronf@timeheart.net>.else:
+# Copyright (c) 2016-2018 by Ron Frederick <ronf@timeheart.net>.else:
 # All rights reserved.
 #
 # This program and the accompanying materials are made available under
@@ -40,9 +40,9 @@ def _is_regular_file(file):
 class _UnicodeReader:
     """Handle buffering partial Unicode data"""
 
-    def __init__(self, encoding, textmode=False):
+    def __init__(self, encoding, errors, textmode=False):
         if encoding and not textmode:
-            self._decoder = codecs.getincrementaldecoder(encoding)()
+            self._decoder = codecs.getincrementaldecoder(encoding)(errors)
         else:
             self._decoder = None
 
@@ -70,9 +70,9 @@ class _UnicodeReader:
 class _UnicodeWriter:
     """Handle encoding Unicode data before writing it"""
 
-    def __init__(self, encoding, textmode=False):
+    def __init__(self, encoding, errors, textmode=False):
         if encoding and not textmode:
-            self._encoder = codecs.getincrementalencoder(encoding)()
+            self._encoder = codecs.getincrementalencoder(encoding)(errors)
         else:
             self._encoder = None
 
@@ -88,8 +88,8 @@ class _UnicodeWriter:
 class _FileReader(_UnicodeReader):
     """Forward data from a file"""
 
-    def __init__(self, process, file, bufsize, datatype, encoding):
-        super().__init__(encoding, hasattr(file, 'encoding'))
+    def __init__(self, process, file, bufsize, datatype, encoding, errors):
+        super().__init__(encoding, errors, hasattr(file, 'encoding'))
 
         self._process = process
         self._file = file
@@ -130,8 +130,8 @@ class _FileReader(_UnicodeReader):
 class _AsyncFileReader(_FileReader):
     """Forward data from an aiofile"""
 
-    def __init__(self, process, file, bufsize, datatype, encoding):
-        super().__init__(process, file, bufsize, datatype, encoding)
+    def __init__(self, process, file, bufsize, datatype, encoding, errors):
+        super().__init__(process, file, bufsize, datatype, encoding, errors)
 
         self._conn = process.channel.get_connection()
 
@@ -163,8 +163,8 @@ class _AsyncFileReader(_FileReader):
 class _FileWriter(_UnicodeWriter):
     """Forward data to a file"""
 
-    def __init__(self, file, encoding):
-        super().__init__(encoding, hasattr(file, 'encoding'))
+    def __init__(self, file, encoding, errors):
+        super().__init__(encoding, errors, hasattr(file, 'encoding'))
 
         self._file = file
 
@@ -187,8 +187,8 @@ class _FileWriter(_UnicodeWriter):
 class _AsyncFileWriter(_FileWriter):
     """Forward data to an aiofile"""
 
-    def __init__(self, process, file, encoding):
-        super().__init__(file, encoding)
+    def __init__(self, process, file, encoding, errors):
+        super().__init__(file, encoding, errors)
 
         self._conn = process.channel.get_connection()
 
@@ -206,8 +206,8 @@ class _AsyncFileWriter(_FileWriter):
 class _PipeReader(_UnicodeReader, asyncio.Protocol):
     """Forward data from a pipe"""
 
-    def __init__(self, process, datatype, encoding):
-        super().__init__(encoding)
+    def __init__(self, process, datatype, encoding, errors):
+        super().__init__(encoding, errors)
 
         self._process = process
         self._datatype = datatype
@@ -248,8 +248,8 @@ class _PipeReader(_UnicodeReader, asyncio.Protocol):
 class _PipeWriter(_UnicodeWriter, asyncio.BaseProtocol):
     """Forward data to a pipe"""
 
-    def __init__(self, process, datatype, encoding):
-        super().__init__(encoding)
+    def __init__(self, process, datatype, encoding, errors):
+        super().__init__(encoding, errors)
 
         self._process = process
         self._datatype = datatype
@@ -563,7 +563,7 @@ class SSHProcess:
         def pipe_factory():
             """Return a pipe read handler"""
 
-            return _PipeReader(self, datatype, self._encoding)
+            return _PipeReader(self, datatype, self._encoding, self._errors)
 
         if source == PIPE:
             reader = None
@@ -588,11 +588,11 @@ class SSHProcess:
                 file = source
 
             if hasattr(file, 'read') and asyncio.iscoroutinefunction(file.read):
-                reader = _AsyncFileReader(self, file, bufsize,
-                                          datatype, self._encoding)
+                reader = _AsyncFileReader(self, file, bufsize, datatype,
+                                          self._encoding, self._errors)
             elif _is_regular_file(file):
-                reader = _FileReader(self, file, bufsize,
-                                     datatype, self._encoding)
+                reader = _FileReader(self, file, bufsize, datatype,
+                                     self._encoding, self._errors)
             else:
                 if hasattr(source, 'buffer'):
                     # If file was opened in text mode, remove that wrapper
@@ -615,7 +615,7 @@ class SSHProcess:
         def pipe_factory():
             """Return a pipe write handler"""
 
-            return _PipeWriter(self, datatype, self._encoding)
+            return _PipeWriter(self, datatype, self._encoding, self._errors)
 
         if target == DEVNULL:
             writer = _DevNullWriter()
@@ -642,9 +642,10 @@ class SSHProcess:
 
             if hasattr(file, 'write') and \
                     asyncio.iscoroutinefunction(file.write):
-                writer = _AsyncFileWriter(self, file, self._encoding)
+                writer = _AsyncFileWriter(self, file, self._encoding,
+                                          self._errors)
             elif _is_regular_file(file):
-                writer = _FileWriter(file, self._encoding)
+                writer = _FileWriter(file, self._encoding, self._errors)
             else:
                 if hasattr(target, 'buffer'):
                     # If file was opened in text mode, remove that wrapper

@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2017 by Ron Frederick <ronf@timeheart.net>.
+# Copyright (c) 2013-2018 by Ron Frederick <ronf@timeheart.net>.
 # All rights reserved.
 #
 # This program and the accompanying materials are made available under
@@ -286,6 +286,7 @@ class SSHStreamSession:
         self._chan = None
         self._conn = None
         self._encoding = None
+        self._errors = 'strict'
         self._loop = None
         self._limit = None
         self._exception = None
@@ -362,7 +363,7 @@ class SSHStreamSession:
 
         self._chan = chan
         self._conn = chan.get_connection()
-        self._encoding = chan.get_encoding()
+        self._encoding, self._errors = chan.get_encoding()
         self._loop = chan.get_loop()
         self._limit = self._chan.get_recv_window()
 

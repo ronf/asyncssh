@@ -1856,24 +1856,29 @@ class SSHConnection(SSHPacketHandler):
         self.send_packet(MSG_DEBUG, Boolean(always_display),
                          String(msg), String(lang))
 
-    def create_tcp_channel(self, encoding=None, window=_DEFAULT_WINDOW,
+    def create_tcp_channel(self, encoding=None, errors='strict',
+                           window=_DEFAULT_WINDOW,
                            max_pktsize=_DEFAULT_MAX_PKTSIZE):
         """Create an SSH TCP channel for a new direct TCP connection
 
            This method can be called by :meth:`connection_requested()
            <SSHServer.connection_requested>` to create an
-           :class:`SSHTCPChannel` with the desired encoding, window, and
-           max packet size for a newly created SSH direct connection.
+           :class:`SSHTCPChannel` with the desired encoding, Unicode
+           error handling strategy, window, and max packet size for
+           a newly created SSH direct connection.
 
            :param encoding: (optional)
                The Unicode encoding to use for data exchanged on the
                connection. This defaults to `None`, allowing the
                application to send and receive raw bytes.
+           :param errors: (optional)
+               The error handling strategy to apply on encode/decode errors
            :param window: (optional)
                The receive window size for this session
            :param max_pktsize: (optional)
                The maximum packet size for this session
            :type encoding: `str`
+           :type errors: `str`
            :type window: `int`
            :type max_pktsize: `int`
 
@@ -1881,27 +1886,32 @@ class SSHConnection(SSHPacketHandler):
 
         """
 
-        return SSHTCPChannel(self, self._loop, encoding, window, max_pktsize)
+        return SSHTCPChannel(self, self._loop, encoding,
+                             errors, window, max_pktsize)
 
-    def create_unix_channel(self, encoding=None, window=_DEFAULT_WINDOW,
+    def create_unix_channel(self, encoding=None, errors='strict',
+                            window=_DEFAULT_WINDOW,
                             max_pktsize=_DEFAULT_MAX_PKTSIZE):
         """Create an SSH UNIX channel for a new direct UNIX domain connection
 
            This method can be called by :meth:`unix_connection_requested()
            <SSHServer.unix_connection_requested>` to create an
-           :class:`SSHUNIXChannel` with the desired encoding, window, and
-           max packet size for a newly created SSH direct UNIX domain
-           socket connection.
+           :class:`SSHUNIXChannel` with the desired encoding, Unicode
+           error handling strategy, window, and max packet size for
+           a newly created SSH direct UNIX domain socket connection.
 
            :param encoding: (optional)
                The Unicode encoding to use for data exchanged on the
                connection. This defaults to `None`, allowing the
                application to send and receive raw bytes.
+           :param errors: (optional)
+               The error handling strategy to apply on encode/decode errors
            :param window: (optional)
                The receive window size for this session
            :param max_pktsize: (optional)
                The maximum packet size for this session
            :type encoding: `str`
+           :type errors: `str`
            :type window: `int`
            :type max_pktsize: `int`
 
@@ -1909,24 +1919,27 @@ class SSHConnection(SSHPacketHandler):
 
         """
 
-        return SSHUNIXChannel(self, self._loop, encoding, window, max_pktsize)
+        return SSHUNIXChannel(self, self._loop, encoding,
+                              errors, window, max_pktsize)
 
-    def create_x11_channel(self, encoding=None, window=_DEFAULT_WINDOW,
+    def create_x11_channel(self, window=_DEFAULT_WINDOW,
                            max_pktsize=_DEFAULT_MAX_PKTSIZE):
         """Create an SSH X11 channel to use in X11 forwarding"""
 
-        return SSHX11Channel(self, self._loop, encoding, window, max_pktsize)
+        return SSHX11Channel(self, self._loop, None, 'strict',
+                             window, max_pktsize)
 
-    def create_agent_channel(self, encoding=None, window=_DEFAULT_WINDOW,
+    def create_agent_channel(self, window=_DEFAULT_WINDOW,
                              max_pktsize=_DEFAULT_MAX_PKTSIZE):
         """Create an SSH agent channel to use in agent forwarding"""
 
-        return SSHAgentChannel(self, self._loop, encoding, window, max_pktsize)
+        return SSHAgentChannel(self, self._loop, None, 'strict',
+                               window, max_pktsize)
 
     @asyncio.coroutine
     def create_connection(self, session_factory, remote_host, remote_port,
                           orig_host='', orig_port=0, *, encoding=None,
-                          window=_DEFAULT_WINDOW,
+                          errors='strict', window=_DEFAULT_WINDOW,
                           max_pktsize=_DEFAULT_MAX_PKTSIZE):
         """Create an SSH direct or forwarded TCP connection"""
 
@@ -1934,7 +1947,8 @@ class SSHConnection(SSHPacketHandler):
 
     @asyncio.coroutine
     def create_unix_connection(self, session_factory, remote_path, *,
-                               encoding=None, window=_DEFAULT_WINDOW,
+                               encoding=None, errors='strict',
+                               window=_DEFAULT_WINDOW,
                                max_pktsize=_DEFAULT_MAX_PKTSIZE):
         """Create an SSH direct or forwarded UNIX domain socket connection"""
 
@@ -2623,7 +2637,8 @@ class SSHClientConnection(SSHConnection):
                        env={}, term_type=None, term_size=None, term_modes={},
                        x11_forwarding=False, x11_display=None,
                        x11_auth_path=None, x11_single_connection=False,
-                       encoding='utf-8', window=_DEFAULT_WINDOW,
+                       encoding='utf-8', errors='strict',
+                       window=_DEFAULT_WINDOW,
                        max_pktsize=_DEFAULT_MAX_PKTSIZE):
         """Create an SSH client session
 
@@ -2638,7 +2653,9 @@ class SSHClientConnection(SSHConnection):
            UTF-8 (ISO 10646) format. An optional encoding argument can
            be passed in to select a different encoding, or `None` can
            be passed in if the application wishes to send and receive
-           raw bytes.
+           raw bytes. When an encoding is set, an optional errors
+           argument can be passed in to select what Unicode error
+           handling strategy to use.
 
            Other optional arguments include the SSH receive window size and
            max packet size which default to 2 MB and 32 KB, respectively.
@@ -2688,6 +2705,8 @@ class SSHClientConnection(SSHConnection):
                defaulting to `False`
            :param encoding: (optional)
                The Unicode encoding to use for data exchanged on the connection
+           :param errors: (optional)
+               The error handling strategy to apply on encode/decode errors
            :param window: (optional)
                The receive window size for this session
            :param max_pktsize: (optional)
@@ -2704,6 +2723,7 @@ class SSHClientConnection(SSHConnection):
            :type x11_auth_path: `str`
            :type x11_single_connection: `bool`
            :type encoding: `str`
+           :type errors: `str`
            :type window: `int`
            :type max_pktsize: `int`
 
@@ -2713,7 +2733,7 @@ class SSHClientConnection(SSHConnection):
 
         """
 
-        chan = SSHClientChannel(self, self._loop, encoding,
+        chan = SSHClientChannel(self, self._loop, encoding, errors,
                                 window, max_pktsize)
 
         session = yield from chan.create(session_factory, command, subsystem,
@@ -2853,7 +2873,7 @@ class SSHClientConnection(SSHConnection):
     @asyncio.coroutine
     def create_connection(self, session_factory, remote_host, remote_port,
                           orig_host='', orig_port=0, *, encoding=None,
-                          window=_DEFAULT_WINDOW,
+                          errors='strict', window=_DEFAULT_WINDOW,
                           max_pktsize=_DEFAULT_MAX_PKTSIZE):
         """Create an SSH TCP direct connection
 
@@ -2867,9 +2887,11 @@ class SSHClientConnection(SSHConnection):
            client opening the connection when performing TCP port forwarding.
 
            By default, this class expects data to be sent and received as
-           raw bytes. However, an optional encoding argument can be
-           passed in to select the encoding to use, allowing the
-           application send and receive string data.
+           raw bytes. However, an optional encoding argument can be passed
+           in to select the encoding to use, allowing the application send
+           and receive string data. When encoding is set, an optional errors
+           argument can be passed in to select what Unicode error handling
+           strategy to use.
 
            Other optional arguments include the SSH receive window size and
            max packet size which default to 2 MB and 32 KB, respectively.
@@ -2887,6 +2909,8 @@ class SSHClientConnection(SSHConnection):
                The port number of the client requesting the connection
            :param encoding: (optional)
                The Unicode encoding to use for data exchanged on the connection
+           :param errors: (optional)
+               The error handling strategy to apply on encode/decode errors
            :param window: (optional)
                The receive window size for this session
            :param max_pktsize: (optional)
@@ -2897,6 +2921,7 @@ class SSHClientConnection(SSHConnection):
            :type orig_host: `str`
            :type orig_port: `int`
            :type encoding: `str`
+           :type errors: `str`
            :type window: `int`
            :type max_pktsize: `int`
 
@@ -2910,7 +2935,7 @@ class SSHClientConnection(SSHConnection):
                          (remote_host, remote_port))
         self.logger.info('  Client address: %s', (orig_host, orig_port))
 
-        chan = self.create_tcp_channel(encoding, window, max_pktsize)
+        chan = self.create_tcp_channel(encoding, errors, window, max_pktsize)
 
         session = yield from chan.connect(session_factory, remote_host,
                                           remote_port, orig_host, orig_port)
@@ -2946,7 +2971,7 @@ class SSHClientConnection(SSHConnection):
 
     @asyncio.coroutine
     def create_server(self, session_factory, listen_host, listen_port, *,
-                      encoding=None, window=_DEFAULT_WINDOW,
+                      encoding=None, errors='strict', window=_DEFAULT_WINDOW,
                       max_pktsize=_DEFAULT_MAX_PKTSIZE):
         """Create a remote SSH TCP listener
 
@@ -2970,6 +2995,8 @@ class SSHClientConnection(SSHConnection):
                The port number on the remote host to listen on
            :param encoding: (optional)
                The Unicode encoding to use for data exchanged on the connection
+           :param errors: (optional)
+               The error handling strategy to apply on encode/decode errors
            :param window: (optional)
                The receive window size for this session
            :param max_pktsize: (optional)
@@ -2978,6 +3005,7 @@ class SSHClientConnection(SSHConnection):
            :type listen_host: `str`
            :type listen_port: `int`
            :type encoding: `str`
+           :type errors: `str`
            :type window: `int`
            :type max_pktsize: `int`
 
@@ -3011,8 +3039,8 @@ class SSHClientConnection(SSHConnection):
             packet.check_end()
 
             listener = SSHTCPClientListener(self, self._loop, session_factory,
-                                            listen_host, listen_port,
-                                            encoding, window, max_pktsize)
+                                            listen_host, listen_port, encoding,
+                                            errors, window, max_pktsize)
 
             if dynamic:
                 self.logger.debug1('Assigning dynamic port %d', listen_port)
@@ -3069,7 +3097,8 @@ class SSHClientConnection(SSHConnection):
 
     @asyncio.coroutine
     def create_unix_connection(self, session_factory, remote_path, *,
-                               encoding=None, window=_DEFAULT_WINDOW,
+                               encoding=None, errors='strict',
+                               window=_DEFAULT_WINDOW,
                                max_pktsize=_DEFAULT_MAX_PKTSIZE):
         """Create an SSH UNIX domain socket direct connection
 
@@ -3080,9 +3109,11 @@ class SSHClientConnection(SSHConnection):
            by a :class:`SSHUNIXSession` object created by `session_factory`.
 
            By default, this class expects data to be sent and received as
-           raw bytes. However, an optional encoding argument can be
-           passed in to select the encoding to use, allowing the
-           application send and receive string data.
+           raw bytes. However, an optional encoding argument can be passed
+           in to select the encoding to use, allowing the application to
+           send and receive string data. When encoding is set, an optional
+           errors argument can be passed in to select what Unicode error
+           handling strategy to use.
 
            Other optional arguments include the SSH receive window size and
            max packet size which default to 2 MB and 32 KB, respectively.
@@ -3094,6 +3125,8 @@ class SSHClientConnection(SSHConnection):
                The remote path to connect to
            :param encoding: (optional)
                The Unicode encoding to use for data exchanged on the connection
+           :param errors: (optional)
+               The error handling strategy to apply on encode/decode errors
            :param window: (optional)
                The receive window size for this session
            :param max_pktsize: (optional)
@@ -3101,6 +3134,7 @@ class SSHClientConnection(SSHConnection):
            :type session_factory: `callable`
            :type remote_path: `str`
            :type encoding: `str`
+           :type errors: `str`
            :type window: `int`
            :type max_pktsize: `int`
 
@@ -3112,7 +3146,7 @@ class SSHClientConnection(SSHConnection):
 
         self.logger.info('Opening direct UNIX connection to %s', remote_path)
 
-        chan = self.create_unix_channel(encoding, window, max_pktsize)
+        chan = self.create_unix_channel(encoding, errors, window, max_pktsize)
 
         session = yield from chan.connect(session_factory, remote_path)
 
@@ -3148,7 +3182,8 @@ class SSHClientConnection(SSHConnection):
 
     @asyncio.coroutine
     def create_unix_server(self, session_factory, listen_path, *,
-                           encoding=None, window=_DEFAULT_WINDOW,
+                           encoding=None, errors='strict',
+                           window=_DEFAULT_WINDOW,
                            max_pktsize=_DEFAULT_MAX_PKTSIZE):
         """Create a remote SSH UNIX domain socket listener
 
@@ -3170,6 +3205,8 @@ class SSHClientConnection(SSHConnection):
                The path on the remote host to listen on
            :param encoding: (optional)
                The Unicode encoding to use for data exchanged on the connection
+           :param errors: (optional)
+               The error handling strategy to apply on encode/decode errors
            :param window: (optional)
                The receive window size for this session
            :param max_pktsize: (optional)
@@ -3177,6 +3214,7 @@ class SSHClientConnection(SSHConnection):
            :type session_factory: `callable` or coroutine
            :type listen_path: `str`
            :type encoding: `str`
+           :type errors: `str`
            :type window: `int`
            :type max_pktsize: `int`
 
@@ -3194,7 +3232,7 @@ class SSHClientConnection(SSHConnection):
 
         if pkttype == MSG_REQUEST_SUCCESS:
             listener = SSHUNIXClientListener(self, self._loop, session_factory,
-                                             listen_path, encoding,
+                                             listen_path, encoding, errors,
                                              window, max_pktsize)
 
             self._remote_listeners[listen_path] = listener
@@ -3478,7 +3516,8 @@ class SSHServerConnection(SSHConnection):
                  authorized_client_keys, gss_host, allow_pty, line_editor,
                  line_history, x11_forwarding, x11_auth_path, agent_forwarding,
                  process_factory, session_factory, session_encoding,
-                 sftp_factory, allow_scp, window, max_pktsize, login_timeout):
+                 session_errors, sftp_factory, allow_scp, window,
+                 max_pktsize, login_timeout):
         super().__init__(server_factory, loop, server_version,
                          x509_trusted_certs, x509_trusted_cert_paths,
                          x509_purposes, kex_algs, encryption_algs, mac_algs,
@@ -3499,6 +3538,7 @@ class SSHServerConnection(SSHConnection):
         self._process_factory = process_factory
         self._session_factory = session_factory
         self._session_encoding = session_encoding
+        self._session_errors = session_errors
         self._sftp_factory = sftp_factory
         self._allow_scp = allow_scp
         self._window = window
@@ -3898,6 +3938,7 @@ class SSHServerConnection(SSHConnection):
 
         if self._process_factory or self._session_factory or self._sftp_factory:
             chan = self.create_server_channel(self._session_encoding,
+                                              self._session_errors,
                                               self._window, self._max_pktsize)
 
             if self._process_factory:
@@ -3918,6 +3959,7 @@ class SSHServerConnection(SSHConnection):
                 chan, result = result
             else:
                 chan = self.create_server_channel(self._session_encoding,
+                                                  self._session_errors,
                                                   self._window,
                                                   self._max_pktsize)
 
@@ -4431,25 +4473,30 @@ class SSHServerConnection(SSHConnection):
         else:
             return True
 
-    def create_server_channel(self, encoding='utf-8', window=_DEFAULT_WINDOW,
+    def create_server_channel(self, encoding='utf-8', errors='strict',
+                              window=_DEFAULT_WINDOW,
                               max_pktsize=_DEFAULT_MAX_PKTSIZE):
         """Create an SSH server channel for a new SSH session
 
            This method can be called by :meth:`session_requested()
            <SSHServer.session_requested>` to create an
-           :class:`SSHServerChannel` with the desired encoding, window,
-           and max packet size for a newly created SSH server session.
+           :class:`SSHServerChannel` with the desired encoding, Unicode
+           error handling strategy, window, and max packet size for a
+           newly created SSH server session.
 
            :param encoding: (optional)
                The Unicode encoding to use for data exchanged on the
                session, defaulting to UTF-8 (ISO 10646) format. If `None`
                is passed in, the application can send and receive raw
                bytes.
+           :param errors: (optional)
+               The error handling strategy to apply on encode/decode errors
            :param window: (optional)
                The receive window size for this session
            :param max_pktsize: (optional)
                The maximum packet size for this session
            :type encoding: `str`
+           :type errors: `str`
            :type window: `int`
            :type max_pktsize: `int`
 
@@ -4459,12 +4506,12 @@ class SSHServerConnection(SSHConnection):
 
         return SSHServerChannel(self, self._loop, self._allow_pty,
                                 self._line_editor, self._line_history,
-                                encoding, window, max_pktsize)
+                                encoding, errors, window, max_pktsize)
 
     @asyncio.coroutine
     def create_connection(self, session_factory, remote_host, remote_port,
                           orig_host='', orig_port=0, *, encoding=None,
-                          window=_DEFAULT_WINDOW,
+                          errors='strict', window=_DEFAULT_WINDOW,
                           max_pktsize=_DEFAULT_MAX_PKTSIZE):
         """Create an SSH TCP forwarded connection
 
@@ -4480,7 +4527,9 @@ class SSHServerConnection(SSHConnection):
            By default, this class expects data to be sent and received as
            raw bytes. However, an optional encoding argument can be
            passed in to select the encoding to use, allowing the
-           application send and receive string data.
+           application to send and receive string data. When encoding is
+           set, an optional errors argument can be passed in to select
+           what Unicode error handling strategy to use.
 
            Other optional arguments include the SSH receive window size and
            max packet size which default to 2 MB and 32 KB, respectively.
@@ -4498,6 +4547,8 @@ class SSHServerConnection(SSHConnection):
                The port number of the client requesting the connection
            :param encoding: (optional)
                The Unicode encoding to use for data exchanged on the connection
+           :param errors: (optional)
+               The error handling strategy to apply on encode/decode errors
            :param window: (optional)
                The receive window size for this session
            :param max_pktsize: (optional)
@@ -4508,6 +4559,7 @@ class SSHServerConnection(SSHConnection):
            :type orig_host: `str`
            :type orig_port: `int`
            :type encoding: `str`
+           :type errors: `str`
            :type window: `int`
            :type max_pktsize: `int`
 
@@ -4519,7 +4571,7 @@ class SSHServerConnection(SSHConnection):
                          (remote_host, remote_port))
         self.logger.info('  Client address: %s', (orig_host, orig_port))
 
-        chan = self.create_tcp_channel(encoding, window, max_pktsize)
+        chan = self.create_tcp_channel(encoding, errors, window, max_pktsize)
 
         session = yield from chan.accept(session_factory, remote_host,
                                          remote_port, orig_host, orig_port)
@@ -4553,7 +4605,8 @@ class SSHServerConnection(SSHConnection):
 
     @asyncio.coroutine
     def create_unix_connection(self, session_factory, remote_path, *,
-                               encoding=None, window=_DEFAULT_WINDOW,
+                               encoding=None, errors='strict',
+                               window=_DEFAULT_WINDOW,
                                max_pktsize=_DEFAULT_MAX_PKTSIZE):
         """Create an SSH UNIX domain socket forwarded connection
 
@@ -4566,7 +4619,9 @@ class SSHServerConnection(SSHConnection):
            By default, this class expects data to be sent and received as
            raw bytes. However, an optional encoding argument can be
            passed in to select the encoding to use, allowing the
-           application send and receive string data.
+           application to send and receive string data. When encoding is
+           set, an optional errors argument can be passed in to select
+           what Unicode error handling strategy to use.
 
            Other optional arguments include the SSH receive window size and
            max packet size which default to 2 MB and 32 KB, respectively.
@@ -4578,6 +4633,8 @@ class SSHServerConnection(SSHConnection):
                The path the connection was received on
            :param encoding: (optional)
                The Unicode encoding to use for data exchanged on the connection
+           :param errors: (optional)
+               The error handling strategy to apply on encode/decode errors
            :param window: (optional)
                The receive window size for this session
            :param max_pktsize: (optional)
@@ -4585,6 +4642,7 @@ class SSHServerConnection(SSHConnection):
            :type session_factory: `callable`
            :type remote_path: `str`
            :type encoding: `str`
+           :type errors: `str`
            :type window: `int`
            :type max_pktsize: `int`
 
@@ -4594,7 +4652,7 @@ class SSHServerConnection(SSHConnection):
 
         self.logger.info('Opening forwarded UNIX connection to %s', remote_path)
 
-        chan = self.create_unix_channel(encoding, window, max_pktsize)
+        chan = self.create_unix_channel(encoding, errors, window, max_pktsize)
 
         session = yield from chan.accept(session_factory, remote_path)
 
@@ -4634,7 +4692,7 @@ class SSHServerConnection(SSHConnection):
 
         self.logger.info('Opening forwarded X11 connection')
 
-        chan = self.create_x11_channel(None, window, max_pktsize)
+        chan = self.create_x11_channel(window, max_pktsize)
 
         session = yield from chan.open(session_factory, orig_host, orig_port)
 
@@ -4642,7 +4700,7 @@ class SSHServerConnection(SSHConnection):
 
     @asyncio.coroutine
     def create_agent_connection(self, session_factory, *,
-                                encoding=None, window=_DEFAULT_WINDOW,
+                                window=_DEFAULT_WINDOW,
                                 max_pktsize=_DEFAULT_MAX_PKTSIZE):
         """Create a forwarded ssh-agent connection back to the client"""
 
@@ -4652,7 +4710,7 @@ class SSHServerConnection(SSHConnection):
 
         self.logger.info('Opening forwarded agent connection')
 
-        chan = self.create_agent_channel(encoding, window, max_pktsize)
+        chan = self.create_agent_channel(window, max_pktsize)
 
         session = yield from chan.open(session_factory)
 
@@ -5031,10 +5089,10 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
                   x11_forwarding=False, x11_auth_path=None,
                   agent_forwarding=True, process_factory=None,
                   session_factory=None, session_encoding='utf-8',
-                  sftp_factory=None, allow_scp=False, window=_DEFAULT_WINDOW,
-                  max_pktsize=_DEFAULT_MAX_PKTSIZE, server_version=(),
-                  kex_algs=(), encryption_algs=(), mac_algs=(),
-                  compression_algs=(), signature_algs=(),
+                  session_errors='strict', sftp_factory=None, allow_scp=False,
+                  window=_DEFAULT_WINDOW, max_pktsize=_DEFAULT_MAX_PKTSIZE,
+                  server_version=(), kex_algs=(), encryption_algs=(),
+                  mac_algs=(), compression_algs=(), signature_algs=(),
                   rekey_bytes=_DEFAULT_REKEY_BYTES,
                   rekey_seconds=_DEFAULT_REKEY_SECONDS,
                   login_timeout=_DEFAULT_LOGIN_TIMEOUT):
@@ -5164,6 +5222,10 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
            The Unicode encoding to use for data exchanged on sessions on
            this server, defaulting to UTF-8 (ISO 10646) format. If `None`
            is passed in, the application can send and receive raw bytes.
+       :param session_errors: (optional)
+           The error handling strategy to apply on Unicode encode/decode
+           errors of data exchanged on sessions on this server, defaulting
+           to 'strict'.
        :param sftp_factory: (optional)
            A `callable` which returns an :class:`SFTPServer` object that
            will be created each time an SFTP session is requested by the
@@ -5234,6 +5296,7 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
        :type process_factory: `callable`
        :type session_factory: `callable`
        :type session_encoding: `str`
+       :type session_errors: `str`
        :type sftp_factory: `callable`
        :type allow_scp: `bool`
        :type window: `int`
@@ -5266,8 +5329,8 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
                                    line_history, x11_forwarding, x11_auth_path,
                                    agent_forwarding, process_factory,
                                    session_factory, session_encoding,
-                                   sftp_factory, allow_scp, window,
-                                   max_pktsize, login_timeout)
+                                   session_errors, sftp_factory, allow_scp,
+                                   window, max_pktsize, login_timeout)
 
     if not server_factory:
         server_factory = SSHServer
