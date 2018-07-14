@@ -199,6 +199,7 @@ class _EchoServerSession(asyncssh.SSHServerSession):
 class _ChannelServer(Server):
     """Server for testing the AsyncSSH channel API"""
 
+    @asyncio.coroutine
     def _begin_session(self, stdin, stdout, stderr):
         """Begin processing a new session"""
 
