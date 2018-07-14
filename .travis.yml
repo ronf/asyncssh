@@ -23,42 +23,42 @@ matrix:
       env: TOXENV=py34
     - os: linux
       sudo: required
-      dist: trusty
+      dist: xenial
       python: 3.5
       env: TOXENV=py35
     - os: linux
       sudo: required
-      dist: trusty
+      dist: xenial
       python: 3.5
       env: TOXENV=py35 USE_UVLOOP=1
     - os: linux
       sudo: required
-      dist: trusty
+      dist: xenial
       python: 3.6
       env: TOXENV=py36
     - os: linux
       sudo: required
-      dist: trusty
+      dist: xenial
       python: 3.6
       env: TOXENV=py36 USE_UVLOOP=1
     - os: linux
       sudo: required
-      dist: trusty
+      dist: xenial
       python: 3.7
       env: TOXENV=py37
     - os: linux
       sudo: required
-      dist: trusty
+      dist: xenial
       python: 3.7
       env: TOXENV=py37 USE_UVLOOP=1
     - os: linux
       sudo: required
-      dist: trusty
+      dist: xenial
       python: nightly
       env: TOXENV=py38
     - os: linux
       sudo: required
-      dist: trusty
+      dist: xenial
       python: nightly
       env: TOXENV=py38 USE_UVLOOP=1
     - os: osx
