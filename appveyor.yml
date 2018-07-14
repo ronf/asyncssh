@@ -18,6 +18,12 @@ environment:
     - PYTHON: "C:\\Python36-x64"
       ARCH: win64
 
+    - PYTHON: "C:\\Python37"
+      ARCH: win32
+
+    - PYTHON: "C:\\Python37-x64"
+      ARCH: win64
+
 install:
   - "cd %PYTHON%"
   - "curl https://www.timeheart.net/appveyor/%ARCH%/libsodium-18.dll -O"

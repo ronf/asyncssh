@@ -12,8 +12,8 @@ script:
 matrix:
   allow_failures:
     - python: nightly
-    - env: PYENV_VERSION=3.7-dev TOXENV=py37
-    - env: PYENV_VERSION=3.7-dev TOXENV=py37 USE_UVLOOP=1
+    - env: PYENV_VERSION=3.8-dev TOXENV=py38
+    - env: PYENV_VERSION=3.8-dev TOXENV=py38 USE_UVLOOP=1
   fast_finish: true
   include:
     - os: linux
@@ -44,30 +44,56 @@ matrix:
     - os: linux
       sudo: required
       dist: trusty
-      python: nightly
+      python: 3.7
       env: TOXENV=py37
     - os: linux
       sudo: required
       dist: trusty
-      python: nightly
+      python: 3.7
       env: TOXENV=py37 USE_UVLOOP=1
+    - os: linux
+      sudo: required
+      dist: trusty
+      python: nightly
+      env: TOXENV=py38
+    - os: linux
+      sudo: required
+      dist: trusty
+      python: nightly
+      env: TOXENV=py38 USE_UVLOOP=1
     - os: osx
-      osx_image: xcode9.1
+      osx_image: xcode9.4
       language: generic
       env: PYENV_VERSION=3.4-dev TOXENV=py34
     - os: osx
-      osx_image: xcode9.1
+      osx_image: xcode9.4
       language: generic
       env: PYENV_VERSION=3.5-dev TOXENV=py35
     - os: osx
-      osx_image: xcode9.1
+      osx_image: xcode9.4
       language: generic
       env: PYENV_VERSION=3.5-dev TOXENV=py35 USE_UVLOOP=1
     - os: osx
-      osx_image: xcode9.1
+      osx_image: xcode9.4
       language: generic
       env: PYENV_VERSION=3.6-dev TOXENV=py36
     - os: osx
-      osx_image: xcode9.1
+      osx_image: xcode9.4
       language: generic
       env: PYENV_VERSION=3.6-dev TOXENV=py36 USE_UVLOOP=1
+    - os: osx
+      osx_image: xcode9.4
+      language: generic
+      env: PYENV_VERSION=3.7-dev TOXENV=py37
+    - os: osx
+      osx_image: xcode9.4
+      language: generic
+      env: PYENV_VERSION=3.7-dev TOXENV=py37 USE_UVLOOP=1
+    - os: osx
+      osx_image: xcode9.4
+      language: generic
+      env: PYENV_VERSION=3.8-dev TOXENV=py38
+    - os: osx
+      osx_image: xcode9.4
+      language: generic
+      env: PYENV_VERSION=3.8-dev TOXENV=py38 USE_UVLOOP=1
