@@ -20,7 +20,11 @@ class _SSHLogger(logging.LoggerAdapter):
     """Adapter to add context to AsyncSSH log messages"""
 
     _debug_level = 1
-    _pkg_logger = logging.getLogger(__package__)
+    # If __package__ is used, root logger will be used if asyncssh is installed
+    # as dependency because in that case the distributed egg file is placed
+    # into site-packages as is (without extracting the files).
+    # See https://github.com/ronf/asyncssh/issues/156
+    _pkg_logger = logging.getLogger("asyncssh")
 
     def __init__(self, parent=_pkg_logger, child=None, context=''):
         self._context = context
