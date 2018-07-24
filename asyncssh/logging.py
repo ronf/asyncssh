@@ -20,7 +20,7 @@ class _SSHLogger(logging.LoggerAdapter):
     """Adapter to add context to AsyncSSH log messages"""
 
     _debug_level = 1
-    _pkg_logger = logging.getLogger('asyncssh')
+    _pkg_logger = logging.getLogger(__package__)
 
     def __init__(self, parent=_pkg_logger, child=None, context=''):
         self._context = context
