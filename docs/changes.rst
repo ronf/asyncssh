@@ -3,6 +3,27 @@
 Change Log
 ==========
 
+Release 1.13.3 (23 Jul 2018)
+----------------------------
+
+* Added support for setting the Unicode error handling strategy in
+  conjunction with setting an encoding when creating new SSH sessions,
+  streams, and processes. This strategy can also be set when specifying
+  a session encoding in create_server(), and when providing an encoding
+  in the get_comment() and set_comment() functions on private/public
+  keys and certificates.
+
+* Changed handling of Unicode in channels to use incrmeental codec,
+  similar to what was previously done in process redirection.
+
+* Added Python 3.7 to the list of classifiers in setup.py, now that it
+  has been released.
+
+* Updated Travis CI configuration to add Python 3.7 builds, and moved
+  Linux builds on never versions of Python up to xenial.
+
+* Added missing coroutine decorator in test_channel.
+
 Release 1.13.2 (3 Jul 2018)
 ---------------------------
 
