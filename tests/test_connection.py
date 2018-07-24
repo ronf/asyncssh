@@ -59,6 +59,16 @@ class _ReplayKexClientConnection(asyncssh.SSHClientConnection):
         self.send_packet(MSG_KEXINIT, self._client_kexinit[1:])
 
 
+class _KeepaliveClientConnection(asyncssh.SSHClientConnection):
+    """Test sending keepalive request"""
+
+    @asyncio.coroutine
+    def send_keepalive_request(self):
+        """Send a keepalive global request"""
+
+        return (yield from self._make_global_request(b'keepalive@openssh.com'))
+
+
 class _VersionedServerConnection(asyncssh.SSHServerConnection):
     """Test alternate SSH server version lines"""
 
@@ -733,6 +743,17 @@ class _TestConnection(ServerTestCase):
         conn.send_packet(MSG_DEBUG)
 
         yield from conn.wait_closed()
+
+    @asynctest
+    def test_keepalive(self):
+        """Test sending keepalive global request"""
+
+        with patch('asyncssh.connection.SSHClientConnection',
+                   _KeepaliveClientConnection):
+            with (yield from self.connect(compression_algs=None)) as conn:
+                self.assertTrue((yield from conn.send_keepalive_request()))
+
+            yield from conn.wait_closed()
 
     @asynctest
     def test_unknown_packet(self):

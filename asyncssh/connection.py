@@ -1710,6 +1710,14 @@ class SSHConnection(SSHPacketHandler):
             raise DisconnectError(DISC_PROTOCOL_ERROR,
                                   'Invalid channel number')
 
+    def _process_keepalive_at_openssh_dot_com_global_request(self, packet):
+        """Process an incoming OpenSSH keepalive request"""
+
+        packet.check_end()
+
+        self.logger.debug2('Received OpenSSH keepalive request')
+        self._report_global_response(True)
+
     _packet_handlers = {
         MSG_DISCONNECT:                 _process_disconnect,
         MSG_IGNORE:                     _process_ignore,

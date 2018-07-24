@@ -62,7 +62,7 @@ class _ClientChannel(asyncssh.SSHClientChannel):
     def make_request(self, request, *args):
         """Make a custom request (for unit testing)"""
 
-        yield from self._make_request(request, *args)
+        return (yield from self._make_request(request, *args))
 
 
 class _ClientSession(asyncssh.SSHClientSession):
@@ -669,6 +669,19 @@ class _TestChannel(ServerTestCase):
             yield from chan.wait_closed()
 
         yield from conn.wait_closed()
+
+    @asynctest
+    def test_keepalive(self):
+        """Test keepalive channel requests"""
+
+        with patch('asyncssh.connection.SSHClientChannel', _ClientChannel):
+            with (yield from self.connect()) as conn:
+                chan, _ = yield from _create_session(conn)
+
+                result = yield from chan.make_request(b'keepalive@openssh.com')
+                self.assertTrue(result)
+
+            yield from conn.wait_closed()
 
     @asynctest
     def test_invalid_open_confirmation(self):

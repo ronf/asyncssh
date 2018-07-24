@@ -606,6 +606,14 @@ class SSHChannel(SSHPacketHandler):
             raise DisconnectError(DISC_PROTOCOL_ERROR,
                                   'Unexpected channel response')
 
+    def _process_keepalive_at_openssh_dot_com_request(self, packet):
+        """Process an incoming OpenSSH keepalive request"""
+
+        packet.check_end()
+
+        self.logger.debug2('Received OpenSSH keepalive channel request')
+        return True
+
     _packet_handlers = {
         MSG_CHANNEL_WINDOW_ADJUST:      _process_window_adjust,
         MSG_CHANNEL_DATA:               _process_data,
