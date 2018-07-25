@@ -1042,7 +1042,7 @@ class SSHClientChannel(SSHChannel):
                     raise ValueError('Invalid pty mode: %s' % mode)
 
                 name = _pty_mode_names.get(mode, str(mode))
-                self.logger.debug1('  Mode %s: %s', name, value)
+                self.logger.debug2('  Mode %s: %s', name, value)
                 modes += Byte(mode) + UInt32(value)
 
             modes += Byte(PTY_OP_END)
@@ -1376,7 +1376,7 @@ class SSHServerChannel(SSHChannel):
             if idx+4 <= len(modes):
                 name = _pty_mode_names.get(mode, str(mode))
                 value = int.from_bytes(modes[idx:idx+4], 'big')
-                self.logger.debug1('  Mode %s: %s', name, value)
+                self.logger.debug2('  Mode %s: %s', name, value)
                 term_modes[mode] = value
                 idx += 4
             else:
