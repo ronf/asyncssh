@@ -26,6 +26,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+import unittest
 
 import asyncssh
 
@@ -1968,11 +1969,19 @@ class _TestPublicKeyTopLevel(TempDirTestCase):
                         '-param_enc explicit' % curve)
                     asyncssh.read_private_key('priv')
 
-            with self.subTest('Import EC key with unknown explicit parameters'):
-                run('openssl ecparam -out priv -noout -genkey -name secp112r1 '
-                    '-param_enc explicit')
-                with self.assertRaises(asyncssh.KeyImportError):
-                    asyncssh.read_private_key('priv')
+    # pylint: disable=unsupported-membership-test
+    @unittest.skipIf(b'secp224r1' not in run('openssl ecparam -list_curves'),
+                     "this openssl doesn't support secp224r1")
+    # pylint: enable=unsupported-membership-test
+    @unittest.skipIf(not _openssl_available, "openssl isn't available")
+    def test_ec_explicit_unknown(self):
+        """Import EC key with unknown explicit parameters"""
+
+        run('openssl ecparam -out priv -noout -genkey -name secp224r1 '
+            '-param_enc explicit')
+
+        with self.assertRaises(asyncssh.KeyImportError):
+            asyncssh.read_private_key('priv')
 
     def test_generate_errors(self):
         """Test errors in private key and certificate generation"""

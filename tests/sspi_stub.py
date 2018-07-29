@@ -9,13 +9,17 @@
 #
 # Contributors:
 #     Ron Frederick - initial implementation, API, and documentation
+#     Georg Sauthoff - fix for "setup.py test" command on non-Windows
 
 """Stub SSPI module for unit tests"""
 
-from asyncssh.gss_win32 import ASC_RET_INTEGRITY, ISC_RET_INTEGRITY
-from asyncssh.gss_win32 import SECPKG_ATTR_NATIVE_NAMES, SSPIError
+import sys
 
 from .gss_stub import step
+
+if sys.platform == 'win32':
+    from asyncssh.gss_win32 import ASC_RET_INTEGRITY, ISC_RET_INTEGRITY
+    from asyncssh.gss_win32 import SECPKG_ATTR_NATIVE_NAMES, SSPIError
 
 
 class SSPIBuffer:
