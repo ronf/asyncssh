@@ -23,7 +23,7 @@ import asyncio, asyncssh, sys
 
 async def handle_client(process):
     process.stdout.write('Welcome to my SSH server, %s!\n\n' %
-                         process.channel.get_extra_info('username'))
+                         process.get_extra_info('username'))
 
     process.channel.set_echo(False)
     process.stdout.write('Tell me a secret: ')

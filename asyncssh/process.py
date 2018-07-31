@@ -556,6 +556,18 @@ class SSHProcess:
 
         return self._chan.get_subsystem()
 
+    def get_extra_info(self, name, default=None):
+        """Return additional information about this process
+
+           This method returns extra information about the channel
+           associated with this process. See :meth:`get_extra_info()
+           <SSHClientChannel.get_extra_info>` on :class:`SSHClientChannel`
+           for additional information.
+
+        """
+
+        return self._chan.get_extra_info(name, default)
+
     @asyncio.coroutine
     def _create_reader(self, source, bufsize, send_eof, datatype=None):
         """Create a reader to forward data to the SSH channel"""

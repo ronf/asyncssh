@@ -413,6 +413,7 @@ SSHClientProcess
    ==================================== =
    Other client process methods
    ==================================== =
+   .. automethod:: get_extra_info
    .. automethod:: redirect
    .. automethod:: collect_output
    .. automethod:: communicate
@@ -452,6 +453,7 @@ SSHServerProcess
    ================================= =
    Other server process methods
    ================================= =
+   .. automethod:: get_extra_info
    .. automethod:: get_terminal_type
    .. automethod:: get_terminal_size
    .. automethod:: get_terminal_mode

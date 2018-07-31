@@ -379,6 +379,19 @@ class _TestProcessBasic(_TestProcess):
         self.assertEqual(result.stderr, data)
 
     @asynctest
+    def test_get_extra_info(self):
+        """Test get_extra_info on streams"""
+
+        with (yield from self.connect()) as conn:
+            process = yield from conn.create_process()
+            self.assertEqual(process.get_extra_info('connection'), conn)
+            process.stdin.write_eof()
+
+            yield from process.wait()
+
+        yield from conn.wait_closed()
+
+    @asynctest
     def test_unknown_action(self):
         """Test unknown action"""
 

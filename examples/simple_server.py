@@ -24,7 +24,7 @@ passwords = {'guest': '',                 # guest account with no password
 
 def handle_client(process):
     process.stdout.write('Welcome to my SSH server, %s!\n' %
-                         process.channel.get_extra_info('username'))
+                         process.get_extra_info('username'))
     process.exit(0)
 
 class MySSHServer(asyncssh.SSHServer):
