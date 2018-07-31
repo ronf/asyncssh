@@ -43,7 +43,10 @@ class SSHForwarder:
     def write_eof(self):
         """Write end of file to the transport"""
 
-        self._transport.write_eof()
+        try:
+            self._transport.write_eof()
+        except OSError: # pragma: no cover
+            pass
 
     def was_eof_received(self):
         """Return whether end of file has been received or not"""
