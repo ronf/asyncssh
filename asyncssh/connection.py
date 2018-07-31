@@ -707,10 +707,10 @@ class SSHConnection(SSHPacketHandler):
 
         if self.is_client():
             self._client_version = version
-            self._extra.update(client_version=version.decode('ascii'))
+            self.set_extra_info(client_version=version.decode('ascii'))
         else:
             self._server_version = version
-            self._extra.update(server_version=version.decode('ascii'))
+            self.set_extra_info(server_version=version.decode('ascii'))
 
         self._send(version + b'\r\n')
 
@@ -732,10 +732,10 @@ class SSHConnection(SSHPacketHandler):
             # Accept version 2.0, or 1.99 if we're a client
             if self.is_server():
                 self._client_version = version
-                self._extra.update(client_version=version.decode('ascii'))
+                self.set_extra_info(client_version=version.decode('ascii'))
             else:
                 self._server_version = version
-                self._extra.update(server_version=version.decode('ascii'))
+                self.set_extra_info(server_version=version.decode('ascii'))
 
             self._send_kexinit()
             self._kexinit_sent = True
@@ -1041,7 +1041,7 @@ class SSHConnection(SSHPacketHandler):
             self._next_decompressor = get_decompressor(self._cmp_alg_sc)
             self._next_decompress_after_auth = cmp_after_auth_sc
 
-            self._extra.update(
+            self.set_extra_info(
                 send_cipher=self._enc_alg_cs.decode('ascii'),
                 send_mac=self._mac_alg_cs.decode('ascii'),
                 send_compression=self._cmp_alg_cs.decode('ascii'),
@@ -1061,7 +1061,7 @@ class SSHConnection(SSHPacketHandler):
             self._next_decompressor = get_decompressor(self._cmp_alg_cs)
             self._next_decompress_after_auth = cmp_after_auth_cs
 
-            self._extra.update(
+            self.set_extra_info(
                 send_cipher=self._enc_alg_sc.decode('ascii'),
                 send_mac=self._mac_alg_sc.decode('ascii'),
                 send_compression=self._cmp_alg_sc.decode('ascii'),
@@ -1136,7 +1136,7 @@ class SSHConnection(SSHPacketHandler):
         self._auth = None
         self._auth_in_progress = False
         self._auth_complete = True
-        self._extra.update(username=self._username)
+        self.set_extra_info(username=self._username)
         self._send_deferred_packets()
 
         # This method is only in SSHServerConnection
@@ -1554,7 +1554,7 @@ class SSHConnection(SSHPacketHandler):
                 self._agent.close()
                 self._agent = None
 
-            self._extra.update(username=self._username)
+            self.set_extra_info(username=self._username)
             self._send_deferred_packets()
 
             self._owner.auth_completed()
@@ -1834,11 +1834,27 @@ class SSHConnection(SSHPacketHandler):
            See :meth:`get_extra_info() <asyncio.BaseTransport.get_extra_info>`
            in :class:`asyncio.BaseTransport` for more information.
 
+           Additional information stored on the connection by calling
+           :meth:`set_extra_info` can also be returned here.
+
         """
 
         return self._extra.get(name,
                                self._transport.get_extra_info(name, default)
                                if self._transport else default)
+
+    def set_extra_info(self, **kwargs):
+        """Store additional information associated with the connection
+
+           This method allows extra information to be associated with the
+           connection. The information to store should be passed in as
+           keyword parameters and can later be returned by calling
+           :meth:`get_extra_info` with one of the keywords as the name
+           to retrieve.
+
+        """
+
+        self._extra.update(**kwargs)
 
     def send_debug(self, msg, lang=DEFAULT_LANG, always_display=False):
         """Send a debug message on this connection

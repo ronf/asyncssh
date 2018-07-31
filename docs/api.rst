@@ -275,6 +275,7 @@ SSHClientConnection
    General connection methods
    ============================== =
    .. automethod:: get_extra_info
+   .. automethod:: set_extra_info
    .. automethod:: send_debug
    ============================== =
 
@@ -338,6 +339,7 @@ SSHServerConnection
    General connection methods
    ============================== =
    .. automethod:: get_extra_info
+   .. automethod:: set_extra_info
    .. automethod:: send_debug
    ============================== =
 
@@ -624,6 +626,7 @@ SSHClientChannel
    General channel info methods
    =============================== =
    .. automethod:: get_extra_info
+   .. automethod:: set_extra_info
    .. automethod:: get_environment
    .. automethod:: get_command
    .. automethod:: get_subsystem
@@ -682,6 +685,7 @@ SSHServerChannel
    General channel info methods
    =============================== =
    .. automethod:: get_extra_info
+   .. automethod:: set_extra_info
    .. automethod:: get_environment
    .. automethod:: get_command
    .. automethod:: get_subsystem
@@ -760,6 +764,7 @@ SSHTCPChannel
    General channel info methods
    ============================== =
    .. automethod:: get_extra_info
+   .. automethod:: set_extra_info
    ============================== =
 
    ============================== =
@@ -803,6 +808,7 @@ SSHUNIXChannel
    General channel info methods
    ============================== =
    .. automethod:: get_extra_info
+   .. automethod:: set_extra_info
    ============================== =
 
    ============================== =

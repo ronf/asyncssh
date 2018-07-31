@@ -744,10 +744,26 @@ class SSHChannel(SSHPacketHandler):
            See :meth:`get_extra_info() <SSHClientConnection.get_extra_info>`
            on :class:`SSHClientConnection` for more information.
 
+           Additional information stored on the channel by calling
+           :meth:`set_extra_info` can also be returned here.
+
         """
 
         return self._extra.get(name, self._conn.get_extra_info(name, default)
                                if self._conn else default)
+
+    def set_extra_info(self, **kwargs):
+        """Store additional information associated with the channel
+
+           This method allows extra information to be associated with the
+           channel. The information to store should be passed in as
+           keyword parameters and can later be returned by calling
+           :meth:`get_extra_info` with one of the keywords as the name
+           to retrieve.
+
+        """
+
+        self._extra.update(**kwargs)
 
     def can_write_eof(self):
         """Return whether the channel supports :meth:`write_eof`
@@ -1827,9 +1843,9 @@ class SSHTCPChannel(SSHForwardChannel):
                   orig_host, orig_port):
         """Open a TCP channel"""
 
-        self._extra['peername'] = (None, None)
-        self._extra['local_peername'] = (orig_host, orig_port)
-        self._extra['remote_peername'] = (host, port)
+        self.set_extra_info(peername=(None, None),
+                            local_peername=(orig_host, orig_port),
+                            remote_peername=(host, port))
 
         return (yield from super()._open_forward(session_factory, chantype,
                                                  String(host), UInt32(port),
@@ -1854,8 +1870,8 @@ class SSHTCPChannel(SSHForwardChannel):
                                orig_host, orig_port):
         """Set local and remote peer names for inbound connections"""
 
-        self._extra['local_peername'] = (dest_host, dest_port)
-        self._extra['remote_peername'] = (orig_host, orig_port)
+        self.set_extra_info(local_peername=(dest_host, dest_port),
+                            remote_peername=(orig_host, orig_port))
 
 
 class SSHUNIXChannel(SSHForwardChannel):
@@ -1865,8 +1881,7 @@ class SSHUNIXChannel(SSHForwardChannel):
     def _open_unix(self, session_factory, chantype, path, *args):
         """Open a UNIX channel"""
 
-        self._extra['local_peername'] = ''
-        self._extra['remote_peername'] = path
+        self.set_extra_info(local_peername='', remote_peername=path)
 
         return (yield from super()._open_forward(session_factory, chantype,
                                                  String(path), *args))
@@ -1893,8 +1908,7 @@ class SSHUNIXChannel(SSHForwardChannel):
     def set_inbound_peer_names(self, dest_path):
         """Set local and remote peer names for inbound connections"""
 
-        self._extra['local_peername'] = dest_path
-        self._extra['remote_peername'] = ''
+        self.set_extra_info(local_peername=dest_path, remote_peername='')
 
 
 class SSHX11Channel(SSHForwardChannel):
@@ -1904,8 +1918,8 @@ class SSHX11Channel(SSHForwardChannel):
     def open(self, session_factory, orig_host, orig_port):
         """Open an SSH X11 channel"""
 
-        self._extra['local_peername'] = (orig_host, orig_port)
-        self._extra['remote_peername'] = (None, None)
+        self.set_extra_info(local_peername=(orig_host, orig_port),
+                            remote_peername=(None, None))
 
         return (yield from self._open_forward(session_factory, b'x11',
                                               String(orig_host),
@@ -1914,8 +1928,8 @@ class SSHX11Channel(SSHForwardChannel):
     def set_inbound_peer_names(self, orig_host, orig_port):
         """Set local and remote peer name for inbound connections"""
 
-        self._extra['local_peername'] = (None, None)
-        self._extra['remote_peername'] = (orig_host, orig_port)
+        self.set_extra_info(local_peername=(None, None),
+                            remote_peername=(orig_host, orig_port))
 
 
 class SSHAgentChannel(SSHForwardChannel):
