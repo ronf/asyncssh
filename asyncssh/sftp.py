@@ -3192,7 +3192,10 @@ class SFTPServerHandler(SFTPHandler):
         except SFTPError as exc:
             return_type = FXP_STATUS
 
-            self.logger.debug1('Sending error: %s', str(exc.reason))
+            if exc.code == FX_EOF:
+                self.logger.debug1('Sending EOF')
+            else:
+                self.logger.debug1('Sending error: %s', str(exc.reason))
 
             result = UInt32(exc.code) + String(exc.reason) + String(exc.lang)
         except NotImplementedError as exc:
