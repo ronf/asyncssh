@@ -45,18 +45,35 @@ _hashes = {h.name: h for h in (MD5, SHA1, SHA224, SHA256, SHA384, SHA512)}
 
 _nscomment_oid = x509.ObjectIdentifier('2.16.840.1.113730.1.13')
 
+_datetime_min = datetime.utcfromtimestamp(0).replace(microsecond=1,
+                                                     tzinfo=timezone.utc)
+
+_datetime_32bit_max = datetime.utcfromtimestamp(2**31 - 1).replace(
+    tzinfo=timezone.utc)
+
 if sys.platform == 'win32': # pragma: no cover
     # Windows' datetime.max is year 9999, but timestamps that large don't work
-    _gen_time_max = datetime(2999, 12, 31, 23, 59, 59, 999999,
-                             tzinfo=timezone.utc).timestamp() - 1
+    _datetime_max = datetime.max.replace(year=2999, tzinfo=timezone.utc)
 else:
-    _gen_time_max = datetime.max.replace(tzinfo=timezone.utc).timestamp() - 1
+    _datetime_max = datetime.max.replace(tzinfo=timezone.utc)
 
 
 def _to_generalized_time(t):
     """Convert a timestamp value to a datetime"""
 
-    return datetime.utcfromtimestamp(max(1, min(t, _gen_time_max)))
+    if t <= 0:
+        return _datetime_min
+    else:
+        try:
+            return datetime.utcfromtimestamp(t).replace(tzinfo=timezone.utc)
+        except (OSError, OverflowError):
+            try:
+                # Work around a bug in cryptography which shows up on
+                # systems with a small time_t.
+                datetime.utcfromtimestamp(_datetime_max.timestamp() - 1)
+                return _datetime_max
+            except (OSError, OverflowError): # pragma: no cover
+                return _datetime_32bit_max
 
 
 def _to_purpose_oids(purposes):
