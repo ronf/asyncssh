@@ -798,7 +798,8 @@ class SFTPHandler(SSHPacketLogger):
         except PacketDecodeError as exc:
             yield from self._cleanup(SFTPError(FX_BAD_MESSAGE, str(exc)))
         except EOFError:
-            yield from self._cleanup(None)
+            yield from self._cleanup(SFTPError(FX_CONNECTION_LOST,
+                                               'Connection lost'))
         except (OSError, Error) as exc:
             yield from self._cleanup(exc)
 
@@ -1066,7 +1067,8 @@ class SFTPClientHandler(SFTPHandler):
 
         self.logger.debug1('Sending close for handle %s', to_hex(handle))
 
-        return (yield from self._make_request(FXP_CLOSE, String(handle)))
+        if self._writer:
+            yield from self._make_request(FXP_CLOSE, String(handle))
 
     def nonblocking_close(self, handle):
         """Send an SFTP close request without blocking on the response"""
@@ -1075,7 +1077,8 @@ class SFTPClientHandler(SFTPHandler):
                            to_hex(handle))
 
         # Used by context managers, since they can't block to wait for a reply
-        self._send_request(FXP_CLOSE, String(handle))
+        if self._writer:
+            self._send_request(FXP_CLOSE, String(handle))
 
     @asyncio.coroutine
     def read(self, handle, offset, length):
@@ -3106,12 +3109,12 @@ class SFTPServerHandler(SFTPHandler):
                 result = self._server.close(file_obj)
 
                 if asyncio.iscoroutine(result):
-                    result = yield from result
+                    yield from result
 
             result = self._server.exit()
 
             if asyncio.iscoroutine(result):
-                result = yield from result
+                yield from result
 
             self._server = None
             self._file_handles = []

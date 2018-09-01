@@ -29,7 +29,7 @@ import asyncssh
 
 from asyncssh import SFTPError, SFTPAttrs, SFTPVFSAttrs, SFTPName, SFTPServer
 from asyncssh import SEEK_CUR, SEEK_END
-from asyncssh import FXP_INIT, FXP_VERSION, FXP_OPEN, FXP_CLOSE
+from asyncssh import FXP_INIT, FXP_VERSION, FXP_OPEN, FXP_CLOSE, FXP_WRITE
 from asyncssh import FXP_STATUS, FXP_HANDLE, FXP_DATA, FILEXFER_ATTR_UNDEFINED
 from asyncssh import FX_OK, FX_PERMISSION_DENIED, FX_FAILURE
 from asyncssh import scp
@@ -83,6 +83,19 @@ class _ResetFileHandleServerHandler(SFTPServerHandler):
 
         self._next_handle = 0
         return (yield from super().recv_packet())
+
+
+class _WriteCloseServerHandler(SFTPServerHandler):
+    """Close the SFTP session in the middle of a write request"""
+
+    @asyncio.coroutine
+    def _process_packet(self, pkttype, pktid, packet):
+        """Close the session when a file close request is received"""
+
+        if pkttype == FXP_WRITE:
+            yield from self._cleanup(None)
+        else:
+            yield from super()._process_packet(pkttype, pktid, packet)
 
 
 class _NonblockingCloseServerHandler(SFTPServerHandler):
@@ -2089,6 +2102,28 @@ class _TestSFTP(_CheckSFTP):
 
         with patch('asyncssh.sftp.SFTPServerHandler._extensions', []):
             sftp_test(_unsupported_extensions)(self)
+
+    def test_write_close(self):
+        """Test session cleanup in the middle of a write request"""
+
+        @asyncio.coroutine
+        def _write_close(self, sftp):
+            """Initiate write that triggers cleanup"""
+
+            # pylint: disable=unused-argument
+
+            try:
+                with (yield from sftp.open('file', 'w')) as f:
+                    with self.assertRaises(SFTPError):
+                        yield from f.write('a')
+            finally:
+                sftp.exit()
+                yield from sftp.wait_closed()
+
+                remove('file')
+
+        with patch('asyncssh.sftp.SFTPServerHandler', _WriteCloseServerHandler):
+            sftp_test(_write_close)(self)
 
     def test_outstanding_nonblocking_close(self):
         """Test session cleanup with an outstanding non-blocking close"""

@@ -13,9 +13,26 @@
 """Unit tests for AsyncSSH SFTP client and server on Python 3.5 and later"""
 
 import os
+from unittest.mock import patch
+
+from asyncssh import SFTPError, FXP_WRITE
+
+from asyncssh.sftp import SFTPServerHandler
 
 from tests.server import ServerTestCase
 from tests.util import asynctest, asynctest35
+
+
+class _WriteCloseServerHandler(SFTPServerHandler):
+    """Close the SFTP session in the middle of a write request"""
+
+    async def _process_packet(self, pkttype, pktid, packet):
+        """Close the session when a file close request is received"""
+
+        if pkttype == FXP_WRITE:
+            await self._cleanup(None)
+        else:
+            await super()._process_packet(pkttype, pktid, packet)
 
 
 class _TestSFTP(ServerTestCase):
@@ -94,3 +111,17 @@ class _TestSFTP(ServerTestCase):
                         yield from f.close()
 
                     os.unlink('file')
+
+    @asynctest35
+    async def test_write_close(self):
+        """Test session cleanup in the middle of a write request"""
+
+        with patch('asyncssh.sftp.SFTPServerHandler', _WriteCloseServerHandler):
+            async with self.connect() as conn:
+                async with conn.start_sftp_client() as sftp:
+                    try:
+                        async with sftp.open('file', 'w') as f:
+                            with self.assertRaises(SFTPError):
+                                await f.write('a')
+                    finally:
+                        os.unlink('file')
