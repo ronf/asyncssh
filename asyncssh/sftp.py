@@ -909,8 +909,7 @@ class SFTPHandler(SSHPacketLogger):
         except PacketDecodeError as exc:
             yield from self._cleanup(SFTPError(FX_BAD_MESSAGE, str(exc)))
         except EOFError:
-            yield from self._cleanup(SFTPError(FX_CONNECTION_LOST,
-                                               'Connection lost'))
+            yield from self._cleanup(None)
         except (OSError, Error) as exc:
             yield from self._cleanup(exc)
 
@@ -938,9 +937,11 @@ class SFTPClientHandler(SFTPHandler):
     def _cleanup(self, exc):
         """Clean up this SFTP client session"""
 
+        req_exc = exc or SFTPError(FX_CONNECTION_LOST, 'Connection closed')
+
         for waiter in self._requests.values():
             if waiter and not waiter.cancelled():
-                waiter.set_exception(exc)
+                waiter.set_exception(req_exc)
 
         self._requests = {}
 
