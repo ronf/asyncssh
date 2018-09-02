@@ -349,38 +349,28 @@ class LocalFile:
         self._file.close()
 
 
-class _SFTPFileCopier:
-    """SFTP file copier
+class _SFTPParallelIO:
+    """Parallelize I/O requests on files
 
-       This class parforms an SFTP file copy, initiating multiple
-       read and write requests to copy chunks of the file in parallel.
+       This class issues parallel read and wite requests on files.
 
     """
 
-    def __init__(self, loop):
+    def __init__(self, loop, block_size, max_requests, offset, size):
         self._loop = loop
-        self._src = None
-        self._dst = None
-        self._block_size = 0
-        self._bytes_left = 0
-        self._offset = 0
+        self._block_size = block_size
+        self._max_requests = max_requests
+        self._offset = offset
+        self._bytes_left = size
         self._pending = set()
 
-    @asyncio.coroutine
-    def _copy_block(self, offset, size):
-        """Copy the next block of the file"""
+    def _start_tasks(self):
+        """Create parallel file I/O tasks"""
 
-        data = yield from self._src.read(size, offset)
-        yield from self._dst.write(data, offset)
-        return size
-
-    def _copy_blocks(self):
-        """Create parallel requests to copy blocks from one file to another"""
-
-        while self._bytes_left and len(self._pending) < _MAX_SFTP_REQUESTS:
+        while self._bytes_left and len(self._pending) < self._max_requests:
             size = min(self._bytes_left, self._block_size)
 
-            task = asyncio.Task(self._copy_block(self._offset, size),
+            task = asyncio.Task(self.run_task(self._offset, size),
                                 loop=self._loop)
             self._pending.add(task)
 
@@ -388,18 +378,37 @@ class _SFTPFileCopier:
             self._bytes_left -= size
 
     @asyncio.coroutine
-    def copy(self, srcfs, dstfs, srcpath, dstpath, total_bytes,
-             block_size, progress_handler):
-        """Copy a file"""
+    def start(self):
+        """Start parallel I/O"""
+
+        pass
+
+    @asyncio.coroutine
+    def run_task(self, offset, size):
+        """Perform file I/O on a particular byte range"""
+
+        raise NotImplementedError
+
+    @asyncio.coroutine
+    def finish(self):
+        """Finish parallel I/O"""
+
+        pass
+
+    @asyncio.coroutine
+    def cleanup(self):
+        """Clean up parallel I/O"""
+
+        pass
+
+    @asyncio.coroutine
+    def run(self):
+        """Perform all file I/O and return result or exception"""
 
         try:
-            self._src = yield from srcfs.open(srcpath, 'rb')
-            self._dst = yield from dstfs.open(dstpath, 'wb')
-            self._block_size = block_size
-            self._bytes_left = total_bytes
-            self._copy_blocks()
+            yield from self.start()
 
-            bytes_copied = 0
+            self._start_tasks()
 
             while self._pending:
                 done, self._pending = yield from asyncio.wait(
@@ -412,10 +421,6 @@ class _SFTPFileCopier:
 
                     if exc:
                         exceptions.append(exc)
-                    elif progress_handler:
-                        bytes_copied += task.result()
-                        progress_handler(srcpath, dstpath,
-                                         bytes_copied, total_bytes)
 
                 if exceptions:
                     for task in self._pending:
@@ -423,13 +428,119 @@ class _SFTPFileCopier:
 
                     raise exceptions[0]
 
-                self._copy_blocks()
-        finally:
-            if self._src: # pragma: no branch
-                yield from self._src.close()
+                self._start_tasks()
 
-            if self._dst: # pragma: no branch
-                yield from self._dst.close()
+            return (yield from self.finish())
+        finally:
+            yield from self.cleanup()
+
+
+class _SFTPFileReader(_SFTPParallelIO):
+    """Parallelized SFTP file reader"""
+
+    def __init__(self, loop, block_size, max_requests,
+                 handler, handle, offset, size):
+        super().__init__(loop, block_size, max_requests, offset, size)
+
+        self._handler = handler
+        self._handle = handle
+        self._start = offset
+        self._data = bytearray()
+
+    @asyncio.coroutine
+    def run_task(self, offset, size):
+        """Read a block of the file"""
+
+        data = yield from self._handler.read(self._handle, offset, size)
+        pos = offset - self._start
+        pad = pos - len(self._data)
+
+        if pad > 0:
+            self._data += pad * b'\0'
+
+        self._data[pos:pos+size] = data
+
+    @asyncio.coroutine
+    def finish(self):
+        """Finish parallel read"""
+
+        return bytes(self._data)
+
+
+class _SFTPFileWriter(_SFTPParallelIO):
+    """Parallelized SFTP file writer"""
+
+    def __init__(self, loop, block_size, max_requests,
+                 handler, handle, offset, data):
+        super().__init__(loop, block_size, max_requests, offset, len(data))
+
+        self._handler = handler
+        self._handle = handle
+        self._start = offset
+        self._data = data
+
+    @asyncio.coroutine
+    def run_task(self, offset, size):
+        """Write a block to the file"""
+
+        pos = offset - self._start
+        yield from self._handler.write(self._handle, offset,
+                                       self._data[pos:pos+size])
+
+
+class _SFTPFileCopier(_SFTPParallelIO):
+    """SFTP file copier
+
+       This class parforms an SFTP file copy, initiating multiple
+       read and write requests to copy chunks of the file in parallel.
+
+    """
+
+    def __init__(self, loop, block_size, max_requests, offset, total_bytes,
+                 srcfs, dstfs, srcpath, dstpath, progress_handler):
+        super().__init__(loop, block_size, max_requests, offset, total_bytes)
+
+        self._srcfs = srcfs
+        self._dstfs = dstfs
+
+        self._srcpath = srcpath
+        self._dstpath = dstpath
+
+        self._src = None
+        self._dst = None
+
+        self._bytes_copied = 0
+        self._total_bytes = total_bytes
+        self._progress_handler = progress_handler
+
+    @asyncio.coroutine
+    def start(self):
+        """Start parallel copy"""
+
+        self._src = yield from self._srcfs.open(self._srcpath, 'rb')
+        self._dst = yield from self._dstfs.open(self._dstpath, 'wb')
+
+    @asyncio.coroutine
+    def run_task(self, offset, size):
+        """Copy the next block of the file"""
+
+        data = yield from self._src.read(size, offset)
+        yield from self._dst.write(data, offset)
+
+        if self._progress_handler:
+            self._bytes_copied += size
+            self._progress_handler(self._srcpath, self._dstpath,
+                                   self._bytes_copied, self._total_bytes)
+
+    @asyncio.coroutine
+    def cleanup(self):
+        """Clean up parallel copy"""
+
+        if self._src: # pragma: no branch
+            yield from self._src.close()
+
+        if self._dst: # pragma: no branch
+            yield from self._dst.close()
 
 
 class SFTPError(Error):
@@ -1324,12 +1435,16 @@ class SFTPClientFile:
 
     """
 
-    def __init__(self, handler, handle, appending, encoding, errors):
+    def __init__(self, loop, handler, handle, appending,
+                 encoding, errors, block_size, max_requests):
+        self._loop = loop
         self._handler = handler
         self._handle = handle
         self._appending = appending
         self._encoding = encoding
         self._errors = errors
+        self._block_size = block_size
+        self._max_requests = max_requests
         self._offset = None if appending else 0
 
     def __enter__(self):
@@ -1404,32 +1519,24 @@ class SFTPClientFile:
         if offset is None:
             offset = self._offset
 
-        if offset is None:
-            # We're appending and haven't seeked backward in the file
-            # since the last write, so there's no data to return
-            data = b''
-        elif size is None or size < 0:
-            data = []
+        # If self._offset is None, we're appending and haven't seeked
+        # backward in the file since the last write, so there's no
+        # data to return
+
+        data = b''
+
+        if offset is not None:
+            if size is None or size < 0:
+                size = (yield from self._end()) - offset
 
             try:
-                while True:
-                    result = yield from self._handler.read(self._handle,
-                                                           offset,
-                                                           SFTP_BLOCK_SIZE)
-                    data.append(result)
-                    offset += len(result)
-                    self._offset = offset
-            except SFTPError as exc:
-                if exc.code != FX_EOF:
-                    raise
-
-            data = b''.join(data)
-        else:
-            data = b''
-
-            try:
-                data = yield from self._handler.read(self._handle,
-                                                     offset, size)
+                if self._block_size and size > self._block_size:
+                    data = yield from _SFTPFileReader(
+                        self._loop, self._block_size, self._max_requests,
+                        self._handler, self._handle, offset, size).run()
+                else:
+                    data = yield from self._handler.read(self._handle,
+                                                         offset, size)
                 self._offset = offset + len(data)
             except SFTPError as exc:
                 if exc.code != FX_EOF:
@@ -1480,9 +1587,17 @@ class SFTPClientFile:
         if self._encoding:
             data = data.encode(self._encoding, self._errors)
 
-        yield from self._handler.write(self._handle, offset, data)
-        self._offset = None if self._appending else offset + len(data)
-        return len(data)
+        datalen = len(data)
+
+        if self._block_size and datalen > self._block_size:
+            yield from _SFTPFileWriter(
+                self._loop, self._block_size, self._max_requests,
+                self._handler, self._handle, offset, data).run()
+        else:
+            yield from self._handler.write(self._handle, offset, data)
+
+        self._offset = None if self._appending else offset + datalen
+        return datalen
 
     @asyncio.coroutine
     def seek(self, offset, from_what=SEEK_SET):
@@ -1832,7 +1947,8 @@ class SFTPClient:
 
     @asyncio.coroutine
     def _copy(self, srcfs, dstfs, srcpath, dstpath, preserve, recurse,
-              follow_symlinks, block_size, progress_handler, error_handler):
+              follow_symlinks, block_size, max_requests, progress_handler,
+              error_handler):
         """Copy a file, directory, or symbolic link"""
 
         if follow_symlinks:
@@ -1864,7 +1980,8 @@ class SFTPClient:
                     yield from self._copy(srcfs, dstfs, srcfile,
                                           dstfile, preserve, recurse,
                                           follow_symlinks, block_size,
-                                          progress_handler, error_handler)
+                                          max_requests, progress_handler,
+                                          error_handler)
 
                 self.logger.info('  Finished copy of directory %s to %s',
                                  srcpath, dstpath)
@@ -1879,9 +1996,10 @@ class SFTPClient:
             else:
                 self.logger.info('  Copying file %s to %s', srcpath, dstpath)
 
-                yield from _SFTPFileCopier(self._loop).copy(
-                    srcfs, dstfs, srcpath, dstpath, srcattrs.size,
-                    block_size, progress_handler)
+                yield from _SFTPFileCopier(self._loop, block_size,
+                                           max_requests, 0, srcattrs.size,
+                                           srcfs, dstfs, srcpath, dstpath,
+                                           progress_handler).run()
 
             if preserve:
                 attrs = yield from srcfs.stat(srcpath)
@@ -1904,7 +2022,7 @@ class SFTPClient:
 
     @asyncio.coroutine
     def _begin_copy(self, srcfs, dstfs, srcpaths, dstpath, preserve,
-                    recurse, follow_symlinks, block_size,
+                    recurse, follow_symlinks, block_size, max_requests,
                     progress_handler, error_handler):
         """Begin a new file upload, download, or copy"""
 
@@ -1932,12 +2050,13 @@ class SFTPClient:
 
             yield from self._copy(srcfs, dstfs, srcfile, dstfile, preserve,
                                   recurse, follow_symlinks, block_size,
-                                  progress_handler, error_handler)
+                                  max_requests, progress_handler, error_handler)
 
     @asyncio.coroutine
     def get(self, remotepaths, localpath=None, *, preserve=False,
             recurse=False, follow_symlinks=False, block_size=SFTP_BLOCK_SIZE,
-            progress_handler=None, error_handler=None):
+            max_requests=_MAX_SFTP_REQUESTS, progress_handler=None,
+            error_handler=None):
         """Download remote files
 
            This method downloads one or more files or directories from
@@ -1970,8 +2089,11 @@ class SFTPClient:
            using this option during a recursive download, one needs to
            watch out for links that result in loops.
 
-           The block_size value controls the size of read and write
-           operations issued to download the files. It defaults to 16 KB.
+           The block_size argument specifies the size of read and write
+           requests issued when downloading the files, defaulting to 16 KB.
+
+           The max_requests argument specifies the maximum number of
+           parallel read or write requests issued, defaulting to 128.
 
            If progress_handler is specified, it will be called after
            each block of a file is successfully downloaded. The arguments
@@ -2003,6 +2125,8 @@ class SFTPClient:
                Whether or not to follow symbolic links
            :param block_size: (optional)
                The block size to use for file reads and writes
+           :param max_requests: (optional)
+               The maximum number of parallel read or write requests
            :param progress_handler: (optional)
                The function to call to report download progress
            :param error_handler: (optional)
@@ -2016,6 +2140,7 @@ class SFTPClient:
            :type recurse: `bool`
            :type follow_symlinks: `bool`
            :type block_size: `int`
+           :type max_requests: `int`
            :type progress_handler: `callable`
            :type error_handler: `callable`
 
@@ -2029,13 +2154,14 @@ class SFTPClient:
 
         yield from self._begin_copy(self, LocalFile, remotepaths, localpath,
                                     preserve, recurse, follow_symlinks,
-                                    block_size, progress_handler,
+                                    block_size, max_requests, progress_handler,
                                     error_handler)
 
     @asyncio.coroutine
     def put(self, localpaths, remotepath=None, *, preserve=False,
             recurse=False, follow_symlinks=False, block_size=SFTP_BLOCK_SIZE,
-            progress_handler=None, error_handler=None):
+            max_requests=_MAX_SFTP_REQUESTS, progress_handler=None,
+            error_handler=None):
         """Upload local files
 
            This method uploads one or more files or directories to the
@@ -2068,8 +2194,11 @@ class SFTPClient:
            using this option during a recursive upload, one needs to
            watch out for links that result in loops.
 
-           The block_size value controls the size of read and write
-           operations issued to upload the files. It defaults to 16 KB.
+           The block_size argument specifies the size of read and write
+           requests issued when uploading the files, defaulting to 16 KB.
+
+           The max_requests argument specifies the maximum number of
+           parallel read or write requests issued, defaulting to 128.
 
            If progress_handler is specified, it will be called after
            each block of a file is successfully uploaded. The arguments
@@ -2101,6 +2230,8 @@ class SFTPClient:
                Whether or not to follow symbolic links
            :param block_size: (optional)
                The block size to use for file reads and writes
+           :param max_requests: (optional)
+               The maximum number of parallel read or write requests
            :param progress_handler: (optional)
                The function to call to report upload progress
            :param error_handler: (optional)
@@ -2114,6 +2245,7 @@ class SFTPClient:
            :type recurse: `bool`
            :type follow_symlinks: `bool`
            :type block_size: `int`
+           :type max_requests: `int`
            :type progress_handler: `callable`
            :type error_handler: `callable`
 
@@ -2127,13 +2259,14 @@ class SFTPClient:
 
         yield from self._begin_copy(LocalFile, self, localpaths, remotepath,
                                     preserve, recurse, follow_symlinks,
-                                    block_size, progress_handler,
+                                    block_size, max_requests, progress_handler,
                                     error_handler)
 
     @asyncio.coroutine
     def copy(self, srcpaths, dstpath=None, *, preserve=False,
              recurse=False, follow_symlinks=False, block_size=SFTP_BLOCK_SIZE,
-             progress_handler=None, error_handler=None):
+             max_requests=_MAX_SFTP_REQUESTS, progress_handler=None,
+             error_handler=None):
         """Copy remote files to a new location
 
            This method copies one or more files or directories on the
@@ -2166,8 +2299,11 @@ class SFTPClient:
            using this option during a recursive copy, one needs to
            watch out for links that result in loops.
 
-           The block_size value controls the size of read and write
-           operations issued to copy the files. It defaults to 16 KB.
+           The block_size argument specifies the size of read and write
+           requests issued when copying the files, defaulting to 16 KB.
+
+           The max_requests argument specifies the maximum number of
+           parallel read or write requests issued, defaulting to 128.
 
            If progress_handler is specified, it will be called after
            each block of a file is successfully copied. The arguments
@@ -2199,6 +2335,8 @@ class SFTPClient:
                Whether or not to follow symbolic links
            :param block_size: (optional)
                The block size to use for file reads and writes
+           :param max_requests: (optional)
+               The maximum number of parallel read or write requests
            :param progress_handler: (optional)
                The function to call to report copy progress
            :param error_handler: (optional)
@@ -2212,6 +2350,7 @@ class SFTPClient:
            :type recurse: `bool`
            :type follow_symlinks: `bool`
            :type block_size: `int`
+           :type max_requests: `int`
            :type progress_handler: `callable`
            :type error_handler: `callable`
 
@@ -2225,12 +2364,14 @@ class SFTPClient:
 
         yield from self._begin_copy(self, self, srcpaths, dstpath, preserve,
                                     recurse, follow_symlinks, block_size,
-                                    progress_handler, error_handler)
+                                    max_requests, progress_handler,
+                                    error_handler)
 
     @asyncio.coroutine
     def mget(self, remotepaths, localpath=None, *, preserve=False,
              recurse=False, follow_symlinks=False, block_size=SFTP_BLOCK_SIZE,
-             progress_handler=None, error_handler=None):
+             max_requests=_MAX_SFTP_REQUESTS, progress_handler=None,
+             error_handler=None):
         """Download remote files with glob pattern match
 
            This method downloads files and directories from the remote
@@ -2249,13 +2390,14 @@ class SFTPClient:
 
         yield from self._begin_copy(self, LocalFile, matches, localpath,
                                     preserve, recurse, follow_symlinks,
-                                    block_size, progress_handler,
+                                    block_size, max_requests, progress_handler,
                                     error_handler)
 
     @asyncio.coroutine
     def mput(self, localpaths, remotepath=None, *, preserve=False,
              recurse=False, follow_symlinks=False, block_size=SFTP_BLOCK_SIZE,
-             progress_handler=None, error_handler=None):
+             max_requests=_MAX_SFTP_REQUESTS, progress_handler=None,
+             error_handler=None):
         """Upload local files with glob pattern match
 
            This method uploads files and directories to the remote
@@ -2274,13 +2416,14 @@ class SFTPClient:
 
         yield from self._begin_copy(LocalFile, self, matches, remotepath,
                                     preserve, recurse, follow_symlinks,
-                                    block_size, progress_handler,
+                                    block_size, max_requests, progress_handler,
                                     error_handler)
 
     @asyncio.coroutine
     def mcopy(self, srcpaths, dstpath=None, *, preserve=False,
               recurse=False, follow_symlinks=False, block_size=SFTP_BLOCK_SIZE,
-              progress_handler=None, error_handler=None):
+              max_requests=_MAX_SFTP_REQUESTS, progress_handler=None,
+              error_handler=None):
         """Download remote files with glob pattern match
 
            This method copies files and directories on the remote
@@ -2299,7 +2442,8 @@ class SFTPClient:
 
         yield from self._begin_copy(self, self, matches, dstpath, preserve,
                                     recurse, follow_symlinks, block_size,
-                                    progress_handler, error_handler)
+                                    max_requests, progress_handler,
+                                    error_handler)
 
     @asyncio.coroutine
     def glob(self, patterns, error_handler=None):
@@ -2348,7 +2492,8 @@ class SFTPClient:
 
     @async_context_manager
     def open(self, path, pflags_or_mode=FXF_READ, attrs=SFTPAttrs(),
-             encoding='utf-8', errors='strict'):
+             encoding='utf-8', errors='strict', block_size=SFTP_BLOCK_SIZE,
+             max_requests=_MAX_SFTP_REQUESTS):
         """Open a remote file
 
            This method opens a remote file and returns an
@@ -2407,6 +2552,23 @@ class SFTPClient:
            file if it needs to be created. Otherwise, this argument is
            ignored.
 
+           The block_size argument specifies the size of parallel read and
+           write requests issued on the file. If set to `None`, each read
+           or write call will become a single request to the SFTP server.
+           Otherwise, read or write calls larger than this size will be
+           turned into parallel requests to the server of the requested
+           size, defaulting to 16 KB.
+
+               .. note:: The OpenSSH SFTP server will close the connection
+                         if it receives a message larger than 256 KB, and
+                         limits read requests to returning no more than
+                         64 KB. So, when connecting to an OpenSSH SFTP
+                         server, it is recommended that the block_size be
+                         set below these sizes.
+
+           The max_requests argument specifies the maximum number of
+           parallel read or write requests issued, defaulting to 128.
+
            :param path:
                The name of the remote file to open
            :param pflags_or_mode: (optional)
@@ -2420,11 +2582,17 @@ class SFTPClient:
                The error-handling mode if an invalid Unicode byte
                sequence is detected, defaulting to 'strict' which
                raises an exception
+           :param block_size: (optional)
+               The block size to use for read and write requests
+           :param max_requests: (optional)
+               The maximum number of parallel read or write requests
            :type path: :class:`PurePath <pathlib.PurePath>`, `str`, or `bytes`
            :type pflags_or_mode: `int` or `str`
            :type attrs: :class:`SFTPAttrs`
            :type encoding: `str`
            :type errors: `str`
+           :type block_size: `int` or `None`
+           :type max_requests: `int`
 
            :returns: An :class:`SFTPClientFile` to use to access the file
 
@@ -2444,8 +2612,9 @@ class SFTPClient:
         path = self.compose_path(path)
         handle = yield from self._handler.open(path, pflags, attrs)
 
-        return SFTPClientFile(self._handler, handle, pflags & FXF_APPEND,
-                              encoding, errors)
+        return SFTPClientFile(self._loop, self._handler, handle,
+                              pflags & FXF_APPEND, encoding, errors,
+                              block_size, max_requests)
 
     @asyncio.coroutine
     def stat(self, path):

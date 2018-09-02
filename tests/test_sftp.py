@@ -29,8 +29,9 @@ import asyncssh
 
 from asyncssh import SFTPError, SFTPAttrs, SFTPVFSAttrs, SFTPName, SFTPServer
 from asyncssh import SEEK_CUR, SEEK_END
-from asyncssh import FXP_INIT, FXP_VERSION, FXP_OPEN, FXP_CLOSE, FXP_WRITE
-from asyncssh import FXP_STATUS, FXP_HANDLE, FXP_DATA, FILEXFER_ATTR_UNDEFINED
+from asyncssh import FXP_INIT, FXP_VERSION, FXP_OPEN, FXP_CLOSE, FXP_READ
+from asyncssh import FXP_WRITE, FXP_STATUS, FXP_HANDLE, FXP_DATA
+from asyncssh import FILEXFER_ATTR_UNDEFINED
 from asyncssh import FX_OK, FX_PERMISSION_DENIED, FX_FAILURE
 from asyncssh import scp
 
@@ -111,6 +112,31 @@ class _NonblockingCloseServerHandler(SFTPServerHandler):
             yield from super()._process_packet(pkttype, pktid, packet)
 
 
+class _ReorderReadServerHandler(SFTPServerHandler):
+    """Reorder first two read requests"""
+
+    _request = 'delay'
+
+    @asyncio.coroutine
+    def _process_packet(self, pkttype, pktid, packet):
+        """Close the session when a file close request is received"""
+
+        if pkttype == FXP_READ:
+            if self._request == 'delay':
+                self._request = pkttype, pktid, packet
+            elif self._request:
+                yield from super()._process_packet(pkttype, pktid, packet)
+
+                pkttype, pktid, packet = self._request
+                yield from super()._process_packet(pkttype, pktid, packet)
+
+                self._request = None
+            else:
+                yield from super()._process_packet(pkttype, pktid, packet)
+        else:
+            yield from super()._process_packet(pkttype, pktid, packet)
+
+
 class _ChrootSFTPServer(SFTPServer):
     """Return an FTP server with a changed root"""
 
@@ -126,6 +152,15 @@ class _ChrootSFTPServer(SFTPServer):
 
 class _IOErrorSFTPServer(SFTPServer):
     """Return an I/O error during file writing"""
+
+    @asyncio.coroutine
+    def read(self, file_obj, offset, size):
+        """Return an error for reads past 64 KB in a file"""
+
+        if offset >= 65536:
+            raise SFTPError(FX_FAILURE, 'I/O error')
+        else:
+            return super().read(file_obj, offset, size)
 
     @asyncio.coroutine
     def write(self, file_obj, offset, data):
@@ -1231,6 +1266,47 @@ class _TestSFTP(_CheckSFTP):
             remove('file')
 
     @sftp_test
+    def test_open_read_no_blocksize(self, sftp):
+        """Test reading with no block size set"""
+
+        f = None
+
+        try:
+            self._create_file('file', 'xxxxyyyy')
+
+            f = yield from sftp.open('file', block_size=None)
+            self.assertEqual((yield from f.read(4, 2)), 'xxyy')
+        finally:
+            if f: # pragma: no branch
+                yield from f.close()
+
+            remove('file')
+
+    def test_open_read_out_of_order(self):
+        """Test parallel read with out-of-order responses"""
+
+        @asyncio.coroutine
+        def _test_read_out_of_order(self, sftp):
+            """Test parallel read with out-of-order responses"""
+
+            f = None
+
+            try:
+                self._create_file('file', 4*1024*1024*'\0')
+
+                with (yield from sftp.open('file')) as f:
+                    yield from f.read()
+            finally:
+                if f: # pragma: no cover
+                    yield from f.close()
+
+                remove('file')
+
+        with patch('asyncssh.sftp.SFTPServerHandler',
+                   _ReorderReadServerHandler):
+            sftp_test(_test_read_out_of_order)(self)
+
+    @sftp_test
     def test_open_read_nonexistent(self, sftp):
         """Test reading data from a nonexistent file"""
 
@@ -2268,7 +2344,7 @@ class _TestSFTPIOError(_CheckSFTP):
     def test_put_error(self, sftp):
         """Test error when putting a file to an SFTP server"""
 
-        for method in ('put', 'copy'):
+        for method in ('get', 'put', 'copy'):
             with self.subTest(method=method):
                 try:
                     self._create_file('src', 4*1024*1024*'\0')
@@ -2277,6 +2353,30 @@ class _TestSFTPIOError(_CheckSFTP):
                         yield from getattr(sftp, method)('src', 'dst')
                 finally:
                     remove('src dst')
+
+    @sftp_test
+    def test_read_error(self, sftp):
+        """Test error when reading a file on an SFTP server"""
+
+        try:
+            self._create_file('file', 4*1024*1024*'\0')
+
+            with self.assertRaises(SFTPError):
+                with (yield from sftp.open('file')) as f:
+                    yield from f.read(4*1024*1024)
+        finally:
+            remove('file')
+
+    @sftp_test
+    def test_write_error(self, sftp):
+        """Test error when writing a file on an SFTP server"""
+
+        try:
+            with self.assertRaises(SFTPError):
+                with (yield from sftp.open('file', 'w')) as f:
+                    yield from f.write(4*1024*1024*'\0')
+        finally:
+            remove('file')
 
 
 class _TestSFTPNotImplemented(_CheckSFTP):
