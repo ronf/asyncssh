@@ -60,7 +60,7 @@ a few lines I strongly recommend coordinating up front.
 
 Any code you submit will need to be provided with a compatible license.
 AsyncSSH code is currently released under the `Eclipse Public License
-v1.0 <http://www.eclipse.org/legal/epl-v10.html>`_. Before submitting
+v2.0 <http://www.eclipse.org/legal/epl-2.0/>`_. Before submitting
 a pull request, make sure to indicate that you are ok with releasing
 your code under this license and how you'd like to be listed in the
 contributors list.

@@ -81,17 +81,25 @@ License
 
 This package is released under the following terms:
 
-  Copyright (c) 2013-2018 by Ron Frederick <ronf@timeheart.net>.
-  All rights reserved.
+  Copyright (c) 2013-2018 by Ron Frederick <ronf@timeheart.net> and others.
 
   This program and the accompanying materials are made available under
-  the terms of the **Eclipse Public License v1.0** which accompanies
-  this distribution and is available at:
+  the terms of the Eclipse Public License v2.0 which accompanies this
+  distribution and is available at:
 
-    http://www.eclipse.org/legal/epl-v10.html
+    http://www.eclipse.org/legal/epl-2.0/
+
+  This program may also be made available under the following secondary
+  licenses when the conditions for such availability set forth in the
+  Eclipse Public License v2.0 are satisfied:
+
+     GNU General Public License, Version 2.0, or any later versions of
+     that license
+
+  SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-or-later
 
 For more information about this license, please see the `Eclipse
-Public License FAQ <https://eclipse.org/legal/eplfaq.php>`_.
+Public License FAQ <https://www.eclipse.org/legal/epl-2.0/faq.php>`_.
 
 Prerequisites
 -------------
@@ -99,7 +107,7 @@ Prerequisites
 To use ``asyncssh``, you need the following:
 
 * Python 3.4 or later
-* cryptography (PyCA) 1.1 or later
+* cryptography (PyCA) 1.5 or later
 
 Installation
 ------------
