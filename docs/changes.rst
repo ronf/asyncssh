@@ -3,6 +3,45 @@
 Change Log
 ==========
 
+Release 1.14.0 (8 Sep 2018)
+---------------------------
+
+* Changed license from EPL 1.0 to EPL 2.0 with GPL 2.0 or later as an
+  available secondary license.
+
+* Added support for automatically parallelizing large reads and write
+  made using the SFTPClientFile class, similar to what was already
+  available in the get/put/copy methods of SFTPClient.
+
+* Added support for get_extra_info() in SSH process classes, returning
+  information associated with the channel the process is tied to.
+
+* Added new set_extra_info() method on SSH connection and channel
+  classes, allowing applications to store additional information on
+  these objects.
+
+* Added handlers for OpenSSH keepalive global & channel requests to
+  avoid messages about unknown requests in the debug log. These requests
+  are still logged, but at debug level 2 instead of 1 and they are not
+  labeled as unknown.
+
+* Fixed race condition when closing sockets associated with forwarded
+  connections.
+
+* Improved error handling during connection close in SFTPClient.
+
+* Worked around issues with integer overflow on systems with a
+  32-bit time_t value when dates beyond 2038 are used in X.509
+  certificates.
+
+* Added guards around some imports and tests which were causing
+  problems on Fedora 27.
+
+* Changed debug level for reporting PTY modes from 1 to 2 to reduce
+  noise in the logs.
+
+* Improved SFTP debug log output when sending EOF responses.
+
 Release 1.13.3 (23 Jul 2018)
 ----------------------------
 
