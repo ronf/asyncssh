@@ -957,8 +957,8 @@ class _TestSFTP(_CheckSFTP):
 
         try:
             self._create_file('file')
-            yield from sftp.chmod('file', 0o1234)
-            self.assertEqual(stat.S_IMODE(os.stat('file').st_mode), 0o1234)
+            yield from sftp.chmod('file', 0o4321)
+            self.assertEqual(stat.S_IMODE(os.stat('file').st_mode), 0o4321)
         finally:
             remove('file')
 
