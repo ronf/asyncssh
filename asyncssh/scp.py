@@ -58,7 +58,7 @@ def _parse_t_args(args):
 
 
 @asyncio.coroutine
-def _parse_path(path):
+def _parse_path(path, **kwargs):
     """Convert an SCP path into an SSHClientConnection and path"""
 
     from . import connect
@@ -77,10 +77,10 @@ def _parse_path(path):
 
     if isinstance(conn, (str, bytes)):
         close_conn = True
-        conn = yield from connect(conn)
+        conn = yield from connect(conn, **kwargs)
     elif isinstance(conn, tuple):
         close_conn = True
-        conn = yield from connect(*conn)
+        conn = yield from connect(*conn, **kwargs)
     else:
         close_conn = False
 
@@ -757,7 +757,8 @@ class _SCPCopier:
 
 @asyncio.coroutine
 def scp(srcpaths, dstpath=None, *, preserve=False, recurse=False,
-        block_size=SFTP_BLOCK_SIZE, progress_handler=None, error_handler=None):
+        block_size=SFTP_BLOCK_SIZE, progress_handler=None,
+        error_handler=None, **kwargs):
     """Copy files using SCP
 
        This function is a coroutine which copies one or more files or
@@ -831,6 +832,10 @@ def scp(srcpaths, dstpath=None, *, preserve=False, recurse=False,
        wants the copy to completely stop. Otherwise, after an error, the
        copy will continue starting with the next file.
 
+       If any other keyword arguments are specified, they will be passed
+       to the AsyncSSH connect() call when attempting to open any new SSH
+       connections needed to perform the file transfer.
+
        :param srcpaths:
            The paths of the source files or directories to copy
        :param dstpath: (optional)
@@ -863,11 +868,12 @@ def scp(srcpaths, dstpath=None, *, preserve=False, recurse=False,
 
     must_be_dir = len(srcpaths) > 1
 
-    dstconn, dstpath, close_dst = yield from _parse_path(dstpath)
+    dstconn, dstpath, close_dst = yield from _parse_path(dstpath, **kwargs)
 
     try:
         for srcpath in srcpaths:
-            srcconn, srcpath, close_src = yield from _parse_path(srcpath)
+            srcconn, srcpath, close_src = yield from _parse_path(srcpath,
+                                                                 **kwargs)
 
             try:
                 if srcconn and dstconn:
