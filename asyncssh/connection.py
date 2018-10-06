@@ -5112,11 +5112,12 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
 @asyncio.coroutine
 def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
                   loop=None, family=0, flags=socket.AI_PASSIVE, backlog=100,
-                  reuse_address=None, server_host_keys=None, passphrase=None,
-                  known_client_hosts=None, trust_client_host=False,
-                  authorized_client_keys=None, x509_trusted_certs=(),
-                  x509_trusted_cert_paths=(), x509_purposes='secureShellClient',
-                  gss_host=(), allow_pty=True, line_editor=True,
+                  reuse_address=None, reuse_port=None, server_host_keys=None,
+                  passphrase=None, known_client_hosts=None,
+                  trust_client_host=False, authorized_client_keys=None,
+                  x509_trusted_certs=(), x509_trusted_cert_paths=(),
+                  x509_purposes='secureShellClient', gss_host=(),
+                  allow_pty=True, line_editor=True,
                   line_history=_DEFAULT_LINE_HISTORY,
                   x11_forwarding=False, x11_auth_path=None,
                   agent_forwarding=True, process_factory=None,
@@ -5158,6 +5159,12 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
            Whether or not to reuse a local socket in the TIME_WAIT state
            without waiting for its natural timeout to expire. If not
            specified, this will be automatically set to `True` on UNIX.
+       :param reuse_port: (optional)
+           Whether or not to allow this socket to be bound to the same
+           port other existing sockets are bound to, so long as they all
+           set this flag when being created. If not specified, the
+           default is to not allow this. This option is not supported
+           on Windows.
        :param server_host_keys: (optional)
            A list of private keys and optional certificates which can be
            used by the server as a host key. Either this argument or
@@ -5310,6 +5317,7 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
        :type flags: flags to pass to :meth:`getaddrinfo() <socket.getaddrinfo>`
        :type backlog: `int`
        :type reuse_address: `bool`
+       :type reuse_port: `bool`
        :type server_host_keys: *see* :ref:`SpecifyingPrivateKeys`
        :type passphrase: `str`
        :type known_client_hosts: *see* :ref:`SpecifyingKnownHosts`
@@ -5411,7 +5419,8 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
     return (yield from loop.create_server(conn_factory, host, port,
                                           family=family, flags=flags,
                                           backlog=backlog,
-                                          reuse_address=reuse_address))
+                                          reuse_address=reuse_address,
+                                          reuse_port=reuse_port))
 
 
 @async_context_manager
