@@ -552,6 +552,7 @@ class _SCPSink(_SCPHandler):
                     self.send_ok()
                 elif action == b'E':
                     self.send_ok()
+                    break
                 elif action in b'CD':
                     try:
                         attrs.permissions, size, name = _parse_cd_args(args)
