@@ -23,7 +23,8 @@
 import asyncio
 
 from .constants import EXTENDED_DATA_STDERR
-from .misc import BreakReceived, SignalReceived, TerminalSizeChanged
+from .misc import BreakReceived, SignalReceived
+from .misc import SoftEOFReceived, TerminalSizeChanged
 from .misc import async_iterator, python35
 from .session import SSHClientSession, SSHServerSession
 from .session import SSHTCPSession, SSHUNIXSession
@@ -450,7 +451,13 @@ class SSHStreamSession:
                         if data:
                             break
                         else:
-                            raise recv_buf.pop(0)
+                            exc = recv_buf.pop(0)
+
+                            if isinstance(exc, SoftEOFReceived):
+                                n = 0
+                                break
+                            else:
+                                raise exc
 
                     l = len(recv_buf[0])
                     if n > 0 and l > n:
@@ -468,7 +475,7 @@ class SSHStreamSession:
                     continue
 
                 if n == 0 or (n > 0 and data and not exact) or \
-                        self._eof_received:
+                        (n < 0 and recv_buf) or self._eof_received:
                     break
 
                 yield from self._block_read(datatype)
@@ -503,7 +510,12 @@ class SSHStreamSession:
                             self._recv_buf_len -= buflen
                             raise asyncio.IncompleteReadError(buf, None)
                         else:
-                            raise recv_buf.pop(0)
+                            exc = recv_buf.pop(0)
+
+                            if isinstance(exc, SoftEOFReceived):
+                                return buf
+                            else:
+                                raise exc
 
                     buf += recv_buf[curbuf]
                     start = max(buflen + 1 - seplen, 0)
@@ -627,6 +639,12 @@ class SSHServerStreamSession(SSHStreamSession, SSHServerSession):
         """Handle an incoming signal on the channel"""
 
         self._recv_buf[None].append(SignalReceived(signal))
+        self._unblock_read(None)
+
+    def soft_eof_received(self):
+        """Handle an incoming soft EOF on the channel"""
+
+        self._recv_buf[None].append(SoftEOFReceived())
         self._unblock_read(None)
 
     def terminal_size_changed(self, width, height, pixwidth, pixheight):

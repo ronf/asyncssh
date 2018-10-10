@@ -338,6 +338,18 @@ class SignalReceived(Exception):
         self.signal = signal
 
 
+class SoftEOFReceived(Exception):
+    """SSH soft EOF request received
+
+       This exception is raised on an SSH server stdin stream when the
+       client sends an EOF from within the line editor on the channel.
+
+    """
+
+    def __init__(self):
+        super().__init__('Soft EOF')
+
+
 class TerminalSizeChanged(Exception):
     """SSH terminal size change notification received
 

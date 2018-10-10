@@ -61,6 +61,18 @@ def _handle_session(stdin, stdout, stderr):
     stdout.close()
 
 
+def _handle_soft_eof(stdin, stdout, stderr):
+    """Accept input using read() and echo it back"""
+
+    # pylint: disable=unused-argument
+
+    while not stdin.at_eof():
+        data = yield from stdin.read()
+        stdout.write(data or 'EOF\n')
+
+    stdout.close()
+
+
 class _CheckEditor(ServerTestCase):
     """Utility functions for AsyncSSH line editor unit tests"""
 
@@ -268,3 +280,37 @@ class _TestEditorEncodingNone(_CheckEditor):
         """Test changing the terminal width"""
 
         yield from self.check_input('abc\n', 'abc\n', set_width=True)
+
+
+class _TestEditorSoftEOF(_CheckEditor):
+    """Unit tests for AsyncSSH line editor sending soft EOF"""
+
+    @classmethod
+    @asyncio.coroutine
+    def start_server(cls):
+        """Start an SSH server for the tests to use"""
+
+        return (yield from cls.create_server(session_factory=_handle_soft_eof))
+
+    @asynctest
+    def test_editor_soft_eof(self):
+        """Test editor sending soft EOF"""
+
+        with (yield from self.connect()) as conn:
+            process = yield from conn.create_process(term_type='ansi')
+
+            process.stdin.write('\x04')
+
+            self.assertEqual((yield from process.stdout.readline()), 'EOF\r\n')
+
+            process.stdin.write('abc\n\x04')
+
+            self.assertEqual((yield from process.stdout.readline()), 'abc\r\n')
+            self.assertEqual((yield from process.stdout.readline()), 'abc\r\n')
+            self.assertEqual((yield from process.stdout.readline()), 'EOF\r\n')
+
+            process.stdin.write('abc\n')
+            process.stdin.write_eof()
+
+            self.assertEqual((yield from process.stdout.read()),
+                             'abc\r\nabc\r\n')

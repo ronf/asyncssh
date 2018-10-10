@@ -280,7 +280,7 @@ class SSHLineEditor:
         """Erase character to the right, or send EOF if input line is empty"""
 
         if not self._line:
-            self._session.eof_received()
+            self._session.soft_eof_received()
         else:
             self._erase_right()
 
