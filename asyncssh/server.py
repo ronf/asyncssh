@@ -27,7 +27,7 @@ class SSHServer:
        Applications may subclass this when implementing an SSH server to
        provide custom authentication and request handlers.
 
-       THe method :meth:`begin_auth` can be overridden decide whether
+       The method :meth:`begin_auth` can be overridden decide whether
        or not authentication is required, and additional callbacks are
        provided for each form of authentication in cases where authentication
        information is not provided in the call to :func:`create_server`.
