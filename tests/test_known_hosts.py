@@ -209,6 +209,18 @@ class _TestKnownHosts(TempDirTestCase):
         for patlists in no_match:
             self.check_hosts(patlists, ([], [], [], [], [], [], []))
 
+    def test_scoped_addr(self):
+        """Test match on scoped addresses"""
+
+        self.check_hosts((['fe80::1%1'], [], [], [], [], [], []),
+                         ([0], [], [], [], [], [], []), addr='fe80::1%1')
+        self.check_hosts((['fe80::%1/64'], [], [], [], [], [], []),
+                         ([0], [], [], [], [], [], []), addr='fe80::1%1')
+        self.check_hosts((['fe80::1%2'], [], [], [], [], [], []),
+                         ([], [], [], [], [], [], []), addr='fe80::1%1')
+        self.check_hosts((['2001:2::%3/64'], [], [], [], [], [], []),
+                         ([0], [], [], [], [], [], []), addr='2001:2::1')
+
     def test_missing_key(self):
         """Test for line with missing key data"""
 
