@@ -28,10 +28,15 @@ import ctypes
 import ctypes.wintypes
 import errno
 import os
-import mmapfile
-import win32api
-import win32con
-import win32ui
+
+try:
+    import mmapfile
+    import win32api
+    import win32con
+    import win32ui
+    _pywin32_available = True
+except ImportError:
+    _pywin32_available = False
 
 
 _AGENT_COPYDATA_ID = 0x804e50ba
@@ -44,10 +49,13 @@ _DEFAULT_OPENSSH_PATH = r'\\.\pipe\openssh-ssh-agent'
 def _find_agent_window():
     """Find and return the Pageant window"""
 
-    try:
-        return win32ui.FindWindow(_AGENT_NAME, _AGENT_NAME)
-    except win32ui.error:
-        raise OSError(errno.ENOENT, 'Agent not found') from None
+    if _pywin32_available:
+        try:
+            return win32ui.FindWindow(_AGENT_NAME, _AGENT_NAME)
+        except win32ui.error:
+            raise OSError(errno.ENOENT, 'Agent not found') from None
+    else:
+        raise OSError(errno.ENOENT, 'PyWin32 not installed') from None
 
 
 class _CopyDataStruct(ctypes.Structure):
