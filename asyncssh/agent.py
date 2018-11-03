@@ -452,6 +452,9 @@ class SSHAgentClient:
     def lock(self, passphrase):
         """Lock the agent using the specified passphrase
 
+           .. note:: The lock and unlock actions don't appear to be
+                     supported on the Windows 10 OpenSSH agent.
+
            :param passphrase:
                The passphrase required to later unlock the agent
            :type passphrase: `str`
@@ -473,6 +476,9 @@ class SSHAgentClient:
     @asyncio.coroutine
     def unlock(self, passphrase):
         """Unlock the agent using the specified passphrase
+
+           .. note:: The lock and unlock actions don't appear to be
+                     supported on the Windows 10 OpenSSH agent.
 
            :param passphrase:
                The passphrase to use to unlock the agent

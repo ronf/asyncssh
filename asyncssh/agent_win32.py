@@ -27,6 +27,7 @@ import asyncio
 import ctypes
 import ctypes.wintypes
 import errno
+import os
 import mmapfile
 import win32api
 import win32con
@@ -36,6 +37,8 @@ import win32ui
 _AGENT_COPYDATA_ID = 0x804e50ba
 _AGENT_MAX_MSGLEN = 8192
 _AGENT_NAME = 'Pageant'
+
+_DEFAULT_OPENSSH_PATH = r'\\.\pipe\openssh-ssh-agent'
 
 
 def _find_agent_window():
@@ -112,12 +115,55 @@ class _PageantTransport:
             self._mapfile = None
 
 
+class _W10OpenSSHTransport:
+    """Transport to connect to OpenSSH agent on Windows 10"""
+
+    def __init__(self, agent_path):
+        self._agentfile = open(agent_path, 'r+b')
+
+    def write(self, data):
+        """Write request data to OpenSSH agent"""
+
+        self._agentfile.write(data)
+
+    @asyncio.coroutine
+    def readexactly(self, n):
+        """Read response data from OpenSSH agent"""
+
+        result = self._agentfile.read(n)
+
+        if len(result) != n:
+            raise asyncio.IncompleteReadError(result, n)
+
+        return result
+
+    def close(self):
+        """Close the connection to OpenSSH"""
+
+        if self._agentfile:
+            self._agentfile.close()
+            self._agentfile = None
+
+
 @asyncio.coroutine
 def open_agent(loop, agent_path):
-    """Open a connection to the Pageant agent"""
+    """Open a connection to the Pageant or Windows 10 OpenSSH agent"""
 
     # pylint: disable=unused-argument
 
-    _find_agent_window()
-    transport = _PageantTransport()
+    transport = None
+
+    if not agent_path:
+        agent_path = os.environ.get('SSH_AUTH_SOCK', None)
+
+        if not agent_path:
+            try:
+                _find_agent_window()
+                transport = _PageantTransport()
+            except OSError:
+                agent_path = _DEFAULT_OPENSSH_PATH
+
+    if not transport:
+        transport = _W10OpenSSHTransport(agent_path)
+
     return transport, transport
