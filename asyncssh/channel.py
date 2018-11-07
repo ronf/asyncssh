@@ -1266,12 +1266,12 @@ class SSHClientChannel(SSHChannel):
            process or service. Signal names should be as described in
            section 6.10 of :rfc:`RFC 4254 <4254#section-6.10>`.
 
-           .. note:: OpenSSH's SSH server implementation does not
-                     currently support this message, so attempts to
+           .. note:: OpenSSH's SSH server implementation prior to version
+                     7.9 does not support this message, so attempts to
                      use :meth:`send_signal`, :meth:`terminate`, or
-                     :meth:`kill` with an OpenSSH SSH server will
-                     end up being ignored. This is currently being
-                     tracked in OpenSSH `bug 1424`__.
+                     :meth:`kill` with an older OpenSSH SSH server will
+                     end up being ignored. This was tracked in OpenSSH
+                     `bug 1424`__.
 
                      __ https://bugzilla.mindrot.org/show_bug.cgi?id=1424
 
