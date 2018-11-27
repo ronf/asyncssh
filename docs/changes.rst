@@ -3,6 +3,41 @@
 Change Log
 ==========
 
+Release 1.15.0 (26 Nov 2018)
+----------------------------
+
+* Added the ability to pass keyword arguments provided in the scp()
+  command through to asyncssh.connect() calls it makes, allowing
+  things like custom credentials to be specified.
+
+* Added support for a reuse_port argument in create_server(). If
+  set, this will be passed to the asyncio loop.create_server() call
+  which creates listening sockets.
+
+* Added support for "soft" EOF when line editing in enabled so that
+  EOF can be signalled multiple times on a channel. When Ctrl-D is
+  received on a channel with line editing enabled, EOF is returned
+  to the application but the channel remains open and capable of
+  accepting more input, allowing an interactive shell to process
+  the EOF for one command but still accept input for subsequent
+  commands.
+
+* Added support for the Windows 10 OpenSSH ssh-agent. Thanks go to
+  SamP20 for providing an initial proof of concept and a suggested
+  implementation.
+
+* Reworked scoped link-local IPv6 address normalization to work
+  better on Linux systems.
+
+* Fixed a problem preserving directory structure in recursive scp().
+
+* Fixed SFTP chmod tests to avoid attempting to set the sticky bit on
+  a plain file, as this caused test failures on FreeBSD.
+
+* Updated note in SSHClientChannel's send_signal() documentation to
+  reflect that OpenSSH 7.9 and later should now support processing
+  of signal messages.
+
 Release 1.14.0 (8 Sep 2018)
 ---------------------------
 
