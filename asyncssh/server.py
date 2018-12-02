@@ -172,6 +172,122 @@ class SSHServer:
         host_domain = host_principal.rsplit('@')[-1]
         return user_principal == username + '@' + host_domain
 
+    def host_based_auth_supported(self):
+        """Return whether or not host-based authentication is supported
+
+           This method should return `True` if client host-based
+           authentication is supported. Applications wishing to support
+           it must have this method return `True` and implement
+           :meth:`validate_host_public_key` and/or :meth:`validate_host_ca_key`
+           to return whether or not the key provided by the client is valid
+           for the client host being authenticated.
+
+           By default, it returns `False` indicating the client host
+           based authentication is not supported.
+
+           :returns: A `bool` indicating if host-based authentication is
+                     supported or not
+
+        """
+
+        return False # pragma: no cover
+
+    def validate_host_public_key(self, client_host, client_addr,
+                                 client_port, key):
+        """Return whether key is an authorized host key for this client host
+
+           Host key based client authentication can be supported by
+           passing authorized host keys in the `known_client_hosts`
+           argument of :func:`create_server`. However, for more flexibility
+           in matching on the allowed set of keys, this method can be
+           implemented by the application to do the matching itself. It
+           should return `True` if the specified key is a valid host key
+           for the client host being authenticated.
+
+           This method may be called multiple times with different keys
+           provided by the client. Applications should precompute as
+           much as possible in the :meth:`begin_auth` method so that
+           this function can quickly return whether the key provided is
+           in the list.
+
+           By default, this method returns `False` for all client host keys.
+
+               .. note:: This function only needs to report whether the
+                         public key provided is a valid key for this client
+                         host. If it is, AsyncSSH will verify that the
+                         client possesses the corresponding private key
+                         before allowing the authentication to succeed.
+
+           :param client_host:
+               The hostname of the client host
+           :param client_addr:
+               The IP address of the client host
+           :param client_port:
+               The port number on the client host
+           :param key:
+               The host public key sent by the client
+           :type client_host: `str`
+           :type client_addr: `str`
+           :type client_port: `int`
+           :type key: :class:`SSHKey` *public key*
+
+           :returns: A `bool` indicating if the specified key is a valid
+                     key for the client host being authenticated
+
+        """
+
+        return False # pragma: no cover
+
+    def validate_host_ca_key(self, client_host, client_addr,
+                             client_port, key):
+        """Return whether key is an authorized CA key for this client host
+
+           Certificate based client host authentication can be
+           supported by passing authorized host CA keys in the
+           `known_client_hosts` argument of :func:`create_server`.
+           However, for more flexibility in matching on the allowed
+           set of keys, this method can be implemented by the application
+           to do the matching itself. It should return `True` if the
+           specified key is a valid certificate authority key for the
+           client host being authenticated.
+
+           This method may be called multiple times with different keys
+           provided by the client. Applications should precompute as
+           much as possible in the :meth:`begin_auth` method so that
+           this function can quickly return whether the key provided is
+           in the list.
+
+           By default, this method returns `False` for all CA keys.
+
+               .. note:: This function only needs to report whether the
+                         public key provided is a valid CA key for this
+                         client host. If it is, AsyncSSH will verify that
+                         the certificate is valid, that the client host is
+                         one of the valid principals for the certificate,
+                         and that the client possesses the private key
+                         corresponding to the public key in the certificate
+                         before allowing the authentication to succeed.
+
+           :param client_host:
+               The hostname of the client host
+           :param client_addr:
+               The IP address of the client host
+           :param client_port:
+               The port number on the client host
+           :param key:
+               The public key which signed the certificate sent by the client
+           :type client_host: `str`
+           :type client_addr: `str`
+           :type client_port: `int`
+           :type key: :class:`SSHKey` *public key*
+
+           :returns: A `bool` indicating if the specified key is a valid
+                     CA key for the client host being authenticated
+
+        """
+
+        return False # pragma: no cover
+
     def validate_host_based_user(self, username, client_host, client_username):
         """Return whether remote host and user is authorized for this user
 
@@ -211,8 +327,9 @@ class SSHServer:
            This method should return `True` if client public key
            authentication is supported. Applications wishing to support
            it must have this method return `True` and implement
-           :meth:`validate_public_key` to return whether or not the key
-           provided by the client is valid for the user being authenticated.
+           :meth:`validate_public_key` and/or :meth:`validate_ca_key`
+           to return whether or not the key provided by the client is
+           valid for the user being authenticated.
 
            By default, it returns `False` indicating the client public
            key authentication is not supported.
@@ -227,7 +344,7 @@ class SSHServer:
     def validate_public_key(self, username, key):
         """Return whether key is an authorized client key for this user
 
-           Basic key-based client authentication can be supported by
+           Key based client authentication can be supported by
            passing authorized keys in the `authorized_client_keys`
            argument of :func:`create_server`, or by calling
            :meth:`set_authorized_keys
@@ -272,8 +389,8 @@ class SSHServer:
     def validate_ca_key(self, username, key):
         """Return whether key is an authorized CA key for this user
 
-           Basic key-based client authentication can be supported by
-           passing authorized keys in the `authorized_client_keys`
+           Certificate based client authentication can be supported by
+           passing authorized CA keys in the `authorized_client_keys`
            argument of :func:`create_server`, or by calling
            :meth:`set_authorized_keys
            <SSHServerConnection.set_authorized_keys>` on the server

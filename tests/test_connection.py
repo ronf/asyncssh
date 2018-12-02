@@ -148,6 +148,30 @@ class _FailingGCMCipher(GCMCipher):
         return super().verify_and_decrypt(header, data + b'\xff', mac)
 
 
+class _ValidateHostKeyClient(asyncssh.SSHClient):
+    """Test server host key/CA validation callbacks"""
+
+    def __init__(self, host_key=None, ca_key=None):
+        self._host_key = \
+            asyncssh.read_public_key(host_key) if host_key else None
+        self._ca_key = \
+            asyncssh.read_public_key(ca_key) if ca_key else None
+
+    def validate_host_public_key(self, host, addr, port, key):
+        """Return whether key is an authorized key for this host"""
+
+        # pylint: disable=unused-argument
+
+        return key == self._host_key
+
+    def validate_host_ca_key(self, host, addr, port, key):
+        """Return whether key is an authorized CA key for this host"""
+
+        # pylint: disable=unused-argument
+
+        return key == self._ca_key
+
+
 class _PreAuthRequestClient(asyncssh.SSHClient):
     """Test sending a request prior to auth complete"""
 
@@ -447,11 +471,19 @@ class _TestConnection(ServerTestCase):
         yield from conn.wait_closed()
 
     @asynctest
-    def test_untrusted_known_hosts_key(self):
-        """Test untrusted server host key"""
+    def test_validate_host_ca_callback(self):
+        """Test callback to validate server CA key"""
 
-        with self.assertRaises(asyncssh.DisconnectError):
-            yield from self.connect(known_hosts=(['ckey.pub'], [], []))
+        def client_factory():
+            """Return an SSHClient which can validate the sevrer CA key"""
+
+            return _ValidateHostKeyClient(ca_key='skey.pub')
+
+        conn, _ = yield from self.create_connection(client_factory,
+                                                    known_hosts=([], [], []))
+
+        conn.close()
+        yield from conn.wait_closed()
 
     @asynctest
     def test_untrusted_known_hosts_ca(self):
@@ -459,6 +491,32 @@ class _TestConnection(ServerTestCase):
 
         with self.assertRaises(asyncssh.DisconnectError):
             yield from self.connect(known_hosts=([], ['ckey.pub'], []))
+
+    @asynctest
+    def test_untrusted_host_key_callback(self):
+        """Test callback to validate server host key returning failure"""
+
+        def client_factory():
+            """Return an SSHClient which can validate the sevrer host key"""
+
+            return _ValidateHostKeyClient(host_key='ckey.pub')
+
+        with self.assertRaises(asyncssh.DisconnectError):
+            yield from self.create_connection(client_factory,
+                                              known_hosts=([], [], []))
+
+    @asynctest
+    def test_untrusted_host_ca_callback(self):
+        """Test callback to validate server CA key returning failure"""
+
+        def client_factory():
+            """Return an SSHClient which can validate the sevrer CA key"""
+
+            return _ValidateHostKeyClient(ca_key='ckey.pub')
+
+        with self.assertRaises(asyncssh.DisconnectError):
+            yield from self.create_connection(client_factory,
+                                              known_hosts=([], [], []))
 
     @asynctest
     def test_revoked_known_hosts_key(self):
@@ -1255,6 +1313,39 @@ class _TestServerNoHostKey(ServerTestCase):
 
         with self.assertRaises(asyncssh.DisconnectError):
             yield from self.connect()
+
+
+class _TestServerWithoutCert(ServerTestCase):
+    """Unit tests with a server that advertises a host key instead of a cert"""
+
+    @classmethod
+    @asyncio.coroutine
+    def start_server(cls):
+        """Start an SSH server to connect to"""
+
+        return (yield from cls.create_server(server_host_keys=[('skey', None)]))
+
+    @asynctest
+    def test_validate_host_key_callback(self):
+        """Test callback to validate server host key"""
+
+        def client_factory():
+            """Return an SSHClient which can validate the sevrer host key"""
+
+            return _ValidateHostKeyClient(host_key='skey.pub')
+
+        conn, _ = yield from self.create_connection(client_factory,
+                                                    known_hosts=([], [], []))
+
+        conn.close()
+        yield from conn.wait_closed()
+
+    @asynctest
+    def test_untrusted_known_hosts_key(self):
+        """Test untrusted server host key"""
+
+        with self.assertRaises(asyncssh.DisconnectError):
+            yield from self.connect(known_hosts=(['ckey.pub'], [], []))
 
 
 class _TestServerInternalError(ServerTestCase):

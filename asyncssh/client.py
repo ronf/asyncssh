@@ -107,6 +107,87 @@ class SSHClient:
 
         pass # pragma: no cover
 
+    def validate_host_public_key(self, host, addr, port, key):
+        """Return whether key is an authorized key for this host
+
+           Server host key validation can be supported by passing known
+           host keys in the `known_hosts` argument of
+           :func:`create_connection`. However, for more flexibility
+           in matching on the allowed set of keys, this method can be
+           implemented by the application to do the matching itself. It
+           should return `True` if the specified key is a valid host key
+           for the server being connected to.
+
+           By default, this method returns `False` for all host keys.
+
+               .. note:: This function only needs to report whether the
+                         public key provided is a valid key for this
+                         host. If it is, AsyncSSH will verify that the
+                         server possesses the corresponding private key
+                         before allowing the validation to succeed.
+
+           :param host:
+               The hostname of the target host
+           :param addr:
+               The IP address of the target host
+           :param port:
+               The port number on the target host
+           :param key:
+               The public key sent by the server
+           :type host: `str`
+           :type addr: `str`
+           :type port: `int`
+           :type key: :class:`SSHKey` *public key*
+
+           :returns: A `bool` indicating if the specified key is a valid
+                     key for the target host
+
+        """
+
+        return False # pragma: no cover
+
+    def validate_host_ca_key(self, host, addr, port, key):
+        """Return whether key is an authorized CA key for this host
+
+           Server host certificate validation can be supported by passing
+           known host CA keys in the `known_hosts` argument of
+           :func:`create_connection`. However, for more flexibility
+           in matching on the allowed set of keys, this method can be
+           implemented by the application to do the matching itself. It
+           should return `True` if the specified key is a valid certificate
+           authority key for the server being connected to.
+
+           By default, this method returns `False` for all CA keys.
+
+               .. note:: This function only needs to report whether the
+                         public key provided is a valid CA key for this
+                         host. If it is, AsyncSSH will verify that the
+                         certificate is valid, that the host is one of
+                         the valid principals for the certificate, and
+                         that the server possesses the private key
+                         corresponding to the public key in the certificate
+                         before allowing the validation to succeed.
+
+           :param host:
+               The hostname of the target host
+           :param addr:
+               The IP address of the target host
+           :param port:
+               The port number on the target host
+           :param key:
+               The public key which signed the certificate sent by the server
+           :type host: `str`
+           :type addr: `str`
+           :type port: `int`
+           :type key: :class:`SSHKey` *public key*
+
+           :returns: A `bool` indicating if the specified key is a valid
+                     CA key for the target host
+
+        """
+
+        return False # pragma: no cover
+
     def auth_banner_received(self, msg, lang):
         """An incoming authentication banner was received
 

@@ -65,8 +65,38 @@ class _AsyncGSSServer(asyncssh.SSHServer):
 class _HostBasedServer(Server):
     """Server for testing host-based authentication"""
 
+    def __init__(self, host_key=None, ca_key=None):
+        super().__init__()
+
+        self._host_key = \
+            asyncssh.read_public_key(host_key) if host_key else None
+        self._ca_key = \
+            asyncssh.read_public_key(ca_key) if ca_key else None
+
+    def host_based_auth_supported(self):
+        """Return whether or not host based authentication is supported"""
+
+        return True
+
+    def validate_host_public_key(self, client_host, client_addr,
+                                 client_port, key):
+        """Return whether key is an authorized key for this host"""
+
+        # pylint: disable=unused-argument
+
+        return key == self._host_key
+
+    def validate_host_ca_key(self, client_host, client_addr, client_port, key):
+        """Return whether key is an authorized CA key for this host"""
+
+        # pylint: disable=unused-argument
+
+        return key == self._ca_key
+
     def validate_host_based_user(self, username, client_host, client_username):
         """Return whether remote host and user is authorized for this user"""
+
+        # pylint: disable=unused-argument
 
         return client_username == 'user'
 
@@ -652,6 +682,61 @@ class _TestHostBasedAuth(ServerTestCase):
         with self.assertRaises(asyncssh.DisconnectError):
             yield from self.connect(username='user',
                                     client_host_keys=[(ckey, cert)],
+                                    client_username='user')
+
+
+@patch_getnameinfo
+class _TestCallbackHostBasedAuth(ServerTestCase):
+    """Unit tests for host-based authentication using callback"""
+
+    @classmethod
+    @asyncio.coroutine
+    def start_server(cls):
+        """Start an SSH server which supports host-based authentication"""
+
+        def server_factory():
+            """Return an SSHServer which can validate the client host key"""
+
+            return _HostBasedServer(host_key='skey.pub', ca_key='skey.pub')
+
+        return (yield from cls.create_server(server_factory))
+
+    @asynctest
+    def test_validate_client_host_callback(self):
+        """Test using callback to validate client host key"""
+
+        with (yield from self.connect(username='user',
+                                      client_host_keys=[('skey', None)],
+                                      client_username='user')) as conn:
+            pass
+
+        yield from conn.wait_closed()
+
+    @asynctest
+    def test_validate_client_host_ca_callback(self):
+        """Test using callback to validate client host CA key"""
+
+        with (yield from self.connect(username='user', client_host_keys='skey',
+                                      client_username='user')) as conn:
+            pass
+
+        yield from conn.wait_closed()
+
+    @asynctest
+    def test_untrusted_client_host_callback(self):
+        """Test callback to validate client host key returning failure"""
+
+        with self.assertRaises(asyncssh.DisconnectError):
+            yield from self.connect(username='user',
+                                    client_host_keys=[('ckey', None)],
+                                    client_username='user')
+
+    @asynctest
+    def test_untrusted_client_host_ca_callback(self):
+        """Test callback to validate client host CA key returning failure"""
+
+        with self.assertRaises(asyncssh.DisconnectError):
+            yield from self.connect(username='user', client_host_keys='ckey',
                                     client_username='user')
 
 

@@ -489,14 +489,16 @@ class SSHConnection(SSHPacketHandler):
             self._x509_trusted_subjects = trusted_x509_subjects
             self._x509_revoked_subjects = revoked_x509_subjects
 
-    def _validate_openssh_host_certificate(self, host, cert):
+    def _validate_openssh_host_certificate(self, host, addr, port, cert):
         """Validate an OpenSSH host certificate"""
 
         if cert.signing_key in self._revoked_host_keys:
             raise ValueError('Host CA key is revoked')
 
         if self._trusted_ca_keys is not None and \
-           cert.signing_key not in self._trusted_ca_keys:
+           cert.signing_key not in self._trusted_ca_keys and \
+           not self._owner.validate_host_ca_key(host, addr, port,
+                                                cert.signing_key):
             raise ValueError('Host CA key is not trusted')
 
         cert.validate(CERT_TYPE_HOST, host)
@@ -530,7 +532,7 @@ class SSHConnection(SSHPacketHandler):
 
         return cert.key
 
-    def _validate_host_key(self, host, key_data):
+    def _validate_host_key(self, host, addr, port, key_data):
         """Validate and return a trusted host key"""
 
         try:
@@ -541,7 +543,8 @@ class SSHConnection(SSHPacketHandler):
             if cert.is_x509_chain:
                 return self._validate_x509_host_certificate_chain(host, cert)
             else:
-                return self._validate_openssh_host_certificate(host, cert)
+                return self._validate_openssh_host_certificate(host, addr,
+                                                               port, cert)
 
         try:
             key = decode_ssh_public_key(key_data)
@@ -552,7 +555,8 @@ class SSHConnection(SSHPacketHandler):
                 raise ValueError('Host key is revoked')
 
             if self._trusted_host_keys is not None and \
-               key not in self._trusted_host_keys:
+               key not in self._trusted_host_keys and \
+               not self._owner.validate_host_public_key(host, addr, port, key):
                 raise ValueError('Host key is not trusted')
 
             return key
@@ -582,8 +586,6 @@ class SSHConnection(SSHPacketHandler):
             self._connection_made()
             self._owner.connection_made(self)
             self._send_version()
-        except DisconnectError as exc:
-            self._loop.call_soon(self.connection_lost, exc)
         except Exception:
             self._loop.call_soon(self.internal_error, sys.exc_info())
 
@@ -2244,25 +2246,14 @@ class SSHClientConnection(SSHConnection):
                 self._server_host_key_algs = \
                     get_certificate_algs() + self._server_host_key_algs
 
-            if self._x509_trusted_certs is not None:
-                if self._x509_trusted_certs or self._x509_trusted_cert_paths:
-                    self._server_host_key_algs = \
-                        get_x509_certificate_algs() + \
-                        self._server_host_key_algs
-
         if not self._server_host_key_algs:
-            if self._known_hosts is None:
-                self._server_host_key_algs = (get_certificate_algs() +
-                                              get_public_key_algs())
+            self._server_host_key_algs = (get_certificate_algs() +
+                                          get_public_key_algs())
 
-                if self._x509_trusted_certs is not None:
-                    self._server_host_key_algs = \
-                        get_x509_certificate_algs() + self._server_host_key_algs
-            elif self._gss:
-                self._server_host_key_algs = [b'null']
-            else:
-                raise DisconnectError(DISC_HOST_KEY_NOT_VERIFYABLE,
-                                      'No trusted server host keys available')
+        if self._x509_trusted_certs is not None:
+            if self._x509_trusted_certs or self._x509_trusted_cert_paths:
+                self._server_host_key_algs = \
+                    get_x509_certificate_algs() + self._server_host_key_algs
 
         self.logger.info('Connection to %s succeeded', (self._host, self._port))
 
@@ -2311,9 +2302,11 @@ class SSHClientConnection(SSHConnection):
         """Validate and return the server's host key"""
 
         try:
-            return self._validate_host_key(self._host, key_data)
+            return self._validate_host_key(self._host, self._peer_addr,
+                                           self._port, key_data)
         except ValueError as exc:
-            raise DisconnectError(DISC_HOST_KEY_NOT_VERIFYABLE, str(exc))
+            raise DisconnectError(DISC_HOST_KEY_NOT_VERIFYABLE,
+                                  str(exc)) from None
 
     def try_next_auth(self):
         """Attempt client authentication using the next compatible method"""
@@ -3690,7 +3683,8 @@ class SSHServerConnection(SSHConnection):
     def host_based_auth_supported(self):
         """Return whether or not host based authentication is supported"""
 
-        return bool(self._known_client_hosts)
+        return (bool(self._known_client_hosts) or
+                self._owner.host_based_auth_supported())
 
     @asyncio.coroutine
     def validate_host_based_auth(self, username, key_data, client_host,
@@ -3711,11 +3705,13 @@ class SSHServerConnection(SSHConnection):
                 self.logger.info('Client host mismatch: received %s, '
                                  'resolved %s', client_host, resolved_host)
 
-        self._match_known_hosts(self._known_client_hosts, resolved_host,
-                                self._peer_addr, None)
+        if self._known_client_hosts:
+            self._match_known_hosts(self._known_client_hosts, resolved_host,
+                                    self._peer_addr, None)
 
         try:
-            key = self._validate_host_key(client_host, key_data)
+            key = self._validate_host_key(resolved_host, self._peer_addr,
+                                          self._peer_port, key_data)
         except ValueError as exc:
             self.logger.debug1('Invalid host key: %s', exc)
             return False

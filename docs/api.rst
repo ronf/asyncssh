@@ -162,6 +162,13 @@ SSHClient
    .. automethod:: debug_msg_received
    ================================== =
 
+   ======================================== =
+   Host key validation handlers
+   ======================================== =
+   .. automethod:: validate_host_public_key
+   .. automethod:: validate_host_ca_key
+   ======================================== =
+
    ==================================== =
    General authentication handlers
    ==================================== =
@@ -217,11 +224,14 @@ SSHServer
    .. automethod:: validate_gss_principal
    ====================================== =
 
-   ======================================== =
+   ========================================= =
    Host-based authentication handlers
-   ======================================== =
+   ========================================= =
+   .. automethod:: host_based_auth_supported
+   .. automethod:: validate_host_public_key
+   .. automethod:: validate_host_ca_key
    .. automethod:: validate_host_based_user
-   ======================================== =
+   ========================================= =
 
    ========================================= =
    Public key authentication handlers
