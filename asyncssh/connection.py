@@ -492,16 +492,16 @@ class SSHConnection(SSHPacketHandler):
     def _validate_openssh_host_certificate(self, host, addr, port, cert):
         """Validate an OpenSSH host certificate"""
 
-        if cert.signing_key in self._revoked_host_keys:
-            raise ValueError('Host CA key is revoked')
+        if self._trusted_ca_keys is not None:
+            if cert.signing_key in self._revoked_host_keys:
+                raise ValueError('Host CA key is revoked')
 
-        if self._trusted_ca_keys is not None and \
-           cert.signing_key not in self._trusted_ca_keys and \
-           not self._owner.validate_host_ca_key(host, addr, port,
-                                                cert.signing_key):
-            raise ValueError('Host CA key is not trusted')
+            if cert.signing_key not in self._trusted_ca_keys and \
+               not self._owner.validate_host_ca_key(host, addr, port,
+                                                    cert.signing_key):
+                raise ValueError('Host CA key is not trusted')
 
-        cert.validate(CERT_TYPE_HOST, host)
+            cert.validate(CERT_TYPE_HOST, host)
 
         return cert.key
 
@@ -551,13 +551,14 @@ class SSHConnection(SSHPacketHandler):
         except KeyImportError:
             pass
         else:
-            if key in self._revoked_host_keys:
-                raise ValueError('Host key is revoked')
+            if self._trusted_host_keys is not None:
+                if key in self._revoked_host_keys:
+                    raise ValueError('Host key is revoked')
 
-            if self._trusted_host_keys is not None and \
-               key not in self._trusted_host_keys and \
-               not self._owner.validate_host_public_key(host, addr, port, key):
-                raise ValueError('Host key is not trusted')
+                if key not in self._trusted_host_keys and \
+                   not self._owner.validate_host_public_key(host, addr,
+                                                            port, key):
+                    raise ValueError('Host key is not trusted')
 
             return key
 

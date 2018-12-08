@@ -1347,6 +1347,15 @@ class _TestServerWithoutCert(ServerTestCase):
         with self.assertRaises(asyncssh.DisconnectError):
             yield from self.connect(known_hosts=(['ckey.pub'], [], []))
 
+    @asynctest
+    def test_known_hosts_none_with_key(self):
+        """Test disabled known hosts checking with server host key"""
+
+        with (yield from self.connect(known_hosts=None)) as conn:
+            pass
+
+        yield from conn.wait_closed()
+
 
 class _TestServerInternalError(ServerTestCase):
     """Unit test for server internal error during auth"""
@@ -1400,6 +1409,15 @@ class _TestExpiredServerHostCertificate(ServerTestCase):
 
         with self.assertRaises(asyncssh.DisconnectError):
             yield from self.connect(known_hosts=([], ['skey.pub'], []))
+
+    @asynctest
+    def test_known_hosts_none_with_expired_cert(self):
+        """Test disabled known hosts checking with expired host certificate"""
+
+        with (yield from self.connect(known_hosts=None)) as conn:
+            pass
+
+        yield from conn.wait_closed()
 
 
 class _TestCustomClientVersion(ServerTestCase):
