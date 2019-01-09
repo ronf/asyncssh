@@ -20,47 +20,28 @@
 
 """Curve25519 key exchange handler primitives"""
 
-import ctypes
-import os
+from cryptography.exceptions import InternalError
+from cryptography.hazmat.primitives.asymmetric import x25519
 
-try:
-    from libnacl import nacl
 
-    _CURVE25519_BYTES = nacl.crypto_scalarmult_curve25519_bytes()
-    _CURVE25519_SCALARBYTES = nacl.crypto_scalarmult_curve25519_scalarbytes()
+class Curve25519DH:
+    """Curve25519 Diffie Hellman implementation"""
 
-    _curve25519 = nacl.crypto_scalarmult_curve25519
-    _curve25519_base = nacl.crypto_scalarmult_curve25519_base
-except (ImportError, OSError, AttributeError): # pragma: no cover
-    pass
-else:
-    class Curve25519DH:
-        """Curve25519 Diffie Hellman implementation"""
+    def __init__(self):
+        self._priv_key = x25519.X25519PrivateKey.generate()
 
-        def __init__(self):
-            self._private = os.urandom(_CURVE25519_SCALARBYTES)
+    def get_public(self):
+        """Return the public key to send in the handshake"""
 
-        def get_public(self):
-            """Return the public key to send in the handshake"""
+        return self._priv_key.public_key().public_bytes()
 
-            public = ctypes.create_string_buffer(_CURVE25519_BYTES)
+    def get_shared(self, peer_public):
+        """Return the shared key from the peer's public key"""
 
-            if _curve25519_base(public, self._private) != 0:
-                # This error is never returned by libsodium
-                raise ValueError('Curve25519 failed') # pragma: no cover
+        try:
+            peer_key = x25519.X25519PublicKey.from_public_bytes(peer_public)
+        except InternalError:
+            raise ValueError('Invalid curve25519 public key') from None
 
-            return public.raw
-
-        def get_shared(self, peer_public):
-            """Return the shared key from the peer's public key"""
-
-            if len(peer_public) != _CURVE25519_BYTES:
-                raise AssertionError('Invalid curve25519 public key size')
-
-            shared = ctypes.create_string_buffer(_CURVE25519_BYTES)
-
-            if _curve25519(shared, self._private, peer_public) != 0:
-                # This error is never returned by libsodium
-                raise ValueError('Curve25519 failed') # pragma: no cover
-
-            return int.from_bytes(shared.raw, 'big')
+        shared = self._priv_key.exchange(peer_key)
+        return int.from_bytes(shared, 'big')

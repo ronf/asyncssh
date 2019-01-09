@@ -83,7 +83,7 @@ class _KexECDH(Kex):
 
         try:
             k = self._priv.get_shared(self._client_pub)
-        except (AssertionError, ValueError):
+        except ValueError:
             raise DisconnectError(DISC_PROTOCOL_ERROR,
                                   'Invalid kex init msg') from None
 
@@ -113,7 +113,7 @@ class _KexECDH(Kex):
 
         try:
             k = self._priv.get_shared(self._server_pub)
-        except (AssertionError, ValueError):
+        except ValueError:
             raise DisconnectError(DISC_PROTOCOL_ERROR,
                                   'Invalid kex reply msg') from None
 
