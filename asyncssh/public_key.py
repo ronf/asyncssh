@@ -22,6 +22,7 @@
 
 import binascii
 from datetime import datetime, timedelta
+from hashlib import md5, sha1, sha256, sha384, sha512
 import os
 from pathlib import Path, PurePath
 import re
@@ -56,6 +57,9 @@ _DEFAULT_HOST_KEY_DIRS = ('/opt/local/etc', '/opt/local/etc/ssh',
                           '/etc', '/etc/ssh')
 _DEFAULT_HOST_KEY_FILES = ('ssh_host_ed25519_key', 'ssh_host_ecdsa_key',
                            'ssh_host_rsa_key', 'ssh_host_dsa_key')
+
+_hashes = {'md5': md5, 'sha1': sha1, 'sha256': sha256,
+           'sha384': sha384, 'sha512': sha512}
 
 _public_key_algs = []
 _certificate_algs = []
@@ -293,6 +297,39 @@ class SSHKey:
             comment = comment.encode(encoding, errors)
 
         self._comment = comment or None
+
+    def get_fingerprint(self, hash_name='sha256'):
+        """Get the fingerprint of this key
+
+           Available hashes include:
+
+               md5, sha1, sha256, sha384, sha512
+
+           :param hash_name: (optional)
+               The hash algorithm to use to construct the fingerprint.
+           :type hash_name: `str`
+
+           :returns: `str`
+
+           :raises: :exc:`ValueError` if the hash name is invalid
+
+        """
+
+        try:
+            hash_alg = _hashes[hash_name]
+        except KeyError:
+            raise ValueError('Unknown hash algorithm') from None
+
+        h = hash_alg(self.public_data)
+
+        if hash_name == 'md5':
+            fp = h.hexdigest()
+            fp_text = ':'.join(fp[i:i+2] for i in range(0, len(fp), 2))
+        else:
+            fp = h.digest()
+            fp_text = binascii.b2a_base64(fp).decode('ascii')[:-1].strip('=')
+
+        return hash_name.upper() + ':' + fp_text
 
     def sign_der(self, data, sig_algorithm):
         """Abstract method to compute a DER-encoded signature"""

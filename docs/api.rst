@@ -1274,6 +1274,7 @@ SSHKey
    .. automethod:: get_comment_bytes
    .. automethod:: get_comment
    .. automethod:: set_comment
+   .. automethod:: get_fingerprint
    .. automethod:: convert_to_public
    .. automethod:: generate_user_certificate
    .. automethod:: generate_host_certificate

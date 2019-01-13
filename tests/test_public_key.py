@@ -354,6 +354,16 @@ class _TestPublicKey(TempDirTestCase):
         self.assertEqual(keylist[0], newkey)
         self.assertEqual(keylist[1], newkey)
 
+        for hash_name in ('md5', 'sha1', 'sha256', 'sha384', 'sha512'):
+            fp = newkey.get_fingerprint(hash_name)
+
+            if _openssh_available: # pragma: no branch
+                keygen_fp = run('ssh-keygen -l -E %s -f sshpub' % hash_name)
+                self.assertEqual(fp, keygen_fp.decode('ascii').split()[1])
+
+        with self.assertRaises(ValueError):
+            newkey.get_fingerprint('xxx')
+
     def check_certificate(self, cert_type, format_name):
         """Check for a certificate match"""
 
