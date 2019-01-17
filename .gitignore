@@ -2,6 +2,7 @@
 MANIFEST
 __pycache__/
 *.py[cod]
+.tox
 
 asyncssh.egg-info
 build/
