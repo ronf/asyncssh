@@ -2233,8 +2233,14 @@ class SSHClientConnection(SSHConnection):
             self._trusted_ca_keys = None
         else:
             if not self._known_hosts:
-                self._known_hosts = os.path.join(os.path.expanduser('~'),
-                                                 '.ssh', 'known_hosts')
+                default_known_hosts = os.path.join(os.path.expanduser('~'),
+                                                   '.ssh', 'known_hosts')
+
+                if (os.path.isfile(default_known_hosts) and
+                        os.access(default_known_hosts, os.R_OK)):
+                    self._known_hosts = default_known_hosts
+                else:
+                    self._known_hosts = b''
 
             port = self._port if self._port != _DEFAULT_PORT else None
 

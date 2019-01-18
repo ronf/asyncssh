@@ -373,6 +373,32 @@ class _TestConnection(ServerTestCase):
             yield from asyncssh.listen(server_host_keys=['skey', 'skey'])
 
     @asynctest
+    def test_known_hosts_not_present(self):
+        """Test connecting with default known hosts file not present"""
+
+        try:
+            os.rename(os.path.join('.ssh', 'known_hosts'),
+                      os.path.join('.ssh', 'known_hosts.save'))
+
+            with self.assertRaises(asyncssh.DisconnectError):
+                yield from self.connect()
+        finally:
+            os.rename(os.path.join('.ssh', 'known_hosts.save'),
+                      os.path.join('.ssh', 'known_hosts'))
+
+    @asynctest
+    def test_known_hosts_not_readable(self):
+        """Test connecting with default known hosts file not readable"""
+
+        try:
+            os.chmod(os.path.join('.ssh', 'known_hosts'), 0)
+
+            with self.assertRaises(asyncssh.DisconnectError):
+                yield from self.connect()
+        finally:
+            os.chmod(os.path.join('.ssh', 'known_hosts'), 0o644)
+
+    @asynctest
     def test_known_hosts_none(self):
         """Test connecting with known hosts checking disabled"""
 
