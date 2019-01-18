@@ -23,6 +23,7 @@
 import asyncio
 from copy import copy
 import os
+import sys
 import unittest
 from unittest.mock import patch
 
@@ -386,6 +387,7 @@ class _TestConnection(ServerTestCase):
             os.rename(os.path.join('.ssh', 'known_hosts.save'),
                       os.path.join('.ssh', 'known_hosts'))
 
+    @unittest.skipIf(sys.platform == 'win32', 'skip chmod tests on Windows')
     @asynctest
     def test_known_hosts_not_readable(self):
         """Test connecting with default known hosts file not readable"""
