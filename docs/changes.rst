@@ -3,6 +3,36 @@
 Change Log
 ==========
 
+Release 1.15.1 (21 Jan 2019)
+----------------------------
+
+* Added callback-based host validation in SSHClient, allowing callers
+  to decide programmatically whether to trust server host keys and
+  certificates rather than having to provide a list of trusted values
+  in advance.
+
+* Changed SSH client code to only load the default known hosts file if
+  if exists. Previously an error was returned if a known_hosts value
+  wasn't specified and the default known_hosts file didn't exist. For
+  host validate to work in this case, verification callbacks must be
+  implemented or other forms of validation such as X.509 trusted CAs
+  or GSS-based key exchange must be used.
+
+* Fixed known hosts validation to completely disable certificate checks
+  when known_hosts is set to None. Previously, key checking was disabled
+  in this case but other checks for certificate expiration and hostname
+  mismatch were still performed, causing connections to fail even when
+  checking was supposed to be disabled.
+
+* Switched curve25519 key exchange to use the PyCA implementation,
+  avoiding a dependency on libnacl/libsodium. For now, support for
+  Ed25519 keys still requires these libraries, but once that support
+  appears in PyCA, it may be possible to remove this dependency
+  entirely.
+
+* Added get_fingerprint() method to return a fingerprint of an SSHKey.
+
+
 Release 1.15.0 (26 Nov 2018)
 ----------------------------
 
