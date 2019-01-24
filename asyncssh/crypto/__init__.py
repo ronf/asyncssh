@@ -35,6 +35,12 @@ from .rsa import RSAPrivateKey, RSAPublicKey
 # Import chacha20-poly1305 cipher if available
 from .chacha import ChachaCipher
 
+# Import curve448 DH if available
+try:
+    from .curve448 import Curve448DH
+except ImportError: # pragma: no cover
+    pass
+
 # Import curve25519 DH if available
 try:
     from .curve25519 import Curve25519DH

@@ -494,7 +494,7 @@ class _TestKex(AsyncTestCase):
             return
 
         client_conn, server_conn = \
-            _KexClientStub.make_pair(b'curve25519-sha256@libssh.org')
+            _KexClientStub.make_pair(b'curve25519-sha256')
 
         with self.subTest('Invalid client public key'):
             with self.assertRaises(DisconnectError):
@@ -509,6 +509,37 @@ class _TestKex(AsyncTestCase):
             with self.assertRaises(DisconnectError):
                 host_key = server_conn.get_server_host_key()
                 server_pub = Curve25519DH().get_public()
+                client_conn.simulate_ecdh_reply(host_key.public_data,
+                                                server_pub, b'')
+
+        client_conn.close()
+        server_conn.close()
+
+    @asynctest
+    def test_curve448dh_errors(self):
+        """Unit test error conditions in Curve448DH key exchange"""
+
+        try:
+            from asyncssh.crypto import Curve448DH
+        except ImportError: # pragma: no cover
+            return
+
+        client_conn, server_conn = \
+            _KexClientStub.make_pair(b'curve448-sha512')
+
+        with self.subTest('Invalid client public key'):
+            with self.assertRaises(DisconnectError):
+                server_conn.simulate_ecdh_init(b'')
+
+        with self.subTest('Invalid server public key'):
+            with self.assertRaises(DisconnectError):
+                host_key = server_conn.get_server_host_key()
+                client_conn.simulate_ecdh_reply(host_key.public_data, b'', b'')
+
+        with self.subTest('Invalid signature'):
+            with self.assertRaises(DisconnectError):
+                host_key = server_conn.get_server_host_key()
+                server_pub = Curve448DH().get_public()
                 client_conn.simulate_ecdh_reply(host_key.public_data,
                                                 server_pub, b'')
 

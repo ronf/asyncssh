@@ -1703,6 +1703,7 @@ The following are the key exchange algorithms currently supported by AsyncSSH:
   | gss-group18-sha512
   | curve25519-sha256
   | curve25519-sha256\@libssh.org
+  | curve448-sha512
   | ecdh-sha2-nistp521
   | ecdh-sha2-nistp384
   | ecdh-sha2-nistp256
@@ -1718,9 +1719,6 @@ The following are the key exchange algorithms currently supported by AsyncSSH:
   | diffie-hellman-group18-sha512
   | rsa2048-sha256
   | rsa1024-sha1
-
-Curve25519 support is only available when the libnacl package and libsodium
-library are installed.
 
 GSS authentication support is only available when the gssapi package is
 installed on UNIX or the pypiwin32 package is installed on Windows.

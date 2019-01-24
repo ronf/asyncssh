@@ -144,6 +144,14 @@ else:
 
 try:
     # pylint: disable=wrong-import-position
+    from .crypto import Curve448DH
+except ImportError: # pragma: no cover
+    pass
+else:
+    register_kex_alg(b'curve448-sha512', _KexECDH, sha512, Curve448DH)
+
+try:
+    # pylint: disable=wrong-import-position
     from .crypto import ECDH
 except ImportError: # pragma: no cover
     pass

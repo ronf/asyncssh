@@ -24,6 +24,8 @@ from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.backends.openssl import backend
 from cryptography.hazmat.primitives.hashes import SHA256, SHA384, SHA512
 from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives.serialization import Encoding
+from cryptography.hazmat.primitives.serialization import PublicFormat
 
 from .misc import PyCAKey
 
@@ -40,12 +42,13 @@ _curves = {b'1.3.132.0.10': (ec.SECP256K1, SHA256),
 class _ECKey(PyCAKey):
     """Base class for shim around PyCA for EC keys"""
 
-    def __init__(self, pyca_key, curve_id, hash_alg, pub, priv=None):
+    def __init__(self, pyca_key, curve_id, hash_alg, pub, point, priv=None):
         super().__init__(pyca_key)
 
         self._curve_id = curve_id
         self._hash_alg = hash_alg
         self._pub = pub
+        self._point = point
         self._priv = priv
 
     @classmethod
@@ -86,7 +89,7 @@ class _ECKey(PyCAKey):
     def public_value(self):
         """Return the EC public point value encoded as a byte string"""
 
-        return self._pub.encode_point()
+        return self._point
 
     @property
     def private_value(self):
@@ -107,23 +110,29 @@ class ECDSAPrivateKey(_ECKey):
         """Construct an ECDSA private key"""
 
         curve, hash_alg = cls.lookup_curve(curve_id)
-        pub = ec.EllipticCurvePublicNumbers.from_encoded_point(curve(),
-                                                               public_value)
-        priv = ec.EllipticCurvePrivateNumbers(private_value, pub)
-        priv_key = priv.private_key(backend)
 
-        return cls(priv_key, curve_id, hash_alg, pub, priv)
+        priv_key = ec.derive_private_key(private_value, curve(), backend)
+        priv = priv_key.private_numbers()
+        pub = priv.public_numbers
+
+        return cls(priv_key, curve_id, hash_alg, pub, public_value, priv)
 
     @classmethod
     def generate(cls, curve_id):
         """Generate a new ECDSA private key"""
 
         curve, hash_alg = cls.lookup_curve(curve_id)
+
         priv_key = ec.generate_private_key(curve(), backend)
         priv = priv_key.private_numbers()
-        pub = priv.public_numbers
 
-        return cls(priv_key, curve_id, hash_alg, pub, priv)
+        pub_key = priv_key.public_key()
+        pub = pub_key.public_numbers()
+
+        public_value = pub_key.public_bytes(Encoding.X962,
+                                            PublicFormat.UncompressedPoint)
+
+        return cls(priv_key, curve_id, hash_alg, pub, public_value, priv)
 
     def sign(self, data):
         """Sign a block of data"""
@@ -140,11 +149,12 @@ class ECDSAPublicKey(_ECKey):
         """Construct an ECDSA public key"""
 
         curve, hash_alg = cls.lookup_curve(curve_id)
-        pub = ec.EllipticCurvePublicNumbers.from_encoded_point(curve(),
-                                                               public_value)
-        pub_key = pub.public_key(backend)
 
-        return cls(pub_key, curve_id, hash_alg, pub)
+        pub_key = ec.EllipticCurvePublicKey.from_encoded_point(curve(),
+                                                               public_value)
+        pub = pub_key.public_numbers()
+
+        return cls(pub_key, curve_id, hash_alg, pub, public_value)
 
     def verify(self, data, sig):
         """Verify the signature on a block of data"""
@@ -172,14 +182,16 @@ class ECDH:
     def get_public(self):
         """Return the public key to send in the handshake"""
 
-        pub = self._priv_key.private_numbers().public_numbers
-        return pub.encode_point()
+        pub_key = self._priv_key.public_key()
+
+        return pub_key.public_bytes(Encoding.X962,
+                                    PublicFormat.UncompressedPoint)
 
     def get_shared(self, peer_public):
         """Return the shared key from the peer's public key"""
 
-        peer_key = ec.EllipticCurvePublicNumbers.from_encoded_point(
-            self._priv_key.curve, peer_public).public_key(backend)
+        peer_key = ec.EllipticCurvePublicKey.from_encoded_point(
+            self._priv_key.curve, peer_public)
 
         shared_key = self._priv_key.exchange(ec.ECDH(), peer_key)
 

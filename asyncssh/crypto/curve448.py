@@ -18,20 +18,20 @@
 # Contributors:
 #     Ron Frederick - initial implementation, API, and documentation
 
-"""Curve25519 key exchange handler primitives"""
+"""Curve448 key exchange handler primitives"""
 
 from cryptography.hazmat.backends.openssl import backend
-from cryptography.hazmat.primitives.asymmetric import x25519
+from cryptography.hazmat.primitives.asymmetric import x448
 from cryptography.hazmat.primitives.serialization import Encoding
 from cryptography.hazmat.primitives.serialization import PublicFormat
 
 
-if backend.x25519_supported(): # pragma: no branch
-    class Curve25519DH:
-        """Curve25519 Diffie Hellman implementation"""
+if backend.x448_supported(): # pragma: no branch
+    class Curve448DH:
+        """Curve448 Diffie Hellman implementation"""
 
         def __init__(self):
-            self._priv_key = x25519.X25519PrivateKey.generate()
+            self._priv_key = x448.X448PrivateKey.generate()
 
         def get_public(self):
             """Return the public key to send in the handshake"""
@@ -42,6 +42,6 @@ if backend.x25519_supported(): # pragma: no branch
         def get_shared(self, peer_public):
             """Return the shared key from the peer's public key"""
 
-            peer_key = x25519.X25519PublicKey.from_public_bytes(peer_public)
+            peer_key = x448.X448PublicKey.from_public_bytes(peer_public)
             shared = self._priv_key.exchange(peer_key)
             return int.from_bytes(shared, 'big')
