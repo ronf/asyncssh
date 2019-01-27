@@ -29,7 +29,7 @@ from .util import asynctest
 
 
 def _handle_session(stdin, stdout, stderr):
-    """Accept a single line of input and echo it with a prefix"""
+    """Accept lines of input and echo them with a prefix"""
 
     # pylint: disable=unused-argument
 
@@ -69,6 +69,37 @@ def _handle_soft_eof(stdin, stdout, stderr):
     while not stdin.at_eof():
         data = yield from stdin.read()
         stdout.write(data or 'EOF\n')
+
+    stdout.close()
+
+
+def _handle_key(line, pos):
+    """Handle exclamation point being input"""
+
+    # pylint: disable=unused-argument
+
+    if pos == 0:
+        return 'xyz', 3
+    elif pos == 1:
+        return True
+    else:
+        return False
+
+def _handle_register(stdin, stdout, stderr):
+    """Accept input using read() and echo it back"""
+
+    # pylint: disable=unused-argument
+
+    while not stdin.at_eof():
+        data = yield from stdin.readline()
+        if data == 'R\n':
+            stdin.channel.register_key('!', _handle_key)
+            stdin.channel.register_key('\x1bOP', _handle_key)
+        elif data == 'U\n':
+            stdin.channel.unregister_key('!')
+            stdin.channel.unregister_key('\x1bOP')
+            stdin.channel.unregister_key('\x1bOQ') # Test unregistered key
+            stdin.channel.unregister_key('\x1b[25~') # Test unregistered prefix
 
     stdout.close()
 
@@ -282,7 +313,7 @@ class _TestEditorEncodingNone(_CheckEditor):
         yield from self.check_input('abc\n', 'abc\n', set_width=True)
 
 
-class _TestEditorSoftEOF(_CheckEditor):
+class _TestEditorSoftEOF(ServerTestCase):
     """Unit tests for AsyncSSH line editor sending soft EOF"""
 
     @classmethod
@@ -314,3 +345,37 @@ class _TestEditorSoftEOF(_CheckEditor):
 
             self.assertEqual((yield from process.stdout.read()),
                              'abc\r\nabc\r\n')
+
+
+class _TestEditorRegisterKey(ServerTestCase):
+    """Unit tests for AsyncSSH line editor register key callback"""
+
+    @classmethod
+    @asyncio.coroutine
+    def start_server(cls):
+        """Start an SSH server for the tests to use"""
+
+        return (yield from cls.create_server(session_factory=_handle_register))
+
+    @asynctest
+    def test_editor_register_key(self):
+        """Test editor register key functionality"""
+
+        with (yield from self.connect()) as conn:
+            process = yield from conn.create_process(term_type='ansi')
+
+            for inp, result in (('R', 'R'),
+                                ('!a', 'xyza'),
+                                ('a!b', 'a!b'),
+                                ('ab!', 'ab\x07'),
+                                ('\x1bOPa', 'xyza'),
+                                ('a\x1bOPb', 'a\x07b'),
+                                ('ab\x1bOP', 'ab\x07'),
+                                ('U', 'U'),
+                                ('!', '!'),
+                                ('\x1bOP', '\x07')):
+                process.stdin.write(inp + '\n')
+                self.assertEqual((yield from process.stdout.readline()),
+                                 result + '\r\n')
+
+            process.stdin.write_eof()

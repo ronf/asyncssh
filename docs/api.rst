@@ -104,7 +104,10 @@ starting up an SSH server. When this feature is enabled, server sessions
 can enable or disable line mode using the :meth:`set_line_mode()
 <SSHLineEditorChannel.set_line_mode>` method of :class:`SSHLineEditorChannel`.
 They can also enable or disable input echoing using the :meth:`set_echo()
-<SSHLineEditorChannel.set_echo>` method.
+<SSHLineEditorChannel.set_echo>` method. Handling of specific keys during
+line editing can be customized using the :meth:`register_key()
+<SSHLineEditorChannel.register_key>` and :meth:`unregister_key()
+<SSHLineEditorChannel.unregister_key>` methods.
 
 Each session object also has an associated :class:`SSHClientChannel`,
 :class:`SSHServerChannel`, or :class:`SSHTCPChannel` object passed to it
@@ -754,12 +757,14 @@ SSHLineEditorChannel
 
 .. autoclass:: SSHLineEditorChannel()
 
-   ============================= =
+   ============================== =
    Line editor methods
-   ============================= =
+   ============================== =
+   .. automethod:: register_key
+   .. automethod:: unregister_key
    .. automethod:: set_line_mode
    .. automethod:: set_echo
-   ============================= =
+   ============================== =
 
 SSHTCPChannel
 -------------

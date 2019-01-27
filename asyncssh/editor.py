@@ -20,6 +20,7 @@
 
 """Input line editor"""
 
+from functools import partial
 from unicodedata import east_asian_width
 
 
@@ -55,28 +56,41 @@ class SSHLineEditor:
         self._right_pos = 0
         self._pos = 0
         self._line = ''
+        self._keymap = {}
         self._key_state = self._keymap
         self._erased = ''
         self._history = []
         self._history_index = 0
 
-    @classmethod
-    def build_keymap(cls):
-        """Build keyboard input map"""
-
-        cls._keymap = {}
-
-        for func, keys in cls._keylist:
+        for func, keys in self._keylist:
             for key in keys:
-                keymap = cls._keymap
+                self._add_key(key, func)
 
-                for ch in key[:-1]:
-                    if ch not in keymap:
-                        keymap[ch] = {}
+    def _add_key(self, key, func):
+        """Add a key to the keymap"""
 
-                    keymap = keymap[ch]
+        keymap = self._keymap
 
-                keymap[key[-1]] = func
+        for ch in key[:-1]:
+            if ch not in keymap:
+                keymap[ch] = {}
+
+            keymap = keymap[ch]
+
+        keymap[key[-1]] = func
+
+    def _del_key(self, key):
+        """Delete a key from the keymap"""
+
+        keymap = self._keymap
+
+        for ch in key[:-1]:
+            if ch not in keymap:
+                return
+
+            keymap = keymap[ch]
+
+        keymap.pop(key[-1], None)
 
     def _determine_column(self, data, start):
         """Determine new output column after output occurs"""
@@ -316,6 +330,22 @@ class SSHLineEditor:
         self._line = self._line[:self._pos]
         self._update_input(self._pos, self._pos)
 
+    def _handle_key(self, key, handler):
+        """Call an external key handler"""
+
+        result = handler(self._line, self._pos)
+
+        if result is True:
+            if key.isprintable():
+                self._insert_printable(key)
+            else:
+                self._ring_bell()
+        elif result is False:
+            self._ring_bell()
+        else:
+            self._line, new_pos = result
+            self._update_input(0, new_pos)
+
     def _history_prev(self):
         """Replace input with previous line in history"""
 
@@ -402,6 +432,17 @@ class SSHLineEditor:
                 (_send_break,    ('\x03', '\x1b[33~')))
 
     # pylint: enable=bad-whitespace
+
+    def register_key(self, key, handler):
+        """Register a handler to be called when a key is pressed"""
+
+        self._add_key(key, partial(SSHLineEditor._handle_key,
+                                   key=key, handler=handler))
+
+    def unregister_key(self, key):
+        """Remove the handler associated with a key"""
+
+        self._del_key(key)
 
     def set_line_mode(self, line_mode):
         """Enable/disable input line editing"""
@@ -499,6 +540,54 @@ class SSHLineEditorChannel:
 
         return self._editor
 
+    def register_key(self, key, handler):
+        """Register a handler to be called when a key is pressed
+
+           This method registers a handler function which will be called
+           when a user presses the specified key while inputting a line.
+
+           The handler will be called with arguments of the current
+           input line and cursor position, and updated versions of these
+           two values should be returned as a tuple.
+
+           If the registered key is printable text, returning `True` will
+           insert that text at the current cursor position, acting as if
+           no handler was registered for that key. This is useful if you
+           want to perform a special action in some cases but not others,
+           such as based on the current cursor position.
+
+           Returning `False` will ring the bell and leave the input
+           unchanged, indicating the requested action could not be
+           performed.
+
+           :param key:
+               The key sequence to look for
+           :param handler:
+               The handler function to call when the key is pressed
+           :type key: `str`
+           :type handler: `callable`
+
+        """
+
+        self._editor.register_key(key, handler)
+
+    def unregister_key(self, key):
+        """Remove the handler associated with a key
+
+           This method removes a handler function associated with
+           the specified key. If the key sequence is printable,
+           this will cause it to return to being inserted at the
+           current position when pressed. Otherwise, it will cause
+           the bell to ring to signal the key is not understood.
+
+           :param key:
+               The key sequence to look for
+           :type key: `str`
+
+        """
+
+        self._editor.unregister_key(key)
+
     def set_line_mode(self, line_mode):
         """Enable/disable input line editing
 
@@ -586,6 +675,3 @@ class SSHLineEditorSession:
             self._editor.set_line_mode(False)
 
         return self._orig_session.eof_received()
-
-
-SSHLineEditor.build_keymap()
