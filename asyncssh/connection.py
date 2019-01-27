@@ -1234,7 +1234,7 @@ class SSHConnection(SSHPacketHandler):
 
         self.logger.debug1('Received disconnect: %s (%d)', reason, code)
 
-        if code != DISC_BY_APPLICATION:
+        if code != DISC_BY_APPLICATION or self._auth_waiter:
             exc = DisconnectError(code, reason, lang)
         else:
             exc = None
@@ -1506,6 +1506,9 @@ class SSHConnection(SSHPacketHandler):
     @asyncio.coroutine
     def _finish_userauth(self, result, method, packet):
         """Finish processing a user authentication request"""
+
+        if not self._owner:
+            return
 
         if asyncio.iscoroutine(result):
             result = yield from result
