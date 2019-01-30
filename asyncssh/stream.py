@@ -21,6 +21,7 @@
 """SSH stream handlers"""
 
 import asyncio
+import re
 
 from .constants import EXTENDED_DATA_STDERR
 from .misc import BreakReceived, SignalReceived
@@ -139,6 +140,11 @@ class SSHReader:
            This method is a coroutine which reads from the stream until
            the requested separator is seen. If a match is found, the
            returned data will include the separator at the end.
+
+           The separator argument can be either a single `bytes` or
+           `str` value or a sequence of multiple values to match
+           against, returning data as soon as any of the separators
+           are found in the stream.
 
            If EOF or a signal is received before a match occurs, an
            :exc:`IncompleteReadError <asyncio.IncompleteReadError>`
@@ -495,7 +501,14 @@ class SSHStreamSession:
         elif not separator:
             raise ValueError('Separator cannot be empty')
 
-        seplen = len(separator)
+        if isinstance(separator, (str, bytes)):
+            separators = [separator]
+        else:
+            separators = list(separator)
+
+        seplen = max(len(sep) for sep in separators)
+        bar = '|' if self._encoding else b'|'
+        pat = re.compile(bar.join(map(re.escape, separators)))
         recv_buf = self._recv_buf[datatype]
         buf = '' if self._encoding else b''
         curbuf = 0
@@ -519,9 +532,10 @@ class SSHStreamSession:
 
                     buf += recv_buf[curbuf]
                     start = max(buflen + 1 - seplen, 0)
-                    idx = buf.find(separator, start)
-                    if idx >= 0:
-                        idx += seplen
+
+                    match = pat.search(buf, start)
+                    if match:
+                        idx = match.end()
                         recv_buf[:curbuf] = []
                         recv_buf[0] = buf[idx:]
                         buf = buf[:idx]

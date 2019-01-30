@@ -307,6 +307,34 @@ class _TestStream(ServerTestCase):
         yield from conn.wait_closed()
 
     @asynctest
+    def test_readuntil_separator_list(self):
+        """Test readuntil with a list of separators"""
+
+        seps = ('+', '-', '\r\n')
+
+        with (yield from self.connect()) as conn:
+            stdin, stdout, _ = yield from conn.open_session()
+
+            stdin.write('ab')
+            yield from asyncio.sleep(0.01)
+            stdin.write('c+d')
+            yield from asyncio.sleep(0.01)
+            stdin.write('ef-gh')
+            yield from asyncio.sleep(0.01)
+            stdin.write('i\r')
+            yield from asyncio.sleep(0.01)
+            stdin.write('\n')
+            stdin.write_eof()
+
+            self.assertEqual((yield from stdout.readuntil(seps)), 'abc+')
+            self.assertEqual((yield from stdout.readuntil(seps)), 'def-')
+            self.assertEqual((yield from stdout.readuntil(seps)), 'ghi\r\n')
+
+            stdin.close()
+
+        yield from conn.wait_closed()
+
+    @asynctest
     def test_readuntil_empty_separator(self):
         """Test readuntil with empty separator"""
 
