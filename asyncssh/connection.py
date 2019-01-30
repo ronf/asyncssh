@@ -90,7 +90,7 @@ from .mac import get_mac_algs
 
 from .misc import ChannelOpenError, DisconnectError, PasswordChangeRequired
 from .misc import async_context_manager, create_task, get_symbol_names
-from .misc import ip_address, map_handler_name
+from .misc import ip_address, map_handler_name, python344
 
 from .packet import Boolean, Byte, NameList, String, UInt32
 from .packet import PacketDecodeError, SSHPacket, SSHPacketHandler
@@ -5170,7 +5170,7 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
            port other existing sockets are bound to, so long as they all
            set this flag when being created. If not specified, the
            default is to not allow this. This option is not supported
-           on Windows.
+           on Windows or Python versions prior to 3.4.4.
        :param server_host_keys: (optional)
            A list of private keys and optional certificates which can be
            used by the server as a host key. Either this argument or
@@ -5420,13 +5420,15 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
     if x509_trusted_certs is not None:
         x509_trusted_certs = load_certificates(x509_trusted_certs)
 
+    reuse_port_arg = dict(reuse_port=reuse_port) if python344 else {}
+
     logger.info('Creating SSH server on %s', (host, port))
 
     return (yield from loop.create_server(conn_factory, host, port,
                                           family=family, flags=flags,
                                           backlog=backlog,
                                           reuse_address=reuse_address,
-                                          reuse_port=reuse_port))
+                                          **reuse_port_arg))
 
 
 @async_context_manager
