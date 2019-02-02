@@ -206,6 +206,15 @@ class _InternalErrorClient(asyncssh.SSHClient):
         raise RuntimeError('Exception handler test')
 
 
+class _TunnelServer(Server):
+    """Allow forwarding to test server host key request tunneling"""
+
+    def connection_requested(self, dest_host, dest_port, orig_host, orig_port):
+        """Handle a request to create a new connection"""
+
+        return True
+
+
 class _AbortServer(Server):
     """Server for testing connection abort during auth"""
 
@@ -287,7 +296,18 @@ class _TestConnection(ServerTestCase):
     def start_server(cls):
         """Start an SSH server to connect to"""
 
-        return (yield from cls.create_server(gss_host=()))
+        return (yield from cls.create_server(_TunnelServer, gss_host=()))
+
+    @asyncio.coroutine
+    def get_server_host_key(self, loop=(), **kwargs):
+        """Create a connection to the test server"""
+
+        if loop == ():
+            loop = self.loop
+
+        return (yield from asyncssh.get_server_host_key(self._server_addr,
+                                                        self._server_port,
+                                                        loop=loop, **kwargs))
 
     @asyncio.coroutine
     def _check_version(self, *args, **kwargs):
@@ -372,6 +392,40 @@ class _TestConnection(ServerTestCase):
 
         with self.assertRaises(ValueError):
             yield from asyncssh.listen(server_host_keys=['skey', 'skey'])
+
+    @asynctest
+    def test_get_server_host_key(self):
+        """Test retrieving a server host key"""
+
+        keylist = asyncssh.load_public_keys('skey.pub')
+        key = yield from self.get_server_host_key()
+        self.assertEqual(key, keylist[0])
+
+    @asynctest
+    def test_get_server_host_key_no_loop(self):
+        """Test retrieving a server host key with loop not specified"""
+
+        keylist = asyncssh.load_public_keys('skey.pub')
+        key = yield from self.get_server_host_key(loop=None)
+        self.assertEqual(key, keylist[0])
+
+    @asynctest
+    def test_get_server_host_key_tunnel(self):
+        """Test retrieving a server host key while tunneling over SSH"""
+
+        keylist = asyncssh.load_public_keys('skey.pub')
+
+        with (yield from self.connect()) as conn:
+            key = yield from self.get_server_host_key(tunnel=conn)
+
+        self.assertEqual(key, keylist[0])
+
+    @asynctest
+    def test_get_server_host_key_connect_failure(self):
+        """Test failure connecting when retrieving a server host key"""
+
+        with self.assertRaises(OSError):
+            yield from asyncssh.get_server_host_key('0.0.0.1')
 
     @asynctest
     def test_known_hosts_not_present(self):
@@ -468,7 +522,7 @@ class _TestConnection(ServerTestCase):
         keylist = asyncssh.load_public_keys('skey.pub')
 
         with (yield from self.connect(known_hosts=(keylist, [], []))) as conn:
-            pass
+            self.assertEqual(conn.get_server_host_key(), keylist[0])
 
         yield from conn.wait_closed()
 
@@ -1364,6 +1418,24 @@ class _TestServerWithoutCert(ServerTestCase):
 
         conn, _ = yield from self.create_connection(client_factory,
                                                     known_hosts=([], [], []))
+
+        conn.close()
+        yield from conn.wait_closed()
+
+    @asynctest
+    def test_validate_host_key_callback_with_algs(self):
+        """Test callback to validate server host key with alg list"""
+
+        def client_factory():
+            """Return an SSHClient which can validate the sevrer host key"""
+
+            return _ValidateHostKeyClient(host_key='skey.pub')
+
+        skey = asyncssh.read_public_key('skey.pub')
+
+        conn, _ = yield from self.create_connection(
+            client_factory, known_hosts=([], [], []),
+            server_host_key_algs=[skey.get_algorithm()])
 
         conn.close()
         yield from conn.wait_closed()

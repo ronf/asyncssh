@@ -40,6 +40,7 @@ from .client import SSHClient
 
 from .connection import SSHClientConnection, SSHServerConnection
 from .connection import create_connection, create_server, connect, listen
+from .connection import get_server_host_key
 
 from .editor import SSHLineEditorChannel
 

@@ -203,6 +203,19 @@ def _validate_algs(kex_algs, enc_algs, mac_algs, cmp_algs,
     return kex_algs, enc_algs, mac_algs, cmp_algs, sig_algs
 
 
+def _validate_server_host_key_algs(server_host_key_algs):
+    """Validate server host key algorithms"""
+
+    if server_host_key_algs == ():
+        # Unlike other alg lists, don't default this to all algorithms
+        return ()
+    else:
+        allowed_host_key_algs = get_certificate_algs() + get_public_key_algs()
+
+        return _select_algs('public key', server_host_key_algs,
+                            allowed_host_key_algs)
+
+
 class SSHConnection(SSHPacketHandler):
     """Parent class for SSH connections"""
 
@@ -286,6 +299,7 @@ class SSHConnection(SSHPacketHandler):
         self._kexinit_sent = False
         self._kex_complete = False
         self._ignore_first_kex = False
+        self._kex_waiter = asyncio.Future(loop=loop)
 
         self._gss = None
         self._gss_kex_auth = False
@@ -1234,7 +1248,7 @@ class SSHConnection(SSHPacketHandler):
 
         self.logger.debug1('Received disconnect: %s (%d)', reason, code)
 
-        if code != DISC_BY_APPLICATION or self._auth_waiter:
+        if code != DISC_BY_APPLICATION or self._kex_waiter or self._auth_waiter:
             exc = DisconnectError(code, reason, lang)
         else:
             exc = None
@@ -1462,9 +1476,9 @@ class SSHConnection(SSHPacketHandler):
 
         self.logger.debug1('Completed key exchange')
 
-        if self.is_client() and not (self._auth_in_progress or
-                                     self._auth_complete):
-            self.send_service_request(_USERAUTH_SERVICE)
+        if self._kex_waiter:
+            self._kex_waiter.set_result(None)
+            self._kex_waiter = None
 
     def _process_userauth_request(self, pkttype, pktid, packet):
         """Process a user authentication request"""
@@ -1787,6 +1801,20 @@ class SSHConnection(SSHPacketHandler):
         self.logger.info('Closing connection')
 
         self.disconnect(DISC_BY_APPLICATION, 'Disconnected by application')
+
+    @asyncio.coroutine
+    def wait_kex(self):
+        """Wait for key exchange to complete"""
+
+        yield from self._kex_waiter
+
+    @asyncio.coroutine
+    def wait_auth(self):
+        """Wait for client authentication to complete"""
+
+        self._auth_waiter = asyncio.Future(loop=self._loop)
+        self.send_service_request(_USERAUTH_SERVICE)
+        yield from self._auth_waiter
 
     @asyncio.coroutine
     def wait_closed(self):
@@ -2186,10 +2214,10 @@ class SSHClientConnection(SSHConnection):
                  x509_trusted_certs, x509_trusted_cert_paths, x509_purposes,
                  kex_algs, encryption_algs, mac_algs, compression_algs,
                  signature_algs, rekey_bytes, rekey_seconds, host, port,
-                 known_hosts, username, password, client_host_keysign,
-                 client_host_keys, client_host, client_username,
-                 client_keys, gss_host, gss_delegate_creds, agent,
-                 agent_path, auth_waiter):
+                 known_hosts, server_host_key_algs, username, password,
+                 client_host_keysign, client_host_keys, client_host,
+                 client_username, client_keys, gss_host, gss_delegate_creds,
+                 agent, agent_path):
         super().__init__(client_factory, loop, client_version,
                          x509_trusted_certs, x509_trusted_cert_paths,
                          x509_purposes, kex_algs, encryption_algs, mac_algs,
@@ -2199,6 +2227,8 @@ class SSHClientConnection(SSHConnection):
         self._host = host
         self._port = port
         self._known_hosts = known_hosts
+        self._server_host_key_algs = server_host_key_algs
+        self._server_host_key = None
         self._username = username
         self._password = password
         self._client_host_keysign = client_host_keysign
@@ -2208,7 +2238,6 @@ class SSHClientConnection(SSHConnection):
         self._client_keys = client_keys
         self._agent = agent
         self._agent_path = agent_path
-        self._auth_waiter = auth_waiter
 
         if gss_host:
             try:
@@ -2250,7 +2279,13 @@ class SSHClientConnection(SSHConnection):
             self._match_known_hosts(self._known_hosts, self._host,
                                     self._peer_addr, port)
 
-            self._server_host_key_algs = self._trusted_host_key_algs
+            if self._server_host_key_algs:
+                self._server_host_key_algs = \
+                    self._trusted_host_key_algs + \
+                    [alg for alg in self._server_host_key_algs
+                     if alg not in self._trusted_host_key_algs]
+            else:
+                self._server_host_key_algs = self._trusted_host_key_algs
 
             if self._trusted_ca_keys:
                 self._server_host_key_algs = \
@@ -2285,7 +2320,12 @@ class SSHClientConnection(SSHConnection):
             self._remote_listeners = {}
             self._dynamic_remote_listeners = {}
 
-        if self._auth_waiter:
+        if self._kex_waiter:
+            if not self._kex_waiter.cancelled(): # pragma: no branch
+                self._kex_waiter.set_exception(exc)
+
+            self._kex_waiter = None
+        elif self._auth_waiter:
             if not self._auth_waiter.cancelled(): # pragma: no branch
                 self._auth_waiter.set_exception(exc)
 
@@ -2312,11 +2352,28 @@ class SSHClientConnection(SSHConnection):
         """Validate and return the server's host key"""
 
         try:
-            return self._validate_host_key(self._host, self._peer_addr,
-                                           self._port, key_data)
+            host_key = self._validate_host_key(self._host, self._peer_addr,
+                                               self._port, key_data)
         except ValueError as exc:
             raise DisconnectError(DISC_HOST_KEY_NOT_VERIFYABLE,
                                   str(exc)) from None
+
+        self._server_host_key = host_key
+        return host_key
+
+    def get_server_host_key(self):
+        """Return the server host key used in the key exchange
+
+           This method returns the server host key used to complete the
+           key exchange with the server.
+
+           If GSS key exchange is used, `None` is returned.
+
+           :returns: An :class:`SSHKey` public key or `None`
+
+        """
+
+        return self._server_host_key
 
     def try_next_auth(self):
         """Attempt client authentication using the next compatible method"""
@@ -4767,8 +4824,8 @@ class SSHServerConnection(SSHConnection):
 @asyncio.coroutine
 def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
                       loop=None, tunnel=None, family=0, flags=0,
-                      local_addr=None, known_hosts=(), x509_trusted_certs=(),
-                      x509_trusted_cert_paths=(),
+                      local_addr=None, known_hosts=(), server_host_key_algs=(),
+                      x509_trusted_certs=(), x509_trusted_cert_paths=(),
                       x509_purposes='secureShellServer', username=None,
                       password=None, client_host_keysign=False,
                       client_host_keys=None, client_host=None,
@@ -4840,6 +4897,12 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
            the keys will be looked up in the file :file:`.ssh/known_hosts`.
            If this is explicitly set to `None`, server host key validation
            will be disabled.
+       :param server_host_key_algs: (optional)
+           A list of server host key algorithms to add to those present
+           in known_hosts when performing the SSH handshake, taken from
+           :ref:`server host key algorithms <PublicKeyAlgs>`. This is
+           useful when using the validate_host_public_key callback to
+           validate server host keys.
        :param x509_trusted_certs: (optional)
            A list of certificates which should be trusted for X.509 server
            certificate authentication. If no trusted certificates are
@@ -4971,6 +5034,7 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
        :type flags: flags to pass to :meth:`getaddrinfo() <socket.getaddrinfo>`
        :type local_addr: tuple of `str` and `int`
        :type known_hosts: *see* :ref:`SpecifyingKnownHosts`
+       :type server_host_key_algs: `list` of `str`
        :type x509_trusted_certs: *see* :ref:`SpecifyingCertificates`
        :type x509_trusted_cert_paths: `list` of `str`
        :type x509_purposes: *see* :ref:`SpecifyingX509Purposes`
@@ -5008,11 +5072,11 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
                                    x509_purposes, kex_algs, encryption_algs,
                                    mac_algs, compression_algs, signature_algs,
                                    rekey_bytes, rekey_seconds, host, port,
-                                   known_hosts, username, password,
-                                   client_host_keysign, client_host_keys,
-                                   client_host, client_username, client_keys,
-                                   gss_host, gss_delegate_creds, agent,
-                                   agent_path, auth_waiter)
+                                   known_hosts, server_host_key_algs,
+                                   username, password, client_host_keysign,
+                                   client_host_keys, client_host,
+                                   client_username, client_keys, gss_host,
+                                   gss_delegate_creds, agent, agent_path)
 
     if not client_factory:
         client_factory = SSHClient
@@ -5025,6 +5089,8 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
     kex_algs, encryption_algs, mac_algs, compression_algs, signature_algs = \
         _validate_algs(kex_algs, encryption_algs, mac_algs, compression_algs,
                        signature_algs, x509_trusted_certs is not None)
+
+    server_host_key_algs = _validate_server_host_key_algs(server_host_key_algs)
 
     if x509_trusted_certs == ():
         try:
@@ -5089,8 +5155,6 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
     if not agent_forwarding:
         agent_path = None
 
-    auth_waiter = asyncio.Future(loop=loop)
-
     # pylint: disable=broad-except
     try:
         if tunnel:
@@ -5110,7 +5174,8 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
 
         raise
 
-    yield from auth_waiter
+    yield from conn.wait_kex()
+    yield from conn.wait_auth()
 
     return conn, conn.get_owner()
 
@@ -5492,3 +5557,123 @@ def listen(host=None, port=_DEFAULT_PORT, **kwargs):
     """
 
     return (yield from create_server(None, host, port, **kwargs))
+
+
+@asyncio.coroutine
+def get_server_host_key(host, port=_DEFAULT_PORT, *, loop=None, tunnel=None,
+                        family=0, flags=0, local_addr=None, client_version=(),
+                        kex_algs=(), server_host_key_algs=()):
+    """Retrieve an SSH server's host key
+
+       This function is a coroutine which can be run to connect to an SSH
+       server and return what server host key was presented during the SSH
+       handshake.
+
+       A list of server host key algorithms can be provided to specify
+       which host key types the server is allowed to choose from. If the
+       key exchange is successful, the server host key sent during the
+       handshake is returned.
+
+           .. note:: Not all key exchange methods involve the server
+                     presenting a host key. If something like GSS key
+                     exchange is used without a server host key, this
+                     method may return `None` even when the handshake
+                     completes.
+
+       :param host:
+           The hostname or address to connect to
+       :param port: (optional)
+           The port number to connect to. If not specified, the default
+           SSH port is used.
+       :param loop: (optional)
+           The event loop to use when creating the connection. If not
+           specified, the default event loop is used.
+       :param tunnel: (optional)
+           An existing SSH client connection that this new connection should
+           be tunneled over. If set, a direct TCP/IP tunnel will be opened
+           over this connection to the requested host and port rather than
+           connecting directly via TCP.
+       :param family: (optional)
+           The address family to use when creating the socket. By default,
+           the address family is automatically selected based on the host.
+       :param flags: (optional)
+           The flags to pass to getaddrinfo() when looking up the host address
+       :param local_addr: (optional)
+           The host and port to bind the socket to before connecting
+       :param client_version: (optional)
+           An ASCII string to advertise to the SSH server as the version of
+           this client, defaulting to `'AsyncSSH'` and its version number.
+       :param kex_algs: (optional)
+           A list of allowed key exchange algorithms in the SSH handshake,
+           taken from :ref:`key exchange algorithms <KexAlgs>`
+       :param server_host_key_algs: (optional)
+           A list of server host key algorithms to allow during the SSH
+           handshake, taken from :ref:`server host key algorithms
+           <PublicKeyAlgs>`.
+       :type host: `str`
+       :type port: `int`
+       :type loop: :class:`AbstractEventLoop <asyncio.AbstractEventLoop>`
+       :type tunnel: :class:`SSHClientConnection`
+       :type family: `socket.AF_UNSPEC`, `socket.AF_INET`, or `socket.AF_INET6`
+       :type flags: flags to pass to :meth:`getaddrinfo() <socket.getaddrinfo>`
+       :type local_addr: tuple of `str` and `int`
+       :type client_version: `str`
+       :type kex_algs: `list` of `str`
+       :type server_host_key_algs: `list` of `str`
+
+       :returns: An :class:`SSHKey` public key or `None`
+
+    """
+
+    def conn_factory():
+        """Return an SSH client connection handler for fetching a host key"""
+
+        return SSHClientConnection(client_factory=SSHClient, loop=loop,
+                                   client_version=client_version,
+                                   x509_trusted_certs=None,
+                                   x509_trusted_cert_paths=None,
+                                   x509_purposes='any', kex_algs=kex_algs,
+                                   encryption_algs=encryption_algs,
+                                   mac_algs=mac_algs,
+                                   compression_algs=compression_algs,
+                                   signature_algs=signature_algs,
+                                   rekey_bytes=_DEFAULT_REKEY_BYTES,
+                                   rekey_seconds=_DEFAULT_REKEY_SECONDS,
+                                   host=host, port=port, known_hosts=None,
+                                   server_host_key_algs=server_host_key_algs,
+                                   username=None, password=None,
+                                   client_host_keysign=False,
+                                   client_host_keys=None, client_host=None,
+                                   client_username=None, client_keys=None,
+                                   gss_host=None, gss_delegate_creds=False,
+                                   agent=None, agent_path=None)
+
+    if not loop:
+        loop = asyncio.get_event_loop()
+
+    client_version = _validate_version(client_version)
+
+    kex_algs, encryption_algs, mac_algs, compression_algs, signature_algs = \
+        _validate_algs(kex_algs, (), (), (), (), False)
+
+    server_host_key_algs = _validate_server_host_key_algs(server_host_key_algs)
+
+    if tunnel:
+        tunnel_logger = getattr(tunnel, 'logger', logger)
+        tunnel_logger.info('Fetching server host key from %s '
+                           'via SSH tunnel', (host, port))
+        _, conn = yield from tunnel.create_connection(conn_factory, host, port)
+    else:
+        logger.info('Fetching server host key from %s', (host, port))
+        _, conn = yield from loop.create_connection(conn_factory, host, port,
+                                                    family=family, flags=flags,
+                                                    local_addr=local_addr)
+
+    yield from conn.wait_kex()
+
+    server_host_key = conn.get_server_host_key()
+
+    conn.abort()
+    yield from conn.wait_closed()
+
+    return server_host_key

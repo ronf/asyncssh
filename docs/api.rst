@@ -144,6 +144,11 @@ listen
 
 .. autofunction:: listen
 
+get_server_host_key
+-------------------
+
+.. autofunction:: get_server_host_key
+
 scp
 ---
 
@@ -284,13 +289,14 @@ SSHClientConnection
    .. autoattribute:: logger
    ========================= =
 
-   ============================== =
+   =================================== =
    General connection methods
-   ============================== =
+   =================================== =
    .. automethod:: get_extra_info
    .. automethod:: set_extra_info
+   .. automethod:: get_server_host_key
    .. automethod:: send_debug
-   ============================== =
+   =================================== =
 
    ================================================================================================================================= =
    Client session open methods
