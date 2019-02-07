@@ -1,4 +1,4 @@
-# Copyright (c) 2016-2018 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2016-2019 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -396,6 +396,9 @@ class ProcessError(Error):
                       occurred, a message associated with the
                       signal, and the language the message
                       was in
+         returncode   The exit status returned, or negative   `int`
+                      of the signal number when an exit
+                      signal is sent
          stdout       The output sent by the process to       `str` or `bytes`
                       stdout (if not redirected)
          stderr       The output sent by the process to       `str` or `bytes`
@@ -405,12 +408,13 @@ class ProcessError(Error):
     """
 
     def __init__(self, env, command, subsystem, exit_status,
-                 exit_signal, stdout, stderr):
+                 exit_signal, returncode, stdout, stderr):
         self.env = env
         self.command = command
         self.subsystem = subsystem
         self.exit_status = exit_status
         self.exit_signal = exit_signal
+        self.returncode = returncode
         self.stdout = stdout
         self.stderr = stderr
 
@@ -451,6 +455,9 @@ class SSHCompletedProcess(Record):
                       occurred, a message associated with the
                       signal, and the language the message
                       was in
+         returncode   The exit status returned, or negative   `int`
+                      of the signal number when an exit
+                      signal is sent
          stdout       The output sent by the process to       `str` or `bytes`
                       stdout (if not redirected)
          stderr       The output sent by the process to       `str` or `bytes`
@@ -461,8 +468,8 @@ class SSHCompletedProcess(Record):
 
     __slots__ = OrderedDict((('env', None), ('command', None),
                              ('subsystem', None), ('exit_status', None),
-                             ('exit_signal', None), ('stdout', None),
-                             ('stderr', None)))
+                             ('exit_signal', None), ('returncode', None),
+                             ('stdout', None), ('stderr', None)))
 
 
 class SSHProcess:
@@ -875,6 +882,12 @@ class SSHClientProcess(SSHProcess, SSHClientStreamSession):
         return self._chan.get_exit_signal()
 
     @property
+    def returncode(self):
+        """The exit status or negative exit signal number for the process"""
+
+        return self._chan.get_returncode()
+
+    @property
     def stdin(self):
         """The :class:`SSHWriter` to use to write to stdin of the process"""
 
@@ -1123,11 +1136,12 @@ class SSHClientProcess(SSHProcess, SSHClientStreamSession):
         if check and self.exit_status:
             raise ProcessError(self.env, self.command, self.subsystem,
                                self.exit_status, self.exit_signal,
-                               stdout_data, stderr_data)
+                               self.returncode, stdout_data, stderr_data)
         else:
             return SSHCompletedProcess(self.env, self.command, self.subsystem,
                                        self.exit_status, self.exit_signal,
-                                       stdout_data, stderr_data)
+                                       self.returncode, stdout_data,
+                                       stderr_data)
 
 
 class SSHServerProcess(SSHProcess, SSHServerStreamSession):

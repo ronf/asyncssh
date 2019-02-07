@@ -24,6 +24,7 @@ import asyncio
 import io
 import os
 from pathlib import Path
+from signal import SIGINT
 import socket
 import sys
 import unittest
@@ -125,6 +126,7 @@ class _TestProcessBasic(_TestProcess):
         self.assertEqual(result.subsystem, None)
         self.assertEqual(result.exit_status, None)
         self.assertEqual(result.exit_signal, None)
+        self.assertEqual(result.returncode, None)
         self.assertEqual(result.stdout, data)
         self.assertEqual(result.stderr, data)
 
@@ -247,10 +249,23 @@ class _TestProcessBasic(_TestProcess):
 
         with (yield from self.connect()) as conn:
             process = yield from conn.create_process()
-            process.send_signal('HUP')
+            process.send_signal('INT')
             result = yield from process.wait()
 
-        self.assertEqual(result.exit_signal[0], 'HUP')
+        self.assertEqual(result.exit_signal[0], 'INT')
+        self.assertEqual(result.returncode, -SIGINT)
+
+    @asynctest
+    def test_numeric_signal(self):
+        """Test sending a signal using a numeric value"""
+
+        with (yield from self.connect()) as conn:
+            process = yield from conn.create_process()
+            process.send_signal(SIGINT)
+            result = yield from process.wait()
+
+        self.assertEqual(result.exit_signal[0], 'INT')
+        self.assertEqual(result.returncode, -SIGINT)
 
     @asynctest
     def test_terminate(self):
@@ -282,6 +297,7 @@ class _TestProcessBasic(_TestProcess):
             result = yield from conn.run('exit_status')
 
         self.assertEqual(result.exit_status, 1)
+        self.assertEqual(result.returncode, 1)
         self.assertEqual(result.stdout, '')
         self.assertEqual(result.stderr, 'Exiting with status 1')
 
@@ -300,6 +316,7 @@ class _TestProcessBasic(_TestProcess):
         self.assertEqual(exc.exception.exit_status, 1)
         self.assertEqual(exc.exception.reason,
                          'Process exited with non-zero exit status 1')
+        self.assertEqual(exc.exception.returncode, 1)
 
     @asynctest
     def test_exit_signal(self):
@@ -307,11 +324,12 @@ class _TestProcessBasic(_TestProcess):
 
         with (yield from self.connect()) as conn:
             process = yield from conn.create_process()
-            process.send_signal('HUP')
+            process.send_signal('INT')
             result = yield from process.wait()
 
         self.assertEqual(result.exit_status, -1)
-        self.assertEqual(result.exit_signal[0], 'HUP')
+        self.assertEqual(result.exit_signal[0], 'INT')
+        self.assertEqual(result.returncode, -SIGINT)
 
     @asynctest
     def test_raise_on_exit_signal(self):
@@ -321,13 +339,14 @@ class _TestProcessBasic(_TestProcess):
             process = yield from conn.create_process()
 
             with self.assertRaises(asyncssh.ProcessError) as exc:
-                process.send_signal('HUP')
+                process.send_signal('INT')
                 yield from process.wait(check=True)
 
         self.assertEqual(exc.exception.exit_status, -1)
-        self.assertEqual(exc.exception.exit_signal[0], 'HUP')
+        self.assertEqual(exc.exception.exit_signal[0], 'INT')
         self.assertEqual(exc.exception.reason,
-                         'Process exited with signal HUP')
+                         'Process exited with signal INT')
+        self.assertEqual(exc.exception.returncode, -SIGINT)
 
     @asynctest
     def test_split_unicode(self):

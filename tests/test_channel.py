@@ -22,6 +22,7 @@
 
 import asyncio
 import tempfile
+from signal import SIGINT
 
 from unittest.mock import patch
 
@@ -341,14 +342,16 @@ class _ChannelServer(Server):
             stdin.channel.close()
             stdin.channel.exit(1)
         elif action == 'exit_signal':
-            stdin.channel.exit_with_signal('ABRT', False, 'exit_signal')
+            stdin.channel.exit_with_signal('INT', False, 'exit_signal')
+        elif action == 'unknown_signal':
+            stdin.channel.exit_with_signal('unknown', False, 'unknown_signal')
         elif action == 'closed_signal':
             stdin.channel.close()
-            stdin.channel.exit_with_signal('ABRT', False, 'closed_signal')
+            stdin.channel.exit_with_signal('INT', False, 'closed_signal')
         elif action == 'invalid_exit_signal':
             stdin.channel.exit_with_signal('invalid')
         elif action == 'invalid_exit_lang':
-            stdin.channel.exit_with_signal('ABRT', False, '', 'invalid')
+            stdin.channel.exit_with_signal('INT', False, '', 'invalid')
         elif action == 'window_after_close':
             stdin.channel.send_packet(MSG_CHANNEL_CLOSE)
             stdin.channel.send_packet(MSG_CHANNEL_WINDOW_ADJUST, UInt32(0))
@@ -1193,9 +1196,36 @@ class _TestChannel(ServerTestCase):
         with (yield from self.connect()) as conn:
             chan, session = yield from _create_session(conn, 'signals')
 
-            chan.send_signal('HUP')
+            chan.send_signal('INT')
             yield from chan.wait_closed()
-            self.assertEqual(session.exit_signal_msg, 'HUP')
+            self.assertEqual(session.exit_signal_msg, 'INT')
+
+        yield from conn.wait_closed()
+
+    @asynctest
+    def test_numeric_signal(self):
+        """Test sending a signal using a numeric value"""
+
+        with (yield from self.connect()) as conn:
+            chan, session = yield from _create_session(conn, 'signals')
+
+            chan.send_signal(SIGINT)
+            yield from chan.wait_closed()
+            self.assertEqual(session.exit_signal_msg, 'INT')
+
+        yield from conn.wait_closed()
+
+    @asynctest
+    def test_unknown_signal(self):
+        """Test sending a signal with an unknown numeric value"""
+
+        with (yield from self.connect()) as conn:
+            chan, _ = yield from _create_session(conn, 'signals')
+
+            with self.assertRaises(ValueError):
+                chan.send_signal(123)
+
+            chan.close()
 
         yield from conn.wait_closed()
 
@@ -1279,6 +1309,7 @@ class _TestChannel(ServerTestCase):
             self.assertEqual(session.exit_status, 1)
             self.assertEqual(chan.get_exit_status(), 1)
             self.assertIsNone(chan.get_exit_signal())
+            self.assertEqual(chan.get_returncode(), 1)
 
         yield from conn.wait_closed()
 
@@ -1293,6 +1324,7 @@ class _TestChannel(ServerTestCase):
             self.assertIsNone(session.exit_status)
             self.assertIsNone(chan.get_exit_status())
             self.assertIsNone(chan.get_exit_signal())
+            self.assertIsNone(chan.get_returncode())
 
         yield from conn.wait_closed()
 
@@ -1306,9 +1338,10 @@ class _TestChannel(ServerTestCase):
             yield from chan.wait_closed()
             self.assertEqual(session.exit_signal_msg, 'exit_signal')
             self.assertEqual(chan.get_exit_status(), -1)
-            self.assertEqual(chan.get_exit_signal(), ('ABRT', False,
+            self.assertEqual(chan.get_exit_signal(), ('INT', False,
                                                       'exit_signal',
                                                       DEFAULT_LANG))
+            self.assertEqual(chan.get_returncode(), -SIGINT)
 
         yield from conn.wait_closed()
 
@@ -1323,6 +1356,24 @@ class _TestChannel(ServerTestCase):
             self.assertIsNone(session.exit_signal_msg)
             self.assertIsNone(chan.get_exit_status())
             self.assertIsNone(chan.get_exit_signal())
+            self.assertIsNone(chan.get_returncode())
+
+        yield from conn.wait_closed()
+
+    @asynctest
+    def test_unknown_exit_signal(self):
+        """Test receiving unknown exit signal"""
+
+        with (yield from self.connect()) as conn:
+            chan, session = yield from _create_session(conn, 'unknown_signal')
+
+            yield from chan.wait_closed()
+            self.assertEqual(session.exit_signal_msg, 'unknown_signal')
+            self.assertEqual(chan.get_exit_status(), -1)
+            self.assertEqual(chan.get_exit_signal(), ('unknown', False,
+                                                      'unknown_signal',
+                                                      DEFAULT_LANG))
+            self.assertEqual(chan.get_returncode(), -99)
 
         yield from conn.wait_closed()
 

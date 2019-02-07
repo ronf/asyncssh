@@ -298,17 +298,18 @@ SSHClientConnection
    .. automethod:: send_debug
    =================================== =
 
-   ================================================================================================================================= =
+   ====================================================================================================================================================== =
    Client session open methods
-   ================================================================================================================================= =
+   ====================================================================================================================================================== =
    .. automethod:: create_session
    .. automethod:: open_session
    .. automethod:: create_process(*args, bufsize=io.DEFAULT_BUFFER_SIZE, input=None, stdin=PIPE, stdout=PIPE, stderr=PIPE, **kwargs)
+   .. automethod:: create_subprocess(protocol_factory, *args, bufsize=io.DEFAULT_BUFFER_SIZE, input=None, stdin=PIPE, stdout=PIPE, stderr=PIPE, **kwargs)
    .. automethod:: run(*args, check=False, **kwargs)
    .. automethod:: start_sftp_client
    .. automethod:: create_ssh_connection
    .. automethod:: connect_ssh
-   ================================================================================================================================= =
+   ====================================================================================================================================================== =
 
    ====================================== =
    Client connection open methods
@@ -427,6 +428,7 @@ SSHClientProcess
    .. autoattribute:: stderr
    .. autoattribute:: exit_status
    .. autoattribute:: exit_signal
+   .. autoattribute:: returncode
    ============================== =
 
    ==================================== =
@@ -492,6 +494,109 @@ SSHCompletedProcess
 -------------------
 
 .. autoclass:: SSHCompletedProcess()
+
+SSHSubprocessReadPipe
+---------------------
+
+.. autoclass:: SSHSubprocessReadPipe()
+
+   ==================================== =
+   General subprocess pipe info methods
+   ==================================== =
+   .. automethod:: get_extra_info
+   ==================================== =
+
+   ============================== =
+   Subprocess pipe read methods
+   ============================== =
+   .. automethod:: pause_reading
+   .. automethod:: resume_reading
+   ============================== =
+
+   ===================================== =
+   General subprocess pipe close methods
+   ===================================== =
+   .. automethod:: close
+   ===================================== =
+
+SSHSubprocessWritePipe
+----------------------
+
+.. autoclass:: SSHSubprocessWritePipe()
+
+   ==================================== =
+   General subprocess pipe info methods
+   ==================================== =
+   .. automethod:: get_extra_info
+   ==================================== =
+
+   ======================================= =
+   Subprocess pipe write methods
+   ======================================= =
+   .. automethod:: can_write_eof
+   .. automethod:: get_write_buffer_size
+   .. automethod:: set_write_buffer_limits
+   .. automethod:: write
+   .. automethod:: writelines
+   .. automethod:: write_eof
+   ======================================= =
+
+   ===================================== =
+   General subprocess pipe close methods
+   ===================================== =
+   .. automethod:: abort
+   .. automethod:: close
+   ===================================== =
+
+SSHSubprocessProtocol
+---------------------
+
+.. autoclass:: SSHSubprocessProtocol
+
+   ==================================== =
+   General subprocess protocol handlers
+   ==================================== =
+   .. automethod:: connection_made
+   .. automethod:: pipe_connection_lost
+   ==================================== =
+
+   ================================== =
+   Subprocess protocol read handlers
+   ================================== =
+   .. automethod:: pipe_data_received
+   ================================== =
+
+   ================================== =
+   Other subprocess protocol handlers
+   ================================== =
+   .. automethod:: process_exited
+   ================================== =
+
+SSHSubprocessTransport
+----------------------
+
+.. autoclass:: SSHSubprocessTransport
+
+   ==================================== =
+   General subprocess transport methods
+   ==================================== =
+   .. automethod:: get_extra_info
+   .. automethod:: get_pid
+   .. automethod:: get_pipe_transport
+   .. automethod:: get_returncode
+   .. automethod:: change_terminal_size
+   .. automethod:: send_break
+   .. automethod:: send_signal
+   ==================================== =
+
+   ================================== =
+   Subprocess transport close methods
+   ================================== =
+   .. automethod:: terminate
+   .. automethod:: kill
+   .. automethod:: close
+   .. automethod:: wait_closed
+   ================================== =
 
 Session Classes
 ===============
@@ -676,6 +781,7 @@ SSHClientChannel
    ===================================== =
    .. automethod:: get_exit_status
    .. automethod:: get_exit_signal
+   .. automethod:: get_returncode
    .. automethod:: change_terminal_size
    .. automethod:: send_break
    .. automethod:: send_signal

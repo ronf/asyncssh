@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2018 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2019 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -23,6 +23,8 @@
 import asyncio
 import binascii
 import codecs
+import re
+import signal as _signal
 
 from .constants import DEFAULT_LANG, DISC_PROTOCOL_ERROR, EXTENDED_DATA_STDERR
 from .constants import MSG_CHANNEL_OPEN, MSG_CHANNEL_WINDOW_ADJUST
@@ -44,6 +46,11 @@ from .packet import Boolean, Byte, String, UInt32, SSHPacketHandler
 
 _pty_mode_names = get_symbol_names(constants, 'PTY_', 4)
 _data_type_names = get_symbol_names(constants, 'EXTENDED_DATA_', 14)
+
+_signal_regex = re.compile(r'SIG[^_]')
+_signal_numbers = {k[3:]: int(v) for (k, v) in vars(_signal).items()
+                   if _signal_regex.match(k)}
+_signal_names = {v: k for (k, v) in _signal_numbers.items()}
 
 
 class SSHChannel(SSHPacketHandler):
@@ -1182,10 +1189,10 @@ class SSHClientChannel(SSHChannel):
         """Return the session's exit status
 
            This method returns the exit status of the session if one has
-           been sent. If an exit signal was received, this method
-           returns -1 and the exit signal information can be collected
-           by calling :meth:`get_exit_signal`. If neither has been sent,
-           this method returns `None`.
+           been sent. If an exit signal was sent, this method returns -1
+           and the exit signal information can be collected by calling
+           :meth:`get_exit_signal`. If neither has been sent, this method
+           returns `None`.
 
         """
 
@@ -1203,12 +1210,31 @@ class SSHClientChannel(SSHChannel):
            this session. If an exit signal was sent, a tuple is returned
            containing the signal name, a boolean for whether a core dump
            occurred, a message associated with the signal, and the language
-           the message was in. If no exit signal was sent, `None` is
-           returned.
+           the message was in. Otherwise, this method returns `None`.
 
         """
 
         return self._exit_signal
+
+    def get_returncode(self):
+        """Return the session's exit status or signal
+
+           This method returns the exit status of the session if one has
+           been sent. If an exit signal was sent, this method returns
+           the negative of the numeric value of that signal, matching
+           the behavior of :meth:`asyncio.SubprocessTransport.get_returncode`.
+           If neither has been sent, this method returns `None`.
+
+           :returns: `int` or `None`
+
+        """
+
+        if self._exit_status is not None:
+            return self._exit_status
+        elif self._exit_signal:
+            return -_signal_numbers.get(self._exit_signal[0], 99)
+        else:
+            return None
 
     def change_terminal_size(self, width, height, pixwidth=0, pixheight=0):
         """Change the terminal window size for this session
@@ -1264,7 +1290,10 @@ class SSHClientChannel(SSHChannel):
 
            This method can be called to deliver a signal to the remote
            process or service. Signal names should be as described in
-           section 6.10 of :rfc:`RFC 4254 <4254#section-6.10>`.
+           section 6.10 of :rfc:`RFC 4254 <4254#section-6.10>`, or
+           can be integer values as defined in the :mod:`signal`
+           module, in which case they will be translated to their
+           corresponding signal name before being sent.
 
            .. note:: OpenSSH's SSH server implementation prior to version
                      7.9 does not support this message, so attempts to
@@ -1277,11 +1306,18 @@ class SSHClientChannel(SSHChannel):
 
            :param signal:
                The signal to deliver
-           :type signal: `str`
+           :type signal: `str` or `int`
 
-           :raises: :exc:`OSError` if the channel is not open
+           :raises: | :exc:`OSError` if the channel is not open
+                    | :exc:`ValueError` if the signal number is unknown
 
         """
+
+        if isinstance(signal, int):
+            try:
+                signal = _signal_names[signal]
+            except KeyError:
+                raise ValueError('Unknown signal: %s' % int(signal)) from None
 
         self.logger.info('Sending %s signal', signal)
 

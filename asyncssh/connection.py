@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2018 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2019 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -114,6 +114,8 @@ from .sftp import SFTPServer, start_sftp_client
 from .stream import SSHClientStreamSession, SSHServerStreamSession
 from .stream import SSHTCPStreamSession, SSHUNIXStreamSession
 from .stream import SSHReader, SSHWriter
+
+from .subprocess import SSHSubprocessTransport
 
 from .x11 import create_x11_client_listener, create_x11_server_listener
 
@@ -2924,6 +2926,58 @@ class SSHClientConnection(SSHConnection):
         yield from process.redirect(stdin, stdout, stderr, bufsize)
 
         return process
+
+    @async_context_manager
+    def create_subprocess(self, protocol_factory, *args, input=None,
+                          bufsize=io.DEFAULT_BUFFER_SIZE, encoding=None,
+                          stdin=PIPE, stdout=PIPE, stderr=PIPE, **kwargs):
+        """Create a subprocess on the remote system
+
+           This method is a coroutine wrapper around :meth:`create_session`
+           which can be used to execute a command, start a subsystem,
+           or start an interactive shell, optionally redirecting stdin,
+           stdout, and stderr to and from files or pipes attached to
+           other local and remote processes similar to :meth:`create_process`.
+           However, instead of performing interactive I/O using
+           :class:`SSHReader` and :class:`SSHWriter` objects, the caller
+           provides a function which returns an object which conforms
+           to the :class:`asyncio.SubprocessProtocol` and this call
+           returns that and an :class:`SSHSubprocessTransport` object which
+           conforms to :class:`asyncio.SubprocessTransport`.
+
+           With the exception of the addition of `protocol_factory`, all
+           of the arguments are the same as :meth:`create_process`.
+
+           :param protocol_factory:
+               A `callable` which returns an :class:`SSHSubprocessProtocol`
+               object that will be created to handle activity on this
+               session.
+           :type protocol_factory: `callable`
+
+           :returns: an :class:`SSHSubprocessTransport` and
+                     :class:`SSHSubprocessProtocol`
+
+           :raises: :exc:`ChannelOpenError` if the channel can't be opened
+
+        """
+
+        def transport_factory():
+            """Return a subprocess transport"""
+
+            return SSHSubprocessTransport(protocol_factory)
+
+        _, transport = yield from self.create_session(
+            transport_factory, *args, encoding=encoding, **kwargs)
+
+        if input:
+            stdin_pipe = transport.get_pipe_transport(0)
+            stdin_pipe.write(input)
+            stdin_pipe.write_eof()
+            stdin = None
+
+        yield from transport.redirect(stdin, stdout, stderr, bufsize)
+
+        return transport, transport.get_protocol()
     # pylint: enable=redefined-builtin
 
     @asyncio.coroutine

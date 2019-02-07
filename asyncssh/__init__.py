@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2018 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2019 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -83,6 +83,9 @@ from .sftp import SFTPAttrs, SFTPVFSAttrs, SFTPName
 from .sftp import SEEK_SET, SEEK_CUR, SEEK_END
 
 from .stream import SSHReader, SSHWriter
+
+from .subprocess import SSHSubprocessReadPipe, SSHSubprocessWritePipe
+from .subprocess import SSHSubprocessProtocol, SSHSubprocessTransport
 
 # Import these explicitly to trigger register calls in them
 from . import ed25519, ecdsa, rsa, dsa
