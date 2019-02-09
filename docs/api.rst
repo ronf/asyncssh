@@ -294,6 +294,7 @@ SSHClientConnection
    =================================== =
    .. automethod:: get_extra_info
    .. automethod:: set_extra_info
+   .. automethod:: set_keepalive
    .. automethod:: get_server_host_key
    .. automethod:: send_debug
    =================================== =
@@ -360,6 +361,7 @@ SSHServerConnection
    ============================== =
    .. automethod:: get_extra_info
    .. automethod:: set_extra_info
+   .. automethod:: set_keepalive
    .. automethod:: send_debug
    ============================== =
 

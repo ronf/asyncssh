@@ -69,13 +69,41 @@ class _ReplayKexClientConnection(asyncssh.SSHClientConnection):
 
 
 class _KeepaliveClientConnection(asyncssh.SSHClientConnection):
-    """Test sending keepalive request"""
+    """Test handling of keepalive requests on client"""
 
-    @asyncio.coroutine
-    def send_keepalive_request(self):
-        """Send a keepalive global request"""
+    def _process_keepalive_at_openssh_dot_com_global_request(self, packet):
+        """Process an incoming OpenSSH keepalive request"""
 
-        return (yield from self._make_global_request(b'keepalive@openssh.com'))
+        super()._process_keepalive_at_openssh_dot_com_global_request(packet)
+        self.disconnect(asyncssh.DISC_BY_APPLICATION, 'Keepalive')
+
+
+class _KeepaliveClientConnectionFailure(asyncssh.SSHClientConnection):
+    """Test handling of keepalive failures on client"""
+
+    def _process_keepalive_at_openssh_dot_com_global_request(self, packet):
+        """Ignore an incoming OpenSSH keepalive request"""
+
+        pass
+
+
+class _KeepaliveServerConnection(asyncssh.SSHServerConnection):
+    """Test handling of keepalive requests on server"""
+
+    def _process_keepalive_at_openssh_dot_com_global_request(self, packet):
+        """Process an incoming OpenSSH keepalive request"""
+
+        super()._process_keepalive_at_openssh_dot_com_global_request(packet)
+        self.disconnect(asyncssh.DISC_BY_APPLICATION, 'Keepalive')
+
+
+class _KeepaliveServerConnectionFailure(asyncssh.SSHServerConnection):
+    """Test handling of keepalive failures on server"""
+
+    def _process_keepalive_at_openssh_dot_com_global_request(self, packet):
+        """Ignore an incoming OpenSSH keepalive request"""
+
+        pass
 
 
 class _VersionedServerConnection(asyncssh.SSHServerConnection):
@@ -893,17 +921,6 @@ class _TestConnection(ServerTestCase):
         yield from conn.wait_closed()
 
     @asynctest
-    def test_keepalive(self):
-        """Test sending keepalive global request"""
-
-        with patch('asyncssh.connection.SSHClientConnection',
-                   _KeepaliveClientConnection):
-            with (yield from self.connect(compression_algs=None)) as conn:
-                self.assertTrue((yield from conn.send_keepalive_request()))
-
-            yield from conn.wait_closed()
-
-    @asynctest
     def test_unknown_packet(self):
         """Test unknown SSH packet"""
 
@@ -912,6 +929,50 @@ class _TestConnection(ServerTestCase):
             yield from asyncio.sleep(0.1)
 
         yield from conn.wait_closed()
+
+    @asynctest
+    def test_client_keepalive(self):
+        """Test sending keepalive from client"""
+
+        with patch('asyncssh.connection.SSHServerConnection',
+                   _KeepaliveServerConnection):
+            conn = yield from self.connect(keepalive_interval=0.1)
+
+            yield from conn.wait_closed()
+
+    @asynctest
+    def test_client_set_keepalive_interval(self):
+        """Test sending keepalive interval with set_keepalive"""
+
+        with patch('asyncssh.connection.SSHServerConnection',
+                   _KeepaliveServerConnection):
+            conn = yield from self.connect()
+
+            conn.set_keepalive(0.1)
+
+            yield from conn.wait_closed()
+
+    @asynctest
+    def test_client_set_keepalive_count_max(self):
+        """Test sending keepalive count max with set_keepalive"""
+
+        with patch('asyncssh.connection.SSHServerConnection',
+                   _KeepaliveServerConnection):
+            conn = yield from self.connect(keepalive_interval=0.1)
+
+            conn.set_keepalive(count_max=10)
+
+            yield from conn.wait_closed()
+
+    @asynctest
+    def test_client_keepalive_failure(self):
+        """Test client keepalive failure"""
+
+        with patch('asyncssh.connection.SSHServerConnection',
+                   _KeepaliveServerConnectionFailure):
+            conn = yield from self.connect(keepalive_interval=0.1)
+
+            yield from conn.wait_closed()
 
     @asynctest
     def test_rekey(self):
@@ -1151,6 +1212,38 @@ class _TestConnection(ServerTestCase):
 
         with self.assertRaises(RuntimeError):
             yield from self.create_connection(_InternalErrorClient)
+
+
+class _TestConnectionKeepalive(ServerTestCase):
+    """Unit test for keepalive"""
+
+    @classmethod
+    @asyncio.coroutine
+    def start_server(cls):
+        """Start an SSH server which sends keepalive messages"""
+
+        return (yield from cls.create_server(keepalive_interval=0.1))
+
+    @asynctest
+    def test_server_keepalive(self):
+        """Test sending keepalive"""
+
+        with patch('asyncssh.connection.SSHClientConnection',
+                   _KeepaliveClientConnection):
+            conn = yield from self.connect()
+
+            yield from conn.wait_closed()
+
+
+    @asynctest
+    def test_server_keepalive_failure(self):
+        """Test server keepalive failure"""
+
+        with patch('asyncssh.connection.SSHClientConnection',
+                   _KeepaliveClientConnectionFailure):
+            conn = yield from self.connect()
+
+            yield from conn.wait_closed()
 
 
 class _TestConnectionAbort(ServerTestCase):

@@ -134,6 +134,10 @@ _DEFAULT_REKEY_SECONDS = 3600       # 1 hour
 # Default login timeout
 _DEFAULT_LOGIN_TIMEOUT = 120        # 2 minutes
 
+# Default keepalive interval and count max
+_DEFAULT_KEEPALIVE_INTERVAL = 0     # disabled by default
+_DEFAULT_KEEPALIVE_COUNT_MAX = 3
+
 # Default channel parameters
 _DEFAULT_WINDOW = 2*1024*1024       # 2 MiB
 _DEFAULT_MAX_PKTSIZE = 32768        # 32 kiB
@@ -236,7 +240,8 @@ class SSHConnection(SSHPacketHandler):
     def __init__(self, protocol_factory, loop, version, x509_trusted_certs,
                  x509_trusted_cert_paths, x509_purposes, kex_algs,
                  encryption_algs, mac_algs, compression_algs, signature_algs,
-                 rekey_bytes, rekey_seconds, server):
+                 rekey_bytes, rekey_seconds, keepalive_interval,
+                 keepalive_count_max, server):
         self._protocol_factory = protocol_factory
         self._loop = loop
         self._transport = None
@@ -311,6 +316,11 @@ class SSHConnection(SSHPacketHandler):
         self._rekey_bytes_sent = 0
         self._rekey_seconds = rekey_seconds
         self._rekey_time = time.time() + rekey_seconds
+
+        self._keepalive_count = 0
+        self._keepalive_count_max = keepalive_count_max
+        self._keepalive_interval = keepalive_interval
+        self._keepalive_timer = None
 
         self._enc_alg_cs = None
         self._enc_alg_sc = None
@@ -396,6 +406,8 @@ class SSHConnection(SSHPacketHandler):
     def _cleanup(self, exc):
         """Clean up this connection"""
 
+        self._cancel_keepalive_timer()
+
         for chan in list(self._channels.values()):
             chan.process_connection_close(exc)
 
@@ -418,6 +430,53 @@ class SSHConnection(SSHPacketHandler):
 
         self._inpbuf = b''
         self._recv_handler = None
+
+    def _cancel_keepalive_timer(self):
+        """Cancel the keepalive timer"""
+
+        if self._keepalive_timer:
+            self._keepalive_timer.cancel()
+            self._keepalive_timer = None
+
+    def _set_keepalive_timer(self):
+        """Set the keepalive timer"""
+
+        if self._keepalive_interval:
+            self._keepalive_timer = self._loop.call_later(
+                self._keepalive_interval, self._keepalive_timer_callback)
+
+    def _reset_keepalive_timer(self):
+        """Reset the keepalive timer"""
+
+        self._cancel_keepalive_timer()
+        self._set_keepalive_timer()
+
+    @asyncio.coroutine
+    def _make_keepalive_request(self):
+        """Send keepalive request"""
+
+        self.logger.debug1('Sending keepalive request')
+
+        yield from self._make_global_request('keepalive@openssh.com')
+
+        if self._keepalive_timer:
+            self.logger.debug1('Got keepalive response')
+
+        self._keepalive_count = 0
+
+    def _keepalive_timer_callback(self):
+        """Handle keepalive check"""
+
+        self._keepalive_count += 1
+
+        if self._keepalive_count > self._keepalive_count_max:
+            self.connection_lost(
+                DisconnectError(DISC_CONNECTION_LOST,
+                                ('Server' if self.is_client() else 'Client') +
+                                ' not responding'))
+        else:
+            self._set_keepalive_timer()
+            self.create_task(self._make_keepalive_request())
 
     def _force_close(self, exc):
         """Force this connection to close immediately"""
@@ -637,6 +696,9 @@ class SSHConnection(SSHPacketHandler):
         # pylint: disable=unused-argument
 
         self._inpbuf += data
+
+        if self._auth_complete:
+            self._reset_keepalive_timer()
 
         # pylint: disable=broad-except
         try:
@@ -1170,6 +1232,7 @@ class SSHConnection(SSHPacketHandler):
         # pylint: disable=no-member
         self._cancel_login_timer()
 
+        self._set_keepalive_timer()
         self._owner.auth_completed()
 
     def send_channel_open_confirmation(self, send_chan, recv_chan,
@@ -1586,7 +1649,7 @@ class SSHConnection(SSHPacketHandler):
 
             self.set_extra_info(username=self._username)
             self._send_deferred_packets()
-
+            self._set_keepalive_timer()
             self._owner.auth_completed()
 
             if not self._auth_waiter.cancelled(): # pragma: no branch
@@ -1899,6 +1962,37 @@ class SSHConnection(SSHPacketHandler):
         """
 
         self._extra.update(**kwargs)
+
+    def set_keepalive(self, interval=None, count_max=None):
+        """Set keep-alive timer on this connection
+
+           This method sets the parameters of the keepalive timer on the
+           connection. If *interval* is set to a non-zero value,
+           keep-alive requests will be sent whenever the connection is
+           idle, and if a response is not received after *count_max*
+           attempts, the connection is closed.
+
+           :param interval: (optional)
+               The time in seconds to wait before sending a keep-alive message
+               if no data has been received. This defaults to 0, which
+               disables sending these messages.
+           :param count_max: (optional)
+               The maximum number of keepalive messages which will be sent
+               without getting a response before closing the connection.
+               This defaults to 3, but only applies when *interval* is
+               non-zero.
+           :type interval: `int` or `float`
+           :type count_max: `int`
+
+        """
+
+        if interval is not None:
+            self._keepalive_interval = interval
+
+        if count_max is not None:
+            self._keepalive_count_max = count_max
+
+        self._reset_keepalive_timer()
 
     def send_debug(self, msg, lang=DEFAULT_LANG, always_display=False):
         """Send a debug message on this connection
@@ -2215,7 +2309,8 @@ class SSHClientConnection(SSHConnection):
     def __init__(self, client_factory, loop, client_version,
                  x509_trusted_certs, x509_trusted_cert_paths, x509_purposes,
                  kex_algs, encryption_algs, mac_algs, compression_algs,
-                 signature_algs, rekey_bytes, rekey_seconds, host, port,
+                 signature_algs, rekey_bytes, rekey_seconds,
+                 keepalive_interval, keepalive_count_max, host, port,
                  known_hosts, server_host_key_algs, username, password,
                  client_host_keysign, client_host_keys, client_host,
                  client_username, client_keys, gss_host, gss_delegate_creds,
@@ -2224,7 +2319,8 @@ class SSHClientConnection(SSHConnection):
                          x509_trusted_certs, x509_trusted_cert_paths,
                          x509_purposes, kex_algs, encryption_algs, mac_algs,
                          compression_algs, signature_algs, rekey_bytes,
-                         rekey_seconds, server=False)
+                         rekey_seconds, keepalive_interval,
+                         keepalive_count_max, server=False)
 
         self._host = host
         self._port = port
@@ -3658,7 +3754,8 @@ class SSHServerConnection(SSHConnection):
                  x509_trusted_certs, x509_trusted_cert_paths, x509_purposes,
                  kex_algs, encryption_algs, mac_algs, compression_algs,
                  signature_algs, rekey_bytes, rekey_seconds,
-                 server_host_keys, known_client_hosts, trust_client_host,
+                 keepalive_interval, keepalive_count_max, server_host_keys,
+                 known_client_hosts, trust_client_host,
                  authorized_client_keys, gss_host, allow_pty, line_editor,
                  line_history, x11_forwarding, x11_auth_path, agent_forwarding,
                  process_factory, session_factory, session_encoding,
@@ -3668,7 +3765,8 @@ class SSHServerConnection(SSHConnection):
                          x509_trusted_certs, x509_trusted_cert_paths,
                          x509_purposes, kex_algs, encryption_algs, mac_algs,
                          compression_algs, signature_algs, rekey_bytes,
-                         rekey_seconds, server=True)
+                         rekey_seconds, keepalive_interval,
+                         keepalive_count_max, server=True)
 
         self._server_host_keys = server_host_keys
         self._server_host_key_algs = list(server_host_keys.keys())
@@ -4889,7 +4987,9 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
                       client_version=(), kex_algs=(), encryption_algs=(),
                       mac_algs=(), compression_algs=(), signature_algs=(),
                       rekey_bytes=_DEFAULT_REKEY_BYTES,
-                      rekey_seconds=_DEFAULT_REKEY_SECONDS):
+                      rekey_seconds=_DEFAULT_REKEY_SECONDS,
+                      keepalive_interval=_DEFAULT_KEEPALIVE_INTERVAL,
+                      keepalive_count_max=_DEFAULT_KEEPALIVE_COUNT_MAX):
     """Create an SSH client connection
 
        This function is a coroutine which can be run to create an outbound SSH
@@ -5079,6 +5179,15 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
        :param rekey_seconds: (optional)
            The maximum time in seconds before the SSH session key is
            renegotiated. This defaults to 1 hour.
+       :param keepalive_interval: (optional)
+           The time in seconds to wait before sending a keepalive message
+           if no data has been received from the server. This defaults to
+           0, which disables sending these messages.
+       :param keepalive_count_max: (optional)
+           The maximum number of keepalive messages which will be sent
+           without getting a response before disconnecting from the
+           server. This defaults to 3, but only applies when
+           keepalive_interval is non-zero.
        :type client_factory: `callable`
        :type host: `str`
        :type port: `int`
@@ -5113,6 +5222,8 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
        :type signature_algs: `list` of `str`
        :type rekey_bytes: `int`
        :type rekey_seconds: `int`
+       :type keepalive_interval: `int` or `float`
+       :type keepalive_count_max: `int`
 
        :returns: An :class:`SSHClientConnection` and :class:`SSHClient`
 
@@ -5125,12 +5236,14 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, *,
                                    x509_trusted_certs, x509_trusted_cert_paths,
                                    x509_purposes, kex_algs, encryption_algs,
                                    mac_algs, compression_algs, signature_algs,
-                                   rekey_bytes, rekey_seconds, host, port,
-                                   known_hosts, server_host_key_algs,
-                                   username, password, client_host_keysign,
-                                   client_host_keys, client_host,
-                                   client_username, client_keys, gss_host,
-                                   gss_delegate_creds, agent, agent_path)
+                                   rekey_bytes, rekey_seconds,
+                                   keepalive_interval, keepalive_count_max,
+                                   host, port, known_hosts,
+                                   server_host_key_algs, username, password,
+                                   client_host_keysign, client_host_keys,
+                                   client_host, client_username, client_keys,
+                                   gss_host, gss_delegate_creds, agent,
+                                   agent_path)
 
     if not client_factory:
         client_factory = SSHClient
@@ -5253,7 +5366,9 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
                   mac_algs=(), compression_algs=(), signature_algs=(),
                   rekey_bytes=_DEFAULT_REKEY_BYTES,
                   rekey_seconds=_DEFAULT_REKEY_SECONDS,
-                  login_timeout=_DEFAULT_LOGIN_TIMEOUT):
+                  login_timeout=_DEFAULT_LOGIN_TIMEOUT,
+                  keepalive_interval=_DEFAULT_KEEPALIVE_INTERVAL,
+                  keepalive_count_max=_DEFAULT_KEEPALIVE_COUNT_MAX):
     """Create an SSH server
 
        This function is a coroutine which can be run to create an SSH server
@@ -5431,6 +5546,15 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
        :param rekey_seconds: (optional)
            The maximum time in seconds before the SSH session key is
            renegotiated, defaulting to 1 hour
+       :param keepalive_interval: (optional)
+           The time in seconds to wait before sending a keepalive message
+           if no data has been received from the client. This defaults to
+           0, which disables sending these messages.
+       :param keepalive_count_max: (optional)
+           The maximum number of keepalive messages which will be sent
+           without getting a response before disconnecting a client.
+           This defaults to 3, but only applies when keepalive_interval is
+           non-zero.
        :param login_timeout: (optional)
            The maximum time in seconds allowed for authentication to
            complete, defaulting to 2 minutes
@@ -5475,6 +5599,8 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
        :type rekey_bytes: `int`
        :type rekey_seconds: `int`
        :type login_timeout: `int`
+       :type keepalive_interval: `int` or `float`
+       :type keepalive_count_max: `int`
 
        :returns: :class:`asyncio.Server`
 
@@ -5488,6 +5614,7 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
                                    x509_purposes, kex_algs, encryption_algs,
                                    mac_algs, compression_algs, signature_algs,
                                    rekey_bytes, rekey_seconds,
+                                   keepalive_interval, keepalive_count_max,
                                    server_host_keys, known_client_hosts,
                                    trust_client_host, authorized_client_keys,
                                    gss_host, allow_pty, line_editor,
@@ -5682,25 +5809,22 @@ def get_server_host_key(host, port=_DEFAULT_PORT, *, loop=None, tunnel=None,
     def conn_factory():
         """Return an SSH client connection handler for fetching a host key"""
 
-        return SSHClientConnection(client_factory=SSHClient, loop=loop,
-                                   client_version=client_version,
-                                   x509_trusted_certs=None,
-                                   x509_trusted_cert_paths=None,
-                                   x509_purposes='any', kex_algs=kex_algs,
-                                   encryption_algs=encryption_algs,
-                                   mac_algs=mac_algs,
-                                   compression_algs=compression_algs,
-                                   signature_algs=signature_algs,
-                                   rekey_bytes=_DEFAULT_REKEY_BYTES,
-                                   rekey_seconds=_DEFAULT_REKEY_SECONDS,
-                                   host=host, port=port, known_hosts=None,
-                                   server_host_key_algs=server_host_key_algs,
-                                   username=None, password=None,
-                                   client_host_keysign=False,
-                                   client_host_keys=None, client_host=None,
-                                   client_username=None, client_keys=None,
-                                   gss_host=None, gss_delegate_creds=False,
-                                   agent=None, agent_path=None)
+        return SSHClientConnection(
+            client_factory=SSHClient, loop=loop, client_version=client_version,
+            x509_trusted_certs=None, x509_trusted_cert_paths=None,
+            x509_purposes='any', kex_algs=kex_algs,
+            encryption_algs=encryption_algs, mac_algs=mac_algs,
+            compression_algs=compression_algs, signature_algs=signature_algs,
+            rekey_bytes=_DEFAULT_REKEY_BYTES,
+            rekey_seconds=_DEFAULT_REKEY_SECONDS,
+            keepalive_interval=_DEFAULT_KEEPALIVE_INTERVAL,
+            keepalive_count_max=_DEFAULT_KEEPALIVE_COUNT_MAX,
+            host=host, port=port, known_hosts=None,
+            server_host_key_algs=server_host_key_algs,
+            username=None, password=None, client_host_keysign=False,
+            client_host_keys=None, client_host=None, client_username=None,
+            client_keys=None, gss_host=None, gss_delegate_creds=False,
+            agent=None, agent_path=None)
 
     if not loop:
         loop = asyncio.get_event_loop()
