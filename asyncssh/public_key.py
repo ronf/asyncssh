@@ -3046,7 +3046,9 @@ def load_default_keypairs(passphrase=None):
             result.extend(load_keypairs(file, passphrase))
         except KeyImportError as exc:
             # Ignore encrypted default keys if a passphrase isn't provided
-            if not str(exc).startswith('Passphrase'):
+            # and unknown key types that might not be supported
+            if (not str(exc).startswith('Passphrase') and
+                    str(exc) != 'Unknown OpenSSH private key algorithm'):
                 raise
         except OSError:
             pass
