@@ -107,7 +107,7 @@ Prerequisites
 To use ``asyncssh``, you need the following:
 
 * Python 3.4 or later
-* cryptography (PyCA) 1.5 or later
+* cryptography (PyCA) 2.5 or later
 
 Installation
 ------------
