@@ -473,7 +473,7 @@ class SSHConnection(SSHPacketHandler):
             self.connection_lost(
                 DisconnectError(DISC_CONNECTION_LOST,
                                 ('Server' if self.is_client() else 'Client') +
-                                ' not responding'))
+                                ' not responding to keepalive'))
         else:
             self._set_keepalive_timer()
             self.create_task(self._make_keepalive_request())
