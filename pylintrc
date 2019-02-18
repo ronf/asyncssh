@@ -59,7 +59,7 @@ confidence=
 # --enable=similarities". If you want to run only the classes checker, but have
 # no Warning level messages displayed, use"--disable=all --enable=classes
 # --disable=W"
-disable=fixme,locally-enabled,locally-disabled,redefined-variable-type,too-many-boolean-expressions,too-many-arguments,no-else-return,inconsistent-return-statements
+disable=fixme,locally-enabled,locally-disabled,redefined-variable-type,no-else-return,inconsistent-return-statements
 
 
 [REPORTS]
@@ -308,7 +308,7 @@ exclude-protected=_asdict,_fields,_replace,_source,_make
 [DESIGN]
 
 # Maximum number of arguments for function / method
-max-args=25
+max-args=50
 
 # Argument names that match this expression will be ignored. Default to name
 # with leading underscore
@@ -320,8 +320,11 @@ max-locals=50
 # Maximum number of return / yield for function / method body
 max-returns=10
 
+# Maximum number of boolean expressions in a if statement
+max-bool-expr=20
+
 # Maximum number of branch for function / method body
-max-branches=50
+max-branches=100
 
 # Maximum number of statements in function / method body
 max-statements=100
