@@ -78,13 +78,16 @@ DISC_MAC_ERROR                      = 5
 DISC_COMPRESSION_ERROR              = 6
 DISC_SERVICE_NOT_AVAILABLE          = 7
 DISC_PROTOCOL_VERSION_NOT_SUPPORTED = 8
-DISC_HOST_KEY_NOT_VERIFYABLE        = 9
+DISC_HOST_KEY_NOT_VERIFIABLE        = 9
 DISC_CONNECTION_LOST                = 10
 DISC_BY_APPLICATION                 = 11
 DISC_TOO_MANY_CONNECTIONS           = 12
 DISC_AUTH_CANCELLED_BY_USER         = 13
 DISC_NO_MORE_AUTH_METHODS_AVAILABLE = 14
 DISC_ILLEGAL_USER_NAME              = 15
+
+DISC_HOST_KEY_NOT_VERIFYABLE        = 9   # Error in naming, left here to not
+                                          # break backward compatibility
 
 # SSH channel open failure reason codes
 OPEN_ADMINISTRATIVELY_PROHIBITED    = 1

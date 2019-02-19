@@ -404,7 +404,7 @@ class _TestConnection(ServerTestCase):
     def test_unknown_version(self):
         """Test unknown SSH server version"""
 
-        with self.assertRaises(asyncssh.DisconnectError):
+        with self.assertRaises(asyncssh.ProtocolNotSupported):
             yield from self._check_version(b'SSH-1.0-Test')
 
     @asynctest
@@ -463,7 +463,7 @@ class _TestConnection(ServerTestCase):
             os.rename(os.path.join('.ssh', 'known_hosts'),
                       os.path.join('.ssh', 'known_hosts.save'))
 
-            with self.assertRaises(asyncssh.DisconnectError):
+            with self.assertRaises(asyncssh.HostKeyNotVerifiable):
                 yield from self.connect()
         finally:
             os.rename(os.path.join('.ssh', 'known_hosts.save'),
@@ -477,7 +477,7 @@ class _TestConnection(ServerTestCase):
         try:
             os.chmod(os.path.join('.ssh', 'known_hosts'), 0)
 
-            with self.assertRaises(asyncssh.DisconnectError):
+            with self.assertRaises(asyncssh.HostKeyNotVerifiable):
                 yield from self.connect()
         finally:
             os.chmod(os.path.join('.ssh', 'known_hosts'), 0o644)
@@ -599,7 +599,7 @@ class _TestConnection(ServerTestCase):
     def test_untrusted_known_hosts_ca(self):
         """Test untrusted server CA key"""
 
-        with self.assertRaises(asyncssh.DisconnectError):
+        with self.assertRaises(asyncssh.HostKeyNotVerifiable):
             yield from self.connect(known_hosts=([], ['ckey.pub'], []))
 
     @asynctest
@@ -611,7 +611,7 @@ class _TestConnection(ServerTestCase):
 
             return _ValidateHostKeyClient(host_key='ckey.pub')
 
-        with self.assertRaises(asyncssh.DisconnectError):
+        with self.assertRaises(asyncssh.HostKeyNotVerifiable):
             yield from self.create_connection(client_factory,
                                               known_hosts=([], [], []))
 
@@ -624,7 +624,7 @@ class _TestConnection(ServerTestCase):
 
             return _ValidateHostKeyClient(ca_key='ckey.pub')
 
-        with self.assertRaises(asyncssh.DisconnectError):
+        with self.assertRaises(asyncssh.HostKeyNotVerifiable):
             yield from self.create_connection(client_factory,
                                               known_hosts=([], [], []))
 
@@ -632,7 +632,7 @@ class _TestConnection(ServerTestCase):
     def test_revoked_known_hosts_key(self):
         """Test revoked server host key"""
 
-        with self.assertRaises(asyncssh.DisconnectError):
+        with self.assertRaises(asyncssh.HostKeyNotVerifiable):
             yield from self.connect(known_hosts=(['ckey.pub'], [],
                                                  ['skey.pub']))
 
@@ -640,7 +640,7 @@ class _TestConnection(ServerTestCase):
     def test_revoked_known_hosts_ca(self):
         """Test revoked server CA key"""
 
-        with self.assertRaises(asyncssh.DisconnectError):
+        with self.assertRaises(asyncssh.HostKeyNotVerifiable):
             yield from self.connect(known_hosts=([], ['ckey.pub'],
                                                  ['skey.pub']))
 
@@ -648,7 +648,7 @@ class _TestConnection(ServerTestCase):
     def test_empty_known_hosts(self):
         """Test empty known hosts list"""
 
-        with self.assertRaises(asyncssh.DisconnectError):
+        with self.assertRaises(asyncssh.HostKeyNotVerifiable):
             yield from self.connect(known_hosts=([], [], []))
 
     @asynctest
@@ -657,7 +657,7 @@ class _TestConnection(ServerTestCase):
 
         with patch('asyncssh.connection.SSHServerConnection',
                    _BadHostKeyServerConnection):
-            with self.assertRaises(asyncssh.DisconnectError):
+            with self.assertRaises(asyncssh.HostKeyNotVerifiable):
                 yield from self.connect()
 
     @asynctest
@@ -701,7 +701,7 @@ class _TestConnection(ServerTestCase):
             return [b'fail'] + get_kex_algs()
 
         with patch('asyncssh.connection.get_kex_algs', unsupported_kex_alg):
-            with self.assertRaises(asyncssh.DisconnectError):
+            with self.assertRaises(asyncssh.KeyExchangeFailed):
                 yield from self.connect(kex_algs=['fail'])
 
     @asynctest
@@ -796,7 +796,7 @@ class _TestConnection(ServerTestCase):
         with patch('asyncssh.encryption.get_mac', _failing_get_mac):
             for mac in ('hmac-sha2-256-etm@openssh.com', 'hmac-sha2-256'):
                 with self.subTest(mac_alg=mac):
-                    with self.assertRaises(asyncssh.DisconnectError):
+                    with self.assertRaises(asyncssh.MACError):
                         yield from self.connect(encryption_algs=['aes128-ctr'],
                                                 mac_algs=[mac])
 
@@ -805,7 +805,7 @@ class _TestConnection(ServerTestCase):
         """Test GCM tag validation failure"""
 
         with patch('asyncssh.encryption.GCMCipher', _FailingGCMCipher):
-            with self.assertRaises(asyncssh.DisconnectError):
+            with self.assertRaises(asyncssh.MACError):
                 yield from self.connect(
                     encryption_algs=['aes128-gcm@openssh.com'])
 
@@ -1260,7 +1260,7 @@ class _TestConnectionAbort(ServerTestCase):
     def test_abort(self):
         """Test connection abort"""
 
-        with self.assertRaises(asyncssh.DisconnectError):
+        with self.assertRaises(asyncssh.ConnectionLost):
             yield from self.connect()
 
 
@@ -1286,7 +1286,7 @@ class _TestDuringAuth(ServerTestCase):
     def test_request_during_auth(self):
         """Test sending a request prior to auth complete"""
 
-        with self.assertRaises(asyncssh.DisconnectError):
+        with self.assertRaises(asyncssh.ProtocolError):
             yield from self.create_connection(_PreAuthRequestClient,
                                               username='user',
                                               compression_algs=['none'])
@@ -1319,7 +1319,7 @@ class _TestServerX509Self(ServerTestCase):
     def test_connect_x509_untrusted_self(self):
         """Test connecting with untrusted X.509 self-signed certficate"""
 
-        with self.assertRaises(asyncssh.DisconnectError):
+        with self.assertRaises(asyncssh.HostKeyNotVerifiable):
             yield from self.connect(
                 known_hosts=([], [], [], ['root_ca_cert.pem'], [], [], []))
 
@@ -1327,7 +1327,7 @@ class _TestServerX509Self(ServerTestCase):
     def test_connect_x509_revoked_self(self):
         """Test connecting with revoked X.509 self-signed certficate"""
 
-        with self.assertRaises(asyncssh.DisconnectError):
+        with self.assertRaises(asyncssh.HostKeyNotVerifiable):
             yield from self.connect(
                 known_hosts=([], [], [], ['root_ca_cert.pem'],
                              ['skey_x509_self.pem'], [], []))
@@ -1347,7 +1347,7 @@ class _TestServerX509Self(ServerTestCase):
     def test_connect_x509_untrusted_subject(self):
         """Test connecting to server with untrusted X.509 subject name"""
 
-        with self.assertRaises(asyncssh.DisconnectError):
+        with self.assertRaises(asyncssh.HostKeyNotVerifiable):
             yield from self.connect(
                 known_hosts=([], [], [], [], [], ['OU=name1'], []),
                 x509_trusted_certs=['skey_x509_self.pem'])
@@ -1356,7 +1356,7 @@ class _TestServerX509Self(ServerTestCase):
     def test_connect_x509_revoked_subject(self):
         """Test connecting to server with revoked X.509 subject name"""
 
-        with self.assertRaises(asyncssh.DisconnectError):
+        with self.assertRaises(asyncssh.HostKeyNotVerifiable):
             yield from self.connect(
                 known_hosts=([], [], [], [], [], [], ['OU=name']),
                 x509_trusted_certs=['skey_x509_self.pem'])
@@ -1365,7 +1365,7 @@ class _TestServerX509Self(ServerTestCase):
     def test_connect_x509_disabled(self):
         """Test connecting to X.509 server with X.509 disabled"""
 
-        with self.assertRaises(asyncssh.DisconnectError):
+        with self.assertRaises(asyncssh.HostKeyNotVerifiable):
             yield from self.connect(
                 known_hosts=([], [], [], [], [], ['OU=name'], []),
                 x509_trusted_certs=None)
@@ -1408,7 +1408,7 @@ class _TestServerX509Chain(ServerTestCase):
     def test_connect_x509_untrusted_root(self):
         """Test connecting to server with untrusted X.509 root CA"""
 
-        with self.assertRaises(asyncssh.DisconnectError):
+        with self.assertRaises(asyncssh.HostKeyNotVerifiable):
             yield from self.connect(known_hosts=([], [], [],
                                                  ['skey_x509_self.pem'],
                                                  [], [], []))
@@ -1417,14 +1417,14 @@ class _TestServerX509Chain(ServerTestCase):
     def test_connect_x509_untrusted_root_cert_path(self):
         """Test connecting to server with untrusted X.509 root CA"""
 
-        with self.assertRaises(asyncssh.DisconnectError):
+        with self.assertRaises(asyncssh.HostKeyNotVerifiable):
             yield from self.connect(known_hosts=b'\n')
 
     @asynctest
     def test_connect_x509_revoked_intermediate(self):
         """Test connecting to server with revoked X.509 intermediate CA"""
 
-        with self.assertRaises(asyncssh.DisconnectError):
+        with self.assertRaises(asyncssh.HostKeyNotVerifiable):
             yield from self.connect(known_hosts=([], [], [],
                                                  ['root_ca_cert.pem'],
                                                  ['int_ca_cert.pem'],
@@ -1486,7 +1486,7 @@ class _TestServerNoHostKey(ServerTestCase):
     def test_dh_with_no_host_key(self):
         """Test failure of DH key exchange with no server host key specified"""
 
-        with self.assertRaises(asyncssh.DisconnectError):
+        with self.assertRaises(asyncssh.KeyExchangeFailed):
             yield from self.connect()
 
 
@@ -1537,7 +1537,7 @@ class _TestServerWithoutCert(ServerTestCase):
     def test_untrusted_known_hosts_key(self):
         """Test untrusted server host key"""
 
-        with self.assertRaises(asyncssh.DisconnectError):
+        with self.assertRaises(asyncssh.HostKeyNotVerifiable):
             yield from self.connect(known_hosts=(['ckey.pub'], [], []))
 
     @asynctest
@@ -1564,7 +1564,7 @@ class _TestServerInternalError(ServerTestCase):
     def test_server_internal_error(self):
         """Test server internal error during auth"""
 
-        with self.assertRaises(asyncssh.DisconnectError):
+        with self.assertRaises(asyncssh.ConnectionLost):
             yield from self.connect()
 
 
@@ -1579,10 +1579,10 @@ class _TestInvalidAuthBanner(ServerTestCase):
         return (yield from cls.create_server(_InvalidAuthBannerServer))
 
     @asynctest
-    def test_abort(self):
+    def test_invalid_auth_banner(self):
         """Test server sending invalid auth banner"""
 
-        with self.assertRaises(asyncssh.DisconnectError):
+        with self.assertRaises(asyncssh.ProtocolError):
             yield from self.connect()
 
 
@@ -1600,7 +1600,7 @@ class _TestExpiredServerHostCertificate(ServerTestCase):
     def test_expired_server_host_cert(self):
         """Test expired server host certificate"""
 
-        with self.assertRaises(asyncssh.DisconnectError):
+        with self.assertRaises(asyncssh.HostKeyNotVerifiable):
             yield from self.connect(known_hosts=([], ['skey.pub'], []))
 
     @asynctest

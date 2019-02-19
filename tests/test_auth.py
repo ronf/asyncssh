@@ -31,7 +31,6 @@ from asyncssh.auth import MSG_USERAUTH_GSSAPI_RESPONSE
 from asyncssh.constants import MSG_USERAUTH_REQUEST, MSG_USERAUTH_FAILURE
 from asyncssh.constants import MSG_USERAUTH_SUCCESS
 from asyncssh.gss import GSSClient, GSSServer
-from asyncssh.misc import DisconnectError, PasswordChangeRequired
 from asyncssh.packet import SSHPacket, Boolean, NameList, String
 from asyncssh.public_key import SSHLocalKeyPair
 
@@ -389,7 +388,7 @@ class _AuthServerStub(_AuthConnectionStub):
         # pylint: disable=unused-argument
 
         if self._password_change_prompt:
-            raise PasswordChangeRequired(self._password_change_prompt)
+            raise asyncssh.PasswordChangeRequired(self._password_change_prompt)
         else:
             return self._success
 
@@ -531,7 +530,7 @@ class _TestAuth(AsyncTestCase):
                                        gss_host='1,unknown_mech')
 
         with self.subTest('GSS mechanism mismatch'):
-            with self.assertRaises(DisconnectError):
+            with self.assertRaises(asyncssh.ProtocolError):
                 yield from self.check_auth(b'gssapi-with-mic', (False, None),
                                            gss_host='1', override_gss_mech=True)
 
@@ -587,7 +586,7 @@ class _TestAuth(AsyncTestCase):
                                        public_key_auth=True, success=True)
 
         with self.subTest('Invalid PK_OK message'):
-            with self.assertRaises(DisconnectError):
+            with self.assertRaises(asyncssh.ProtocolError):
                 yield from self.check_auth(b'publickey', (False, None),
                                            client_key=ckey,
                                            public_key_auth=True,
@@ -601,7 +600,7 @@ class _TestAuth(AsyncTestCase):
             yield from self.check_auth(b'password', (False, None))
 
         with self.subTest('Invalid password'):
-            with self.assertRaises(DisconnectError):
+            with self.assertRaises(asyncssh.ProtocolError):
                 yield from self.check_auth(b'password', (False, None),
                                            password_auth=True,
                                            password=b'\xff')
@@ -621,7 +620,7 @@ class _TestAuth(AsyncTestCase):
                                        password_change_prompt='change')
 
         with self.subTest('Invalid password change prompt'):
-            with self.assertRaises(DisconnectError):
+            with self.assertRaises(asyncssh.ProtocolError):
                 yield from self.check_auth(b'password', (False, False),
                                            password_auth=True,
                                            password='password',
@@ -653,7 +652,7 @@ class _TestAuth(AsyncTestCase):
                                        kbdint_auth=True)
 
         with self.subTest('Invalid submethods'):
-            with self.assertRaises(DisconnectError):
+            with self.assertRaises(asyncssh.ProtocolError):
                 yield from self.check_auth(b'keyboard-interactive',
                                            (False, None), kbdint_auth=True,
                                            kbdint_submethods=b'\xff')
@@ -663,7 +662,7 @@ class _TestAuth(AsyncTestCase):
                                        kbdint_auth=True, kbdint_submethods='')
 
         with self.subTest('Invalid challenge name'):
-            with self.assertRaises(DisconnectError):
+            with self.assertRaises(asyncssh.ProtocolError):
                 yield from self.check_auth(b'keyboard-interactive',
                                            (False, None), kbdint_auth=True,
                                            kbdint_submethods='',
@@ -671,7 +670,7 @@ class _TestAuth(AsyncTestCase):
                                                              '', ()))
 
         with self.subTest('Invalid challenge prompt'):
-            with self.assertRaises(DisconnectError):
+            with self.assertRaises(asyncssh.ProtocolError):
                 yield from self.check_auth(b'keyboard-interactive',
                                            (False, None), kbdint_auth=True,
                                            kbdint_submethods='',
@@ -685,7 +684,7 @@ class _TestAuth(AsyncTestCase):
                                        kbdint_challenge=True)
 
         with self.subTest('Invalid response'):
-            with self.assertRaises(DisconnectError):
+            with self.assertRaises(asyncssh.ProtocolError):
                 yield from self.check_auth(b'keyboard-interactive',
                                            (False, None), kbdint_auth=True,
                                            kbdint_submethods='',

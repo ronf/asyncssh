@@ -1761,6 +1761,16 @@ DisconnectError
 ---------------
 
 .. autoexception:: DisconnectError
+.. autoexception:: CompressionError
+.. autoexception:: ConnectionLost
+.. autoexception:: HostKeyNotVerifiable
+.. autoexception:: IllegalUserName
+.. autoexception:: KeyExchangeFailed
+.. autoexception:: MACError
+.. autoexception:: PermissionDenied
+.. autoexception:: ProtocolError
+.. autoexception:: ProtocolNotSupported
+.. autoexception:: ServiceNotAvailable
 
 ChannelOpenError
 ----------------
@@ -1997,7 +2007,7 @@ can be specified as disconnect reason codes:
   | DISC_COMPRESSION_ERROR
   | DISC_SERVICE_NOT_AVAILABLE
   | DISC_PROTOCOL_VERSION_NOT_SUPPORTED
-  | DISC_HOST_KEY_NOT_VERIFYABLE
+  | DISC_HOST_KEY_NOT_VERIFIABLE
   | DISC_CONNECTION_LOST
   | DISC_BY_APPLICATION
   | DISC_TOO_MANY_CONNECTIONS

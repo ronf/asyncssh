@@ -23,10 +23,9 @@
 from hashlib import sha1, sha256, sha512
 
 from .constants import DEFAULT_LANG
-from .constants import DISC_KEY_EXCHANGE_FAILED, DISC_PROTOCOL_ERROR
 from .gss import GSSError
 from .kex import Kex, register_kex_alg, register_gss_kex_alg
-from .misc import DisconnectError, get_symbol_names, randrange
+from .misc import KeyExchangeFailed, ProtocolError, get_symbol_names, randrange
 from .packet import Boolean, MPInt, String, UInt32
 
 
@@ -153,7 +152,7 @@ class _KexDHBase(Kex):
         """Compute f and send reply message"""
 
         if not 1 <= self._e < self._p:
-            raise DisconnectError(DISC_PROTOCOL_ERROR, 'Kex DH e out of range')
+            raise ProtocolError('Kex DH e out of range')
 
         y = randrange(2, self._q)
         self._f = pow(self._g, y, self._p)
@@ -161,7 +160,7 @@ class _KexDHBase(Kex):
         k = pow(self._e, y, self._p)
 
         if k < 1: # pragma: no cover, shouldn't be possible with valid p
-            raise DisconnectError(DISC_PROTOCOL_ERROR, 'Kex DH k out of range')
+            raise ProtocolError('Kex DH k out of range')
 
         h = self._compute_hash(key_data, k)
         self._send_reply(key_data, key.sign(h))
@@ -172,18 +171,17 @@ class _KexDHBase(Kex):
         """Verify a DH reply message"""
 
         if not 1 <= self._f < self._p:
-            raise DisconnectError(DISC_PROTOCOL_ERROR, 'Kex DH f out of range')
+            raise ProtocolError('Kex DH f out of range')
 
         k = pow(self._f, self._x, self._p)
 
         if k < 1: # pragma: no cover, shouldn't be possible with valid p
-            raise DisconnectError(DISC_PROTOCOL_ERROR, 'Kex DH k out of range')
+            raise ProtocolError('Kex DH k out of range')
 
         h = self._compute_hash(key_data, k)
 
         if not key.verify(h, sig):
-            raise DisconnectError(DISC_KEY_EXCHANGE_FAILED,
-                                  'Key exchange hash mismatch')
+            raise KeyExchangeFailed('Key exchange hash mismatch')
 
         self._conn.send_newkeys(k, h)
 
@@ -193,8 +191,7 @@ class _KexDHBase(Kex):
         # pylint: disable=unused-argument
 
         if self._conn.is_client() or not self._p:
-            raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Unexpected kex init msg')
+            raise ProtocolError('Unexpected kex init msg')
 
         self._e = packet.get_mpint()
         packet.check_end()
@@ -208,8 +205,7 @@ class _KexDHBase(Kex):
         # pylint: disable=unused-argument
 
         if self._conn.is_server() or not self._p:
-            raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Unexpected kex reply msg')
+            raise ProtocolError('Unexpected kex reply msg')
 
         host_key_data = packet.get_string()
         self._f = packet.get_mpint()
@@ -283,8 +279,7 @@ class _KexDHGex(_KexDHBase):
         # pylint: disable=unused-argument
 
         if self._conn.is_client():
-            raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Unexpected kex request msg')
+            raise ProtocolError('Unexpected kex request msg')
 
         self._gex_data = packet.get_remaining_payload()
 
@@ -319,8 +314,7 @@ class _KexDHGex(_KexDHBase):
         # pylint: disable=unused-argument
 
         if self._conn.is_server():
-            raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Unexpected kex group msg')
+            raise ProtocolError('Unexpected kex group msg')
 
         p = packet.get_mpint()
         g = packet.get_mpint()
@@ -361,15 +355,13 @@ class _KexGSSBase(_KexDHBase):
 
         if (not self._gss.provides_mutual_auth or
                 not self._gss.provides_integrity):
-            raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'GSS context not secure')
+            raise ProtocolError('GSS context not secure')
 
     def _send_init(self):
         """Send a GSS init message"""
 
         if not self._token:
-            raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Empty GSS token in init')
+            raise ProtocolError('Empty GSS token in init')
 
         self.send_packet(MSG_KEXGSS_INIT, String(self._token), MPInt(self._e))
 
@@ -388,8 +380,7 @@ class _KexGSSBase(_KexDHBase):
         """Send a GSS continue message"""
 
         if not self._token:
-            raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Empty GSS token in continue')
+            raise ProtocolError('Empty GSS token in continue')
 
         self.send_packet(MSG_KEXGSS_CONTINUE, String(self._token))
 
@@ -407,7 +398,7 @@ class _KexGSSBase(_KexDHBase):
             if exc.token:
                 self.send_packet(MSG_KEXGSS_CONTINUE, String(exc.token))
 
-            raise DisconnectError(DISC_KEY_EXCHANGE_FAILED, str(exc))
+            raise KeyExchangeFailed(str(exc))
 
     def _process_init(self, pkttype, pktid, packet):
         """Process a GSS init message"""
@@ -415,8 +406,7 @@ class _KexGSSBase(_KexDHBase):
         # pylint: disable=unused-argument
 
         if self._conn.is_client() or not self._p:
-            raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Unexpected kexgss init msg')
+            raise ProtocolError('Unexpected kexgss init msg')
 
         token = packet.get_string()
         self._e = packet.get_mpint()
@@ -448,8 +438,7 @@ class _KexGSSBase(_KexDHBase):
         packet.check_end()
 
         if self._conn.is_client() and self._gss.complete:
-            raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Unexpected kexgss continue msg')
+            raise ProtocolError('Unexpected kexgss continue msg')
 
         self._process_token(token)
 
@@ -465,8 +454,7 @@ class _KexGSSBase(_KexDHBase):
         # pylint: disable=unused-argument
 
         if self._conn.is_server():
-            raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Unexpected kexgss complete msg')
+            raise ProtocolError('Unexpected kexgss complete msg')
 
         self._f = packet.get_mpint()
         mic = packet.get_string()
@@ -476,18 +464,15 @@ class _KexGSSBase(_KexDHBase):
 
         if token:
             if self._gss.complete:
-                raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                      'Non-empty token after complete')
+                raise ProtocolError('Non-empty token after complete')
 
             self._process_token(token)
 
             if self._token:
-                raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                      'Non-empty token after complete')
+                raise ProtocolError('Non-empty token after complete')
 
         if not self._gss.complete:
-            raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'GSS exchange failed to complete')
+            raise ProtocolError('GSS exchange failed to complete')
 
         self._check_secure()
         self._verify_reply(self._gss, self._host_key_data, mic)
@@ -507,8 +492,7 @@ class _KexGSSBase(_KexDHBase):
         # pylint: disable=unused-argument
 
         if self._conn.is_server():
-            raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Unexpected kexgss error msg')
+            raise ProtocolError('Unexpected kexgss error msg')
 
         _ = packet.get_uint32()         # major_status
         _ = packet.get_uint32()         # minor_status

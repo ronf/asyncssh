@@ -571,9 +571,6 @@ class SFTPError(Error):
 
     """
 
-    def __init__(self, code, reason, lang=DEFAULT_LANG):
-        super().__init__('SFTP', code, reason, lang)
-
 
 class SFTPAttrs(Record):
     """SFTP file attributes

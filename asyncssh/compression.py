@@ -36,7 +36,7 @@ def _none():
 
 
 class _ZLibCompress:
-    """Wrapper class to force a sync flush when compressing"""
+    """Wrapper class to force a sync flush and handle exceptions"""
 
     def __init__(self):
         self._comp = zlib.compressobj()
@@ -44,7 +44,26 @@ class _ZLibCompress:
     def compress(self, data):
         """Compress data using zlib compression with sync flush"""
 
-        return self._comp.compress(data) + self._comp.flush(zlib.Z_SYNC_FLUSH)
+        try:
+            return self._comp.compress(data) + \
+                   self._comp.flush(zlib.Z_SYNC_FLUSH)
+        except zlib.error: # pragma: no cover
+            return None
+
+
+class _ZLibDecompress:
+    """Wrapper class to handle exceptions"""
+
+    def __init__(self):
+        self._decomp = zlib.decompressobj()
+
+    def decompress(self, data):
+        """Decompress data using zlib compression"""
+
+        try:
+            return self._decomp.decompress(data)
+        except zlib.error: # pragma: no cover
+            return None
 
 
 def register_compression_alg(alg, compressor, decompressor, after_auth):
@@ -95,8 +114,8 @@ def get_decompressor(alg):
 # pylint: disable=bad-whitespace
 
 register_compression_alg(b'zlib@openssh.com',
-                         _ZLibCompress, zlib.decompressobj, True)
+                         _ZLibCompress, _ZLibDecompress, True)
 register_compression_alg(b'zlib',
-                         _ZLibCompress, zlib.decompressobj, False)
+                         _ZLibCompress, _ZLibDecompress, False)
 register_compression_alg(b'none',
-                         _none,         _none,              False)
+                         _none,         _none,           False)

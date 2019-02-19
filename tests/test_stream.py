@@ -49,9 +49,10 @@ class _StreamServer(Server):
             stdout.write('\n')
         elif action == 'disconnect':
             stdout.write((yield from stdin.read(1)))
-
-            raise asyncssh.DisconnectError(asyncssh.DISC_CONNECTION_LOST,
-                                           'Connection lost')
+            raise asyncssh.ConnectionLost('Connection lost')
+        elif action == 'custom_disconnect':
+            yield from stdin.read(1)
+            raise asyncssh.DisconnectError(99, 'Disconnect')
         else:
             stdin.channel.exit(255)
 
@@ -166,8 +167,7 @@ class _TestStream(ServerTestCase):
             stdin, _, _ = yield from conn.open_session('close')
             stdin.write(4*1024*1024*'\0')
 
-            with self.assertRaises((ConnectionError,
-                                    asyncssh.DisconnectError)):
+            with self.assertRaises((ConnectionError, asyncssh.ConnectionLost)):
                 yield from stdin.drain()
 
         yield from conn.wait_closed()
@@ -180,8 +180,7 @@ class _TestStream(ServerTestCase):
             stdin, _, _ = yield from conn.open_session('disconnect')
             stdin.write(6*1024*1024*'\0')
 
-            with self.assertRaises((ConnectionError,
-                                    asyncssh.DisconnectError)):
+            with self.assertRaises((ConnectionError, asyncssh.ConnectionLost)):
                 yield from stdin.drain()
 
         yield from conn.wait_closed()
@@ -197,7 +196,7 @@ class _TestStream(ServerTestCase):
 
             self.assertEqual((yield from stdout.read()), '\0')
 
-            with self.assertRaises(asyncssh.DisconnectError):
+            with self.assertRaises(asyncssh.ConnectionLost):
                 yield from stdout.read(1)
 
             stdin.close()
@@ -215,10 +214,27 @@ class _TestStream(ServerTestCase):
 
             self.assertEqual((yield from stdout.readline()), '\0')
 
-            with self.assertRaises(asyncssh.DisconnectError):
+            with self.assertRaises(asyncssh.ConnectionLost):
                 yield from stdout.readline()
 
         yield from conn.wait_closed()
+
+    @asynctest
+    def test_custom_disconnect(self):
+        """Test receiving a custom disconnect message"""
+
+        with (yield from self.connect()) as conn:
+            stdin, stdout, _ = yield from conn.open_session('custom_disconnect')
+
+            stdin.write('\0')
+
+            with self.assertRaises(asyncssh.DisconnectError) as exc:
+                yield from stdout.read()
+
+        yield from conn.wait_closed()
+
+        self.assertEqual(exc.exception.code, 99)
+        self.assertEqual(exc.exception.reason, 'Disconnect (error 99)')
 
     @asynctest
     def test_readuntil_bigger_than_window(self):

@@ -429,14 +429,14 @@ class _TestGSSAuth(ServerTestCase):
     def test_gss_auth_unavailable(self):
         """Test GSS authentication being unavailable"""
 
-        with self.assertRaises(asyncssh.DisconnectError):
+        with self.assertRaises(asyncssh.PermissionDenied):
             yield from self.connect(username='user1', gss_host=())
 
     @asynctest
     def test_gss_client_error(self):
         """Test GSS client error"""
 
-        with self.assertRaises(asyncssh.DisconnectError):
+        with self.assertRaises(asyncssh.PermissionDenied):
             yield from self.connect(gss_host='1,init_error', username='user')
 
 
@@ -456,7 +456,7 @@ class _TestGSSServerError(ServerTestCase):
     def test_gss_server_error(self):
         """Test GSS error on server"""
 
-        with self.assertRaises(asyncssh.DisconnectError):
+        with self.assertRaises(asyncssh.PermissionDenied):
             yield from self.connect(username='user')
 
 
@@ -590,7 +590,7 @@ class _TestHostBasedAuth(ServerTestCase):
     def test_untrusted_client_host_key(self):
         """Test untrusted client host key"""
 
-        with self.assertRaises(asyncssh.DisconnectError):
+        with self.assertRaises(asyncssh.PermissionDenied):
             yield from self.connect(username='user', client_host_keys='ckey',
                                     client_username='user')
 
@@ -609,7 +609,7 @@ class _TestHostBasedAuth(ServerTestCase):
 
         with patch('asyncssh.connection.SSHServerConnection',
                    _FailValidateHostSSHServerConnection):
-            with self.assertRaises(asyncssh.DisconnectError):
+            with self.assertRaises(asyncssh.PermissionDenied):
                 yield from self.connect(username='user',
                                         client_host_keys='skey',
                                         client_username='user')
@@ -640,7 +640,7 @@ class _TestHostBasedAuth(ServerTestCase):
     def test_mismatched_client_username(self):
         """Test mismatched client username"""
 
-        with self.assertRaises(asyncssh.DisconnectError):
+        with self.assertRaises(asyncssh.PermissionDenied):
             yield from self.connect(username='user', client_host_keys='skey',
                                     client_username='xxx')
 
@@ -650,7 +650,7 @@ class _TestHostBasedAuth(ServerTestCase):
 
         with patch('asyncssh.connection.SSHClientConnection',
                    _InvalidUsernameClientConnection):
-            with self.assertRaises(asyncssh.DisconnectError):
+            with self.assertRaises(asyncssh.ProtocolError):
                 yield from self.connect(username='user',
                                         client_host_keys='skey')
 
@@ -665,7 +665,7 @@ class _TestHostBasedAuth(ServerTestCase):
                                 CERT_TYPE_HOST, ckey, skey, ['localhost'],
                                 valid_before=1)
 
-        with self.assertRaises(asyncssh.DisconnectError):
+        with self.assertRaises(asyncssh.PermissionDenied):
             yield from self.connect(username='user',
                                     client_host_keys=[(ckey, cert)],
                                     client_username='user')
@@ -679,7 +679,7 @@ class _TestHostBasedAuth(ServerTestCase):
         cert = make_certificate('ssh-rsa-cert-v01@openssh.com',
                                 CERT_TYPE_HOST, ckey, ckey, ['localhost'])
 
-        with self.assertRaises(asyncssh.DisconnectError):
+        with self.assertRaises(asyncssh.PermissionDenied):
             yield from self.connect(username='user',
                                     client_host_keys=[(ckey, cert)],
                                     client_username='user')
@@ -726,7 +726,7 @@ class _TestCallbackHostBasedAuth(ServerTestCase):
     def test_untrusted_client_host_callback(self):
         """Test callback to validate client host key returning failure"""
 
-        with self.assertRaises(asyncssh.DisconnectError):
+        with self.assertRaises(asyncssh.PermissionDenied):
             yield from self.connect(username='user',
                                     client_host_keys=[('ckey', None)],
                                     client_username='user')
@@ -735,7 +735,7 @@ class _TestCallbackHostBasedAuth(ServerTestCase):
     def test_untrusted_client_host_ca_callback(self):
         """Test callback to validate client host CA key returning failure"""
 
-        with self.assertRaises(asyncssh.DisconnectError):
+        with self.assertRaises(asyncssh.PermissionDenied):
             yield from self.connect(username='user', client_host_keys='ckey',
                                     client_username='user')
 
@@ -803,7 +803,7 @@ class _TestKeysignHostBasedAuth(ServerTestCase):
         """Test invalid ssh-keysign response"""
 
         with patch('asyncssh.keysign.KEYSIGN_VERSION', 0):
-            with self.assertRaises(asyncssh.DisconnectError):
+            with self.assertRaises(asyncssh.PermissionDenied):
                 yield from self._connect_keysign()
 
     @asynctest
@@ -811,7 +811,7 @@ class _TestKeysignHostBasedAuth(ServerTestCase):
         """Test ssh-keysign error response"""
 
         with patch('asyncssh.keysign.KEYSIGN_VERSION', 1):
-            with self.assertRaises(asyncssh.DisconnectError):
+            with self.assertRaises(asyncssh.PermissionDenied):
                 yield from self._connect_keysign()
 
     @asynctest
@@ -819,7 +819,7 @@ class _TestKeysignHostBasedAuth(ServerTestCase):
         """Test invalid version in ssh-keysign request"""
 
         with patch('asyncssh.keysign.KEYSIGN_VERSION', 99):
-            with self.assertRaises(asyncssh.DisconnectError):
+            with self.assertRaises(asyncssh.PermissionDenied):
                 yield from self._connect_keysign()
 
     @asynctest
@@ -861,7 +861,7 @@ class _TestHostBasedAsyncServerAuth(_TestHostBasedAuth):
     def test_mismatched_client_host(self):
         """Test mismatch of trusted client host"""
 
-        with self.assertRaises(asyncssh.DisconnectError):
+        with self.assertRaises(asyncssh.PermissionDenied):
             yield from self.connect(username='user', client_host_keys='skey',
                                     client_host='xxx',
                                     client_username='user')
@@ -884,7 +884,7 @@ class _TestLimitedHostBasedSignatureAlgs(ServerTestCase):
     def test_mismatched_host_signature_algs(self):
         """Test mismatched host key signature algorithms"""
 
-        with self.assertRaises(asyncssh.DisconnectError):
+        with self.assertRaises(asyncssh.PermissionDenied):
             yield from self.connect(username='ckey', client_host_keys='skey',
                                     client_username='user',
                                     signature_algs=['rsa-sha2-256'])
@@ -963,7 +963,7 @@ class _TestPublicKeyAuth(ServerTestCase):
             self.skipTest('ssh-agent not available')
 
         with patch.dict(os.environ, HOME='xxx'):
-            with self.assertRaises(asyncssh.DisconnectError):
+            with self.assertRaises(asyncssh.PermissionDenied):
                 yield from self.connect(username='ckey', agent_path='xxx',
                                         known_hosts='.ssh/known_hosts')
 
@@ -972,7 +972,7 @@ class _TestPublicKeyAuth(ServerTestCase):
         """Test connecting with no local keys and no ssh-agent configured"""
 
         with patch.dict(os.environ, HOME='xxx', SSH_AUTH_SOCK=''):
-            with self.assertRaises(asyncssh.DisconnectError):
+            with self.assertRaises(asyncssh.PermissionDenied):
                 yield from self.connect(username='ckey',
                                         known_hosts='.ssh/known_hosts')
 
@@ -1098,7 +1098,7 @@ class _TestPublicKeyAuth(ServerTestCase):
     def test_untrusted_client_key(self):
         """Test untrusted client key"""
 
-        with self.assertRaises(asyncssh.DisconnectError):
+        with self.assertRaises(asyncssh.PermissionDenied):
             yield from self.connect(username='ckey', client_keys='skey')
 
     @asynctest
@@ -1120,7 +1120,7 @@ class _TestPublicKeyAuth(ServerTestCase):
                                 CERT_TYPE_USER, skey, ckey, ['ckey'],
                                 valid_before=1)
 
-        with self.assertRaises(asyncssh.DisconnectError):
+        with self.assertRaises(asyncssh.PermissionDenied):
             yield from self.connect(username='ckey', client_keys=[(skey, cert)])
 
     @asynctest
@@ -1152,7 +1152,7 @@ class _TestPublicKeyAuth(ServerTestCase):
                                 CERT_TYPE_USER, skey, ckey, ['ckey'],
                                 options={'source-address': String('0.0.0.0')})
 
-        with self.assertRaises(asyncssh.DisconnectError):
+        with self.assertRaises(asyncssh.PermissionDenied):
             yield from self.connect(username='ckey', client_keys=[(skey, cert)])
 
     @asynctest
@@ -1164,7 +1164,7 @@ class _TestPublicKeyAuth(ServerTestCase):
         cert = make_certificate('ssh-rsa-cert-v01@openssh.com',
                                 CERT_TYPE_USER, skey, skey, ['skey'])
 
-        with self.assertRaises(asyncssh.DisconnectError):
+        with self.assertRaises(asyncssh.PermissionDenied):
             yield from self.connect(username='ckey', client_keys=[(skey, cert)])
 
     @asynctest
@@ -1212,7 +1212,7 @@ class _TestPublicKeyAuth(ServerTestCase):
     def test_callback_untrusted_client_key(self):
         """Test failure connecting with public key authentication callback"""
 
-        with self.assertRaises(asyncssh.DisconnectError):
+        with self.assertRaises(asyncssh.PermissionDenied):
             yield from self._connect_publickey(['skey'])
 
     @asynctest
@@ -1261,7 +1261,7 @@ class _TestLimitedPublicKeySignatureAlgs(ServerTestCase):
     def test_mismatched_client_signature_algs(self):
         """Test mismatched client key signature algorithms"""
 
-        with self.assertRaises(asyncssh.DisconnectError):
+        with self.assertRaises(asyncssh.PermissionDenied):
             yield from self.connect(username='ckey', client_keys='ckey',
                                     signature_algs=['rsa-sha2-256'])
 
@@ -1381,7 +1381,7 @@ class _TestX509Auth(ServerTestCase):
     def test_x509_incomplete_chain(self):
         """Test connecting with incomplete X.509 certificate chain"""
 
-        with self.assertRaises(asyncssh.DisconnectError):
+        with self.assertRaises(asyncssh.PermissionDenied):
             yield from self.connect(username='ckey',
                                     client_keys=[('ckey_x509_chain',
                                                   'ckey_x509_partial.pem')])
@@ -1390,7 +1390,7 @@ class _TestX509Auth(ServerTestCase):
     def test_x509_untrusted_cert(self):
         """Test connecting with untrusted X.509 certificate chain"""
 
-        with self.assertRaises(asyncssh.DisconnectError):
+        with self.assertRaises(asyncssh.PermissionDenied):
             yield from self.connect(username='ckey',
                                     client_keys=['skey_x509_chain'])
 
@@ -1411,7 +1411,7 @@ class _TestX509AuthDisabled(ServerTestCase):
     def test_failed_x509_auth(self):
         """Test connect failure with X.509 certificate"""
 
-        with self.assertRaises(asyncssh.DisconnectError):
+        with self.assertRaises(asyncssh.PermissionDenied):
             yield from self.connect(username='ckey',
                                     client_keys=['ckey_x509_self'],
                                     signature_algs=['x509v3-ssh-rsa'])
@@ -1470,7 +1470,7 @@ class _TestX509Untrusted(ServerTestCase):
     def test_x509_untrusted(self):
         """Test untrusted X.509 self-signed certificate"""
 
-        with self.assertRaises(asyncssh.DisconnectError):
+        with self.assertRaises(asyncssh.PermissionDenied):
             yield from self.connect(username='ckey',
                                     client_keys=['ckey_x509_self'])
 
@@ -1491,7 +1491,7 @@ class _TestX509Disabled(ServerTestCase):
     def test_x509_disabled(self):
         """Test X.509 client certificate with server support disabled"""
 
-        with self.assertRaises(asyncssh.DisconnectError):
+        with self.assertRaises(asyncssh.PermissionDenied):
             yield from self.connect(username='ckey',
                                     client_keys='skey_x509_self')
 
@@ -1537,7 +1537,7 @@ class _TestPasswordAuth(ServerTestCase):
     def test_password_auth_failure(self):
         """Test _failure connecting with password authentication"""
 
-        with self.assertRaises(asyncssh.DisconnectError):
+        with self.assertRaises(asyncssh.PermissionDenied):
             yield from self.connect(username='pw', password='badpw',
                                     client_keys=None)
 
@@ -1555,7 +1555,7 @@ class _TestPasswordAuth(ServerTestCase):
     def test_password_auth_callback_failure(self):
         """Test failure connecting with password authentication callback"""
 
-        with self.assertRaises(asyncssh.DisconnectError):
+        with self.assertRaises(asyncssh.PermissionDenied):
             yield from self._connect_password('pw', 'badpw')
 
     @asynctest
@@ -1572,7 +1572,7 @@ class _TestPasswordAuth(ServerTestCase):
     def test_password_change_failure(self):
         """Test failure of password change"""
 
-        with self.assertRaises(asyncssh.DisconnectError):
+        with self.assertRaises(asyncssh.PermissionDenied):
             yield from self._connect_password('pw', 'oldpw', 'badpw', 'pw')
 
 
@@ -1627,7 +1627,7 @@ class _TestKbdintAuth(ServerTestCase):
     def test_kbdint_auth_failure(self):
         """Test failure connecting with keyboard-interactive authentication"""
 
-        with self.assertRaises(asyncssh.DisconnectError):
+        with self.assertRaises(asyncssh.PermissionDenied):
             yield from self.connect(username='kbdint', password='badpw',
                                     client_keys=None)
 
@@ -1645,7 +1645,7 @@ class _TestKbdintAuth(ServerTestCase):
     def test_kbdint_auth_callback_faliure(self):
         """Test failure connection with keyboard-interactive auth callback"""
 
-        with self.assertRaises(asyncssh.DisconnectError):
+        with self.assertRaises(asyncssh.PermissionDenied):
             yield from self._connect_kbdint('kbdint', ['badpw'])
 
 
@@ -1698,14 +1698,14 @@ class _TestKbdintPasswordServerAuth(ServerTestCase):
     def test_kbdint_password_auth_multiple_responses(self):
         """Test multiple responses to server password authentication"""
 
-        with self.assertRaises(asyncssh.DisconnectError):
+        with self.assertRaises(asyncssh.PermissionDenied):
             yield from self._connect_kbdint('pw', ['xxx', 'yyy'])
 
     @asynctest
     def test_kbdint_password_change(self):
         """Test keyboard-interactive server password change"""
 
-        with self.assertRaises(asyncssh.DisconnectError):
+        with self.assertRaises(asyncssh.PermissionDenied):
             yield from self._connect_kbdint('pw', ['oldpw'])
 
 
@@ -1730,7 +1730,7 @@ class _TestLoginTimeoutExceeded(ServerTestCase):
 
             return _PublicKeyClient(['ckey'], 2)
 
-        with self.assertRaises(asyncssh.DisconnectError):
+        with self.assertRaises(asyncssh.ConnectionLost):
             yield from self.create_connection(client_factory, username='ckey',
                                               client_keys=None)
 

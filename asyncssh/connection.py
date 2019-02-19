@@ -48,10 +48,7 @@ from .compression import get_compression_algs, get_compression_params
 from .compression import get_compressor, get_decompressor
 
 from .constants import DEFAULT_LANG
-from .constants import DISC_BY_APPLICATION, DISC_CONNECTION_LOST
-from .constants import DISC_KEY_EXCHANGE_FAILED, DISC_HOST_KEY_NOT_VERIFYABLE
-from .constants import DISC_MAC_ERROR, DISC_NO_MORE_AUTH_METHODS_AVAILABLE
-from .constants import DISC_PROTOCOL_ERROR, DISC_SERVICE_NOT_AVAILABLE
+from .constants import DISC_BY_APPLICATION
 from .constants import EXTENDED_DATA_STDERR
 from .constants import MSG_DISCONNECT, MSG_IGNORE, MSG_UNIMPLEMENTED, MSG_DEBUG
 from .constants import MSG_SERVICE_REQUEST, MSG_SERVICE_ACCEPT, MSG_EXT_INFO
@@ -88,9 +85,13 @@ from .logging import logger
 
 from .mac import get_mac_algs
 
-from .misc import ChannelOpenError, DisconnectError, PasswordChangeRequired
-from .misc import async_context_manager, create_task, get_symbol_names
-from .misc import ip_address, map_handler_name, python344
+from .misc import ChannelOpenError, DisconnectError
+from .misc import CompressionError, ConnectionLost, HostKeyNotVerifiable
+from .misc import KeyExchangeFailed, IllegalUserName, MACError
+from .misc import PasswordChangeRequired, PermissionDenied, ProtocolError
+from .misc import ProtocolNotSupported, ServiceNotAvailable
+from .misc import async_context_manager, construct_disc_error, create_task
+from .misc import get_symbol_names, ip_address, map_handler_name, python344
 
 from .packet import Boolean, Byte, NameList, String, UInt32
 from .packet import PacketDecodeError, SSHPacket, SSHPacketHandler
@@ -471,9 +472,8 @@ class SSHConnection(SSHPacketHandler):
 
         if self._keepalive_count > self._keepalive_count_max:
             self.connection_lost(
-                DisconnectError(DISC_CONNECTION_LOST,
-                                ('Server' if self.is_client() else 'Client') +
-                                ' not responding to keepalive'))
+                ConnectionLost(('Server' if self.is_client() else 'Client') +
+                               ' not responding to keepalive'))
         else:
             self._set_keepalive_timer()
             self.create_task(self._make_keepalive_request())
@@ -669,7 +669,7 @@ class SSHConnection(SSHPacketHandler):
         """Handle the closing of a connection"""
 
         if exc is None and self._transport:
-            exc = DisconnectError(DISC_CONNECTION_LOST, 'Connection lost')
+            exc = ConnectionLost('Connection lost')
 
         self._force_close(exc)
 
@@ -775,8 +775,7 @@ class SSHConnection(SSHPacketHandler):
             if alg in server_algs:
                 return alg
 
-        raise DisconnectError(DISC_KEY_EXCHANGE_FAILED,
-                              'No matching %s algorithm found' % alg_type)
+        raise KeyExchangeFailed('No matching %s algorithm found' % alg_type)
 
     def _get_ext_info_kex_alg(self):
         """Return the kex alg to add if any to request extension info"""
@@ -834,8 +833,7 @@ class SSHConnection(SSHPacketHandler):
             pass
         else:
             # Otherwise, reject the unknown version
-            self._force_close(DisconnectError(DISC_PROTOCOL_ERROR,
-                                              'Unknown SSH version'))
+            self._force_close(ProtocolNotSupported('Unsupported SSH version'))
             return False
 
         return True
@@ -876,7 +874,7 @@ class SSHConnection(SSHPacketHandler):
                                                           rest, 4, mac)
 
             if not packet:
-                raise DisconnectError(DISC_MAC_ERROR, 'MAC verification failed')
+                raise MACError('MAC verification failed')
         else:
             packet = self._packet[4:] + rest
 
@@ -888,6 +886,9 @@ class SSHConnection(SSHPacketHandler):
         if self._decompressor and (self._auth_complete or
                                    not self._decompress_after_auth):
             payload = self._decompressor.decompress(payload)
+
+            if payload is None:
+                raise CompressionError('Decompression failed')
 
         packet = SSHPacket(payload)
         pkttype = packet.get_byte()
@@ -924,14 +925,14 @@ class SSHConnection(SSHPacketHandler):
             try:
                 processed = handler.process_packet(pkttype, seq, packet)
             except PacketDecodeError as exc:
-                raise DisconnectError(DISC_PROTOCOL_ERROR, str(exc)) from None
+                raise ProtocolError(str(exc)) from None
 
             if not processed:
                 self.logger.debug1('Unknown packet type %d received', pkttype)
                 self.send_packet(MSG_UNIMPLEMENTED, UInt32(seq))
 
         if exc_reason:
-            raise DisconnectError(DISC_PROTOCOL_ERROR, exc_reason)
+            raise ProtocolError(exc_reason)
 
         if self._transport:
             self._recv_seq = (seq + 1) & 0xffffffff
@@ -967,6 +968,9 @@ class SSHConnection(SSHPacketHandler):
         if self._compressor and (self._auth_complete or
                                  not self._compress_after_auth):
             payload = self._compressor.compress(payload)
+
+            if payload is None: # pragma: no cover
+                raise CompressionError('Compression failed')
 
         padlen = -(self._send_enchdrlen + len(payload)) % self._send_blocksize
         if padlen < 4:
@@ -1308,13 +1312,12 @@ class SSHConnection(SSHPacketHandler):
             reason = reason.decode('utf-8')
             lang = lang.decode('ascii')
         except UnicodeDecodeError:
-            raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Invalid disconnect message') from None
+            raise ProtocolError('Invalid disconnect message') from None
 
         self.logger.debug1('Received disconnect: %s (%d)', reason, code)
 
         if code != DISC_BY_APPLICATION or self._kex_waiter or self._auth_waiter:
-            exc = DisconnectError(code, reason, lang)
+            exc = construct_disc_error(code, reason, lang)
         else:
             exc = None
 
@@ -1354,8 +1357,7 @@ class SSHConnection(SSHPacketHandler):
             msg = msg.decode('utf-8')
             lang = lang.decode('ascii')
         except UnicodeDecodeError:
-            raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Invalid debug message') from None
+            raise ProtocolError('Invalid debug message') from None
 
         self.logger.debug1('Received debug message: %s%s', msg,
                            ' (always display)' if always_display else '')
@@ -1381,8 +1383,7 @@ class SSHConnection(SSHPacketHandler):
                 self._auth_in_progress = True
                 self._send_deferred_packets()
         else:
-            raise DisconnectError(DISC_SERVICE_NOT_AVAILABLE,
-                                  'Unexpected service request received')
+            raise ServiceNotAvailable('Unexpected service request received')
 
     def _process_service_accept(self, pkttype, pktid, packet):
         """Process a service accept response"""
@@ -1407,8 +1408,7 @@ class SSHConnection(SSHPacketHandler):
                 # pylint: disable=no-member
                 self.try_next_auth()
         else:
-            raise DisconnectError(DISC_SERVICE_NOT_AVAILABLE,
-                                  'Unexpected service accept received')
+            raise ServiceNotAvailable('Unexpected service accept received')
 
     def _process_ext_info(self, pkttype, pktid, packet):
         """Process extension information"""
@@ -1439,8 +1439,7 @@ class SSHConnection(SSHPacketHandler):
         # pylint: disable=unused-argument
 
         if self._kex:
-            raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Key exchange already in progress')
+            raise ProtocolError('Key exchange already in progress')
 
         _ = packet.get_bytes(16)                        # cookie
         peer_kex_algs = packet.get_namelist()
@@ -1499,8 +1498,8 @@ class SSHConnection(SSHPacketHandler):
             # pylint: disable=no-member
             if (not self._choose_server_host_key(peer_host_key_algs) and
                     not kex_alg.startswith(b'gss-')):
-                raise DisconnectError(DISC_KEY_EXCHANGE_FAILED, 'Unable '
-                                      'to find compatible server host key')
+                raise KeyExchangeFailed('Unable to find compatible '
+                                        'server host key')
 
         self._enc_alg_cs = self._choose_alg('encryption', self._enc_algs,
                                             enc_algs_cs)
@@ -1536,8 +1535,7 @@ class SSHConnection(SSHPacketHandler):
 
             self._next_recv_encryption = None
         else:
-            raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'New keys not negotiated')
+            raise ProtocolError('New keys not negotiated')
 
         self.logger.debug1('Completed key exchange')
 
@@ -1555,18 +1553,15 @@ class SSHConnection(SSHPacketHandler):
         method = packet.get_string()
 
         if service != _CONNECTION_SERVICE:
-            raise DisconnectError(DISC_SERVICE_NOT_AVAILABLE,
-                                  'Unexpected service in auth request')
+            raise ServiceNotAvailable('Unexpected service in auth request')
 
         try:
             username = saslprep(username.decode('utf-8'))
-        except (UnicodeDecodeError, SASLPrepError):
-            raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Invalid auth request message') from None
+        except (UnicodeDecodeError, SASLPrepError) as exc:
+            raise IllegalUserName(str(exc)) from None
 
         if self.is_client():
-            raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Unexpected userauth request')
+            raise ProtocolError('Unexpected userauth request')
         elif self._auth_complete:
             # Silently ignore requests if we're already authenticated
             pass
@@ -1624,8 +1619,7 @@ class SSHConnection(SSHPacketHandler):
             # pylint: disable=no-member
             self.try_next_auth()
         else:
-            raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Unexpected userauth response')
+            raise ProtocolError('Unexpected userauth response')
 
     def _process_userauth_success(self, pkttype, pktid, packet):
         """Process a user authentication success response"""
@@ -1657,8 +1651,7 @@ class SSHConnection(SSHPacketHandler):
 
             self._auth_waiter = None
         else:
-            raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Unexpected userauth response')
+            raise ProtocolError('Unexpected userauth response')
 
     def _process_userauth_banner(self, pkttype, pktid, packet):
         """Process a user authentication banner message"""
@@ -1673,16 +1666,14 @@ class SSHConnection(SSHPacketHandler):
             msg = msg.decode('utf-8')
             lang = lang.decode('ascii')
         except UnicodeDecodeError:
-            raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Invalid userauth banner') from None
+            raise ProtocolError('Invalid userauth banner') from None
 
         self.logger.debug1('Received authentication banner')
 
         if self.is_client():
             self._owner.auth_banner_received(msg, lang)
         else:
-            raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Unexpected userauth banner')
+            raise ProtocolError('Unexpected userauth banner')
 
     def _process_global_request(self, pkttype, pktid, packet):
         """Process a global request"""
@@ -1695,8 +1686,7 @@ class SSHConnection(SSHPacketHandler):
         try:
             request = request.decode('ascii')
         except UnicodeDecodeError:
-            raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Invalid global request') from None
+            raise ProtocolError('Invalid global request') from None
 
         name = '_process_' + map_handler_name(request) + '_global_request'
         handler = getattr(self, name, None)
@@ -1718,8 +1708,7 @@ class SSHConnection(SSHPacketHandler):
             if not waiter.cancelled(): # pragma: no branch
                 waiter.set_result((pkttype, packet))
         else:
-            raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Unexpected global response')
+            raise ProtocolError('Unexpected global response')
 
     def _process_channel_open(self, pkttype, pktid, packet):
         """Process a channel open request"""
@@ -1734,8 +1723,7 @@ class SSHConnection(SSHPacketHandler):
         try:
             chantype = chantype.decode('ascii')
         except UnicodeDecodeError:
-            raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Invalid channel open request') from None
+            raise ProtocolError('Invalid channel open request') from None
 
         try:
             name = '_process_' + map_handler_name(chantype) + '_open'
@@ -1772,8 +1760,7 @@ class SSHConnection(SSHPacketHandler):
             self.logger.debug1('Received open confirmation for unknown '
                                'channel %d', recv_chan)
 
-            raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Invalid channel number')
+            raise ProtocolError('Invalid channel number')
 
     def _process_channel_open_failure(self, pkttype, pktid, packet):
         """Process a channel open failure response"""
@@ -1790,8 +1777,7 @@ class SSHConnection(SSHPacketHandler):
             reason = reason.decode('utf-8')
             lang = lang.decode('ascii')
         except UnicodeDecodeError:
-            raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Invalid channel open failure') from None
+            raise ProtocolError('Invalid channel open failure') from None
 
         chan = self._channels.get(recv_chan)
         if chan:
@@ -1800,8 +1786,7 @@ class SSHConnection(SSHPacketHandler):
             self.logger.debug1('Received open failure for unknown '
                                'channel %d', recv_chan)
 
-            raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Invalid channel number')
+            raise ProtocolError('Invalid channel number')
 
     def _process_keepalive_at_openssh_dot_com_global_request(self, packet):
         """Process an incoming OpenSSH keepalive request"""
@@ -2429,8 +2414,12 @@ class SSHClientConnection(SSHConnection):
 
             self._auth_waiter = None
 
-        reason = 'lost: ' + str(exc) if exc else 'closed'
-        self.logger.info('Connection %s', reason)
+        if exc is None:
+            self.logger.info('Connection closed')
+        elif isinstance(exc, ConnectionLost):
+            self.logger.info(str(exc))
+        else:
+            self.logger.info('Connection failed: ' + str(exc))
 
         super()._cleanup(exc)
 
@@ -2453,8 +2442,7 @@ class SSHClientConnection(SSHConnection):
             host_key = self._validate_host_key(self._host, self._peer_addr,
                                                self._port, key_data)
         except ValueError as exc:
-            raise DisconnectError(DISC_HOST_KEY_NOT_VERIFYABLE,
-                                  str(exc)) from None
+            raise HostKeyNotVerifiable(str(exc)) from None
 
         self._server_host_key = host_key
         return host_key
@@ -2490,8 +2478,7 @@ class SSHClientConnection(SSHConnection):
 
         self.logger.info('Auth failed for user %s', self._username)
 
-        self._force_close(DisconnectError(DISC_NO_MORE_AUTH_METHODS_AVAILABLE,
-                                          'Permission denied'))
+        self._force_close(PermissionDenied('Permission denied'))
 
     def gss_kex_auth_requested(self):
         """Return whether to allow GSS key exchange authentication or not"""
@@ -2677,8 +2664,8 @@ class SSHClientConnection(SSHConnection):
             dest_host = dest_host.decode('utf-8')
             orig_host = orig_host.decode('utf-8')
         except UnicodeDecodeError:
-            raise DisconnectError(DISC_PROTOCOL_ERROR, 'Invalid forwarded '
-                                  'TCP/IP channel open request') from None
+            raise ProtocolError('Invalid forwarded TCP/IP channel '
+                                'open request') from None
 
         # Some buggy servers send back a port of `0` instead of the actual
         # listening port when reporting connections which arrive on a listener
@@ -2738,8 +2725,8 @@ class SSHClientConnection(SSHConnection):
         try:
             dest_path = dest_path.decode('utf-8')
         except UnicodeDecodeError:
-            raise DisconnectError(DISC_PROTOCOL_ERROR, 'Invalid forwarded '
-                                  'UNIX domain channel open request') from None
+            raise ProtocolError('Invalid forwarded UNIX domain channel '
+                                'open request') from None
 
         listener = self._remote_listeners.get(dest_path)
 
@@ -3830,8 +3817,7 @@ class SSHServerConnection(SSHConnection):
 
         self._login_timer = None
 
-        self.connection_lost(DisconnectError(DISC_CONNECTION_LOST,
-                                             'Login timeout expired'))
+        self.connection_lost(ConnectionLost('Login timeout expired'))
 
     def _connection_made(self):
         """Handle the opening of a new connection"""
@@ -4230,8 +4216,8 @@ class SSHServerConnection(SSHConnection):
             dest_host = dest_host.decode('utf-8')
             orig_host = orig_host.decode('utf-8')
         except UnicodeDecodeError:
-            raise DisconnectError(DISC_PROTOCOL_ERROR, 'Invalid direct '
-                                  'TCP/IP channel open request') from None
+            raise ProtocolError('Invalid direct TCP/IP channel '
+                                'open request') from None
 
         if not self.check_key_permission('port-forwarding') or \
            not self.check_certificate_permission('port-forwarding'):
@@ -4284,8 +4270,7 @@ class SSHServerConnection(SSHConnection):
         try:
             listen_host = listen_host.decode('utf-8').lower()
         except UnicodeDecodeError:
-            raise DisconnectError(DISC_PROTOCOL_ERROR, 'Invalid TCP/IP port '
-                                  'forward request') from None
+            raise ProtocolError('Invalid TCP/IP forward request') from None
 
         if not self.check_key_permission('port-forwarding') or \
            not self.check_certificate_permission('port-forwarding'):
@@ -4349,14 +4334,13 @@ class SSHServerConnection(SSHConnection):
         try:
             listen_host = listen_host.decode('utf-8').lower()
         except UnicodeDecodeError:
-            raise DisconnectError(DISC_PROTOCOL_ERROR, 'Invalid TCP/IP cancel '
-                                  'forward request') from None
+            raise ProtocolError('Invalid TCP/IP cancel '
+                                'forward request') from None
 
         try:
             listener = self._local_listeners.pop((listen_host, listen_port))
         except KeyError:
-            raise DisconnectError(DISC_PROTOCOL_ERROR, 'TCP/IP listener '
-                                  'not found') from None
+            raise ProtocolError('TCP/IP listener not found') from None
 
         self.logger.info('Closed TCP listener on %s',
                          (listen_host, listen_port))
@@ -4379,8 +4363,8 @@ class SSHServerConnection(SSHConnection):
         try:
             dest_path = dest_path.decode('utf-8')
         except UnicodeDecodeError:
-            raise DisconnectError(DISC_PROTOCOL_ERROR, 'Invalid direct UNIX '
-                                  'domain channel open request') from None
+            raise ProtocolError('Invalid direct UNIX domain channel '
+                                'open request') from None
 
         if not self.check_key_permission('port-forwarding') or \
            not self.check_certificate_permission('port-forwarding'):
@@ -4421,8 +4405,8 @@ class SSHServerConnection(SSHConnection):
         try:
             listen_path = listen_path.decode('utf-8')
         except UnicodeDecodeError:
-            raise DisconnectError(DISC_PROTOCOL_ERROR, 'Invalid UNIX domain '
-                                  'socket forward request') from None
+            raise ProtocolError('Invalid UNIX domain socket '
+                                'forward request') from None
 
         if not self.check_key_permission('port-forwarding') or \
            not self.check_certificate_permission('port-forwarding'):
@@ -4475,14 +4459,13 @@ class SSHServerConnection(SSHConnection):
         try:
             listen_path = listen_path.decode('utf-8')
         except UnicodeDecodeError:
-            raise DisconnectError(DISC_PROTOCOL_ERROR, 'Invalid UNIX domain '
-                                  'cancel forward request') from None
+            raise ProtocolError('Invalid UNIX domain cancel '
+                                'forward request') from None
 
         try:
             listener = self._local_listeners.pop(listen_path)
         except KeyError:
-            raise DisconnectError(DISC_PROTOCOL_ERROR, 'UNIX domain listener '
-                                  'not found') from None
+            raise ProtocolError('UNIX domain listener not found') from None
 
         self.logger.info('Closed UNIX listener on %s', listen_path)
 

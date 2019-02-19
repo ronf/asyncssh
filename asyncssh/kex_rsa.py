@@ -24,9 +24,8 @@ from hashlib import sha1, sha256
 
 import asyncssh
 
-from .constants import DISC_KEY_EXCHANGE_FAILED, DISC_PROTOCOL_ERROR
 from .kex import Kex, register_kex_alg
-from .misc import DisconnectError, get_symbol_names, randrange
+from .misc import KeyExchangeFailed, ProtocolError, get_symbol_names, randrange
 from .packet import MPInt, String, SSHPacket
 from .public_key import decode_ssh_public_key
 
@@ -93,8 +92,7 @@ class _KexRSA(Kex):
         # pylint: disable=unused-argument
 
         if self._conn.is_server():
-            raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Unexpected KEXRSA pubkey msg')
+            raise ProtocolError('Unexpected KEXRSA pubkey msg')
 
         self._host_key_data = packet.get_string()
         self._trans_key_data = packet.get_string()
@@ -103,8 +101,7 @@ class _KexRSA(Kex):
         try:
             trans_key = decode_ssh_public_key(self._trans_key_data)
         except asyncssh.KeyImportError:
-            raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Invalid KEXRSA pubkey msg') from None
+            raise ProtocolError('Invalid KEXRSA pubkey msg') from None
 
         self._k = randrange(self._k_limit)
         self._encrypted_k = trans_key.encrypt(MPInt(self._k), self.algorithm)
@@ -117,16 +114,14 @@ class _KexRSA(Kex):
         # pylint: disable=unused-argument
 
         if self._conn.is_client():
-            raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Unexpected KEXRSA secret msg')
+            raise ProtocolError('Unexpected KEXRSA secret msg')
 
         self._encrypted_k = packet.get_string()
         packet.check_end()
 
         decrypted_k = self._trans_key.decrypt(self._encrypted_k, self.algorithm)
         if not decrypted_k:
-            raise DisconnectError(DISC_KEY_EXCHANGE_FAILED,
-                                  'Key exchange decryption failed')
+            raise KeyExchangeFailed('Key exchange decryption failed')
 
         packet = SSHPacket(decrypted_k)
         self._k = packet.get_mpint()
@@ -147,8 +142,7 @@ class _KexRSA(Kex):
         # pylint: disable=unused-argument
 
         if self._conn.is_server():
-            raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Unexpected KEXRSA done msg')
+            raise ProtocolError('Unexpected KEXRSA done msg')
 
         sig = packet.get_string()
         packet.check_end()
@@ -157,8 +151,7 @@ class _KexRSA(Kex):
 
         h = self._compute_hash()
         if not host_key.verify(h, sig):
-            raise DisconnectError(DISC_KEY_EXCHANGE_FAILED,
-                                  'Key exchange hash mismatch')
+            raise KeyExchangeFailed('Key exchange hash mismatch')
 
         self._conn.send_newkeys(self._k, h)
 

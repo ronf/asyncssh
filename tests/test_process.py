@@ -372,7 +372,7 @@ class _TestProcessBasic(_TestProcess):
             file.write(data)
 
         with (yield from self.connect()) as conn:
-            with self.assertRaises(asyncssh.DisconnectError):
+            with self.assertRaises(asyncssh.ProtocolError):
                 yield from conn.run('echo', stdin='stdin')
 
     @asynctest
@@ -385,7 +385,7 @@ class _TestProcessBasic(_TestProcess):
             file.write(data)
 
         with (yield from self.connect()) as conn:
-            with self.assertRaises(asyncssh.DisconnectError):
+            with self.assertRaises(asyncssh.ProtocolError):
                 yield from conn.run('echo', stdin='stdin')
 
     @asynctest

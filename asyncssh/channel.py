@@ -26,7 +26,7 @@ import codecs
 import re
 import signal as _signal
 
-from .constants import DEFAULT_LANG, DISC_PROTOCOL_ERROR, EXTENDED_DATA_STDERR
+from .constants import DEFAULT_LANG, EXTENDED_DATA_STDERR
 from .constants import MSG_CHANNEL_OPEN, MSG_CHANNEL_WINDOW_ADJUST
 from .constants import MSG_CHANNEL_DATA, MSG_CHANNEL_EXTENDED_DATA
 from .constants import MSG_CHANNEL_EOF, MSG_CHANNEL_CLOSE, MSG_CHANNEL_REQUEST
@@ -38,7 +38,7 @@ from .constants import __dict__ as constants
 
 from .editor import SSHLineEditorChannel, SSHLineEditorSession
 
-from .misc import ChannelOpenError, DisconnectError
+from .misc import ChannelOpenError, ProtocolError
 from .misc import get_symbol_names, map_handler_name
 
 from .packet import Boolean, Byte, String, UInt32, SSHPacketHandler
@@ -297,8 +297,7 @@ class SSHChannel(SSHPacketHandler):
                 try:
                     self._decoder.decode(b'', True)
                 except UnicodeDecodeError as unicode_exc:
-                    raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                          str(unicode_exc)) from None
+                    raise ProtocolError(str(unicode_exc)) from None
 
             if self._recv_state == 'eof_pending':
                 self._recv_state = 'eof'
@@ -328,8 +327,7 @@ class SSHChannel(SSHPacketHandler):
             try:
                 data = self._decoder.decode(data)
             except UnicodeDecodeError as unicode_exc:
-                raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                      str(unicode_exc)) from None
+                raise ProtocolError(str(unicode_exc)) from None
 
         if self._session:
             self._session.data_received(data, datatype)
@@ -355,7 +353,7 @@ class SSHChannel(SSHPacketHandler):
         datalen = len(data)
 
         if datalen > self._recv_window:
-            raise DisconnectError(DISC_PROTOCOL_ERROR, 'Window exceeded')
+            raise ProtocolError('Window exceeded')
 
         if datatype:
             typename = ' from %s' % _data_type_names[datatype]
@@ -469,8 +467,7 @@ class SSHChannel(SSHPacketHandler):
         """Process a channel open confirmation"""
 
         if not self._open_waiter:
-            raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Channel not being opened')
+            raise ProtocolError('Channel not being opened')
 
         self._send_chan = send_chan
         self._send_window = send_window
@@ -491,8 +488,7 @@ class SSHChannel(SSHPacketHandler):
         """Process a channel open failure"""
 
         if not self._open_waiter:
-            raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Channel not being opened')
+            raise ProtocolError('Channel not being opened')
 
         if not self._open_waiter.cancelled(): # pragma: no branch
             self._open_waiter.set_exception(
@@ -507,7 +503,7 @@ class SSHChannel(SSHPacketHandler):
         # pylint: disable=unused-argument
 
         if self._recv_state not in {'open', 'eof_pending', 'eof'}:
-            raise DisconnectError(DISC_PROTOCOL_ERROR, 'Channel not open')
+            raise ProtocolError('Channel not open')
 
         adjust = packet.get_uint32()
         packet.check_end()
@@ -525,8 +521,7 @@ class SSHChannel(SSHPacketHandler):
         # pylint: disable=unused-argument
 
         if self._recv_state != 'open':
-            raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Channel not open for sending')
+            raise ProtocolError('Channel not open for sending')
 
         data = packet.get_string()
         packet.check_end()
@@ -539,16 +534,14 @@ class SSHChannel(SSHPacketHandler):
         # pylint: disable=unused-argument
 
         if self._recv_state != 'open':
-            raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Channel not open for sending')
+            raise ProtocolError('Channel not open for sending')
 
         datatype = packet.get_uint32()
         data = packet.get_string()
         packet.check_end()
 
         if datatype not in self._read_datatypes:
-            raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Invalid extended data type')
+            raise ProtocolError('Invalid extended data type')
 
         self._accept_data(data, datatype)
 
@@ -558,8 +551,7 @@ class SSHChannel(SSHPacketHandler):
         # pylint: disable=unused-argument
 
         if self._recv_state != 'open':
-            raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Channel not open for sending')
+            raise ProtocolError('Channel not open for sending')
 
         packet.check_end()
 
@@ -574,7 +566,7 @@ class SSHChannel(SSHPacketHandler):
         # pylint: disable=unused-argument
 
         if self._recv_state not in {'open', 'eof_pending', 'eof'}:
-            raise DisconnectError(DISC_PROTOCOL_ERROR, 'Channel not open')
+            raise ProtocolError('Channel not open')
 
         packet.check_end()
 
@@ -591,7 +583,7 @@ class SSHChannel(SSHPacketHandler):
         # pylint: disable=unused-argument
 
         if self._recv_state not in {'open', 'eof_pending', 'eof'}:
-            raise DisconnectError(DISC_PROTOCOL_ERROR, 'Channel not open')
+            raise ProtocolError('Channel not open')
 
         request = packet.get_string()
         want_reply = packet.get_boolean()
@@ -599,8 +591,7 @@ class SSHChannel(SSHPacketHandler):
         try:
             request = request.decode('ascii')
         except UnicodeDecodeError:
-            raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Invalid channel request') from None
+            raise ProtocolError('Invalid channel request') from None
 
         self._request_queue.append((request, packet, want_reply))
         if len(self._request_queue) == 1:
@@ -618,8 +609,7 @@ class SSHChannel(SSHPacketHandler):
             if not waiter.cancelled(): # pragma: no branch
                 waiter.set_result(pkttype == MSG_CHANNEL_SUCCESS)
         else:
-            raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Unexpected channel response')
+            raise ProtocolError('Unexpected channel response')
 
     def _process_keepalive_at_openssh_dot_com_request(self, packet):
         """Process an incoming OpenSSH keepalive request"""
@@ -1174,8 +1164,7 @@ class SSHClientChannel(SSHChannel):
             msg = msg.decode('utf-8')
             lang = lang.decode('ascii')
         except UnicodeDecodeError:
-            raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Invalid exit signal request') from None
+            raise ProtocolError('Invalid exit signal request') from None
 
         self.logger.info('Received exit signal %s', signal)
         self.logger.debug1('  Core dumped: %s', core_dumped)
@@ -1412,8 +1401,7 @@ class SSHServerChannel(SSHChannel):
         try:
             term_type = term_type.decode('ascii')
         except UnicodeDecodeError:
-            raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Invalid pty request') from None
+            raise ProtocolError('Invalid pty request') from None
 
         term_size = (width, height, pixwidth, pixheight)
         term_modes = {}
@@ -1440,8 +1428,7 @@ class SSHServerChannel(SSHChannel):
                 term_modes[mode] = value
                 idx += 4
             else:
-                raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                      'Invalid pty modes string')
+                raise ProtocolError('Invalid pty modes string')
 
         result = self._session.pty_requested(self._term_type, self._term_size,
                                              self._term_modes)

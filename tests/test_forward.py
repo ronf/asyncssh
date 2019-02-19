@@ -687,7 +687,7 @@ class _TestTCPForwarding(_CheckForwarding):
 
         with (yield from self.connect()) as conn:
             reader, _ = yield from conn.open_connection('', 10)
-            with self.assertRaises(asyncssh.DisconnectError):
+            with self.assertRaises(asyncssh.ConnectionLost):
                 yield from reader.read()
 
         yield from conn.wait_closed()

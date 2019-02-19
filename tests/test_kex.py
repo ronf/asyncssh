@@ -37,7 +37,6 @@ from asyncssh.kex_rsa import MSG_KEXRSA_PUBKEY, MSG_KEXRSA_SECRET
 from asyncssh.kex_rsa import MSG_KEXRSA_DONE
 from asyncssh.gss import GSSClient, GSSServer
 from asyncssh.kex import register_kex_alg, get_kex_algs, get_kex
-from asyncssh.misc import DisconnectError
 from asyncssh.packet import SSHPacket, Boolean, Byte, MPInt, String
 from asyncssh.public_key import SSHLocalKeyPair, decode_ssh_public_key
 
@@ -316,24 +315,24 @@ class _TestKex(AsyncTestCase):
         host_key = server_conn.get_server_host_key()
 
         with self.subTest('Init sent to client'):
-            with self.assertRaises(DisconnectError):
+            with self.assertRaises(asyncssh.ProtocolError):
                 client_conn.process_packet(Byte(MSG_KEXDH_INIT))
 
         with self.subTest('Reply sent to server'):
-            with self.assertRaises(DisconnectError):
+            with self.assertRaises(asyncssh.ProtocolError):
                 server_conn.process_packet(Byte(MSG_KEXDH_REPLY))
 
         with self.subTest('Invalid e value'):
-            with self.assertRaises(DisconnectError):
+            with self.assertRaises(asyncssh.ProtocolError):
                 server_conn.simulate_dh_init(0)
 
         with self.subTest('Invalid f value'):
-            with self.assertRaises(DisconnectError):
+            with self.assertRaises(asyncssh.ProtocolError):
                 client_conn.start()
                 client_conn.simulate_dh_reply(host_key.public_data, 0, b'')
 
         with self.subTest('Invalid signature'):
-            with self.assertRaises(DisconnectError):
+            with self.assertRaises(asyncssh.KeyExchangeFailed):
                 client_conn.start()
                 client_conn.simulate_dh_reply(host_key.public_data, 1, b'')
 
@@ -348,27 +347,27 @@ class _TestKex(AsyncTestCase):
             _KexClientStub.make_pair(b'diffie-hellman-group-exchange-sha1')
 
         with self.subTest('Request sent to client'):
-            with self.assertRaises(DisconnectError):
+            with self.assertRaises(asyncssh.ProtocolError):
                 client_conn.process_packet(Byte(MSG_KEX_DH_GEX_REQUEST))
 
         with self.subTest('Group sent to server'):
-            with self.assertRaises(DisconnectError):
+            with self.assertRaises(asyncssh.ProtocolError):
                 server_conn.simulate_dh_gex_group(1, 2)
 
         with self.subTest('Init sent to client'):
-            with self.assertRaises(DisconnectError):
+            with self.assertRaises(asyncssh.ProtocolError):
                 client_conn.simulate_dh_gex_init(1)
 
         with self.subTest('Init sent before group'):
-            with self.assertRaises(DisconnectError):
+            with self.assertRaises(asyncssh.ProtocolError):
                 server_conn.simulate_dh_gex_init(1)
 
         with self.subTest('Reply sent to server'):
-            with self.assertRaises(DisconnectError):
+            with self.assertRaises(asyncssh.ProtocolError):
                 server_conn.simulate_dh_gex_reply(b'', 1, b'')
 
         with self.subTest('Reply sent before group'):
-            with self.assertRaises(DisconnectError):
+            with self.assertRaises(asyncssh.ProtocolError):
                 client_conn.simulate_dh_gex_reply(b'', 1, b'')
 
         client_conn.close()
@@ -383,61 +382,61 @@ class _TestKex(AsyncTestCase):
             _KexClientStub.make_pair(b'gss-group1-sha1-mech', '3')
 
         with self.subTest('Init sent to client'):
-            with self.assertRaises(DisconnectError):
+            with self.assertRaises(asyncssh.ProtocolError):
                 client_conn.process_packet(Byte(MSG_KEXGSS_INIT))
 
         with self.subTest('Complete sent to server'):
-            with self.assertRaises(DisconnectError):
+            with self.assertRaises(asyncssh.ProtocolError):
                 server_conn.process_packet(Byte(MSG_KEXGSS_COMPLETE))
 
         with self.subTest('Exchange failed to complete'):
-            with self.assertRaises(DisconnectError):
+            with self.assertRaises(asyncssh.ProtocolError):
                 client_conn.simulate_gss_complete(1, b'succeed')
 
         with self.subTest('Error sent to server'):
-            with self.assertRaises(DisconnectError):
+            with self.assertRaises(asyncssh.ProtocolError):
                 server_conn.process_packet(Byte(MSG_KEXGSS_ERROR))
 
         client_conn.close()
         server_conn.close()
 
         with self.subTest('Signature verification failure'):
-            with self.assertRaises(DisconnectError):
+            with self.assertRaises(asyncssh.KeyExchangeFailed):
                 yield from self._check_kex(b'gss-group1-sha1-mech', '0,fail')
 
         with self.subTest('Empty token in init'):
-            with self.assertRaises(DisconnectError):
+            with self.assertRaises(asyncssh.ProtocolError):
                 yield from self._check_kex(b'gss-group1-sha1-mech',
                                            '0,empty_init')
 
         with self.subTest('Empty token in continue'):
-            with self.assertRaises(DisconnectError):
+            with self.assertRaises(asyncssh.ProtocolError):
                 yield from self._check_kex(b'gss-group1-sha1-mech',
                                            '1,empty_continue')
 
         with self.subTest('Token after complete'):
-            with self.assertRaises(DisconnectError):
+            with self.assertRaises(asyncssh.ProtocolError):
                 yield from self._check_kex(b'gss-group1-sha1-mech',
                                            '0,continue_token')
 
         for steps in range(2):
             with self.subTest('Token after complete', steps=steps):
-                with self.assertRaises(DisconnectError):
+                with self.assertRaises(asyncssh.ProtocolError):
                     yield from self._check_kex(b'gss-group1-sha1-mech',
                                                str(steps) + ',extra_token')
 
         with self.subTest('Context not secure'):
-            with self.assertRaises(DisconnectError):
+            with self.assertRaises(asyncssh.ProtocolError):
                 yield from self._check_kex(b'gss-group1-sha1-mech',
                                            '1,no_server_integrity')
 
         with self.subTest('GSS error'):
-            with self.assertRaises(DisconnectError):
+            with self.assertRaises(asyncssh.KeyExchangeFailed):
                 yield from self._check_kex(b'gss-group1-sha1-mech',
                                            '1,step_error')
 
         with self.subTest('GSS error with error token'):
-            with self.assertRaises(DisconnectError):
+            with self.assertRaises(asyncssh.KeyExchangeFailed):
                 yield from self._check_kex(b'gss-group1-sha1-mech',
                                            '1,step_error,errtok')
 
@@ -454,28 +453,28 @@ class _TestKex(AsyncTestCase):
             _KexClientStub.make_pair(b'ecdh-sha2-nistp256')
 
         with self.subTest('Init sent to client'):
-            with self.assertRaises(DisconnectError):
+            with self.assertRaises(asyncssh.ProtocolError):
                 client_conn.simulate_ecdh_init(b'')
 
         with self.subTest('Invalid client public key'):
-            with self.assertRaises(DisconnectError):
+            with self.assertRaises(asyncssh.ProtocolError):
                 server_conn.simulate_ecdh_init(b'')
 
         with self.subTest('Reply sent to server'):
-            with self.assertRaises(DisconnectError):
+            with self.assertRaises(asyncssh.ProtocolError):
                 server_conn.simulate_ecdh_reply(b'', b'', b'')
 
         with self.subTest('Invalid server host key'):
-            with self.assertRaises(DisconnectError):
+            with self.assertRaises(asyncssh.ProtocolError):
                 client_conn.simulate_ecdh_reply(b'', b'', b'')
 
         with self.subTest('Invalid server public key'):
-            with self.assertRaises(DisconnectError):
+            with self.assertRaises(asyncssh.ProtocolError):
                 host_key = server_conn.get_server_host_key()
                 client_conn.simulate_ecdh_reply(host_key.public_data, b'', b'')
 
         with self.subTest('Invalid signature'):
-            with self.assertRaises(DisconnectError):
+            with self.assertRaises(asyncssh.KeyExchangeFailed):
                 host_key = server_conn.get_server_host_key()
                 server_pub = ECDH(b'nistp256').get_public()
                 client_conn.simulate_ecdh_reply(host_key.public_data,
@@ -497,16 +496,16 @@ class _TestKex(AsyncTestCase):
             _KexClientStub.make_pair(b'curve25519-sha256')
 
         with self.subTest('Invalid client public key'):
-            with self.assertRaises(DisconnectError):
+            with self.assertRaises(asyncssh.ProtocolError):
                 server_conn.simulate_ecdh_init(b'')
 
         with self.subTest('Invalid server public key'):
-            with self.assertRaises(DisconnectError):
+            with self.assertRaises(asyncssh.ProtocolError):
                 host_key = server_conn.get_server_host_key()
                 client_conn.simulate_ecdh_reply(host_key.public_data, b'', b'')
 
         with self.subTest('Invalid signature'):
-            with self.assertRaises(DisconnectError):
+            with self.assertRaises(asyncssh.KeyExchangeFailed):
                 host_key = server_conn.get_server_host_key()
                 server_pub = Curve25519DH().get_public()
                 client_conn.simulate_ecdh_reply(host_key.public_data,
@@ -528,16 +527,16 @@ class _TestKex(AsyncTestCase):
             _KexClientStub.make_pair(b'curve448-sha512')
 
         with self.subTest('Invalid client public key'):
-            with self.assertRaises(DisconnectError):
+            with self.assertRaises(asyncssh.ProtocolError):
                 server_conn.simulate_ecdh_init(b'')
 
         with self.subTest('Invalid server public key'):
-            with self.assertRaises(DisconnectError):
+            with self.assertRaises(asyncssh.ProtocolError):
                 host_key = server_conn.get_server_host_key()
                 client_conn.simulate_ecdh_reply(host_key.public_data, b'', b'')
 
         with self.subTest('Invalid signature'):
-            with self.assertRaises(DisconnectError):
+            with self.assertRaises(asyncssh.KeyExchangeFailed):
                 host_key = server_conn.get_server_host_key()
                 server_pub = Curve448DH().get_public()
                 client_conn.simulate_ecdh_reply(host_key.public_data,
@@ -554,28 +553,28 @@ class _TestKex(AsyncTestCase):
             _KexClientStub.make_pair(b'rsa2048-sha256')
 
         with self.subTest('Pubkey sent to server'):
-            with self.assertRaises(DisconnectError):
+            with self.assertRaises(asyncssh.ProtocolError):
                 server_conn.simulate_rsa_pubkey(b'', b'')
 
         with self.subTest('Secret sent to client'):
-            with self.assertRaises(DisconnectError):
+            with self.assertRaises(asyncssh.ProtocolError):
                 client_conn.simulate_rsa_secret(b'')
 
         with self.subTest('Done sent to server'):
-            with self.assertRaises(DisconnectError):
+            with self.assertRaises(asyncssh.ProtocolError):
                 server_conn.simulate_rsa_done(b'')
 
         with self.subTest('Invalid transient public key'):
-            with self.assertRaises(DisconnectError):
+            with self.assertRaises(asyncssh.ProtocolError):
                 client_conn.simulate_rsa_pubkey(b'', b'')
 
         with self.subTest('Invalid encrypted secret'):
-            with self.assertRaises(DisconnectError):
+            with self.assertRaises(asyncssh.KeyExchangeFailed):
                 server_conn.start()
                 server_conn.simulate_rsa_secret(b'')
 
         with self.subTest('Invalid signature'):
-            with self.assertRaises(DisconnectError):
+            with self.assertRaises(asyncssh.KeyExchangeFailed):
                 host_key = server_conn.get_server_host_key()
                 trans_key = asyncssh.generate_private_key('ssh-rsa', 2048)
                 client_conn.simulate_rsa_pubkey(host_key.public_data,

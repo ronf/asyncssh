@@ -22,11 +22,11 @@
 
 import asyncio
 
-from .constants import DEFAULT_LANG, DISC_PROTOCOL_ERROR
+from .constants import DEFAULT_LANG
 
 from .gss import GSSError
 
-from .misc import DisconnectError, PasswordChangeRequired, get_symbol_names
+from .misc import ProtocolError, PasswordChangeRequired, get_symbol_names
 
 from .packet import Boolean, String, UInt32, SSHPacketHandler
 
@@ -191,7 +191,7 @@ class _ClientGSSMICAuth(_ClientAuth):
         packet.check_end()
 
         if mech not in self._gss.mechs:
-            raise DisconnectError(DISC_PROTOCOL_ERROR, 'Mechanism mismatch')
+            raise ProtocolError('Mechanism mismatch')
 
         try:
             token = self._gss.step()
@@ -345,7 +345,7 @@ class _ClientPublicKeyAuth(_ClientAuth):
 
         if (algorithm != self._keypair.algorithm or
                 key_data != self._keypair.public_data):
-            raise DisconnectError(DISC_PROTOCOL_ERROR, 'Key mismatch')
+            raise ProtocolError('Key mismatch')
 
         self.create_task(self._send_signed_request())
         return True
@@ -403,8 +403,8 @@ class _ClientKbdIntAuth(_ClientAuth):
             instruction = instruction.decode('utf-8')
             lang = lang.decode('ascii')
         except UnicodeDecodeError:
-            raise DisconnectError(DISC_PROTOCOL_ERROR, 'Invalid keyboard '
-                                  'interactive info request') from None
+            raise ProtocolError('Invalid keyboard interactive '
+                                'info request') from None
 
         num_prompts = packet.get_uint32()
         prompts = []
@@ -415,8 +415,8 @@ class _ClientKbdIntAuth(_ClientAuth):
             try:
                 prompt = prompt.decode('utf-8')
             except UnicodeDecodeError:
-                raise DisconnectError(DISC_PROTOCOL_ERROR, 'Invalid keyboard '
-                                      'interactive info request') from None
+                raise ProtocolError('Invalid keyboard interactive '
+                                    'info request') from None
 
             prompts.append((prompt, echo))
 
@@ -497,8 +497,7 @@ class _ClientPasswordAuth(_ClientAuth):
             prompt = prompt.decode('utf-8')
             lang = lang.decode('ascii')
         except UnicodeDecodeError:
-            raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Invalid password change request') from None
+            raise ProtocolError('Invalid password change request') from None
 
         self.auth_failed()
         self.create_task(self._change_password(prompt, lang))
@@ -745,8 +744,7 @@ class _ServerHostBasedAuth(_ServerAuth):
             client_host = client_host.decode('utf-8')
             client_username = saslprep(client_username.decode('utf-8'))
         except (UnicodeDecodeError, SASLPrepError):
-            raise DisconnectError(DISC_PROTOCOL_ERROR, 'Invalid host-based '
-                                  'auth request') from None
+            raise ProtocolError('Invalid host-based auth request') from None
 
         self.logger.debug1('Verifying host based auth of user %s '
                            'on host %s with %s host key', client_username,
@@ -827,8 +825,8 @@ class _ServerKbdIntAuth(_ServerAuth):
             lang = lang.decode('ascii')
             submethods = submethods.decode('utf-8')
         except UnicodeDecodeError:
-            raise DisconnectError(DISC_PROTOCOL_ERROR, 'Invalid keyboard '
-                                  'interactive auth request') from None
+            raise ProtocolError('Invalid keyboard interactive '
+                                'auth request') from None
 
         self.logger.debug1('Trying keyboard-interactive auth')
 
@@ -877,8 +875,8 @@ class _ServerKbdIntAuth(_ServerAuth):
             try:
                 response = response.decode('utf-8')
             except UnicodeDecodeError:
-                raise DisconnectError(DISC_PROTOCOL_ERROR, 'Invalid keyboard '
-                                      'interactive info response') from None
+                raise ProtocolError('Invalid keyboard interactive '
+                                    'info response') from None
 
             responses.append(response)
 
@@ -914,8 +912,7 @@ class _ServerPasswordAuth(_ServerAuth):
             password = saslprep(password.decode('utf-8'))
             new_password = saslprep(new_password.decode('utf-8'))
         except (UnicodeDecodeError, SASLPrepError):
-            raise DisconnectError(DISC_PROTOCOL_ERROR, 'Invalid password auth '
-                                  'request') from None
+            raise ProtocolError('Invalid password auth request') from None
 
         try:
             if password_change:

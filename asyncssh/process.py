@@ -30,8 +30,8 @@ from pathlib import PurePath
 import socket
 import stat
 
-from .constants import DEFAULT_LANG, DISC_PROTOCOL_ERROR, EXTENDED_DATA_STDERR
-from .misc import DisconnectError, Error, Record
+from .constants import DEFAULT_LANG, EXTENDED_DATA_STDERR
+from .misc import Error, ProtocolError, Record
 from .stream import SSHClientStreamSession, SSHServerStreamSession
 from .stream import SSHReader, SSHWriter
 
@@ -61,8 +61,7 @@ class _UnicodeReader:
             try:
                 data = self._decoder.decode(data, final)
             except UnicodeDecodeError as unicode_exc:
-                raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                      str(unicode_exc)) from None
+                raise ProtocolError(str(unicode_exc)) from None
 
         return data
 
@@ -428,7 +427,7 @@ class ProcessError(Error):
                 exit_status
             lang = DEFAULT_LANG
 
-        super().__init__('Process', exit_status, reason, lang)
+        super().__init__(exit_status, reason, lang)
 
 
 class SSHCompletedProcess(Record):

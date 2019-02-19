@@ -59,10 +59,9 @@ except ImportError: # pragma: no cover
 
 # pylint: enable=unused-import
 
-from asyncssh.constants import DISC_CONNECTION_LOST
 from asyncssh.gss import gss_available
 from asyncssh.logging import logger
-from asyncssh.misc import DisconnectError, SignalReceived, create_task
+from asyncssh.misc import ConnectionLost, SignalReceived, create_task
 from asyncssh.packet import Byte, String, UInt32, UInt64
 
 
@@ -155,7 +154,7 @@ def echo(stdin, stdout, stderr=None):
         stdout.write_eof()
     except SignalReceived as exc:
         if exc.signal == 'ABRT':
-            raise DisconnectError(DISC_CONNECTION_LOST, 'Abort')
+            raise ConnectionLost('Abort')
         else:
             stdin.channel.exit_with_signal(exc.signal)
     except OSError:

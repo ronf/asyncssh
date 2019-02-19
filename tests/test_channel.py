@@ -516,7 +516,7 @@ class _TestChannel(ServerTestCase):
         """Test internal error in callback to start a shell"""
 
         with (yield from self.connect(username='task_error')) as conn:
-            with self.assertRaises((OSError, asyncssh.DisconnectError)):
+            with self.assertRaises((OSError, asyncssh.ConnectionLost)):
                 yield from _create_session(conn)
 
         yield from conn.wait_closed()
@@ -736,7 +736,7 @@ class _TestChannel(ServerTestCase):
             with (yield from self.connect()) as conn:
                 chan, _ = yield from _create_session(conn)
 
-                with self.assertRaises(asyncssh.DisconnectError):
+                with self.assertRaises(asyncssh.ProtocolError):
                     yield from chan.make_request('\xff')
 
             yield from conn.wait_closed()
@@ -1083,7 +1083,7 @@ class _TestChannel(ServerTestCase):
 
         with patch('asyncssh.connection.SSHClientChannel', _ClientChannel):
             with (yield from self.connect()) as conn:
-                with self.assertRaises(asyncssh.DisconnectError):
+                with self.assertRaises(asyncssh.ProtocolError):
                     yield from _create_session(conn, term_type=b'\xff')
 
             yield from conn.wait_closed()
@@ -1115,7 +1115,7 @@ class _TestChannel(ServerTestCase):
 
         with patch('asyncssh.connection.SSHClientChannel', _ClientChannel):
             with (yield from self.connect()) as conn:
-                with self.assertRaises(asyncssh.DisconnectError):
+                with self.assertRaises(asyncssh.ProtocolError):
                     yield from _create_session(conn, 'term', term_type='ansi',
                                                term_modes=modes)
 
@@ -1444,7 +1444,7 @@ class _TestChannel(ServerTestCase):
                 conn, 'partial_unicode_at_eof')
 
             yield from chan.wait_closed()
-            self.assertIsInstance(session.exc, asyncssh.DisconnectError)
+            self.assertIsInstance(session.exc, asyncssh.ProtocolError)
 
         yield from conn.wait_closed()
 
@@ -1456,7 +1456,7 @@ class _TestChannel(ServerTestCase):
             chan, session = yield from _create_session(conn, 'unicode_error')
 
             yield from chan.wait_closed()
-            self.assertIsInstance(session.exc, asyncssh.DisconnectError)
+            self.assertIsInstance(session.exc, asyncssh.ProtocolError)
 
         yield from conn.wait_closed()
 

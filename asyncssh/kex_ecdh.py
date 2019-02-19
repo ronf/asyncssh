@@ -22,9 +22,8 @@
 
 from hashlib import sha256, sha384, sha512
 
-from .constants import DISC_KEY_EXCHANGE_FAILED, DISC_PROTOCOL_ERROR
 from .kex import Kex, register_kex_alg
-from .misc import DisconnectError, get_symbol_names
+from .misc import KeyExchangeFailed, ProtocolError, get_symbol_names
 from .packet import MPInt, String
 
 # pylint: disable=bad-whitespace
@@ -75,8 +74,7 @@ class _KexECDH(Kex):
         # pylint: disable=unused-argument
 
         if self._conn.is_client():
-            raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Unexpected kex init msg')
+            raise ProtocolError('Unexpected kex init msg')
 
         self._client_pub = packet.get_string()
         packet.check_end()
@@ -84,8 +82,7 @@ class _KexECDH(Kex):
         try:
             k = self._priv.get_shared(self._client_pub)
         except ValueError:
-            raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Invalid kex init msg') from None
+            raise ProtocolError('Invalid kex init msg') from None
 
         host_key = self._conn.get_server_host_key()
 
@@ -103,8 +100,7 @@ class _KexECDH(Kex):
         # pylint: disable=unused-argument
 
         if self._conn.is_server():
-            raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Unexpected kex reply msg')
+            raise ProtocolError('Unexpected kex reply msg')
 
         host_key_data = packet.get_string()
         self._server_pub = packet.get_string()
@@ -114,15 +110,13 @@ class _KexECDH(Kex):
         try:
             k = self._priv.get_shared(self._server_pub)
         except ValueError:
-            raise DisconnectError(DISC_PROTOCOL_ERROR,
-                                  'Invalid kex reply msg') from None
+            raise ProtocolError('Invalid kex reply msg') from None
 
         host_key = self._conn.validate_server_host_key(host_key_data)
 
         h = self._compute_hash(host_key_data, k)
         if not host_key.verify(h, sig):
-            raise DisconnectError(DISC_KEY_EXCHANGE_FAILED,
-                                  'Key exchange hash mismatch')
+            raise KeyExchangeFailed('Key exchange hash mismatch')
 
         self._conn.send_newkeys(k, h)
 

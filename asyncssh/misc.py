@@ -31,6 +31,12 @@ from collections import OrderedDict
 from random import SystemRandom
 
 from .constants import DEFAULT_LANG
+from .constants import DISC_COMPRESSION_ERROR, DISC_CONNECTION_LOST
+from .constants import DISC_HOST_KEY_NOT_VERIFIABLE, DISC_ILLEGAL_USER_NAME
+from .constants import DISC_KEY_EXCHANGE_FAILED, DISC_MAC_ERROR
+from .constants import DISC_NO_MORE_AUTH_METHODS_AVAILABLE
+from .constants import DISC_PROTOCOL_ERROR, DISC_PROTOCOL_VERSION_NOT_SUPPORTED
+from .constants import DISC_SERVICE_NOT_AVAILABLE
 
 
 # Provide globals to test if we're on various Python versions
@@ -240,8 +246,9 @@ class Record:
 class Error(Exception):
     """General SSH error"""
 
-    def __init__(self, errtype, code, reason, lang):
-        super().__init__('%s Error: %s' % (errtype, reason))
+    def __init__(self, code, reason, lang=DEFAULT_LANG):
+
+        super().__init__(reason)
         self.code = code
         self.reason = reason
         self.lang = lang
@@ -253,13 +260,15 @@ class DisconnectError(Error):
        This exception is raised when a serious error occurs which causes
        the SSH connection to be disconnected. Exception codes should be
        taken from :ref:`disconnect reason codes <DisconnectReasons>`.
+       See below for exception subclasses tied to specific disconnect
+       reasons if you want to customize your handling by reason.
 
        :param code:
            Disconnect reason, taken from :ref:`disconnect reason
            codes <DisconnectReasons>`
        :param reason:
            A human-readable reason for the disconnect
-       :param lang:
+       :param lang: (optional)
            The language the reason is in
        :type code: `int`
        :type reason: `str`
@@ -267,8 +276,197 @@ class DisconnectError(Error):
 
     """
 
-    def __init__(self, code, reason, lang=DEFAULT_LANG):
-        super().__init__('Disconnect', code, reason, lang)
+
+class CompressionError(DisconnectError):
+    """SSH compression error
+
+       This exception is raised when an error occurs while compressing
+       or decompressing data sent on the SSH connection.
+
+       :param reason:
+           Details about the compression error
+       :param lang: (optional)
+           The language the reason is in
+       :type reason: `str`
+       :type lang: `str`
+
+    """
+
+    def __init__(self, reason, lang=DEFAULT_LANG):
+        super().__init__(DISC_COMPRESSION_ERROR, reason, lang)
+
+
+class ConnectionLost(DisconnectError):
+    """SSH connection lost
+
+       This exception is raised when the SSH connection to the remote
+       system is unexpectedly lost. It can also occur as a result of
+       the remote system failing to respond to keepalive messages or
+       as a result of a login timeout, when those features are enabled.
+
+       :param reason:
+           Details about the connection failure
+       :param lang: (optional)
+           The language the reason is in
+       :type reason: `str`
+       :type lang: `str`
+
+    """
+
+    def __init__(self, reason, lang=DEFAULT_LANG):
+        super().__init__(DISC_CONNECTION_LOST, reason, lang)
+
+
+class HostKeyNotVerifiable(DisconnectError):
+    """SSH host key not verifiable
+
+       This exception is raised when the SSH server's host key or
+       certificate is not verifiable.
+
+       :param reason:
+           Details about the host key verification failure
+       :param lang: (optional)
+           The language the reason is in
+       :type reason: `str`
+       :type lang: `str`
+
+    """
+
+    def __init__(self, reason, lang=DEFAULT_LANG):
+        super().__init__(DISC_HOST_KEY_NOT_VERIFIABLE, reason, lang)
+
+
+class IllegalUserName(DisconnectError):
+    """SSH illegal user name
+
+       This exception is raised when an error occurs while processing
+       the username sent during the SSL handshake.
+
+       :param reason:
+           Details about the illegal username
+       :param lang: (optional)
+           The language the reason is in
+       :type reason: `str`
+       :type lang: `str`
+
+    """
+
+    def __init__(self, reason, lang=DEFAULT_LANG):
+        super().__init__(DISC_ILLEGAL_USER_NAME, reason, lang)
+
+
+class KeyExchangeFailed(DisconnectError):
+    """SSH key exchange failed
+
+       This exception is raised when the SSH key exchange fails.
+
+       :param reason:
+           Details about the connection failure
+       :param lang: (optional)
+           The language the reason is in
+       :type reason: `str`
+       :type lang: `str`
+
+    """
+
+    def __init__(self, reason, lang=DEFAULT_LANG):
+        super().__init__(DISC_KEY_EXCHANGE_FAILED, reason, lang)
+
+
+class MACError(DisconnectError):
+    """SSH MAC error
+
+       This exception is raised when an error occurs while processing
+       the message authentication code (MAC) of a message on the SSH
+       connection.
+
+       :param reason:
+           Details about the MAC error
+       :param lang: (optional)
+           The language the reason is in
+       :type reason: `str`
+       :type lang: `str`
+
+    """
+
+    def __init__(self, reason, lang=DEFAULT_LANG):
+        super().__init__(DISC_MAC_ERROR, reason, lang)
+
+
+class PermissionDenied(DisconnectError):
+    """SSH permission denied
+
+       This exception is raised when there are no authentication methods
+       remaining to complete SSH client authentication.
+
+       :param reason:
+           Details about the SSH protocol error detected
+       :param lang: (optional)
+           The language the reason is in
+       :type reason: `str`
+       :type lang: `str`
+
+    """
+
+    def __init__(self, reason, lang=DEFAULT_LANG):
+        super().__init__(DISC_NO_MORE_AUTH_METHODS_AVAILABLE, reason, lang)
+
+
+class ProtocolError(DisconnectError):
+    """SSH protocol error
+
+       This exception is raised when the SSH connection is disconnected
+       due to an SSH protocol error being detected.
+
+       :param reason:
+           Details about the SSH protocol error detected
+       :param lang: (optional)
+           The language the reason is in
+       :type reason: `str`
+       :type lang: `str`
+
+    """
+
+    def __init__(self, reason, lang=DEFAULT_LANG):
+        super().__init__(DISC_PROTOCOL_ERROR, reason, lang)
+
+
+class ProtocolNotSupported(DisconnectError):
+    """SSH protocol not supported
+
+       This exception is raised when the remote system sends an SSH
+       protocol version which is not supported.
+
+       :param reason:
+           Details about the unsupported SSH protocol version
+       :param lang: (optional)
+           The language the reason is in
+       :type reason: `str`
+       :type lang: `str`
+
+    """
+
+    def __init__(self, reason, lang=DEFAULT_LANG):
+        super().__init__(DISC_PROTOCOL_ERROR, reason, lang)
+
+
+class ServiceNotAvailable(DisconnectError):
+    """SSH service not available
+
+       This exception is raised when an unexpected service name is
+       received during the SSH handshake.
+
+       :param reason:
+           Details about the unexpected SSH service
+       :param lang: (optional)
+           The language the reason is in
+       :type reason: `str`
+       :type lang: `str`
+
+    """
+
+    def __init__(self, reason, lang=DEFAULT_LANG):
+        super().__init__(DISC_SERVICE_NOT_AVAILABLE, reason, lang)
 
 
 class ChannelOpenError(Error):
@@ -278,7 +476,7 @@ class ChannelOpenError(Error):
        channel open failures.
 
        :param code:
-           Channel open failure  reason, taken from :ref:`channel open
+           Channel open failure reason, taken from :ref:`channel open
            failure reason codes <ChannelOpenFailureReasons>`
        :param reason:
            A human-readable reason for the channel open failure
@@ -289,9 +487,6 @@ class ChannelOpenError(Error):
        :type lang: `str`
 
     """
-
-    def __init__(self, code, reason, lang=DEFAULT_LANG):
-        super().__init__('Channel Open', code, reason, lang)
 
 
 class PasswordChangeRequired(Exception):
@@ -391,3 +586,26 @@ class TerminalSizeChanged(Exception):
         self.height = height
         self.pixwidth = pixwidth
         self.pixheight = pixheight
+
+
+_disc_error_map = {
+    DISC_PROTOCOL_ERROR: ProtocolError,
+    DISC_KEY_EXCHANGE_FAILED: KeyExchangeFailed,
+    DISC_MAC_ERROR: MACError,
+    DISC_COMPRESSION_ERROR: CompressionError,
+    DISC_SERVICE_NOT_AVAILABLE: ServiceNotAvailable,
+    DISC_PROTOCOL_VERSION_NOT_SUPPORTED: ProtocolNotSupported,
+    DISC_HOST_KEY_NOT_VERIFIABLE: HostKeyNotVerifiable,
+    DISC_CONNECTION_LOST: ConnectionLost,
+    DISC_NO_MORE_AUTH_METHODS_AVAILABLE: PermissionDenied,
+    DISC_ILLEGAL_USER_NAME: IllegalUserName
+}
+
+
+def construct_disc_error(code, reason, lang):
+    """Map discussion error code to appropriate DisconnectError exception"""
+
+    try:
+        return _disc_error_map[code](reason, lang)
+    except KeyError:
+        return DisconnectError(code, '%s (error %d)' % (reason, code), lang)
