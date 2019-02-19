@@ -53,9 +53,10 @@ from .listener import SSHListener
 from .logging import logger, set_log_level, set_sftp_log_level, set_debug_level
 
 from .misc import Error, DisconnectError, ChannelOpenError
-from .misc import ConnectionLost, HostKeyNotVerifiable, KeyExchangeFailed
-from .misc import MACError, PermissionDenied, ProtocolError
-from .misc import ProtocolNotSupported, ServiceNotAvailable
+from .misc import ConnectionLost, CompressionError, HostKeyNotVerifiable
+from .misc import KeyExchangeFailed, IllegalUserName, MACError
+from .misc import PermissionDenied, ProtocolError, ProtocolNotSupported
+from .misc import ServiceNotAvailable
 from .misc import PasswordChangeRequired
 from .misc import BreakReceived, SignalReceived, TerminalSizeChanged
 
