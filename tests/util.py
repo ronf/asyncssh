@@ -315,7 +315,7 @@ class ConnectionStub:
 class TempDirTestCase(unittest.TestCase):
     """Unit test class which operates in a temporary directory"""
 
-    tempdir = None
+    _tempdir = None
 
     @classmethod
     def setUpClass(cls):

@@ -945,19 +945,22 @@ class _TestChannel(ServerTestCase):
     def test_agent_forwarding_sock_failure(self):
         """Test failure to create SSH agent forwarding socket"""
 
-        tempfile.tempdir = 'xxx'
+        old_tempdir = tempfile.tempdir
 
-        with (yield from self.connect(username='ckey',
-                                      agent_forwarding=True)) as conn:
-            chan, session = yield from _create_session(conn, 'agent_sock')
+        try:
+            tempfile.tempdir = 'xxx'
 
-            yield from chan.wait_closed()
+            with (yield from self.connect(username='ckey',
+                                          agent_forwarding=True)) as conn:
+                chan, session = yield from _create_session(conn, 'agent_sock')
 
-            self.assertEqual(session.exit_status, 1)
+                yield from chan.wait_closed()
 
-        yield from conn.wait_closed()
+                self.assertEqual(session.exit_status, 1)
 
-        tempfile.tempdir = None
+            yield from conn.wait_closed()
+        finally:
+            tempfile.tempdir = old_tempdir
 
     @asynctest
     def test_agent_forwarding_not_offered(self):
