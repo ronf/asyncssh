@@ -101,7 +101,7 @@ class _TestProcess(ServerTestCase):
         """Start an SSH server for the tests to use"""
 
         return (yield from cls.create_server(process_factory=_handle_client,
-                                             session_encoding=None))
+                                             encoding=None))
 
 
 class _TestProcessBasic(_TestProcess):

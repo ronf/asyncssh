@@ -22,11 +22,13 @@
 
 import asyncio
 import getpass
+import inspect
 import io
 import os
 import socket
 import sys
 import time
+import warnings
 
 from collections import OrderedDict
 from functools import partial
@@ -3745,9 +3747,8 @@ class SSHServerConnection(SSHConnection):
                  known_client_hosts, trust_client_host,
                  authorized_client_keys, gss_host, allow_pty, line_editor,
                  line_history, x11_forwarding, x11_auth_path, agent_forwarding,
-                 process_factory, session_factory, session_encoding,
-                 session_errors, sftp_factory, allow_scp, window,
-                 max_pktsize, login_timeout):
+                 process_factory, session_factory, encoding, errors,
+                 sftp_factory, allow_scp, window, max_pktsize, login_timeout):
         super().__init__(server_factory, loop, server_version,
                          x509_trusted_certs, x509_trusted_cert_paths,
                          x509_purposes, kex_algs, encryption_algs, mac_algs,
@@ -3768,8 +3769,8 @@ class SSHServerConnection(SSHConnection):
         self._agent_forwarding = agent_forwarding
         self._process_factory = process_factory
         self._session_factory = session_factory
-        self._session_encoding = session_encoding
-        self._session_errors = session_errors
+        self._encoding = encoding
+        self._errors = errors
         self._sftp_factory = sftp_factory
         self._allow_scp = allow_scp
         self._window = window
@@ -4170,8 +4171,7 @@ class SSHServerConnection(SSHConnection):
         packet.check_end()
 
         if self._process_factory or self._session_factory or self._sftp_factory:
-            chan = self.create_server_channel(self._session_encoding,
-                                              self._session_errors,
+            chan = self.create_server_channel(self._encoding, self._errors,
                                               self._window, self._max_pktsize)
 
             if self._process_factory:
@@ -4191,8 +4191,7 @@ class SSHServerConnection(SSHConnection):
             if isinstance(result, tuple):
                 chan, result = result
             else:
-                chan = self.create_server_channel(self._session_encoding,
-                                                  self._session_errors,
+                chan = self.create_server_channel(self._encoding, self._errors,
                                                   self._window,
                                                   self._max_pktsize)
 
@@ -5342,11 +5341,12 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
                   line_history=_DEFAULT_LINE_HISTORY,
                   x11_forwarding=False, x11_auth_path=None,
                   agent_forwarding=True, process_factory=None,
-                  session_factory=None, session_encoding='utf-8',
-                  session_errors='strict', sftp_factory=None, allow_scp=False,
-                  window=_DEFAULT_WINDOW, max_pktsize=_DEFAULT_MAX_PKTSIZE,
-                  server_version=(), kex_algs=(), encryption_algs=(),
-                  mac_algs=(), compression_algs=(), signature_algs=(),
+                  session_factory=None, encoding='utf-8', session_encoding='',
+                  errors='strict', session_errors='', sftp_factory=None,
+                  allow_scp=False, window=_DEFAULT_WINDOW,
+                  max_pktsize=_DEFAULT_MAX_PKTSIZE, server_version=(),
+                  kex_algs=(), encryption_algs=(), mac_algs=(),
+                  compression_algs=(), signature_algs=(),
                   rekey_bytes=_DEFAULT_REKEY_BYTES,
                   rekey_seconds=_DEFAULT_REKEY_SECONDS,
                   login_timeout=_DEFAULT_LOGIN_TIMEOUT,
@@ -5480,14 +5480,18 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
            <SSHServer.session_requested>` method is overridden on the
            :class:`SSHServer` object returned by `server_factory` to make
            this decision.
-       :param session_encoding: (optional)
+       :param encoding: (optional)
            The Unicode encoding to use for data exchanged on sessions on
            this server, defaulting to UTF-8 (ISO 10646) format. If `None`
            is passed in, the application can send and receive raw bytes.
-       :param session_errors: (optional)
+       :param session_encoding: (deprecated)
+           This argument is now named `encoding` - do not use this name.
+       :param errors: (optional)
            The error handling strategy to apply on Unicode encode/decode
            errors of data exchanged on sessions on this server, defaulting
            to 'strict'.
+       :param session_errors: (deprecated)
+           This argument is now named `errors` - do not use this name.
        :param sftp_factory: (optional)
            A `callable` which returns an :class:`SFTPServer` object that
            will be created each time an SFTP session is requested by the
@@ -5567,8 +5571,8 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
        :type agent_forwarding: `bool`
        :type process_factory: `callable`
        :type session_factory: `callable`
-       :type session_encoding: `str`
-       :type session_errors: `str`
+       :type encoding: `str`
+       :type errors: `str`
        :type sftp_factory: `callable`
        :type allow_scp: `bool`
        :type window: `int`
@@ -5603,9 +5607,28 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, *,
                                    gss_host, allow_pty, line_editor,
                                    line_history, x11_forwarding, x11_auth_path,
                                    agent_forwarding, process_factory,
-                                   session_factory, session_encoding,
-                                   session_errors, sftp_factory, allow_scp,
-                                   window, max_pktsize, login_timeout)
+                                   session_factory, encoding, errors,
+                                   sftp_factory, allow_scp, window,
+                                   max_pktsize, login_timeout)
+
+    # Maintain compatibility for session_encoding/session_errors arguments
+    # for now, but warn that the old argument names are deprecated.
+
+    # When this is called via listen(), we need to skip an extra stack frame
+    stack = inspect.stack()
+    stacklevel = 3 if stack[1][1].endswith('connection.py') else 2
+
+    if session_encoding != '': # pragma: no cover
+        warnings.warn('session_encoding is deprecated; use encoding',
+                      DeprecationWarning, stacklevel=stacklevel)
+
+        encoding = session_encoding
+
+    if session_errors != '': # pragma: no cover
+        warnings.warn('session_errors is deprecated; use errors',
+                      DeprecationWarning, stacklevel=stacklevel)
+
+        errors = session_errors
 
     if not server_factory:
         server_factory = SSHServer

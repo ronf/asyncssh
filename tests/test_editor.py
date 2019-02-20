@@ -298,7 +298,7 @@ class _TestEditorEncodingNone(_CheckEditor):
         """Start an SSH server for the tests to use"""
 
         return (yield from cls.create_server(session_factory=_handle_session,
-                                             session_encoding=None))
+                                             encoding=None))
 
     @asynctest
     def test_editor_disabled_encoding_none(self):
