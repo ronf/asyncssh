@@ -2421,7 +2421,7 @@ class SSHClientConnection(SSHConnection):
         elif isinstance(exc, ConnectionLost):
             self.logger.info(str(exc))
         else:
-            self.logger.info('Connection failed: ' + str(exc))
+            self.logger.info('Connection failure: ' + str(exc))
 
         super()._cleanup(exc)
 
