@@ -3,6 +3,57 @@
 Change Log
 ==========
 
+Release 1.16.0 (2 Mar 2019)
+---------------------------
+
+* Added support for Ed448 host/client keys and certificates and
+  rewrote Ed25519 support to use the PyCA implementation, reducing
+  the dependency on libnacl and libsodium to only be needed to
+  support the chacha20-poly1305 cipher.
+
+* Added support for PKCS#8 format Ed25519 and Ed448 private and
+  public keys (in addition to the OpenSSH format previously
+  supported).
+
+* Added support for multiple delimiters in SSHReader's readuntil()
+  function, causing it to return data as soon as any of the
+  specified delimiters are matched.
+
+* Added the ability to register custom key handlers in the line
+  editor which can modify the input line, extending the built-in
+  editing functionality.
+
+* Added SSHSubprocessProtocol and SSHSubprocessTransport classes
+  to provide compatibility with asyncio.SubprocessProtocol and
+  asyncio.SubprocessTransport. Code which is designed to call
+  BaseEventLoop.subprocess_shell() or BaseEventLoop.subprocess_exec()
+  can be easily adapted to work against a remote process by calling
+  SSHClientConnection.create_subprocess().
+
+* Added support for sending keepalive messages when the SSH
+  connection is idle, with an option to automatically disconnect
+  the connection if the remote system doesn't respond to these
+  keepalives.
+
+* Changed AsyncSSH to ignore errors when loading unsupported key
+  types from the default file locations.
+
+* Changed the reuse_port option to only be available on Python
+  releases which support it (3.4.4 and later).
+
+* Fixed an issue where MSG_IGNORE packets could sometimes be sent
+  between MSG_NEWKEYS and MSG_EXT_INFO, which caused some SSH
+  implementations to fail to properly parse the MSG_EXT_INFO.
+
+* Fixed a couple of errors in the handling of disconnects occurring
+  prior to authentication completing.
+
+* Renamed "session_encoding" and "session_errors" arguments in
+  asyncssh.create_server() to "encoding" and "errors", to match
+  the names used for these arguments in other AsyncSSH APIs. The
+  old names are still supported for now, but they are marked as
+  deprecated and will be removed in a future release.
+
 Release 1.15.1 (21 Jan 2019)
 ----------------------------
 
@@ -26,9 +77,7 @@ Release 1.15.1 (21 Jan 2019)
 
 * Switched curve25519 key exchange to use the PyCA implementation,
   avoiding a dependency on libnacl/libsodium. For now, support for
-  Ed25519 keys still requires these libraries, but once that support
-  appears in PyCA, it may be possible to remove this dependency
-  entirely.
+  Ed25519 keys still requires these libraries.
 
 * Added get_fingerprint() method to return a fingerprint of an SSHKey.
 

@@ -107,7 +107,7 @@ Prerequisites
 To use ``asyncssh``, you need the following:
 
 * Python 3.4 or later
-* cryptography (PyCA) 2.5 or later
+* cryptography (PyCA) 2.6.1 or later
 
 Installation
 ------------
@@ -132,8 +132,7 @@ functionality:
 
 * Install libsodium from https://github.com/jedisct1/libsodium
   and libnacl from https://pypi.python.org/pypi/libnacl if you want
-  support for curve25519 Diffie Hellman key exchange, ed25519 keys,
-  and the chacha20-poly1305 cipher.
+  support for the chacha20-poly1305 cipher.
 
 * Install libnettle from http://www.lysator.liu.se/~nisse/nettle/
   if you want support for UMAC cryptographic hashes.
