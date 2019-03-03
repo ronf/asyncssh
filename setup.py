@@ -1,6 +1,6 @@
 #!/usr/bin/env python3.6
 
-# Copyright (c) 2013-2018 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2019 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -51,7 +51,7 @@ setup(name = 'asyncssh',
       description = doclines[0],
       long_description = long_description,
       platforms = 'Any',
-      install_requires = ['cryptography >= 2.5'],
+      install_requires = ['cryptography >= 2.6.1'],
       extras_require = {
           'bcrypt':     ['bcrypt >= 3.1.3'],
           'gssapi':     ['gssapi >= 1.2.0'],

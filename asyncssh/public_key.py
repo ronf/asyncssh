@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2018 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2019 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -49,14 +49,15 @@ from .pbe import KeyEncryptionError, pkcs1_encrypt, pkcs8_encrypt
 from .pbe import pkcs1_decrypt, pkcs8_decrypt
 
 # Default file names in .ssh directory to read private keys from
-_DEFAULT_KEY_FILES = ('id_ed25519', 'id_ecdsa', 'id_rsa', 'id_dsa')
+_DEFAULT_KEY_FILES = ('id_ed448', 'id_ed25519', 'id_ecdsa', 'id_rsa', 'id_dsa')
 
 # Default directories and file names to read host keys from
 _DEFAULT_HOST_KEY_DIRS = ('/opt/local/etc', '/opt/local/etc/ssh',
                           '/usr/local/etc', '/usr/local/etc/ssh',
                           '/etc', '/etc/ssh')
-_DEFAULT_HOST_KEY_FILES = ('ssh_host_ed25519_key', 'ssh_host_ecdsa_key',
-                           'ssh_host_rsa_key', 'ssh_host_dsa_key')
+_DEFAULT_HOST_KEY_FILES = ('ssh_host_ed448_key', 'ssh_host_ed25519_key',
+                           'ssh_host_ecdsa_key', 'ssh_host_rsa_key',
+                           'ssh_host_dsa_key')
 
 _hashes = {'md5': md5, 'sha1': sha1, 'sha256': sha256,
            'sha384': sha384, 'sha512': sha512}
@@ -84,6 +85,9 @@ _subject_pattern = re.compile(r'(?:Distinguished[ -_]?Name|Subject|DN)[=:]?\s?',
 # SSH certificate types
 CERT_TYPE_USER = 1
 CERT_TYPE_HOST = 2
+
+# Flag to omit second argument in alg_params
+OMIT = object()
 
 _OPENSSH_KEY_V1 = b'openssh-key-v1\0'
 _OPENSSH_SALT_LEN = 16
@@ -904,7 +908,10 @@ class SSHKey:
         elif format_name in ('pkcs8-der', 'pkcs8-pem'):
             alg_params, data = self.encode_pkcs8_private()
 
-            data = der_encode((0, (self.pkcs8_oid, alg_params), data))
+            if alg_params is OMIT:
+                data = der_encode((0, (self.pkcs8_oid,), data))
+            else:
+                data = der_encode((0, (self.pkcs8_oid, alg_params), data))
 
             if passphrase is not None:
                 data = pkcs8_encrypt(data, cipher_name, hash_name,
@@ -1012,8 +1019,12 @@ class SSHKey:
             return data
         elif format_name in ('pkcs8-der', 'pkcs8-pem'):
             alg_params, data = self.encode_pkcs8_public()
+            data = BitString(data)
 
-            data = der_encode(((self.pkcs8_oid, alg_params), BitString(data)))
+            if alg_params is OMIT:
+                data = der_encode(((self.pkcs8_oid,), data))
+            else:
+                data = der_encode(((self.pkcs8_oid, alg_params), data))
 
             if format_name == 'pkcs8-pem':
                 data = (b'-----BEGIN PUBLIC KEY-----\n' +
@@ -1951,8 +1962,11 @@ def _decode_pkcs8_private(key_data):
 
     if (isinstance(key_data, tuple) and len(key_data) >= 3 and
             key_data[0] in (0, 1) and isinstance(key_data[1], tuple) and
-            len(key_data[1]) == 2 and isinstance(key_data[2], bytes)):
-        alg, alg_params = key_data[1]
+            1 <= len(key_data[1]) <= 2 and isinstance(key_data[2], bytes)):
+        if len(key_data[1]) == 2:
+            alg, alg_params = key_data[1]
+        else:
+            alg, alg_params = key_data[1][0], OMIT
 
         handler = _pkcs8_oid_map.get(alg)
         if handler is None:
@@ -1961,7 +1975,8 @@ def _decode_pkcs8_private(key_data):
         key_params = handler.decode_pkcs8_private(alg_params, key_data[2])
         if key_params is None:
             raise KeyImportError('Invalid %s private key' %
-                                 handler.pem_name.decode('ascii'))
+                                 handler.pem_name.decode('ascii')
+                                 if handler.pem_name else 'PKCS#8')
 
         return handler.make_private(*key_params)
     else:
@@ -1972,9 +1987,12 @@ def _decode_pkcs8_public(key_data):
     """Decode a PKCS#8 format public key"""
 
     if (isinstance(key_data, tuple) and len(key_data) == 2 and
-            isinstance(key_data[0], tuple) and len(key_data[0]) == 2 and
+            isinstance(key_data[0], tuple) and 1 <= len(key_data[0]) <= 2 and
             isinstance(key_data[1], BitString) and key_data[1].unused == 0):
-        alg, alg_params = key_data[0]
+        if len(key_data[0]) == 2:
+            alg, alg_params = key_data[0]
+        else:
+            alg, alg_params = key_data[0][0], OMIT
 
         handler = _pkcs8_oid_map.get(alg)
         if handler is None:
@@ -1983,7 +2001,8 @@ def _decode_pkcs8_public(key_data):
         key_params = handler.decode_pkcs8_public(alg_params, key_data[1].value)
         if key_params is None:
             raise KeyImportError('Invalid %s public key' %
-                                 handler.pem_name.decode('ascii'))
+                                 handler.pem_name.decode('ascii')
+                                 if handler.pem_name else 'PKCS#8')
 
         return handler.make_public(*key_params)
     else:
@@ -2396,7 +2415,7 @@ def register_public_key_alg(algorithm, handler, sig_algorithms=None):
     if handler.pem_name:
         _pem_map[handler.pem_name] = handler
 
-    if handler.pkcs8_oid:
+    if handler.pkcs8_oid: # pragma: no branch
         _pkcs8_oid_map[handler.pkcs8_oid] = handler
 
 

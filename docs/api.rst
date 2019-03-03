@@ -1204,9 +1204,8 @@ Public Key Support
 
 AsyncSSH has extensive public key and certificate support.
 
-Supported public key types include DSA, RSA, and ECDSA. In addition,
-Ed25519 keys are supported if the libnacl package and libsodium library
-are installed.
+Supported public key types include DSA, RSA, and ECDSA. In addition, Ed25519
+and Ed448 keys are supported if OpenSSL 1.1.1b or later is installed.
 
 Supported certificate types include OpenSSH version 01 certificates for
 DSA, RSA, ECDSA, and Ed25519 keys and X.509 certificates for DSA, RSA,
@@ -1852,6 +1851,9 @@ The following are the key exchange algorithms currently supported by AsyncSSH:
 GSS authentication support is only available when the gssapi package is
 installed on UNIX or the pypiwin32 package is installed on Windows.
 
+Curve25519 and curve448 support is only available when OpenSSL 1.1.1 or
+later is installed.
+
 .. index:: Encryption algorithms
 .. _EncryptionAlgs:
 
@@ -1939,6 +1941,7 @@ AsyncSSH:
   | x509v3-ssh-rsa
   | x509v3-ssh-dss
   | ssh-ed25519
+  | ssh-ed448
   | ecdsa-sha2-nistp521
   | ecdsa-sha2-nistp384
   | ecdsa-sha2-nistp256
@@ -1965,6 +1968,7 @@ supported by AsyncSSH:
   | x509v3-ssh-rsa
   | x509v3-ssh-dss
   | ssh-ed25519-cert-v01\@openssh.com
+  | ssh-ed448-cert-v01\@openssh.com
   | ecdsa-sha2-nistp521-cert-v01\@openssh.com
   | ecdsa-sha2-nistp384-cert-v01\@openssh.com
   | ecdsa-sha2-nistp256-cert-v01\@openssh.com
@@ -1972,6 +1976,7 @@ supported by AsyncSSH:
   | ssh-rsa-cert-v01\@openssh.com
   | ssh-dss-cert-v01\@openssh.com
   | ssh-ed25519
+  | ssh-ed448
   | ecdsa-sha2-nistp521
   | ecdsa-sha2-nistp384
   | ecdsa-sha2-nistp256
@@ -1981,8 +1986,8 @@ supported by AsyncSSH:
   | ssh-rsa
   | ssh-dss
 
-Ed25519 support is only available when the libnacl package and libsodium
-library are installed.
+Ed25519 and Ed448 support is only available when OpenSSL 1.1.1b or later
+is installed.
 
 .. index:: Constants
 .. _Constants:

@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2018 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2019 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -18,10 +18,12 @@
 # Contributors:
 #     Ron Frederick - initial implementation, API, and documentation
 
-"""Elliptic curve Diffie-Hellman key exchange handler"""
+"""Elliptic and Edwards curve Diffie-Hellman key exchange handlers"""
 
 from hashlib import sha256, sha384, sha512
 
+from .crypto import curve25519_available, curve448_available
+from .crypto import Curve25519DH, Curve448DH, ECDH
 from .kex import Kex, register_kex_alg
 from .misc import KeyExchangeFailed, ProtocolError, get_symbol_names
 from .packet import MPInt, String
@@ -126,33 +128,17 @@ class _KexECDH(Kex):
     }
 
 
-try:
-    # pylint: disable=wrong-import-position
-    from .crypto import Curve25519DH
-except ImportError: # pragma: no cover
-    pass
-else:
+if curve25519_available: # pragma: no branch
     register_kex_alg(b'curve25519-sha256', _KexECDH, sha256, Curve25519DH)
     register_kex_alg(b'curve25519-sha256@libssh.org', _KexECDH,
                      sha256, Curve25519DH)
 
-try:
-    # pylint: disable=wrong-import-position
-    from .crypto import Curve448DH
-except ImportError: # pragma: no cover
-    pass
-else:
+if curve448_available: # pragma: no branch
     register_kex_alg(b'curve448-sha512', _KexECDH, sha512, Curve448DH)
 
-try:
-    # pylint: disable=wrong-import-position
-    from .crypto import ECDH
-except ImportError: # pragma: no cover
-    pass
-else:
-    for _curve_id, _hash_alg in ((b'nistp521', sha512),
-                                 (b'nistp384', sha384),
-                                 (b'nistp256', sha256),
-                                 (b'1.3.132.0.10', sha256)):
-        register_kex_alg(b'ecdh-sha2-' + _curve_id, _KexECDH,
-                         _hash_alg, ECDH, _curve_id)
+for _curve_id, _hash_alg in ((b'nistp521', sha512),
+                             (b'nistp384', sha384),
+                             (b'nistp256', sha256),
+                             (b'1.3.132.0.10', sha256)):
+    register_kex_alg(b'ecdh-sha2-' + _curve_id, _KexECDH,
+                     _hash_alg, ECDH, _curve_id)

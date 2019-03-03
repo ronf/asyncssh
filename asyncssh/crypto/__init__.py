@@ -1,4 +1,4 @@
-# Copyright (c) 2014-2018 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2014-2019 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -26,6 +26,10 @@ from .dsa import DSAPrivateKey, DSAPublicKey
 
 from .ec import ECDSAPrivateKey, ECDSAPublicKey, ECDH
 
+from .ed import ed25519_available, ed448_available
+from .ed import curve25519_available, curve448_available
+from .ed import EdDSAPrivateKey, EdDSAPublicKey, Curve25519DH, Curve448DH
+
 from .ec_params import lookup_ec_curve_by_params
 
 from .kdf import pbkdf2_hmac
@@ -34,18 +38,6 @@ from .rsa import RSAPrivateKey, RSAPublicKey
 
 # Import chacha20-poly1305 cipher if available
 from .chacha import ChachaCipher
-
-# Import curve448 DH if available
-try:
-    from .curve448 import Curve448DH
-except ImportError: # pragma: no cover
-    pass
-
-# Import curve25519 DH if available
-try:
-    from .curve25519 import Curve25519DH
-except ImportError: # pragma: no cover
-    pass
 
 # Import umac cryptographic hash if available
 try:
