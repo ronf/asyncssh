@@ -27,6 +27,7 @@ from hashlib import sha1
 
 import asyncssh
 
+
 from asyncssh.kex_dh import MSG_KEXDH_INIT, MSG_KEXDH_REPLY
 from asyncssh.kex_dh import MSG_KEX_DH_GEX_REQUEST, MSG_KEX_DH_GEX_GROUP
 from asyncssh.kex_dh import MSG_KEX_DH_GEX_INIT, MSG_KEX_DH_GEX_REPLY, _KexDHGex
@@ -39,6 +40,7 @@ from asyncssh.gss import GSSClient, GSSServer
 from asyncssh.kex import register_kex_alg, get_kex_algs, get_kex
 from asyncssh.packet import SSHPacket, Boolean, Byte, MPInt, String
 from asyncssh.public_key import SSHLocalKeyPair, decode_ssh_public_key
+from asyncssh.crypto.ed import curve448_available
 
 from .util import asynctest, gss_available, patch_gss
 from .util import AsyncTestCase, ConnectionStub
@@ -521,6 +523,9 @@ class _TestKex(AsyncTestCase):
         try:
             from asyncssh.crypto import Curve448DH
         except ImportError: # pragma: no cover
+            return
+
+        if not curve448_available: # pragma: no cover
             return
 
         client_conn, server_conn = \
