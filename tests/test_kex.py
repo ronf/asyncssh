@@ -27,6 +27,7 @@ from hashlib import sha1
 
 import asyncssh
 
+from asyncssh.crypto import curve25519_available, curve448_available
 from asyncssh.kex_dh import MSG_KEXDH_INIT, MSG_KEXDH_REPLY
 from asyncssh.kex_dh import MSG_KEX_DH_GEX_REQUEST, MSG_KEX_DH_GEX_GROUP
 from asyncssh.kex_dh import MSG_KEX_DH_GEX_INIT, MSG_KEX_DH_GEX_REPLY, _KexDHGex
@@ -483,6 +484,7 @@ class _TestKex(AsyncTestCase):
         client_conn.close()
         server_conn.close()
 
+    @unittest.skipUnless(curve25519_available, 'Curve25519 not available')
     @asynctest
     def test_curve25519dh_errors(self):
         """Unit test error conditions in Curve25519DH key exchange"""
@@ -514,6 +516,7 @@ class _TestKex(AsyncTestCase):
         client_conn.close()
         server_conn.close()
 
+    @unittest.skipUnless(curve448_available, 'Curve448 not available')
     @asynctest
     def test_curve448dh_errors(self):
         """Unit test error conditions in Curve448DH key exchange"""

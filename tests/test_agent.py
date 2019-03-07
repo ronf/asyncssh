@@ -30,9 +30,10 @@ import unittest
 import asyncssh
 
 from asyncssh.agent import SSH_AGENT_SUCCESS, SSH_AGENT_FAILURE
+from asyncssh.crypto import ed25519_available
 from asyncssh.packet import Byte, String
 
-from .util import AsyncTestCase, asynctest, libnacl_available, run
+from .util import AsyncTestCase, asynctest, run
 
 
 def agent_test(func):
@@ -175,7 +176,7 @@ class _TestAPI(AsyncTestCase):
 
         algs = ['ssh-dss', 'ssh-rsa', 'ecdsa-sha2-nistp256']
 
-        if libnacl_available: # pragma: no branch
+        if ed25519_available: # pragma: no branch
             algs.append('ssh-ed25519')
 
         for alg_name in algs:
