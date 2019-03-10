@@ -771,6 +771,9 @@ class _TestSFTP(_CheckSFTP):
             self._create_file('file1')
             self._create_file('filedir/file2')
             self._create_file('filedir/file3')
+            os.mkdir('filedir/filedir2')
+            self._create_file('filedir/filedir2/file4')
+            self._create_file('filedir/filedir2/file5')
 
             self.assertEqual(sorted((yield from sftp.glob('file*'))),
                              ['file1', 'filedir'])
@@ -783,15 +786,43 @@ class _TestSFTP(_CheckSFTP):
             self.assertEqual(sorted((yield from sftp.glob(['', 'file*']))),
                              ['file1', 'filedir'])
             self.assertEqual(sorted((yield from sftp.glob(['file*/*2']))),
-                             ['filedir/file2'])
+                             ['filedir/file2', 'filedir/filedir2'])
             self.assertEqual(sorted((yield from sftp.glob(['file*/*[3-9]']))),
                              ['filedir/file3'])
             self.assertEqual(sorted((yield from sftp.glob(['**/file[12]']))),
                              ['file1', 'filedir/file2'])
             self.assertEqual(sorted((yield from sftp.glob(['**/file*/']))),
-                             ['filedir'])
+                             ['filedir', 'filedir/filedir2'])
             self.assertEqual((yield from sftp.glob([b'fil*1', 'fil*dir'])),
                              [b'file1', 'filedir'])
+            self.assertEqual(sorted((yield from sftp.glob('filedir/file2'))),
+                             ['filedir/file2'])
+            self.assertEqual(sorted((yield from sftp.glob('./filedir/file2'))),
+                             ['./filedir/file2'])
+            self.assertEqual(sorted((yield from sftp.glob('filedir/file*'))),
+                             ['filedir/file2','filedir/file3', 'filedir/filedir2'])
+            self.assertEqual(sorted((yield from sftp.glob('./filedir/file*'))),
+                             ['./filedir/file2','./filedir/file3', './filedir/filedir2'])
+            self.assertEqual(sorted((yield from sftp.glob('./filedir/filedir2/file*'))),
+                            ['./filedir/filedir2/file4','./filedir/filedir2/file5'])
+            self.assertEqual(sorted((yield from sftp.glob('filedir/filedir2/file*'))),
+                            ['filedir/filedir2/file4','filedir/filedir2/file5'])
+            self.assertEqual(sorted((yield from sftp.glob('./filedir/*/file4'))),
+                            ['./filedir/filedir2/file4'])
+            self.assertEqual(sorted((yield from sftp.glob('filedir/*/file4'))),
+                            ['filedir/filedir2/file4'])
+            self.assertEqual(sorted((yield from sftp.glob('./*/filedir2/file4'))),
+                            ['./filedir/filedir2/file4'])
+            self.assertEqual(sorted((yield from sftp.glob('*/filedir2/file4'))),
+                            ['filedir/filedir2/file4'])
+            self.assertEqual(sorted((yield from sftp.glob('./filedir/filedir*/file*'))),
+                            ['./filedir/filedir2/file4','./filedir/filedir2/file5'])
+            self.assertEqual(sorted((yield from sftp.glob('filedir/filedir*/file*'))),
+                            ['filedir/filedir2/file4','filedir/filedir2/file5'])
+            self.assertEqual(sorted((yield from sftp.glob('./**/filedir2/file4'))),
+                            ['./filedir/filedir2/file4'])
+            self.assertEqual(sorted((yield from sftp.glob('**/filedir2/file4'))),
+                            ['filedir/filedir2/file4'])
         finally:
             remove('file1 filedir')
 

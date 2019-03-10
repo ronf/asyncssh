@@ -147,44 +147,73 @@ def _setstat(path, attrs):
         os.utime(path, times=(attrs.atime, attrs.mtime))
 
 
+def _split_path_by_globs(pattern):
+    """Split path grouping parts without glob pattern"""
+
+    basedir, patlist, plain = None, [], []
+
+    for current in pattern.split(b'/'):
+        if any(c in current for c in b'*?[]'):
+            if plain:
+                if patlist:
+                    patlist.append(plain)
+                else:
+                    basedir = b'/'.join(plain) or b'/'
+                plain = []
+            patlist.append(current)
+        else:
+            plain.append(current)
+
+    if plain:
+        patlist.append(plain)
+
+    return basedir, patlist
+
+
 @asyncio.coroutine
 def _glob(fs, basedir, patlist, result):
     """Recursively match a glob pattern"""
 
     pattern, newpatlist = patlist[0], patlist[1:]
 
-    if not pattern and not newpatlist:
-        result.append(basedir)
-        return
-
-    if pattern == b'**':
-        yield from _glob(fs, basedir, newpatlist, result)
-
     names = yield from fs.listdir(basedir or b'.')
 
-    for name in names:
-        if pattern != name and name in (b'.', b'..'):
-            continue
+    if isinstance(pattern, list):
+        if len(pattern) == 1 and not pattern[0] and not newpatlist:
+            result.append(basedir)
+            return
 
-        if name[:1] == b'.' and not pattern[:1] == b'.':
-            continue
+        for name in names:
+            if name == pattern[0]:
+                newbase = posixpath.join(basedir or b'', *pattern)
+                yield from fs.stat(newbase)
 
-        if fnmatch(name, pattern):
-            if basedir:
-                newbase = posixpath.join(basedir, name)
-            else:
-                newbase = name
+                if not newpatlist:
+                    result.append(newbase)
+                else:
+                    yield from _glob(fs, newbase, newpatlist, result)
+                break
+    else:
+        if pattern == b'**':
+            yield from _glob(fs, basedir, newpatlist, result)
 
-            if not newpatlist:
-                result.append(newbase)
-            else:
-                attrs = yield from fs.stat(newbase)
+        for name in names:
+            if name in (b'.', b'..'):
+                continue
 
-                if stat.S_ISDIR(attrs.permissions):
-                    if pattern == b'**':
-                        yield from _glob(fs, newbase, patlist, result)
-                    else:
-                        yield from _glob(fs, newbase, newpatlist, result)
+            if fnmatch(name, pattern):
+                newbase = posixpath.join(basedir or b'', name)
+
+                if not newpatlist or (len(newpatlist) == 1 and not newpatlist[0]):
+                    result.append(newbase)
+                else:
+                    attrs = yield from fs.stat(newbase)
+
+                    if stat.S_ISDIR(attrs.permissions):
+                        if pattern == b'**':
+                            yield from _glob(fs, newbase, patlist, result)
+                        else:
+                            yield from _glob(fs, newbase, newpatlist, result)
 
 
 @asyncio.coroutine
@@ -195,14 +224,7 @@ def match_glob(fs, pattern, error_handler=None):
 
     try:
         if any(c in pattern for c in b'*?[]'):
-            patlist = pattern.split(b'/')
-
-            if not patlist[0]:
-                basedir = b'/'
-                patlist = patlist[1:]
-            else:
-                basedir = None
-
+            basedir, patlist = _split_path_by_globs(pattern)
             yield from _glob(fs, basedir, patlist, names)
 
             if not names:
