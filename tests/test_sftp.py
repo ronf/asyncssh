@@ -2275,7 +2275,7 @@ class _TestSFTPServerProperties(_CheckSFTP):
             with (yield from conn.start_sftp_client(env={'A': 1,
                                                          'B': 2})) as sftp:
                 files = yield from sftp.listdir()
-                self.assertEqual(files, ['A', 'B'])
+                self.assertEqual(sorted(files), ['A', 'B'])
 
             yield from sftp.wait_closed() # pragma: no branch
 
