@@ -145,6 +145,16 @@ class _ReorderReadServerHandler(SFTPServerHandler):
             yield from super()._process_packet(pkttype, pktid, packet)
 
 
+class _CheckPropSFTPServer(SFTPServer):
+    """Return an FTP server which checks channel properties"""
+
+    def listdir(self, path):
+        """List the contents of a directory"""
+
+        if self.channel.get_connection() == self.connection: # pragma: no branch
+            return [SFTPName(k.encode()) for k in self.env.keys()]
+
+
 class _ChrootSFTPServer(SFTPServer):
     """Return an FTP server with a changed root"""
 
@@ -2245,6 +2255,31 @@ class _TestSFTP(_CheckSFTP):
                 yield from sftp.statvfs('.')
 
         asyncssh.set_sftp_log_level('WARNING')
+
+
+class _TestSFTPServerProperties(_CheckSFTP):
+    """Unit test for checking SFTP server properties"""
+
+    @classmethod
+    @asyncio.coroutine
+    def start_server(cls):
+        """Start an SFTP server which checks channel properties"""
+
+        return (yield from cls.create_server(sftp_factory=_CheckPropSFTPServer))
+
+    @asynctest
+    def test_properties(self):
+        """Test SFTP server channel properties"""
+
+        with (yield from self.connect()) as conn:
+            with (yield from conn.start_sftp_client(env={'A': 1,
+                                                         'B': 2})) as sftp:
+                files = yield from sftp.listdir()
+                self.assertEqual(files, ['A', 'B'])
+
+            yield from sftp.wait_closed() # pragma: no branch
+
+        yield from conn.wait_closed()
 
 
 class _TestSFTPChroot(_CheckSFTP):

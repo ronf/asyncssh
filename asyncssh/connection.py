@@ -3670,7 +3670,8 @@ class SSHClientConnection(SSHConnection):
             raise
 
     @async_context_manager
-    def start_sftp_client(self, path_encoding='utf-8', path_errors='strict'):
+    def start_sftp_client(self, env={}, path_encoding='utf-8',
+                          path_errors='strict'):
         """Start an SFTP client
 
            This method is a coroutine which attempts to start a secure
@@ -3684,6 +3685,17 @@ class SSHClientConnection(SSHConnection):
            will be left as bytes rather than being converted to & from
            strings.
 
+           :param env: (optional)
+               The set of environment variables to set for this SFTP
+               session. Keys and values passed in here will be converted
+               to Unicode strings encoded as UTF-8 (ISO 10646) for
+               transmission.
+
+               .. note:: Many SSH servers restrict which environment
+                         variables a client is allowed to set. The
+                         server's configuration may need to be edited
+                         before environment variables can be
+                         successfully set in the remote environment.
            :param path_encoding:
                The Unicode encoding to apply when sending and receiving
                remote pathnames
@@ -3699,7 +3711,7 @@ class SSHClientConnection(SSHConnection):
         """
 
         writer, reader, _ = yield from self.open_session(subsystem='sftp',
-                                                         encoding=None)
+                                                         env=env, encoding=None)
 
         return (yield from start_sftp_client(self, self._loop, reader, writer,
                                              path_encoding, path_errors))

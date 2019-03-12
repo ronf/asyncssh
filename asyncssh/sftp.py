@@ -4004,24 +4004,67 @@ class SFTPServer:
     def __init__(self, conn, chroot=None):
         # pylint: disable=unused-argument
 
-        self._logger = None
-
         if chroot:
             self._chroot = _from_local_path(os.path.realpath(chroot))
         else:
             self._chroot = None
 
+    @classmethod
+    def new(cls, chan):
+        """Allocate a new SFTP server"""
+
+        # Make channel, connection, and env available as properties on
+        # this SFTP server even before __init__ is called, but continue
+        # to pass "conn" as an explicit argument for backward compatibility
+        # with older code which is expecting that.
+
+        sftp_server = cls.__new__(cls)
+        sftp_server.channel = chan
+
+        sftp_server.__init__(chan.get_connection())
+
+        return sftp_server
+
+    @property
+    def channel(self):
+        """The channel associated with this SFTP server session"""
+
+        return self._chan
+
+    @channel.setter
+    def channel(self, chan):
+        """Set the channel associated with this SFTP server session"""
+
+        # pylint: disable=attribute-defined-outside-init
+
+        self._chan = chan
+
+    @property
+    def connection(self):
+        """The channel associated with this SFTP server session"""
+
+        return self._chan.get_connection()
+
+    @property
+    def env(self):
+        """The environment associated with this SFTP server session
+
+           This method returns the environment set by the client
+           when this SFTP session was opened.
+
+           :returns: A dictionary containing the environment variables
+                     set by the client
+
+        """
+
+
+        return self._chan.get_environment()
+
     @property
     def logger(self):
         """A logger associated with this SFTP server"""
 
-        return self._logger
-
-    @logger.setter
-    def logger(self, logger):
-        """Set the logger associated with this SFTP server"""
-
-        self._logger = logger
+        return self._chan.logger
 
     def format_user(self, uid):
         """Return the user name associated with a uid
@@ -4819,8 +4862,6 @@ def start_sftp_client(conn, loop, reader, writer, path_encoding, path_errors):
 @asyncio.coroutine
 def run_sftp_server(sftp_server, reader, writer):
     """Return a handler for an SFTP server session"""
-
-    sftp_server.logger = reader.logger
 
     handler = SFTPServerHandler(sftp_server, reader, writer)
 

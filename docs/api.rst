@@ -1123,11 +1123,14 @@ SFTPServer
 
 .. autoclass:: SFTPServer
 
-   ========================= =
+   ============================= =
    SFTP server attributes
-   ========================= =
+   ============================= =
+   .. autoattribute:: channel
+   .. autoattribute:: connection
+   .. autoattribute:: env
    .. autoattribute:: logger
-   ========================= =
+   ============================= =
 
    ================================== =
    Path remapping and display methods

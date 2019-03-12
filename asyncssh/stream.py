@@ -628,7 +628,7 @@ class SSHServerStreamSession(SSHStreamSession, SSHServerSession):
             self._chan.set_encoding(None)
             self._encoding = None
 
-            handler = run_sftp_server(self._sftp_factory(self._conn),
+            handler = run_sftp_server(self._sftp_factory.new(self._chan),
                                       stdin, stdout)
         elif self._allow_scp and command and command.startswith('scp '):
             self._chan.set_encoding(None)
