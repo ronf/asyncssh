@@ -2037,7 +2037,7 @@ class SFTPClient:
         if dstpath:
             dstpath = dstfs.encode(dstpath)
 
-        if isinstance(srcpaths, (str, bytes)):
+        if isinstance(srcpaths, (str, bytes, PurePath)):
             srcpaths = [srcpaths]
         elif not dst_isdir:
             raise SFTPError(FX_FAILURE, '%s must be a directory' %
