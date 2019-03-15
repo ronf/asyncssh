@@ -543,13 +543,14 @@ class _TestSFTP(_CheckSFTP):
         """Test copying a file over SFTP"""
 
         for method in ('get', 'put', 'copy'):
-            with self.subTest(method=method):
-                try:
-                    self._create_file('src')
-                    yield from getattr(sftp, method)('src', 'dst')
-                    self._check_file('src', 'dst')
-                finally:
-                    remove('src dst')
+            for src in ('src', b'src', Path('src')):
+                with self.subTest(method=method, src=type(src)):
+                    try:
+                        self._create_file('src')
+                        yield from getattr(sftp, method)(src, 'dst')
+                        self._check_file('src', 'dst')
+                    finally:
+                        remove('src dst')
 
     @sftp_test
     def test_copy_progress(self, sftp):
