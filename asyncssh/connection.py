@@ -3670,7 +3670,7 @@ class SSHClientConnection(SSHConnection):
             raise
 
     @async_context_manager
-    def start_sftp_client(self, env={}, path_encoding='utf-8',
+    def start_sftp_client(self, env=None, path_encoding='utf-8',
                           path_errors='strict'):
         """Start an SFTP client
 
@@ -3711,7 +3711,8 @@ class SSHClientConnection(SSHConnection):
         """
 
         writer, reader, _ = yield from self.open_session(subsystem='sftp',
-                                                         env=env, encoding=None)
+                                                         env=env or {},
+                                                         encoding=None)
 
         return (yield from start_sftp_client(self, self._loop, reader, writer,
                                              path_encoding, path_errors))
