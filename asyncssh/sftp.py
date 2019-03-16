@@ -159,7 +159,9 @@ def _split_path_by_globs(pattern):
                     patlist.append(plain)
                 else:
                     basedir = b'/'.join(plain) or b'/'
+
                 plain = []
+
             patlist.append(current)
         else:
             plain.append(current)
@@ -204,7 +206,8 @@ def _glob(fs, basedir, patlist, result):
             if fnmatch(name, pattern):
                 newbase = posixpath.join(basedir or b'', name)
 
-                if not newpatlist or (len(newpatlist) == 1 and not newpatlist[0]):
+                if not newpatlist or (len(newpatlist) == 1 and
+                                      not newpatlist[0]):
                     result.append(newbase)
                 else:
                     attrs = yield from fs.stat(newbase)

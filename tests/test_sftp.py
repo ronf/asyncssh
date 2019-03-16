@@ -776,6 +776,42 @@ class _TestSFTP(_CheckSFTP):
     def test_glob(self, sftp):
         """Test a glob pattern match over SFTP"""
 
+        # pylint: disable=bad-whitespace
+
+        glob_tests = (
+            ('file*',                    ['file1', 'filedir']),
+            ('./file*',                  ['./file1', './filedir']),
+            (b'file*',                   [b'file1', b'filedir']),
+            (['file*'],                  ['file1', 'filedir']),
+            (['', 'file*'],              ['file1', 'filedir']),
+            (['file*/*2'],               ['filedir/file2', 'filedir/filedir2']),
+            (['file*/*[3-9]'],           ['filedir/file3']),
+            (['**/file[12]'],            ['file1', 'filedir/file2']),
+            (['**/file*/'],              ['filedir', 'filedir/filedir2']),
+            ('filedir/file2',            ['filedir/file2']),
+            ('./filedir/file2',          ['./filedir/file2']),
+            ('filedir/file*',            ['filedir/file2', 'filedir/file3',
+                                          'filedir/filedir2']),
+            ('./filedir/file*',          ['./filedir/file2', './filedir/file3',
+                                          './filedir/filedir2']),
+            ('./filedir/filedir2/file*', ['./filedir/filedir2/file4',
+                                          './filedir/filedir2/file5']),
+            ('filedir/filedir2/file*',   ['filedir/filedir2/file4',
+                                          'filedir/filedir2/file5']),
+            ('./filedir/*/file4',        ['./filedir/filedir2/file4']),
+            ('filedir/*/file4',          ['filedir/filedir2/file4']),
+            ('./*/filedir2/file4',       ['./filedir/filedir2/file4']),
+            ('*/filedir2/file4',         ['filedir/filedir2/file4']),
+            ('*/filedir2/file*4',        ['filedir/filedir2/file4']),
+            ('./filedir/filedir*/file*', ['./filedir/filedir2/file4',
+                                          './filedir/filedir2/file5']),
+            ('filedir/filedir*/file*',   ['filedir/filedir2/file4',
+                                          'filedir/filedir2/file5']),
+            ('./**/filedir2/file4',      ['./filedir/filedir2/file4']),
+            ('**/filedir2/file4',        ['filedir/filedir2/file4']))
+
+        # pylint: enable=bad-whitespace
+
         try:
             os.mkdir('filedir')
             self._create_file('file1')
@@ -785,54 +821,13 @@ class _TestSFTP(_CheckSFTP):
             self._create_file('filedir/filedir2/file4')
             self._create_file('filedir/filedir2/file5')
 
-            self.assertEqual(sorted((yield from sftp.glob('file*'))),
-                             ['file1', 'filedir'])
-            self.assertEqual(sorted((yield from sftp.glob('./file*'))),
-                             ['./file1', './filedir'])
-            self.assertEqual(sorted((yield from sftp.glob(b'file*'))),
-                             [b'file1', b'filedir'])
-            self.assertEqual(sorted((yield from sftp.glob(['file*']))),
-                             ['file1', 'filedir'])
-            self.assertEqual(sorted((yield from sftp.glob(['', 'file*']))),
-                             ['file1', 'filedir'])
-            self.assertEqual(sorted((yield from sftp.glob(['file*/*2']))),
-                             ['filedir/file2', 'filedir/filedir2'])
-            self.assertEqual(sorted((yield from sftp.glob(['file*/*[3-9]']))),
-                             ['filedir/file3'])
-            self.assertEqual(sorted((yield from sftp.glob(['**/file[12]']))),
-                             ['file1', 'filedir/file2'])
-            self.assertEqual(sorted((yield from sftp.glob(['**/file*/']))),
-                             ['filedir', 'filedir/filedir2'])
+            for pattern, matches in glob_tests:
+                with self.subTest(pattern=pattern):
+                    self.assertEqual(sorted((yield from sftp.glob(pattern))),
+                                     matches)
+
             self.assertEqual((yield from sftp.glob([b'fil*1', 'fil*dir'])),
                              [b'file1', 'filedir'])
-            self.assertEqual(sorted((yield from sftp.glob('filedir/file2'))),
-                             ['filedir/file2'])
-            self.assertEqual(sorted((yield from sftp.glob('./filedir/file2'))),
-                             ['./filedir/file2'])
-            self.assertEqual(sorted((yield from sftp.glob('filedir/file*'))),
-                             ['filedir/file2','filedir/file3', 'filedir/filedir2'])
-            self.assertEqual(sorted((yield from sftp.glob('./filedir/file*'))),
-                             ['./filedir/file2','./filedir/file3', './filedir/filedir2'])
-            self.assertEqual(sorted((yield from sftp.glob('./filedir/filedir2/file*'))),
-                            ['./filedir/filedir2/file4','./filedir/filedir2/file5'])
-            self.assertEqual(sorted((yield from sftp.glob('filedir/filedir2/file*'))),
-                            ['filedir/filedir2/file4','filedir/filedir2/file5'])
-            self.assertEqual(sorted((yield from sftp.glob('./filedir/*/file4'))),
-                            ['./filedir/filedir2/file4'])
-            self.assertEqual(sorted((yield from sftp.glob('filedir/*/file4'))),
-                            ['filedir/filedir2/file4'])
-            self.assertEqual(sorted((yield from sftp.glob('./*/filedir2/file4'))),
-                            ['./filedir/filedir2/file4'])
-            self.assertEqual(sorted((yield from sftp.glob('*/filedir2/file4'))),
-                            ['filedir/filedir2/file4'])
-            self.assertEqual(sorted((yield from sftp.glob('./filedir/filedir*/file*'))),
-                            ['./filedir/filedir2/file4','./filedir/filedir2/file5'])
-            self.assertEqual(sorted((yield from sftp.glob('filedir/filedir*/file*'))),
-                            ['filedir/filedir2/file4','filedir/filedir2/file5'])
-            self.assertEqual(sorted((yield from sftp.glob('./**/filedir2/file4'))),
-                            ['./filedir/filedir2/file4'])
-            self.assertEqual(sorted((yield from sftp.glob('**/filedir2/file4'))),
-                            ['filedir/filedir2/file4'])
         finally:
             remove('file1 filedir')
 
