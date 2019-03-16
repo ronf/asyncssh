@@ -205,6 +205,12 @@ indent-after-paren=4
 expected-line-ending-format=
 
 
+[REFACTORING]
+
+# Maximum number of nested blocks for function / method body
+max-nested-blocks=10
+
+
 [LOGGING]
 
 # Logging modules to check that the string format arguments are in logging
