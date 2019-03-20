@@ -2743,12 +2743,15 @@ class _TestSCP(_CheckSCP):
     def test_get(self):
         """Test getting a file over SCP"""
 
-        try:
-            self._create_file('src')
-            yield from scp((self._scp_server, 'src'), 'dst')
-            self._check_file('src', 'dst')
-        finally:
-            remove('src dst')
+        for src in ('src', b'src', Path('src')):
+            for dst in ('dst', b'dst', Path('dst')):
+                with self.subTest(src=type(src), dst=type(dst)):
+                    try:
+                        self._create_file('src')
+                        yield from scp((self._scp_server, src), dst)
+                        self._check_file('src', 'dst')
+                    finally:
+                        remove('src dst')
 
     @asynctest
     def test_get_bytes_path(self):

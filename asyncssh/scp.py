@@ -25,6 +25,7 @@
 import argparse
 import asyncio
 import posixpath
+from pathlib import PurePath
 import shlex
 import stat
 
@@ -69,7 +70,7 @@ def _parse_path(path, **kwargs):
         conn, path = path.split(':')
     elif isinstance(path, bytes) and b':' in path:
         conn, path = path.split(b':')
-    elif isinstance(path, (str, bytes)):
+    elif isinstance(path, (str, bytes, PurePath)):
         conn = None
     else:
         conn = path
@@ -90,6 +91,9 @@ def _parse_path(path, **kwargs):
 @asyncio.coroutine
 def _start_remote(conn, source, must_be_dir, preserve, recurse, path):
     """Start remote SCP server"""
+
+    if isinstance(path, PurePath):
+        path = str(path)
 
     if isinstance(path, str):
         path = path.encode('utf-8')
