@@ -996,26 +996,26 @@ class _TestPublicKey(TempDirTestCase):
             ('Invalid PEM PKCS#8 PBES2 PBKDF2 PRF',
              b'-----BEGIN ENCRYPTED PRIVATE KEY-----\n' +
              binascii.b2a_base64(der_encode(
-                 ((_ES2, ((_ES2_PBKDF2, (b'', 0, None)),
+                 ((_ES2, ((_ES2_PBKDF2, (b'', 1, None)),
                           (_ES2_AES128, None))), b''))) +
              b'-----END ENCRYPTED PRIVATE KEY-----'),
             ('Unknown PEM PKCS#8 PBES2 PBKDF2 PRF',
              b'-----BEGIN ENCRYPTED PRIVATE KEY-----\n' +
              binascii.b2a_base64(der_encode(
-                 ((_ES2, ((_ES2_PBKDF2, (b'', 0,
+                 ((_ES2, ((_ES2_PBKDF2, (b'', 1,
                                          (ObjectIdentifier('1.1'), None))),
                           (_ES2_AES128, None))), b''))) +
              b'-----END ENCRYPTED PRIVATE KEY-----'),
             ('Invalid PEM PKCS#8 PBES2 encryption parameters',
              b'-----BEGIN ENCRYPTED PRIVATE KEY-----\n' +
              binascii.b2a_base64(der_encode(
-                 ((_ES2, ((_ES2_PBKDF2, (b'', 0)),
+                 ((_ES2, ((_ES2_PBKDF2, (b'', 1)),
                           (_ES2_AES128, None))), b''))) +
              b'-----END ENCRYPTED PRIVATE KEY-----'),
             ('Invalid length PEM PKCS#8 PBES2 IV',
              b'-----BEGIN ENCRYPTED PRIVATE KEY-----\n' +
              binascii.b2a_base64(der_encode(
-                 ((_ES2, ((_ES2_PBKDF2, (b'', 0)),
+                 ((_ES2, ((_ES2_PBKDF2, (b'', 1)),
                           (_ES2_AES128, b''))), b''))) +
              b'-----END ENCRYPTED PRIVATE KEY-----'),
             ('Invalid OpenSSH cipher',
