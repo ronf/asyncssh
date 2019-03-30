@@ -1327,6 +1327,23 @@ class _TestSFTP(_CheckSFTP):
 
             remove('file')
 
+    @sftp_test
+    def test_open_read_parallel(self, sftp):
+        """Test reading data from a file using parallel I/O"""
+
+        f = None
+
+        try:
+            self._create_file('file', 40*1024*'\0')
+
+            f = yield from sftp.open('file')
+            self.assertEqual(len((yield from f.read(64*1024))), 40*1024)
+        finally:
+            if f: # pragma: no branch
+                yield from f.close()
+
+            remove('file')
+
     def test_open_read_out_of_order(self):
         """Test parallel read with out-of-order responses"""
 

@@ -452,7 +452,7 @@ class _SFTPParallelIO:
                 for task in done:
                     exc = task.exception()
 
-                    if exc:
+                    if exc and exc.code != FX_EOF:
                         exceptions.append(exc)
 
                 if exceptions:
