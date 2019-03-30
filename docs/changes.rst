@@ -3,6 +3,37 @@
 Change Log
 ==========
 
+Release 1.16.1 (30 Mar 2019)
+----------------------------
+
+* Added channel, connection, and env properties to SFTPServer instances,
+  so connection and channel information can be used to influence the
+  SFTP server's behavior. Previously, connection information was made
+  avaiable through the constructor, but channel and environment
+  information was not. Now, all of these are available as properties
+  on the SFTPServer instance without the need to explicitly store anything
+  in a custom constructor.
+
+* Optimized SFTP glob matching when the glob pattern contains directory
+  names without glob characters in them. Thanks go to Mikhail Terekhov
+  for contributing this improvement!
+
+* Added support for PurePath in a few places that were missed when this
+  support was originally added. Once again, thanks go to Mikhail Terehkov
+  for these fixes.
+
+* Fixed bug in SFTP parallel I/O file reader where it sometimes returned
+  EOF prematurely. Thanks go to David G for reporting this problem and
+  providing a reproducible test case.
+
+* Fixed test failures seen on Fedora Rawhide. Thanks go to Georg Sauthof
+  for reporting this issue and providing a test environment to help debug
+  it.
+
+* Updated Ed25519/448 and Curve25519/448 tests to only run when these
+  algorithms are available. Thanks go to Ondřej Súkup for reporting
+  this issue and providing a suggested fix.
+
 Release 1.16.0 (2 Mar 2019)
 ---------------------------
 
