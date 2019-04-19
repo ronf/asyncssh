@@ -22,6 +22,7 @@
 
 from .asn1 import ASN1DecodeError, ObjectIdentifier, der_encode, der_decode
 from .crypto import EdDSAPrivateKey, EdDSAPublicKey
+from .crypto import ed25519_available, ed448_available
 from .packet import String
 from .public_key import OMIT, SSHKey, SSHOpenSSHCertificateV01
 from .public_key import KeyImportError, KeyExportError
@@ -186,10 +187,15 @@ class _Ed448Key(_EdKey):
     all_sig_algorithms = set(sig_algorithms)
 
 
-for _cls in (_Ed25519Key, _Ed448Key):
-    _cert_algorithm = _cls.algorithm + b'-cert-v01@openssh.com'
+if ed25519_available: # pragma: no branch
+    register_public_key_alg(b'ssh-ed25519', _Ed25519Key)
 
-    register_public_key_alg(_cls.algorithm, _cls)
+    register_certificate_alg(1, b'ssh-ed25519',
+                             b'ssh-ed25519-cert-v01@openssh.com',
+                             _Ed25519Key, SSHOpenSSHCertificateV01)
 
-    register_certificate_alg(1, _cls.algorithm, _cert_algorithm,
-                             _cls, SSHOpenSSHCertificateV01)
+if ed448_available: # pragma: no branch
+    register_public_key_alg(b'ssh-ed448', _Ed448Key)
+
+    register_certificate_alg(1, b'ssh-ed448', b'ssh-ed448-cert-v01@openssh.com',
+                             _Ed448Key, SSHOpenSSHCertificateV01)

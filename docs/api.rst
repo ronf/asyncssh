@@ -1854,8 +1854,9 @@ The following are the key exchange algorithms currently supported by AsyncSSH:
 GSS authentication support is only available when the gssapi package is
 installed on UNIX or the pypiwin32 package is installed on Windows.
 
-Curve25519 and curve448 support is only available when OpenSSL 1.1.1 or
-later is installed.
+Curve25519 and Curve448 support is available when OpenSSL 1.1.1 or
+later is installed. Alternately, Curve25519 is available when the
+libnacl package and libsodium library are installed.
 
 .. index:: Encryption algorithms
 .. _EncryptionAlgs:
@@ -1989,8 +1990,9 @@ supported by AsyncSSH:
   | ssh-rsa
   | ssh-dss
 
-Ed25519 and Ed448 support is only available when OpenSSL 1.1.1b or later
-is installed.
+Ed25519 and Ed448 support is available when OpenSSL 1.1.1b or later is
+installed. Alternately, Ed25519 is available when the libnacl package
+and libsodium library are installed.
 
 .. index:: Constants
 .. _Constants:
