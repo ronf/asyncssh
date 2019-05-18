@@ -1874,7 +1874,8 @@ class SSHTCPChannel(SSHForwardChannel):
                   orig_host, orig_port):
         """Open a TCP channel"""
 
-        self.set_extra_info(peername=(None, None),
+        self.set_extra_info(sockname=(orig_host, orig_port),
+                            peername=(host, port),
                             local_peername=(orig_host, orig_port),
                             remote_peername=(host, port))
 
@@ -1901,7 +1902,9 @@ class SSHTCPChannel(SSHForwardChannel):
                                orig_host, orig_port):
         """Set local and remote peer names for inbound connections"""
 
-        self.set_extra_info(local_peername=(dest_host, dest_port),
+        self.set_extra_info(sockname=(dest_host, dest_port),
+                            peername=(orig_host, orig_port),
+                            local_peername=(dest_host, dest_port),
                             remote_peername=(orig_host, orig_port))
 
 

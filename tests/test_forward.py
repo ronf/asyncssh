@@ -167,8 +167,8 @@ class _TCPConnectionServer(Server):
     def connection_requested(self, dest_host, dest_port, orig_host, orig_port):
         """Handle a request to create a new connection"""
 
-        if dest_port in {0, self._conn.get_extra_info('sockname')[1]}:
-            return True
+        if dest_port == 1:
+            return False
         elif dest_port == 7:
             return (self._conn.create_tcp_channel(), echo)
         elif dest_port == 8:
@@ -179,7 +179,7 @@ class _TCPConnectionServer(Server):
         elif dest_port == 10:
             return _async_runtime_error
         else:
-            return False
+            return True
 
     def server_requested(self, listen_host, listen_port):
         """Handle a request to create a new socket listener"""
@@ -307,6 +307,73 @@ class _TestTCPForwarding(_CheckForwarding):
                 yield from self._check_connection(conn2)
 
             yield from conn2.wait_closed()
+
+        yield from conn.wait_closed()
+
+    @asynctest
+    def test_ssh_connect_reverse_tunnel(self):
+        """Test creating a tunneled reverse direction SSH connection"""
+
+        server2 = yield from self.listen_reverse()
+        listen_port = server2.sockets[0].getsockname()[1]
+
+        with (yield from self.connect()) as conn:
+            with (yield from conn.connect_reverse_ssh('127.0.0.1', listen_port,
+                                                      server_factory=Server,
+                                                      server_host_keys=['skey'],
+                                                      gss_host=None)) as conn2:
+                pass
+
+            yield from conn2.wait_closed()
+
+        yield from conn.wait_closed()
+
+        server2.close()
+        yield from server2.wait_closed()
+
+    @asynctest
+    def test_ssh_listen_tunnel(self):
+        """Test opening a tunneled SSH listener"""
+
+        with (yield from self.connect()) as conn:
+            server2 = yield from conn.listen_ssh(port=0, server_factory=Server,
+                                                 server_host_keys=['skey'],
+                                                 gss_host=None)
+            listen_port = server2.get_port()
+
+            with (yield from asyncssh.connect('127.0.0.1', listen_port,
+                                              loop=self.loop, gss_host=None,
+                                              known_hosts=(['skey.pub'],
+                                                           [], []))) as conn2:
+                pass
+
+            yield from conn2.wait_closed()
+
+            server2.close()
+            yield from server2.wait_closed()
+
+        yield from conn.wait_closed()
+
+    @asynctest
+    def test_ssh_listen_reverse_tunnel(self):
+        """Test creating a tunneled reverse direction SSH connection"""
+
+        with (yield from self.connect()) as conn:
+            server2 = yield from conn.listen_reverse_ssh(
+                port=0, loop=self.loop, gss_host=None,
+                known_hosts=(['skey.pub'], [], []))
+            listen_port = server2.get_port()
+
+            with (yield from asyncssh.connect_reverse(
+                '127.0.0.1', listen_port, server_factory=Server,
+                loop=self.loop, gss_host=None,
+                server_host_keys=['skey'])) as conn2:
+                pass
+
+            yield from conn2.wait_closed()
+
+            server2.close()
+            yield from server2.wait_closed()
 
         yield from conn.wait_closed()
 
@@ -537,7 +604,7 @@ class _TestTCPForwarding(_CheckForwarding):
         """Test error connecting a local forwarding port"""
 
         with (yield from self.connect()) as conn:
-            listener = yield from conn.forward_local_port('', 0, '', 0)
+            listener = yield from conn.forward_local_port('', 0, '', 1)
             listen_port = listener.get_port()
 
             reader, writer = yield from asyncio.open_connection(None,

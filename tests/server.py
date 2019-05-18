@@ -65,8 +65,7 @@ class ServerTestCase(AsyncTestCase):
 
     @classmethod
     @asyncio.coroutine
-    def create_server(cls, server_factory=(), *, loop=(),
-                      server_host_keys=(), gss_host=None, **kwargs):
+    def listen(cls, *, loop=(), server_factory=(), options=None, **kwargs):
         """Create an SSH server for the tests to use"""
 
         if loop == ():
@@ -75,12 +74,37 @@ class ServerTestCase(AsyncTestCase):
         if server_factory == ():
             server_factory = Server
 
-        if server_host_keys == ():
-            server_host_keys = ['skey']
+        options = asyncssh.SSHServerConnectionOptions(
+            options=options, server_factory=server_factory,
+            gss_host=None, server_host_keys=['skey'])
 
-        return (yield from asyncssh.create_server(
-            server_factory, port=0, family=socket.AF_INET, loop=loop,
-            server_host_keys=server_host_keys, gss_host=gss_host, **kwargs))
+        return (yield from asyncssh.listen(port=0, loop=loop,
+                                           family=socket.AF_INET,
+                                           options=options, **kwargs))
+
+    @classmethod
+    @asyncio.coroutine
+    def listen_reverse(cls, *, loop=(), options=None, **kwargs):
+        """Create a reverse SSH server for the tests to use"""
+
+        if loop == ():
+            loop = cls.loop
+
+        options = asyncssh.SSHClientConnectionOptions(
+            options=options, gss_host=None,
+            known_hosts=(['skey.pub'], [], []))
+
+        return (yield from asyncssh.listen_reverse(port=0, loop=loop,
+                                                   family=socket.AF_INET,
+                                                   options=options, **kwargs))
+
+
+    @classmethod
+    @asyncio.coroutine
+    def create_server(cls, server_factory=(), **kwargs):
+        """Create an SSH server for the tests to use"""
+
+        return (yield from cls.listen(server_factory=server_factory, **kwargs))
 
     @classmethod
     @asyncio.coroutine
@@ -183,7 +207,7 @@ class ServerTestCase(AsyncTestCase):
             os.chmod(f, 0o600)
 
         os.mkdir('.ssh', 0o700)
-        os.mkdir('.ssh/crt', 0o700)
+        os.mkdir(os.path.join('.ssh', 'crt'), 0o700)
 
         shutil.copy('ckey_ecdsa', os.path.join('.ssh', 'id_ecdsa'))
         shutil.copy('ckey_ecdsa.pub', os.path.join('.ssh', 'id_ecdsa.pub'))
@@ -213,6 +237,12 @@ class ServerTestCase(AsyncTestCase):
                 with open('root_ca_cert.pub') as root_pub:
                     shutil.copyfileobj(root_pub, auth_keys_x509)
 
+            shutil.copy('skey_x509_self.pem',
+                        os.path.join('.ssh', 'ca-bundle.crt'))
+
+        os.environ['LOGNAME'] = 'guest'
+        os.environ['HOME'] = '.'
+
         cls._server = yield from cls.start_server()
 
         sock = cls._server.sockets[0]
@@ -233,9 +263,6 @@ class ServerTestCase(AsyncTestCase):
                 shutil.copyfileobj(skey_pub, known_hosts)
 
         shutil.copy('known_hosts', os.path.join('.ssh', 'known_hosts'))
-
-        os.environ['LOGNAME'] = 'guest'
-        os.environ['HOME'] = '.'
 
         if 'DISPLAY' in os.environ: # pragma: no cover
             del os.environ['DISPLAY']
@@ -283,25 +310,40 @@ class ServerTestCase(AsyncTestCase):
 
         return bool(self._agent_pid)
 
+    @async_context_manager
+    def connect(self, loop=(), options=None, **kwargs):
+        """Open a connection to the test server"""
+
+        if loop == ():
+            loop = self.loop
+
+        options = asyncssh.SSHClientConnectionOptions(options, gss_host=None)
+
+        return (yield from asyncssh.connect(self._server_addr,
+                                            self._server_port, loop=loop,
+                                            options=options, **kwargs))
+
     @asyncio.coroutine
-    def create_connection(self, client_factory, loop=(),
-                          gss_host=None, **kwargs):
+    def connect_reverse(self, loop=(), options=None, **kwargs):
         """Create a connection to the test server"""
 
         if loop == ():
             loop = self.loop
 
-        return (yield from asyncssh.create_connection(client_factory,
-                                                      self._server_addr,
-                                                      self._server_port,
-                                                      loop=loop,
-                                                      gss_host=gss_host,
-                                                      **kwargs))
+        options = asyncssh.SSHServerConnectionOptions(options,
+                                                      server_factory=Server,
+                                                      server_host_keys=['skey'],
+                                                      gss_host=None)
 
-    @async_context_manager
-    def connect(self, **kwargs):
-        """Open a connection to the test server"""
+        return (yield from asyncssh.connect_reverse(self._server_addr,
+                                                    self._server_port,
+                                                    loop=loop, options=options,
+                                                    **kwargs))
 
-        conn, _ = yield from self.create_connection(None, **kwargs)
+    @asyncio.coroutine
+    def create_connection(self, client_factory, **kwargs):
+        """Create a connection to the test server"""
 
-        return conn
+        conn = yield from self.connect(client_factory=client_factory, **kwargs)
+
+        return conn, conn.get_owner()

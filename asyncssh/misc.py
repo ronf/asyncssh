@@ -209,6 +209,26 @@ def async_context_manager(coro):
         return coro
 
 
+class Options:
+    """Container for configuration options"""
+
+    def __init__(self, options=None, **kwargs):
+        if options:
+            if not isinstance(options, type(self)):
+                raise TypeError('Invalid %s, got %s' %
+                                (type(self).__name__, type(options).__name__))
+
+            self.kwargs = options.kwargs.copy()
+        else:
+            self.kwargs = {}
+
+        self.kwargs.update(kwargs)
+        self.prepare(**self.kwargs)
+
+    def prepare(self):
+        """Pre-process configuration options"""
+
+
 class Record:
     """General-purpose record type with fixed set of fields"""
 

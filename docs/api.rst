@@ -124,6 +124,26 @@ found under :ref:`Constants`.
 Main Functions
 ==============
 
+connect
+-------
+
+.. autofunction:: connect
+
+connect_reverse
+---------------
+
+.. autofunction:: connect_reverse
+
+listen
+------
+
+.. autofunction:: listen
+
+listen_reverse
+--------------
+
+.. autofunction:: listen_reverse
+
 create_connection
 -----------------
 
@@ -133,16 +153,6 @@ create_server
 -------------
 
 .. autofunction:: create_server
-
-connect
--------
-
-.. autofunction:: connect
-
-listen
-------
-
-.. autofunction:: listen
 
 get_server_host_key
 -------------------
@@ -310,6 +320,9 @@ SSHClientConnection
    .. automethod:: start_sftp_client
    .. automethod:: create_ssh_connection
    .. automethod:: connect_ssh
+   .. automethod:: connect_reverse_ssh
+   .. automethod:: listen_ssh
+   .. automethod:: listen_reverse_ssh
    ====================================================================================================================================================== =
 
    ====================================== =
@@ -408,6 +421,16 @@ SSHServerConnection
    .. automethod:: disconnect
    .. automethod:: wait_closed
    =========================== =
+
+SSHClientConnectionOptions
+--------------------------
+
+.. autoclass:: SSHClientConnectionOptions()
+
+SSHServerConnectionOptions
+--------------------------
+
+.. autoclass:: SSHServerConnectionOptions()
 
 Process Classes
 ===============

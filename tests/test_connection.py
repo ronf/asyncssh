@@ -324,7 +324,15 @@ class _TestConnection(ServerTestCase):
     def start_server(cls):
         """Start an SSH server to connect to"""
 
-        return (yield from cls.create_server(_TunnelServer, gss_host=()))
+        def acceptor(conn):
+            """Acceptor for SSH connections"""
+
+            # pylint: disable=unused-argument
+
+            conn.logger.info('Acceptor called')
+
+        return (yield from cls.create_server(_TunnelServer, gss_host=(),
+                                             acceptor=acceptor))
 
     @asyncio.coroutine
     def get_server_host_key(self, loop=(), **kwargs):
@@ -356,6 +364,22 @@ class _TestConnection(ServerTestCase):
             pass
 
         yield from conn.wait_closed()
+
+    @asynctest
+    def test_connect_invalid_options_type(self):
+        """Test connecting using options using incorrect type of options"""
+
+        options = asyncssh.SSHServerConnectionOptions()
+
+        with self.assertRaises(TypeError):
+            yield from self.connect(options=options)
+
+    @asynctest
+    def test_connect_invalid_option_name(self):
+        """Test connecting using incorrect option name"""
+
+        with self.assertRaises(TypeError):
+            yield from self.connect(xxx=1)
 
     @asynctest
     def test_connect_failure(self):
@@ -412,7 +436,8 @@ class _TestConnection(ServerTestCase):
         """Test starting a server with no host keys"""
 
         with self.assertRaises(ValueError):
-            yield from asyncssh.listen(server_host_keys=[], gss_host=None)
+            yield from asyncssh.create_server(Server, server_host_keys=[],
+                                              gss_host=None)
 
     @asynctest
     def test_duplicate_type_server_host_keys(self):
@@ -1214,6 +1239,156 @@ class _TestConnection(ServerTestCase):
             yield from self.create_connection(_InternalErrorClient)
 
 
+class _TestConnectionCoroAcceptor(ServerTestCase):
+    """Unit test for coroutine acceptor"""
+
+    @classmethod
+    @asyncio.coroutine
+    def start_server(cls):
+        """Start an SSH server to connect to"""
+
+        @asyncio.coroutine
+        def acceptor(conn):
+            """Coroutine cceptor for SSH connections"""
+
+            # pylint: disable=unused-argument
+
+            conn.logger.info('Acceptor called')
+
+        return (yield from cls.create_server(_TunnelServer, gss_host=(),
+                                             acceptor=acceptor))
+
+    @asynctest
+    def test_connect(self):
+        """Test acceptor"""
+
+        with self.assertLogs(level='INFO'):
+            with (yield from self.connect()) as conn:
+                pass
+
+        yield from conn.wait_closed()
+
+
+class _TestConnectionReverse(ServerTestCase):
+    """Unit test for reverse direction connections"""
+
+    @classmethod
+    @asyncio.coroutine
+    def start_server(cls):
+        """Start an SSH listener which opens SSH client connections"""
+
+        def acceptor(conn):
+            """Acceptor for reverse-direction SSH connections"""
+
+            # pylint: disable=unused-argument
+
+            conn.logger.info('Reverse acceptor called')
+
+        return (yield from cls.listen_reverse(acceptor=acceptor))
+
+    @asynctest
+    def test_connect_reverse(self):
+        """Test reverse direction SSH connection"""
+
+        with self.assertLogs(level='INFO'):
+            with (yield from self.connect_reverse()) as conn:
+                pass
+
+            yield from conn.wait_closed()
+
+    @asynctest
+    def test_connect_reverse_options(self):
+        """Test reverse direction SSH connection with options"""
+
+        with (yield from self.connect_reverse(passphrase=None)) as conn:
+            pass
+
+        yield from conn.wait_closed()
+
+    @asynctest
+    def test_connect_reverse_no_server_host_keys(self):
+        """Test starting a reverse direction connection with no host keys"""
+
+        with self.assertRaises(ValueError):
+            yield from self.connect_reverse(server_host_keys=[])
+
+
+class _TestConnectionReverseCoroAcceptor(ServerTestCase):
+    """Unit test for reverse direction connections with coroutine acceptor"""
+
+    @classmethod
+    @asyncio.coroutine
+    def start_server(cls):
+        """Start an SSH listener which opens SSH client connections"""
+
+        @asyncio.coroutine
+        def acceptor(conn):
+            """Acceptor for reverse-direction SSH connections"""
+
+            # pylint: disable=unused-argument
+
+            conn.logger.info('Coroutine acceptor called')
+
+        return (yield from cls.listen_reverse(acceptor=acceptor))
+
+    @asynctest
+    def test_connect_reverse_coro_acceptor(self):
+        """Test reverse direction SSH connection with coroutine acceptor"""
+
+        with self.assertLogs(level='INFO'):
+            with (yield from self.connect_reverse()) as conn:
+                pass
+
+            yield from conn.wait_closed()
+
+
+class _TestConnectionReverseNoLoop(ServerTestCase):
+    """Unit test for reverse direction connection with loop not specified"""
+
+    @classmethod
+    @asyncio.coroutine
+    def start_server(cls):
+        """Start an SSH listener which opens SSH client connections"""
+
+        return (yield from cls.listen_reverse(loop=None))
+
+    @asynctest
+    def test_connect_reverse_no_loop(self):
+        """Test reverse direction SSH connection with loop not specified"""
+
+        with (yield from self.connect_reverse(loop=None)) as conn:
+            pass
+
+        yield from conn.wait_closed()
+
+
+class _TestConnectionReverseFailed(ServerTestCase):
+    """Unit test for reverse direction connection failure"""
+
+    @classmethod
+    @asyncio.coroutine
+    def start_server(cls):
+        """Start an SSH listener which opens SSH client connections"""
+
+        def err_handler(conn, exc):
+            """Error handler for failed SSH handshake"""
+
+            # pylint: disable=unused-argument
+
+            conn.logger.info('Error handler called')
+
+        return (yield from cls.listen_reverse(username='user',
+                                              error_handler=err_handler))
+
+    @asynctest
+    def test_connect_failed(self):
+        """Test starting a reverse direction connection which fails"""
+
+        with self.assertLogs(level='INFO'):
+            with self.assertRaises(asyncssh.ConnectionLost):
+                yield from self.connect_reverse(authorized_client_keys=[])
+
+
 class _TestConnectionKeepalive(ServerTestCase):
     """Unit test for keepalive"""
 
@@ -1308,9 +1483,7 @@ class _TestServerX509Self(ServerTestCase):
     def test_connect_x509_self(self):
         """Test connecting with X.509 self-signed certificate"""
 
-        with (yield from self.connect(known_hosts=([], [], [],
-                                                   ['skey_x509_self.pem'],
-                                                   [], [], []))) as conn:
+        with (yield from self.connect()) as conn:
             pass
 
         yield from conn.wait_closed()
@@ -1320,8 +1493,7 @@ class _TestServerX509Self(ServerTestCase):
         """Test connecting with untrusted X.509 self-signed certficate"""
 
         with self.assertRaises(asyncssh.HostKeyNotVerifiable):
-            yield from self.connect(
-                known_hosts=([], [], [], ['root_ca_cert.pem'], [], [], []))
+            yield from self.connect(x509_trusted_certs='root_ca_cert.pem')
 
     @asynctest
     def test_connect_x509_revoked_self(self):
@@ -1370,6 +1542,19 @@ class _TestServerX509Self(ServerTestCase):
                 known_hosts=([], [], [], [], [], ['OU=name'], []),
                 x509_trusted_certs=None)
 
+    @unittest.skipIf(sys.platform == 'win32', 'skip chmod tests on Windows')
+    @asynctest
+    def test_trusted_x509_certs_not_readable(self):
+        """Test connecting with default trusted X509 cert file not readable"""
+
+        try:
+            os.chmod(os.path.join('.ssh', 'ca-bundle.crt'), 0)
+
+            with self.assertRaises(asyncssh.HostKeyNotVerifiable):
+                yield from self.connect()
+        finally:
+            os.chmod(os.path.join('.ssh', 'ca-bundle.crt'), 0o644)
+
 
 @unittest.skipUnless(x509_available, 'X.509 not available')
 class _TestServerX509Chain(ServerTestCase):
@@ -1387,9 +1572,8 @@ class _TestServerX509Chain(ServerTestCase):
     def test_connect_x509_chain(self):
         """Test connecting with X.509 certificate chain"""
 
-        with (yield from self.connect(known_hosts=([], [], [],
-                                                   ['root_ca_cert.pem'],
-                                                   [], [], []))) as conn:
+        with (yield from self.connect(
+            x509_trusted_certs='root_ca_cert.pem')) as conn:
             pass
 
         yield from conn.wait_closed()
@@ -1409,9 +1593,7 @@ class _TestServerX509Chain(ServerTestCase):
         """Test connecting to server with untrusted X.509 root CA"""
 
         with self.assertRaises(asyncssh.HostKeyNotVerifiable):
-            yield from self.connect(known_hosts=([], [], [],
-                                                 ['skey_x509_self.pem'],
-                                                 [], [], []))
+            yield from self.connect()
 
     @asynctest
     def test_connect_x509_untrusted_root_cert_path(self):
