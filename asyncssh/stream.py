@@ -593,6 +593,22 @@ class SSHServerStreamSession(SSHStreamSession, SSHServerSession):
         self._sftp_factory = sftp_factory
         self._allow_scp = allow_scp and bool(sftp_factory)
 
+    def _init_sftp_server(self):
+        """Initialize an SFTP server for this stream to use"""
+
+        self._chan.set_encoding(None)
+        self._encoding = None
+
+        if isinstance(self._sftp_factory, type):
+            sftp_server = object.__new__(self._sftp_factory)
+            sftp_server.channel = self._chan
+            sftp_server.__init__(self._conn)
+        else:
+            sftp_server = self._sftp_factory(self._conn)
+            sftp_server.channel = self._chan
+
+        return sftp_server
+
     def shell_requested(self):
         """Return whether a shell can be requested"""
 
@@ -625,17 +641,10 @@ class SSHServerStreamSession(SSHStreamSession, SSHServerSession):
         stderr = SSHWriter(self, self._chan, EXTENDED_DATA_STDERR)
 
         if self._chan.get_subsystem() == 'sftp':
-            self._chan.set_encoding(None)
-            self._encoding = None
-
-            handler = run_sftp_server(self._sftp_factory.new(self._chan),
-                                      stdin, stdout)
+            handler = run_sftp_server(self._init_sftp_server(), stdin, stdout)
         elif self._allow_scp and command and command.startswith('scp '):
-            self._chan.set_encoding(None)
-            self._encoding = None
-
-            handler = run_scp_server(self._sftp_factory.new(self._chan),
-                                     command, stdin, stdout, stderr)
+            handler = run_scp_server(self._init_sftp_server(), command,
+                                     stdin, stdout, stderr)
         else:
             handler = self._session_factory(stdin, stdout, stderr)
 

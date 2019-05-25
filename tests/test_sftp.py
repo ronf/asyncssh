@@ -2301,6 +2301,30 @@ class _TestSFTP(_CheckSFTP):
         asyncssh.set_sftp_log_level('WARNING')
 
 
+class _TestSFTPCallable(_CheckSFTP):
+    """Unit tests for AsyncSSH SFTP factory being a callable"""
+
+    @classmethod
+    @asyncio.coroutine
+    def start_server(cls):
+        """Start an SFTP server using a callable"""
+
+        def sftp_factory(conn):
+            """Return an SFTP server"""
+
+            return SFTPServer(conn)
+
+        return (yield from cls.create_server(sftp_factory=sftp_factory))
+
+    @sftp_test
+    def test_stat(self, sftp):
+        """Test getting attributes on a file"""
+
+        # pylint: disable=no-self-use
+
+        yield from sftp.stat('.')
+
+
 class _TestSFTPServerProperties(_CheckSFTP):
     """Unit test for checking SFTP server properties"""
 

@@ -4034,22 +4034,6 @@ class SFTPServer:
         else:
             self._chroot = None
 
-    @classmethod
-    def new(cls, chan):
-        """Allocate a new SFTP server"""
-
-        # Make channel, connection, and env available as properties on
-        # this SFTP server even before __init__ is called, but continue
-        # to pass "conn" as an explicit argument for backward compatibility
-        # with older code which is expecting that.
-
-        sftp_server = cls.__new__(cls)
-        sftp_server.channel = chan
-
-        sftp_server.__init__(chan.get_connection())
-
-        return sftp_server
-
     @property
     def channel(self):
         """The channel associated with this SFTP server session"""
