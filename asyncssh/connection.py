@@ -2392,7 +2392,7 @@ class SSHClientConnection(SSHConnection):
         self._client_username = options.client_username
         self._client_keys = options.client_keys
 
-        if options.agent_path:
+        if options.agent_path is not None:
             self._agent = SSHAgentClient(self._loop, options.agent_path)
 
         self._agent_forward_path = options.agent_forward_path
@@ -5365,15 +5365,14 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
         self.gss_delegate_creds = gss_delegate_creds
 
         if agent_path == ():
-            agent_path = os.environ.get('SSH_AUTH_SOCK', None)
+            agent_path = os.environ.get('SSH_AUTH_SOCK', ())
 
         self.agent_path = None
 
         if client_keys:
             client_keys = load_keypairs(client_keys, passphrase)
         elif client_keys == ():
-            if agent_path:
-                self.agent_path = agent_path
+            self.agent_path = agent_path
 
             client_keys = load_default_keypairs(passphrase)
 
