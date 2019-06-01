@@ -3,6 +3,30 @@
 Change Log
 ==========
 
+Release 1.17.0 (31 May 2019)
+----------------------------
+
+* Added support for "reverse direction" SSH connections, useful to
+  support applications like NETCONF Call Home, described in RFC 8071.
+
+* Added support for the PyCA implementation of Chacha20-Poly1305,
+  eliminating the dependency on libnacl/libsodium to provide this
+  functionality, as long as OpenSSL 1.1.1b or later is installed.
+
+* Restored libnacl support for Curve25519/Ed25519 on systems which
+  have an older version of OpenSSL that doesn't have that support.
+  This fallback also applies to Chacha20-Poly1305.
+
+* Fixed Pageant support on Windows to use the Pageant agent by default
+  when it is available and client keys are not explicitly configured.
+
+* Disabled the use of RSA SHA-2 signatures when using the Pageant
+  or Windows 10 OpenSSH agent on Windows, since neither of those
+  support the signature flags options to request them.
+
+* Fixed a regression where a callable was no longer usable in the
+  sftp_factory argument of create_server.
+
 Release 1.16.1 (30 Mar 2019)
 ----------------------------
 
