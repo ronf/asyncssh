@@ -40,12 +40,6 @@ except ImportError: # pragma: no cover
     bcrypt_available = False
 
 try:
-    import libnacl
-    libnacl_available = True
-except (ImportError, OSError, AttributeError): # pragma: no cover
-    libnacl_available = False
-
-try:
     import uvloop
     uvloop_available = True
 except ImportError: # pragma: no cover

@@ -1232,10 +1232,12 @@ AsyncSSH has extensive public key and certificate support.
 
 Supported public key types include DSA, RSA, and ECDSA. In addition, Ed25519
 and Ed448 keys are supported if OpenSSL 1.1.1b or later is installed.
+Alternately, Ed25519 support is available when the libnacl package and
+libsodium library are installed.
 
 Supported certificate types include OpenSSH version 01 certificates for
-DSA, RSA, ECDSA, and Ed25519 keys and X.509 certificates for DSA, RSA,
-and ECDSA keys.
+DSA, RSA, ECDSA, Ed25519, and Ed448 keys and X.509 certificates for DSA,
+RSA, and ECDSA keys.
 
 Support is also available for the certificate critical options of
 force-command and source-address and the extensions permit-X11-forwarding,
@@ -1905,8 +1907,8 @@ The following are the encryption algorithms currently supported by AsyncSSH:
   | arcfour128
   | arcfour
 
-Chacha20-poly1305 support is only available when the libnacl package and
-libsodium library are installed.
+Chacha20-Poly1305 support is available when either OpenSSL 1.1.1b or later
+or the libnacl package and libsodium library are installed.
 
 .. index:: MAC algorithms
 .. _MACAlgs:

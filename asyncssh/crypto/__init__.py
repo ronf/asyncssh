@@ -37,7 +37,7 @@ from .kdf import pbkdf2_hmac
 from .rsa import RSAPrivateKey, RSAPublicKey
 
 # Import chacha20-poly1305 cipher if available
-from .chacha import ChachaCipher
+from .chacha import ChachaCipher, chacha_available
 
 # Import umac cryptographic hash if available
 try:

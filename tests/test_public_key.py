@@ -40,7 +40,7 @@ import asyncssh
 
 from asyncssh.asn1 import der_encode, BitString, ObjectIdentifier
 from asyncssh.asn1 import TaggedDERObject
-from asyncssh.crypto import ed25519_available, ed448_available
+from asyncssh.crypto import chacha_available, ed25519_available, ed448_available
 from asyncssh.packet import MPInt, String, UInt32
 from asyncssh.pbe import pkcs1_decrypt
 from asyncssh.public_key import CERT_TYPE_USER, CERT_TYPE_HOST, SSHKey
@@ -50,7 +50,7 @@ from asyncssh.public_key import get_public_key_algs, get_certificate_algs
 from asyncssh.public_key import get_x509_certificate_algs
 from asyncssh.public_key import import_certificate_subject
 
-from .util import bcrypt_available, libnacl_available, x509_available
+from .util import bcrypt_available, x509_available
 from .util import make_certificate, run, TempDirTestCase
 
 
@@ -138,7 +138,7 @@ openssh_ciphers = (
 # pylint: enable=bad-whitespace
 
 # Only test Chacha if libnacl is installed
-if libnacl_available: # pragma: no branch
+if chacha_available: # pragma: no branch
     openssh_ciphers += (('chacha20-poly1305@openssh.com',
                          _openssh_supports_gcm_chacha),)
 
