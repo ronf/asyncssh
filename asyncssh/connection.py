@@ -1698,7 +1698,8 @@ class SSHConnection(SSHPacketHandler):
             # pylint: disable=no-member
             self.try_next_auth()
         else:
-            raise ProtocolError('Unexpected userauth response')
+            self.logger.debug2('Unexpected userauth failure response')
+            self.send_packet(MSG_UNIMPLEMENTED, UInt32(pktid))
 
     def _process_userauth_success(self, pkttype, pktid, packet):
         """Process a user authentication success response"""
@@ -1738,7 +1739,8 @@ class SSHConnection(SSHPacketHandler):
                 self._waiter.set_result(None)
                 self._wait = None
         else:
-            raise ProtocolError('Unexpected userauth response')
+            self.logger.debug2('Unexpected userauth success response')
+            self.send_packet(MSG_UNIMPLEMENTED, UInt32(pktid))
 
     def _process_userauth_banner(self, pkttype, pktid, packet):
         """Process a user authentication banner message"""
