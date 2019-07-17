@@ -1227,6 +1227,26 @@ class _TestPublicKeyAuth(ServerTestCase):
 
         yield from conn.wait_closed()
 
+    @asynctest
+    def test_auth_options_reuse(self):
+        """Test public key auth via SSHClientConnectionOptions"""
+
+        def connect():
+            """Connect to the server using options"""
+
+            with (yield from asyncssh.connect(self._server_addr,
+                                              self._server_port,
+                                              loop=self.loop,
+                                              options=options)) as conn:
+                pass
+
+            yield from conn.wait_closed()
+
+        options = asyncssh.SSHClientConnectionOptions(
+            username='ckey', client_keys=[('ckey', None)], gss_host=None)
+
+        yield from asyncio.gather(connect(), connect())
+
 
 class _TestPublicKeyAsyncServerAuth(_TestPublicKeyAuth):
     """Unit tests for public key authentication with async server callbacks"""

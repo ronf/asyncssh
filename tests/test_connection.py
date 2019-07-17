@@ -28,7 +28,7 @@ import unittest
 from unittest.mock import patch
 
 import asyncssh
-from asyncssh.constants import MSG_DEBUG
+from asyncssh.constants import MSG_UNIMPLEMENTED, MSG_DEBUG
 from asyncssh.constants import MSG_SERVICE_REQUEST, MSG_SERVICE_ACCEPT
 from asyncssh.constants import MSG_KEXINIT, MSG_NEWKEYS
 from asyncssh.constants import MSG_USERAUTH_REQUEST, MSG_USERAUTH_SUCCESS
@@ -311,6 +311,14 @@ class _VersionReportingServer(Server):
         version = self._conn.get_extra_info('client_version')
         self._conn.send_auth_banner(version)
         return False
+
+
+def disconnect_on_unimplemented(self, pkttype, pktid, packet):
+    """Process an unimplemented message response"""
+
+    # pylint: disable=unused-argument
+
+    self.disconnect(asyncssh.DISC_BY_APPLICATION, 'Unexpected response')
 
 
 @patch_gss
@@ -1098,21 +1106,25 @@ class _TestConnection(ServerTestCase):
     def test_unexpected_userauth_success(self):
         """Test unexpected userauth success response"""
 
-        conn = yield from self.connect()
+        with patch.dict('asyncssh.connection.SSHConnection._packet_handlers',
+                        {MSG_UNIMPLEMENTED: disconnect_on_unimplemented}):
+            conn = yield from self.connect()
 
-        conn.send_packet(MSG_USERAUTH_SUCCESS)
+            conn.send_packet(MSG_USERAUTH_SUCCESS)
 
-        yield from conn.wait_closed()
+            yield from conn.wait_closed()
 
     @asynctest
     def test_unexpected_userauth_failure(self):
         """Test unexpected userauth failure response"""
 
-        conn = yield from self.connect()
+        with patch.dict('asyncssh.connection.SSHConnection._packet_handlers',
+                        {MSG_UNIMPLEMENTED: disconnect_on_unimplemented}):
+            conn = yield from self.connect()
 
-        conn.send_packet(MSG_USERAUTH_FAILURE, NameList([]), Boolean(False))
+            conn.send_packet(MSG_USERAUTH_FAILURE, NameList([]), Boolean(False))
 
-        yield from conn.wait_closed()
+            yield from conn.wait_closed()
 
     @asynctest
     def test_unexpected_userauth_banner(self):

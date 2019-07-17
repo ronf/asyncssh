@@ -2389,10 +2389,12 @@ class SSHClientConnection(SSHConnection):
         self._password = options.password
 
         self._client_host_keysign = options.client_host_keysign
-        self._client_host_keys = options.client_host_keys
+        self._client_host_keys = None if options.client_host_keys is None else \
+                                 list(options.client_host_keys)
         self._client_host = options.client_host
         self._client_username = options.client_username
-        self._client_keys = options.client_keys
+        self._client_keys = None if options.client_keys is None else \
+                            list(options.client_keys)
 
         if options.agent_path is not None:
             self._agent = SSHAgentClient(self._loop, options.agent_path)
