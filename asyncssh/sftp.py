@@ -254,6 +254,12 @@ class LocalFile:
         self._file = f
 
     @classmethod
+    def basename(cls, path):
+        """Return the final component of a local file path"""
+
+        return os.path.basename(path)
+
+    @classmethod
     def encode(cls, path):
         """Encode path name using filesystem native encoding
 
@@ -1887,6 +1893,13 @@ class SFTPClient:
 
         return self._handler.logger
 
+    def basename(self, path):
+        """Return the final component of a POSIX-style path"""
+
+        # pylint: disable=no-self-use
+
+        return posixpath.basename(path)
+
     def encode(self, path):
         """Encode path name using configured path encoding
 
@@ -2070,7 +2083,7 @@ class SFTPClient:
 
         for srcfile in srcpaths:
             srcfile = srcfs.encode(srcfile)
-            filename = posixpath.basename(srcfile)
+            filename = srcfs.basename(srcfile)
 
             if dstpath is None:
                 dstfile = filename
