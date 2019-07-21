@@ -1067,11 +1067,20 @@ class SFTPClientHandler(SFTPHandler):
 
         code = packet.get_uint32()
 
-        try:
-            reason = packet.get_string().decode('utf-8')
-            lang = packet.get_string().decode('ascii')
-        except UnicodeDecodeError:
-            raise SFTPError(FX_BAD_MESSAGE, 'Invalid status message') from None
+        if packet:
+            try:
+                reason = packet.get_string().decode('utf-8')
+                lang = packet.get_string().decode('ascii')
+            except UnicodeDecodeError:
+                raise SFTPError(FX_BAD_MESSAGE,
+                                'Invalid status message') from None
+        else:
+            # Some servers may not always send reason and lang (usually
+            # when responding with FX_OK). Tolerate this, automatically
+            # filling in empty strings for them if they're not present.
+
+            reason = ''
+            lang = ''
 
         packet.check_end()
 
