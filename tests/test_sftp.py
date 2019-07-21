@@ -1,4 +1,4 @@
-# Copyright (c) 2015-2018 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2015-2019 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -188,6 +188,28 @@ class _IOErrorSFTPServer(SFTPServer):
             raise SFTPError(FX_FAILURE, 'I/O error')
         else:
             super().write(file_obj, offset, data)
+
+
+class _SmallBlockSizeSFTPServer(SFTPServer):
+    """Limit reads to a small block size"""
+
+    @asyncio.coroutine
+    def read(self, file_obj, offset, size):
+        """Limit reads to return no more than 4 KB at a time"""
+
+        return super().read(file_obj, offset, min(size, 4096))
+
+
+class _TruncateSFTPServer(SFTPServer):
+    """Truncate a file when it is accessed, simulating a simultaneous writer"""
+
+    @asyncio.coroutine
+    def read(self, file_obj, offset, size):
+        """Truncate a file to 32 KB when a read is done"""
+
+        os.truncate('src', 32768)
+
+        return super().read(file_obj, offset, size)
 
 
 class _NotImplSFTPServer(SFTPServer):
@@ -475,7 +497,9 @@ class _CheckSFTP(ServerTestCase):
         if data == ():
             data = str(id(self))
 
-        with open(name, 'w') as f:
+        binary = 'b' if isinstance(data, bytes) else ''
+
+        with open(name, 'w' + binary) as f:
             f.write(data)
 
         if mode is not None:
@@ -506,8 +530,8 @@ class _CheckSFTP(ServerTestCase):
         if preserve:
             self._check_attr(name1, name2, follow_symlinks, check_atime)
 
-        with open(name1) as file1:
-            with open(name2) as file2:
+        with open(name1, 'rb') as file1:
+            with open(name2, 'rb') as file2:
                 self.assertEqual(file1.read(), file2.read())
 
     def _check_stat(self, sftp_stat, local_stat):
@@ -2488,6 +2512,68 @@ class _TestSFTPIOError(_CheckSFTP):
                     yield from f.write(4*1024*1024*'\0')
         finally:
             remove('file')
+
+
+class _TestSFTPSmallBlockSize(_CheckSFTP):
+    """Unit test for SFTP server returning file I/O error"""
+
+    @classmethod
+    @asyncio.coroutine
+    def start_server(cls):
+        """Start an SFTP server which returns file I/O errors"""
+
+        return (yield from cls.create_server(
+            sftp_factory=_SmallBlockSizeSFTPServer))
+
+    @sftp_test
+    def test_read(self, sftp):
+        """Test a large read on a server with a small block size"""
+
+        try:
+            data = os.urandom(65536)
+            self._create_file('file', data)
+
+            with (yield from sftp.open('file', 'rb')) as f:
+                result = yield from f.read(32768, 16384)
+
+            self.assertEqual(result, data[16384:49152])
+        finally:
+            remove('file')
+
+    @sftp_test
+    def test_get(self, sftp):
+        """Test getting a file from an SFTP server with a small block size"""
+
+        try:
+            data = os.urandom(65536)
+            self._create_file('src', data)
+            yield from sftp.get('src', 'dst')
+            self._check_file('src', 'dst')
+        finally:
+            remove('src dst')
+
+
+class _TestSFTPEOFDuringCopy(_CheckSFTP):
+    """Unit test for SFTP server returning EOF during a file copy"""
+
+    @classmethod
+    @asyncio.coroutine
+    def start_server(cls):
+        """Start an SFTP server which truncates files when accessed"""
+
+        return (yield from cls.create_server(sftp_factory=_TruncateSFTPServer))
+
+    @sftp_test
+    def test_get(self, sftp):
+        """Test getting a file from an SFTP server truncated during the copy"""
+
+        try:
+            self._create_file('src', 65536*'\0')
+
+            with self.assertRaises(SFTPError):
+                yield from sftp.get('src', 'dst')
+        finally:
+            remove('src dst')
 
 
 class _TestSFTPNotImplemented(_CheckSFTP):

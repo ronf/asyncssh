@@ -1,4 +1,4 @@
-# Copyright (c) 2015-2018 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2015-2019 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -490,14 +490,20 @@ class _SFTPFileReader(_SFTPParallelIO):
     def run_task(self, offset, size):
         """Read a block of the file"""
 
-        data = yield from self._handler.read(self._handle, offset, size)
-        pos = offset - self._start
-        pad = pos - len(self._data)
+        while size:
+            data = yield from self._handler.read(self._handle, offset, size)
 
-        if pad > 0:
-            self._data += pad * b'\0'
+            pos = offset - self._start
+            pad = pos - len(self._data)
 
-        self._data[pos:pos+size] = data
+            if pad > 0:
+                self._data += pad * b'\0'
+
+            datalen = len(data)
+            self._data[pos:pos+datalen] = data
+
+            offset += datalen
+            size -= datalen
 
     @asyncio.coroutine
     def finish(self):
@@ -563,13 +569,29 @@ class _SFTPFileCopier(_SFTPParallelIO):
     def run_task(self, offset, size):
         """Copy the next block of the file"""
 
-        data = yield from self._src.read(size, offset)
-        yield from self._dst.write(data, offset)
+        while size:
+            data = yield from self._src.read(size, offset)
 
-        if self._progress_handler:
-            self._bytes_copied += size
-            self._progress_handler(self._srcpath, self._dstpath,
-                                   self._bytes_copied, self._total_bytes)
+            if not data:
+                exc = SFTPError(FX_FAILURE, 'Unexpected EOF during file copy')
+
+                # pylint: disable=attribute-defined-outside-init
+                exc.filename = self._srcpath
+                exc.offset = offset
+
+                raise exc
+
+            yield from self._dst.write(data, offset)
+
+            datalen = len(data)
+
+            if self._progress_handler:
+                self._bytes_copied += datalen
+                self._progress_handler(self._srcpath, self._dstpath,
+                                       self._bytes_copied, self._total_bytes)
+
+            offset += datalen
+            size -= datalen
 
     @asyncio.coroutine
     def cleanup(self):
