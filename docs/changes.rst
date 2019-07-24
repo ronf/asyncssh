@@ -3,6 +3,43 @@
 Change Log
 ==========
 
+Release 1.17.1 (23 Jul 2019)
+----------------------------
+
+* Improved construction of file paths in SFTP to better handle native
+  Windows source paths containing backslashes or drive letters.
+
+* Improved SFTP parallel I/O for large reads and file copies to better
+  handle the case where a read returns less data than what was requested
+  when not at the end of the file, allowing AsyncSSH to get back the
+  right result even if the requested block size is larger than the
+  SFTP server can handle.
+
+* Fixed an issue where the requested SFTP block_size wasn't used in the
+  get, copy, mget, and mcopy functions if it was larger than the
+  default size of 16 KB.
+
+* Fixed a problem where the list of client keys provided in an
+  SSHClientConnectionOptions object wasn't always preserved properly
+  across the opening of multiple SSH connections.
+
+* Changed SSH agent client code to avoid printing a warning on Windows
+  when unable to connect to the SSH agent using the default path. A
+  warning will be printed if the agent_path or SSH_AUTH_SOCK is
+  explicitly set, but AsyncSSH will remain quiet if no agent path is
+  set and no SSH agent is running.
+
+* Made AsyncSSH tolerant of unexpected authentication success/failure
+  messages sent after authentication completes. AsyncSSH previously
+  treated this as a protocol error and dropped the connection, while
+  most other SSH implementations ignored these messages and allowed
+  the connection to continue.
+
+* Made AsyncSSH tolerant of SFTP status responses which are missing
+  error message and language tag fields, improving interoperability
+  with servers that omit these fields. When missing, AsyncSSH treats
+  these fields as if they were set to empty strings.
+
 Release 1.17.0 (31 May 2019)
 ----------------------------
 
