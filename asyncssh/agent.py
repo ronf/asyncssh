@@ -204,8 +204,16 @@ class SSHAgentClient:
             self._reader, self._writer = \
                 yield from self._agent_path.open_agent_connection()
         else:
-            self._reader, self._writer = \
-                yield from open_agent(self._loop, self._agent_path)
+            agent_path = self._agent_path
+
+            try:
+                self._reader, self._writer = \
+                    yield from open_agent(self._loop, agent_path)
+            except OSError as exc:
+                if agent_path:
+                    logger.warning('Unable to contact agent: %s', exc)
+
+                raise
 
     @asyncio.coroutine
     def _make_request(self, msgtype, *args):
@@ -570,6 +578,9 @@ def connect_agent(agent_path=None, *, loop=None):
        :returns: An :class:`SSHAgentClient` or `None`
 
     """
+
+    if not agent_path:
+        agent_path = os.environ.get('SSH_AUTH_SOCK', None)
 
     agent = SSHAgentClient(loop, agent_path)
 

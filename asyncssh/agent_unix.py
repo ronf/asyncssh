@@ -22,7 +22,6 @@
 
 import asyncio
 import errno
-import os
 
 
 @asyncio.coroutine
@@ -33,9 +32,6 @@ def open_agent(loop, agent_path):
         loop = asyncio.get_event_loop()
 
     if not agent_path:
-        agent_path = os.environ.get('SSH_AUTH_SOCK', None)
-
-        if not agent_path:
-            raise OSError(errno.ENOENT, 'Agent not found')
+        raise OSError(errno.ENOENT, 'Agent not found')
 
     return (yield from asyncio.open_unix_connection(agent_path, loop=loop))

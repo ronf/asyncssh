@@ -27,7 +27,6 @@ import asyncio
 import ctypes
 import ctypes.wintypes
 import errno
-import os
 
 try:
     import mmapfile
@@ -162,14 +161,11 @@ def open_agent(loop, agent_path):
     transport = None
 
     if not agent_path:
-        agent_path = os.environ.get('SSH_AUTH_SOCK', None)
-
-        if not agent_path:
-            try:
-                _find_agent_window()
-                transport = _PageantTransport()
-            except OSError:
-                agent_path = _DEFAULT_OPENSSH_PATH
+        try:
+            _find_agent_window()
+            transport = _PageantTransport()
+        except OSError:
+            agent_path = _DEFAULT_OPENSSH_PATH
 
     if not transport:
         transport = _W10OpenSSHTransport(agent_path)

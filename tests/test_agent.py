@@ -89,7 +89,7 @@ class _Agent:
         os.remove(self._path)
 
 
-class _TestAPI(AsyncTestCase):
+class _TestAgent(AsyncTestCase):
     """Unit tests for AsyncSSH API"""
 
     _agent_pid = None

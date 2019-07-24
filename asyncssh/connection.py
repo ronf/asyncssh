@@ -2606,8 +2606,8 @@ class SSHClientConnection(SSHConnection):
             try:
                 agent_keys = yield from self._agent.get_keys()
                 self._client_keys = agent_keys + (self._client_keys or [])
-            except ValueError as exc:
-                logger.warning('Unable to read keys from agent: %s', exc)
+            except ValueError:
+                pass
 
             self._get_agent_keys = False
 
@@ -5199,15 +5199,15 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
        :param client_keys: (optional)
            A list of keys which will be used to authenticate this client
            via public key authentication. If no client keys are specified,
-           an attempt will be made to get them from an ssh-agent process.
-           If that is not available, an attempt will be made to load them
-           from the files :file:`.ssh/id_ed25519`, :file:`.ssh/id_ecdsa`,
-           :file:`.ssh/id_rsa`, and :file:`.ssh/id_dsa` in the user's home
-           directory, with optional certificates loaded from the files
-           :file:`.ssh/id_ed25519-cert.pub`, :file:`.ssh/id_ecdsa-cert.pub`,
-           :file:`.ssh/id_rsa-cert.pub`, and :file:`.ssh/id_dsa-cert.pub`.
-           If this argument is explicitly set to `None`, client public
-           key authentication will not be performed.
+           an attempt will be made to get them from an ssh-agent process
+           and/or load them from the files :file:`.ssh/id_ed25519`,
+           :file:`.ssh/id_ecdsa`, :file:`.ssh/id_rsa`, and :file:`.ssh/id_dsa`
+           in the user's home directory, with optional certificates loaded
+           from the files :file:`.ssh/id_ed25519-cert.pub`,
+           :file:`.ssh/id_ecdsa-cert.pub`, :file:`.ssh/id_rsa-cert.pub`,
+           and :file:`.ssh/id_dsa-cert.pub`. If this argument is explicitly
+           set to `None`, client public key authentication will not be
+           performed.
        :param passphrase: (optional)
            The passphrase to use to decrypt client keys when loading them,
            if they are encrypted. If this is not specified, only unencrypted
@@ -5369,16 +5369,18 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
         self.gss_delegate_creds = gss_delegate_creds
 
         if agent_path == ():
-            agent_path = os.environ.get('SSH_AUTH_SOCK', ())
+            agent_path = os.environ.get('SSH_AUTH_SOCK', None)
 
         self.agent_path = None
 
         if client_keys:
             client_keys = load_keypairs(client_keys, passphrase)
-        elif client_keys == ():
-            self.agent_path = agent_path
+        else:
+            if client_keys is not None:
+                self.agent_path = agent_path
 
-            client_keys = load_default_keypairs(passphrase)
+            if client_keys == ():
+                client_keys = load_default_keypairs(passphrase)
 
         self.agent_forward_path = agent_path if agent_forwarding else None
         self.client_keys = client_keys
