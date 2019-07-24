@@ -294,8 +294,10 @@ class LocalFile:
 
     @classmethod
     @asyncio.coroutine
-    def open(cls, path, *args):
+    def open(cls, path, *args, block_size=None):
         """Open a local file"""
+
+        # pylint: disable=unused-argument
 
         return cls(open(_to_local_path(path), *args))
 
@@ -562,8 +564,10 @@ class _SFTPFileCopier(_SFTPParallelIO):
     def start(self):
         """Start parallel copy"""
 
-        self._src = yield from self._srcfs.open(self._srcpath, 'rb')
-        self._dst = yield from self._dstfs.open(self._dstpath, 'wb')
+        self._src = yield from self._srcfs.open(self._srcpath, 'rb',
+                                                block_size=None)
+        self._dst = yield from self._dstfs.open(self._dstpath, 'wb',
+                                                block_size=None)
 
     @asyncio.coroutine
     def run_task(self, offset, size):
