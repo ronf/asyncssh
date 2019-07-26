@@ -4254,7 +4254,7 @@ class SFTPServer:
         """
 
         if self._chroot:
-            normpath = posixpath.normpath(os.path.join(b'/', path))
+            normpath = posixpath.normpath(posixpath.join(b'/', path))
             return posixpath.join(self._chroot, normpath[1:])
         else:
             return path
@@ -4783,6 +4783,12 @@ class SFTPServerFile:
     def __init__(self, server):
         self._server = server
         self._file_obj = None
+
+    @classmethod
+    def basename(cls, path):
+        """Return the final component of a POSIX-style path"""
+
+        return posixpath.basename(path)
 
     @asyncio.coroutine
     def stat(self, path):

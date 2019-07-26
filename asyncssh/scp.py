@@ -28,6 +28,8 @@ import posixpath
 from pathlib import PurePath
 import shlex
 import stat
+import string
+import sys
 
 from .constants import DEFAULT_LANG
 from .constants import FX_BAD_MESSAGE, FX_CONNECTION_LOST, FX_FAILURE
@@ -66,8 +68,12 @@ def _parse_path(path, **kwargs):
 
     if isinstance(path, tuple):
         conn, path = path
+    elif isinstance(path, str) and sys.platform == 'win32' and \
+            path[:1] in string.ascii_letters and \
+            path[1:2] == ':': # pragma: no cover (win32)
+        conn = None
     elif isinstance(path, str) and ':' in path:
-        conn, path = path.split(':')
+        conn, path = path.split(':', 1)
     elif isinstance(path, bytes) and b':' in path:
         conn, path = path.split(b':')
     elif isinstance(path, (str, bytes, PurePath)):
@@ -331,7 +337,7 @@ class _SCPSource(_SCPHandler):
 
         args = '%04o %d ' % (attrs.permissions & 0o7777, size)
         yield from self.make_request(action, args.encode('ascii'),
-                                     posixpath.basename(path))
+                                     self._fs.basename(path))
 
     @asyncio.coroutine
     def _make_t_request(self, attrs):
