@@ -711,11 +711,6 @@ class _TestPublicKey(TempDirTestCase):
     def import_der_x509_certificate(self, cert_type, cert):
         """Check import of a DER X.509 certificate"""
 
-        if cert_type == CERT_TYPE_USER:
-            cert = self.userx509
-        else:
-            cert = self.hostx509
-
         cert.write_certificate('cert', 'der')
         self.check_certificate(cert_type, 'der')
 
@@ -729,15 +724,25 @@ class _TestPublicKey(TempDirTestCase):
 
         self.check_certificate(cert_type, 'der')
 
-    def import_pem_x509_certificate(self, cert_type, cert):
+    def import_pem_x509_certificate(self, cert_type, cert, trusted=False):
         """Check import of a PEM X.509 certificate"""
 
-        if cert_type == CERT_TYPE_USER:
-            cert = self.userx509
-        else:
-            cert = self.hostx509
-
         cert.write_certificate('cert', 'pem')
+
+        if trusted:
+            with open('cert') as f:
+                lines = f.readlines()
+
+            lines[0] = lines[0][:11] + 'TRUSTED ' + lines[0][11:]
+
+            idx = lines[-2].find('=')
+            lines[-2] = lines[-2][:idx] + 'XXXX' + lines[-2][idx:]
+
+            lines[-1] = lines[-1][:9] + 'TRUSTED ' + lines[-1][9:]
+
+            with open('cert', 'w') as f:
+                f.writelines(lines)
+
         self.check_certificate(cert_type, 'pem')
 
     def export_pem_x509_certificate(self, cert_type, cert):
@@ -752,11 +757,6 @@ class _TestPublicKey(TempDirTestCase):
 
     def import_openssh_x509_certificate(self, cert_type, cert):
         """Check import of an OpenSSH X.509 certificate"""
-
-        if cert_type == CERT_TYPE_USER:
-            cert = self.userx509
-        else:
-            cert = self.hostx509
 
         cert.write_certificate('cert')
         self.check_certificate(cert_type, 'openssh')
@@ -1515,13 +1515,13 @@ class _TestPublicKey(TempDirTestCase):
         """Check DER X.509 certificate format"""
 
         with self.subTest('Import DER X.509 user certificate'):
-            self.import_der_x509_certificate(CERT_TYPE_USER, 'userx509')
+            self.import_der_x509_certificate(CERT_TYPE_USER, self.userx509)
 
         with self.subTest('Export DER X.509 user certificate'):
             self.export_der_x509_certificate(CERT_TYPE_USER, self.userx509)
 
         with self.subTest('Import DER X.509 host certificate'):
-            self.import_der_x509_certificate(CERT_TYPE_HOST, 'hostx509')
+            self.import_der_x509_certificate(CERT_TYPE_HOST, self.hostx509)
 
         with self.subTest('Export DER X.509 host certificate'):
             self.export_der_x509_certificate(CERT_TYPE_HOST, self.hostx509)
@@ -1530,28 +1530,36 @@ class _TestPublicKey(TempDirTestCase):
         """Check PEM X.509 certificate format"""
 
         with self.subTest('Import PEM X.509 user certificate'):
-            self.import_pem_x509_certificate(CERT_TYPE_USER, 'userx509')
+            self.import_pem_x509_certificate(CERT_TYPE_USER, self.userx509)
 
         with self.subTest('Export PEM X.509 user certificate'):
             self.export_pem_x509_certificate(CERT_TYPE_USER, self.userx509)
 
         with self.subTest('Import PEM X.509 host certificate'):
-            self.import_pem_x509_certificate(CERT_TYPE_HOST, 'hostx509')
+            self.import_pem_x509_certificate(CERT_TYPE_HOST, self.hostx509)
 
         with self.subTest('Export PEM X.509 host certificate'):
             self.export_pem_x509_certificate(CERT_TYPE_HOST, self.hostx509)
+
+        with self.subTest('Import PEM X.509 trusted user certificate'):
+            self.import_pem_x509_certificate(CERT_TYPE_USER, self.userx509,
+                                             trusted=True)
+
+        with self.subTest('Import PEM X.509 trusted host certificate'):
+            self.import_pem_x509_certificate(CERT_TYPE_HOST, self.hostx509,
+                                             trusted=True)
 
     def check_openssh_x509_certificate(self):
         """Check OpenSSH X.509 certificate format"""
 
         with self.subTest('Import OpenSSH X.509 user certificate'):
-            self.import_openssh_x509_certificate(CERT_TYPE_USER, 'userx509')
+            self.import_openssh_x509_certificate(CERT_TYPE_USER, self.userx509)
 
         with self.subTest('Export OpenSSH X.509 user certificate'):
             self.export_openssh_x509_certificate(CERT_TYPE_USER, self.userx509)
 
         with self.subTest('Import OpenSSH X.509 host certificate'):
-            self.import_openssh_x509_certificate(CERT_TYPE_HOST, 'hostx509')
+            self.import_openssh_x509_certificate(CERT_TYPE_HOST, self.hostx509)
 
         with self.subTest('Export OpenSSH X.509 host certificate'):
             self.export_openssh_x509_certificate(CERT_TYPE_HOST, self.hostx509)
@@ -1736,6 +1744,13 @@ class _TestPublicKey(TempDirTestCase):
                 asyncssh.import_certificate('-----BEGIN CERTIFICATE-----\n'
                                             'X\n'
                                             '-----END CERTIFICATE-----\n')
+
+        with self.subTest('Invalid PEM trusted certificate'):
+            with self.assertRaises(asyncssh.KeyImportError):
+                asyncssh.import_certificate(
+                    '-----BEGIN TRUSTED CERTIFICATE-----\n'
+                    'MA==\n'
+                    '-----END TRUSTED CERTIFICATE-----\n')
 
         with self.subTest('Invalid PEM certificate data'):
             with self.assertRaises(asyncssh.KeyImportError):

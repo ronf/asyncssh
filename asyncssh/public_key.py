@@ -2315,7 +2315,14 @@ def _decode_pem_certificate(lines):
 
     pem_name, _, data, end = _decode_pem(lines, b'CERTIFICATE')
 
-    if pem_name:
+    if pem_name == b'TRUSTED':
+        # Strip off OpenSSL trust information
+        try:
+            _, end = der_decode(data, partial_ok=True)
+            data = data[:end]
+        except ASN1DecodeError:
+            raise KeyImportError('Invalid PEM trusted certificate') from None
+    elif pem_name:
         raise KeyImportError('Invalid PEM certificate')
 
     return SSHX509Certificate.construct(data), end
