@@ -166,6 +166,7 @@ class _ClientGSSMICAuth(_ClientAuth):
             self.logger.debug1('Trying GSS MIC auth')
 
             self._gss = self._conn.get_gss_context()
+            self._gss.reset()
             mechs = b''.join((String(mech) for mech in self._gss.mechs))
             yield from self.send_request(UInt32(len(self._gss.mechs)), mechs)
         else:
@@ -201,6 +202,7 @@ class _ClientGSSMICAuth(_ClientAuth):
             if self._gss.complete:
                 self._finish()
         except GSSError as exc:
+            print(exc)
             if exc.token:
                 self.send_packet(MSG_USERAUTH_GSSAPI_ERRTOK, String(exc.token))
 
