@@ -2420,8 +2420,12 @@ class SSHClientConnection(SSHConnection):
         """Handle the opening of a new connection"""
 
         if not self._host:
-            self._host = self._peer_addr
-            self._port = self._peer_port
+            if self._peer_addr:
+                self._host = self._peer_addr
+                self._port = self._peer_port
+            else:
+                remote_peer = self.get_extra_info('remote_peername')
+                self._host, self._port = remote_peer
 
         if self._client_host_keysign:
             sock = self._transport.get_extra_info('socket')
@@ -6016,7 +6020,7 @@ def listen_reverse(host=None, port=_DEFAULT_PORT, *, loop=None, tunnel=None,
     def conn_factory():
         """Return an SSH client connection factory"""
 
-        return SSHClientConnection(host, port, loop, options,
+        return SSHClientConnection(None, None, loop, options,
                                    acceptor, error_handler)
 
     if not loop:

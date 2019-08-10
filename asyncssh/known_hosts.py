@@ -169,7 +169,13 @@ class SSHKnownHosts:
     def _match(self, host, addr, port=None):
         """Find host keys matching specified host, address, and port"""
 
-        ip = ip_address(addr) if addr else None
+        if addr:
+            ip = ip_address(addr)
+        else:
+            try:
+                ip = ip_address(host)
+            except ValueError:
+                ip = None
 
         if port:
             host = '[{}]:{}'.format(host, port) if host else None
