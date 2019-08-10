@@ -31,9 +31,9 @@ from asyncssh.crypto import curve25519_available, curve448_available
 from asyncssh.kex_dh import MSG_KEXDH_INIT, MSG_KEXDH_REPLY
 from asyncssh.kex_dh import MSG_KEX_DH_GEX_REQUEST, MSG_KEX_DH_GEX_GROUP
 from asyncssh.kex_dh import MSG_KEX_DH_GEX_INIT, MSG_KEX_DH_GEX_REPLY, _KexDHGex
+from asyncssh.kex_dh import MSG_KEX_ECDH_INIT, MSG_KEX_ECDH_REPLY
 from asyncssh.kex_dh import MSG_KEXGSS_INIT, MSG_KEXGSS_COMPLETE
 from asyncssh.kex_dh import MSG_KEXGSS_ERROR
-from asyncssh.kex_ecdh import MSG_KEX_ECDH_INIT, MSG_KEX_ECDH_REPLY
 from asyncssh.kex_rsa import MSG_KEXRSA_PUBKEY, MSG_KEXRSA_SECRET
 from asyncssh.kex_rsa import MSG_KEXRSA_DONE
 from asyncssh.gss import GSSClient, GSSServer
@@ -466,7 +466,7 @@ class _TestKex(AsyncTestCase):
                 server_conn.simulate_ecdh_reply(b'', b'', b'')
 
         with self.subTest('Invalid server host key'):
-            with self.assertRaises(asyncssh.ProtocolError):
+            with self.assertRaises(asyncssh.KeyImportError):
                 client_conn.simulate_ecdh_reply(b'', b'', b'')
 
         with self.subTest('Invalid server public key'):

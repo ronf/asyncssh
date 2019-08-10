@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2018 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2019 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -18,11 +18,13 @@
 # Contributors:
 #     Ron Frederick - initial implementation, API, and documentation
 
-"""SSH Diffie-Hellman key exchange handlers"""
+"""SSH Diffie-Hellman, ECDH, and Edwards DH key exchange handlers"""
 
-from hashlib import sha1, sha256, sha512
+from hashlib import sha1, sha256, sha384, sha512
 
 from .constants import DEFAULT_LANG
+from .crypto import curve25519_available, curve448_available
+from .crypto import Curve25519DH, Curve448DH, ECDH
 from .gss import GSSError
 from .kex import Kex, register_kex_alg, register_gss_kex_alg
 from .misc import KeyExchangeFailed, ProtocolError, get_symbol_names, randrange
@@ -42,7 +44,11 @@ MSG_KEX_DH_GEX_INIT        = 32
 MSG_KEX_DH_GEX_REPLY       = 33
 MSG_KEX_DH_GEX_REQUEST     = 34
 
-# SSH KEXGSS message value
+# SSH KEX ECDH message values
+MSG_KEX_ECDH_INIT          = 30
+MSG_KEX_ECDH_REPLY         = 31
+
+# SSH KEXGSS message values
 MSG_KEXGSS_INIT            = 30
 MSG_KEXGSS_CONTINUE        = 31
 MSG_KEXGSS_COMPLETE        = 32
@@ -124,21 +130,47 @@ class _KexDHBase(Kex):
         hash_obj.update(self._conn.get_hash_prefix())
         hash_obj.update(String(host_key_data))
         hash_obj.update(self._gex_data)
-        hash_obj.update(MPInt(self._e))
-        hash_obj.update(MPInt(self._f))
+        hash_obj.update(self._format_client_key())
+        hash_obj.update(self._format_server_key())
         hash_obj.update(MPInt(k))
         return hash_obj.digest()
+
+    def _parse_client_key(self, packet):
+        """Parse a DH client key"""
+
+        if not self._p:
+            raise ProtocolError('Kex DH p not specified')
+
+        self._e = packet.get_mpint()
+
+    def _parse_server_key(self, packet):
+        """Parse a DH server key"""
+
+        if not self._p:
+            raise ProtocolError('Kex DH p not specified')
+
+        self._f = packet.get_mpint()
+
+    def _format_client_key(self):
+        """Format a DH client key"""
+
+        return MPInt(self._e)
+
+    def _format_server_key(self):
+        """Format a DH server key"""
+
+        return MPInt(self._f)
 
     def _send_init(self):
         """Send a DH init message"""
 
-        self.send_packet(self._init_type, MPInt(self._e))
+        self.send_packet(self._init_type, self._format_client_key())
 
     def _send_reply(self, key_data, sig):
         """Send a DH reply message"""
 
         self.send_packet(self._reply_type, String(key_data),
-                         MPInt(self._f), String(sig))
+                         self._format_server_key(), String(sig))
 
     def _perform_init(self):
         """Compute e and send init message"""
@@ -148,8 +180,21 @@ class _KexDHBase(Kex):
 
         self._send_init()
 
-    def _perform_reply(self, key, key_data):
-        """Compute f and send reply message"""
+    def _compute_client_shared(self):
+        """Compute client shared key"""
+
+        if not 1 <= self._f < self._p:
+            raise ProtocolError('Kex DH f out of range')
+
+        k = pow(self._f, self._x, self._p)
+
+        if k < 1: # pragma: no cover, shouldn't be possible with valid p
+            raise ProtocolError('Kex DH k out of range')
+
+        return k
+
+    def _compute_server_shared(self):
+        """Compute server shared key"""
 
         if not 1 <= self._e < self._p:
             raise ProtocolError('Kex DH e out of range')
@@ -162,6 +207,12 @@ class _KexDHBase(Kex):
         if k < 1: # pragma: no cover, shouldn't be possible with valid p
             raise ProtocolError('Kex DH k out of range')
 
+        return k
+
+    def _perform_reply(self, key, key_data):
+        """Compute f and send reply message"""
+
+        k = self._compute_server_shared()
         h = self._compute_hash(key_data, k)
         self._send_reply(key_data, key.sign(h))
 
@@ -170,14 +221,7 @@ class _KexDHBase(Kex):
     def _verify_reply(self, key, key_data, sig):
         """Verify a DH reply message"""
 
-        if not 1 <= self._f < self._p:
-            raise ProtocolError('Kex DH f out of range')
-
-        k = pow(self._f, self._x, self._p)
-
-        if k < 1: # pragma: no cover, shouldn't be possible with valid p
-            raise ProtocolError('Kex DH k out of range')
-
+        k = self._compute_client_shared()
         h = self._compute_hash(key_data, k)
 
         if not key.verify(h, sig):
@@ -190,10 +234,10 @@ class _KexDHBase(Kex):
 
         # pylint: disable=unused-argument
 
-        if self._conn.is_client() or not self._p:
+        if self._conn.is_client():
             raise ProtocolError('Unexpected kex init msg')
 
-        self._e = packet.get_mpint()
+        self._parse_client_key(packet)
         packet.check_end()
 
         host_key = self._conn.get_server_host_key()
@@ -204,11 +248,11 @@ class _KexDHBase(Kex):
 
         # pylint: disable=unused-argument
 
-        if self._conn.is_server() or not self._p:
+        if self._conn.is_server():
             raise ProtocolError('Unexpected kex reply msg')
 
         host_key_data = packet.get_string()
-        self._f = packet.get_mpint()
+        self._parse_server_key(packet)
         sig = packet.get_string()
         packet.check_end()
 
@@ -339,6 +383,73 @@ class _KexDHGex(_KexDHBase):
     }
 
 
+class _KexECDH(_KexDHBase):
+    """Handler for elliptic curve Diffie-Hellman key exchange"""
+
+    _handler_names = get_symbol_names(globals(), 'MSG_KEX_ECDH_')
+
+    _init_type = MSG_KEX_ECDH_INIT
+    _reply_type = MSG_KEX_ECDH_REPLY
+
+    def __init__(self, alg, conn, hash_alg, ecdh_class, *args):
+        super().__init__(alg, conn, hash_alg)
+
+        self._priv = ecdh_class(*args)
+        pub = self._priv.get_public()
+
+        if conn.is_client():
+            self._client_pub = pub
+        else:
+            self._server_pub = pub
+
+    def _parse_client_key(self, packet):
+        """Parse an ECDH client key"""
+
+        self._client_pub = packet.get_string()
+
+    def _parse_server_key(self, packet):
+        """Parse an ECDH server key"""
+
+        self._server_pub = packet.get_string()
+
+    def _format_client_key(self):
+        """Format an ECDH client key"""
+
+        return String(self._client_pub)
+
+    def _format_server_key(self):
+        """Format an ECDH server key"""
+
+        return String(self._server_pub)
+
+    def _compute_client_shared(self):
+        """Compute client shared key"""
+
+        try:
+            return self._priv.get_shared(self._server_pub)
+        except ValueError:
+            raise ProtocolError('Invalid ECDH server public key') from None
+
+    def _compute_server_shared(self):
+        """Compute server shared key"""
+
+        try:
+            return self._priv.get_shared(self._client_pub)
+        except ValueError:
+            raise ProtocolError('Invalid ECDH client public key') from None
+
+    def start(self):
+        """Start ECDH key exchange"""
+
+        if self._conn.is_client():
+            self._send_init()
+
+    _packet_handlers = {
+        MSG_KEX_ECDH_INIT:  _KexDHBase._process_init,
+        MSG_KEX_ECDH_REPLY: _KexDHBase._process_reply
+    }
+
+
 class _KexGSSBase(_KexDHBase):
     """Handler for GSS key exchange"""
 
@@ -363,7 +474,8 @@ class _KexGSSBase(_KexDHBase):
         if not self._token:
             raise ProtocolError('Empty GSS token in init')
 
-        self.send_packet(MSG_KEXGSS_INIT, String(self._token), MPInt(self._e))
+        self.send_packet(MSG_KEXGSS_INIT, String(self._token),
+                         self._format_client_key())
 
     def _send_reply(self, key_data, sig):
         """Send a GSS reply message"""
@@ -373,7 +485,7 @@ class _KexGSSBase(_KexDHBase):
         else:
             token_data = Boolean(False)
 
-        self.send_packet(MSG_KEXGSS_COMPLETE, MPInt(self._f),
+        self.send_packet(MSG_KEXGSS_COMPLETE, self._format_server_key(),
                          String(sig), token_data)
 
     def _send_continue(self):
@@ -405,11 +517,11 @@ class _KexGSSBase(_KexDHBase):
 
         # pylint: disable=unused-argument
 
-        if self._conn.is_client() or not self._p:
+        if self._conn.is_client():
             raise ProtocolError('Unexpected kexgss init msg')
 
         token = packet.get_string()
-        self._e = packet.get_mpint()
+        self._parse_client_key(packet)
         packet.check_end()
 
         host_key = self._conn.get_server_host_key()
@@ -456,7 +568,7 @@ class _KexGSSBase(_KexDHBase):
         if self._conn.is_server():
             raise ProtocolError('Unexpected kexgss complete msg')
 
-        self._f = packet.get_mpint()
+        self._parse_server_key(packet)
         mic = packet.get_string()
         token_present = packet.get_boolean()
         token = packet.get_string() if token_present else None
@@ -505,7 +617,7 @@ class _KexGSSBase(_KexDHBase):
         self._got_error = True
 
     def start(self):
-        """Start GSS key or group exchange"""
+        """Start GSS key exchange"""
 
         if self._conn.is_client():
             self._process_token()
@@ -545,6 +657,40 @@ class _KexGSSGex(_KexGSSBase, _KexDHGex):
     }
 
 
+class _KexGSSECDH(_KexGSSBase, _KexECDH):
+    """Handler for GSS ECDH key exchange"""
+
+    _handler_names = get_symbol_names(globals(), 'MSG_KEXGSS_')
+
+    _packet_handlers = {
+        MSG_KEXGSS_INIT:     _KexGSSBase._process_init,
+        MSG_KEXGSS_CONTINUE: _KexGSSBase._process_continue,
+        MSG_KEXGSS_COMPLETE: _KexGSSBase._process_complete,
+        MSG_KEXGSS_HOSTKEY:  _KexGSSBase._process_hostkey,
+        MSG_KEXGSS_ERROR:    _KexGSSBase._process_error
+    }
+
+
+if curve25519_available: # pragma: no branch
+    register_kex_alg(b'curve25519-sha256', _KexECDH, sha256, Curve25519DH)
+    register_kex_alg(b'curve25519-sha256@libssh.org', _KexECDH,
+                     sha256, Curve25519DH)
+    register_gss_kex_alg(b'gss-curve25519-sha256', _KexGSSECDH,
+                         sha256, Curve25519DH)
+
+if curve448_available: # pragma: no branch
+    register_kex_alg(b'curve448-sha512', _KexECDH, sha512, Curve448DH)
+    register_gss_kex_alg(b'gss-curve448-sha512', _KexGSSECDH,
+                         sha512, Curve448DH)
+
+for _curve_id, _hash_name, _hash_alg in ((b'nistp521', b'sha512', sha512),
+                                         (b'nistp384', b'sha384', sha384),
+                                         (b'nistp256', b'sha256', sha256),
+                                         (b'1.3.132.0.10', b'sha256', sha256)):
+    register_kex_alg(b'ecdh-sha2-' + _curve_id, _KexECDH,
+                     _hash_alg, ECDH, _curve_id)
+    register_gss_kex_alg(b'gss-' + _curve_id + b'-' + _hash_name, _KexGSSECDH,
+                         _hash_alg, ECDH, _curve_id)
 # pylint: disable=bad-whitespace
 
 for _name, _hash_alg in ((b'sha256', sha256), (b'sha1', sha1)):
@@ -553,12 +699,12 @@ for _name, _hash_alg in ((b'sha256', sha256), (b'sha1', sha1)):
     register_gss_kex_alg(b'gss-gex-' + _name, _KexGSSGex, _hash_alg)
 
 for _name, _hash_alg, _g, _p in (
-        (b'group1-sha1',    sha1,   _group1_g,  _group1_p),
-        (b'group14-sha1',   sha1,   _group14_g, _group14_p),
         (b'group14-sha256', sha256, _group14_g, _group14_p),
         (b'group15-sha512', sha512, _group15_g, _group15_p),
         (b'group16-sha512', sha512, _group16_g, _group16_p),
         (b'group17-sha512', sha512, _group17_g, _group17_p),
-        (b'group18-sha512', sha512, _group18_g, _group18_p)):
+        (b'group18-sha512', sha512, _group18_g, _group18_p),
+        (b'group14-sha1',   sha1,   _group14_g, _group14_p),
+        (b'group1-sha1',    sha1,   _group1_g,  _group1_p)):
     register_kex_alg(b'diffie-hellman-' + _name, _KexDH, _hash_alg, _g, _p)
     register_gss_kex_alg(b'gss-' + _name, _KexGSS, _hash_alg, _g, _p)

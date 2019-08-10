@@ -93,4 +93,4 @@ from .subprocess import SSHSubprocessReadPipe, SSHSubprocessWritePipe
 from .subprocess import SSHSubprocessProtocol, SSHSubprocessTransport
 
 # Import these explicitly to trigger register calls in them
-from . import eddsa, ecdsa, rsa, dsa, kex_ecdh, kex_dh, kex_rsa
+from . import eddsa, ecdsa, rsa, dsa, kex_dh, kex_rsa

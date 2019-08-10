@@ -1848,15 +1848,21 @@ Key exchange algorithms
 
 The following are the key exchange algorithms currently supported by AsyncSSH:
 
+  | gss-curve25519-sha256
+  | gss-curve448-sha512
+  | gss-nistp521-sha512
+  | gss-nistp384-sha256
+  | gss-nistp256-sha256
+  | gss-1.3.132.0.10-sha256
   | gss-gex-sha256
   | gss-gex-sha1
-  | gss-group1-sha1
-  | gss-group14-sha1
   | gss-group14-sha256
   | gss-group15-sha512
   | gss-group16-sha512
   | gss-group17-sha512
   | gss-group18-sha512
+  | gss-group14-sha1
+  | gss-group1-sha1
   | curve25519-sha256
   | curve25519-sha256\@libssh.org
   | curve448-sha512
@@ -1866,13 +1872,13 @@ The following are the key exchange algorithms currently supported by AsyncSSH:
   | ecdh-sha2-1.3.132.0.10
   | diffie-hellman-group-exchange-sha256
   | diffie-hellman-group-exchange-sha1
-  | diffie-hellman-group1-sha1
-  | diffie-hellman-group14-sha1
   | diffie-hellman-group14-sha256
   | diffie-hellman-group15-sha512
   | diffie-hellman-group16-sha512
   | diffie-hellman-group17-sha512
   | diffie-hellman-group18-sha512
+  | diffie-hellman-group14-sha1
+  | diffie-hellman-group1-sha1
   | rsa2048-sha256
   | rsa1024-sha1
 
