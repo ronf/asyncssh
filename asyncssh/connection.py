@@ -3614,7 +3614,7 @@ class SSHClientConnection(SSHConnection):
         return (yield from create_connection(client_factory, host, port,
                                              tunnel=self, **kwargs))
 
-    @asyncio.coroutine
+    @async_context_manager
     def connect_ssh(self, host, port=_DEFAULT_PORT, **kwargs):
         """Make a tunneled SSH client connection
 
@@ -3628,7 +3628,7 @@ class SSHClientConnection(SSHConnection):
 
         return (yield from connect(host, port, tunnel=self, **kwargs))
 
-    @asyncio.coroutine
+    @async_context_manager
     def connect_reverse_ssh(self, host, port=_DEFAULT_PORT, **kwargs):
         """Make a tunneled reverse direction SSH connection
 
