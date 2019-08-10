@@ -6,7 +6,6 @@ if [[ $TRAVIS_OS_NAME == 'osx' ]]; then
     export PATH="$HOME/.pyenv/bin:/usr/local/opt/openssl/bin:$PATH"
 
     brew update
-    brew install --force openssl
     brew install libffi libsodium
     eval "$(pyenv init -)"
     pyenv install $PYENV_VERSION
