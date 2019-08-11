@@ -506,6 +506,13 @@ class _TestKex(AsyncTestCase):
                 host_key = server_conn.get_server_host_key()
                 client_conn.simulate_ecdh_reply(host_key.public_data, b'', b'')
 
+        with self.subTest('Invalid peer public key'):
+            with self.assertRaises(asyncssh.ProtocolError):
+                host_key = server_conn.get_server_host_key()
+                server_pub = b'\x01' + 31*b'\x00'
+                client_conn.simulate_ecdh_reply(host_key.public_data,
+                                                server_pub, b'')
+
         with self.subTest('Invalid signature'):
             with self.assertRaises(asyncssh.KeyExchangeFailed):
                 host_key = server_conn.get_server_host_key()
@@ -537,6 +544,13 @@ class _TestKex(AsyncTestCase):
             with self.assertRaises(asyncssh.ProtocolError):
                 host_key = server_conn.get_server_host_key()
                 client_conn.simulate_ecdh_reply(host_key.public_data, b'', b'')
+
+        with self.subTest('Invalid peer public key'):
+            with self.assertRaises(asyncssh.ProtocolError):
+                host_key = server_conn.get_server_host_key()
+                server_pub = b'\x01' + 55*b'\x00'
+                client_conn.simulate_ecdh_reply(host_key.public_data,
+                                                server_pub, b'')
 
         with self.subTest('Invalid signature'):
             with self.assertRaises(asyncssh.KeyExchangeFailed):

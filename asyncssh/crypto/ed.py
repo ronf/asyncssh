@@ -253,8 +253,7 @@ else: # pragma: no cover
             shared = ctypes.create_string_buffer(_CURVE25519_BYTES)
 
             if _curve25519(shared, self._private, peer_public) != 0:
-                # This error is never returned by libsodium
-                raise ValueError('Curve25519 failed') # pragma: no cover
+                raise ValueError('Curve25519 failed')
 
             return int.from_bytes(shared.raw, 'big')
 
