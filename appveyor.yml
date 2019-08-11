@@ -1,38 +1,24 @@
 environment:
   matrix:
-    - PYTHON: "C:\\Python34"
-      ARCH: win32
+    - TOXENV: py34
+    - TOXENV: py35
+    - TOXENV: py36
+    - TOXENV: py37
 
-    - PYTHON: "C:\\Python34-x64"
-      ARCH: win64
+image:
+  - Visual Studio 2017
 
-    - PYTHON: "C:\\Python35"
-      ARCH: win32
-
-    - PYTHON: "C:\\Python35-x64"
-      ARCH: win64
-
-    - PYTHON: "C:\\Python36"
-      ARCH: win32
-
-    - PYTHON: "C:\\Python36-x64"
-      ARCH: win64
-
-    - PYTHON: "C:\\Python37"
-      ARCH: win32
-
-    - PYTHON: "C:\\Python37-x64"
-      ARCH: win64
+platform:
+  - x86
+  - x64
 
 install:
-  - "cd %PYTHON%"
-  - "curl https://www.timeheart.net/appveyor/%ARCH%/libsodium-18.dll -O"
-  - "curl https://www.timeheart.net/appveyor/%ARCH%/libnettle-6.dll -O"
-  - "curl https://www.timeheart.net/appveyor/%ARCH%/libhogweed-4.dll -O"
-  - "cd %APPVEYOR_BUILD_FOLDER%"
-  - "%PYTHON%\\python.exe -m pip install tox"
+  - "curl https://www.timeheart.net/appveyor/%PLATFORM%/libsodium-18.dll -O"
+  - "curl https://www.timeheart.net/appveyor/%PLATFORM%/libnettle-6.dll -O"
+  - "curl https://www.timeheart.net/appveyor/%PLATFORM%/libhogweed-4.dll -O"
+  - pip install tox
 
 build: off
 
 test_script:
-  - "%PYTHON%\\python.exe -m tox -e py"
+  - tox
