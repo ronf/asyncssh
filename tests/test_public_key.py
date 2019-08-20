@@ -353,6 +353,9 @@ class _TestPublicKey(TempDirTestCase):
         newkey.write_public_key(Path('list'), format_name)
         newkey.append_public_key(Path('list'), format_name)
 
+        with open('list', 'ab') as f:
+            f.write(b'Extra text at end of key list\n')
+
         keylist = asyncssh.load_public_keys(Path('list'))
         self.assertEqual(keylist[0], newkey)
         self.assertEqual(keylist[1], newkey)
@@ -415,6 +418,9 @@ class _TestPublicKey(TempDirTestCase):
 
         cert.write_certificate(Path('list'), format_name)
         cert.append_certificate(Path('list'), format_name)
+
+        with open('list', 'ab') as f:
+            f.write(b'Extra text at end of certificate list\n')
 
         certlist = asyncssh.load_certificates(Path('list'))
         self.assertEqual(certlist[0], cert)
@@ -663,6 +669,13 @@ class _TestPublicKey(TempDirTestCase):
             run('ssh-keygen -e -f sshpub -m rfc4716 > new')
         else: # pragma: no cover
             self.pubkey.write_public_key('new', 'rfc4716')
+
+        self.check_public('rfc4716')
+
+        pubdata = self.pubkey.export_public_key('rfc4716')
+
+        with open('new', 'wb') as f:
+            f.write(pubdata.replace(b'\n', b'\nXXX:\n', 1))
 
         self.check_public('rfc4716')
 
@@ -1061,7 +1074,6 @@ class _TestPublicKey(TempDirTestCase):
 
         public_errors = [
             ('Non-ASCII', '\xff'),
-            ('Incomplete ASN.1', b''),
             ('Invalid ASN.1', b'\x30'),
             ('Invalid PKCS#1', der_encode(None)),
             ('Invalid PKCS#8', der_encode(((self.pubkey.pkcs8_oid, ()),
@@ -1082,6 +1094,10 @@ class _TestPublicKey(TempDirTestCase):
              b'-----END PUBLIC KEY-----'),
             ('Incomplete PEM ASN.1',
              b'-----BEGIN PUBLIC KEY-----\n'
+             b'-----END PUBLIC KEY-----'),
+            ('Invalid PKCS#1 ASN.1',
+             b'-----BEGIN DSA PUBLIC KEY-----\n' +
+             binascii.b2a_base64(b'\x30') +
              b'-----END PUBLIC KEY-----'),
             ('Invalid PKCS#1 key data',
              b'-----BEGIN DSA PUBLIC KEY-----\n' +
@@ -1717,12 +1733,12 @@ class _TestPublicKey(TempDirTestCase):
 
         with self.subTest('Invalid DER format'):
             with self.assertRaises(asyncssh.KeyImportError):
-                asyncssh.import_certificate(b'\x30')
+                asyncssh.import_certificate(b'\x30\x00')
 
         with self.subTest('Invalid DER format in certificate list'):
             with self.assertRaises(asyncssh.KeyImportError):
                 with open('certlist', 'wb') as f:
-                    f.write(b'\x30')
+                    f.write(b'\x30\x00')
 
                 asyncssh.read_certificate_list('certlist')
 

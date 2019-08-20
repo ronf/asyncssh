@@ -1618,10 +1618,10 @@ class SSHX509Certificate(SSHCertificate):
 
     is_x509 = True
 
-    def __init__(self, key, x509_cert):
+    def __init__(self, key, x509_cert, comment=None):
         super().__init__(b'x509v3-' + key.algorithm, key.x509_algorithms,
                          key.x509_algorithms, key, x509_cert.data,
-                         x509_cert.comment)
+                         x509_cert.comment or comment)
 
         self.subject = x509_cert.subject
         self.issuer = x509_cert.issuer
@@ -1672,7 +1672,7 @@ class SSHX509Certificate(SSHCertificate):
         return cls(key, x509_cert)
 
     @classmethod
-    def construct(cls, data):
+    def construct(cls, data, comment=None):
         """Construct an SSH X.509 certificate from DER data"""
 
         try:
@@ -1681,7 +1681,7 @@ class SSHX509Certificate(SSHCertificate):
         except ValueError as exc:
             raise KeyImportError(str(exc)) from None
 
-        return cls(key, x509_cert)
+        return cls(key, x509_cert, comment)
 
     def validate_chain(self, trust_chain, trusted_certs, trusted_cert_paths,
                        purposes, user_principal=None, host_principal=None):
@@ -1925,6 +1925,151 @@ class SSHLocalKeyPair(SSHKeyPair):
         return self._key.sign(data, self.sig_algorithm)
 
 
+def _parse_openssh(data):
+    """Parse an OpenSSH format public key or certificate"""
+
+    line = data.split(None, 2)
+
+    if len(line) < 2:
+        raise KeyImportError('Invalid OpenSSH public key or certificate')
+    elif len(line) == 2:
+        comment = None
+    else:
+        comment = line[2]
+
+    if (line[0] not in _public_key_alg_map and
+            line[0] not in _certificate_alg_map):
+        raise KeyImportError('Unknown OpenSSH public key algorithm')
+
+    try:
+        return line[0], comment, binascii.a2b_base64(line[1])
+    except binascii.Error:
+        raise KeyImportError('Invalid OpenSSH public key '
+                             'or certificate') from None
+
+
+def _parse_pem(data):
+    """Parse a PEM data block"""
+
+    start = 0
+    end = None
+    headers = {}
+
+    while True:
+        end = data.find(b'\n', start) + 1
+
+        line = data[start:end] if end else data[start:]
+        line = line.rstrip()
+
+        if b':' in line:
+            hdr, value = line.split(b':', 1)
+            headers[hdr.strip()] = value.strip()
+        else:
+            break
+
+        start = end if end != 0 else len(data)
+
+    try:
+        return headers, binascii.a2b_base64(data[start:])
+    except binascii.Error:
+        raise KeyImportError('Invalid PEM data') from None
+
+
+def _parse_rfc4716(data):
+    """Parse an RFC 4716 data block"""
+
+    start = 0
+    end = None
+    hdr = b''
+    comment = None
+
+    while True:
+        end = data.find(b'\n', start) + 1
+        line = data[start:end] if end else data[start:]
+        line = line.rstrip()
+
+        if line[-1:] == b'\\':
+            hdr += line[:-1]
+        else:
+            hdr += line
+            if b':' in hdr:
+                hdr, value = hdr.split(b':')
+
+                if hdr.strip() == b'Comment':
+                    comment = value.strip()
+                    if comment[:1] == b'"' and comment[-1:] == b'"':
+                        comment = comment[1:-1]
+
+                hdr = b''
+            else:
+                break
+
+        start = end if end != 0 else len(data)
+
+    try:
+        return comment, binascii.a2b_base64(data[start:])
+    except binascii.Error:
+        raise KeyImportError('Invalid RFC 4716 data') from None
+
+
+def _match_block(data, start, header, fmt):
+    """Match a block of data wrapped in a header/footer"""
+
+    match = re.compile(b'^' + header[:5] + b'END' + header[10:] +
+                       rb'[ \t\r\f\v]*$', re.M).search(data, start)
+
+    if not match:
+        raise KeyImportError('Missing %s footer' % fmt)
+
+    return data[start:match.start()], match.end()
+
+
+def _match_next(data, keytype, public=False):
+    """Find the next key/certificate and call the appropriate decode"""
+
+    if isinstance(data, str):
+        try:
+            data = data.encode('ascii')
+        except UnicodeEncodeError:
+            raise KeyImportError('Invalid encoding for key') from None
+
+    if data.startswith(b'\x30'):
+        try:
+            key_data, end = der_decode(data, partial_ok=True)
+            return 'der', (key_data,), end
+        except ASN1DecodeError:
+            pass
+
+    start = 0
+    end = None
+
+    while end != 0:
+        end = data.find(b'\n', start) + 1
+
+        line = data[start:end] if end else data[start:]
+        line = line.rstrip()
+
+        if (line.startswith(b'-----BEGIN ') and
+                line.endswith(b' ' + keytype + b'-----')):
+            pem_name = line[11:-(6+len(keytype))].strip()
+            data, end = _match_block(data, end, line, 'PEM')
+            headers, data = _parse_pem(data)
+            return 'pem', (pem_name, headers, data), end
+        elif public:
+            if line == b'---- BEGIN SSH2 PUBLIC KEY ----':
+                data, end = _match_block(data, end, line, 'RFC 4716')
+                return 'rfc4716', _parse_rfc4716(data), end
+            else:
+                try:
+                    return 'openssh', _parse_openssh(line), end
+                except KeyImportError:
+                    pass
+
+        start = end
+
+    return None, (), len(data)
+
+
 def _decode_pkcs1_private(pem_name, key_data):
     """Decode a PKCS#1 format private key"""
 
@@ -2107,15 +2252,8 @@ def _decode_openssh_private(data, passphrase):
         raise KeyImportError('Invalid OpenSSH private key')
 
 
-def _decode_der_private(data, passphrase):
+def _decode_der_private(key_data, passphrase):
     """Decode a DER format private key"""
-
-    try:
-        # pylint: disable=unpacking-non-sequence
-        key_data, end = der_decode(data, partial_ok=True)
-        # pylint: enable=unpacking-non-sequence
-    except ASN1DecodeError:
-        raise KeyImportError('Invalid DER private key') from None
 
     # First, if there's a passphrase, try to decrypt PKCS#8
     if passphrase is not None:
@@ -2127,7 +2265,7 @@ def _decode_der_private(data, passphrase):
 
     # Then, try to decode PKCS#8
     try:
-        return _decode_pkcs8_private(key_data), end
+        return _decode_pkcs8_private(key_data)
     except KeyImportError:
         # PKCS#8 failed - try PKCS#1 instead
         pass
@@ -2135,7 +2273,7 @@ def _decode_der_private(data, passphrase):
     # If that fails, try each of the possible PKCS#1 encodings
     for pem_name in _pem_map:
         try:
-            return _decode_pkcs1_private(pem_name, key_data), end
+            return _decode_pkcs1_private(pem_name, key_data)
         except KeyImportError:
             # Try the next PKCS#1 encoding
             pass
@@ -2143,19 +2281,12 @@ def _decode_der_private(data, passphrase):
     raise KeyImportError('Invalid DER private key')
 
 
-def _decode_der_public(data):
+def _decode_der_public(key_data):
     """Decode a DER format public key"""
-
-    try:
-        # pylint: disable=unpacking-non-sequence
-        key_data, end = der_decode(data, partial_ok=True)
-        # pylint: enable=unpacking-non-sequence
-    except ASN1DecodeError:
-        raise KeyImportError('Invalid DER public key') from None
 
     # First, try to decode PKCS#8
     try:
-        return _decode_pkcs8_public(key_data), end
+        return _decode_pkcs8_public(key_data)
     except KeyImportError:
         # PKCS#8 failed - try PKCS#1 instead
         pass
@@ -2163,7 +2294,7 @@ def _decode_der_public(data):
     # If that fails, try each of the possible PKCS#1 encodings
     for pem_name in _pem_map:
         try:
-            return _decode_pkcs1_public(pem_name, key_data), end
+            return _decode_pkcs1_public(pem_name, key_data)
         except KeyImportError:
             # Try the next PKCS#1 encoding
             pass
@@ -2171,83 +2302,17 @@ def _decode_der_public(data):
     raise KeyImportError('Invalid DER public key')
 
 
-def _decode_der_certificate(data):
+def _decode_der_certificate(data, comment=None):
     """Decode a DER format X.509 certificate"""
 
-    return SSHX509Certificate.construct(data)
+    return SSHX509Certificate.construct(data, comment)
 
 
-def _decode_der_certificate_list(data):
-    """Decode a DER format X.509 certificate list"""
-
-    certs = []
-
-    while data:
-        try:
-            _, end = der_decode(data, partial_ok=True)
-        except ASN1DecodeError:
-            raise KeyImportError('Invalid DER certificate') from None
-
-        certs.append(_decode_der_certificate(data[:end]))
-        data = data[end:]
-
-    return certs
-
-def _decode_pem(lines, keytype):
-    """Decode a PEM format key"""
-
-    start = None
-    line = ''
-    for i, line in enumerate(lines):
-        line = line.strip()
-        if (line.startswith(b'-----BEGIN ') and
-                line.endswith(b' ' + keytype + b'-----')):
-            start = i+1
-            break
-
-    if not start:
-        raise KeyImportError('Missing PEM header of type %s' %
-                             keytype.decode('ascii'))
-
-    pem_name = line[11:-(6+len(keytype))].strip()
-    if pem_name:
-        keytype = pem_name + b' ' + keytype
-
-    headers = {}
-    for start, line in enumerate(lines[start:], start):
-        line = line.strip()
-        if b':' in line:
-            hdr, value = line.split(b':')
-            headers[hdr.strip()] = value.strip()
-        else:
-            break
-
-    end = None
-    tail = b'-----END ' + keytype + b'-----'
-    for i, line in enumerate(lines[start:], start):
-        line = line.strip()
-        if line == tail:
-            end = i
-            break
-
-    if not end:
-        raise KeyImportError('Missing PEM footer')
-
-    try:
-        data = binascii.a2b_base64(b''.join(lines[start:end]))
-    except binascii.Error:
-        raise KeyImportError('Invalid PEM data') from None
-
-    return pem_name, headers, data, end+1
-
-
-def _decode_pem_private(lines, passphrase):
+def _decode_pem_private(pem_name, headers, data, passphrase):
     """Decode a PEM format private key"""
 
-    pem_name, headers, data, end = _decode_pem(lines, b'PRIVATE KEY')
-
     if pem_name == b'OPENSSH':
-        return _decode_openssh_private(data, passphrase), end
+        return _decode_openssh_private(data, passphrase)
 
     if headers.get(b'Proc-Type') == b'4,ENCRYPTED':
         if passphrase is None:
@@ -2289,15 +2354,13 @@ def _decode_pem_private(lines, passphrase):
                                  'private key') from None
 
     if pem_name:
-        return _decode_pkcs1_private(pem_name, key_data), end
+        return _decode_pkcs1_private(pem_name, key_data)
     else:
-        return _decode_pkcs8_private(key_data), end
+        return _decode_pkcs8_private(key_data)
 
 
-def _decode_pem_public(lines):
+def _decode_pem_public(pem_name, data):
     """Decode a PEM format public key"""
-
-    pem_name, _, data, end = _decode_pem(lines, b'PUBLIC KEY')
 
     try:
         key_data = der_decode(data)
@@ -2305,15 +2368,13 @@ def _decode_pem_public(lines):
         raise KeyImportError('Invalid PEM public key') from None
 
     if pem_name:
-        return _decode_pkcs1_public(pem_name, key_data), end
+        return _decode_pkcs1_public(pem_name, key_data)
     else:
-        return _decode_pkcs8_public(key_data), end
+        return _decode_pkcs8_public(key_data)
 
 
-def _decode_pem_certificate(lines):
+def _decode_pem_certificate(pem_name, data):
     """Decode a PEM format X.509 certificate"""
-
-    pem_name, _, data, end = _decode_pem(lines, b'CERTIFICATE')
 
     if pem_name == b'TRUSTED':
         # Strip off OpenSSL trust information
@@ -2325,89 +2386,93 @@ def _decode_pem_certificate(lines):
     elif pem_name:
         raise KeyImportError('Invalid PEM certificate')
 
-    return SSHX509Certificate.construct(data), end
+    return SSHX509Certificate.construct(data)
 
 
-def _decode_pem_certificate_list(lines):
-    """Decode a PEM format X.509 certificate list"""
+def _decode_private(data, passphrase):
+    """Decode a private key"""
+
+    fmt, key_info, end = _match_next(data, b'PRIVATE KEY')
+
+    if fmt == 'der':
+        key = _decode_der_private(key_info[0], passphrase)
+    elif fmt == 'pem':
+        pem_name, headers, data = key_info
+        key = _decode_pem_private(pem_name, headers, data, passphrase)
+    else:
+        key = None
+
+    return key, end
+
+
+def _decode_public(data):
+    """Decode a public key"""
+
+    fmt, key_info, end = _match_next(data, b'PUBLIC KEY', public=True)
+
+    if fmt == 'der':
+        key = _decode_der_public(key_info[0])
+    elif fmt == 'pem':
+        pem_name, _, data = key_info
+        key = _decode_pem_public(pem_name, data)
+    elif fmt == 'openssh':
+        algorithm, comment, data = key_info
+        key = decode_ssh_public_key(data)
+
+        if algorithm != key.algorithm:
+            raise KeyImportError('Public key algorithm mismatch')
+
+        key.set_comment(comment)
+    elif fmt == 'rfc4716':
+        comment, data = key_info
+        key = decode_ssh_public_key(data)
+        key.set_comment(comment)
+    else:
+        key = None
+
+    return key, end
+
+
+def _decode_certificate(data):
+    """Decode a certificate"""
+
+    fmt, key_info, end = _match_next(data, b'CERTIFICATE', public=True)
+
+    if fmt == 'der':
+        cert = _decode_der_certificate(data[:end])
+    elif fmt == 'pem':
+        pem_name, _, data = key_info
+        cert = _decode_pem_certificate(pem_name, data)
+    elif fmt == 'openssh':
+        algorithm, comment, data = key_info
+
+        if algorithm.startswith(b'x509v3-'):
+            cert = _decode_der_certificate(data, comment)
+        else:
+            cert = decode_ssh_certificate(data, comment)
+    elif fmt == 'rfc4716':
+        comment, data = key_info
+        cert = decode_ssh_certificate(data, comment)
+    else:
+        cert = None
+
+    return cert, end
+
+
+def _decode_certificate_list(data):
+    """Decode a certificate list"""
 
     certs = []
 
-    while lines:
-        cert, end = _decode_pem_certificate(lines)
-        certs.append(cert)
-        lines = lines[end:]
+    while data:
+        cert, end = _decode_certificate(data)
+
+        if cert:
+            certs.append(cert)
+
+        data = data[end:]
 
     return certs
-
-
-def _decode_openssh(line):
-    """Decode an OpenSSH format public key or certificate"""
-
-    line = line.split(None, 2)
-    if len(line) < 2:
-        raise KeyImportError('Invalid OpenSSH public key or certificate')
-    elif len(line) == 2:
-        comment = None
-    else:
-        comment = line[2]
-
-    try:
-        return line[0], binascii.a2b_base64(line[1]), comment
-    except binascii.Error:
-        raise KeyImportError('Invalid OpenSSH public key '
-                             'or certificate') from None
-
-
-def _decode_rfc4716(lines):
-    """Decode an RFC 4716 format public key"""
-
-    start = None
-    for i, line in enumerate(lines):
-        line = line.strip()
-        if line == b'---- BEGIN SSH2 PUBLIC KEY ----':
-            start = i+1
-            break
-
-    if not start:
-        raise KeyImportError('Missing RFC 4716 header')
-
-    hdr = b''
-    comment = None
-
-    for start, line in enumerate(lines[start:], start):
-        line = line.strip()
-        if line[-1:] == b'\\':
-            hdr += line[:-1]
-        else:
-            hdr += line
-            if b':' in hdr:
-                hdr, value = hdr.split(b':')
-
-                if hdr.strip() == b'Comment':
-                    comment = value.strip()
-                    if comment[:1] == b'"' and comment[-1:] == b'"':
-                        comment = comment[1:-1]
-
-                hdr = b''
-            else:
-                break
-
-    end = None
-    for i, line in enumerate(lines[start:], start):
-        line = line.strip()
-        if line == b'---- END SSH2 PUBLIC KEY ----':
-            end = i
-            break
-
-    if not end:
-        raise KeyImportError('Missing RFC 4716 footer')
-
-    try:
-        return binascii.a2b_base64(b''.join(lines[start:end])), comment, end+1
-    except binascii.Error:
-        raise KeyImportError('Invalid RFC 4716 public key '
-                             'or certificate') from None
 
 
 def register_public_key_alg(algorithm, handler, sig_algorithms=None):
@@ -2579,43 +2644,30 @@ def import_private_key(data, passphrase=None):
 
     """
 
-    if isinstance(data, str):
-        try:
-            data = data.encode('ascii')
-        except UnicodeEncodeError:
-            raise KeyImportError('Invalid encoding for private key') from None
+    key, _ = _decode_private(data, passphrase)
 
-    stripped_key = data.lstrip()
-    if stripped_key.startswith(b'-----'):
-        key, _ = _decode_pem_private(stripped_key.splitlines(), passphrase)
+    if key:
+        return key
     else:
-        key, _ = _decode_der_private(data, passphrase)
-
-    return key
+        raise KeyImportError('Invalid private key')
 
 
 def import_private_key_and_certs(data, passphrase=None):
     """Import a private key and optional certificate chain"""
 
-    stripped_key = data.lstrip()
-    if stripped_key.startswith(b'-----'):
-        lines = stripped_key.splitlines()
-        key, end = _decode_pem_private(lines, passphrase)
+    key, end = _decode_private(data, passphrase)
 
-        lines = lines[end:]
-        certs = _decode_pem_certificate_list(lines) if any(lines) else None
+    if key:
+        certs = _decode_certificate_list(data[end:])
+
+        if certs:
+            chain = SSHX509CertificateChain.construct_from_certs(certs)
+        else:
+            chain = None
+
+        return key, chain
     else:
-        key, end = _decode_der_private(data, passphrase)
-
-        data = data[end:]
-        certs = _decode_der_certificate_list(data) if data else None
-
-    if certs:
-        chain = SSHX509CertificateChain.construct_from_certs(certs)
-    else:
-        chain = None
-
-    return key, chain
+        raise KeyImportError('Invalid private key')
 
 
 def import_public_key(data):
@@ -2632,33 +2684,12 @@ def import_public_key(data):
 
     """
 
-    if isinstance(data, str):
-        try:
-            data = data.encode('ascii')
-        except UnicodeEncodeError:
-            raise KeyImportError('Invalid encoding for public key') from None
+    key, _ = _decode_public(data)
 
-    stripped_key = data.lstrip()
-    if stripped_key.startswith(b'-----'):
-        key, _ = _decode_pem_public(stripped_key.splitlines())
-    elif stripped_key.startswith(b'---- '):
-        data, comment, _ = _decode_rfc4716(stripped_key.splitlines())
-        key = decode_ssh_public_key(data)
-        key.set_comment(comment)
-    elif data.startswith(b'\x30'):
-        key, _ = _decode_der_public(data)
-    elif data:
-        algorithm, data, comment = _decode_openssh(stripped_key.splitlines()[0])
-        key = decode_ssh_public_key(data)
-
-        if algorithm != key.algorithm:
-            raise KeyImportError('Public key algorithm mismatch')
-
-        key.set_comment(comment)
+    if key:
+        return key
     else:
         raise KeyImportError('Invalid public key')
-
-    return key
 
 
 def import_certificate(data):
@@ -2675,29 +2706,12 @@ def import_certificate(data):
 
     """
 
-    if isinstance(data, str):
-        try:
-            data = data.encode('ascii')
-        except UnicodeEncodeError:
-            raise KeyImportError('Invalid encoding for certificate') from None
+    cert, _ = _decode_certificate(data)
 
-    stripped_key = data.lstrip()
-    if stripped_key.startswith(b'-----'):
-        cert, _ = _decode_pem_certificate(stripped_key.splitlines())
-    elif data.startswith(b'\x30'):
-        cert = _decode_der_certificate(data)
-    elif stripped_key.startswith(b'---- '):
-        data, comment, _ = _decode_rfc4716(stripped_key.splitlines())
-        cert = decode_ssh_certificate(data, comment)
+    if cert:
+        return cert
     else:
-        algorithm, data, comment = _decode_openssh(stripped_key.splitlines()[0])
-
-        if algorithm.startswith(b'x509v3-'):
-            cert = _decode_der_certificate(data)
-        else:
-            cert = decode_ssh_certificate(data, comment)
-
-    return cert
+        raise KeyImportError('Invalid certificate')
 
 
 def import_certificate_subject(data):
@@ -2838,18 +2852,13 @@ def read_private_key_list(filename, passphrase=None):
 
     keys = []
 
-    stripped_key = data.strip()
-    if stripped_key.startswith(b'-----'):
-        lines = stripped_key.splitlines()
-        while lines:
-            key, end = _decode_pem_private(lines, passphrase)
+    while data:
+        key, end = _decode_private(data, passphrase)
+
+        if key:
             keys.append(key)
-            lines = lines[end:]
-    else:
-        while data:
-            key, end = _decode_der_private(data, passphrase)
-            keys.append(key)
-            data = data[end:]
+
+        data = data[end:]
 
     for key in keys:
         if not key.get_comment_bytes():
@@ -2881,36 +2890,13 @@ def read_public_key_list(filename):
 
     keys = []
 
-    stripped_key = data.strip()
-    if stripped_key.startswith(b'-----'):
-        lines = stripped_key.splitlines()
-        while lines:
-            key, end = _decode_pem_public(lines)
-            keys.append(key)
-            lines = lines[end:]
-    elif stripped_key.startswith(b'---- '):
-        lines = stripped_key.splitlines()
-        while lines:
-            data, comment, end = _decode_rfc4716(lines)
-            key = decode_ssh_public_key(data)
-            key.set_comment(comment)
-            keys.append(key)
-            lines = lines[end:]
-    elif data.startswith(b'\x30'):
-        while data:
-            key, end = _decode_der_public(data)
-            keys.append(key)
-            data = data[end:]
-    else:
-        for line in stripped_key.splitlines():
-            algorithm, data, comment = _decode_openssh(line)
-            key = decode_ssh_public_key(data)
+    while data:
+        key, end = _decode_public(data)
 
-            if algorithm != key.algorithm:
-                raise KeyImportError('Public key algorithm mismatch')
-
-            key.set_comment(comment)
+        if key:
             keys.append(key)
+
+        data = data[end:]
 
     for key in keys:
         if not key.get_comment_bytes():
@@ -2940,31 +2926,7 @@ def read_certificate_list(filename):
     with open(filename, 'rb') as f:
         data = f.read()
 
-    certs = []
-
-    stripped_key = data.strip()
-    if stripped_key.startswith(b'-----'):
-        certs = _decode_pem_certificate_list(stripped_key.splitlines())
-    elif data.startswith(b'\x30'):
-        certs = _decode_der_certificate_list(data)
-    elif stripped_key.startswith(b'---- '):
-        lines = stripped_key.splitlines()
-        while lines:
-            data, comment, end = _decode_rfc4716(lines)
-            certs.append(decode_ssh_certificate(data, comment))
-            lines = lines[end:]
-    else:
-        for line in stripped_key.splitlines():
-            algorithm, data, comment = _decode_openssh(line)
-
-            if algorithm.startswith(b'x509v3-'):
-                cert = _decode_der_certificate(data)
-            else:
-                cert = decode_ssh_certificate(data, comment)
-
-            certs.append(cert)
-
-    return certs
+    return _decode_certificate_list(data)
 
 
 def load_keypairs(keylist, passphrase=None):
