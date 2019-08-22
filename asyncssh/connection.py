@@ -1298,6 +1298,7 @@ class SSHConnection(SSHPacketHandler):
         self._auth = None
         self._auth_in_progress = False
         self._auth_complete = True
+        self._next_service = None
         self.set_extra_info(username=self._username)
         self._send_deferred_packets()
 
@@ -1458,10 +1459,10 @@ class SSHConnection(SSHPacketHandler):
         if service == self._next_service:
             self.logger.debug2('Accepting request for service %s', service)
 
-            self._next_service = None
             self.send_packet(MSG_SERVICE_ACCEPT, String(service))
 
             if (self.is_server() and               # pragma: no branch
+                    not self._auth_in_progress and
                     service == _USERAUTH_SERVICE):
                 self._auth_in_progress = True
                 self._send_deferred_packets()
