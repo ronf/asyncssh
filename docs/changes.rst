@@ -3,6 +3,40 @@
 Change Log
 ==========
 
+Release 1.18.0 (23 Aug 2019)
+----------------------------
+
+* Added support for GSSAPI ECDH and Edwards DH key exchange algorithms.
+
+* Fixed gssapi-with-mic authentication to work with GSS key exchanges,
+  in cases where gssapi-keyex is not supported.
+
+* Made connect_ssh and connect_reverse_ssh methods into async context
+  managers, simplifying the syntax needed to use them to create tunneled
+  SSH connections.
+
+* Fixed a couple of issues with known hosts matching on tunneled SSH
+  connections.
+
+* Improved flexibility of key/certificate parser automatic format
+  detection to properly recognize PEM even when other arbitrary text
+  is present at the beginning of the file. With this change, the
+  parser can also now handle mixing of multiple key formats in a
+  single file.
+
+* Added support for OpenSSL "TRUSTED" PEM certificates. For now, no
+  enforcement is done of the additional trust restrictions, but such
+  certificates can be loaded and used by AsyncSSH without converting
+  them back to regular PEM format.
+
+* Fixed some additional SFTP and SCP issues related to parsing of
+  Windows paths with drive letters and paths with multiple colons.
+
+* Made AsyncSSH tolerant of a client which sends multiple service
+  requests for the "ssh-userauth" service. This is needed by the
+  Paramiko client when it tries more than one form of authentication
+  on a connection.
+
 Release 1.17.1 (23 Jul 2019)
 ----------------------------
 
