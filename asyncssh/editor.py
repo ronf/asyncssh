@@ -444,6 +444,12 @@ class SSHLineEditor:
 
         self._del_key(key)
 
+    def set_input(self, line, pos):
+        """Set input line and cursor position"""
+
+        self._line = line
+        self._update_input(0, pos)
+
     def set_line_mode(self, line_mode):
         """Enable/disable input line editing"""
 
@@ -588,6 +594,31 @@ class SSHLineEditorChannel:
 
         self._editor.unregister_key(key)
 
+    def clear_input(self):
+        """Clear input line
+
+           This method clears the current input line.
+
+        """
+
+        self._editor.set_input('', 0)
+
+    def set_input(self, line, pos):
+        """Clear input line
+
+           This method sets the current input line and cursor position.
+
+           :param line:
+               The new input line
+           :param pos:
+               The new cursor position within the input line
+           :type line: `str`
+           :type pos: `int`
+
+        """
+
+        self._editor.set_input(line, pos)
+
     def set_line_mode(self, line_mode):
         """Enable/disable input line editing
 
@@ -626,7 +657,7 @@ class SSHLineEditorChannel:
     def write(self, data, datatype=None):
         """Process data written to the channel"""
 
-        if self._editor:
+        if self._editor and datatype is None:
             self._editor.process_output(data)
         else:
             self._orig_chan.write(data, datatype)

@@ -33,29 +33,32 @@ def _handle_session(stdin, stdout, stderr):
 
     # pylint: disable=unused-argument
 
-    break_count = 0
-    prefix = '>>>' if stdin.channel.get_encoding()[0] else b'>>>'
-    data = '' if stdin.channel.get_encoding()[0] else b''
+    encoding = stdin.channel.get_encoding()[0]
+    prefix = '>>>' if encoding else b'>>>'
+    data = '' if encoding else b''
 
     while not stdin.at_eof():
         try:
             data += yield from stdin.readline()
-        except asyncssh.BreakReceived:
-            break_count += 1
-            stdout.write('B')
-
-            if break_count == 1:
+        except asyncssh.SignalReceived as exc:
+            if exc.signal == 'CLEAR':
+                stdin.channel.clear_input()
+            elif exc.signal == 'ECHO_OFF':
                 # Set twice to get coverage of when echo isn't changing
                 stdin.channel.set_echo(False)
                 stdin.channel.set_echo(False)
-            elif break_count == 2:
+            elif exc.signal == 'ECHO_ON':
                 stdin.channel.set_echo(True)
-            elif break_count == 3:
+            elif exc.signal == 'LINE_OFF':
                 stdin.channel.set_line_mode(False)
             else:
-                data = 'BREAK'
+                break
+        except asyncssh.BreakReceived:
+            stdin.channel.set_input('BREAK', 0)
         except asyncssh.TerminalSizeChanged:
             continue
+
+        stderr.write('.' if encoding else b'.')
 
     stdout.write(prefix + data)
     stdout.close()
@@ -116,6 +119,7 @@ class _CheckEditor(ServerTestCase):
             process = yield from conn.create_process(term_type=term_type)
 
             process.stdin.write(input_data)
+            yield from process.stderr.readexactly(1)
 
             if set_width:
                 process.change_terminal_size(132, 24)
@@ -169,7 +173,7 @@ class _TestEditor(_CheckEditor):
             ('Move to end', 'abc\x02\x05\n', 'abc\r\n'),
             ('Redraw', 'abc\x12\n', 'abc\r\n'),
             ('Insert erased', 'abc\x15\x19\x19\n', 'abcabc\r\n'),
-            ('Send break', '\x03\x03\x03\x03', 'BREAK'),
+            ('Send break', 'abc\x03', 'BREAK'),
             ('Long line', 100*'*' + '\x02\x01\x05\n', 100*'*' + '\r\n'),
             ('Wide char wrap', 79*'*' + '\uff10\n', 79*'*' + '\uff10\r\n'),
             ('Unknown key', '\x07abc\n', 'abc\r\n')
@@ -215,16 +219,38 @@ class _TestEditor(_CheckEditor):
                                     set_width=True)
 
     @asynctest
+    def test_editor_clear_input(self):
+        """Test clearing editor's input line"""
+
+        with (yield from self.connect()) as conn:
+            process = yield from conn.create_process(term_type='ansi')
+
+            process.stdin.write('abc')
+
+            process.send_signal('CLEAR')
+            yield from process.stderr.readexactly(1)
+
+            process.stdin.write('\n')
+            yield from process.stderr.readexactly(1)
+
+            process.stdin.write_eof()
+            output_data = (yield from process.wait()).stdout
+
+        self.assertEqual(output_data, 'abc\x1b[3D   \x1b[3D\r\n>>>\r\n')
+
+    @asynctest
     def test_editor_echo_off(self):
         """Test editor with echo disabled"""
 
         with (yield from self.connect()) as conn:
             process = yield from conn.create_process(term_type='ansi')
 
-            process.stdin.write('\x03')
-            yield from process.stdout.readexactly(1)
+            process.send_signal('ECHO_OFF')
+            yield from process.stderr.readexactly(1)
 
             process.stdin.write('abcd\x08\n')
+            yield from process.stderr.readexactly(1)
+
             process.stdin.write_eof()
             output_data = (yield from process.wait()).stdout
 
@@ -237,19 +263,21 @@ class _TestEditor(_CheckEditor):
         with (yield from self.connect()) as conn:
             process = yield from conn.create_process(term_type='ansi')
 
-            process.stdin.write('\x03')
-            yield from process.stdout.readexactly(1)
+            process.send_signal('ECHO_OFF')
+            yield from process.stderr.readexactly(1)
 
             process.stdin.write('abc')
 
-            process.stdin.write('\x03')
-            yield from process.stdout.readexactly(1)
+            process.send_signal('ECHO_ON')
+            yield from process.stderr.readexactly(1)
 
-            process.stdin.write('\n')
+            process.stdin.write('d\x08\n')
+            yield from process.stderr.readexactly(1)
+
             process.stdin.write_eof()
             output_data = (yield from process.wait()).stdout
 
-        self.assertEqual(output_data, 'abc\r\n>>>abc\r\n')
+        self.assertEqual(output_data, 'abcd\x1b[1D \x1b[1D\r\n>>>abc\r\n')
 
     @asynctest
     def test_editor_line_mode_off(self):
@@ -258,17 +286,27 @@ class _TestEditor(_CheckEditor):
         with (yield from self.connect()) as conn:
             process = yield from conn.create_process(term_type='ansi')
 
-            process.stdin.write('\x03\x03')
-            yield from process.stdout.readexactly(2)
+            process.send_signal('LINE_OFF')
+            yield from process.stderr.readexactly(1)
 
-            process.stdin.write('abc\x03')
-            yield from process.stdout.readexactly(15)
+            process.stdin.write('abc\n')
+            yield from process.stderr.readexactly(1)
 
-            process.stdin.write('\n')
             process.stdin.write_eof()
             output_data = (yield from process.wait()).stdout
 
-        self.assertEqual(output_data, 'abc\x1b[3D   \x1b[3D>>>abc\r\n')
+        self.assertEqual(output_data, '>>>abc\r\n')
+
+    @asynctest
+    def test_unknown_signal(self):
+        """Test unknown signal"""
+
+        with (yield from self.connect()) as conn:
+            process = yield from conn.create_process(term_type='ansi')
+            process.send_signal('XXX')
+            output_data = (yield from process.wait()).stdout
+
+        self.assertEqual(output_data, '>>>')
 
 
 class _TestEditorDisabled(_CheckEditor):
