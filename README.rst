@@ -104,10 +104,10 @@ Public License FAQ <https://www.eclipse.org/legal/epl-2.0/faq.php>`_.
 Prerequisites
 -------------
 
-To use ``asyncssh`` 2.0 or later, you need the following:
+To use AsyncSSH 2.0 or later, you need the following:
 
 * Python 3.6 or later
-* cryptography (PyCA) 2.7 or later
+* cryptography (PyCA) 2.8 or later
 
 Installation
 ------------
