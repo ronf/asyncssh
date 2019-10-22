@@ -51,18 +51,13 @@ if backend.poly1305_supported():
     def poly1305(key, data, nonce):
         """Compute a Poly1305 tag for a block of data"""
 
-        poly = Poly1305(poly1305_key(key, nonce))
-        poly.update(data)
-        return poly.finalize()
+        return Poly1305.generate_tag(poly1305_key(key, nonce), data)
 
     def poly1305_verify(key, data, nonce, tag):
         """Verify a Poly1305 tag for a block of data"""
 
-        poly = Poly1305(poly1305_key(key, nonce))
-
         try:
-            poly.update(data)
-            poly.verify(tag)
+            Poly1305.verify_tag(poly1305_key(key, nonce), data, tag)
             return True
         except InvalidSignature:
             return False

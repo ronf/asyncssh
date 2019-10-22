@@ -52,7 +52,7 @@ setup(name = 'asyncssh',
       long_description = long_description,
       platforms = 'Any',
       python_requires = '>= 3.6',
-      install_requires = ['cryptography >= 2.7'],
+      install_requires = ['cryptography >= 2.8'],
       extras_require = {
           'bcrypt':     ['bcrypt >= 3.1.3'],
           'gssapi':     ['gssapi >= 1.2.0'],
