@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2018 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2019 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -19,8 +19,6 @@
 #     Ron Frederick - initial implementation, API, and documentation
 
 """SSH authentication handlers"""
-
-import asyncio
 
 from .constants import DEFAULT_LANG
 
@@ -101,8 +99,7 @@ class _ClientAuth(_Auth):
 
         super().__init__(conn, self._start())
 
-    @asyncio.coroutine
-    def _start(self):
+    async def _start(self):
         """Abstract method for starting client authentication"""
 
         # Provided by subclass
@@ -114,35 +111,31 @@ class _ClientAuth(_Auth):
     def auth_failed(self):
         """Callback when auth fails"""
 
-    @asyncio.coroutine
-    def send_request(self, *args, key=None):
+    async def send_request(self, *args, key=None):
         """Send a user authentication request"""
 
-        yield from self._conn.send_userauth_request(self._method,
-                                                    *args, key=key)
+        await self._conn.send_userauth_request(self._method, *args, key=key)
 
 
 class _ClientNullAuth(_ClientAuth):
     """Client side implementation of null auth"""
 
-    @asyncio.coroutine
-    def _start(self):
+    async def _start(self):
         """Start client null authentication"""
 
-        yield from self.send_request()
+        await self.send_request()
 
 
 class _ClientGSSKexAuth(_ClientAuth):
     """Client side implementation of GSS key exchange auth"""
 
-    @asyncio.coroutine
-    def _start(self):
+    async def _start(self):
         """Start client GSS key exchange authentication"""
 
         if self._conn.gss_kex_auth_requested():
             self.logger.debug1('Trying GSS key exchange auth')
 
-            yield from self.send_request(key=self._conn.get_gss_context())
+            await self.send_request(key=self._conn.get_gss_context())
         else:
             self._conn.try_next_auth()
 
@@ -158,8 +151,7 @@ class _ClientGSSMICAuth(_ClientAuth):
         self._gss = None
         self._got_error = False
 
-    @asyncio.coroutine
-    def _start(self):
+    async def _start(self):
         """Start client GSS MIC authentication"""
 
         if self._conn.gss_mic_auth_requested():
@@ -168,7 +160,7 @@ class _ClientGSSMICAuth(_ClientAuth):
             self._gss = self._conn.get_gss_context()
             self._gss.reset()
             mechs = b''.join((String(mech) for mech in self._gss.mechs))
-            yield from self.send_request(UInt32(len(self._gss.mechs)), mechs)
+            await self.send_request(UInt32(len(self._gss.mechs)), mechs)
         else:
             self._conn.try_next_auth()
 
@@ -277,12 +269,11 @@ class _ClientGSSMICAuth(_ClientAuth):
 class _ClientHostBasedAuth(_ClientAuth):
     """Client side implementation of host based auth"""
 
-    @asyncio.coroutine
-    def _start(self):
+    async def _start(self):
         """Start client host based authentication"""
 
         keypair, client_host, client_username = \
-            yield from self._conn.host_based_auth_requested()
+            await self._conn.host_based_auth_requested()
 
         if keypair is None:
             self._conn.try_next_auth()
@@ -293,10 +284,10 @@ class _ClientHostBasedAuth(_ClientAuth):
                            keypair.algorithm)
 
         try:
-            yield from self.send_request(String(keypair.algorithm),
-                                         String(keypair.public_data),
-                                         String(client_host),
-                                         String(client_username), key=keypair)
+            await self.send_request(String(keypair.algorithm),
+                                    String(keypair.public_data),
+                                    String(client_host),
+                                    String(client_username), key=keypair)
         except ValueError as exc:
             self.logger.debug1('Host based auth failed: %s', exc)
             self._conn.try_next_auth()
@@ -307,11 +298,10 @@ class _ClientPublicKeyAuth(_ClientAuth):
 
     _handler_names = get_symbol_names(globals(), 'MSG_USERAUTH_PK_')
 
-    @asyncio.coroutine
-    def _start(self):
+    async def _start(self):
         """Start client public key authentication"""
 
-        self._keypair = yield from self._conn.public_key_auth_requested()
+        self._keypair = await self._conn.public_key_auth_requested()
 
         if self._keypair is None:
             self._conn.try_next_auth()
@@ -320,21 +310,20 @@ class _ClientPublicKeyAuth(_ClientAuth):
         self.logger.debug1('Trying public key auth with %s key',
                            self._keypair.algorithm)
 
-        yield from self.send_request(Boolean(False),
-                                     String(self._keypair.algorithm),
-                                     String(self._keypair.public_data))
+        await self.send_request(Boolean(False),
+                                String(self._keypair.algorithm),
+                                String(self._keypair.public_data))
 
-    @asyncio.coroutine
-    def _send_signed_request(self):
+    async def _send_signed_request(self):
         """Send signed public key request"""
 
         self.logger.debug1('Signing request with %s key',
                            self._keypair.algorithm)
 
-        yield from self.send_request(Boolean(True),
-                                     String(self._keypair.algorithm),
-                                     String(self._keypair.public_data),
-                                     key=self._keypair)
+        await self.send_request(Boolean(True),
+                                String(self._keypair.algorithm),
+                                String(self._keypair.public_data),
+                                key=self._keypair)
 
     def _process_public_key_ok(self, pkttype, pktid, packet):
         """Process a public key ok response"""
@@ -362,11 +351,10 @@ class _ClientKbdIntAuth(_ClientAuth):
 
     _handler_names = get_symbol_names(globals(), 'MSG_USERAUTH_INFO_')
 
-    @asyncio.coroutine
-    def _start(self):
+    async def _start(self):
         """Start client keyboard interactive authentication"""
 
-        submethods = yield from self._conn.kbdint_auth_requested()
+        submethods = await self._conn.kbdint_auth_requested()
 
         if submethods is None:
             self._conn.try_next_auth()
@@ -374,15 +362,14 @@ class _ClientKbdIntAuth(_ClientAuth):
 
         self.logger.debug1('Trying keyboard-interactive auth')
 
-        yield from self.send_request(String(''), String(submethods))
+        await self.send_request(String(''), String(submethods))
 
-    @asyncio.coroutine
-    def _receive_challenge(self, name, instruction, lang, prompts):
+    async def _receive_challenge(self, name, instruction, lang, prompts):
         """Receive and respond to a keyboard interactive challenge"""
 
         responses = \
-            yield from self._conn.kbdint_challenge_received(name, instruction,
-                                                            lang, prompts)
+            await self._conn.kbdint_challenge_received(name, instruction,
+                                                       lang, prompts)
 
         if responses is None:
             self._conn.try_next_auth()
@@ -442,11 +429,10 @@ class _ClientPasswordAuth(_ClientAuth):
 
         self._password_change = False
 
-    @asyncio.coroutine
-    def _start(self):
+    async def _start(self):
         """Start client password authentication"""
 
-        password = yield from self._conn.password_auth_requested()
+        password = await self._conn.password_auth_requested()
 
         if password is None:
             self._conn.try_next_auth()
@@ -454,13 +440,12 @@ class _ClientPasswordAuth(_ClientAuth):
 
         self.logger.debug1('Trying password auth')
 
-        yield from self.send_request(Boolean(False), String(password))
+        await self.send_request(Boolean(False), String(password))
 
-    @asyncio.coroutine
-    def _change_password(self, prompt, lang):
+    async def _change_password(self, prompt, lang):
         """Start password change"""
 
-        result = yield from self._conn.password_change_requested(prompt, lang)
+        result = await self._conn.password_change_requested(prompt, lang)
 
         if result == NotImplemented:
             # Password change not supported - move on to the next auth method
@@ -473,9 +458,9 @@ class _ClientPasswordAuth(_ClientAuth):
 
         self._password_change = True
 
-        yield from self.send_request(Boolean(True),
-                                     String(old_password.encode('utf-8')),
-                                     String(new_password.encode('utf-8')))
+        await self.send_request(Boolean(True),
+                                String(old_password.encode('utf-8')),
+                                String(new_password.encode('utf-8')))
 
     def auth_succeeded(self):
         if self._password_change:
@@ -520,8 +505,7 @@ class _ServerAuth(_Auth):
 
         super().__init__(conn, self._start(packet))
 
-    @asyncio.coroutine
-    def _start(self, packet):
+    async def _start(self, packet):
         """Abstract method for starting server authentication"""
 
         # Provided by subclass
@@ -548,8 +532,7 @@ class _ServerNullAuth(_ServerAuth):
         # pylint: disable=unused-argument
         return False
 
-    @asyncio.coroutine
-    def _start(self, packet):
+    async def _start(self, packet):
         """Supported always returns false, so we never get here"""
 
 
@@ -567,8 +550,7 @@ class _ServerGSSKexAuth(_ServerAuth):
 
         return conn.gss_kex_auth_supported()
 
-    @asyncio.coroutine
-    def _start(self, packet):
+    async def _start(self, packet):
         """Start server GSS key exchange authentication"""
 
         mic = packet.get_string()
@@ -579,9 +561,9 @@ class _ServerGSSKexAuth(_ServerAuth):
         data = self._conn.get_userauth_request_data(self._method)
 
         if (self._gss.complete and self._gss.verify(data, mic) and
-                (yield from self._conn.validate_gss_principal(self._username,
-                                                              self._gss.user,
-                                                              self._gss.host))):
+                (await self._conn.validate_gss_principal(self._username,
+                                                         self._gss.user,
+                                                         self._gss.host))):
             self.send_success()
         else:
             self.send_failure()
@@ -603,8 +585,7 @@ class _ServerGSSMICAuth(_ServerAuth):
 
         return conn.gss_mic_auth_supported()
 
-    @asyncio.coroutine
-    def _start(self, packet):
+    async def _start(self, packet):
         """Start server GSS MIC authentication"""
 
         mechs = set()
@@ -629,13 +610,12 @@ class _ServerGSSMICAuth(_ServerAuth):
 
         self.send_packet(MSG_USERAUTH_GSSAPI_RESPONSE, String(match))
 
-    @asyncio.coroutine
-    def _finish(self):
+    async def _finish(self):
         """Finish server GSS MIC authentication"""
 
-        if (yield from self._conn.validate_gss_principal(self._username,
-                                                         self._gss.user,
-                                                         self._gss.host)):
+        if (await self._conn.validate_gss_principal(self._username,
+                                                    self._gss.user,
+                                                    self._gss.host)):
             self.send_success()
         else:
             self.send_failure()
@@ -729,8 +709,7 @@ class _ServerHostBasedAuth(_ServerAuth):
 
         return conn.host_based_auth_supported()
 
-    @asyncio.coroutine
-    def _start(self, packet):
+    async def _start(self, packet):
         """Start server host based authentication"""
 
         algorithm = packet.get_string()
@@ -752,11 +731,10 @@ class _ServerHostBasedAuth(_ServerAuth):
                            'on host %s with %s host key', client_username,
                            client_host, algorithm)
 
-        if (yield from self._conn.validate_host_based_auth(self._username,
-                                                           key_data,
-                                                           client_host,
-                                                           client_username,
-                                                           msg, signature)):
+        if (await self._conn.validate_host_based_auth(self._username,
+                                                      key_data, client_host,
+                                                      client_username,
+                                                      msg, signature)):
             self.send_success()
         else:
             self.send_failure()
@@ -771,8 +749,7 @@ class _ServerPublicKeyAuth(_ServerAuth):
 
         return conn.public_key_auth_supported()
 
-    @asyncio.coroutine
-    def _start(self, packet):
+    async def _start(self, packet):
         """Start server public key authentication"""
 
         sig_present = packet.get_boolean()
@@ -793,8 +770,8 @@ class _ServerPublicKeyAuth(_ServerAuth):
         else:
             self.logger.debug1('Trying public key auth with %s key', algorithm)
 
-        if (yield from self._conn.validate_public_key(self._username, key_data,
-                                                      msg, signature)):
+        if (await self._conn.validate_public_key(self._username, key_data,
+                                                 msg, signature)):
             if sig_present:
                 self.send_success()
             else:
@@ -815,8 +792,7 @@ class _ServerKbdIntAuth(_ServerAuth):
 
         return conn.kbdint_auth_supported()
 
-    @asyncio.coroutine
-    def _start(self, packet):
+    async def _start(self, packet):
         """Start server keyboard interactive authentication"""
 
         lang = packet.get_string()
@@ -832,9 +808,8 @@ class _ServerKbdIntAuth(_ServerAuth):
 
         self.logger.debug1('Trying keyboard-interactive auth')
 
-        challenge = yield from self._conn.get_kbdint_challenge(self._username,
-                                                               lang,
-                                                               submethods)
+        challenge = await self._conn.get_kbdint_challenge(self._username,
+                                                          lang, submethods)
         self._send_challenge(challenge)
 
     def _send_challenge(self, challenge):
@@ -855,13 +830,11 @@ class _ServerKbdIntAuth(_ServerAuth):
         else:
             self.send_failure()
 
-    @asyncio.coroutine
-    def _validate_response(self, responses):
+    async def _validate_response(self, responses):
         """Validate a keyboard interactive authentication response"""
 
         next_challenge = \
-            yield from self._conn.validate_kbdint_response(self._username,
-                                                           responses)
+            await self._conn.validate_kbdint_response(self._username, responses)
         self._send_challenge(next_challenge)
 
     def _process_info_response(self, pkttype, pktid, packet):
@@ -901,8 +874,7 @@ class _ServerPasswordAuth(_ServerAuth):
 
         return conn.password_auth_supported()
 
-    @asyncio.coroutine
-    def _start(self, packet):
+    async def _start(self, packet):
         """Start server password authentication"""
 
         password_change = packet.get_boolean()
@@ -920,15 +892,14 @@ class _ServerPasswordAuth(_ServerAuth):
             if password_change:
                 self.logger.debug1('Trying to chsnge password')
 
-                result = yield from self._conn.change_password(self._username,
-                                                               password,
-                                                               new_password)
+                result = await self._conn.change_password(self._username,
+                                                          password,
+                                                          new_password)
             else:
                 self.logger.debug1('Trying password auth')
 
                 result = \
-                    yield from self._conn.validate_password(self._username,
-                                                            password)
+                    await self._conn.validate_password(self._username, password)
 
             if result:
                 self.send_success()

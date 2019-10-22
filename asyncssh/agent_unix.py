@@ -1,4 +1,4 @@
-# Copyright (c) 2016-2018 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2016-2019 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -24,14 +24,10 @@ import asyncio
 import errno
 
 
-@asyncio.coroutine
-def open_agent(loop, agent_path):
+async def open_agent(agent_path):
     """Open a connection to ssh-agent"""
-
-    if not loop:
-        loop = asyncio.get_event_loop()
 
     if not agent_path:
         raise OSError(errno.ENOENT, 'Agent not found')
 
-    return (yield from asyncio.open_unix_connection(agent_path, loop=loop))
+    return await asyncio.open_unix_connection(agent_path)

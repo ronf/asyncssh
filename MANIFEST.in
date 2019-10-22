@@ -1,2 +1,2 @@
 include CONTRIBUTING.rst COPYRIGHT LICENSE README.rst pylintrc tox.ini
-include examples/*.py tests/*.py tests_py35/*.py
+include examples/*.py tests/*.py

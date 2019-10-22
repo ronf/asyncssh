@@ -142,12 +142,11 @@ class _AsyncFileReader(_FileReader):
 
         self._conn = process.channel.get_connection()
 
-    @asyncio.coroutine
-    def _feed(self):
+    async def _feed(self):
         """Feed file data"""
 
         while not self._paused:
-            data = yield from self._file.read(self._bufsize)
+            data = await self._file.read(self._bufsize)
 
             if data:
                 self._process.feed_data(self.decode(data), self._datatype)
@@ -489,28 +488,16 @@ class SSHProcess:
         self._stdout = None
         self._stderr = None
 
-    def __enter__(self):
-        """Allow SSHProcess to be used as a context manager"""
-
-        return self
-
-    def __exit__(self, *exc_info):
-        """Automatically close the channel when exiting the context"""
-
-        self.close()
-
-    @asyncio.coroutine
-    def __aenter__(self):
+    async def __aenter__(self):
         """Allow SSHProcess to be used as an async context manager"""
 
         return self
 
-    @asyncio.coroutine
-    def __aexit__(self, *exc_info):
+    async def __aexit__(self, *exc_info):
         """Wait for a full channel close when exiting the async context"""
 
         self.close()
-        yield from self._chan.wait_closed()
+        await self._chan.wait_closed()
 
     @property
     def channel(self):
@@ -582,8 +569,7 @@ class SSHProcess:
 
         return self._chan.get_extra_info(name, default)
 
-    @asyncio.coroutine
-    def _create_reader(self, source, bufsize, send_eof, datatype=None):
+    async def _create_reader(self, source, bufsize, send_eof, datatype=None):
         """Create a reader to forward data to the SSH channel"""
 
         def pipe_factory():
@@ -625,7 +611,7 @@ class SSHProcess:
                     file = source.buffer
 
                 _, reader = \
-                    yield from self._loop.connect_read_pipe(pipe_factory, file)
+                    await self._loop.connect_read_pipe(pipe_factory, file)
 
         self.set_reader(reader, send_eof, datatype)
 
@@ -634,8 +620,7 @@ class SSHProcess:
         elif isinstance(reader, _ProcessReader):
             reader_process.feed_recv_buf(reader_datatype, writer)
 
-    @asyncio.coroutine
-    def _create_writer(self, target, bufsize, send_eof, datatype=None):
+    async def _create_writer(self, target, bufsize, send_eof, datatype=None):
         """Create a writer to forward data from the SSH channel"""
 
         def pipe_factory():
@@ -677,9 +662,8 @@ class SSHProcess:
                     # If file was opened in text mode, remove that wrapper
                     file = target.buffer
 
-                _, writer = \
-                    yield from self._loop.connect_write_pipe(pipe_factory,
-                                                             file)
+                _, writer = await self._loop.connect_write_pipe(pipe_factory,
+                                                                file)
 
         self.set_writer(writer, datatype)
 
@@ -834,11 +818,10 @@ class SSHProcess:
 
         self._chan.close()
 
-    @asyncio.coroutine
-    def wait_closed(self):
+    async def wait_closed(self):
         """Wait for the process to finish shutting down"""
 
-        yield from self._chan.wait_closed()
+        await self._chan.wait_closed()
 
 
 class SSHClientProcess(SSHProcess, SSHClientStreamSession):
@@ -904,9 +887,8 @@ class SSHClientProcess(SSHProcess, SSHClientStreamSession):
 
         return self._stderr
 
-    @asyncio.coroutine
-    def redirect(self, stdin=None, stdout=None, stderr=None,
-                 bufsize=io.DEFAULT_BUFFER_SIZE, send_eof=True):
+    async def redirect(self, stdin=None, stdout=None, stderr=None,
+                       bufsize=io.DEFAULT_BUFFER_SIZE, send_eof=True):
         """Perform I/O redirection for the process
 
            This method redirects data going to or from any or all of
@@ -962,35 +944,32 @@ class SSHClientProcess(SSHProcess, SSHClientStreamSession):
         """
 
         if stdin:
-            yield from self._create_reader(stdin, bufsize, send_eof)
+            await self._create_reader(stdin, bufsize, send_eof)
 
         if stdout:
-            yield from self._create_writer(stdout, bufsize, send_eof)
+            await self._create_writer(stdout, bufsize, send_eof)
 
         if stderr:
-            yield from self._create_writer(stderr, bufsize, send_eof,
-                                           EXTENDED_DATA_STDERR)
+            await self._create_writer(stderr, bufsize, send_eof,
+                                      EXTENDED_DATA_STDERR)
 
-    @asyncio.coroutine
-    def redirect_stdin(self, source, bufsize=io.DEFAULT_BUFFER_SIZE,
-                       send_eof=True):
+    async def redirect_stdin(self, source, bufsize=io.DEFAULT_BUFFER_SIZE,
+                             send_eof=True):
         """Redirect standard input of the process"""
 
-        yield from self.redirect(source, None, None, bufsize, send_eof)
+        await self.redirect(source, None, None, bufsize, send_eof)
 
-    @asyncio.coroutine
-    def redirect_stdout(self, target, bufsize=io.DEFAULT_BUFFER_SIZE,
-                        send_eof=True):
+    async def redirect_stdout(self, target, bufsize=io.DEFAULT_BUFFER_SIZE,
+                              send_eof=True):
         """Redirect standard output of the process"""
 
-        yield from self.redirect(None, target, None, bufsize, send_eof)
+        await self.redirect(None, target, None, bufsize, send_eof)
 
-    @asyncio.coroutine
-    def redirect_stderr(self, target, bufsize=io.DEFAULT_BUFFER_SIZE,
-                        send_eof=True):
+    async def redirect_stderr(self, target, bufsize=io.DEFAULT_BUFFER_SIZE,
+                              send_eof=True):
         """Redirect standard error of the process"""
 
-        yield from self.redirect(None, None, target, bufsize, send_eof)
+        await self.redirect(None, None, target, bufsize, send_eof)
 
     def collect_output(self):
         """Collect output from the process without blocking
@@ -1008,8 +987,7 @@ class SSHClientProcess(SSHProcess, SSHClientStreamSession):
                 self._collect_output(EXTENDED_DATA_STDERR))
 
     # pylint: disable=redefined-builtin
-    @asyncio.coroutine
-    def communicate(self, input=None):
+    async def communicate(self, input=None):
         """Send input to and/or collect output from the process
 
            This method is a coroutine which optionally provides input
@@ -1032,7 +1010,7 @@ class SSHClientProcess(SSHProcess, SSHClientStreamSession):
             self._chan.write(input)
             self._chan.write_eof()
 
-        yield from self._chan.wait_closed()
+        await self._chan.wait_closed()
 
         return self.collect_output()
     # pylint: enable=redefined-builtin
@@ -1106,8 +1084,7 @@ class SSHClientProcess(SSHProcess, SSHClientStreamSession):
 
         self._chan.kill()
 
-    @asyncio.coroutine
-    def wait(self, check=False):
+    async def wait(self, check=False):
         """Wait for process to exit
 
            This method is a coroutine which waits for the process to
@@ -1130,7 +1107,7 @@ class SSHClientProcess(SSHProcess, SSHClientStreamSession):
 
         """
 
-        stdout_data, stderr_data = yield from self.communicate()
+        stdout_data, stderr_data = await self.communicate()
 
         if check and self.exit_status:
             raise ProcessError(self.env, self.command, self.subsystem,
@@ -1180,9 +1157,8 @@ class SSHServerProcess(SSHProcess, SSHServerStreamSession):
 
         return self._stderr
 
-    @asyncio.coroutine
-    def redirect(self, stdin=None, stdout=None, stderr=None,
-                 bufsize=io.DEFAULT_BUFFER_SIZE, send_eof=True):
+    async def redirect(self, stdin=None, stdout=None, stderr=None,
+                       bufsize=io.DEFAULT_BUFFER_SIZE, send_eof=True):
         """Perform I/O redirection for the process
 
            This method redirects data going to or from any or all of
@@ -1235,50 +1211,32 @@ class SSHServerProcess(SSHProcess, SSHServerStreamSession):
         """
 
         if stdin:
-            yield from self._create_writer(stdin, bufsize, send_eof)
+            await self._create_writer(stdin, bufsize, send_eof)
 
         if stdout:
-            yield from self._create_reader(stdout, bufsize, send_eof)
+            await self._create_reader(stdout, bufsize, send_eof)
 
         if stderr:
-            yield from self._create_reader(stderr, bufsize, send_eof,
-                                           EXTENDED_DATA_STDERR)
+            await self._create_reader(stderr, bufsize, send_eof,
+                                      EXTENDED_DATA_STDERR)
 
-    @asyncio.coroutine
-    def redirect_stdin(self, target, bufsize=io.DEFAULT_BUFFER_SIZE,
-                       send_eof=True):
+    async def redirect_stdin(self, target, bufsize=io.DEFAULT_BUFFER_SIZE,
+                             send_eof=True):
         """Redirect standard input of the process"""
 
-        yield from self.redirect(target, None, None, bufsize, send_eof)
+        await self.redirect(target, None, None, bufsize, send_eof)
 
-    @asyncio.coroutine
-    def redirect_stdout(self, source, bufsize=io.DEFAULT_BUFFER_SIZE,
-                        send_eof=True):
+    async def redirect_stdout(self, source, bufsize=io.DEFAULT_BUFFER_SIZE,
+                              send_eof=True):
         """Redirect standard output of the process"""
 
-        yield from self.redirect(None, source, None, bufsize, send_eof)
+        await self.redirect(None, source, None, bufsize, send_eof)
 
-    @asyncio.coroutine
-    def redirect_stderr(self, source, bufsize=io.DEFAULT_BUFFER_SIZE,
-                        send_eof=True):
+    async def redirect_stderr(self, source, bufsize=io.DEFAULT_BUFFER_SIZE,
+                              send_eof=True):
         """Redirect standard error of the process"""
 
-        yield from self.redirect(None, None, source, bufsize, send_eof)
-
-    def get_environment(self):
-        """Return the environment set by the client (deprecated)"""
-
-        return self.env # pragma: no cover
-
-    def get_command(self):
-        """Return the command the client requested to execute (deprecated)"""
-
-        return self.command # pragma: no cover
-
-    def get_subsystem(self):
-        """Return the subsystem the client requested to open (deprecated)"""
-
-        return self.subsystem # pragma: no cover
+        await self.redirect(None, None, source, bufsize, send_eof)
 
     def get_terminal_type(self):
         """Return the terminal type set by the client for the process

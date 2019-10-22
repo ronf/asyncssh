@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2018 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2019 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -20,7 +20,6 @@
 
 """SSH port forwarding handlers"""
 
-import asyncio
 import socket
 
 from .misc import ChannelOpenError
@@ -143,8 +142,7 @@ class SSHLocalForwarder(SSHForwarder):
         self._conn = conn
         self._coro = coro
 
-    @asyncio.coroutine
-    def _forward(self, *args):
+    async def _forward(self, *args):
         """Begin local forwarding"""
 
         def session_factory():
@@ -153,7 +151,7 @@ class SSHLocalForwarder(SSHForwarder):
             return SSHForwarder(self)
 
         try:
-            yield from self._coro(session_factory, *args)
+            await self._coro(session_factory, *args)
         except ChannelOpenError as exc:
             self.connection_lost(exc)
             return

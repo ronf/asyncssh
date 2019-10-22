@@ -1,4 +1,4 @@
-# Copyright (c) 2016-2018 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2016-2019 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -24,11 +24,9 @@ import asyncio
 import errno
 import os
 import sys
-import tempfile
 
 import asyncssh
 
-from .listener import create_unix_forward_listener
 from .logging import logger
 from .misc import ChannelOpenError
 from .packet import Byte, String, UInt32, PacketDecodeError, SSHPacket
@@ -41,8 +39,7 @@ try:
     else:
         from .agent_unix import open_agent
 except ImportError as exc: # pragma: no cover
-    @asyncio.coroutine
-    def open_agent(loop, agent_path, reason=str(exc)):
+    async def open_agent(agent_path, reason=str(exc)):
         """Dummy function if we're unable to import agent support"""
 
         # pylint: disable=unused-argument
@@ -83,26 +80,6 @@ SSH_AGENT_RSA_SHA2_256                   = 2
 SSH_AGENT_RSA_SHA2_512                   = 4
 
 # pylint: enable=bad-whitespace
-
-
-class _AgentListener:
-    """Listener used to forward agent connections"""
-
-    def __init__(self, tempdir, path, unix_listener):
-        self._tempdir = tempdir
-        self._path = path
-        self._unix_listener = unix_listener
-
-    def get_path(self):
-        """Return the path being listened on"""
-
-        return self._path
-
-    def close(self):
-        """Close the agent listener"""
-
-        self._unix_listener.close()
-        self._tempdir.cleanup()
 
 
 class SSHAgentKeyPair(SSHKeyPair):
@@ -150,29 +127,25 @@ class SSHAgentKeyPair(SSHKeyPair):
         elif sig_algorithm == b'rsa-sha2-512':
             self._flags |= SSH_AGENT_RSA_SHA2_512
 
-    @asyncio.coroutine
-    def sign(self, data):
+    async def sign(self, data):
         """Sign a block of data with this private key"""
 
-        return (yield from self._agent.sign(self.public_data,
-                                            data, self._flags))
+        return await self._agent.sign(self.public_data, data, self._flags)
 
-    @asyncio.coroutine
-    def remove(self):
+    async def remove(self):
         """Remove this key pair from the agent"""
 
-        yield from self._agent.remove_keys([self])
+        await self._agent.remove_keys([self])
 
 
 class SSHAgentClient:
     """SSH agent client"""
 
-    def __init__(self, loop, agent_path):
-        self._loop = loop
+    def __init__(self, agent_path):
         self._agent_path = agent_path
         self._reader = None
         self._writer = None
-        self._lock = asyncio.Lock(loop=loop)
+        self._lock = asyncio.Lock()
 
     def _cleanup(self):
         """Clean up this SSH agent client"""
@@ -196,41 +169,38 @@ class SSHAgentClient:
 
         return result
 
-    @asyncio.coroutine
-    def connect(self):
+    async def connect(self):
         """Connect to the SSH agent"""
 
         if isinstance(self._agent_path, asyncssh.SSHServerConnection):
             self._reader, self._writer = \
-                yield from self._agent_path.open_agent_connection()
+                await self._agent_path.open_agent_connection()
         else:
             agent_path = self._agent_path
 
             try:
-                self._reader, self._writer = \
-                    yield from open_agent(self._loop, agent_path)
+                self._reader, self._writer = await open_agent(agent_path)
             except OSError as exc:
                 if agent_path:
                     logger.warning('Unable to contact agent: %s', exc)
 
                 raise
 
-    @asyncio.coroutine
-    def _make_request(self, msgtype, *args):
+    async def _make_request(self, msgtype, *args):
         """Send an SSH agent request"""
 
-        with (yield from self._lock):
+        async with self._lock:
             try:
                 if not self._writer:
-                    yield from self.connect()
+                    await self.connect()
 
                 payload = Byte(msgtype) + b''.join(args)
                 self._writer.write(UInt32(len(payload)) + payload)
 
-                resplen = yield from self._reader.readexactly(4)
+                resplen = await self._reader.readexactly(4)
                 resplen = int.from_bytes(resplen, 'big')
 
-                resp = yield from self._reader.readexactly(resplen)
+                resp = await self._reader.readexactly(resplen)
                 resp = SSHPacket(resp)
 
                 resptype = resp.get_byte()
@@ -240,8 +210,7 @@ class SSHAgentClient:
                 self._cleanup()
                 raise ValueError(str(exc)) from None
 
-    @asyncio.coroutine
-    def get_keys(self):
+    async def get_keys(self):
         """Request the available client keys
 
            This method is a coroutine which returns a list of client keys
@@ -252,7 +221,7 @@ class SSHAgentClient:
         """
 
         resptype, resp = \
-            yield from self._make_request(SSH_AGENTC_REQUEST_IDENTITIES)
+            await self._make_request(SSH_AGENTC_REQUEST_IDENTITIES)
 
         if resptype == SSH_AGENT_IDENTITIES_ANSWER:
             result = []
@@ -273,14 +242,12 @@ class SSHAgentClient:
         else:
             raise ValueError('Unknown SSH agent response: %d' % resptype)
 
-    @asyncio.coroutine
-    def sign(self, key_blob, data, flags=0):
+    async def sign(self, key_blob, data, flags=0):
         """Sign a block of data with the requested key"""
 
-        resptype, resp = \
-            yield from self._make_request(SSH_AGENTC_SIGN_REQUEST,
-                                          String(key_blob), String(data),
-                                          UInt32(flags))
+        resptype, resp = await self._make_request(SSH_AGENTC_SIGN_REQUEST,
+                                                  String(key_blob),
+                                                  String(data), UInt32(flags))
 
         if resptype == SSH_AGENT_SIGN_RESPONSE:
             sig = resp.get_string()
@@ -291,9 +258,8 @@ class SSHAgentClient:
         else:
             raise ValueError('Unknown SSH agent response: %d' % resptype)
 
-    @asyncio.coroutine
-    def add_keys(self, keylist=(), passphrase=None,
-                 lifetime=None, confirm=False):
+    async def add_keys(self, keylist=(), passphrase=None,
+                       lifetime=None, confirm=False):
         """Add keys to the agent
 
            This method adds a list of local private keys and optional
@@ -338,10 +304,9 @@ class SSHAgentClient:
         for keypair in keypairs:
             comment = keypair.get_comment_bytes()
             resptype, resp = \
-                yield from self._make_request(msgtype,
-                                              keypair.get_agent_private_key(),
-                                              String(comment or b''),
-                                              constraints)
+                await self._make_request(msgtype,
+                                         keypair.get_agent_private_key(),
+                                         String(comment or b''), constraints)
 
             if resptype == SSH_AGENT_SUCCESS:
                 resp.check_end()
@@ -350,9 +315,8 @@ class SSHAgentClient:
             else:
                 raise ValueError('Unknown SSH agent response: %d' % resptype)
 
-    @asyncio.coroutine
-    def add_smartcard_keys(self, provider, pin=None,
-                           lifetime=None, confirm=False):
+    async def add_smartcard_keys(self, provider, pin=None,
+                                 lifetime=None, confirm=False):
         """Store keys associated with a smart card in the agent
 
            :param provider:
@@ -379,9 +343,9 @@ class SSHAgentClient:
         msgtype = SSH_AGENTC_ADD_SMARTCARD_KEY_CONSTRAINED \
                       if constraints else SSH_AGENTC_ADD_SMARTCARD_KEY
 
-        resptype, resp = \
-            yield from self._make_request(msgtype, String(provider),
-                                          String(pin or ''), constraints)
+        resptype, resp = await self._make_request(msgtype, String(provider),
+                                                  String(pin or ''),
+                                                  constraints)
 
         if resptype == SSH_AGENT_SUCCESS:
             resp.check_end()
@@ -390,8 +354,7 @@ class SSHAgentClient:
         else:
             raise ValueError('Unknown SSH agent response: %d' % resptype)
 
-    @asyncio.coroutine
-    def remove_keys(self, keylist):
+    async def remove_keys(self, keylist):
         """Remove a key stored in the agent
 
            :param keylist:
@@ -404,8 +367,8 @@ class SSHAgentClient:
 
         for keypair in keylist:
             resptype, resp = \
-                yield from self._make_request(SSH_AGENTC_REMOVE_IDENTITY,
-                                              String(keypair.public_data))
+                await self._make_request(SSH_AGENTC_REMOVE_IDENTITY,
+                                         String(keypair.public_data))
 
             if resptype == SSH_AGENT_SUCCESS:
                 resp.check_end()
@@ -414,8 +377,7 @@ class SSHAgentClient:
             else:
                 raise ValueError('Unknown SSH agent response: %d' % resptype)
 
-    @asyncio.coroutine
-    def remove_smartcard_keys(self, provider, pin=None):
+    async def remove_smartcard_keys(self, provider, pin=None):
         """Remove keys associated with a smart card stored in the agent
 
            :param provider:
@@ -430,8 +392,8 @@ class SSHAgentClient:
         """
 
         resptype, resp = \
-            yield from self._make_request(SSH_AGENTC_REMOVE_SMARTCARD_KEY,
-                                          String(provider), String(pin or ''))
+            await self._make_request(SSH_AGENTC_REMOVE_SMARTCARD_KEY,
+                                     String(provider), String(pin or ''))
 
         if resptype == SSH_AGENT_SUCCESS:
             resp.check_end()
@@ -440,8 +402,7 @@ class SSHAgentClient:
         else:
             raise ValueError('Unknown SSH agent response: %d' % resptype)
 
-    @asyncio.coroutine
-    def remove_all(self):
+    async def remove_all(self):
         """Remove all keys stored in the agent
 
            :raises: :exc:`ValueError` if the keys can't be removed
@@ -449,7 +410,7 @@ class SSHAgentClient:
         """
 
         resptype, resp = \
-            yield from self._make_request(SSH_AGENTC_REMOVE_ALL_IDENTITIES)
+            await self._make_request(SSH_AGENTC_REMOVE_ALL_IDENTITIES)
 
         if resptype == SSH_AGENT_SUCCESS:
             resp.check_end()
@@ -458,8 +419,7 @@ class SSHAgentClient:
         else:
             raise ValueError('Unknown SSH agent response: %d' % resptype)
 
-    @asyncio.coroutine
-    def lock(self, passphrase):
+    async def lock(self, passphrase):
         """Lock the agent using the specified passphrase
 
            .. note:: The lock and unlock actions don't appear to be
@@ -473,8 +433,8 @@ class SSHAgentClient:
 
         """
 
-        resptype, resp = yield from self._make_request(SSH_AGENTC_LOCK,
-                                                       String(passphrase))
+        resptype, resp = await self._make_request(SSH_AGENTC_LOCK,
+                                                  String(passphrase))
 
         if resptype == SSH_AGENT_SUCCESS:
             resp.check_end()
@@ -483,8 +443,7 @@ class SSHAgentClient:
         else:
             raise ValueError('Unknown SSH agent response: %d' % resptype)
 
-    @asyncio.coroutine
-    def unlock(self, passphrase):
+    async def unlock(self, passphrase):
         """Unlock the agent using the specified passphrase
 
            .. note:: The lock and unlock actions don't appear to be
@@ -498,8 +457,8 @@ class SSHAgentClient:
 
         """
 
-        resptype, resp = yield from self._make_request(SSH_AGENTC_UNLOCK,
-                                                       String(passphrase))
+        resptype, resp = await self._make_request(SSH_AGENTC_UNLOCK,
+                                                  String(passphrase))
 
         if resptype == SSH_AGENT_SUCCESS:
             resp.check_end()
@@ -508,16 +467,15 @@ class SSHAgentClient:
         else:
             raise ValueError('Unknown SSH agent response: %d' % resptype)
 
-    @asyncio.coroutine
-    def query_extensions(self):
+    async def query_extensions(self):
         """Return a list of extensions supported by the agent
 
            :returns: A list of strings of supported extension names
 
         """
 
-        resptype, resp = yield from self._make_request(SSH_AGENTC_EXTENSION,
-                                                       String('query'))
+        resptype, resp = await self._make_request(SSH_AGENTC_EXTENSION,
+                                                  String('query'))
 
         if resptype == SSH_AGENT_SUCCESS:
             result = []
@@ -550,8 +508,27 @@ class SSHAgentClient:
         self._cleanup()
 
 
-@asyncio.coroutine
-def connect_agent(agent_path=None, *, loop=None):
+class SSHAgentListener:
+    """Listener used to forward agent connections"""
+
+    def __init__(self, tempdir, path, unix_listener):
+        self._tempdir = tempdir
+        self._path = path
+        self._unix_listener = unix_listener
+
+    def get_path(self):
+        """Return the path being listened on"""
+
+        return self._path
+
+    def close(self):
+        """Close the agent listener"""
+
+        self._unix_listener.close()
+        self._tempdir.cleanup()
+
+
+async def connect_agent(agent_path=None):
     """Make a connection to the SSH agent
 
        This function attempts to connect to an ssh-agent process
@@ -569,11 +546,7 @@ def connect_agent(agent_path=None, *, loop=None):
            The path to use to contact the ssh-agent process, or the
            :class:`SSHServerConnection` to forward the agent request
            over.
-       :param loop: (optional)
-           The event loop to use when creating the connection. If not
-           specified, the default event loop is used.
        :type agent_path: `str` or :class:`SSHServerConnection`
-       :type loop: :class:`AbstractEventLoop <asyncio.AbstractEventLoop>`
 
        :returns: An :class:`SSHAgentClient` or `None`
 
@@ -582,26 +555,11 @@ def connect_agent(agent_path=None, *, loop=None):
     if not agent_path:
         agent_path = os.environ.get('SSH_AUTH_SOCK', None)
 
-    agent = SSHAgentClient(loop, agent_path)
+    agent = SSHAgentClient(agent_path)
 
     try:
-        yield from agent.connect()
+        await agent.connect()
         return agent
     except (OSError, ChannelOpenError) as exc:
         logger.warning('Unable to contact agent: %s', exc)
-        return None
-
-
-@asyncio.coroutine
-def create_agent_listener(conn, loop):
-    """Create a listener for forwarding ssh-agent connections"""
-
-    try:
-        tempdir = tempfile.TemporaryDirectory(prefix='asyncssh-')
-        path = os.path.join(tempdir.name, 'agent')
-        unix_listener = yield from create_unix_forward_listener(
-            conn, loop, conn.create_agent_connection, path)
-
-        return _AgentListener(tempdir, path, unix_listener)
-    except OSError:
         return None

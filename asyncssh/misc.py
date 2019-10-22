@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2018 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2019 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -20,11 +20,9 @@
 
 """Miscellaneous utility classes and functions"""
 
-import asyncio
 import codecs
 import functools
 import ipaddress
-import platform
 import socket
 
 from collections import OrderedDict
@@ -39,23 +37,10 @@ from .constants import DISC_PROTOCOL_ERROR, DISC_PROTOCOL_VERSION_NOT_SUPPORTED
 from .constants import DISC_SERVICE_NOT_AVAILABLE
 
 
-# Provide globals to test if we're on various Python versions
-python344 = platform.python_version_tuple() >= ('3', '4', '4')
-python35 = platform.python_version_tuple() >= ('3', '5', '0')
-python352 = platform.python_version_tuple() >= ('3', '5', '2')
-
-
 # Define a version of randrange which is based on SystemRandom(), so that
 # we get back numbers suitable for cryptographic use.
 _random = SystemRandom()
 randrange = _random.randrange
-
-
-# Avoid deprecation warning for asyncio.async()
-if python344:
-    create_task = asyncio.ensure_future
-else: # pragma: no cover
-    create_task = getattr(asyncio, 'async')
 
 
 def hide_empty(value, prefix=', '):
@@ -152,61 +137,44 @@ def ip_network(addr):
     return ipaddress.ip_network(_normalize_scoped_ip(addr) + mask)
 
 
-if python352:
-    async_iterator = lambda iter: iter
-else:
-    async_iterator = asyncio.coroutine
-
-
 def async_context_manager(coro):
-    """Decorator for methods returning asynchronous context managers
+    """Decorator for functions returning asynchronous context managers
 
-       This function can be used as a decorator for coroutines which
-       return objects intended to be used as Python 3.5 asynchronous
-       context managers. The object returned should implement __aenter__
-       and __aexit__ methods to run when the async context is entered
-       and exited.
+       This decorator can be used on functions which return objects
+       intended to be async context managers. The object returned by
+       the function should implement __aenter__ and __aexit__ methods
+       to run when the async context is entered and exited.
 
-       This wrapper also allows non-async context managers to be defined
-       on the returned object, as well as the use of "await" or "yield
-       from" on the function being decorated for backward compatibility
-       with the API defined by older versions of AsyncSSH.
+       This wrapper also allows the use of "await" on the function being
+       decorated, to return the context manager without entering it.
 
     """
 
     class AsyncContextManager:
-        """Async context manager wrapper for Python 3.5 and later"""
+        """Async context manager wrapper"""
 
         def __init__(self, coro):
             self._coro = coro
             self._result = None
 
-        def __iter__(self):
-            return (yield from self._coro)
-
         def __await__(self):
-            return (yield from self._coro)
+            return self._coro.__await__()
 
-        @asyncio.coroutine
-        def __aenter__(self):
-            self._result = yield from self._coro
-            return (yield from self._result.__aenter__())
+        async def __aenter__(self):
+            self._result = await self._coro
+            return await self._result.__aenter__()
 
-        @asyncio.coroutine
-        def __aexit__(self, *exc_info):
-            yield from self._result.__aexit__(*exc_info)
+        async def __aexit__(self, *exc_info):
+            await self._result.__aexit__(*exc_info)
             self._result = None
 
     @functools.wraps(coro)
-    def coro_wrapper(*args, **kwargs):
+    def context_wrapper(*args, **kwargs):
         """Return an async context manager wrapper for this coroutine"""
 
-        return AsyncContextManager(asyncio.coroutine(coro)(*args, **kwargs))
+        return AsyncContextManager(coro(*args, **kwargs))
 
-    if python35:
-        return coro_wrapper
-    else:
-        return coro
+    return context_wrapper
 
 
 class Options:

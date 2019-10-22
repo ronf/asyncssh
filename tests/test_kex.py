@@ -1,4 +1,4 @@
-# Copyright (c) 2015-2018 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2015-2019 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -93,10 +93,10 @@ class _KexConnectionStub(ConnectionStub):
 
         self._key_waiter.set_result(self._kex.compute_key(k, h, b'A', h, 128))
 
-    def get_key(self):
+    async def get_key(self):
         """Return generated key data"""
 
-        return (yield from self._key_waiter)
+        return await self._key_waiter
 
     def get_gss_context(self):
         """Return the GSS context associated with this connection"""
@@ -234,8 +234,7 @@ class _KexServerStub(_KexConnectionStub):
 class _TestKex(AsyncTestCase):
     """Unit tests for kex module"""
 
-    @asyncio.coroutine
-    def _check_kex(self, alg, gss_host=None):
+    async def _check_kex(self, alg, gss_host=None):
         """Unit test key exchange"""
 
         client_conn, server_conn = _KexClientStub.make_pair(alg, gss_host)
@@ -244,44 +243,40 @@ class _TestKex(AsyncTestCase):
             client_conn.start()
             server_conn.start()
 
-            self.assertEqual((yield from client_conn.get_key()),
-                             (yield from server_conn.get_key()))
+            self.assertEqual((await client_conn.get_key()),
+                             (await server_conn.get_key()))
         finally:
             client_conn.close()
             server_conn.close()
 
     @asynctest
-    def test_key_exchange_algs(self):
+    async def test_key_exchange_algs(self):
         """Unit test key exchange algorithms"""
 
         for alg in get_kex_algs():
             with self.subTest(alg=alg):
                 if alg.startswith(b'gss-'):
                     if gss_available: # pragma: no branch
-                        yield from self._check_kex(alg + b'-mech', '1')
+                        await self._check_kex(alg + b'-mech', '1')
                 else:
-                    yield from self._check_kex(alg)
+                    await self._check_kex(alg)
 
         if gss_available: # pragma: no branch
             for steps in range(4):
                 with self.subTest('GSS key exchange', steps=steps):
-                    yield from self._check_kex(b'gss-group1-sha1-mech',
-                                               str(steps))
+                    await self._check_kex(b'gss-group1-sha1-mech', str(steps))
 
             with self.subTest('GSS with credential delegation'):
-                yield from self._check_kex(b'gss-group1-sha1-mech',
-                                           '1,delegate')
+                await self._check_kex(b'gss-group1-sha1-mech', '1,delegate')
 
             with self.subTest('GSS with no host key'):
-                yield from self._check_kex(b'gss-group1-sha1-mech',
-                                           '1,no_host_key')
+                await self._check_kex(b'gss-group1-sha1-mech', '1,no_host_key')
 
             with self.subTest('GSS with full host principal'):
-                yield from self._check_kex(b'gss-group1-sha1-mech',
-                                           'host/1@TEST')
+                await self._check_kex(b'gss-group1-sha1-mech', 'host/1@TEST')
 
     @asynctest
-    def test_dh_gex_old(self):
+    async def test_dh_gex_old(self):
         """Unit test old DH group exchange request"""
 
         register_kex_alg(b'dh-gex-sha1-1024', _KexDHGex, sha1, 1024)
@@ -289,10 +284,10 @@ class _TestKex(AsyncTestCase):
 
         for size in (b'1024', b'2048'):
             with self.subTest('Old DH group exchange', size=size):
-                yield from self._check_kex(b'dh-gex-sha1-' + size)
+                await self._check_kex(b'dh-gex-sha1-' + size)
 
     @asynctest
-    def test_dh_gex(self):
+    async def test_dh_gex(self):
         """Unit test old DH group exchange request"""
 
         register_kex_alg(b'dh-gex-sha1-1024-1536', _KexDHGex, sha1, 1024, 1536)
@@ -304,10 +299,10 @@ class _TestKex(AsyncTestCase):
         for size in (b'1024-1536', b'1536-3072', b'2560-2560',
                      b'2560-4096', b'9216-9216'):
             with self.subTest('Old DH group exchange', size=size):
-                yield from self._check_kex(b'dh-gex-sha1-' + size)
+                await self._check_kex(b'dh-gex-sha1-' + size)
 
     @asynctest
-    def test_dh_errors(self):
+    async def test_dh_errors(self):
         """Unit test error conditions in DH key exchange"""
 
         client_conn, server_conn = \
@@ -341,7 +336,7 @@ class _TestKex(AsyncTestCase):
         server_conn.close()
 
     @asynctest
-    def test_dh_gex_errors(self):
+    async def test_dh_gex_errors(self):
         """Unit test error conditions in DH group exchange"""
 
         client_conn, server_conn = \
@@ -376,7 +371,7 @@ class _TestKex(AsyncTestCase):
 
     @unittest.skipUnless(gss_available, 'GSS not available')
     @asynctest
-    def test_gss_errors(self):
+    async def test_gss_errors(self):
         """Unit test error conditions in GSS key exchange"""
 
         client_conn, server_conn = \
@@ -403,46 +398,44 @@ class _TestKex(AsyncTestCase):
 
         with self.subTest('Signature verification failure'):
             with self.assertRaises(asyncssh.KeyExchangeFailed):
-                yield from self._check_kex(b'gss-group1-sha1-mech', '0,fail')
+                await self._check_kex(b'gss-group1-sha1-mech', '0,fail')
 
         with self.subTest('Empty token in init'):
             with self.assertRaises(asyncssh.ProtocolError):
-                yield from self._check_kex(b'gss-group1-sha1-mech',
-                                           '0,empty_init')
+                await self._check_kex(b'gss-group1-sha1-mech', '0,empty_init')
 
         with self.subTest('Empty token in continue'):
             with self.assertRaises(asyncssh.ProtocolError):
-                yield from self._check_kex(b'gss-group1-sha1-mech',
-                                           '1,empty_continue')
+                await self._check_kex(b'gss-group1-sha1-mech',
+                                      '1,empty_continue')
 
         with self.subTest('Token after complete'):
             with self.assertRaises(asyncssh.ProtocolError):
-                yield from self._check_kex(b'gss-group1-sha1-mech',
-                                           '0,continue_token')
+                await self._check_kex(b'gss-group1-sha1-mech',
+                                      '0,continue_token')
 
         for steps in range(2):
             with self.subTest('Token after complete', steps=steps):
                 with self.assertRaises(asyncssh.ProtocolError):
-                    yield from self._check_kex(b'gss-group1-sha1-mech',
-                                               str(steps) + ',extra_token')
+                    await self._check_kex(b'gss-group1-sha1-mech',
+                                          str(steps) + ',extra_token')
 
         with self.subTest('Context not secure'):
             with self.assertRaises(asyncssh.ProtocolError):
-                yield from self._check_kex(b'gss-group1-sha1-mech',
-                                           '1,no_server_integrity')
+                await self._check_kex(b'gss-group1-sha1-mech',
+                                      '1,no_server_integrity')
 
         with self.subTest('GSS error'):
             with self.assertRaises(asyncssh.KeyExchangeFailed):
-                yield from self._check_kex(b'gss-group1-sha1-mech',
-                                           '1,step_error')
+                await self._check_kex(b'gss-group1-sha1-mech', '1,step_error')
 
         with self.subTest('GSS error with error token'):
             with self.assertRaises(asyncssh.KeyExchangeFailed):
-                yield from self._check_kex(b'gss-group1-sha1-mech',
-                                           '1,step_error,errtok')
+                await self._check_kex(b'gss-group1-sha1-mech',
+                                      '1,step_error,errtok')
 
     @asynctest
-    def test_ecdh_errors(self):
+    async def test_ecdh_errors(self):
         """Unit test error conditions in ECDH key exchange"""
 
         try:
@@ -486,7 +479,7 @@ class _TestKex(AsyncTestCase):
 
     @unittest.skipUnless(curve25519_available, 'Curve25519 not available')
     @asynctest
-    def test_curve25519dh_errors(self):
+    async def test_curve25519dh_errors(self):
         """Unit test error conditions in Curve25519DH key exchange"""
 
         try:
@@ -525,7 +518,7 @@ class _TestKex(AsyncTestCase):
 
     @unittest.skipUnless(curve448_available, 'Curve448 not available')
     @asynctest
-    def test_curve448dh_errors(self):
+    async def test_curve448dh_errors(self):
         """Unit test error conditions in Curve448DH key exchange"""
 
         try:
@@ -563,7 +556,7 @@ class _TestKex(AsyncTestCase):
         server_conn.close()
 
     @asynctest
-    def test_rsa_errors(self):
+    async def test_rsa_errors(self):
         """Unit test error conditions in RSA key exchange"""
 
         client_conn, server_conn = \

@@ -22,18 +22,17 @@
 
 import asyncio
 import getpass
-import inspect
 import io
 import os
 import socket
 import sys
+import tempfile
 import time
-import warnings
 
 from collections import OrderedDict
 from functools import partial
 
-from .agent import SSHAgentClient, create_agent_listener
+from .agent import SSHAgentClient, SSHAgentListener
 
 from .auth import lookup_client_auth
 from .auth import get_server_auth_methods, lookup_server_auth
@@ -92,8 +91,8 @@ from .misc import CompressionError, ConnectionLost, HostKeyNotVerifiable
 from .misc import KeyExchangeFailed, IllegalUserName, MACError
 from .misc import PasswordChangeRequired, PermissionDenied, ProtocolError
 from .misc import ProtocolNotSupported, ServiceNotAvailable
-from .misc import async_context_manager, construct_disc_error, create_task
-from .misc import get_symbol_names, ip_address, map_handler_name, python344
+from .misc import async_context_manager, construct_disc_error
+from .misc import get_symbol_names, ip_address, map_handler_name
 
 from .packet import Boolean, Byte, NameList, String, UInt32
 from .packet import PacketDecodeError, SSHPacket, SSHPacketHandler
@@ -149,29 +148,27 @@ _DEFAULT_MAX_PKTSIZE = 32768        # 32 kiB
 _DEFAULT_LINE_HISTORY = 1000        # 1000 lines
 
 
-@asyncio.coroutine
-def _connect(host, port, loop, tunnel, family, flags,
-             local_addr, conn_factory, msg):
+async def _connect(host, port, loop, tunnel, family, flags,
+                   local_addr, conn_factory, msg):
     """Make outbound TCP or SSH tunneled connection"""
 
     if tunnel:
         tunnel_logger = getattr(tunnel, 'logger', logger)
         tunnel_logger.info('%s %s via SSH tunnel', msg, (host, port))
-        _, conn = yield from tunnel.create_connection(conn_factory, host, port)
+        _, conn = await tunnel.create_connection(conn_factory, host, port)
     else:
         logger.info('%s %s', msg, (host, port))
-        _, conn = yield from loop.create_connection(conn_factory, host, port,
-                                                    family=family, flags=flags,
-                                                    local_addr=local_addr)
+        _, conn = await loop.create_connection(conn_factory, host, port,
+                                               family=family, flags=flags,
+                                               local_addr=local_addr)
 
-    yield from conn.wait_established()
+    await conn.wait_established()
 
     return conn
 
 
-@asyncio.coroutine
-def _listen(host, port, loop, tunnel, family, flags, backlog,
-            reuse_address, reuse_port, conn_factory, msg):
+async def _listen(host, port, loop, tunnel, family, flags, backlog,
+                  reuse_address, reuse_port, conn_factory, msg):
     """Make inbound TCP or SSH tunneled listener"""
 
     def tunnel_factory(orig_host, orig_port):
@@ -181,19 +178,17 @@ def _listen(host, port, loop, tunnel, family, flags, backlog,
 
         return conn_factory()
 
-    reuse_port_arg = dict(reuse_port=reuse_port) if python344 else {}
-
     if tunnel:
         tunnel_logger = getattr(tunnel, 'logger', logger)
         tunnel_logger.info('%s %s via SSH tunnel', msg, (host, port))
-        server = yield from tunnel.create_server(tunnel_factory, host, port)
+        server = await tunnel.create_server(tunnel_factory, host, port)
     else:
         logger.info('%s %s', msg, (host, port))
-        server = yield from loop.create_server(conn_factory, host, port,
-                                               family=family, flags=flags,
-                                               backlog=backlog,
-                                               reuse_address=reuse_address,
-                                               **reuse_port_arg)
+        server = await loop.create_server(conn_factory, host, port,
+                                          family=family, flags=flags,
+                                          backlog=backlog,
+                                          reuse_address=reuse_address,
+                                          reuse_port=reuse_port)
 
     return server
 
@@ -295,7 +290,7 @@ class SSHConnection(SSHPacketHandler):
         self._error_handler = error_handler
         self._server = server
         self._wait = wait
-        self._waiter = asyncio.Future(loop=self._loop)
+        self._waiter = loop.create_future()
 
         self._transport = None
         self._local_addr = None
@@ -407,46 +402,25 @@ class SSHConnection(SSHPacketHandler):
 
         self._x11_listener = None
 
-        self._close_event = asyncio.Event(loop=loop)
+        self._close_event = asyncio.Event()
 
         self._server_host_key_algs = []
 
         self._logger = logger.get_child(context='conn=%d' %
                                         self._get_next_conn())
 
-    def __enter__(self):
-        """Allow SSHConnection to be used as a context manager"""
-
-        return self
-
-    def __exit__(self, *exc_info):
-        """Automatically close the connection when used as a context manager"""
-
-        try:
-            self.close()
-        except RuntimeError as exc: # pragma: no cover
-            # There's a race in some cases between the close call here
-            # and the code which shuts down the event loop. Since the
-            # loop.is_closed() method is only in Python 3.4.2 and later,
-            # catch and ignore the RuntimeError for now if this happens.
-
-            if exc.args[0] == 'Event loop is closed':
-                pass
-            else:
-                raise
-
-    @asyncio.coroutine
-    def __aenter__(self):
+    async def __aenter__(self):
         """Allow SSHConnection to be used as an async context manager"""
 
         return self
 
-    @asyncio.coroutine
-    def __aexit__(self, *exc_info):
+    async def __aexit__(self, *exc_info):
         """Wait for connection close when used as an async context manager"""
 
-        self.__exit__()
-        yield from self.wait_closed()
+        if not self._loop.is_closed(): # pragma: no branch
+            self.close()
+
+        await self.wait_closed()
 
     @property
     def logger(self):
@@ -511,13 +485,12 @@ class SSHConnection(SSHPacketHandler):
         self._cancel_keepalive_timer()
         self._set_keepalive_timer()
 
-    @asyncio.coroutine
-    def _make_keepalive_request(self):
+    async def _make_keepalive_request(self):
         """Send keepalive request"""
 
         self.logger.debug1('Sending keepalive request')
 
-        yield from self._make_global_request('keepalive@openssh.com')
+        await self._make_global_request('keepalive@openssh.com')
 
         if self._keepalive_timer:
             self.logger.debug1('Got keepalive response')
@@ -565,7 +538,7 @@ class SSHConnection(SSHPacketHandler):
     def create_task(self, coro, task_logger=None):
         """Create an asynchronous task which catches and reports errors"""
 
-        task = create_task(coro, loop=self._loop)
+        task = asyncio.ensure_future(coro)
         task.add_done_callback(partial(self._reap_task, task_logger))
         return task
 
@@ -1262,8 +1235,7 @@ class SSHConnection(SSHPacketHandler):
         return (String(self._session_id) +
                 self._get_userauth_request_packet(method, args))
 
-    @asyncio.coroutine
-    def send_userauth_request(self, method, *args, key=None):
+    async def send_userauth_request(self, method, *args, key=None):
         """Send a user authentication request"""
 
         packet = self._get_userauth_request_packet(method, args)
@@ -1272,7 +1244,7 @@ class SSHConnection(SSHPacketHandler):
             sig = key.sign(String(self._session_id) + packet)
 
             if asyncio.iscoroutine(sig):
-                sig = yield from sig
+                sig = await sig
 
             packet += String(sig)
 
@@ -1338,20 +1310,19 @@ class SSHConnection(SSHPacketHandler):
         self.send_packet(MSG_CHANNEL_OPEN_FAILURE, UInt32(send_chan),
                          UInt32(code), String(reason), String(lang))
 
-    @asyncio.coroutine
-    def _make_global_request(self, request, *args):
+    async def _make_global_request(self, request, *args):
         """Send a global request and wait for the response"""
 
         if not self._transport:
             return MSG_REQUEST_FAILURE, SSHPacket(b'')
 
-        waiter = asyncio.Future(loop=self._loop)
+        waiter = self._loop.create_future()
         self._global_request_waiters.append(waiter)
 
         self.send_packet(MSG_GLOBAL_REQUEST, String(request),
                          Boolean(True), *args)
 
-        return (yield from waiter)
+        return await waiter
 
     def _report_global_response(self, result):
         """Report back the response to a previously issued global request"""
@@ -1657,15 +1628,14 @@ class SSHConnection(SSHPacketHandler):
 
             self.create_task(self._finish_userauth(result, method, packet))
 
-    @asyncio.coroutine
-    def _finish_userauth(self, result, method, packet):
+    async def _finish_userauth(self, result, method, packet):
         """Finish processing a user authentication request"""
 
         if not self._owner:
             return
 
         if asyncio.iscoroutine(result):
-            result = yield from result
+            result = await result
 
         if not result:
             self.send_userauth_success()
@@ -1942,14 +1912,12 @@ class SSHConnection(SSHPacketHandler):
 
         self.disconnect(DISC_BY_APPLICATION, 'Disconnected by application')
 
-    @asyncio.coroutine
-    def wait_established(self):
+    async def wait_established(self):
         """Wait for connection to be established"""
 
-        yield from self._waiter
+        await self._waiter
 
-    @asyncio.coroutine
-    def wait_closed(self):
+    async def wait_closed(self):
         """Wait for this connection to close
 
            This method is a coroutine which can be called to block until
@@ -1957,7 +1925,7 @@ class SSHConnection(SSHPacketHandler):
 
         """
 
-        yield from self._close_event.wait()
+        await self._close_event.wait()
 
     def disconnect(self, code, reason, lang=DEFAULT_LANG):
         """Disconnect the SSH connection
@@ -2165,26 +2133,23 @@ class SSHConnection(SSHPacketHandler):
         return SSHAgentChannel(self, self._loop, None, 'strict',
                                window, max_pktsize)
 
-    @asyncio.coroutine
-    def create_connection(self, session_factory, remote_host, remote_port,
-                          orig_host='', orig_port=0, *, encoding=None,
-                          errors='strict', window=_DEFAULT_WINDOW,
-                          max_pktsize=_DEFAULT_MAX_PKTSIZE):
+    async def create_connection(self, session_factory, remote_host, remote_port,
+                                orig_host='', orig_port=0, *, encoding=None,
+                                errors='strict', window=_DEFAULT_WINDOW,
+                                max_pktsize=_DEFAULT_MAX_PKTSIZE):
         """Create an SSH direct or forwarded TCP connection"""
 
         raise NotImplementedError
 
-    @asyncio.coroutine
-    def create_unix_connection(self, session_factory, remote_path, *,
-                               encoding=None, errors='strict',
-                               window=_DEFAULT_WINDOW,
-                               max_pktsize=_DEFAULT_MAX_PKTSIZE):
+    async def create_unix_connection(self, session_factory, remote_path, *,
+                                     encoding=None, errors='strict',
+                                     window=_DEFAULT_WINDOW,
+                                     max_pktsize=_DEFAULT_MAX_PKTSIZE):
         """Create an SSH direct or forwarded UNIX domain socket connection"""
 
         raise NotImplementedError
 
-    @asyncio.coroutine
-    def forward_connection(self, dest_host, dest_port):
+    async def forward_connection(self, dest_host, dest_port):
         """Forward a tunneled TCP connection
 
            This method is a coroutine which can be returned by a
@@ -2206,9 +2171,8 @@ class SSHConnection(SSHPacketHandler):
             if dest_host == '':
                 dest_host = None
 
-            _, peer = yield from self._loop.create_connection(SSHForwarder,
-                                                              dest_host,
-                                                              dest_port)
+            _, peer = await self._loop.create_connection(SSHForwarder,
+                                                         dest_host, dest_port)
 
             self.logger.info('  Forwarding TCP connection to %s',
                              (dest_host, dest_port))
@@ -2217,8 +2181,7 @@ class SSHConnection(SSHPacketHandler):
 
         return SSHForwarder(peer)
 
-    @asyncio.coroutine
-    def forward_unix_connection(self, dest_path):
+    async def forward_unix_connection(self, dest_path):
         """Forward a tunneled UNIX domain socket connection
 
            This method is a coroutine which can be returned by a
@@ -2235,8 +2198,7 @@ class SSHConnection(SSHPacketHandler):
 
         try:
             _, peer = \
-                yield from self._loop.create_unix_connection(SSHForwarder,
-                                                             dest_path)
+                await self._loop.create_unix_connection(SSHForwarder, dest_path)
 
             self.logger.info('  Forwarding UNIX connection to %s', dest_path)
         except OSError as exc:
@@ -2244,9 +2206,8 @@ class SSHConnection(SSHPacketHandler):
 
         return SSHForwarder(peer)
 
-    @asyncio.coroutine
-    def forward_local_port(self, listen_host, listen_port,
-                           dest_host, dest_port):
+    async def forward_local_port(self, listen_host, listen_port,
+                                 dest_host, dest_port):
         """Set up local port forwarding
 
            This method is a coroutine which attempts to set up port
@@ -2274,13 +2235,12 @@ class SSHConnection(SSHPacketHandler):
 
         """
 
-        @asyncio.coroutine
-        def tunnel_connection(session_factory, orig_host, orig_port):
+        async def tunnel_connection(session_factory, orig_host, orig_port):
             """Forward a local connection over SSH"""
 
-            return (yield from self.create_connection(session_factory,
-                                                      dest_host, dest_port,
-                                                      orig_host, orig_port))
+            return (await self.create_connection(session_factory,
+                                                 dest_host, dest_port,
+                                                 orig_host, orig_port))
 
         if (listen_host, listen_port) == (dest_host, dest_port):
             self.logger.info('Creating local TCP forwarder on %s',
@@ -2290,10 +2250,10 @@ class SSHConnection(SSHPacketHandler):
                              (listen_host, listen_port), (dest_host, dest_port))
 
         try:
-            listener = yield from create_tcp_forward_listener(self, self._loop,
-                                                              tunnel_connection,
-                                                              listen_host,
-                                                              listen_port)
+            listener = await create_tcp_forward_listener(self, self._loop,
+                                                         tunnel_connection,
+                                                         listen_host,
+                                                         listen_port)
 
             if dest_port == 0:
                 dest_port = listener.get_port()
@@ -2303,8 +2263,7 @@ class SSHConnection(SSHPacketHandler):
             self.logger.debug1('Failed to create local TCP listener: %s', exc)
             raise
 
-    @asyncio.coroutine
-    def forward_local_path(self, listen_path, dest_path):
+    async def forward_local_path(self, listen_path, dest_path):
         """Set up local UNIX domain socket forwarding
 
            This method is a coroutine which attempts to set up UNIX domain
@@ -2326,20 +2285,18 @@ class SSHConnection(SSHPacketHandler):
 
         """
 
-        @asyncio.coroutine
-        def tunnel_connection(session_factory):
+        async def tunnel_connection(session_factory):
             """Forward a local connection over SSH"""
 
-            return (yield from self.create_unix_connection(session_factory,
-                                                           dest_path))
+            return await self.create_unix_connection(session_factory, dest_path)
 
         self.logger.info('Creating local UNIX forwarder from %s to %s',
                          listen_path, dest_path)
 
         try:
-            return (yield from create_unix_forward_listener(self, self._loop,
-                                                            tunnel_connection,
-                                                            listen_path))
+            return await create_unix_forward_listener(self, self._loop,
+                                                      tunnel_connection,
+                                                      listen_path)
         except OSError as exc:
             self.logger.debug1('Failed to create local UNIX listener: %s', exc)
             raise
@@ -2398,7 +2355,7 @@ class SSHClientConnection(SSHConnection):
                             list(options.client_keys)
 
         if options.agent_path is not None:
-            self._agent = SSHAgentClient(self._loop, options.agent_path)
+            self._agent = SSHAgentClient(options.agent_path)
 
         self._agent_forward_path = options.agent_forward_path
         self._get_agent_keys = bool(self._agent)
@@ -2578,8 +2535,7 @@ class SSHClientConnection(SSHConnection):
         else:
             return False
 
-    @asyncio.coroutine
-    def host_based_auth_requested(self):
+    async def host_based_auth_requested(self):
         """Return a host key pair, host, and user to authenticate with"""
 
         while True:
@@ -2593,7 +2549,7 @@ class SSHClientConnection(SSHConnection):
                 break
 
         if self._client_host is None:
-            self._client_host, _ = yield from self._loop.getnameinfo(
+            self._client_host, _ = await self._loop.getnameinfo(
                 self.get_extra_info('sockname'), socket.NI_NUMERICSERV)
 
         # Add a trailing '.' to the client host to be compatible with
@@ -2603,13 +2559,12 @@ class SSHClientConnection(SSHConnection):
 
         return keypair, self._client_host, self._client_username
 
-    @asyncio.coroutine
-    def public_key_auth_requested(self):
+    async def public_key_auth_requested(self):
         """Return a client key pair to authenticate with"""
 
         if self._get_agent_keys:
             try:
-                agent_keys = yield from self._agent.get_keys()
+                agent_keys = await self._agent.get_keys()
                 self._client_keys = agent_keys + (self._client_keys or [])
             except ValueError:
                 pass
@@ -2621,7 +2576,7 @@ class SSHClientConnection(SSHConnection):
                 result = self._owner.public_key_auth_requested()
 
                 if asyncio.iscoroutine(result):
-                    result = yield from result
+                    result = await result
 
                 if not result:
                     return None
@@ -2633,8 +2588,7 @@ class SSHClientConnection(SSHConnection):
             if self._choose_signature_alg(keypair):
                 return keypair
 
-    @asyncio.coroutine
-    def password_auth_requested(self):
+    async def password_auth_requested(self):
         """Return a password to authenticate with"""
 
         if self._password is not None:
@@ -2644,18 +2598,17 @@ class SSHClientConnection(SSHConnection):
             result = self._owner.password_auth_requested()
 
             if asyncio.iscoroutine(result):
-                result = yield from result
+                result = await result
 
         return result
 
-    @asyncio.coroutine
-    def password_change_requested(self, prompt, lang):
+    async def password_change_requested(self, prompt, lang):
         """Return a password to authenticate with and what to change it to"""
 
         result = self._owner.password_change_requested(prompt, lang)
 
         if asyncio.iscoroutine(result):
-            result = yield from result
+            result = await result
 
         return result
 
@@ -2669,8 +2622,7 @@ class SSHClientConnection(SSHConnection):
 
         self._owner.password_change_failed()
 
-    @asyncio.coroutine
-    def kbdint_auth_requested(self):
+    async def kbdint_auth_requested(self):
         """Return the list of supported keyboard-interactive auth methods
 
            If keyboard-interactive auth is not supported in the client but
@@ -2682,7 +2634,7 @@ class SSHClientConnection(SSHConnection):
         result = self._owner.kbdint_auth_requested()
 
         if asyncio.iscoroutine(result):
-            result = yield from result
+            result = await result
 
         if result is NotImplemented:
             if self._password is not None and not self._kbdint_password_auth:
@@ -2693,8 +2645,7 @@ class SSHClientConnection(SSHConnection):
 
         return result
 
-    @asyncio.coroutine
-    def kbdint_challenge_received(self, name, instructions, lang, prompts):
+    async def kbdint_challenge_received(self, name, instructions, lang, prompts):
         """Return responses to a keyboard-interactive auth challenge"""
 
         if self._kbdint_password_auth:
@@ -2702,7 +2653,7 @@ class SSHClientConnection(SSHConnection):
                 # Silently drop any empty challenges used to print messages
                 result = []
             elif len(prompts) == 1 and 'password' in prompts[0][0].lower():
-                password = yield from self.password_auth_requested()
+                password = await self.password_auth_requested()
 
                 result = [password] if password is not None else None
             else:
@@ -2712,7 +2663,7 @@ class SSHClientConnection(SSHConnection):
                                                            lang, prompts)
 
             if asyncio.iscoroutine(result):
-                result = yield from result
+                result = await result
 
         return result
 
@@ -2773,11 +2724,10 @@ class SSHClientConnection(SSHConnection):
         else:
             raise ChannelOpenError(OPEN_CONNECT_FAILED, 'No such listener')
 
-    @asyncio.coroutine
-    def close_client_tcp_listener(self, listen_host, listen_port):
+    async def close_client_tcp_listener(self, listen_host, listen_port):
         """Close a remote TCP/IP listener"""
 
-        yield from self._make_global_request(
+        await self._make_global_request(
             b'cancel-tcpip-forward', String(listen_host), UInt32(listen_port))
 
         self.logger.info('Closed remote TCP listener on %s',
@@ -2828,11 +2778,10 @@ class SSHClientConnection(SSHConnection):
         else:
             raise ChannelOpenError(OPEN_CONNECT_FAILED, 'No such listener')
 
-    @asyncio.coroutine
-    def close_client_unix_listener(self, listen_path):
+    async def close_client_unix_listener(self, listen_path):
         """Close a remote UNIX domain socket listener"""
 
-        yield from self._make_global_request(
+        await self._make_global_request(
             b'cancel-streamlocal-forward@openssh.com', String(listen_path))
 
         self.logger.info('Closed UNIX listener on %s', listen_path)
@@ -2875,8 +2824,7 @@ class SSHClientConnection(SSHConnection):
             raise ChannelOpenError(OPEN_CONNECT_FAILED,
                                    'Auth agent forwarding disabled')
 
-    @asyncio.coroutine
-    def attach_x11_listener(self, chan, display, auth_path, single_connection):
+    async def attach_x11_listener(self, chan, display, auth_path, single_connection):
         """Attach a channel to a local X11 display"""
 
         if not display:
@@ -2886,7 +2834,7 @@ class SSHClientConnection(SSHConnection):
             raise ValueError('X11 display not set')
 
         if not self._x11_listener:
-            self._x11_listener = yield from create_x11_client_listener(
+            self._x11_listener = await create_x11_client_listener(
                 self._loop, display, auth_path)
 
         return self._x11_listener.attach(display, chan, single_connection)
@@ -2898,14 +2846,14 @@ class SSHClientConnection(SSHConnection):
             if self._x11_listener.detach(chan):
                 self._x11_listener = None
 
-    @asyncio.coroutine
-    def create_session(self, session_factory, command=None, *, subsystem=None,
-                       env={}, term_type=None, term_size=None, term_modes={},
-                       x11_forwarding=False, x11_display=None,
-                       x11_auth_path=None, x11_single_connection=False,
-                       encoding='utf-8', errors='strict',
-                       window=_DEFAULT_WINDOW,
-                       max_pktsize=_DEFAULT_MAX_PKTSIZE):
+    async def create_session(self, session_factory, command=None, *,
+                             subsystem=None, env={}, term_type=None,
+                             term_size=None, term_modes={},
+                             x11_forwarding=False, x11_display=None,
+                             x11_auth_path=None, x11_single_connection=False,
+                             encoding='utf-8', errors='strict',
+                             window=_DEFAULT_WINDOW,
+                             max_pktsize=_DEFAULT_MAX_PKTSIZE):
         """Create an SSH client session
 
            This method is a coroutine which can be called to create an SSH
@@ -3002,16 +2950,15 @@ class SSHClientConnection(SSHConnection):
         chan = SSHClientChannel(self, self._loop, encoding, errors,
                                 window, max_pktsize)
 
-        session = yield from chan.create(session_factory, command, subsystem,
-                                         env, term_type, term_size, term_modes,
-                                         x11_forwarding, x11_display,
-                                         x11_auth_path, x11_single_connection,
-                                         bool(self._agent_forward_path))
+        session = await chan.create(session_factory, command, subsystem,
+                                    env, term_type, term_size, term_modes,
+                                    x11_forwarding, x11_display,
+                                    x11_auth_path, x11_single_connection,
+                                    bool(self._agent_forward_path))
 
         return chan, session
 
-    @asyncio.coroutine
-    def open_session(self, *args, **kwargs):
+    async def open_session(self, *args, **kwargs):
         """Open an SSH client session
 
            This method is a coroutine wrapper around :meth:`create_session`
@@ -3026,16 +2973,17 @@ class SSHClientConnection(SSHConnection):
 
         """
 
-        chan, session = yield from self.create_session(SSHClientStreamSession,
-                                                       *args, **kwargs)
+        chan, session = await self.create_session(SSHClientStreamSession,
+                                                  *args, **kwargs)
 
         return (SSHWriter(session, chan), SSHReader(session, chan),
                 SSHReader(session, chan, EXTENDED_DATA_STDERR))
 
     # pylint: disable=redefined-builtin
     @async_context_manager
-    def create_process(self, *args, bufsize=io.DEFAULT_BUFFER_SIZE, input=None,
-                       stdin=PIPE, stdout=PIPE, stderr=PIPE, **kwargs):
+    async def create_process(self, *args, bufsize=io.DEFAULT_BUFFER_SIZE,
+                             input=None, stdin=PIPE, stdout=PIPE, stderr=PIPE,
+                             **kwargs):
         """Create a process on the remote system
 
            This method is a coroutine wrapper around :meth:`create_session`
@@ -3087,22 +3035,22 @@ class SSHClientConnection(SSHConnection):
 
         """
 
-        chan, process = yield from self.create_session(SSHClientProcess,
-                                                       *args, **kwargs)
+        chan, process = await self.create_session(SSHClientProcess,
+                                                  *args, **kwargs)
 
         if input:
             chan.write(input)
             chan.write_eof()
             stdin = None
 
-        yield from process.redirect(stdin, stdout, stderr, bufsize)
+        await process.redirect(stdin, stdout, stderr, bufsize)
 
         return process
 
     @async_context_manager
-    def create_subprocess(self, protocol_factory, *args, input=None,
-                          bufsize=io.DEFAULT_BUFFER_SIZE, encoding=None,
-                          stdin=PIPE, stdout=PIPE, stderr=PIPE, **kwargs):
+    async def create_subprocess(self, protocol_factory, *args, input=None,
+                                bufsize=io.DEFAULT_BUFFER_SIZE, encoding=None,
+                                stdin=PIPE, stdout=PIPE, stderr=PIPE, **kwargs):
         """Create a subprocess on the remote system
 
            This method is a coroutine wrapper around :meth:`create_session`
@@ -3138,7 +3086,7 @@ class SSHClientConnection(SSHConnection):
 
             return SSHSubprocessTransport(protocol_factory)
 
-        _, transport = yield from self.create_session(
+        _, transport = await self.create_session(
             transport_factory, *args, encoding=encoding, **kwargs)
 
         if input:
@@ -3147,13 +3095,12 @@ class SSHClientConnection(SSHConnection):
             stdin_pipe.write_eof()
             stdin = None
 
-        yield from transport.redirect(stdin, stdout, stderr, bufsize)
+        await transport.redirect(stdin, stdout, stderr, bufsize)
 
         return transport, transport.get_protocol()
     # pylint: enable=redefined-builtin
 
-    @asyncio.coroutine
-    def run(self, *args, check=False, **kwargs):
+    async def run(self, *args, check=False, **kwargs):
         """Run a command on the remote system and collect its output
 
            This method is a coroutine wrapper around :meth:`create_process`
@@ -3184,15 +3131,14 @@ class SSHClientConnection(SSHConnection):
 
         """
 
-        process = yield from self.create_process(*args, **kwargs)
+        process = await self.create_process(*args, **kwargs)
 
-        return (yield from process.wait(check))
+        return await process.wait(check)
 
-    @asyncio.coroutine
-    def create_connection(self, session_factory, remote_host, remote_port,
-                          orig_host='', orig_port=0, *, encoding=None,
-                          errors='strict', window=_DEFAULT_WINDOW,
-                          max_pktsize=_DEFAULT_MAX_PKTSIZE):
+    async def create_connection(self, session_factory, remote_host, remote_port,
+                                orig_host='', orig_port=0, *, encoding=None,
+                                errors='strict', window=_DEFAULT_WINDOW,
+                                max_pktsize=_DEFAULT_MAX_PKTSIZE):
         """Create an SSH TCP direct connection
 
            This method is a coroutine which can be called to request that
@@ -3255,13 +3201,12 @@ class SSHClientConnection(SSHConnection):
 
         chan = self.create_tcp_channel(encoding, errors, window, max_pktsize)
 
-        session = yield from chan.connect(session_factory, remote_host,
-                                          remote_port, orig_host, orig_port)
+        session = await chan.connect(session_factory, remote_host, remote_port,
+                                     orig_host, orig_port)
 
         return chan, session
 
-    @asyncio.coroutine
-    def open_connection(self, *args, **kwargs):
+    async def open_connection(self, *args, **kwargs):
         """Open an SSH TCP direct connection
 
            This method is a coroutine wrapper around :meth:`create_connection`
@@ -3282,15 +3227,15 @@ class SSHClientConnection(SSHConnection):
 
         """
 
-        chan, session = yield from self.create_connection(SSHTCPStreamSession,
-                                                          *args, **kwargs)
+        chan, session = await self.create_connection(SSHTCPStreamSession,
+                                                     *args, **kwargs)
 
         return SSHReader(session, chan), SSHWriter(session, chan)
 
-    @asyncio.coroutine
-    def create_server(self, session_factory, listen_host, listen_port, *,
-                      encoding=None, errors='strict', window=_DEFAULT_WINDOW,
-                      max_pktsize=_DEFAULT_MAX_PKTSIZE):
+    async def create_server(self, session_factory, listen_host, listen_port, *,
+                            encoding=None, errors='strict',
+                            window=_DEFAULT_WINDOW,
+                            max_pktsize=_DEFAULT_MAX_PKTSIZE):
         """Create a remote SSH TCP listener
 
            This method is a coroutine which can be called to request that
@@ -3337,7 +3282,7 @@ class SSHClientConnection(SSHConnection):
         self.logger.info('Creating remote TCP listener on %s',
                          (listen_host, listen_port))
 
-        pkttype, packet = yield from self._make_global_request(
+        pkttype, packet = await self._make_global_request(
             b'tcpip-forward', String(listen_host), UInt32(listen_port))
 
         if pkttype == MSG_REQUEST_SUCCESS:
@@ -3356,7 +3301,7 @@ class SSHClientConnection(SSHConnection):
 
             packet.check_end()
 
-            listener = SSHTCPClientListener(self, self._loop, session_factory,
+            listener = SSHTCPClientListener(self, session_factory,
                                             listen_host, listen_port, encoding,
                                             errors, window, max_pktsize)
 
@@ -3372,8 +3317,7 @@ class SSHClientConnection(SSHConnection):
             self.logger.debug1('Failed to create remote TCP listener')
             return None
 
-    @asyncio.coroutine
-    def start_server(self, handler_factory, *args, **kwargs):
+    async def start_server(self, handler_factory, *args, **kwargs):
         """Start a remote SSH TCP listener
 
            This method is a coroutine wrapper around :meth:`create_server`
@@ -3410,14 +3354,12 @@ class SSHClientConnection(SSHConnection):
 
             return SSHTCPStreamSession(handler_factory(orig_host, orig_port))
 
-        return (yield from self.create_server(session_factory,
-                                              *args, **kwargs))
+        return await self.create_server(session_factory, *args, **kwargs)
 
-    @asyncio.coroutine
-    def create_unix_connection(self, session_factory, remote_path, *,
-                               encoding=None, errors='strict',
-                               window=_DEFAULT_WINDOW,
-                               max_pktsize=_DEFAULT_MAX_PKTSIZE):
+    async def create_unix_connection(self, session_factory, remote_path, *,
+                                     encoding=None, errors='strict',
+                                     window=_DEFAULT_WINDOW,
+                                     max_pktsize=_DEFAULT_MAX_PKTSIZE):
         """Create an SSH UNIX domain socket direct connection
 
            This method is a coroutine which can be called to request that
@@ -3466,12 +3408,11 @@ class SSHClientConnection(SSHConnection):
 
         chan = self.create_unix_channel(encoding, errors, window, max_pktsize)
 
-        session = yield from chan.connect(session_factory, remote_path)
+        session = await chan.connect(session_factory, remote_path)
 
         return chan, session
 
-    @asyncio.coroutine
-    def open_unix_connection(self, *args, **kwargs):
+    async def open_unix_connection(self, *args, **kwargs):
         """Open an SSH UNIX domain socket direct connection
 
            This method is a coroutine wrapper around
@@ -3493,16 +3434,15 @@ class SSHClientConnection(SSHConnection):
         """
 
         chan, session = \
-            yield from self.create_unix_connection(SSHUNIXStreamSession,
-                                                   *args, **kwargs)
+            await self.create_unix_connection(SSHUNIXStreamSession,
+                                              *args, **kwargs)
 
         return SSHReader(session, chan), SSHWriter(session, chan)
 
-    @asyncio.coroutine
-    def create_unix_server(self, session_factory, listen_path, *,
-                           encoding=None, errors='strict',
-                           window=_DEFAULT_WINDOW,
-                           max_pktsize=_DEFAULT_MAX_PKTSIZE):
+    async def create_unix_server(self, session_factory, listen_path, *,
+                                 encoding=None, errors='strict',
+                                 window=_DEFAULT_WINDOW,
+                                 max_pktsize=_DEFAULT_MAX_PKTSIZE):
         """Create a remote SSH UNIX domain socket listener
 
            This method is a coroutine which can be called to request that
@@ -3543,13 +3483,13 @@ class SSHClientConnection(SSHConnection):
 
         self.logger.info('Creating remote UNIX listener on %s', listen_path)
 
-        pkttype, packet = yield from self._make_global_request(
+        pkttype, packet = await self._make_global_request(
             b'streamlocal-forward@openssh.com', String(listen_path))
 
         packet.check_end()
 
         if pkttype == MSG_REQUEST_SUCCESS:
-            listener = SSHUNIXClientListener(self, self._loop, session_factory,
+            listener = SSHUNIXClientListener(self, session_factory,
                                              listen_path, encoding, errors,
                                              window, max_pktsize)
 
@@ -3559,8 +3499,7 @@ class SSHClientConnection(SSHConnection):
             self.logger.debug1('Failed to create remote UNIX listener')
             return None
 
-    @asyncio.coroutine
-    def start_unix_server(self, handler_factory, *args, **kwargs):
+    async def start_unix_server(self, handler_factory, *args, **kwargs):
         """Start a remote SSH UNIX domain socket listener
 
            This method is a coroutine wrapper around :meth:`create_unix_server`
@@ -3599,12 +3538,10 @@ class SSHClientConnection(SSHConnection):
 
             return SSHUNIXStreamSession(handler_factory())
 
-        return (yield from self.create_unix_server(session_factory,
-                                                   *args, **kwargs))
+        return await self.create_unix_server(session_factory, *args, **kwargs)
 
-    @asyncio.coroutine
-    def create_ssh_connection(self, client_factory, host,
-                              port=_DEFAULT_PORT, **kwargs):
+    async def create_ssh_connection(self, client_factory, host,
+                                    port=_DEFAULT_PORT, **kwargs):
         """Create a tunneled SSH client connection
 
            This method is a coroutine which can be called to open an
@@ -3616,11 +3553,11 @@ class SSHClientConnection(SSHConnection):
 
         """
 
-        return (yield from create_connection(client_factory, host, port,
-                                             tunnel=self, **kwargs))
+        return (await create_connection(client_factory, host, port,
+                                        tunnel=self, **kwargs))
 
     @async_context_manager
-    def connect_ssh(self, host, port=_DEFAULT_PORT, **kwargs):
+    async def connect_ssh(self, host, port=_DEFAULT_PORT, **kwargs):
         """Make a tunneled SSH client connection
 
            This method is a coroutine which can be called to open an
@@ -3631,10 +3568,10 @@ class SSHClientConnection(SSHConnection):
 
         """
 
-        return (yield from connect(host, port, tunnel=self, **kwargs))
+        return await connect(host, port, tunnel=self, **kwargs)
 
     @async_context_manager
-    def connect_reverse_ssh(self, host, port=_DEFAULT_PORT, **kwargs):
+    async def connect_reverse_ssh(self, host, port=_DEFAULT_PORT, **kwargs):
         """Make a tunneled reverse direction SSH connection
 
            This method is a coroutine which can be called to open an
@@ -3645,10 +3582,9 @@ class SSHClientConnection(SSHConnection):
 
         """
 
-        return (yield from connect_reverse(host, port, tunnel=self, **kwargs))
+        return await connect_reverse(host, port, tunnel=self, **kwargs)
 
-    @asyncio.coroutine
-    def listen_ssh(self, host='', port=_DEFAULT_PORT, **kwargs):
+    async def listen_ssh(self, host='', port=_DEFAULT_PORT, **kwargs):
         """Create a tunneled SSH listener
 
            This method is a coroutine which can be called to open a remote
@@ -3659,10 +3595,9 @@ class SSHClientConnection(SSHConnection):
 
         """
 
-        return (yield from listen(host, port, tunnel=self, **kwargs))
+        return await listen(host, port, tunnel=self, **kwargs)
 
-    @asyncio.coroutine
-    def listen_reverse_ssh(self, host='', port=_DEFAULT_PORT, **kwargs):
+    async def listen_reverse_ssh(self, host='', port=_DEFAULT_PORT, **kwargs):
         """Create a tunneled reverse direction SSH listener
 
            This method is a coroutine which can be called to open a remote
@@ -3673,11 +3608,10 @@ class SSHClientConnection(SSHConnection):
 
         """
 
-        return (yield from listen_reverse(host, port, tunnel=self, **kwargs))
+        return await listen_reverse(host, port, tunnel=self, **kwargs)
 
-    @asyncio.coroutine
-    def forward_remote_port(self, listen_host, listen_port,
-                            dest_host, dest_port):
+    async def forward_remote_port(self, listen_host, listen_port,
+                                  dest_host, dest_port):
         """Set up remote port forwarding
 
            This method is a coroutine which attempts to set up port
@@ -3714,11 +3648,10 @@ class SSHClientConnection(SSHConnection):
         self.logger.info('Creating remote TCP forwarder from %s to %s',
                          (listen_host, listen_port), (dest_host, dest_port))
 
-        return (yield from self.create_server(session_factory, listen_host,
-                                              listen_port))
+        return await self.create_server(session_factory, listen_host,
+                                        listen_port)
 
-    @asyncio.coroutine
-    def forward_remote_path(self, listen_path, dest_path):
+    async def forward_remote_path(self, listen_path, dest_path):
         """Set up remote UNIX domain socket forwarding
 
            This method is a coroutine which attempts to set up UNIX domain
@@ -3748,11 +3681,9 @@ class SSHClientConnection(SSHConnection):
         self.logger.info('Creating remote UNIX forwarder from %s to %s',
                          listen_path, dest_path)
 
-        return (yield from self.create_unix_server(session_factory,
-                                                   listen_path))
+        return await self.create_unix_server(session_factory, listen_path)
 
-    @asyncio.coroutine
-    def forward_socks(self, listen_host, listen_port):
+    async def forward_socks(self, listen_host, listen_port):
         """Set up local port forwarding via SOCKS
 
            This method is a coroutine which attempts to set up dynamic
@@ -3778,29 +3709,27 @@ class SSHClientConnection(SSHConnection):
 
         """
 
-        @asyncio.coroutine
-        def tunnel_socks(session_factory, dest_host, dest_port,
-                         orig_host, orig_port):
+        async def tunnel_socks(session_factory, dest_host, dest_port,
+                               orig_host, orig_port):
             """Forward a local SOCKS connection over SSH"""
 
-            return (yield from self.create_connection(session_factory,
-                                                      dest_host, dest_port,
-                                                      orig_host, orig_port))
+            return await self.create_connection(session_factory,
+                                                dest_host, dest_port,
+                                                orig_host, orig_port)
 
         self.logger.info('Creating local SOCKS forwarder on %s',
                          (listen_host, listen_port))
 
         try:
-            return (yield from create_socks_listener(self, self._loop,
-                                                     tunnel_socks, listen_host,
-                                                     listen_port))
+            return await create_socks_listener(self, self._loop, tunnel_socks,
+                                               listen_host, listen_port)
         except OSError as exc:
             self.logger.debug1('Failed to create local SOCKS listener: %s', exc)
             raise
 
     @async_context_manager
-    def start_sftp_client(self, env=None, path_encoding='utf-8',
-                          path_errors='strict'):
+    async def start_sftp_client(self, env=None, path_encoding='utf-8',
+                                path_errors='strict'):
         """Start an SFTP client
 
            This method is a coroutine which attempts to start a secure
@@ -3839,12 +3768,12 @@ class SSHClientConnection(SSHConnection):
 
         """
 
-        writer, reader, _ = yield from self.open_session(subsystem='sftp',
-                                                         env=env or {},
-                                                         encoding=None)
+        writer, reader, _ = await self.open_session(subsystem='sftp',
+                                                    env=env or {},
+                                                    encoding=None)
 
-        return (yield from start_sftp_client(self, self._loop, reader, writer,
-                                             path_encoding, path_errors))
+        return await start_sftp_client(self, self._loop, reader, writer,
+                                       path_encoding, path_errors)
 
 
 class SSHServerConnection(SSHConnection):
@@ -3999,8 +3928,7 @@ class SSHServerConnection(SSHConnection):
 
         return self._gss_mic_auth
 
-    @asyncio.coroutine
-    def validate_gss_principal(self, username, user_principal, host_principal):
+    async def validate_gss_principal(self, username, user_principal, host_principal):
         """Validate the GSS principal name for the specified user
 
            Return whether the user principal acquired during GSS
@@ -4012,7 +3940,7 @@ class SSHServerConnection(SSHConnection):
                                                     host_principal)
 
         if asyncio.iscoroutine(result):
-            result = yield from result
+            result = await result
 
         return result
 
@@ -4022,9 +3950,8 @@ class SSHServerConnection(SSHConnection):
         return (bool(self._known_client_hosts) or
                 self._owner.host_based_auth_supported())
 
-    @asyncio.coroutine
-    def validate_host_based_auth(self, username, key_data, client_host,
-                                 client_username, msg, signature):
+    async def validate_host_based_auth(self, username, key_data, client_host,
+                                       client_username, msg, signature):
         """Validate host based authentication for the specified host and user"""
 
         # Remove a trailing '.' from the client host if present
@@ -4034,7 +3961,7 @@ class SSHServerConnection(SSHConnection):
         if self._trust_client_host:
             resolved_host = client_host
         else:
-            resolved_host, _ = yield from self._loop.getnameinfo(
+            resolved_host, _ = await self._loop.getnameinfo(
                 self.get_extra_info('peername'), socket.NI_NUMERICSERV)
 
             if resolved_host != client_host:
@@ -4060,12 +3987,11 @@ class SSHServerConnection(SSHConnection):
                                                       client_username)
 
         if asyncio.iscoroutine(result):
-            result = yield from result
+            result = await result
 
         return result
 
-    @asyncio.coroutine
-    def _validate_openssh_certificate(self, username, cert):
+    async def _validate_openssh_certificate(self, username, cert):
         """Validate an OpenSSH client certificate for the specified user"""
 
         options = None
@@ -4079,7 +4005,7 @@ class SSHServerConnection(SSHConnection):
             result = self._owner.validate_ca_key(username, cert.signing_key)
 
             if asyncio.iscoroutine(result):
-                result = yield from result
+                result = await result
 
             if not result:
                 return None
@@ -4106,8 +4032,7 @@ class SSHServerConnection(SSHConnection):
 
         return cert.key
 
-    @asyncio.coroutine
-    def _validate_x509_certificate_chain(self, username, cert):
+    async def _validate_x509_certificate_chain(self, username, cert):
         """Validate an X.509 client certificate for the specified user"""
 
         if not self._client_keys:
@@ -4138,8 +4063,7 @@ class SSHServerConnection(SSHConnection):
 
         return cert.key
 
-    @asyncio.coroutine
-    def _validate_client_certificate(self, username, key_data):
+    async def _validate_client_certificate(self, username, key_data):
         """Validate a client certificate for the specified user"""
 
         try:
@@ -4148,12 +4072,11 @@ class SSHServerConnection(SSHConnection):
             return None
 
         if cert.is_x509_chain:
-            return self._validate_x509_certificate_chain(username, cert)
+            return await self._validate_x509_certificate_chain(username, cert)
         else:
-            return self._validate_openssh_certificate(username, cert)
+            return await self._validate_openssh_certificate(username, cert)
 
-    @asyncio.coroutine
-    def _validate_client_public_key(self, username, key_data):
+    async def _validate_client_public_key(self, username, key_data):
         """Validate a client public key for the specified user"""
 
         try:
@@ -4170,7 +4093,7 @@ class SSHServerConnection(SSHConnection):
             result = self._owner.validate_public_key(username, key)
 
             if asyncio.iscoroutine(result):
-                result = yield from result
+                result = await result
 
             if not result:
                 return None
@@ -4187,8 +4110,7 @@ class SSHServerConnection(SSHConnection):
         return (bool(self._client_keys) or
                 self._owner.public_key_auth_supported())
 
-    @asyncio.coroutine
-    def validate_public_key(self, username, key_data, msg, signature):
+    async def validate_public_key(self, username, key_data, msg, signature):
         """Validate the public key or certificate for the specified user
 
            This method validates that the public key or certificate provided
@@ -4199,10 +4121,8 @@ class SSHServerConnection(SSHConnection):
 
         """
 
-        key = ((yield from self._validate_client_certificate(username,
-                                                             key_data)) or
-               (yield from self._validate_client_public_key(username,
-                                                            key_data)))
+        key = ((await self._validate_client_certificate(username, key_data)) or
+               (await self._validate_client_public_key(username, key_data)))
 
         if key is None:
             return False
@@ -4216,26 +4136,24 @@ class SSHServerConnection(SSHConnection):
 
         return self._owner.password_auth_supported()
 
-    @asyncio.coroutine
-    def validate_password(self, username, password):
+    async def validate_password(self, username, password):
         """Return whether password is valid for this user"""
 
         result = self._owner.validate_password(username, password)
 
         if asyncio.iscoroutine(result):
-            result = yield from result
+            result = await result
 
         return result
 
-    @asyncio.coroutine
-    def change_password(self, username, old_password, new_password):
+    async def change_password(self, username, old_password, new_password):
         """Handle a password change request for a user"""
 
         result = self._owner.change_password(username, old_password,
                                              new_password)
 
         if asyncio.iscoroutine(result):
-            result = yield from result
+            result = await result
 
         return result
 
@@ -4254,8 +4172,7 @@ class SSHServerConnection(SSHConnection):
         else:
             return False
 
-    @asyncio.coroutine
-    def get_kbdint_challenge(self, username, lang, submethods):
+    async def get_kbdint_challenge(self, username, lang, submethods):
         """Return a keyboard-interactive auth challenge"""
 
         if self._kbdint_password_auth:
@@ -4265,12 +4182,11 @@ class SSHServerConnection(SSHConnection):
                                                       submethods)
 
             if asyncio.iscoroutine(result):
-                result = yield from result
+                result = await result
 
         return result
 
-    @asyncio.coroutine
-    def validate_kbdint_response(self, username, responses):
+    async def validate_kbdint_response(self, username, responses):
         """Return whether the keyboard-interactive response is valid
            for this user"""
 
@@ -4282,7 +4198,7 @@ class SSHServerConnection(SSHConnection):
                 result = self._owner.validate_password(username, responses[0])
 
                 if asyncio.iscoroutine(result):
-                    result = yield from result
+                    result = await result
             except PasswordChangeRequired:
                 # Don't support password change requests for now in
                 # keyboard-interactive auth
@@ -4291,7 +4207,7 @@ class SSHServerConnection(SSHConnection):
             result = self._owner.validate_kbdint_response(username, responses)
 
             if asyncio.iscoroutine(result):
-                result = yield from result
+                result = await result
 
         return result
 
@@ -4426,13 +4342,12 @@ class SSHServerConnection(SSHConnection):
         self.create_task(self._finish_port_forward(result, listen_host,
                                                    listen_port))
 
-    @asyncio.coroutine
-    def _finish_port_forward(self, listener, listen_host, listen_port):
+    async def _finish_port_forward(self, listener, listen_host, listen_port):
         """Finish processing a TCP/IP port forwarding request"""
 
         if asyncio.iscoroutine(listener):
             try:
-                listener = yield from listener
+                listener = await listener
             except OSError:
                 listener = None
 
@@ -4561,13 +4476,12 @@ class SSHServerConnection(SSHConnection):
 
         self.create_task(self._finish_path_forward(result, listen_path))
 
-    @asyncio.coroutine
-    def _finish_path_forward(self, listener, listen_path):
+    async def _finish_path_forward(self, listener, listen_path):
         """Finish processing a UNIX domain socket forwarding request"""
 
         if asyncio.iscoroutine(listener):
             try:
-                listener = yield from listener
+                listener = await listener
             except OSError:
                 listener = None
 
@@ -4602,8 +4516,7 @@ class SSHServerConnection(SSHConnection):
 
         self._report_global_response(True)
 
-    @asyncio.coroutine
-    def attach_x11_listener(self, chan, auth_proto, auth_data, screen):
+    async def attach_x11_listener(self, chan, auth_proto, auth_data, screen):
         """Attach a channel to a remote X11 display"""
 
         if (not self._x11_forwarding or
@@ -4615,7 +4528,7 @@ class SSHServerConnection(SSHConnection):
             return None
 
         if not self._x11_listener:
-            self._x11_listener = yield from create_x11_server_listener(
+            self._x11_listener = await create_x11_server_listener(
                 self, self._loop, self._x11_auth_path, auth_proto, auth_data)
 
         if self._x11_listener:
@@ -4630,7 +4543,7 @@ class SSHServerConnection(SSHConnection):
             if self._x11_listener.detach(chan):
                 self._x11_listener = None
 
-    def create_agent_listener(self):
+    async def create_agent_listener(self):
         """Create a listener for forwarding ssh-agent connections"""
 
         if (not self._agent_forwarding or
@@ -4641,11 +4554,21 @@ class SSHServerConnection(SSHConnection):
 
             return False
 
-        if not self._agent_listener:
-            self._agent_listener = yield from create_agent_listener(self,
-                                                                    self._loop)
+        if self._agent_listener:
+            return True
 
-        return bool(self._agent_listener)
+        try:
+            tempdir = tempfile.TemporaryDirectory(prefix='asyncssh-')
+            path = os.path.join(tempdir.name, 'agent')
+
+            unix_listener = await create_unix_forward_listener(
+                self, self._loop, self.create_agent_connection, path)
+
+            self._agent_listener = SSHAgentListener(tempdir, path,
+                                                    unix_listener)
+            return True
+        except OSError:
+            return False
 
     def get_agent_path(self):
         """Return the path of the ssh-agent listener, if one exists"""
@@ -4867,11 +4790,10 @@ class SSHServerConnection(SSHConnection):
                                 self._line_editor, self._line_history,
                                 encoding, errors, window, max_pktsize)
 
-    @asyncio.coroutine
-    def create_connection(self, session_factory, remote_host, remote_port,
-                          orig_host='', orig_port=0, *, encoding=None,
-                          errors='strict', window=_DEFAULT_WINDOW,
-                          max_pktsize=_DEFAULT_MAX_PKTSIZE):
+    async def create_connection(self, session_factory, remote_host, remote_port,
+                                orig_host='', orig_port=0, *, encoding=None,
+                                errors='strict', window=_DEFAULT_WINDOW,
+                                max_pktsize=_DEFAULT_MAX_PKTSIZE):
         """Create an SSH TCP forwarded connection
 
            This method is a coroutine which can be called to notify the
@@ -4932,13 +4854,12 @@ class SSHServerConnection(SSHConnection):
 
         chan = self.create_tcp_channel(encoding, errors, window, max_pktsize)
 
-        session = yield from chan.accept(session_factory, remote_host,
-                                         remote_port, orig_host, orig_port)
+        session = await chan.accept(session_factory, remote_host,
+                                    remote_port, orig_host, orig_port)
 
         return chan, session
 
-    @asyncio.coroutine
-    def open_connection(self, *args, **kwargs):
+    async def open_connection(self, *args, **kwargs):
         """Open an SSH TCP forwarded connection
 
            This method is a coroutine wrapper around :meth:`create_connection`
@@ -4957,16 +4878,15 @@ class SSHServerConnection(SSHConnection):
 
         """
 
-        chan, session = yield from self.create_connection(SSHTCPStreamSession,
-                                                          *args, **kwargs)
+        chan, session = await self.create_connection(SSHTCPStreamSession,
+                                                     *args, **kwargs)
 
         return SSHReader(session, chan), SSHWriter(session, chan)
 
-    @asyncio.coroutine
-    def create_unix_connection(self, session_factory, remote_path, *,
-                               encoding=None, errors='strict',
-                               window=_DEFAULT_WINDOW,
-                               max_pktsize=_DEFAULT_MAX_PKTSIZE):
+    async def create_unix_connection(self, session_factory, remote_path, *,
+                                     encoding=None, errors='strict',
+                                     window=_DEFAULT_WINDOW,
+                                     max_pktsize=_DEFAULT_MAX_PKTSIZE):
         """Create an SSH UNIX domain socket forwarded connection
 
            This method is a coroutine which can be called to notify the
@@ -5013,12 +4933,11 @@ class SSHServerConnection(SSHConnection):
 
         chan = self.create_unix_channel(encoding, errors, window, max_pktsize)
 
-        session = yield from chan.accept(session_factory, remote_path)
+        session = await chan.accept(session_factory, remote_path)
 
         return chan, session
 
-    @asyncio.coroutine
-    def open_unix_connection(self, *args, **kwargs):
+    async def open_unix_connection(self, *args, **kwargs):
         """Open an SSH UNIX domain socket forwarded connection
 
            This method is a coroutine wrapper around
@@ -5038,29 +4957,27 @@ class SSHServerConnection(SSHConnection):
         """
 
         chan, session = \
-            yield from self.create_unix_connection(SSHUNIXStreamSession,
-                                                   *args, **kwargs)
+            await self.create_unix_connection(SSHUNIXStreamSession,
+                                              *args, **kwargs)
 
         return SSHReader(session, chan), SSHWriter(session, chan)
 
-    @asyncio.coroutine
-    def create_x11_connection(self, session_factory, orig_host='',
-                              orig_port=0, *, window=_DEFAULT_WINDOW,
-                              max_pktsize=_DEFAULT_MAX_PKTSIZE):
+    async def create_x11_connection(self, session_factory, orig_host='',
+                                    orig_port=0, *, window=_DEFAULT_WINDOW,
+                                    max_pktsize=_DEFAULT_MAX_PKTSIZE):
         """Create an SSH X11 forwarded connection"""
 
         self.logger.info('Opening forwarded X11 connection')
 
         chan = self.create_x11_channel(window, max_pktsize)
 
-        session = yield from chan.open(session_factory, orig_host, orig_port)
+        session = await chan.open(session_factory, orig_host, orig_port)
 
         return chan, session
 
-    @asyncio.coroutine
-    def create_agent_connection(self, session_factory, *,
-                                window=_DEFAULT_WINDOW,
-                                max_pktsize=_DEFAULT_MAX_PKTSIZE):
+    async def create_agent_connection(self, session_factory, *,
+                                      window=_DEFAULT_WINDOW,
+                                      max_pktsize=_DEFAULT_MAX_PKTSIZE):
         """Create a forwarded ssh-agent connection back to the client"""
 
         if not self._agent_listener:
@@ -5071,16 +4988,15 @@ class SSHServerConnection(SSHConnection):
 
         chan = self.create_agent_channel(window, max_pktsize)
 
-        session = yield from chan.open(session_factory)
+        session = await chan.open(session_factory)
 
         return chan, session
 
-    @asyncio.coroutine
-    def open_agent_connection(self):
+    async def open_agent_connection(self):
         """Open a forwarded ssh-agent connection back to the client"""
 
         chan, session = \
-            yield from self.create_agent_connection(SSHUNIXStreamSession)
+            await self.create_agent_connection(SSHUNIXStreamSession)
 
         return SSHReader(session, chan), SSHWriter(session, chan)
 
@@ -5669,8 +5585,8 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
 
 
 @async_context_manager
-def connect(host, port=_DEFAULT_PORT, *, loop=None, tunnel=None, family=0,
-            flags=0, local_addr=None, options=None, **kwargs):
+async def connect(host, port=_DEFAULT_PORT, *, tunnel=None, family=0, flags=0,
+                  local_addr=None, options=None, **kwargs):
     """Make an SSH client connection
 
        This function is a coroutine which can be run to create an outbound SSH
@@ -5708,9 +5624,6 @@ def connect(host, port=_DEFAULT_PORT, *, loop=None, tunnel=None, family=0,
        :param port: (optional)
            The port number to connect to. If not specified, the default
            SSH port is used.
-       :param loop: (optional)
-           The event loop to use when creating the connection. If not
-           specified, the default event loop is used.
        :param tunnel: (optional)
            An existing SSH client connection that this new connection should
            be tunneled over. If set, a direct TCP/IP tunnel will be opened
@@ -5729,7 +5642,6 @@ def connect(host, port=_DEFAULT_PORT, *, loop=None, tunnel=None, family=0,
            keyword arguments to this function.
        :type host: `str`
        :type port: `int`
-       :type loop: :class:`AbstractEventLoop <asyncio.AbstractEventLoop>`
        :type tunnel: :class:`SSHClientConnection`
        :type family: `socket.AF_UNSPEC`, `socket.AF_INET`, or `socket.AF_INET6`
        :type flags: flags to pass to :meth:`getaddrinfo() <socket.getaddrinfo>`
@@ -5745,20 +5657,18 @@ def connect(host, port=_DEFAULT_PORT, *, loop=None, tunnel=None, family=0,
 
         return SSHClientConnection(host, port, loop, options, wait='auth')
 
-    if not loop:
-        loop = asyncio.get_event_loop()
+    loop = asyncio.get_event_loop()
 
     if not options or kwargs:
         options = SSHClientConnectionOptions(options, **kwargs)
 
-    return (yield from _connect(host, port, loop, tunnel, family,
-                                flags, local_addr, conn_factory,
-                                'Opening SSH connection to'))
+    return await _connect(host, port, loop, tunnel, family, flags, local_addr,
+                          conn_factory, 'Opening SSH connection to')
 
 
-@asyncio.coroutine
-def connect_reverse(host, port=_DEFAULT_PORT, *, loop=None, tunnel=None,
-                    family=0, flags=0, local_addr=None, options=None, **kwargs):
+@async_context_manager
+async def connect_reverse(host, port=_DEFAULT_PORT, *, tunnel=None, family=0,
+                          flags=0, local_addr=None, options=None, **kwargs):
     """Create a reverse direction SSH connection
 
        This function is a coroutine which behaves similar to :func:`connect`,
@@ -5769,16 +5679,13 @@ def connect_reverse(host, port=_DEFAULT_PORT, *, loop=None, tunnel=None,
 
        Arguments to this function are the same as :func:`connect`, except
        that the `options` are of type :class:`SSHServerConnectionOptions`
-       instead of "class"`SSHClientConnectionOptions`.
+       instead of :class:`SSHClientConnectionOptions`.
 
        :param host:
            The hostname or address to connect to.
        :param port: (optional)
            The port number to connect to. If not specified, the default
            SSH port is used.
-       :param loop: (optional)
-           The event loop to use when creating the reverse-direction
-           connection. If not specified, the default event loop is used.
        :param tunnel: (optional)
            An existing SSH client connection that this new connection should
            be tunneled over. If set, a direct TCP/IP tunnel will be opened
@@ -5797,7 +5704,6 @@ def connect_reverse(host, port=_DEFAULT_PORT, *, loop=None, tunnel=None,
            or as direct keyword arguments to this function.
        :type host: `str`
        :type port: `int`
-       :type loop: :class:`AbstractEventLoop <asyncio.AbstractEventLoop>`
        :type tunnel: :class:`SSHClientConnection`
        :type family: `socket.AF_UNSPEC`, `socket.AF_INET`, or `socket.AF_INET6`
        :type flags: flags to pass to :meth:`getaddrinfo() <socket.getaddrinfo>`
@@ -5813,22 +5719,19 @@ def connect_reverse(host, port=_DEFAULT_PORT, *, loop=None, tunnel=None,
 
         return SSHServerConnection(loop, options, wait='auth')
 
-    if not loop:
-        loop = asyncio.get_event_loop()
+    loop = asyncio.get_event_loop()
 
     if not options or kwargs:
         options = SSHServerConnectionOptions(options, **kwargs)
 
-    return (yield from _connect(host, port, loop, tunnel, family,
-                                flags, local_addr, conn_factory,
-                                'Opening reverse SSH connection to'))
+    return await _connect(host, port, loop, tunnel, family, flags, local_addr,
+                          conn_factory, 'Opening reverse SSH connection to')
 
 
-@asyncio.coroutine
-def listen(host=None, port=_DEFAULT_PORT, loop=None, tunnel=None, family=0,
-           flags=socket.AI_PASSIVE, backlog=100, reuse_address=None,
-           reuse_port=None, session_encoding='', session_errors='',
-           acceptor=None, error_handler=None, options=None, **kwargs):
+async def listen(host=None, port=_DEFAULT_PORT, tunnel=None, family=0,
+                 flags=socket.AI_PASSIVE, backlog=100, reuse_address=None,
+                 reuse_port=None, acceptor=None, error_handler=None,
+                 options=None, **kwargs):
     """Start an SSH server
 
        This function is a coroutine which can be run to create an SSH server
@@ -5841,9 +5744,6 @@ def listen(host=None, port=_DEFAULT_PORT, loop=None, tunnel=None, family=0,
        :param port: (optional)
            The port number to listen on. If not specified, the default
            SSH port is used.
-       :param loop: (optional)
-           The event loop to use when creating the listener. If not
-           specified, the default event loop is used.
        :param tunnel: (optional)
            An existing SSH client connection that this new listener should
            be forwarded over. If set, a remote TCP/IP listener will be
@@ -5866,10 +5766,6 @@ def listen(host=None, port=_DEFAULT_PORT, loop=None, tunnel=None, family=0,
            set this flag when being created. If not specified, the
            default is to not allow this. This option is not supported
            on Windows or Python versions prior to 3.4.4.
-       :param session_encoding: (deprecated)
-           This argument is now named `encoding` - do not use this name.
-       :param session_errors: (deprecated)
-           This argument is now named `errors` - do not use this name.
        :param acceptor: (optional)
            A `callable` or coroutine which will be called when the
            SSH handshake completes on an accepted connection, taking
@@ -5887,7 +5783,6 @@ def listen(host=None, port=_DEFAULT_PORT, loop=None, tunnel=None, family=0,
        :type protocol_factory: `callable`
        :type host: `str`
        :type port: `int`
-       :type loop: :class:`AbstractEventLoop <asyncio.AbstractEventLoop>`
        :type tunnel: :class:`SSHClientConnection`
        :type family: `socket.AF_UNSPEC`, `socket.AF_INET`, or `socket.AF_INET6`
        :type flags: flags to pass to :meth:`getaddrinfo() <socket.getaddrinfo>`
@@ -5905,42 +5800,20 @@ def listen(host=None, port=_DEFAULT_PORT, loop=None, tunnel=None, family=0,
 
         return SSHServerConnection(loop, options, acceptor, error_handler)
 
-    # Maintain compatibility for session_encoding/session_errors arguments
-    # for now, but warn that the old argument names are deprecated.
-
-    # When this is called via create_server(), we need to skip an extra
-    # stack frame
-    stack = inspect.stack()
-    stacklevel = 3 if stack[1][1].endswith('connection.py') else 2
-
-    if session_encoding != '': # pragma: no cover
-        warnings.warn('session_encoding is deprecated; use encoding',
-                      DeprecationWarning, stacklevel=stacklevel)
-
-        kwargs['encoding'] = session_encoding
-
-    if session_errors != '': # pragma: no cover
-        warnings.warn('session_errors is deprecated; use errors',
-                      DeprecationWarning, stacklevel=stacklevel)
-
-        kwargs['errors'] = session_errors
-
-    if not loop:
-        loop = asyncio.get_event_loop()
+    loop = asyncio.get_event_loop()
 
     if not options or kwargs:
         options = SSHServerConnectionOptions(options, **kwargs)
 
-    return (yield from _listen(host, port, loop, tunnel, family, flags, backlog,
-                               reuse_address, reuse_port, conn_factory,
-                               'Creating SSH listener on'))
+    return await _listen(host, port, loop, tunnel, family, flags, backlog,
+                         reuse_address, reuse_port, conn_factory,
+                         'Creating SSH listener on')
 
 
-@asyncio.coroutine
-def listen_reverse(host=None, port=_DEFAULT_PORT, *, loop=None, tunnel=None,
-                   family=0, flags=socket.AI_PASSIVE, backlog=100,
-                   reuse_address=None, reuse_port=None, acceptor=None,
-                   error_handler=None, options=None, **kwargs):
+async def listen_reverse(host=None, port=_DEFAULT_PORT, *, tunnel=None,
+                         family=0, flags=socket.AI_PASSIVE, backlog=100,
+                         reuse_address=None, reuse_port=None, acceptor=None,
+                         error_handler=None, options=None, **kwargs):
     """Create a reverse-direction SSH listener
 
        This function is a coroutine which behaves similar to :func:`listen`,
@@ -5952,7 +5825,7 @@ def listen_reverse(host=None, port=_DEFAULT_PORT, *, loop=None, tunnel=None,
 
        Arguments to this function are the same as :func:`listen`, except
        that the `options` are of type :class:`SSHClientConnectionOptions`
-       instead of "class"`SSHServerConnectionOptions`.
+       instead of :class:`SSHServerConnectionOptions`.
 
        The return value is an :class:`asyncio.Server` which can be used to
        shut down the reverse listener.
@@ -5963,9 +5836,6 @@ def listen_reverse(host=None, port=_DEFAULT_PORT, *, loop=None, tunnel=None,
        :param port: (optional)
            The port number to listen on. If not specified, the default
            SSH port is used.
-       :param loop: (optional)
-           The event loop to use when creating the reverse-direction
-           listener. If not specified, the default event loop is used.
        :param tunnel: (optional)
            An existing SSH client connection that this new listener should
            be forwarded over. If set, a remote TCP/IP listener will be
@@ -6005,7 +5875,6 @@ def listen_reverse(host=None, port=_DEFAULT_PORT, *, loop=None, tunnel=None,
        :type client_factory: `callable`
        :type host: `str`
        :type port: `int`
-       :type loop: :class:`AbstractEventLoop <asyncio.AbstractEventLoop>`
        :type tunnel: :class:`SSHClientConnection`
        :type family: `socket.AF_UNSPEC`, `socket.AF_INET`, or `socket.AF_INET6`
        :type flags: flags to pass to :meth:`getaddrinfo() <socket.getaddrinfo>`
@@ -6024,19 +5893,17 @@ def listen_reverse(host=None, port=_DEFAULT_PORT, *, loop=None, tunnel=None,
         return SSHClientConnection(None, None, loop, options,
                                    acceptor, error_handler)
 
-    if not loop:
-        loop = asyncio.get_event_loop()
+    loop = asyncio.get_event_loop()
 
     if not options or kwargs:
         options = SSHClientConnectionOptions(options, **kwargs)
 
-    return (yield from _listen(host, port, loop, tunnel, family, flags, backlog,
-                               reuse_address, reuse_port, conn_factory,
-                               'Creating reverse direction SSH listener on'))
+    return await _listen(host, port, loop, tunnel, family, flags, backlog,
+                         reuse_address, reuse_port, conn_factory,
+                         'Creating reverse direction SSH listener on')
 
 
-@asyncio.coroutine
-def create_connection(client_factory, host, port=_DEFAULT_PORT, **kwargs):
+async def create_connection(client_factory, host, port=_DEFAULT_PORT, **kwargs):
     """Create an SSH client connection
 
        This is a coroutine which wraps around :func:`connect`, providing
@@ -6052,14 +5919,13 @@ def create_connection(client_factory, host, port=_DEFAULT_PORT, **kwargs):
 
     """
 
-    conn = yield from connect(host, port, client_factory=client_factory,
-                              **kwargs)
+    conn = await connect(host, port, client_factory=client_factory, **kwargs)
 
     return conn, conn.get_owner()
 
 
-@asyncio.coroutine
-def create_server(server_factory, host=None, port=_DEFAULT_PORT, **kwargs):
+async def create_server(server_factory, host=None,
+                        port=_DEFAULT_PORT, **kwargs):
     """Create an SSH server
 
        This is a coroutine which wraps around :func:`listen`, providing
@@ -6071,14 +5937,13 @@ def create_server(server_factory, host=None, port=_DEFAULT_PORT, **kwargs):
 
     """
 
-    return (yield from listen(host, port, server_factory=server_factory,
-                              **kwargs))
+    return await listen(host, port, server_factory=server_factory, **kwargs)
 
 
-@asyncio.coroutine
-def get_server_host_key(host, port=_DEFAULT_PORT, *, loop=None, tunnel=None,
-                        family=0, flags=0, local_addr=None, client_version=(),
-                        kex_algs=(), server_host_key_algs=()):
+async def get_server_host_key(host, port=_DEFAULT_PORT, *, tunnel=None,
+                              family=0, flags=0, local_addr=None,
+                              client_version=(), kex_algs=(),
+                              server_host_key_algs=()):
     """Retrieve an SSH server's host key
 
        This is a coroutine which can be run to connect to an SSH server and
@@ -6100,9 +5965,6 @@ def get_server_host_key(host, port=_DEFAULT_PORT, *, loop=None, tunnel=None,
        :param port: (optional)
            The port number to connect to. If not specified, the default
            SSH port is used.
-       :param loop: (optional)
-           The event loop to use when creating the connection. If not
-           specified, the default event loop is used.
        :param tunnel: (optional)
            An existing SSH client connection that this new connection should
            be tunneled over. If set, a direct TCP/IP tunnel will be opened
@@ -6127,7 +5989,6 @@ def get_server_host_key(host, port=_DEFAULT_PORT, *, loop=None, tunnel=None,
            <PublicKeyAlgs>`.
        :type host: `str`
        :type port: `int`
-       :type loop: :class:`AbstractEventLoop <asyncio.AbstractEventLoop>`
        :type tunnel: :class:`SSHClientConnection`
        :type family: `socket.AF_UNSPEC`, `socket.AF_INET`, or `socket.AF_INET6`
        :type flags: flags to pass to :meth:`getaddrinfo() <socket.getaddrinfo>`
@@ -6145,8 +6006,7 @@ def get_server_host_key(host, port=_DEFAULT_PORT, *, loop=None, tunnel=None,
 
         return SSHClientConnection(host, port, loop, options, wait='kex')
 
-    if not loop:
-        loop = asyncio.get_event_loop()
+    loop = asyncio.get_event_loop()
 
     options = SSHClientConnectionOptions(
         known_hosts=None, server_host_key_algs=server_host_key_algs,
@@ -6154,14 +6014,13 @@ def get_server_host_key(host, port=_DEFAULT_PORT, *, loop=None, tunnel=None,
         x509_purposes='any', gss_host=None, kex_algs=kex_algs,
         client_version=client_version)
 
-    conn = yield from _connect(host, port, loop, tunnel, family,
-                               flags, local_addr, conn_factory,
-                               'Fetching server host key from')
+    conn = await _connect(host, port, loop, tunnel, family, flags, local_addr,
+                          conn_factory, 'Fetching server host key from')
 
     server_host_key = conn.get_server_host_key()
 
     conn.abort()
 
-    yield from conn.wait_closed()
+    await conn.wait_closed()
 
     return server_host_key

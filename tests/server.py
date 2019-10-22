@@ -1,4 +1,4 @@
-# Copyright (c) 2016-2018 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2016-2019 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -64,12 +64,8 @@ class ServerTestCase(AsyncTestCase):
     _agent_pid = None
 
     @classmethod
-    @asyncio.coroutine
-    def listen(cls, *, loop=(), server_factory=(), options=None, **kwargs):
+    async def listen(cls, *, server_factory=(), options=None, **kwargs):
         """Create an SSH server for the tests to use"""
-
-        if loop == ():
-            loop = cls.loop
 
         if server_factory == ():
             server_factory = Server
@@ -78,44 +74,35 @@ class ServerTestCase(AsyncTestCase):
             options=options, server_factory=server_factory,
             gss_host=None, server_host_keys=['skey'])
 
-        return (yield from asyncssh.listen(port=0, loop=loop,
-                                           family=socket.AF_INET,
-                                           options=options, **kwargs))
+        return await asyncssh.listen(port=0, family=socket.AF_INET,
+                                     options=options, **kwargs)
 
     @classmethod
-    @asyncio.coroutine
-    def listen_reverse(cls, *, loop=(), options=None, **kwargs):
+    async def listen_reverse(cls, *, options=None, **kwargs):
         """Create a reverse SSH server for the tests to use"""
-
-        if loop == ():
-            loop = cls.loop
 
         options = asyncssh.SSHClientConnectionOptions(
             options=options, gss_host=None,
             known_hosts=(['skey.pub'], [], []))
 
-        return (yield from asyncssh.listen_reverse(port=0, loop=loop,
-                                                   family=socket.AF_INET,
-                                                   options=options, **kwargs))
+        return await asyncssh.listen_reverse(port=0, family=socket.AF_INET,
+                                             options=options, **kwargs)
 
 
     @classmethod
-    @asyncio.coroutine
-    def create_server(cls, server_factory=(), **kwargs):
+    async def create_server(cls, server_factory=(), **kwargs):
         """Create an SSH server for the tests to use"""
 
-        return (yield from cls.listen(server_factory=server_factory, **kwargs))
+        return await cls.listen(server_factory=server_factory, **kwargs)
 
     @classmethod
-    @asyncio.coroutine
-    def start_server(cls):
+    async def start_server(cls):
         """Start an SSH server for the tests to use"""
 
-        return (yield from cls.create_server())
+        return NotImplemented # pragma: no cover
 
     @classmethod
-    @asyncio.coroutine
-    def asyncSetUpClass(cls):
+    async def asyncSetUpClass(cls):
         """Set up keys, an SSH server, and an SSH agent for the tests to use"""
 
         # pylint: disable=too-many-statements
@@ -243,7 +230,7 @@ class ServerTestCase(AsyncTestCase):
         os.environ['LOGNAME'] = 'guest'
         os.environ['HOME'] = '.'
 
-        cls._server = yield from cls.start_server()
+        cls._server = await cls.start_server()
 
         sock = cls._server.sockets[0]
         cls._server_addr = '127.0.0.1'
@@ -282,23 +269,22 @@ class ServerTestCase(AsyncTestCase):
 
             os.environ['SSH_AUTH_SOCK'] = 'agent'
 
-            agent = yield from asyncssh.connect_agent()
-            yield from agent.add_keys([ckey_ecdsa, (ckey, ckey_cert)])
+            agent = await asyncssh.connect_agent()
+            await agent.add_keys([ckey_ecdsa, (ckey, ckey_cert)])
             agent.close()
 
         with open('ssh-keysign', 'wb'):
             pass
 
     @classmethod
-    @asyncio.coroutine
-    def asyncTearDownClass(cls):
+    async def asyncTearDownClass(cls):
         """Shut down test server and agent"""
 
         # Wait a bit for existing tasks to exit
-        yield from asyncio.sleep(1)
+        await asyncio.sleep(1)
 
         cls._server.close()
-        yield from cls._server.wait_closed()
+        await cls._server.wait_closed()
 
         if cls._agent_pid: # pragma: no branch
             os.kill(cls._agent_pid, signal.SIGTERM)
@@ -311,39 +297,30 @@ class ServerTestCase(AsyncTestCase):
         return bool(self._agent_pid)
 
     @async_context_manager
-    def connect(self, loop=(), options=None, **kwargs):
+    async def connect(self, options=None, **kwargs):
         """Open a connection to the test server"""
-
-        if loop == ():
-            loop = self.loop
 
         options = asyncssh.SSHClientConnectionOptions(options, gss_host=None)
 
-        return (yield from asyncssh.connect(self._server_addr,
-                                            self._server_port, loop=loop,
-                                            options=options, **kwargs))
+        return await asyncssh.connect(self._server_addr, self._server_port,
+                                      options=options, **kwargs)
 
-    @asyncio.coroutine
-    def connect_reverse(self, loop=(), options=None, **kwargs):
+    @async_context_manager
+    async def connect_reverse(self, options=None, **kwargs):
         """Create a connection to the test server"""
-
-        if loop == ():
-            loop = self.loop
 
         options = asyncssh.SSHServerConnectionOptions(options,
                                                       server_factory=Server,
                                                       server_host_keys=['skey'],
                                                       gss_host=None)
 
-        return (yield from asyncssh.connect_reverse(self._server_addr,
-                                                    self._server_port,
-                                                    loop=loop, options=options,
-                                                    **kwargs))
+        return await asyncssh.connect_reverse(self._server_addr,
+                                              self._server_port,
+                                              options=options, **kwargs)
 
-    @asyncio.coroutine
-    def create_connection(self, client_factory, **kwargs):
+    async def create_connection(self, client_factory, **kwargs):
         """Create a connection to the test server"""
 
-        conn = yield from self.connect(client_factory=client_factory, **kwargs)
+        conn = await self.connect(client_factory=client_factory, **kwargs)
 
         return conn, conn.get_owner()

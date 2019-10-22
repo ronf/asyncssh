@@ -2,7 +2,7 @@ AsyncSSH: Asynchronous SSH for Python
 =====================================
 
 AsyncSSH is a Python package which provides an asynchronous client and
-server implementation of the SSHv2 protocol on top of the Python 3.4+
+server implementation of the SSHv2 protocol on top of the Python 3.6+
 asyncio framework.
 
 .. code:: python
@@ -81,7 +81,7 @@ License
 
 This package is released under the following terms:
 
-  Copyright (c) 2013-2018 by Ron Frederick <ronf@timeheart.net> and others.
+  Copyright (c) 2013-2019 by Ron Frederick <ronf@timeheart.net> and others.
 
   This program and the accompanying materials are made available under
   the terms of the Eclipse Public License v2.0 which accompanies this
@@ -104,9 +104,9 @@ Public License FAQ <https://www.eclipse.org/legal/epl-2.0/faq.php>`_.
 Prerequisites
 -------------
 
-To use ``asyncssh``, you need the following:
+To use ``asyncssh`` 2.0 or later, you need the following:
 
-* Python 3.4 or later
+* Python 3.6 or later
 * cryptography (PyCA) 2.7 or later
 
 Installation

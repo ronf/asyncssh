@@ -104,7 +104,7 @@ class SSHChannel(SSHPacketHandler):
         self._open_waiter = None
         self._request_waiters = []
 
-        self._close_event = asyncio.Event(loop=loop)
+        self._close_event = asyncio.Event()
 
         self._recv_chan = conn.add_channel(self)
 
@@ -225,8 +225,7 @@ class SSHChannel(SSHPacketHandler):
             self._recv_state = 'closed'
             self._loop.call_soon(self._cleanup)
 
-    @asyncio.coroutine
-    def _start_reading(self):
+    async def _start_reading(self):
         """Start processing data on a new connection"""
 
         # If owner of the channel  didn't explicitly pause it at
@@ -428,14 +427,13 @@ class SSHChannel(SSHPacketHandler):
         # By default, return the original channel and session objects
         return self, session
 
-    @asyncio.coroutine
-    def _finish_open_request(self, session):
+    async def _finish_open_request(self, session):
         """Finish processing a channel open request"""
 
         # pylint: disable=broad-except
         try:
             if asyncio.iscoroutine(session):
-                session = yield from session
+                session = await session
 
             if not self._conn:
                 raise ChannelOpenError(OPEN_CONNECT_FAILED,
@@ -630,14 +628,13 @@ class SSHChannel(SSHPacketHandler):
         MSG_CHANNEL_FAILURE:            _process_response
     }
 
-    @asyncio.coroutine
-    def _open(self, chantype, *args):
+    async def _open(self, chantype, *args):
         """Make a request to open the channel"""
 
         if self._send_state != 'closed':
             raise OSError('Channel already open')
 
-        self._open_waiter = asyncio.Future(loop=self._loop)
+        self._open_waiter = self._loop.create_future()
 
         self.logger.debug2('  Initial recv window %d, packet size %d',
                            self._recv_window, self._recv_pktsize)
@@ -647,7 +644,7 @@ class SSHChannel(SSHPacketHandler):
                                UInt32(self._recv_window),
                                UInt32(self._recv_pktsize), *args, handler=self)
 
-        return (yield from self._open_waiter)
+        return await self._open_waiter
 
     def send_packet(self, pkttype, *args):
         """Send a packet on the channel"""
@@ -665,17 +662,16 @@ class SSHChannel(SSHPacketHandler):
         self.send_packet(MSG_CHANNEL_REQUEST, String(request),
                          Boolean(want_reply), *args)
 
-    @asyncio.coroutine
-    def _make_request(self, request, *args):
+    async def _make_request(self, request, *args):
         """Make a channel request and wait for the response"""
 
         if self._send_chan is None:
             return False
 
-        waiter = asyncio.Future(loop=self._loop)
+        waiter = self._loop.create_future()
         self._request_waiters.append(waiter)
         self._send_request(request, *args, want_reply=True)
-        return (yield from waiter)
+        return await waiter
 
     def abort(self):
         """Forcibly close the channel
@@ -717,8 +713,7 @@ class SSHChannel(SSHPacketHandler):
             # Discard unreceived data
             self._discard_recv()
 
-    @asyncio.coroutine
-    def wait_closed(self):
+    async def wait_closed(self):
         """Wait for this channel to close
 
            This method is a coroutine which can be called to block until
@@ -726,7 +721,7 @@ class SSHChannel(SSHPacketHandler):
 
         """
 
-        yield from self._close_event.wait()
+        await self._close_event.wait()
 
     def get_extra_info(self, name, default=None):
         """Get additional information about the channel
@@ -1016,15 +1011,14 @@ class SSHClientChannel(SSHChannel):
         self._exit_status = None
         self._exit_signal = None
 
-    @asyncio.coroutine
-    def create(self, session_factory, command, subsystem, env, term_type,
-               term_size, term_modes, x11_forwarding, x11_display,
-               x11_auth_path, x11_single_connection, agent_forwarding):
+    async def create(self, session_factory, command, subsystem, env, term_type,
+                     term_size, term_modes, x11_forwarding, x11_display,
+                     x11_auth_path, x11_single_connection, agent_forwarding):
         """Create an SSH client session"""
 
         self.logger.info('Requesting new SSH session')
 
-        packet = yield from self._open(b'session')
+        packet = await self._open(b'session')
 
         # Client sessions should have no extra data in the open confirmation
         packet.check_end()
@@ -1068,13 +1062,11 @@ class SSHClientChannel(SSHChannel):
 
             modes += Byte(PTY_OP_END)
 
-            if not (yield from self._make_request(b'pty-req',
-                                                  String(term_type),
-                                                  UInt32(width),
-                                                  UInt32(height),
-                                                  UInt32(pixwidth),
-                                                  UInt32(pixheight),
-                                                  String(modes))):
+            if not (await self._make_request(b'pty-req', String(term_type),
+                                             UInt32(width), UInt32(height),
+                                             UInt32(pixwidth),
+                                             UInt32(pixheight),
+                                             String(modes))):
                 self.close()
                 raise ChannelOpenError(OPEN_REQUEST_PTY_FAILED,
                                        'PTY request failed')
@@ -1084,13 +1076,13 @@ class SSHClientChannel(SSHChannel):
 
             try:
                 auth_proto, remote_auth, screen = \
-                    yield from self._conn.attach_x11_listener(
+                    await self._conn.attach_x11_listener(
                         self, x11_display, x11_auth_path, x11_single_connection)
             except ValueError as exc:
                 raise ChannelOpenError(OPEN_REQUEST_X11_FORWARDING_FAILED,
                                        str(exc)) from None
 
-            result = yield from self._make_request(
+            result = await self._make_request(
                 b'x11-req', Boolean(x11_single_connection), String(auth_proto),
                 String(binascii.b2a_hex(remote_auth)), UInt32(screen))
 
@@ -1107,14 +1099,13 @@ class SSHClientChannel(SSHChannel):
 
         if command:
             self.logger.info('  Command: %s', command)
-            result = yield from self._make_request(b'exec', String(command))
+            result = await self._make_request(b'exec', String(command))
         elif subsystem:
             self.logger.info('  Subsystem: %s', subsystem)
-            result = yield from self._make_request(b'subsystem',
-                                                   String(subsystem))
+            result = await self._make_request(b'subsystem', String(subsystem))
         else:
             self.logger.info('  Interactive shell requested')
-            result = yield from self._make_request(b'shell')
+            result = await self._make_request(b'shell')
 
         if not result:
             self.close()
@@ -1466,11 +1457,10 @@ class SSHServerChannel(SSHChannel):
                                                             auth_data, screen),
                                self.logger)
 
-    @asyncio.coroutine
-    def _finish_x11_req_request(self, auth_proto, auth_data, screen):
+    async def _finish_x11_req_request(self, auth_proto, auth_data, screen):
         """Finish processing request to enable X11 forwarding"""
 
-        self._x11_display = yield from self._conn.attach_x11_listener(
+        self._x11_display = await self._conn.attach_x11_listener(
             self, auth_proto, auth_data, screen)
 
         if self._x11_display:
@@ -1487,11 +1477,10 @@ class SSHServerChannel(SSHChannel):
 
         self._conn.create_task(self._finish_agent_req_request(), self.logger)
 
-    @asyncio.coroutine
-    def _finish_agent_req_request(self):
+    async def _finish_agent_req_request(self):
         """Finish processing request to enable agent forwarding"""
 
-        if (yield from self._conn.create_agent_listener()):
+        if await self._conn.create_agent_listener():
             self.logger.debug1('  Agent forwarding enabled')
             self._report_response(True)
         else:
@@ -1839,21 +1828,19 @@ class SSHServerChannel(SSHChannel):
 class SSHForwardChannel(SSHChannel):
     """SSH channel for forwarding TCP and UNIX domain connections"""
 
-    @asyncio.coroutine
-    def _finish_open_request(self, session):
+    async def _finish_open_request(self, session):
         """Finish processing a forward channel open request"""
 
-        yield from super()._finish_open_request(session)
+        await super()._finish_open_request(session)
 
         if self._session:
             self._session.session_started()
             self.resume_reading()
 
-    @asyncio.coroutine
-    def _open_forward(self, session_factory, chantype, *args):
+    async def _open_forward(self, session_factory, chantype, *args):
         """Open a forward channel"""
 
-        packet = yield from super()._open(chantype, *args)
+        packet = await super()._open(chantype, *args)
 
         # Forward channels should have no extra data in the open confirmation
         packet.check_end()
@@ -1869,33 +1856,30 @@ class SSHForwardChannel(SSHChannel):
 class SSHTCPChannel(SSHForwardChannel):
     """SSH TCP channel"""
 
-    @asyncio.coroutine
-    def _open_tcp(self, session_factory, chantype, host, port,
-                  orig_host, orig_port):
+    async def _open_tcp(self, session_factory, chantype, host, port,
+                        orig_host, orig_port):
         """Open a TCP channel"""
 
         self.set_extra_info(peername=(None, None),
                             local_peername=(orig_host, orig_port),
                             remote_peername=(host, port))
 
-        return (yield from super()._open_forward(session_factory, chantype,
-                                                 String(host), UInt32(port),
-                                                 String(orig_host),
-                                                 UInt32(orig_port)))
+        return (await super()._open_forward(session_factory, chantype,
+                                            String(host), UInt32(port),
+                                            String(orig_host),
+                                            UInt32(orig_port)))
 
-    @asyncio.coroutine
-    def connect(self, session_factory, host, port, orig_host, orig_port):
+    async def connect(self, session_factory, host, port, orig_host, orig_port):
         """Create a new outbound TCP session"""
 
-        return (yield from self._open_tcp(session_factory, b'direct-tcpip',
-                                          host, port, orig_host, orig_port))
+        return (await self._open_tcp(session_factory, b'direct-tcpip',
+                                     host, port, orig_host, orig_port))
 
-    @asyncio.coroutine
-    def accept(self, session_factory, host, port, orig_host, orig_port):
+    async def accept(self, session_factory, host, port, orig_host, orig_port):
         """Create a new forwarded TCP session"""
 
-        return (yield from self._open_tcp(session_factory, b'forwarded-tcpip',
-                                          host, port, orig_host, orig_port))
+        return (await self._open_tcp(session_factory, b'forwarded-tcpip',
+                                     host, port, orig_host, orig_port))
 
     def set_inbound_peer_names(self, dest_host, dest_port,
                                orig_host, orig_port):
@@ -1909,33 +1893,30 @@ class SSHTCPChannel(SSHForwardChannel):
 class SSHUNIXChannel(SSHForwardChannel):
     """SSH UNIX channel"""
 
-    @asyncio.coroutine
-    def _open_unix(self, session_factory, chantype, path, *args):
+    async def _open_unix(self, session_factory, chantype, path, *args):
         """Open a UNIX channel"""
 
         self.set_extra_info(local_peername='', remote_peername=path)
 
-        return (yield from super()._open_forward(session_factory, chantype,
-                                                 String(path), *args))
+        return await super()._open_forward(session_factory, chantype,
+                                           String(path), *args)
 
-    @asyncio.coroutine
-    def connect(self, session_factory, path):
+    async def connect(self, session_factory, path):
         """Create a new outbound UNIX session"""
 
         # OpenSSH appears to have a bug which requires an originator
         # host and port to be sent after the path name to connect to
         # when opening a direct streamlocal channel.
-        return (yield from self._open_unix(session_factory,
-                                           b'direct-streamlocal@openssh.com',
-                                           path, String(''), UInt32(0)))
+        return await self._open_unix(session_factory,
+                                     b'direct-streamlocal@openssh.com',
+                                     path, String(''), UInt32(0))
 
-    @asyncio.coroutine
-    def accept(self, session_factory, path):
+    async def accept(self, session_factory, path):
         """Create a new forwarded UNIX session"""
 
-        return (yield from self._open_unix(session_factory,
-                                           b'forwarded-streamlocal@openssh.com',
-                                           path, String('')))
+        return await self._open_unix(session_factory,
+                                     b'forwarded-streamlocal@openssh.com',
+                                     path, String(''))
 
     def set_inbound_peer_names(self, dest_path):
         """Set local and remote peer names for inbound connections"""
@@ -1946,16 +1927,14 @@ class SSHUNIXChannel(SSHForwardChannel):
 class SSHX11Channel(SSHForwardChannel):
     """SSH X11 channel"""
 
-    @asyncio.coroutine
-    def open(self, session_factory, orig_host, orig_port):
+    async def open(self, session_factory, orig_host, orig_port):
         """Open an SSH X11 channel"""
 
         self.set_extra_info(local_peername=(orig_host, orig_port),
                             remote_peername=(None, None))
 
-        return (yield from self._open_forward(session_factory, b'x11',
-                                              String(orig_host),
-                                              UInt32(orig_port)))
+        return await self._open_forward(session_factory, b'x11',
+                                        String(orig_host), UInt32(orig_port))
 
     def set_inbound_peer_names(self, orig_host, orig_port):
         """Set local and remote peer name for inbound connections"""
@@ -1967,9 +1946,8 @@ class SSHX11Channel(SSHForwardChannel):
 class SSHAgentChannel(SSHForwardChannel):
     """SSH agent channel"""
 
-    @asyncio.coroutine
-    def open(self, session_factory):
+    async def open(self, session_factory):
         """Open an SSH agent channel"""
 
-        return (yield from self._open_forward(session_factory,
-                                              b'auth-agent@openssh.com'))
+        return await self._open_forward(session_factory,
+                                        b'auth-agent@openssh.com')

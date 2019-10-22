@@ -48,12 +48,10 @@ class _SubprocessProtocol(asyncssh.SSHSubprocessProtocol):
         self.recv_buf[fd].append(data)
 
 
-@asyncio.coroutine
-def _create_subprocess(conn, command=None, **kwargs):
+async def _create_subprocess(conn, command=None, **kwargs):
     """Create a client subprocess"""
 
-    return (yield from conn.create_subprocess(_SubprocessProtocol, command,
-                                              **kwargs))
+    return await conn.create_subprocess(_SubprocessProtocol, command, **kwargs)
 
 
 class _SubprocessServer(Server):
@@ -69,8 +67,7 @@ class _SubprocessServer(Server):
 
         return self._begin_session
 
-    @asyncio.coroutine
-    def _begin_session(self, stdin, stdout, stderr):
+    async def _begin_session(self, stdin, stdout, stderr):
         """Begin processing a new session"""
 
         # pylint: disable=no-self-use
@@ -84,30 +81,28 @@ class _SubprocessServer(Server):
             stdout.channel.exit(1)
         elif action == 'signal':
             try:
-                yield from stdin.readline()
+                await stdin.readline()
             except asyncssh.SignalReceived as exc:
                 stdout.channel.exit_with_signal(exc.signal)
         else:
-            yield from echo(stdin, stdout, stderr)
+            await echo(stdin, stdout, stderr)
 
 class _TestSubprocess(ServerTestCase):
     """Unit tests for AsyncSSH subprocess API"""
 
     @classmethod
-    @asyncio.coroutine
-    def start_server(cls):
+    async def start_server(cls):
         """Start an SSH server for the tests to use"""
 
-        return (yield from cls.create_server(
+        return (await cls.create_server(
             _SubprocessServer, authorized_client_keys='authorized_keys'))
 
-    @asyncio.coroutine
-    def _check_subprocess(self, conn, command=None, *, encoding=None, **kwargs):
+    async def _check_subprocess(self, conn, command=None, *, encoding=None, **kwargs):
         """Start a subprocess and test if an input line is echoed back"""
 
-        transport, protocol = yield from _create_subprocess(conn, command,
-                                                            encoding=encoding,
-                                                            *kwargs)
+        transport, protocol = await _create_subprocess(conn, command,
+                                                       encoding=encoding,
+                                                       *kwargs)
 
         data = str(id(self))
 
@@ -121,7 +116,7 @@ class _TestSubprocess(ServerTestCase):
         stdin.writelines([data])
         stdin.write_eof()
 
-        yield from transport.wait_closed()
+        await transport.wait_closed()
 
         sep = '' if encoding else b''
 
@@ -131,64 +126,55 @@ class _TestSubprocess(ServerTestCase):
         transport.close()
 
     @asynctest
-    def test_shell(self):
+    async def test_shell(self):
         """Test starting a shell"""
 
-        with (yield from self.connect()) as conn:
-            yield from self._check_subprocess(conn)
-
-        yield from conn.wait_closed()
+        async with self.connect() as conn:
+            await self._check_subprocess(conn)
 
     @asynctest
-    def test_exec(self):
+    async def test_exec(self):
         """Test execution of a remote command"""
 
-        with (yield from self.connect()) as conn:
-            yield from self._check_subprocess(conn, 'echo')
-
-        yield from conn.wait_closed()
+        async with self.connect() as conn:
+            await self._check_subprocess(conn, 'echo')
 
     @asynctest
-    def test_encoding(self):
+    async def test_encoding(self):
         """Test setting encoding"""
 
-        with (yield from self.connect()) as conn:
-            yield from self._check_subprocess(conn, 'echo', encoding='ascii')
-
-        yield from conn.wait_closed()
+        async with self.connect() as conn:
+            await self._check_subprocess(conn, 'echo', encoding='ascii')
 
     @asynctest
-    def test_input(self):
+    async def test_input(self):
         """Test providing input when creating a subprocess"""
 
         data = str(id(self)).encode('ascii')
 
-        with (yield from self.connect()) as conn:
-            transport, protocol = yield from _create_subprocess(conn,
-                                                                input=data)
+        async with self.connect() as conn:
+            transport, protocol = await _create_subprocess(conn, input=data)
 
-            yield from transport.wait_closed()
+            await transport.wait_closed()
 
         for buf in protocol.recv_buf.values():
             self.assertEqual(b''.join(buf), data)
 
-        yield from conn.wait_closed()
-
     @asynctest
-    def test_redirect_stderr(self):
+    async def test_redirect_stderr(self):
         """Test redirecting stderr to file"""
 
         data = str(id(self)).encode('ascii')
 
-        with (yield from self.connect()) as conn:
-            transport, protocol = yield from _create_subprocess(conn,
-                                                                stderr='stderr')
+        async with self.connect() as conn:
+            transport, protocol = await _create_subprocess(conn,
+                                                           stderr='stderr')
 
             stdin = transport.get_pipe_transport(0)
             stdin.write(data)
             stdin.write_eof()
 
-            yield from transport.wait_closed()
+            await transport.wait_closed()
 
         with open('stderr', 'rb') as f:
             stderr_data = f.read()
@@ -197,45 +183,38 @@ class _TestSubprocess(ServerTestCase):
         self.assertEqual(b''.join(protocol.recv_buf[2]), b'')
         self.assertEqual(stderr_data, data)
 
-        yield from conn.wait_closed()
-
     @asynctest
-    def test_close(self):
+    async def test_close(self):
         """Test closing transport"""
 
-        with (yield from self.connect()) as conn:
-            transport, protocol = yield from _create_subprocess(conn)
+        async with self.connect() as conn:
+            transport, protocol = await _create_subprocess(conn)
 
             transport.close()
 
         for buf in protocol.recv_buf.values():
             self.assertEqual(b''.join(buf), b'')
 
-        yield from conn.wait_closed()
-
     @asynctest
-    def test_exit_status(self):
+    async def test_exit_status(self):
         """Test reading exit status"""
 
-        with (yield from self.connect()) as conn:
-            transport, protocol = yield from _create_subprocess(conn,
-                                                                'exit_status')
+        async with self.connect() as conn:
+            transport, protocol = await _create_subprocess(conn, 'exit_status')
 
-            yield from transport.wait_closed()
+            await transport.wait_closed()
 
         for buf in protocol.recv_buf.values():
             self.assertEqual(b''.join(buf), b'')
 
         self.assertEqual(transport.get_returncode(), 1)
 
-        yield from conn.wait_closed()
-
     @asynctest
-    def test_stdin_abort(self):
+    async def test_stdin_abort(self):
         """Test abort on stdin"""
 
-        with (yield from self.connect()) as conn:
-            transport, protocol = yield from _create_subprocess(conn)
+        async with self.connect() as conn:
+            transport, protocol = await _create_subprocess(conn)
 
             stdin = transport.get_pipe_transport(0)
             stdin.abort()
@@ -243,14 +222,12 @@ class _TestSubprocess(ServerTestCase):
         for buf in protocol.recv_buf.values():
             self.assertEqual(b''.join(buf), b'')
 
-        yield from conn.wait_closed()
-
     @asynctest
-    def test_stdin_close(self):
+    async def test_stdin_close(self):
         """Test closing stdin"""
 
-        with (yield from self.connect()) as conn:
-            transport, protocol = yield from _create_subprocess(conn)
+        async with self.connect() as conn:
+            transport, protocol = await _create_subprocess(conn)
 
             stdin = transport.get_pipe_transport(0)
             stdin.close()
@@ -258,21 +235,19 @@ class _TestSubprocess(ServerTestCase):
         for buf in protocol.recv_buf.values():
             self.assertEqual(b''.join(buf), b'')
 
-        yield from conn.wait_closed()
-
     @asynctest
-    def test_read_pause(self):
+    async def test_read_pause(self):
         """Test read pause"""
 
-        with (yield from self.connect()) as conn:
-            transport, protocol = yield from _create_subprocess(conn)
+        async with self.connect() as conn:
+            transport, protocol = await _create_subprocess(conn)
 
             stdin = transport.get_pipe_transport(0)
             stdout = transport.get_pipe_transport(1)
 
             stdout.pause_reading()
             stdin.write(b'\n')
-            yield from asyncio.sleep(0.1)
+            await asyncio.sleep(0.1)
 
             for buf in protocol.recv_buf.values():
                 self.assertEqual(b''.join(buf), b'')
@@ -284,29 +259,25 @@ class _TestSubprocess(ServerTestCase):
 
             stdin.close()
 
-        yield from conn.wait_closed()
-
     @asynctest
-    def test_signal(self):
+    async def test_signal(self):
         """Test sending a signal"""
 
-        with (yield from self.connect()) as conn:
-            transport, _ = yield from _create_subprocess(conn, 'signal')
+        async with self.connect() as conn:
+            transport, _ = await _create_subprocess(conn, 'signal')
 
             transport.send_signal(SIGINT)
 
-            yield from transport.wait_closed()
+            await transport.wait_closed()
 
             self.assertEqual(transport.get_returncode(), -SIGINT)
 
-        yield from conn.wait_closed()
-
     @asynctest
-    def test_misc(self):
+    async def test_misc(self):
         """Test other transport and pipe methods"""
 
-        with (yield from self.connect()) as conn:
-            transport, _ = yield from _create_subprocess(conn)
+        async with self.connect() as conn:
+            transport, _ = await _create_subprocess(conn)
 
             self.assertEqual(transport.get_pid(), None)
 
@@ -319,5 +290,3 @@ class _TestSubprocess(ServerTestCase):
             self.assertEqual(stdin.get_write_buffer_size(), 0)
 
             stdin.close()
-
-        yield from conn.wait_closed()

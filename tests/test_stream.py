@@ -1,4 +1,4 @@
-# Copyright (c) 2016-2018 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2016-2019 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -31,7 +31,7 @@ from .util import asynctest, echo
 class _StreamServer(Server):
     """Server for testing the AsyncSSH stream API"""
 
-    def _begin_session(self, stdin, stdout, stderr):
+    async def _begin_session(self, stdin, stdout, stderr):
         """Begin processing a new session"""
 
         # pylint: disable=no-self-use
@@ -41,23 +41,23 @@ class _StreamServer(Server):
             action = 'echo'
 
         if action == 'echo':
-            yield from echo(stdin, stdout)
+            await echo(stdin, stdout)
         elif action == 'echo_stderr':
-            yield from echo(stdin, stdout, stderr)
+            await echo(stdin, stdout, stderr)
         elif action == 'close':
-            yield from stdin.read(1)
+            await stdin.read(1)
             stdout.write('\n')
         elif action == 'disconnect':
-            stdout.write((yield from stdin.read(1)))
+            stdout.write((await stdin.read(1)))
             raise asyncssh.ConnectionLost('Connection lost')
         elif action == 'custom_disconnect':
-            yield from stdin.read(1)
+            await stdin.read(1)
             raise asyncssh.DisconnectError(99, 'Disconnect')
         else:
             stdin.channel.exit(255)
 
         stdin.channel.close()
-        yield from stdin.channel.wait_closed()
+        await stdin.channel.wait_closed()
 
     def _begin_session_non_async(self, stdin, stdout, stderr):
         """Non-async version of session handler"""
@@ -86,17 +86,15 @@ class _TestStream(ServerTestCase):
     """Unit tests for AsyncSSH stream API"""
 
     @classmethod
-    @asyncio.coroutine
-    def start_server(cls):
+    async def start_server(cls):
         """Start an SSH server for the tests to use"""
 
-        return (yield from cls.create_server(_StreamServer))
+        return await cls.create_server(_StreamServer)
 
-    @asyncio.coroutine
-    def _check_session(self, conn, large_block=False):
+    async def _check_session(self, conn, large_block=False):
         """Open a session and test if an input line is echoed back"""
 
-        stdin, stdout, stderr = yield from conn.open_session('echo_stderr')
+        stdin, stdout, stderr = await conn.open_session('echo_stderr')
 
         if large_block:
             data = 4 * [1025*1024*'\0']
@@ -105,311 +103,292 @@ class _TestStream(ServerTestCase):
 
         stdin.writelines(data)
 
-        yield from stdin.drain()
+        await stdin.drain()
 
         self.assertTrue(stdin.can_write_eof())
         stdin.write_eof()
 
-        stdout_data, stderr_data = yield from asyncio.gather(stdout.read(),
-                                                             stderr.read())
+        stdout_data, stderr_data = await asyncio.gather(stdout.read(),
+                                                        stderr.read())
 
         data = ''.join(data)
         self.assertEqual(data, stdout_data)
         self.assertEqual(data, stderr_data)
 
-        yield from stdin.channel.wait_closed()
-        yield from stdin.drain()
+        await stdin.channel.wait_closed()
+        await stdin.drain()
         stdin.close()
 
 
     @asynctest
-    def test_shell(self):
+    async def test_shell(self):
         """Test starting a shell"""
 
-        with (yield from self.connect()) as conn:
-            yield from self._check_session(conn)
-
-        yield from conn.wait_closed()
+        async with self.connect() as conn:
+            await self._check_session(conn)
 
     @asynctest
-    def test_shell_failure(self):
+    async def test_shell_failure(self):
         """Test failure to start a shell"""
 
-        with (yield from self.connect(username='no_channels')) as conn:
+        async with self.connect(username='no_channels') as conn:
             with self.assertRaises(asyncssh.ChannelOpenError):
-                yield from conn.open_session()
-
-        yield from conn.wait_closed()
+                await conn.open_session()
 
     @asynctest
-    def test_shell_non_async(self):
+    async def test_shell_non_async(self):
         """Test starting a shell using non-async handler"""
 
-        with (yield from self.connect(username='non_async')) as conn:
-            yield from self._check_session(conn)
-
-        yield from conn.wait_closed()
+        async with self.connect(username='non_async') as conn:
+            await self._check_session(conn)
 
     @asynctest
-    def test_large_block(self):
+    async def test_large_block(self):
         """Test sending and receiving a large block of data"""
 
-        with (yield from self.connect()) as conn:
-            yield from self._check_session(conn, large_block=True)
-
-        yield from conn.wait_closed()
+        async with self.connect() as conn:
+            await self._check_session(conn, large_block=True)
 
     @asynctest
-    def test_write_broken_pipe(self):
+    async def test_async_iterator(self):
+        """Test reading lines by using SSHReader as an async iterator"""
+
+        async with self.connect() as conn:
+            stdin, stdout, _ = await conn.open_session()
+
+            data = ['Line 1\n', 'Line 2\n']
+
+            stdin.writelines(data)
+            stdin.write_eof()
+
+            async for line in stdout:
+                self.assertEqual(line, data.pop(0))
+
+            self.assertEqual(data, [])
+
+    @asynctest
+    async def test_write_broken_pipe(self):
         """Test close while we're writing"""
 
-        with (yield from self.connect()) as conn:
-            stdin, _, _ = yield from conn.open_session('close')
+        async with self.connect() as conn:
+            stdin, _, _ = await conn.open_session('close')
             stdin.write(4*1024*1024*'\0')
 
             with self.assertRaises((ConnectionError, asyncssh.ConnectionLost)):
-                yield from stdin.drain()
-
-        yield from conn.wait_closed()
+                await stdin.drain()
 
     @asynctest
-    def test_write_disconnect(self):
+    async def test_write_disconnect(self):
         """Test disconnect while we're writing"""
 
-        with (yield from self.connect()) as conn:
-            stdin, _, _ = yield from conn.open_session('disconnect')
+        async with self.connect() as conn:
+            stdin, _, _ = await conn.open_session('disconnect')
             stdin.write(6*1024*1024*'\0')
 
             with self.assertRaises((ConnectionError, asyncssh.ConnectionLost)):
-                yield from stdin.drain()
-
-        yield from conn.wait_closed()
+                await stdin.drain()
 
     @asynctest
-    def test_read_exception(self):
+    async def test_read_exception(self):
         """Test read returning an exception"""
 
-        with (yield from self.connect()) as conn:
-            stdin, stdout, _ = yield from conn.open_session('disconnect')
+        async with self.connect() as conn:
+            stdin, stdout, _ = await conn.open_session('disconnect')
 
             stdin.write('\0')
 
-            self.assertEqual((yield from stdout.read()), '\0')
+            self.assertEqual((await stdout.read()), '\0')
 
             with self.assertRaises(asyncssh.ConnectionLost):
-                yield from stdout.read(1)
+                await stdout.read(1)
 
             stdin.close()
 
-        yield from conn.wait_closed()
-
     @asynctest
-    def test_readline_exception(self):
+    async def test_readline_exception(self):
         """Test readline returning an exception"""
 
-        with (yield from self.connect()) as conn:
-            stdin, stdout, _ = yield from conn.open_session('disconnect')
+        async with self.connect() as conn:
+            stdin, stdout, _ = await conn.open_session('disconnect')
 
             stdin.write('\0')
 
-            self.assertEqual((yield from stdout.readline()), '\0')
+            self.assertEqual((await stdout.readline()), '\0')
 
             with self.assertRaises(asyncssh.ConnectionLost):
-                yield from stdout.readline()
-
-        yield from conn.wait_closed()
+                await stdout.readline()
 
     @asynctest
-    def test_custom_disconnect(self):
+    async def test_custom_disconnect(self):
         """Test receiving a custom disconnect message"""
 
-        with (yield from self.connect()) as conn:
-            stdin, stdout, _ = yield from conn.open_session('custom_disconnect')
+        async with self.connect() as conn:
+            stdin, stdout, _ = await conn.open_session('custom_disconnect')
 
             stdin.write('\0')
 
             with self.assertRaises(asyncssh.DisconnectError) as exc:
-                yield from stdout.read()
-
-        yield from conn.wait_closed()
+                await stdout.read()
 
         self.assertEqual(exc.exception.code, 99)
         self.assertEqual(exc.exception.reason, 'Disconnect (error 99)')
 
     @asynctest
-    def test_readuntil_bigger_than_window(self):
+    async def test_readuntil_bigger_than_window(self):
         """Test readuntil getting data bigger than the receive window"""
 
-        with (yield from self.connect()) as conn:
-            stdin, stdout, _ = yield from conn.open_session()
+        async with self.connect() as conn:
+            stdin, stdout, _ = await conn.open_session()
 
             stdin.write(4*1024*1024*'\0')
 
             with self.assertRaises(asyncio.IncompleteReadError) as exc:
-                yield from stdout.readuntil('\n')
+                await stdout.readuntil('\n')
 
             self.assertEqual(exc.exception.partial,
                              stdin.channel.get_recv_window()*'\0')
 
             stdin.close()
 
-        yield from conn.wait_closed()
+        await conn.wait_closed()
 
     @asynctest
-    def test_readline_timeout(self):
+    async def test_readline_timeout(self):
         """Test receiving a timeout while calling readline"""
 
-        with (yield from self.connect()) as conn:
-            stdin, stdout, _ = yield from conn.open_session()
+        async with self.connect() as conn:
+            stdin, stdout, _ = await conn.open_session()
 
             stdin.write('ab')
 
             try:
-                yield from asyncio.wait_for(stdout.readline(), timeout=0.1)
+                await asyncio.wait_for(stdout.readline(), timeout=0.1)
             except asyncio.TimeoutError:
                 pass
 
             stdin.write('c\n')
 
-            self.assertEqual((yield from stdout.readline()), 'abc\n')
+            self.assertEqual((await stdout.readline()), 'abc\n')
 
             stdin.close()
 
-        yield from conn.wait_closed()
-
     @asynctest
-    def test_pause_read(self):
+    async def test_pause_read(self):
         """Test pause reading"""
 
-        with (yield from self.connect()) as conn:
-            stdin, stdout, _ = yield from conn.open_session()
+        async with self.connect() as conn:
+            stdin, stdout, _ = await conn.open_session()
 
             stdin.write(6*1024*1024*'\0')
 
-            yield from asyncio.sleep(0.01)
-            yield from stdout.read(1)
+            await asyncio.sleep(0.01)
+            await stdout.read(1)
 
-            yield from asyncio.sleep(0.01)
-            yield from stdout.read(1)
-
-        yield from conn.wait_closed()
+            await asyncio.sleep(0.01)
+            await stdout.read(1)
 
     @asynctest
-    def test_readuntil(self):
+    async def test_readuntil(self):
         """Test readuntil with multi-character separator"""
 
-        with (yield from self.connect()) as conn:
-            stdin, stdout, _ = yield from conn.open_session()
+        async with self.connect() as conn:
+            stdin, stdout, _ = await conn.open_session()
 
             stdin.write('abc\r')
-            yield from asyncio.sleep(0.01)
+            await asyncio.sleep(0.01)
             stdin.write('\ndef')
-            yield from asyncio.sleep(0.01)
+            await asyncio.sleep(0.01)
             stdin.write('\r\n')
-            yield from asyncio.sleep(0.01)
+            await asyncio.sleep(0.01)
             stdin.write('ghi')
             stdin.write_eof()
 
-            self.assertEqual((yield from stdout.readuntil('\r\n')), 'abc\r\n')
-            self.assertEqual((yield from stdout.readuntil('\r\n')), 'def\r\n')
+            self.assertEqual((await stdout.readuntil('\r\n')), 'abc\r\n')
+            self.assertEqual((await stdout.readuntil('\r\n')), 'def\r\n')
 
             with self.assertRaises(asyncio.IncompleteReadError) as exc:
-                yield from stdout.readuntil('\r\n')
+                await stdout.readuntil('\r\n')
 
             self.assertEqual(exc.exception.partial, 'ghi')
 
             stdin.close()
 
-        yield from conn.wait_closed()
-
     @asynctest
-    def test_readuntil_separator_list(self):
+    async def test_readuntil_separator_list(self):
         """Test readuntil with a list of separators"""
 
         seps = ('+', '-', '\r\n')
 
-        with (yield from self.connect()) as conn:
-            stdin, stdout, _ = yield from conn.open_session()
+        async with self.connect() as conn:
+            stdin, stdout, _ = await conn.open_session()
 
             stdin.write('ab')
-            yield from asyncio.sleep(0.01)
+            await asyncio.sleep(0.01)
             stdin.write('c+d')
-            yield from asyncio.sleep(0.01)
+            await asyncio.sleep(0.01)
             stdin.write('ef-gh')
-            yield from asyncio.sleep(0.01)
+            await asyncio.sleep(0.01)
             stdin.write('i\r')
-            yield from asyncio.sleep(0.01)
+            await asyncio.sleep(0.01)
             stdin.write('\n')
             stdin.write_eof()
 
-            self.assertEqual((yield from stdout.readuntil(seps)), 'abc+')
-            self.assertEqual((yield from stdout.readuntil(seps)), 'def-')
-            self.assertEqual((yield from stdout.readuntil(seps)), 'ghi\r\n')
+            self.assertEqual((await stdout.readuntil(seps)), 'abc+')
+            self.assertEqual((await stdout.readuntil(seps)), 'def-')
+            self.assertEqual((await stdout.readuntil(seps)), 'ghi\r\n')
 
             stdin.close()
 
-        yield from conn.wait_closed()
-
     @asynctest
-    def test_readuntil_empty_separator(self):
+    async def test_readuntil_empty_separator(self):
         """Test readuntil with empty separator"""
 
-        with (yield from self.connect()) as conn:
-            stdin, stdout, _ = yield from conn.open_session()
+        async with self.connect() as conn:
+            stdin, stdout, _ = await conn.open_session()
 
             with self.assertRaises(ValueError):
-                yield from stdout.readuntil('')
+                await stdout.readuntil('')
 
             stdin.close()
 
-        yield from conn.wait_closed()
-
     @asynctest
-    def test_abort(self):
+    async def test_abort(self):
         """Test abort on a channel"""
 
-        with (yield from self.connect()) as conn:
-            stdin, _, _ = yield from conn.open_session()
+        async with self.connect() as conn:
+            stdin, _, _ = await conn.open_session()
 
             stdin.channel.abort()
 
-        yield from conn.wait_closed()
-
     @asynctest
-    def test_abort_closed(self):
+    async def test_abort_closed(self):
         """Test abort on an already-closed channel"""
 
-        with (yield from self.connect()) as conn:
-            stdin, stdout, _ = yield from conn.open_session('close')
+        async with self.connect() as conn:
+            stdin, stdout, _ = await conn.open_session('close')
 
             stdin.write('\n')
-            yield from stdout.read()
+            await stdout.read()
             stdin.channel.abort()
 
-        yield from conn.wait_closed()
-
     @asynctest
-    def test_get_extra_info(self):
+    async def test_get_extra_info(self):
         """Test get_extra_info on streams"""
 
-        with (yield from self.connect()) as conn:
-            stdin, stdout, _ = yield from conn.open_session()
+        async with self.connect() as conn:
+            stdin, stdout, _ = await conn.open_session()
 
             self.assertEqual(stdin.get_extra_info('connection'),
                              stdout.get_extra_info('connection'))
 
             stdin.close()
 
-        yield from conn.wait_closed()
-
     @asynctest
-    def test_unknown_action(self):
+    async def test_unknown_action(self):
         """Test unknown action"""
 
-        with (yield from self.connect()) as conn:
-            stdin, _, _ = yield from conn.open_session('unknown')
+        async with self.connect() as conn:
+            stdin, _, _ = await conn.open_session('unknown')
 
-            yield from stdin.channel.wait_closed()
+            await stdin.channel.wait_closed()
             self.assertEqual(stdin.channel.get_exit_status(), 255)
-
-        yield from conn.wait_closed()

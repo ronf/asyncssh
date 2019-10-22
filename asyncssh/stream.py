@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2018 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2019 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -26,7 +26,6 @@ import re
 from .constants import EXTENDED_DATA_STDERR
 from .misc import BreakReceived, SignalReceived
 from .misc import SoftEOFReceived, TerminalSizeChanged
-from .misc import async_iterator, python35
 from .session import SSHClientSession, SSHServerSession
 from .session import SSHTCPSession, SSHUNIXSession
 from .sftp import run_sftp_server
@@ -43,23 +42,20 @@ class SSHReader:
         self._chan = chan
         self._datatype = datatype
 
-    if python35:
-        @async_iterator
-        def __aiter__(self):
-            """Allow SSHReader to be an async iterator"""
+    def __aiter__(self):
+        """Allow SSHReader to be an async iterator"""
 
-            return self
+        return self
 
-        @asyncio.coroutine
-        def __anext__(self):
-            """Return one line at a time when used as an async iterator"""
+    async def __anext__(self):
+        """Return one line at a time when used as an async iterator"""
 
-            line = yield from self.readline()
+        line = await self.readline()
 
-            if line:
-                return line
-            else:
-                raise StopAsyncIteration
+        if line:
+            return line
+        else:
+            raise StopAsyncIteration
 
     @property
     def channel(self):
@@ -85,8 +81,7 @@ class SSHReader:
 
         return self._chan.get_extra_info(name, default)
 
-    @asyncio.coroutine
-    def read(self, n=-1):
+    async def read(self, n=-1):
         """Read data from the stream
 
            This method is a coroutine which reads up to `n` bytes
@@ -106,10 +101,9 @@ class SSHReader:
 
         """
 
-        return self._session.read(n, self._datatype, exact=False)
+        return await self._session.read(n, self._datatype, exact=False)
 
-    @asyncio.coroutine
-    def readline(self):
+    async def readline(self):
         """Read one line from the stream
 
            This method is a coroutine which reads one line, ending in
@@ -129,12 +123,11 @@ class SSHReader:
         """
 
         try:
-            return (yield from self.readuntil(_NEWLINE))
+            return await self.readuntil(_NEWLINE)
         except asyncio.IncompleteReadError as exc:
             return exc.partial
 
-    @asyncio.coroutine
-    def readuntil(self, separator):
+    async def readuntil(self, separator):
         """Read data from the stream until `separator` is seen
 
            This method is a coroutine which reads from the stream until
@@ -156,10 +149,9 @@ class SSHReader:
 
         """
 
-        return self._session.readuntil(separator, self._datatype)
+        return await self._session.readuntil(separator, self._datatype)
 
-    @asyncio.coroutine
-    def readexactly(self, n):
+    async def readexactly(self, n):
         """Read an exact amount of data from the stream
 
            This method is a coroutine which reads exactly n bytes or
@@ -175,7 +167,7 @@ class SSHReader:
 
         """
 
-        return self._session.read(n, self._datatype, exact=True)
+        return await self._session.read(n, self._datatype, exact=True)
 
     def at_eof(self):
         """Return whether the stream is at EOF
@@ -240,8 +232,7 @@ class SSHWriter:
 
         return self._chan.close()
 
-    @asyncio.coroutine
-    def drain(self):
+    async def drain(self):
         """Wait until the write buffer on the channel is flushed
 
            This method is a coroutine which blocks the caller if the
@@ -252,7 +243,7 @@ class SSHWriter:
 
         """
 
-        return (yield from self._session.drain(self._datatype))
+        return await self._session.drain(self._datatype)
 
     def write(self, data):
         """Write data to the stream
@@ -309,20 +300,19 @@ class SSHStreamSession:
         self._connection_lost = False
         self._recv_buf = {None: []}
         self._recv_buf_len = 0
-        self._read_locks = {None: asyncio.Lock(loop=self._loop)}
+        self._read_locks = {None: asyncio.Lock()}
         self._read_waiters = {None: None}
         self._read_paused = False
         self._write_paused = False
         self._drain_waiters = {None: set()}
 
-    @asyncio.coroutine
-    def _block_read(self, datatype):
+    async def _block_read(self, datatype):
         """Wait for more data to arrive on the stream"""
 
         try:
-            waiter = asyncio.Future(loop=self._loop)
+            waiter = self._loop.create_future()
             self._read_waiters[datatype] = waiter
-            yield from waiter
+            await waiter
         finally:
             self._read_waiters[datatype] = None
 
@@ -384,7 +374,7 @@ class SSHStreamSession:
 
         for datatype in chan.get_read_datatypes():
             self._recv_buf[datatype] = []
-            self._read_locks[datatype] = asyncio.Lock(loop=self._loop)
+            self._read_locks[datatype] = asyncio.Lock()
             self._read_waiters[datatype] = None
 
         for datatype in chan.get_write_datatypes():
@@ -442,15 +432,14 @@ class SSHStreamSession:
         for datatype in self._drain_waiters:
             self._unblock_drain(datatype)
 
-    @asyncio.coroutine
-    def read(self, n, datatype, exact):
+    async def read(self, n, datatype, exact):
         """Read data from the channel"""
 
         recv_buf = self._recv_buf[datatype]
         buf = '' if self._encoding else b''
         data = []
 
-        with (yield from self._read_locks[datatype]):
+        async with self._read_locks[datatype]:
             while True:
                 while recv_buf and n != 0:
                     if isinstance(recv_buf[0], Exception):
@@ -484,7 +473,7 @@ class SSHStreamSession:
                         (n < 0 and recv_buf) or self._eof_received:
                     break
 
-                yield from self._block_read(datatype)
+                await self._block_read(datatype)
 
         buf = buf.join(data)
         if n > 0 and exact:
@@ -492,8 +481,7 @@ class SSHStreamSession:
 
         return buf
 
-    @asyncio.coroutine
-    def readuntil(self, separator, datatype):
+    async def readuntil(self, separator, datatype):
         """Read data from the channel until a separator is seen"""
 
         if separator is _NEWLINE:
@@ -514,7 +502,7 @@ class SSHStreamSession:
         curbuf = 0
         buflen = 0
 
-        with (yield from self._read_locks[datatype]):
+        async with self._read_locks[datatype]:
             while True:
                 while curbuf < len(recv_buf):
                     if isinstance(recv_buf[curbuf], Exception):
@@ -555,17 +543,16 @@ class SSHStreamSession:
                     self._recv_buf_len -= buflen
                     raise asyncio.IncompleteReadError(buf, None)
 
-                yield from self._block_read(datatype)
+                await self._block_read(datatype)
 
-    @asyncio.coroutine
-    def drain(self, datatype):
+    async def drain(self, datatype):
         """Wait for data written to the channel to drain"""
 
         while self._should_block_drain(datatype):
             try:
-                waiter = asyncio.Future(loop=self._loop)
+                waiter = self._loop.create_future()
                 self._drain_waiters[datatype].add(waiter)
-                yield from waiter
+                await waiter
             finally:
                 self._drain_waiters[datatype].remove(waiter)
 

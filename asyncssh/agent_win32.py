@@ -1,4 +1,4 @@
-# Copyright (c) 2016-2018 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2016-2019 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -94,8 +94,7 @@ class _PageantTransport:
         except ValueError as exc:
             raise OSError(errno.EIO, str(exc)) from None
 
-    @asyncio.coroutine
-    def readexactly(self, n):
+    async def readexactly(self, n):
         """Read response data from Pageant agent"""
 
         if self._writing:
@@ -133,8 +132,7 @@ class _W10OpenSSHTransport:
 
         self._agentfile.write(data)
 
-    @asyncio.coroutine
-    def readexactly(self, n):
+    async def readexactly(self, n):
         """Read response data from OpenSSH agent"""
 
         result = self._agentfile.read(n)
@@ -152,8 +150,7 @@ class _W10OpenSSHTransport:
             self._agentfile = None
 
 
-@asyncio.coroutine
-def open_agent(loop, agent_path):
+async def open_agent(agent_path):
     """Open a connection to the Pageant or Windows 10 OpenSSH agent"""
 
     # pylint: disable=unused-argument

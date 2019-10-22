@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2018 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2019 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -58,8 +58,7 @@ class SSHListener(asyncio.AbstractServer):
 
         raise NotImplementedError
 
-    @asyncio.coroutine
-    def wait_closed(self):
+    async def wait_closed(self):
         """Wait for the listener to close
 
            This method is a coroutine which waits for the associated
@@ -73,7 +72,7 @@ class SSHListener(asyncio.AbstractServer):
 class SSHClientListener(SSHListener):
     """Client listener used to accept inbound forwarded connections"""
 
-    def __init__(self, conn, loop, session_factory,
+    def __init__(self, conn, session_factory,
                  encoding, errors, window, max_pktsize):
         self._conn = conn
         self._session_factory = session_factory
@@ -81,10 +80,9 @@ class SSHClientListener(SSHListener):
         self._errors = errors
         self._window = window
         self._max_pktsize = max_pktsize
-        self._close_event = asyncio.Event(loop=loop)
+        self._close_event = asyncio.Event()
 
-    @asyncio.coroutine
-    def _close(self):
+    async def _close(self):
         """Close this listener"""
 
         self._close_event.set()
@@ -96,33 +94,31 @@ class SSHClientListener(SSHListener):
         if self._conn:
             self._conn.create_task(self._close())
 
-    @asyncio.coroutine
-    def wait_closed(self):
+    async def wait_closed(self):
         """Wait for this listener to finish closing"""
 
-        yield from self._close_event.wait()
+        await self._close_event.wait()
 
 
 class SSHTCPClientListener(SSHClientListener):
     """Client listener used to accept inbound forwarded TCP connections"""
 
-    def __init__(self, conn, loop, session_factory, listen_host, listen_port,
+    def __init__(self, conn, session_factory, listen_host, listen_port,
                  encoding, errors, window, max_pktsize):
-        super().__init__(conn, loop, session_factory, encoding,
+        super().__init__(conn, session_factory, encoding,
                          errors, window, max_pktsize)
 
         self._listen_host = listen_host
         self._listen_port = listen_port
 
-    @asyncio.coroutine
-    def _close(self):
+    async def _close(self):
         """Close this listener"""
 
         if self._conn: # pragma: no branch
-            yield from self._conn.close_client_tcp_listener(self._listen_host,
-                                                            self._listen_port)
+            await self._conn.close_client_tcp_listener(self._listen_host,
+                                                       self._listen_port)
 
-        yield from super()._close()
+        await super()._close()
 
     def process_connection(self, orig_host, orig_port):
         """Process a forwarded TCP connection"""
@@ -144,21 +140,20 @@ class SSHTCPClientListener(SSHClientListener):
 class SSHUNIXClientListener(SSHClientListener):
     """Client listener used to accept inbound forwarded UNIX connections"""
 
-    def __init__(self, conn, loop, session_factory, listen_path,
+    def __init__(self, conn, session_factory, listen_path,
                  encoding, errors, window, max_pktsize):
-        super().__init__(conn, loop, session_factory, encoding,
+        super().__init__(conn, session_factory, encoding,
                          errors, window, max_pktsize)
 
         self._listen_path = listen_path
 
-    @asyncio.coroutine
-    def _close(self):
+    async def _close(self):
         """Close this listener"""
 
         if self._conn: # pragma: no branch
-            yield from self._conn.close_client_unix_listener(self._listen_path)
+            await self._conn.close_client_unix_listener(self._listen_path)
 
-        yield from super()._close()
+        await super()._close()
 
     def process_connection(self):
         """Process a forwarded UNIX connection"""
@@ -189,28 +184,26 @@ class SSHForwardListener(SSHListener):
         for server in self._servers:
             server.close()
 
-    @asyncio.coroutine
-    def wait_closed(self):
+    async def wait_closed(self):
         """Wait for this listener to finish closing"""
 
         for server in self._servers:
-            yield from server.wait_closed()
+            await server.wait_closed()
 
         self._servers = []
 
 
-@asyncio.coroutine
-def create_tcp_local_listener(conn, loop, protocol_factory,
-                              listen_host, listen_port):
+async def create_tcp_local_listener(conn, loop, protocol_factory,
+                                    listen_host, listen_port):
     """Create a listener to forward traffic from a local TCP port over SSH"""
 
     if listen_host == '':
         listen_host = None
 
-    addrinfo = yield from loop.getaddrinfo(listen_host, listen_port,
-                                           family=socket.AF_UNSPEC,
-                                           type=socket.SOCK_STREAM,
-                                           flags=socket.AI_PASSIVE)
+    addrinfo = await loop.getaddrinfo(listen_host, listen_port,
+                                      family=socket.AF_UNSPEC,
+                                      type=socket.SOCK_STREAM,
+                                      flags=socket.AI_PASSIVE)
 
     if not addrinfo: # pragma: no cover
         raise OSError('getaddrinfo() returned empty list')
@@ -253,14 +246,14 @@ def create_tcp_local_listener(conn, loop, protocol_factory,
             listen_port = sock.getsockname()[1]
             conn.logger.debug1('Assigning dynamic port %d', listen_port)
 
-        server = yield from loop.create_server(protocol_factory, sock=sock)
+        server = await loop.create_server(protocol_factory, sock=sock)
         servers.append(server)
 
     return SSHForwardListener(servers, listen_port)
 
 
-@asyncio.coroutine
-def create_tcp_forward_listener(conn, loop, coro, listen_host, listen_port):
+async def create_tcp_forward_listener(conn, loop, coro,
+                                      listen_host, listen_port):
     """Create a listener to forward traffic from a local TCP port over SSH"""
 
     def protocol_factory():
@@ -268,12 +261,11 @@ def create_tcp_forward_listener(conn, loop, coro, listen_host, listen_port):
 
         return SSHLocalPortForwarder(conn, coro)
 
-    return create_tcp_local_listener(conn, loop, protocol_factory,
-                                     listen_host, listen_port)
+    return await create_tcp_local_listener(conn, loop, protocol_factory,
+                                           listen_host, listen_port)
 
 
-@asyncio.coroutine
-def create_unix_forward_listener(conn, loop, coro, listen_path):
+async def create_unix_forward_listener(conn, loop, coro, listen_path):
     """Create a listener to forward a local UNIX domain socket over SSH"""
 
     def protocol_factory():
@@ -281,13 +273,12 @@ def create_unix_forward_listener(conn, loop, coro, listen_path):
 
         return SSHLocalPathForwarder(conn, coro)
 
-    server = yield from loop.create_unix_server(protocol_factory, listen_path)
+    server = await loop.create_unix_server(protocol_factory, listen_path)
 
     return SSHForwardListener([server])
 
 
-@asyncio.coroutine
-def create_socks_listener(conn, loop, coro, listen_host, listen_port):
+async def create_socks_listener(conn, loop, coro, listen_host, listen_port):
     """Create a SOCKS listener to forward traffic over SSH"""
 
     def protocol_factory():
@@ -295,5 +286,5 @@ def create_socks_listener(conn, loop, coro, listen_host, listen_port):
 
         return SSHSOCKSForwarder(conn, coro)
 
-    return create_tcp_local_listener(conn, loop, protocol_factory,
-                                     listen_host, listen_port)
+    return await create_tcp_local_listener(conn, loop, protocol_factory,
+                                           listen_host, listen_port)

@@ -1,4 +1,4 @@
-# Copyright (c) 2015-2018 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2015-2019 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -55,32 +55,18 @@ except ImportError: # pragma: no cover
 
 from asyncssh.gss import gss_available
 from asyncssh.logging import logger
-from asyncssh.misc import ConnectionLost, SignalReceived, create_task
+from asyncssh.misc import ConnectionLost, SignalReceived
 from asyncssh.packet import Byte, String, UInt32, UInt64
 
 
-def asynctest(func):
+def asynctest(coro):
     """Decorator for async tests, for use with AsyncTestCase"""
 
-    @functools.wraps(func)
+    @functools.wraps(coro)
     def async_wrapper(self, *args, **kwargs):
-        """Run a function as a coroutine and wait for it to finish"""
+        """Run a coroutine and wait for it to finish"""
 
-        wrapped_func = asyncio.coroutine(func)(self, *args, **kwargs)
-        return self.loop.run_until_complete(wrapped_func)
-
-    return async_wrapper
-
-
-def asynctest35(func):
-    """Decorator for Python 3.5 async tests, for use with AsyncTestCase"""
-
-    @functools.wraps(func)
-    def async_wrapper(self, *args, **kwargs):
-        """Run a function as a coroutine and wait for it to finish"""
-
-        wrapped_func = func(self, *args, **kwargs)
-        return self.loop.run_until_complete(wrapped_func)
+        return self.loop.run_until_complete(coro(self, *args, **kwargs))
 
     return async_wrapper
 
@@ -126,13 +112,12 @@ def patch_gss(cls):
     return cls
 
 
-@asyncio.coroutine
-def echo(stdin, stdout, stderr=None):
+async def echo(stdin, stdout, stderr=None):
     """Echo data from stdin back to stdout and stderr (if open)"""
 
     try:
         while not stdin.at_eof():
-            data = yield from stdin.read(65536)
+            data = await stdin.read(65536)
 
             if data:
                 stdout.write(data)
@@ -140,10 +125,10 @@ def echo(stdin, stdout, stderr=None):
                 if stderr:
                     stderr.write(data)
 
-        yield from stdout.drain()
+        await stdout.drain()
 
         if stderr:
-            yield from stderr.drain()
+            await stderr.drain()
 
         stdout.write_eof()
     except SignalReceived as exc:
@@ -224,13 +209,12 @@ class ConnectionStub:
 
         return self._logger
 
-    @asyncio.coroutine
-    def _run_task(self, coro):
+    async def _run_task(self, coro):
         """Run an asynchronous task"""
 
         # pylint: disable=broad-except
         try:
-            yield from coro
+            await coro
         except Exception as exc:
             if self._peer: # pragma: no branch
                 self.queue_packet(exc)
@@ -240,7 +224,7 @@ class ConnectionStub:
     def create_task(self, coro):
         """Create an asynchronous task"""
 
-        return create_task(self._run_task(coro))
+        return asyncio.ensure_future(self._run_task(coro))
 
     def is_client(self):
         """Return if this is a client connection"""
@@ -257,12 +241,11 @@ class ConnectionStub:
 
         return self._peer
 
-    @asyncio.coroutine
-    def _process_packets(self):
+    async def _process_packets(self):
         """Process the queue of incoming packets"""
 
         while True:
-            data = yield from self._packet_queue.get()
+            data = await self._packet_queue.get()
 
             if data is None or isinstance(data, Exception):
                 self._queue_task = None

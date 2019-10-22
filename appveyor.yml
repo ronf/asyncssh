@@ -1,9 +1,8 @@
 environment:
   matrix:
-    - TOXENV: py34
-    - TOXENV: py35
     - TOXENV: py36
     - TOXENV: py37
+    - TOXENV: py38
 
 image:
   - Visual Studio 2017
