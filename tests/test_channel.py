@@ -224,19 +224,17 @@ class _ChannelServer(Server):
             await stdin.read(1)
             stdout.write('\n')
         elif action == 'agent':
-            agent = await asyncssh.connect_agent(self._conn)
-            if agent:
-                stdout.write(str(len((await agent.get_keys()))) + '\n')
-                agent.close()
-            else:
+            try:
+                async with asyncssh.connect_agent(self._conn) as agent:
+                    stdout.write(str(len((await agent.get_keys()))) + '\n')
+            except (OSError, asyncssh.ChannelOpenError):
                 stdout.channel.exit(1)
         elif action == 'agent_sock':
             agent_path = stdin.channel.get_agent_path()
 
             if agent_path:
-                agent = await asyncssh.connect_agent(agent_path)
-                stdout.write(str(len((await agent.get_keys()))) + '\n')
-                agent.close()
+                async with asyncssh.connect_agent(agent_path) as agent:
+                    stdout.write(str(len((await agent.get_keys()))) + '\n')
             else:
                 stdout.channel.exit(1)
         elif action == 'rejected_agent':

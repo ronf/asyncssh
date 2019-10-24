@@ -27,8 +27,7 @@ import sys
 
 import asyncssh
 
-from .logging import logger
-from .misc import ChannelOpenError
+from .misc import async_context_manager
 from .packet import Byte, String, UInt32, PacketDecodeError, SSHPacket
 from .public_key import SSHKeyPair, load_default_keypairs
 
@@ -147,13 +146,21 @@ class SSHAgentClient:
         self._writer = None
         self._lock = asyncio.Lock()
 
-    def _cleanup(self):
+    async def __aenter__(self):
+        """Allow SSHAgentClient to be used as an async context manager"""
+
+        return self
+
+    async def __aexit__(self, *exc_info):
+        """Wait for connection close when used as an async context manager"""
+
+        await self._cleanup()
+
+    async def _cleanup(self):
         """Clean up this SSH agent client"""
 
-        if self._writer:
-            self._writer.close()
-            self._reader = None
-            self._writer = None
+        self.close()
+        await self.wait_closed()
 
     @staticmethod
     def encode_constraints(lifetime, confirm):
@@ -176,15 +183,7 @@ class SSHAgentClient:
             self._reader, self._writer = \
                 await self._agent_path.open_agent_connection()
         else:
-            agent_path = self._agent_path
-
-            try:
-                self._reader, self._writer = await open_agent(agent_path)
-            except OSError as exc:
-                if agent_path:
-                    logger.warning('Unable to contact agent: %s', exc)
-
-                raise
+            self._reader, self._writer = await open_agent(self._agent_path)
 
     async def _make_request(self, msgtype, *args):
         """Send an SSH agent request"""
@@ -207,7 +206,7 @@ class SSHAgentClient:
 
                 return resptype, resp
             except (OSError, EOFError, PacketDecodeError) as exc:
-                self._cleanup()
+                await self._cleanup()
                 raise ValueError(str(exc)) from None
 
     async def get_keys(self):
@@ -505,7 +504,27 @@ class SSHAgentClient:
 
         """
 
-        self._cleanup()
+        if self._writer:
+            self._writer.close()
+
+    async def wait_closed(self):
+        """Wait for this agent connection to close
+
+           This method is a coroutine which can be called to block until
+           the connection to the agent has finished closing.
+
+        """
+
+        if self._writer:
+            # Python 3.6 doesn't support wait_closed() on streams,
+            # so just ignore that error here.
+            try:
+                await self._writer.wait_closed()
+            except AttributeError: # pragma: no cover
+                pass
+
+            self._reader = None
+            self._writer = None
 
 
 class SSHAgentListener:
@@ -528,6 +547,7 @@ class SSHAgentListener:
         self._tempdir.cleanup()
 
 
+@async_context_manager
 async def connect_agent(agent_path=None):
     """Make a connection to the SSH agent
 
@@ -539,8 +559,8 @@ async def connect_agent(agent_path=None):
        If the connection is successful, an :class:`SSHAgentClient` object
        is returned that has methods on it you can use to query the
        ssh-agent. If no path is specified and the environment variable
-       is not set or the connection to the agent fails, this function
-       returns `None`.
+       is not set or the connection to the agent fails, an error is
+       raised.
 
        :param agent_path: (optional)
            The path to use to contact the ssh-agent process, or the
@@ -548,7 +568,10 @@ async def connect_agent(agent_path=None):
            over.
        :type agent_path: `str` or :class:`SSHServerConnection`
 
-       :returns: An :class:`SSHAgentClient` or `None`
+       :returns: An :class:`SSHAgentClient`
+
+       :raises: :exc:`OSError` or :exc:`ChannelOpenError` if the
+                connection to the agent can't be opened
 
     """
 
@@ -556,10 +579,6 @@ async def connect_agent(agent_path=None):
         agent_path = os.environ.get('SSH_AUTH_SOCK', None)
 
     agent = SSHAgentClient(agent_path)
+    await agent.connect()
 
-    try:
-        await agent.connect()
-        return agent
-    except (OSError, ChannelOpenError) as exc:
-        logger.warning('Unable to contact agent: %s', exc)
-        return None
+    return agent

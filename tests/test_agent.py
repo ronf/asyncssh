@@ -44,10 +44,9 @@ def agent_test(func):
     async def agent_wrapper(self):
         """Run a test after connecting to an SSH agent"""
 
-        agent = await asyncssh.connect_agent()
-        await agent.remove_all()
-        await func(self, agent)
-        agent.close()
+        async with asyncssh.connect_agent() as agent:
+            await agent.remove_all()
+            await func(self, agent)
 
     return agent_wrapper
 
@@ -70,10 +69,10 @@ class _Agent:
         self._server = \
             await asyncio.start_unix_server(self.process_request, path)
 
-    async def process_request(self, _reader, writer):
+    async def process_request(self, reader, writer):
         """Process a request sent to the mock SSH agent"""
 
-        await _reader.readexactly(4)
+        await reader.readexactly(4)
         writer.write(self._response)
         writer.close()
 
@@ -139,14 +138,18 @@ class _TestAgent(AsyncTestCase):
     async def test_connection_failed(self):
         """Test failure in opening a connection to the agent"""
 
-        self.assertIsNone((await asyncssh.connect_agent('xxx')))
+        with self.assertRaises(OSError):
+            await asyncssh.connect_agent('xxx')
 
     @asynctest
     async def test_no_auth_sock(self):
         """Test failure when no auth sock is set"""
 
         del os.environ['SSH_AUTH_SOCK']
-        self.assertIsNone((await asyncssh.connect_agent()))
+
+        with self.assertRaises(OSError):
+            await asyncssh.connect_agent()
+
         os.environ['SSH_AUTH_SOCK'] = 'agent'
 
     @agent_test
@@ -186,9 +189,9 @@ class _TestAgent(AsyncTestCase):
         key = asyncssh.generate_private_key('ssh-rsa')
         pubkey = key.convert_to_public()
 
-        await agent.add_keys([key])
-        agent_keys = await agent.get_keys()
-        agent.close()
+        async with agent:
+            await agent.add_keys([key])
+            agent_keys = await agent.get_keys()
 
         for agent_key in agent_keys:
             sig = await agent_key.sign(b'test')
@@ -233,22 +236,20 @@ class _TestAgent(AsyncTestCase):
 
         mock_agent = _Agent(String(Byte(SSH_AGENT_SUCCESS)))
         await mock_agent.start('mock_agent')
-        agent = await asyncssh.connect_agent('mock_agent')
 
-        result = await agent.add_smartcard_keys('provider')
-        self.assertIsNone(result)
+        async with asyncssh.connect_agent('mock_agent') as agent:
+            result = await agent.add_smartcard_keys('provider')
+            self.assertIsNone(result)
 
-        agent.close()
         await mock_agent.stop()
 
         mock_agent = _Agent(String(Byte(SSH_AGENT_SUCCESS)))
         await mock_agent.start('mock_agent')
-        agent = await asyncssh.connect_agent('mock_agent')
 
-        result = await agent.remove_smartcard_keys('provider')
-        self.assertIsNone(result)
+        async with asyncssh.connect_agent('mock_agent') as agent:
+            result = await agent.remove_smartcard_keys('provider')
+            self.assertIsNone(result)
 
-        agent.close()
         await mock_agent.stop()
 
     @agent_test
@@ -301,42 +302,38 @@ class _TestAgent(AsyncTestCase):
 
         mock_agent = _Agent(String(Byte(SSH_AGENT_SUCCESS) + String('xxx')))
         await mock_agent.start('mock_agent')
-        agent = await asyncssh.connect_agent('mock_agent')
 
-        extensions = await agent.query_extensions()
-        self.assertEqual(extensions, ['xxx'])
+        async with asyncssh.connect_agent('mock_agent') as agent:
+            extensions = await agent.query_extensions()
+            self.assertEqual(extensions, ['xxx'])
 
-        agent.close()
         await mock_agent.stop()
 
         mock_agent = _Agent(String(Byte(SSH_AGENT_SUCCESS) + String(b'\xff')))
         await mock_agent.start('mock_agent')
-        agent = await asyncssh.connect_agent('mock_agent')
 
-        with self.assertRaises(ValueError):
-            await agent.query_extensions()
+        async with asyncssh.connect_agent('mock_agent') as agent:
+            with self.assertRaises(ValueError):
+                await agent.query_extensions()
 
-        agent.close()
         await mock_agent.stop()
 
         mock_agent = _Agent(String(Byte(SSH_AGENT_FAILURE)))
         await mock_agent.start('mock_agent')
-        agent = await asyncssh.connect_agent('mock_agent')
 
-        extensions = await agent.query_extensions()
-        self.assertEqual(extensions, [])
+        async with asyncssh.connect_agent('mock_agent') as agent:
+            extensions = await agent.query_extensions()
+            self.assertEqual(extensions, [])
 
-        agent.close()
         await mock_agent.stop()
 
         mock_agent = _Agent(String(b'\xff'))
         await mock_agent.start('mock_agent')
-        agent = await asyncssh.connect_agent('mock_agent')
 
-        with self.assertRaises(ValueError):
-            await agent.query_extensions()
+        async with asyncssh.connect_agent('mock_agent') as agent:
+            with self.assertRaises(ValueError):
+                await agent.query_extensions()
 
-        agent.close()
         await mock_agent.stop()
 
     @agent_test
@@ -369,20 +366,18 @@ class _TestAgent(AsyncTestCase):
             mock_agent = _Agent(response)
             await mock_agent.start('mock_agent')
 
-            agent = await asyncssh.connect_agent('mock_agent')
-
-            for request in (agent.get_keys(),
-                            agent.sign(b'xxx', b'test'),
-                            agent.add_keys([key]),
-                            agent.add_smartcard_keys('xxx'),
-                            agent.remove_keys([keypair]),
-                            agent.remove_smartcard_keys('xxx'),
-                            agent.remove_all(),
-                            agent.lock('passphrase'),
-                            agent.unlock('passphrase')):
-                with self.assertRaises(ValueError):
-                    await request
-
-                agent.close()
+            async with asyncssh.connect_agent('mock_agent') as agent:
+                for request in (agent.get_keys(),
+                                agent.sign(b'xxx', b'test'),
+                                agent.add_keys([key]),
+                                agent.add_smartcard_keys('xxx'),
+                                agent.remove_keys([keypair]),
+                                agent.remove_smartcard_keys('xxx'),
+                                agent.remove_all(),
+                                agent.lock('passphrase'),
+                                agent.unlock('passphrase')):
+                    async with agent:
+                        with self.assertRaises(ValueError):
+                            await request
 
             await mock_agent.stop()

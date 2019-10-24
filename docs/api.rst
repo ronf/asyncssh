@@ -1578,6 +1578,7 @@ SSHAgentClient
    .. automethod:: unlock
    .. automethod:: query_extensions
    .. automethod:: close
+   .. automethod:: wait_closed
    ===================================== =
 
 SSHAgentKeyPair

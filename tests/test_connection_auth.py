@@ -1004,13 +1004,10 @@ class _TestPublicKeyAuth(ServerTestCase):
         if not self.agent_available(): # pragma: no cover
             self.skipTest('ssh-agent not available')
 
-        agent = await asyncssh.connect_agent()
-
-        for key in await agent.get_keys():
-            async with self.connect(username='ckey', client_keys=[key]):
-                pass
-
-        agent.close()
+        async with asyncssh.connect_agent() as agent:
+            for key in await agent.get_keys():
+                async with self.connect(username='ckey', client_keys=[key]):
+                    pass
 
     @asynctest
     async def test_untrusted_client_key(self):
@@ -1108,13 +1105,11 @@ class _TestPublicKeyAuth(ServerTestCase):
         if not self.agent_available(): # pragma: no cover
             self.skipTest('ssh-agent not available')
 
-        agent = await asyncssh.connect_agent()
-        keylist = await agent.get_keys()
+        async with asyncssh.connect_agent() as agent:
+            keylist = await agent.get_keys()
 
-        async with self._connect_publickey(keylist):
-            pass
-
-        agent.close()
+            async with self._connect_publickey(keylist):
+                pass
 
     @asynctest
     async def test_callback_untrusted_client_key(self):
