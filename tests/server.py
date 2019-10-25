@@ -269,9 +269,8 @@ class ServerTestCase(AsyncTestCase):
 
             os.environ['SSH_AUTH_SOCK'] = 'agent'
 
-            agent = await asyncssh.connect_agent()
-            await agent.add_keys([ckey_ecdsa, (ckey, ckey_cert)])
-            agent.close()
+            async with asyncssh.connect_agent() as agent:
+                await agent.add_keys([ckey_ecdsa, (ckey, ckey_cert)])
 
         with open('ssh-keysign', 'wb'):
             pass

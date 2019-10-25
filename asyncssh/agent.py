@@ -27,7 +27,7 @@ import sys
 
 import asyncssh
 
-from .misc import async_context_manager
+from .misc import async_context_manager, maybe_wait_closed
 from .packet import Byte, String, UInt32, PacketDecodeError, SSHPacket
 from .public_key import SSHKeyPair, load_default_keypairs
 
@@ -516,12 +516,7 @@ class SSHAgentClient:
         """
 
         if self._writer:
-            # Python 3.6 doesn't support wait_closed() on streams,
-            # so just ignore that error here.
-            try:
-                await self._writer.wait_closed()
-            except AttributeError: # pragma: no cover
-                pass
+            await maybe_wait_closed(self._writer)
 
             self._reader = None
             self._writer = None

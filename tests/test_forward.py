@@ -30,6 +30,7 @@ import unittest
 from unittest.mock import patch
 
 import asyncssh
+from asyncssh.misc import maybe_wait_closed
 from asyncssh.packet import String, UInt32
 from asyncssh.public_key import CERT_TYPE_USER
 from asyncssh.socks import SOCKS5, SOCKS5_AUTH_NONE
@@ -84,6 +85,7 @@ async def _pause(reader, writer):
     await asyncio.sleep(0.1)
     await reader.read()
     writer.close()
+    await maybe_wait_closed(writer)
 
 
 async def _async_runtime_error(reader, writer):
@@ -225,6 +227,7 @@ class _CheckForwarding(ServerTestCase):
         result = await reader.readline()
 
         writer.close()
+        await maybe_wait_closed(writer)
 
         self.assertEqual(line, result)
 
@@ -239,7 +242,7 @@ class _CheckForwarding(ServerTestCase):
 
         result = await reader.read()
 
-        await reader.channel.wait_closed()
+        #await reader.channel.wait_closed()
         writer.close()
 
         self.assertEqual(b''.join(data), result)
@@ -480,6 +483,8 @@ class _TestTCPForwarding(_CheckForwarding):
             await reader.read()
 
             writer.close()
+            await maybe_wait_closed(writer)
+
             listener.close()
             await listener.wait_closed()
 
@@ -496,6 +501,8 @@ class _TestTCPForwarding(_CheckForwarding):
             self.assertEqual((await reader.read()), b'')
 
             writer.close()
+            await maybe_wait_closed(writer)
+
             listener.close()
             await listener.wait_closed()
 
@@ -542,6 +549,8 @@ class _TestTCPForwarding(_CheckForwarding):
             self.assertEqual((await reader.read()), b'')
 
             writer.close()
+            await maybe_wait_closed(writer)
+
             listener.close()
             await listener.wait_closed()
 
@@ -556,6 +565,7 @@ class _TestTCPForwarding(_CheckForwarding):
             _, writer = await asyncio.open_connection(None, listen_port)
 
             writer.close()
+            await maybe_wait_closed(writer)
             await asyncio.sleep(0.1)
 
             listener.close()
@@ -978,6 +988,7 @@ class _TestSOCKSForwarding(_CheckForwarding):
                 await handler(reader, writer, data, *args)
             finally:
                 writer.close()
+                await maybe_wait_closed(writer)
 
     @asynctest
     async def test_forward_socks(self):

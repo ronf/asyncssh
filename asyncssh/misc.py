@@ -177,6 +177,24 @@ def async_context_manager(coro):
     return context_wrapper
 
 
+async def maybe_wait_closed(writer):
+    """Wait for a StreamWriter to close, if Python version supports it
+
+       Python 3.8 triggers a false error report about garbage collecting
+       an open stream if a close is in progress when a StreamWriter is
+       garbage collected. This can be avoided by calling wait_closed(),
+       but that method is not available in Python releases prior to 3.7.
+       This function wraps this call, ignoring the error if the method
+       is not available.
+
+    """
+
+    try:
+        await writer.wait_closed()
+    except AttributeError: # pragma: no cover
+        pass
+
+
 class Options:
     """Container for configuration options"""
 

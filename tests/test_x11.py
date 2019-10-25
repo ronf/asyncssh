@@ -28,6 +28,7 @@ from unittest.mock import patch
 
 import asyncssh
 
+from asyncssh.misc import maybe_wait_closed
 from asyncssh.packet import Boolean, String, UInt32
 
 from asyncssh.x11 import XAUTH_FAMILY_IPV4, XAUTH_FAMILY_DECNET
@@ -221,6 +222,7 @@ class _X11Server(Server):
             writer.write(b'\x00')
 
         writer.close()
+        await maybe_wait_closed(writer)
         return result[0]
 
     async def _begin_session(self, stdin, stdout, stderr):
