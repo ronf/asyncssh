@@ -1034,11 +1034,12 @@ SSHWriter
    .. autoattribute:: logger
    .. automethod:: get_extra_info
    .. automethod:: can_write_eof
-   .. automethod:: close
    .. automethod:: drain
    .. automethod:: write
    .. automethod:: writelines
    .. automethod:: write_eof
+   .. automethod:: close
+   .. automethod:: wait_closed
    ============================== =
 
 SFTP Support

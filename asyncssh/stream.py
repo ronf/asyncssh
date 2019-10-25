@@ -232,6 +232,16 @@ class SSHWriter:
 
         return self._chan.close()
 
+    async def wait_closed(self):
+        """Wait until the stream is closed
+
+           This should be called after :meth:`close` to wait until
+           the underlying connection is closed.
+
+        """
+
+        await self._chan.wait_closed()
+
     async def drain(self):
         """Wait until the write buffer on the channel is flushed
 
