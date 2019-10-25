@@ -2645,7 +2645,8 @@ class SSHClientConnection(SSHConnection):
 
         return result
 
-    async def kbdint_challenge_received(self, name, instructions, lang, prompts):
+    async def kbdint_challenge_received(self, name, instructions,
+                                        lang, prompts):
         """Return responses to a keyboard-interactive auth challenge"""
 
         if self._kbdint_password_auth:
@@ -3929,7 +3930,8 @@ class SSHServerConnection(SSHConnection):
 
         return self._gss_mic_auth
 
-    async def validate_gss_principal(self, username, user_principal, host_principal):
+    async def validate_gss_principal(self, username, user_principal,
+                                     host_principal):
         """Validate the GSS principal name for the specified user
 
            Return whether the user principal acquired during GSS

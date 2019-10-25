@@ -210,7 +210,8 @@ class _UNIXConnectionServer(Server):
 class _CheckForwarding(ServerTestCase):
     """Utility functions for AsyncSSH forwarding unit tests"""
 
-    async def _check_echo_line(self, reader, writer, delay=False, encoded=False):
+    async def _check_echo_line(self, reader, writer,
+                               delay=False, encoded=False):
         """Check if an input line is properly echoed back"""
 
         if delay:
@@ -258,7 +259,8 @@ class _TestTCPForwarding(_CheckForwarding):
         return (await cls.create_server(
             _TCPConnectionServer, authorized_client_keys='authorized_keys'))
 
-    async def _check_connection(self, conn, dest_host='', dest_port=7, **kwargs):
+    async def _check_connection(self, conn, dest_host='',
+                                dest_port=7, **kwargs):
         """Open a connection and test if a block of data is echoed back"""
 
         reader, writer = await conn.open_connection(dest_host, dest_port,

@@ -334,7 +334,8 @@ class _AuthServerStub(_AuthConnectionStub):
 
         return bool(self._gss)
 
-    async def validate_gss_principal(self, username, user_principal, host_principal):
+    async def validate_gss_principal(self, username, user_principal,
+                                     host_principal):
         """Validate the GSS principal name for the specified user"""
 
         # pylint: disable=unused-argument
