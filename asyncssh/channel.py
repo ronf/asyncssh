@@ -713,6 +713,11 @@ class SSHChannel(SSHPacketHandler):
             # Discard unreceived data
             self._discard_recv()
 
+    def is_closing(self):
+        """Return if the channel is closing or is closed"""
+
+        return self._send_state != 'open'
+
     async def wait_closed(self):
         """Wait for this channel to close
 

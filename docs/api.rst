@@ -475,6 +475,7 @@ SSHClientProcess
    .. automethod:: terminate
    .. automethod:: kill
    .. automethod:: close
+   .. automethod:: is_closing
    .. automethod:: wait_closed
    ============================ =
 
@@ -512,6 +513,7 @@ SSHServerProcess
    .. automethod:: exit
    .. automethod:: exit_with_signal
    .. automethod:: close
+   .. automethod:: is_closing
    .. automethod:: wait_closed
    ================================ =
 
@@ -620,6 +622,7 @@ SSHSubprocessTransport
    .. automethod:: terminate
    .. automethod:: kill
    .. automethod:: close
+   .. automethod:: is_closing
    .. automethod:: wait_closed
    ================================== =
 
@@ -819,6 +822,7 @@ SSHClientChannel
    ============================= =
    .. automethod:: abort
    .. automethod:: close
+   .. automethod:: is_closing
    .. automethod:: wait_closed
    ============================= =
 
@@ -886,6 +890,7 @@ SSHServerChannel
    ============================= =
    .. automethod:: abort
    .. automethod:: close
+   .. automethod:: is_closing
    .. automethod:: wait_closed
    ============================= =
 
@@ -944,6 +949,7 @@ SSHTCPChannel
    ============================= =
    .. automethod:: abort
    .. automethod:: close
+   .. automethod:: is_closing
    .. automethod:: wait_closed
    ============================= =
 
@@ -988,6 +994,7 @@ SSHUNIXChannel
    ============================= =
    .. automethod:: abort
    .. automethod:: close
+   .. automethod:: is_closing
    .. automethod:: wait_closed
    ============================= =
 
@@ -1039,6 +1046,7 @@ SSHWriter
    .. automethod:: writelines
    .. automethod:: write_eof
    .. automethod:: close
+   .. automethod:: is_closing
    .. automethod:: wait_closed
    ============================== =
 

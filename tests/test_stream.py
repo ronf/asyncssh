@@ -102,11 +102,12 @@ class _TestStream(ServerTestCase):
             data = [str(id(self))]
 
         stdin.writelines(data)
-
         await stdin.drain()
 
         self.assertTrue(stdin.can_write_eof())
+        self.assertFalse(stdin.is_closing())
         stdin.write_eof()
+        self.assertTrue(stdin.is_closing())
 
         stdout_data, stderr_data = await asyncio.gather(stdout.read(),
                                                         stderr.read())

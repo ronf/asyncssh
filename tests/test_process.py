@@ -115,7 +115,10 @@ class _TestProcessBasic(_TestProcess):
             process = await conn.create_process(env={'TEST': 'test'})
 
             process.stdin.write(data)
+
+            self.assertFalse(process.is_closing())
             process.stdin.write_eof()
+            self.assertTrue(process.is_closing())
 
             result = await process.wait()
 

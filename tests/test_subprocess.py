@@ -97,7 +97,8 @@ class _TestSubprocess(ServerTestCase):
         return (await cls.create_server(
             _SubprocessServer, authorized_client_keys='authorized_keys'))
 
-    async def _check_subprocess(self, conn, command=None, *, encoding=None, **kwargs):
+    async def _check_subprocess(self, conn, command=None, *,
+                                encoding=None, **kwargs):
         """Start a subprocess and test if an input line is echoed back"""
 
         transport, protocol = await _create_subprocess(conn, command,
@@ -114,7 +115,10 @@ class _TestSubprocess(ServerTestCase):
         self.assertTrue(stdin.can_write_eof())
 
         stdin.writelines([data])
+
+        self.assertFalse(transport.is_closing())
         stdin.write_eof()
+        self.assertTrue(transport.is_closing())
 
         await transport.wait_closed()
 

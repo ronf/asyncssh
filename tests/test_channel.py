@@ -465,10 +465,12 @@ class _TestChannel(ServerTestCase):
         else:
             data = [str(id(self))]
 
-        self.assertTrue(chan.can_write_eof())
-
         chan.writelines(data)
+
+        self.assertTrue(chan.can_write_eof())
+        self.assertFalse(chan.is_closing())
         chan.write_eof()
+        self.assertTrue(chan.is_closing())
 
         await chan.wait_closed()
 

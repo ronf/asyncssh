@@ -818,6 +818,11 @@ class SSHProcess:
 
         self._chan.close()
 
+    def is_closing(self):
+        """Return if the channel is closing or is closed"""
+
+        return self._chan.is_closing()
+
     async def wait_closed(self):
         """Wait for the process to finish shutting down"""
 

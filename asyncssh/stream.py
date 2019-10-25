@@ -232,6 +232,11 @@ class SSHWriter:
 
         return self._chan.close()
 
+    def is_closing(self):
+        """Return if the stream is closing or is closed"""
+
+        return self._chan.is_closing()
+
     async def wait_closed(self):
         """Wait until the stream is closed
 
