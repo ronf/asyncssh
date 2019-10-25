@@ -2824,7 +2824,8 @@ class SSHClientConnection(SSHConnection):
             raise ChannelOpenError(OPEN_CONNECT_FAILED,
                                    'Auth agent forwarding disabled')
 
-    async def attach_x11_listener(self, chan, display, auth_path, single_connection):
+    async def attach_x11_listener(self, chan, display, auth_path,
+                                  single_connection):
         """Attach a channel to a local X11 display"""
 
         if not display:
