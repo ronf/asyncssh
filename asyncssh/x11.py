@@ -437,7 +437,7 @@ async def lookup_xauth(loop, auth_path, host, dpynum):
         if match:
             return entry.proto, entry.data
 
-    logger.warning('No xauth entry found for display: using random auth')
+    logger.debug1('No xauth entry found for display: using random auth')
     return XAUTH_PROTO_COOKIE, os.urandom(XAUTH_COOKIE_LEN)
 
 async def update_xauth(auth_path, host, dpynum, auth_proto, auth_data):

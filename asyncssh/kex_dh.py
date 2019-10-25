@@ -459,7 +459,6 @@ class _KexGSSBase(_KexDHBase):
         self._gss = conn.get_gss_context()
         self._token = None
         self._host_key_data = b''
-        self._got_error = False
 
     def _check_secure(self):
         """Check that GSS context is secure enough for key exchange"""
@@ -612,9 +611,8 @@ class _KexGSSBase(_KexDHBase):
         _ = packet.get_string()         # lang
         packet.check_end()
 
-        self._conn.logger.warning('GSS error: %s',
-                                  msg.decode('utf-8', errors='ignore'))
-        self._got_error = True
+        self._conn.logger.debug1('GSS error: %s',
+                                 msg.decode('utf-8', errors='ignore'))
 
     def start(self):
         """Start GSS key exchange"""

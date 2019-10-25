@@ -194,7 +194,6 @@ class _ClientGSSMICAuth(_ClientAuth):
             if self._gss.complete:
                 self._finish()
         except GSSError as exc:
-            print(exc)
             if exc.token:
                 self.send_packet(MSG_USERAUTH_GSSAPI_ERRTOK, String(exc.token))
 
@@ -237,7 +236,7 @@ class _ClientGSSMICAuth(_ClientAuth):
         _ = packet.get_string()         # lang
         packet.check_end()
 
-        self.logger.warning('GSS error from server: %s', msg)
+        self.logger.debug1('GSS error from server: %s', msg)
         self._got_error = True
 
         return True
@@ -254,7 +253,7 @@ class _ClientGSSMICAuth(_ClientAuth):
             self._gss.step(token)
         except GSSError as exc:
             if not self._got_error: # pragma: no cover
-                self.logger.warning('GSS error from server: %s', str(exc))
+                self.logger.debug1('GSS error from server: %s', str(exc))
 
         return True
 
@@ -670,7 +669,7 @@ class _ServerGSSMICAuth(_ServerAuth):
         try:
             self._gss.step(token)
         except GSSError as exc:
-            self.logger.warning('GSS error from client: %s', str(exc))
+            self.logger.debug1('GSS error from client: %s', str(exc))
 
         return True
 
