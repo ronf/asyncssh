@@ -30,10 +30,10 @@
 import asyncio, asyncssh, os, sys
 
 class MySFTPServer(asyncssh.SFTPServer):
-    def __init__(self, conn):
-        root = '/tmp/sftp/' + conn.get_extra_info('username')
+    def __init__(self, chan):
+        root = '/tmp/sftp/' + chan.get_extra_info('username')
         os.makedirs(root, exist_ok=True)
-        super().__init__(conn, chroot=root)
+        super().__init__(chan, chroot=root)
 
 async def start_server():
     await asyncssh.listen('', 8022, server_host_keys=['ssh_host_key'],

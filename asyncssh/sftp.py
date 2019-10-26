@@ -3836,11 +3836,17 @@ class SFTPServer:
                      coroutine if that method needs to perform
                      blocking opertions to determine its result.
 
-       The `conn` object provided here refers to the
-       :class:`SSHServerConnection` instance this SFTP server is
-       associated with. It can be queried to determine which user
-       the client authenticated as or to request key and certificate
-       options or permissions which should be applied to this session.
+       The `chan` object provided here is the :class:`SSHServerChannel`
+       instance this SFTP server is associated with. It can be queried to
+       determine which user the client authenticated as, environment
+       variables set on the channel when it was opened, and key and
+       certificate options or permissions associated with this session.
+
+           .. note:: In AsyncSSH 1.x, this first argument was an
+           :class:`SSHServerConnection`, not an :class:`SSHServerChannel`.
+           When moving to AsyncSSH 2.x, subclasses of :class:`SFTPServer`
+           which implement an __init__ method will need to be updated to
+           account for this change, and pass this through to the parent.
 
        If the `chroot` argument is specified when this object is
        created, the default :meth:`map_path` and :meth:`reverse_map_path`
@@ -3854,8 +3860,10 @@ class SFTPServer:
     # The default implementation of a number of these methods don't need self
     # pylint: disable=no-self-use
 
-    def __init__(self, conn, chroot=None):
+    def __init__(self, chan, chroot=None):
         # pylint: disable=unused-argument
+
+        self._chan = chan
 
         if chroot:
             self._chroot = _from_local_path(os.path.realpath(chroot))
@@ -3867,12 +3875,6 @@ class SFTPServer:
         """The channel associated with this SFTP server session"""
 
         return self._chan
-
-    @channel.setter
-    def channel(self, chan):
-        """Set the channel associated with this SFTP server session"""
-
-        self._chan = chan
 
     @property
     def connection(self):

@@ -599,15 +599,7 @@ class SSHServerStreamSession(SSHStreamSession, SSHServerSession):
         self._chan.set_encoding(None)
         self._encoding = None
 
-        if isinstance(self._sftp_factory, type):
-            sftp_server = object.__new__(self._sftp_factory)
-            sftp_server.channel = self._chan
-            sftp_server.__init__(self._conn)
-        else:
-            sftp_server = self._sftp_factory(self._conn)
-            sftp_server.channel = self._chan
-
-        return sftp_server
+        return self._sftp_factory(self._chan)
 
     def shell_requested(self):
         """Return whether a shell can be requested"""

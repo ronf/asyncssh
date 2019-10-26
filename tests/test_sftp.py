@@ -136,9 +136,9 @@ class _CheckPropSFTPServer(SFTPServer):
 class _ChrootSFTPServer(SFTPServer):
     """Return an FTP server with a changed root"""
 
-    def __init__(self, conn):
+    def __init__(self, chan):
         os.mkdir('chroot')
-        super().__init__(conn, 'chroot')
+        super().__init__(chan, 'chroot')
 
     def exit(self):
         """Clean up the changed root directory"""
