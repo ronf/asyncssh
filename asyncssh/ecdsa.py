@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2018 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2019 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -32,9 +32,6 @@ from .public_key import register_x509_certificate_alg
 
 # OID for EC prime fields
 PRIME_FIELD = ObjectIdentifier('1.2.840.10045.1.1')
-
-# Short variable names are used here, matching names in the spec
-# pylint: disable=invalid-name
 
 _alg_oids = {}
 _alg_oid_map = {}
@@ -151,10 +148,9 @@ class _ECKey(SSHKey):
             return None
 
     @classmethod
-    def decode_pkcs1_public(cls, key_data):
+    def decode_pkcs1_public(cls, _key_data):
         """Decode a PKCS#1 format EC public key"""
 
-        # pylint: disable=unused-argument
         raise KeyImportError('PKCS#1 not supported for EC public keys')
 
     @classmethod

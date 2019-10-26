@@ -44,7 +44,6 @@ class _SFTPServer(SFTPServer):
     def stat(self, path):
         """Get attributes of a file or directory"""
 
-        # pylint: disable=no-member
         self.logger.info('stat called')
 
         return super().stat(path)

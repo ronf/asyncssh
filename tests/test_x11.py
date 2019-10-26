@@ -96,8 +96,6 @@ class _X11Peer:
     def write_eof(self):
         """Consume EOF from the peer"""
 
-        pass # pragma: no cover
-
     def was_eof_received(self):
         """Report that an incoming EOF has not been reeceived"""
 
@@ -108,21 +106,11 @@ class _X11Peer:
     def pause_reading(self):
         """Ignore flow control requests"""
 
-        # pylint: disable=no-self-use
-
-        pass # pragma: no cover
-
     def resume_reading(self):
         """Ignore flow control requests"""
 
-        # pylint: disable=no-self-use
-
-        pass # pragma: no cover
-
     def close(self):
         """Consume close request"""
-
-        pass # pragma: no cover
 
 
 class _X11ClientListener(SSHX11ClientListener):
@@ -225,10 +213,8 @@ class _X11Server(Server):
         await maybe_wait_closed(writer)
         return result[0]
 
-    async def _begin_session(self, stdin, stdout, stderr):
+    async def _begin_session(self, stdin, _stdout, _stderr):
         """Begin processing a new session"""
-
-        # pylint: disable=unused-argument
 
         action = stdin.channel.get_command()
 

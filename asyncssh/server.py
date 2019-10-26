@@ -61,8 +61,6 @@ class SSHServer:
 
         """
 
-        pass # pragma: no cover
-
     def connection_lost(self, exc):
         """Called when a connection is lost or closed
 
@@ -72,8 +70,6 @@ class SSHServer:
            the disconnect.
 
         """
-
-        pass # pragma: no cover
 
     def debug_msg_received(self, msg, lang, always_display):
         """A debug message was received on this connection
@@ -93,8 +89,6 @@ class SSHServer:
            :type always_display: `bool`
 
         """
-
-        pass # pragma: no cover
 
     def begin_auth(self, username):
         """Authentication has been requested by the client
@@ -133,8 +127,6 @@ class SSHServer:
            are handled.
 
         """
-
-        pass # pragma: no cover
 
     def validate_gss_principal(self, username, user_principal,
                                host_principal):

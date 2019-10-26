@@ -79,10 +79,8 @@ class SSHForwarder:
         if sock.family in {socket.AF_INET, socket.AF_INET6}:
             sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 
-    def connection_lost(self, exc):
+    def connection_lost(self, _exc):
         """Handle an incoming connection close"""
-
-        # pylint: disable=unused-argument
 
         self.close()
 

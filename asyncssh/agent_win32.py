@@ -153,8 +153,6 @@ class _W10OpenSSHTransport:
 async def open_agent(agent_path):
     """Open a connection to the Pageant or Windows 10 OpenSSH agent"""
 
-    # pylint: disable=unused-argument
-
     transport = None
 
     if not agent_path:

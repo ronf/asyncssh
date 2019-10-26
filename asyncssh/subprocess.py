@@ -129,8 +129,6 @@ class SSHSubprocessProtocol:
 
         """
 
-        pass # pragma: no cover
-
     def pipe_data_received(self, fd, data):
         """Called when data is received from the remote process
 
@@ -149,8 +147,6 @@ class SSHSubprocessProtocol:
            :type data: `str` or `bytes`
 
         """
-
-        pass # pragma: no cover
 
     def pipe_connection_lost(self, fd, exc):
         """Called when the pipe to a remote process is closed
@@ -171,8 +167,6 @@ class SSHSubprocessProtocol:
 
         """
 
-        pass # pragma: no cover
-
     def process_exited(self):
         """Called when a remote process has exited
 
@@ -182,8 +176,6 @@ class SSHSubprocessProtocol:
            on the transport provided in :meth:`connection_made`.
 
         """
-
-        pass # pragma: no cover
 
 
 class SSHSubprocessTransport(SSHClientProcess):
@@ -231,8 +223,6 @@ class SSHSubprocessTransport(SSHClientProcess):
     def session_started(self):
         """Override SSHClientProcess to avoid creating SSHReader/SSHWriter
            streams, since this class uses read/write pipe objects instead"""
-
-        pass
 
     def connection_lost(self, exc):
         """Handle an incoming channel close"""

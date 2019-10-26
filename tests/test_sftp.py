@@ -256,14 +256,10 @@ class _ChownSFTPServer(SFTPServer):
     def setstat(self, path, attrs):
         """Set attributes of a file or directory"""
 
-        # pylint: disable=unused-argument
-
         self._ownership[self.map_path(path)] = (attrs.uid, attrs.gid)
 
     def stat(self, path):
         """Get attributes of a file or directory, following symlinks"""
-
-        # pylint: disable=unused-argument
 
         path = self.map_path(path)
         attrs = SFTPAttrs.from_local(os.stat(path))
@@ -280,6 +276,7 @@ class _SymlinkSFTPServer(SFTPServer):
     def symlink(self, oldpath, newpath):
         """Create a symbolic link"""
 
+        # pylint: disable=arguments-out-of-order
         return super().symlink(newpath, oldpath)
 
 
@@ -301,142 +298,121 @@ class _SFTPAttrsSFTPServer(SFTPServer):
 class _AsyncSFTPServer(SFTPServer):
     """Implement all SFTP callbacks as async methods"""
 
+    # pylint: disable=useless-super-delegation
+
     async def format_longname(self, name):
         """Format the long name associated with an SFTP name"""
 
-        # pylint: disable=useless-super-delegation
         return super().format_longname(name)
 
     async def open(self, path, pflags, attrs):
         """Open a file to serve to a remote client"""
 
-        # pylint: disable=useless-super-delegation
         return super().open(path, pflags, attrs)
 
     async def close(self, file_obj):
         """Close an open file or directory"""
 
-        # pylint: disable=useless-super-delegation
         super().close(file_obj)
 
     async def read(self, file_obj, offset, size):
         """Read data from an open file"""
 
-        # pylint: disable=useless-super-delegation
         return super().read(file_obj, offset, size)
 
     async def write(self, file_obj, offset, data):
         """Write data to an open file"""
 
-        # pylint: disable=useless-super-delegation
         return super().write(file_obj, offset, data)
 
     async def lstat(self, path):
         """Get attributes of a file, directory, or symlink"""
 
-        # pylint: disable=useless-super-delegation
         return super().lstat(path)
 
     async def fstat(self, file_obj):
         """Get attributes of an open file"""
 
-        # pylint: disable=useless-super-delegation
         return super().fstat(file_obj)
 
     async def setstat(self, path, attrs):
         """Set attributes of a file or directory"""
 
-        # pylint: disable=useless-super-delegation
         super().setstat(path, attrs)
 
     async def fsetstat(self, file_obj, attrs):
         """Set attributes of an open file"""
 
-        # pylint: disable=useless-super-delegation
         super().fsetstat(file_obj, attrs)
 
     async def listdir(self, path):
         """List the contents of a directory"""
 
-        # pylint: disable=useless-super-delegation
         return super().listdir(path)
 
     async def remove(self, path):
         """Remove a file or symbolic link"""
 
-        # pylint: disable=useless-super-delegation
         super().remove(path)
 
     async def mkdir(self, path, attrs):
         """Create a directory with the specified attributes"""
 
-        # pylint: disable=useless-super-delegation
         super().mkdir(path, attrs)
 
     async def rmdir(self, path):
         """Remove a directory"""
 
-        # pylint: disable=useless-super-delegation
         super().rmdir(path)
 
     async def realpath(self, path):
         """Return the canonical version of a path"""
 
-        # pylint: disable=useless-super-delegation
         return super().realpath(path)
 
     async def stat(self, path):
         """Get attributes of a file or directory, following symlinks"""
 
-        # pylint: disable=useless-super-delegation
         return super().stat(path)
 
     async def rename(self, oldpath, newpath):
         """Rename a file, directory, or link"""
 
-        # pylint: disable=useless-super-delegation
         super().rename(oldpath, newpath)
 
     async def readlink(self, path):
         """Return the target of a symbolic link"""
 
-        # pylint: disable=useless-super-delegation
         return super().readlink(path)
 
     async def symlink(self, oldpath, newpath):
         """Create a symbolic link"""
 
-        # pylint: disable=useless-super-delegation
         super().symlink(oldpath, newpath)
 
     async def posix_rename(self, oldpath, newpath):
         """Rename a file, directory, or link with POSIX semantics"""
 
-        # pylint: disable=useless-super-delegation
         super().posix_rename(oldpath, newpath)
 
     async def statvfs(self, path):
         """Get attributes of the file system containing a file"""
 
-        # pylint: disable=useless-super-delegation
         return super().statvfs(path)
 
     async def fstatvfs(self, file_obj):
         """Return attributes of the file system containing an open file"""
 
-        # pylint: disable=useless-super-delegation
         return super().fstatvfs(file_obj)
 
     async def link(self, oldpath, newpath):
         """Create a hard link"""
 
-        # pylint: disable=useless-super-delegation
         super().link(oldpath, newpath)
 
     async def fsync(self, file_obj):
         """Force file data to be written to disk"""
 
-        # pylint: disable=useless-super-delegation
         super().fsync(file_obj)
 
 
@@ -530,11 +506,6 @@ class _TestSFTP(_CheckSFTP):
     async def _dummy_sftp_client(self, sftp):
         """Test starting a new SFTP client session and immediately exiting"""
 
-        # pylint: disable=unused-argument
-
-        pass
-
-
     @sftp_test
     async def test_copy(self, sftp):
         """Test copying a file over SFTP"""
@@ -553,10 +524,8 @@ class _TestSFTP(_CheckSFTP):
     async def test_copy_progress(self, sftp):
         """Test copying a file over SFTP with progress reporting"""
 
-        def _report_progress(srcpath, dstpath, bytes_copied, total_bytes):
+        def _report_progress(_srcpath, _dstpath, bytes_copied, _total_bytes):
             """Monitor progress of copy"""
-
-            # pylint: disable=unused-argument
 
             reports.append(bytes_copied)
 
@@ -1923,8 +1892,6 @@ class _TestSFTP(_CheckSFTP):
     def test_nonstandard_version(self):
         """Test sending init with non-standard version"""
 
-        # pylint: disable=no-self-use
-
         with patch('asyncssh.sftp._SFTP_VERSION', 4):
             # pylint: disable=no-value-for-parameter
             self._dummy_sftp_client()
@@ -2225,8 +2192,6 @@ class _TestSFTP(_CheckSFTP):
         @sftp_test
         async def _write_close(self, sftp):
             """Initiate write that triggers cleanup"""
-
-            # pylint: disable=unused-argument
 
             try:
                 async with sftp.open('file', 'w') as f:
@@ -2580,8 +2545,6 @@ class _TestSFTPLongname(_CheckSFTP):
 
         def strftime_error(fmt, t):
             """Simulate Windows srtftime that doesn't support %e"""
-
-            # pylint: disable=unused-argument
 
             if '%e' in fmt:
                 raise ValueError

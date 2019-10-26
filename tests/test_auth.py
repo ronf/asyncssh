@@ -204,14 +204,10 @@ class _AuthClientStub(_AuthConnectionStub):
     async def password_auth_requested(self):
         """Return password to send for password authentication"""
 
-        # pylint: disable=no-self-use
-
         return self._password
 
-    async def password_change_requested(self, prompt, lang):
+    async def password_change_requested(self, _prompt, _lang):
         """Return old & new passwords for password change"""
-
-        # pylint: disable=unused-argument
 
         if self._password_change is True:
             return 'password', 'new_password'
@@ -233,10 +229,9 @@ class _AuthClientStub(_AuthConnectionStub):
 
         return self._kbdint_submethods
 
-    async def kbdint_challenge_received(self, name, instruction, lang, prompts):
+    async def kbdint_challenge_received(self, _name, _instruction,
+                                        _lang, _prompts):
         """Return responses to keyboard-interactive challenge"""
-
-        # pylint: disable=no-self-use,unused-argument
 
         if self._kbdint_response is True:
             return ('password',)
@@ -325,8 +320,6 @@ class _AuthServerStub(_AuthConnectionStub):
     def gss_kex_auth_supported(self):
         """Return whether or not GSS key exchange authentication is supported"""
 
-        # pylint: disable=no-self-use
-
         return bool(self._gss)
 
     def gss_mic_auth_supported(self):
@@ -334,11 +327,9 @@ class _AuthServerStub(_AuthConnectionStub):
 
         return bool(self._gss)
 
-    async def validate_gss_principal(self, username, user_principal,
-                                     host_principal):
+    async def validate_gss_principal(self, _username, _user_principal,
+                                     _host_principal):
         """Validate the GSS principal name for the specified user"""
-
-        # pylint: disable=unused-argument
 
         return self._success
 
@@ -347,11 +338,9 @@ class _AuthServerStub(_AuthConnectionStub):
 
         return self._host_based_auth
 
-    async def validate_host_based_auth(self, username, key_data, client_host,
-                                       client_username, msg, signature):
+    async def validate_host_based_auth(self, _username, _key_data, _client_host,
+                                       _client_username, _msg, _signature):
         """Validate host based authentication for the specified host and user"""
-
-        # pylint: disable=unused-argument
 
         return self._success
 
@@ -360,10 +349,8 @@ class _AuthServerStub(_AuthConnectionStub):
 
         return self._public_key_auth
 
-    async def validate_public_key(self, username, key_data, msg, signature):
+    async def validate_public_key(self, _username, _key_data, _msg, _signature):
         """Validate public key"""
-
-        # pylint: disable=unused-argument
 
         return self._success
 
@@ -372,20 +359,16 @@ class _AuthServerStub(_AuthConnectionStub):
 
         return self._password_auth
 
-    async def validate_password(self, username, password):
+    async def validate_password(self, _username, _password):
         """Validate password"""
-
-        # pylint: disable=unused-argument
 
         if self._password_change_prompt:
             raise asyncssh.PasswordChangeRequired(self._password_change_prompt)
         else:
             return self._success
 
-    async def change_password(self, username, old_password, new_password):
+    async def change_password(self, _username, _old_password, _new_password):
         """Validate password"""
-
-        # pylint: disable=unused-argument
 
         return self._success
 
@@ -395,20 +378,16 @@ class _AuthServerStub(_AuthConnectionStub):
 
         return self._kbdint_auth
 
-    async def get_kbdint_challenge(self, username, lang, submethods):
+    async def get_kbdint_challenge(self, _username, _lang, _submethods):
         """Return a keyboard-interactive challenge"""
-
-        # pylint: disable=unused-argument
 
         if self._kbdint_challenge is True:
             return '', '', '', (('Password:', False),)
         else:
             return self._kbdint_challenge
 
-    async def validate_kbdint_response(self, username, responses):
+    async def validate_kbdint_response(self, _username, _responses):
         """Validate keyboard-interactive responses"""
-
-        # pylint: disable=unused-argument
 
         return self._success
 

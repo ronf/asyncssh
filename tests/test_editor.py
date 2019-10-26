@@ -29,8 +29,6 @@ from .util import asynctest
 async def _handle_session(stdin, stdout, stderr):
     """Accept lines of input and echo them with a prefix"""
 
-    # pylint: disable=unused-argument
-
     encoding = stdin.channel.get_encoding()[0]
     prefix = '>>>' if encoding else b'>>>'
     data = '' if encoding else b''
@@ -62,10 +60,8 @@ async def _handle_session(stdin, stdout, stderr):
     stdout.close()
 
 
-async def _handle_soft_eof(stdin, stdout, stderr):
+async def _handle_soft_eof(stdin, stdout, _stderr):
     """Accept input using read() and echo it back"""
-
-    # pylint: disable=unused-argument
 
     while not stdin.at_eof():
         data = await stdin.read()
@@ -74,10 +70,8 @@ async def _handle_soft_eof(stdin, stdout, stderr):
     stdout.close()
 
 
-def _handle_key(line, pos):
+def _handle_key(_line, pos):
     """Handle exclamation point being input"""
-
-    # pylint: disable=unused-argument
 
     if pos == 0:
         return 'xyz', 3
@@ -86,10 +80,8 @@ def _handle_key(line, pos):
     else:
         return False
 
-async def _handle_register(stdin, stdout, stderr):
+async def _handle_register(stdin, stdout, _stderr):
     """Accept input using read() and echo it back"""
-
-    # pylint: disable=unused-argument
 
     while not stdin.at_eof():
         data = await stdin.readline()

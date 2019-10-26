@@ -53,9 +53,7 @@ class SSHKeysignStub:
             return String(Byte(KEYSIGN_VERSION) + String(sig)), b''
 
 
-async def create_subprocess_exec_stub(*args, **kwargs):
+async def create_subprocess_exec_stub(*_args, **_kwargs):
     """Return a stub for a subprocess running the ssh-keysign executable"""
-
-    # pylint: disable=unused-argument
 
     return SSHKeysignStub()

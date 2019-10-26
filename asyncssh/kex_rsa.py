@@ -1,4 +1,4 @@
-# Copyright (c) 2018 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2018-2019 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -22,12 +22,11 @@
 
 from hashlib import sha1, sha256
 
-import asyncssh
-
 from .kex import Kex, register_kex_alg
 from .misc import KeyExchangeFailed, ProtocolError, get_symbol_names, randrange
 from .packet import MPInt, String, SSHPacket
-from .public_key import decode_ssh_public_key
+from .public_key import KeyImportError
+from .public_key import decode_ssh_public_key, generate_private_key
 
 # pylint: disable=bad-whitespace
 
@@ -37,9 +36,6 @@ MSG_KEXRSA_SECRET  = 31
 MSG_KEXRSA_DONE    = 32
 
 # pylint: enable=bad-whitespace
-
-# Short variable names are used here, matching names in the spec
-# pylint: disable=invalid-name
 
 
 class _KexRSA(Kex):
@@ -68,8 +64,7 @@ class _KexRSA(Kex):
             host_key = self._conn.get_server_host_key()
             self._host_key_data = host_key.public_data
 
-            self._trans_key = asyncssh.generate_private_key('ssh-rsa',
-                                                            self._key_size)
+            self._trans_key = generate_private_key('ssh-rsa', self._key_size)
             self._trans_key_data = self._trans_key.public_data
 
             self.send_packet(MSG_KEXRSA_PUBKEY, String(self._host_key_data),
@@ -86,10 +81,8 @@ class _KexRSA(Kex):
         hash_obj.update(MPInt(self._k))
         return hash_obj.digest()
 
-    def _process_pubkey(self, pkttype, pktid, packet):
+    def _process_pubkey(self, _pkttype, _pktid, packet):
         """Process a KEXRSA pubkey message"""
-
-        # pylint: disable=unused-argument
 
         if self._conn.is_server():
             raise ProtocolError('Unexpected KEXRSA pubkey msg')
@@ -100,7 +93,7 @@ class _KexRSA(Kex):
 
         try:
             trans_key = decode_ssh_public_key(self._trans_key_data)
-        except asyncssh.KeyImportError:
+        except KeyImportError:
             raise ProtocolError('Invalid KEXRSA pubkey msg') from None
 
         self._k = randrange(self._k_limit)
@@ -108,10 +101,8 @@ class _KexRSA(Kex):
 
         self.send_packet(MSG_KEXRSA_SECRET, String(self._encrypted_k))
 
-    def _process_secret(self, pkttype, pktid, packet):
+    def _process_secret(self, _pkttype, _pktid, packet):
         """Process a KEXRSA secret message"""
-
-        # pylint: disable=unused-argument
 
         if self._conn.is_client():
             raise ProtocolError('Unexpected KEXRSA secret msg')
@@ -136,10 +127,8 @@ class _KexRSA(Kex):
 
         self._conn.send_newkeys(self._k, h)
 
-    def _process_done(self, pkttype, pktid, packet):
+    def _process_done(self, _pkttype, _pktid, packet):
         """Process a KEXRSA done message"""
-
-        # pylint: disable=unused-argument
 
         if self._conn.is_server():
             raise ProtocolError('Unexpected KEXRSA done msg')

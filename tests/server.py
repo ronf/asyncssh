@@ -53,14 +53,9 @@ class Server(asyncssh.SSHServer):
 class ServerTestCase(AsyncTestCase):
     """Unit test class which starts an SSH server and agent"""
 
-    # Pylint doesn't like mixed case method names, but this was chosen to
-    # match the convention used in the unittest module.
-
-    # pylint: disable=invalid-name
-
     _server = None
-    _server_addr = None
-    _server_port = None
+    _server_addr = ''
+    _server_port = 0
     _agent_pid = None
 
     @classmethod
@@ -100,6 +95,11 @@ class ServerTestCase(AsyncTestCase):
         """Start an SSH server for the tests to use"""
 
         return NotImplemented # pragma: no cover
+
+    # Pylint doesn't like mixed case method names, but this was chosen to
+    # match the convention used in the unittest module.
+
+    # pylint: disable=invalid-name
 
     @classmethod
     async def asyncSetUpClass(cls):

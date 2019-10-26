@@ -119,6 +119,8 @@ from .stream import SSHReader, SSHWriter
 
 from .subprocess import SSHSubprocessTransport
 
+from .version import __version__
+
 from .x11 import create_x11_client_listener, create_x11_server_listener
 
 
@@ -171,10 +173,8 @@ async def _listen(host, port, loop, tunnel, family, flags, backlog,
                   reuse_address, reuse_port, conn_factory, msg):
     """Make inbound TCP or SSH tunneled listener"""
 
-    def tunnel_factory(orig_host, orig_port):
+    def tunnel_factory(_orig_host, _orig_port):
         """Ignore original host and port"""
-
-        # pylint: disable=unused-argument
 
         return conn_factory()
 
@@ -196,8 +196,6 @@ def _validate_version(version):
     """Validate requested SSH version"""
 
     if version == ():
-        from .version import __version__
-
         version = b'AsyncSSH_' + __version__.encode('ascii')
     else:
         if isinstance(version, str):
@@ -720,8 +718,6 @@ class SSHConnection(SSHPacketHandler):
     def session_started(self):
         """Handle session start when opening tunneled SSH connection"""
 
-        pass
-
     def data_received(self, data, datatype=None):
         """Handle incoming data on the connection"""
 
@@ -751,13 +747,11 @@ class SSHConnection(SSHPacketHandler):
         """Handle a request from the transport to pause writing data"""
 
         # Do nothing with this for now
-        pass # pragma: no cover
 
     def resume_writing(self):
         """Handle a request from the transport to resume writing data"""
 
         # Do nothing with this for now
-        pass # pragma: no cover
 
     def add_channel(self, chan):
         """Add a new channel, returning its channel number"""
@@ -1353,10 +1347,8 @@ class SSHConnection(SSHPacketHandler):
 
         raise NotImplementedError
 
-    def _process_disconnect(self, pkttype, pktid, packet):
+    def _process_disconnect(self, _pkttype, _pktid, packet):
         """Process a disconnect message"""
-
-        # pylint: disable=unused-argument
 
         code = packet.get_uint32()
         reason = packet.get_string()
@@ -1378,30 +1370,24 @@ class SSHConnection(SSHPacketHandler):
 
         self._force_close(exc)
 
-    def _process_ignore(self, pkttype, pktid, packet):
+    def _process_ignore(self, _pkttype, _pktid, packet):
         """Process an ignore message"""
 
-        # pylint: disable=no-self-use,unused-argument
+        # pylint: disable=no-self-use
 
         _ = packet.get_string()     # data
         packet.check_end()
 
-        # Do nothing
-
-    def _process_unimplemented(self, pkttype, pktid, packet):
+    def _process_unimplemented(self, _pkttype, _pktid, packet):
         """Process an unimplemented message response"""
 
-        # pylint: disable=no-self-use,unused-argument
+        # pylint: disable=no-self-use
 
         _ = packet.get_uint32()     # seq
         packet.check_end()
 
-        # Ignore this
-
-    def _process_debug(self, pkttype, pktid, packet):
+    def _process_debug(self, _pkttype, _pktid, packet):
         """Process a debug message"""
-
-        # pylint: disable=unused-argument
 
         always_display = packet.get_boolean()
         msg = packet.get_string()
@@ -1419,10 +1405,8 @@ class SSHConnection(SSHPacketHandler):
 
         self._owner.debug_msg_received(msg, lang, always_display)
 
-    def _process_service_request(self, pkttype, pktid, packet):
+    def _process_service_request(self, _pkttype, _pktid, packet):
         """Process a service request"""
-
-        # pylint: disable=unused-argument
 
         service = packet.get_string()
         packet.check_end()
@@ -1440,10 +1424,8 @@ class SSHConnection(SSHPacketHandler):
         else:
             raise ServiceNotAvailable('Unexpected service request received')
 
-    def _process_service_accept(self, pkttype, pktid, packet):
+    def _process_service_accept(self, _pkttype, _pktid, packet):
         """Process a service accept response"""
-
-        # pylint: disable=unused-argument
 
         service = packet.get_string()
         packet.check_end()
@@ -1465,10 +1447,8 @@ class SSHConnection(SSHPacketHandler):
         else:
             raise ServiceNotAvailable('Unexpected service accept received')
 
-    def _process_ext_info(self, pkttype, pktid, packet):
+    def _process_ext_info(self, _pkttype, _pktid, packet):
         """Process extension information"""
-
-        # pylint: disable=unused-argument
 
         extensions = {}
 
@@ -1488,10 +1468,8 @@ class SSHConnection(SSHPacketHandler):
             self._server_sig_algs = \
                 extensions.get(b'server-sig-algs').split(b',')
 
-    def _process_kexinit(self, pkttype, pktid, packet):
+    def _process_kexinit(self, _pkttype, _pktid, packet):
         """Process a key exchange request"""
-
-        # pylint: disable=unused-argument
 
         if self._kex:
             raise ProtocolError('Key exchange already in progress')
@@ -1574,10 +1552,8 @@ class SSHConnection(SSHPacketHandler):
 
         self._kex.start()
 
-    def _process_newkeys(self, pkttype, pktid, packet):
+    def _process_newkeys(self, _pkttype, _pktid, packet):
         """Process a new keys message, finishing a key exchange"""
-
-        # pylint: disable=unused-argument
 
         packet.check_end()
 
@@ -1594,10 +1570,8 @@ class SSHConnection(SSHPacketHandler):
 
         self.logger.debug1('Completed key exchange')
 
-    def _process_userauth_request(self, pkttype, pktid, packet):
+    def _process_userauth_request(self, _pkttype, _pktid, packet):
         """Process a user authentication request"""
-
-        # pylint: disable=unused-argument
 
         username = packet.get_string()
         service = packet.get_string()
@@ -1646,10 +1620,8 @@ class SSHConnection(SSHPacketHandler):
 
         self._auth = lookup_server_auth(self, self._username, method, packet)
 
-    def _process_userauth_failure(self, pkttype, pktid, packet):
+    def _process_userauth_failure(self, _pkttype, pktid, packet):
         """Process a user authentication failure response"""
-
-        # pylint: disable=unused-argument
 
         self._auth_methods = packet.get_namelist()
         partial_success = packet.get_boolean()
@@ -1672,10 +1644,8 @@ class SSHConnection(SSHPacketHandler):
             self.logger.debug2('Unexpected userauth failure response')
             self.send_packet(MSG_UNIMPLEMENTED, UInt32(pktid))
 
-    def _process_userauth_success(self, pkttype, pktid, packet):
+    def _process_userauth_success(self, _pkttype, pktid, packet):
         """Process a user authentication success response"""
-
-        # pylint: disable=unused-argument
 
         packet.check_end()
 
@@ -1713,10 +1683,8 @@ class SSHConnection(SSHPacketHandler):
             self.logger.debug2('Unexpected userauth success response')
             self.send_packet(MSG_UNIMPLEMENTED, UInt32(pktid))
 
-    def _process_userauth_banner(self, pkttype, pktid, packet):
+    def _process_userauth_banner(self, _pkttype, _pktid, packet):
         """Process a user authentication banner message"""
-
-        # pylint: disable=unused-argument
 
         msg = packet.get_string()
         lang = packet.get_string()
@@ -1735,10 +1703,8 @@ class SSHConnection(SSHPacketHandler):
         else:
             raise ProtocolError('Unexpected userauth banner')
 
-    def _process_global_request(self, pkttype, pktid, packet):
+    def _process_global_request(self, _pkttype, _pktid, packet):
         """Process a global request"""
-
-        # pylint: disable=unused-argument
 
         request = packet.get_string()
         want_reply = packet.get_boolean()
@@ -1758,10 +1724,8 @@ class SSHConnection(SSHPacketHandler):
         if len(self._global_request_queue) == 1:
             self._service_next_global_request()
 
-    def _process_global_response(self, pkttype, pktid, packet):
+    def _process_global_response(self, pkttype, _pktid, packet):
         """Process a global response"""
-
-        # pylint: disable=unused-argument
 
         if self._global_request_waiters:
             waiter = self._global_request_waiters.pop(0)
@@ -1770,10 +1734,8 @@ class SSHConnection(SSHPacketHandler):
         else:
             raise ProtocolError('Unexpected global response')
 
-    def _process_channel_open(self, pkttype, pktid, packet):
+    def _process_channel_open(self, _pkttype, _pktid, packet):
         """Process a channel open request"""
-
-        # pylint: disable=unused-argument
 
         chantype = packet.get_string()
         send_chan = packet.get_uint32()
@@ -1802,10 +1764,8 @@ class SSHConnection(SSHPacketHandler):
             self.send_channel_open_failure(send_chan, exc.code,
                                            exc.reason, exc.lang)
 
-    def _process_channel_open_confirmation(self, pkttype, pktid, packet):
+    def _process_channel_open_confirmation(self, _pkttype, _pktid, packet):
         """Process a channel open confirmation response"""
-
-        # pylint: disable=unused-argument
 
         recv_chan = packet.get_uint32()
         send_chan = packet.get_uint32()
@@ -1822,10 +1782,8 @@ class SSHConnection(SSHPacketHandler):
 
             raise ProtocolError('Invalid channel number')
 
-    def _process_channel_open_failure(self, pkttype, pktid, packet):
+    def _process_channel_open_failure(self, _pkttype, _pktid, packet):
         """Process a channel open failure response"""
-
-        # pylint: disable=unused-argument
 
         recv_chan = packet.get_uint32()
         code = packet.get_uint32()
@@ -2668,26 +2626,26 @@ class SSHClientConnection(SSHConnection):
 
         return result
 
-    def _process_session_open(self, packet):
+    def _process_session_open(self, _packet):
         """Process an inbound session open request
 
            These requests are disallowed on an SSH client.
 
         """
 
-        # pylint: disable=no-self-use,unused-argument
+        # pylint: disable=no-self-use
 
         raise ChannelOpenError(OPEN_ADMINISTRATIVELY_PROHIBITED,
                                'Session open forbidden on client')
 
-    def _process_direct_tcpip_open(self, packet):
+    def _process_direct_tcpip_open(self, _packet):
         """Process an inbound direct TCP/IP channel open request
 
            These requests are disallowed on an SSH client.
 
         """
 
-        # pylint: disable=no-self-use,unused-argument
+        # pylint: disable=no-self-use
 
         raise ChannelOpenError(OPEN_ADMINISTRATIVELY_PROHIBITED,
                                'Direct TCP/IP open forbidden on client')
@@ -2742,14 +2700,14 @@ class SSHClientConnection(SSHConnection):
 
             del self._remote_listeners[listen_host, listen_port]
 
-    def _process_direct_streamlocal_at_openssh_dot_com_open(self, packet):
+    def _process_direct_streamlocal_at_openssh_dot_com_open(self, _packet):
         """Process an inbound direct UNIX domain channel open request
 
            These requests are disallowed on an SSH client.
 
         """
 
-        # pylint: disable=no-self-use,unused-argument
+        # pylint: disable=no-self-use
 
         raise ChannelOpenError(OPEN_ADMINISTRATIVELY_PROHIBITED,
                                'Direct UNIX domain socket open '
@@ -3641,10 +3599,9 @@ class SSHClientConnection(SSHConnection):
 
         """
 
-        def session_factory(orig_host, orig_port):
+        def session_factory(_orig_host, _orig_port):
             """Return an SSHTCPSession used to do remote port forwarding"""
 
-            # pylint: disable=unused-argument
             return self.forward_connection(dest_host, dest_port)
 
         self.logger.info('Creating remote TCP forwarder from %s to %s',

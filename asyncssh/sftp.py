@@ -404,8 +404,6 @@ class _SFTPParallelIO:
     async def start(self):
         """Start parallel I/O"""
 
-        pass
-
     async def run_task(self, offset, size):
         """Perform file I/O on a particular byte range"""
 
@@ -414,12 +412,8 @@ class _SFTPParallelIO:
     async def finish(self):
         """Finish parallel I/O"""
 
-        pass
-
     async def cleanup(self):
         """Clean up parallel I/O"""
-
-        pass
 
     async def run(self):
         """Perform all file I/O and return result or exception"""
@@ -1028,8 +1022,6 @@ class SFTPClientHandler(SFTPHandler):
     def _process_status(self, packet):
         """Process an incoming SFTP status response"""
 
-        # pylint: disable=no-self-use
-
         code = packet.get_uint32()
 
         if packet:
@@ -1058,8 +1050,6 @@ class SFTPClientHandler(SFTPHandler):
     def _process_handle(self, packet):
         """Process an incoming SFTP handle response"""
 
-        # pylint: disable=no-self-use
-
         handle = packet.get_string()
         packet.check_end()
 
@@ -1070,8 +1060,6 @@ class SFTPClientHandler(SFTPHandler):
     def _process_data(self, packet):
         """Process an incoming SFTP data response"""
 
-        # pylint: disable=no-self-use
-
         data = packet.get_string()
         packet.check_end()
 
@@ -1081,8 +1069,6 @@ class SFTPClientHandler(SFTPHandler):
 
     def _process_name(self, packet):
         """Process an incoming SFTP name response"""
-
-        # pylint: disable=no-self-use
 
         count = packet.get_uint32()
         names = [SFTPName.decode(packet) for i in range(count)]
@@ -1097,8 +1083,6 @@ class SFTPClientHandler(SFTPHandler):
 
     def _process_attrs(self, packet):
         """Process an incoming SFTP attributes response"""
-
-        # pylint: disable=no-self-use
 
         attrs = SFTPAttrs().decode(packet)
         packet.check_end()
@@ -1751,7 +1735,6 @@ class SFTPClientFile:
 
         """
 
-        # pylint: disable=unpacking-non-sequence
         if times is None:
             atime = mtime = time.time()
         else:
@@ -2726,7 +2709,6 @@ class SFTPClient:
 
         """
 
-        # pylint: disable=unpacking-non-sequence
         if times is None:
             atime = mtime = time.time()
         else:
@@ -3488,14 +3470,11 @@ class SFTPServerHandler(SFTPHandler):
             listdir_result = await listdir_result
 
         for i, name in enumerate(listdir_result):
-            # pylint: disable=no-member
-
             if isinstance(name, bytes):
                 name = SFTPName(name)
                 listdir_result[i] = name
 
-                # pylint: disable=attribute-defined-outside-init
-
+                # pylint: disable=no-member
                 filename = os.path.join(path, name.filename)
                 attr_result = self._server.lstat(filename)
 
@@ -3505,6 +3484,7 @@ class SFTPServerHandler(SFTPHandler):
                 if isinstance(attr_result, os.stat_result):
                     attr_result = SFTPAttrs.from_local(attr_result)
 
+                # pylint: disable=attribute-defined-outside-init
                 name.attrs = attr_result
 
             if not name.longname:
@@ -3892,8 +3872,6 @@ class SFTPServer:
     def channel(self, chan):
         """Set the channel associated with this SFTP server session"""
 
-        # pylint: disable=attribute-defined-outside-init
-
         self._chan = chan
 
     @property
@@ -3944,6 +3922,7 @@ class SFTPServer:
 
         if uid is not None:
             try:
+                # pylint: disable=import-outside-toplevel
                 import pwd
                 user = pwd.getpwuid(uid).pw_name
             except (ImportError, KeyError):
@@ -3975,6 +3954,7 @@ class SFTPServer:
 
         if gid is not None:
             try:
+                # pylint: disable=import-outside-toplevel
                 import grp
                 group = grp.getgrgid(gid).gr_name
             except (ImportError, KeyError):
@@ -4573,8 +4553,6 @@ class SFTPServer:
 
     def exit(self):
         """Shut down this SFTP server"""
-
-        pass
 
 
 class SFTPServerFile:

@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2018 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2019 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -24,6 +24,8 @@
 class SSHSession:
     """SSH session handler"""
 
+    # pylint: disable=no-self-use,unused-argument
+
     def connection_lost(self, exc):
         """Called when a channel is closed
 
@@ -38,8 +40,6 @@ class SSHSession:
 
         """
 
-        pass # pragma: no cover
-
     def session_started(self):
         """Called when the session is started
 
@@ -50,8 +50,6 @@ class SSHSession:
            be called immediately after the connection is opened.
 
         """
-
-        pass # pragma: no cover
 
     def data_received(self, data, datatype):
         """Called when data is received on the channel
@@ -71,8 +69,6 @@ class SSHSession:
 
         """
 
-        pass # pragma: no cover
-
     def eof_received(self):
         """Called when EOF is received on the channel
 
@@ -89,8 +85,6 @@ class SSHSession:
 
         """
 
-        # pylint: disable=no-self-use
-
         return False # pragma: no cover
 
     def pause_writing(self):
@@ -104,8 +98,6 @@ class SSHSession:
 
         """
 
-        pass # pragma: no cover
-
     def resume_writing(self):
         """Called when the write buffer has sufficiently drained
 
@@ -114,8 +106,6 @@ class SSHSession:
            application to produce more data.
 
         """
-
-        pass # pragma: no cover
 
 
 class SSHClientSession(SSHSession):
@@ -136,6 +126,8 @@ class SSHClientSession(SSHSession):
 
     """
 
+    # pylint: disable=no-self-use,unused-argument
+
     def connection_made(self, chan):
         """Called when a channel is opened successfully
 
@@ -147,8 +139,6 @@ class SSHClientSession(SSHSession):
            :type chan: :class:`SSHClientChannel`
 
         """
-
-        pass # pragma: no cover
 
     def xon_xoff_requested(self, client_can_do):
         """XON/XOFF flow control has been enabled or disabled
@@ -171,8 +161,6 @@ class SSHClientSession(SSHSession):
 
         """
 
-        pass # pragma: no cover
-
     def exit_status_received(self, status):
         """A remote exit status has been received for this session
 
@@ -189,8 +177,6 @@ class SSHClientSession(SSHSession):
            :type status: `int`
 
         """
-
-        pass # pragma: no cover
 
     def exit_signal_received(self, signal, core_dumped, msg, lang):
         """A remote exit signal has been received for this session
@@ -218,8 +204,6 @@ class SSHClientSession(SSHSession):
 
         """
 
-        pass # pragma: no cover
-
 
 class SSHServerSession(SSHSession):
     """SSH server session handler
@@ -241,6 +225,8 @@ class SSHServerSession(SSHSession):
 
     """
 
+    # pylint: disable=no-self-use,unused-argument
+
     def connection_made(self, chan):
         """Called when a channel is opened successfully
 
@@ -252,8 +238,6 @@ class SSHServerSession(SSHSession):
            :type chan: :class:`SSHServerChannel`
 
         """
-
-        pass # pragma: no cover
 
     def pty_requested(self, term_type, term_size, term_modes):
         """A psuedo-terminal has been requested
@@ -294,8 +278,6 @@ class SSHServerSession(SSHSession):
 
         """
 
-        # pylint: disable=no-self-use,unused-argument
-
         return True # pragma: no cover
 
     def terminal_size_changed(self, width, height, pixwidth, pixheight):
@@ -324,10 +306,6 @@ class SSHServerSession(SSHSession):
 
         """
 
-        # pylint: disable=no-self-use,unused-argument
-
-        pass # pragma: no cover
-
     def shell_requested(self):
         """The client has requested a shell
 
@@ -346,8 +324,6 @@ class SSHServerSession(SSHSession):
                      allowed or not
 
         """
-
-        # pylint: disable=no-self-use,unused-argument
 
         return False # pragma: no cover
 
@@ -374,8 +350,6 @@ class SSHServerSession(SSHSession):
 
         """
 
-        # pylint: disable=no-self-use,unused-argument
-
         return False # pragma: no cover
 
     def subsystem_requested(self, subsystem):
@@ -401,8 +375,6 @@ class SSHServerSession(SSHSession):
 
         """
 
-        # pylint: disable=no-self-use,unused-argument
-
         return False # pragma: no cover
 
     def break_received(self, msec):
@@ -425,8 +397,6 @@ class SSHServerSession(SSHSession):
 
         """
 
-        # pylint: disable=no-self-use,unused-argument
-
         return False # pragma: no cover
 
     def signal_received(self, signal):
@@ -438,10 +408,6 @@ class SSHServerSession(SSHSession):
            By default, signals from the client are ignored.
 
         """
-
-        # pylint: disable=no-self-use,unused-argument
-
-        pass # pragma: no cover
 
 
 class SSHTCPSession(SSHSession):
@@ -485,8 +451,6 @@ class SSHTCPSession(SSHSession):
            :type chan: :class:`SSHTCPChannel`
 
         """
-
-        pass # pragma: no cover
 
 
 class SSHUNIXSession(SSHSession):
@@ -532,5 +496,3 @@ class SSHUNIXSession(SSHSession):
            :type chan: :class:`SSHUNIXChannel`
 
         """
-
-        pass # pragma: no cover

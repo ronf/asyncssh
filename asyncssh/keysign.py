@@ -54,8 +54,6 @@ class SSHKeySignKeyPair(SSHKeyPair):
     def set_sig_algorithm(self, sig_algorithm):
         """Only the main signing algorithm is supported by ssh-keysign"""
 
-        pass
-
     async def sign(self, data):
         """Use ssh-keysign to sign a block of data with this key"""
 

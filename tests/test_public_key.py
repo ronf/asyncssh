@@ -2040,10 +2040,8 @@ class _TestPublicKeyTopLevel(TempDirTestCase):
                         '-param_enc explicit' % curve)
                     asyncssh.read_private_key('priv')
 
-    # pylint: disable=unsupported-membership-test
     @unittest.skipIf(b'secp224r1' not in run('openssl ecparam -list_curves'),
                      "this openssl doesn't support secp224r1")
-    # pylint: enable=unsupported-membership-test
     @unittest.skipIf(not _openssl_available, "openssl isn't available")
     def test_ec_explicit_unknown(self):
         """Import EC key with unknown explicit parameters"""

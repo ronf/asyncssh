@@ -53,11 +53,12 @@ class _FailValidateHostSSHServerConnection(asyncssh.SSHServerConnection):
 class _AsyncGSSServer(asyncssh.SSHServer):
     """Server for testing async GSS authentication"""
 
+    # pylint: disable=useless-super-delegation
+
     async def validate_gss_principal(self, username, user_principal,
                                      host_principal):
         """Return whether password is valid for this user"""
 
-        # pylint: disable=useless-super-delegation
         return super().validate_gss_principal(username, user_principal,
                                               host_principal)
 
@@ -104,11 +105,12 @@ class _HostBasedServer(Server):
 class _AsyncHostBasedServer(Server):
     """Server for testing async host-based authentication"""
 
+    # pylint: disable=useless-super-delegation
+
     async def validate_host_based_user(self, username, client_host,
                                        client_username):
         """Return whether remote host and user is authorized for this user"""
 
-        # pylint: disable=useless-super-delegation
         return super().validate_host_based_user(username, client_host,
                                                 client_username)
 
@@ -143,10 +145,11 @@ class _PublicKeyClient(asyncssh.SSHClient):
 class _AsyncPublicKeyClient(_PublicKeyClient):
     """Test async client public key authentication"""
 
+    # pylint: disable=useless-super-delegation
+
     async def public_key_auth_requested(self):
         """Return a public key to authenticate with"""
 
-        # pylint: disable=useless-super-delegation
         return await super().public_key_auth_requested()
 
 
@@ -193,22 +196,21 @@ class _PublicKeyServer(Server):
 class _AsyncPublicKeyServer(_PublicKeyServer):
     """Server for testing async public key authentication"""
 
+    # pylint: disable=useless-super-delegation
+
     async def begin_auth(self, username):
         """Handle client authentication request"""
 
-        # pylint: disable=useless-super-delegation
         return super().begin_auth(username)
 
     async def validate_public_key(self, username, key):
         """Return whether key is an authorized client key for this user"""
 
-        # pylint: disable=useless-super-delegation
         return super().validate_public_key(username, key)
 
     async def validate_ca_key(self, username, key):
         """Return whether key is an authorized CA key for this user"""
 
-        # pylint: disable=useless-super-delegation
         return super().validate_ca_key(username, key)
 
 
@@ -239,16 +241,16 @@ class _PasswordClient(asyncssh.SSHClient):
 class _AsyncPasswordClient(_PasswordClient):
     """Test async client password authentication"""
 
+    # pylint: disable=useless-super-delegation
+
     async def password_auth_requested(self):
         """Return a password to authenticate with"""
 
-        # pylint: disable=useless-super-delegation
         return super().password_auth_requested()
 
     async def password_change_requested(self, prompt, lang):
         """Change the client's password"""
 
-        # pylint: disable=useless-super-delegation
         return super().password_change_requested(prompt, lang)
 
 
@@ -277,16 +279,16 @@ class _PasswordServer(Server):
 class _AsyncPasswordServer(_PasswordServer):
     """Server for testing async password authentication"""
 
+    # pylint: disable=useless-super-delegation
+
     async def validate_password(self, username, password):
         """Return whether password is valid for this user"""
 
-        # pylint: disable=useless-super-delegation
         return super().validate_password(username, password)
 
     async def change_password(self, username, old_password, new_password):
         """Handle a request to change a user's password"""
 
-        # pylint: disable=useless-super-delegation
         return super().change_password(username, old_password, new_password)
 
 
@@ -319,17 +321,17 @@ class _KbdintClient(asyncssh.SSHClient):
 class _AsyncKbdintClient(_KbdintClient):
     """Test keyboard-interactive client auth"""
 
+    # pylint: disable=useless-super-delegation
+
     async def kbdint_auth_requested(self):
         """Return the list of supported keyboard-interactive auth methods"""
 
-        # pylint: disable=useless-super-delegation
         return super().kbdint_auth_requested()
 
     async def kbdint_challenge_received(self, name, instructions,
                                         lang, prompts):
         """Return responses to a keyboard-interactive auth challenge"""
 
-        # pylint: disable=useless-super-delegation
         return super().kbdint_challenge_received(name, instructions,
                                                  lang, prompts)
 
@@ -369,17 +371,17 @@ class _KbdintServer(Server):
 class _AsyncKbdintServer(_KbdintServer):
     """Server for testing async keyboard-interactive authentication"""
 
+    # pylint: disable=useless-super-delegation
+
     async def get_kbdint_challenge(self, username, lang, submethods):
         """Return a keyboard-interactive auth challenge"""
 
-        # pylint: disable=useless-super-delegation
         return super().get_kbdint_challenge(username, lang, submethods)
 
     async def validate_kbdint_response(self, username, responses):
         """Return whether the keyboard-interactive response is valid
            for this user"""
 
-        # pylint: disable=useless-super-delegation
         return super().validate_kbdint_response(username, responses)
 
 

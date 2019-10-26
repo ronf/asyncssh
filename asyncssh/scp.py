@@ -62,6 +62,7 @@ def _parse_t_args(args):
 async def _parse_path(path, **kwargs):
     """Convert an SCP path into an SSHClientConnection and path"""
 
+    # pylint: disable=cyclic-import,import-outside-toplevel
     from . import connect
 
     if isinstance(path, tuple):

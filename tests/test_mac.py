@@ -1,4 +1,4 @@
-# Copyright (c) 2015-2018 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2015-2019 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -58,6 +58,7 @@ class _TestMAC(unittest.TestCase):
         """Unit test some unused parts of the UMAC wrapper code"""
 
         try:
+            # pylint: disable=import-outside-toplevel
             from asyncssh.crypto import umac32
         except ImportError: # pragma: no cover
             self.skipTest('umac not available')

@@ -84,8 +84,6 @@ class _KeepaliveClientConnectionFailure(asyncssh.SSHClientConnection):
     def _process_keepalive_at_openssh_dot_com_global_request(self, packet):
         """Ignore an incoming OpenSSH keepalive request"""
 
-        pass
-
 
 class _KeepaliveServerConnection(asyncssh.SSHServerConnection):
     """Test handling of keepalive requests on server"""
@@ -102,8 +100,6 @@ class _KeepaliveServerConnectionFailure(asyncssh.SSHServerConnection):
 
     def _process_keepalive_at_openssh_dot_com_global_request(self, packet):
         """Ignore an incoming OpenSSH keepalive request"""
-
-        pass
 
 
 class _VersionedServerConnection(asyncssh.SSHServerConnection):
@@ -332,8 +328,6 @@ class _TestConnection(ServerTestCase):
 
         def acceptor(conn):
             """Acceptor for SSH connections"""
-
-            # pylint: disable=unused-argument
 
             conn.logger.info('Acceptor called')
 
@@ -1156,8 +1150,6 @@ class _TestConnectionAsyncAcceptor(ServerTestCase):
         async def acceptor(conn):
             """Async cceptor for SSH connections"""
 
-            # pylint: disable=unused-argument
-
             conn.logger.info('Acceptor called')
 
         return (await cls.create_server(_TunnelServer, gss_host=(),
@@ -1181,8 +1173,6 @@ class _TestConnectionReverse(ServerTestCase):
 
         def acceptor(conn):
             """Acceptor for reverse-direction SSH connections"""
-
-            # pylint: disable=unused-argument
 
             conn.logger.info('Reverse acceptor called')
 
@@ -1221,8 +1211,6 @@ class _TestConnectionReverseAsyncAcceptor(ServerTestCase):
         async def acceptor(conn):
             """Acceptor for reverse-direction SSH connections"""
 
-            # pylint: disable=unused-argument
-
             conn.logger.info('async acceptor called')
 
         return await cls.listen_reverse(acceptor=acceptor)
@@ -1243,10 +1231,8 @@ class _TestConnectionReverseFailed(ServerTestCase):
     async def start_server(cls):
         """Start an SSH listener which opens SSH client connections"""
 
-        def err_handler(conn, exc):
+        def err_handler(conn, _exc):
             """Error handler for failed SSH handshake"""
-
-            # pylint: disable=unused-argument
 
             conn.logger.info('Error handler called')
 

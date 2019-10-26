@@ -1,4 +1,4 @@
-# Copyright (c) 2015-2018 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2015-2019 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -87,10 +87,8 @@ class _HashedHost:
         hosthash = hmac.new(self._salt, value.encode(), sha1).digest()
         return hosthash == self._hosthash
 
-    def matches(self, host, addr, ip):
+    def matches(self, host, addr, _ip):
         """Return whether a host or address matches this host hash"""
-
-        # pylint: disable=unused-argument
 
         return (host and self._match(host)) or (addr and self._match(addr))
 

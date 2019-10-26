@@ -95,6 +95,8 @@ def patch_gss(cls):
     if not gss_available: # pragma: no cover
         return cls
 
+    # pylint: disable=import-outside-toplevel
+
     if sys.platform == 'win32': # pragma: no cover
         from .sspi_stub import SSPIAuth
 
@@ -328,7 +330,6 @@ class AsyncTestCase(TempDirTestCase):
         asyncio.set_event_loop(cls.loop)
 
         try:
-            # pylint: disable=no-member
             cls.loop.run_until_complete(cls.asyncSetUpClass())
         except AttributeError:
             pass
@@ -338,7 +339,6 @@ class AsyncTestCase(TempDirTestCase):
         """Run async class teardown and close event loop"""
 
         try:
-            # pylint: disable=no-member
             cls.loop.run_until_complete(cls.asyncTearDownClass())
         except AttributeError:
             pass
@@ -351,7 +351,6 @@ class AsyncTestCase(TempDirTestCase):
         """Run async setup if any"""
 
         try:
-            # pylint: disable=no-member
             self.loop.run_until_complete(self.asyncSetUp())
         except AttributeError:
             pass
@@ -360,7 +359,6 @@ class AsyncTestCase(TempDirTestCase):
         """Run async teardown if any"""
 
         try:
-            # pylint: disable=no-member
             self.loop.run_until_complete(self.asyncTearDown())
         except AttributeError:
             pass

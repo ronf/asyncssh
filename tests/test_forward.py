@@ -47,18 +47,14 @@ def _echo_non_async(stdin, stdout, stderr=None):
     conn.create_task(echo(stdin, stdout, stderr))
 
 
-def _listener(orig_host, orig_port):
+def _listener(_orig_host, _orig_port):
     """Handle a forwarded TCP/IP connection"""
-
-    # pylint: disable=unused-argument
 
     return echo
 
 
-def _listener_non_async(orig_host, orig_port):
+def _listener_non_async(_orig_host, _orig_port):
     """Non-async version of handler for a forwarded TCP/IP connection"""
-
-    # pylint: disable=unused-argument
 
     return _echo_non_async
 
@@ -66,15 +62,11 @@ def _listener_non_async(orig_host, orig_port):
 def _unix_listener():
     """Handle a forwarded UNIX domain connection"""
 
-    # pylint: disable=unused-argument
-
     return echo
 
 
 def _unix_listener_non_async():
     """Non-async version of handler for a forwarded UNIX domain connection"""
-
-    # pylint: disable=unused-argument
 
     return _echo_non_async
 
@@ -88,10 +80,8 @@ async def _pause(reader, writer):
     await maybe_wait_closed(writer)
 
 
-async def _async_runtime_error(reader, writer):
+async def _async_runtime_error(_reader, _writer):
     """Raise a runtime error"""
-
-    # pylint: disable=unused-argument
 
     raise RuntimeError('Async internal error')
 
@@ -122,12 +112,8 @@ class _EchoPortListener(asyncssh.SSHListener):
     def close(self):
         """Stop listening for new connections"""
 
-        pass
-
     async def wait_closed(self):
         """Wait for the listener to close"""
-
-        pass # pragma: no cover
 
 
 class _EchoPathListener(asyncssh.SSHListener):
@@ -148,12 +134,8 @@ class _EchoPathListener(asyncssh.SSHListener):
     def close(self):
         """Stop listening for new connections"""
 
-        pass
-
     async def wait_closed(self):
         """Wait for the listener to close"""
-
-        pass # pragma: no cover
 
 
 class _TCPConnectionServer(Server):
@@ -423,10 +405,8 @@ class _TestTCPForwarding(_CheckForwarding):
 
             waiter.set_result((reader, writer))
 
-        def handler_factory(orig_host, orig_port):
+        def handler_factory(_orig_host, _orig_port):
             """Handle all connections using new_connection"""
-
-            # pylint: disable=unused-argument
 
             return new_connection
 
@@ -792,8 +772,6 @@ class _TestUNIXForwarding(_CheckForwarding):
 
         def handler_factory():
             """Handle all connections using new_connection"""
-
-            # pylint: disable=unused-argument
 
             return new_connection
 

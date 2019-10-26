@@ -430,7 +430,6 @@ class SSHChannel(SSHPacketHandler):
     async def _finish_open_request(self, session):
         """Finish processing a channel open request"""
 
-        # pylint: disable=broad-except
         try:
             if asyncio.iscoroutine(session):
                 session = await session
@@ -495,10 +494,8 @@ class SSHChannel(SSHPacketHandler):
         self._open_waiter = None
         self._loop.call_soon(self._cleanup)
 
-    def _process_window_adjust(self, pkttype, pktid, packet):
+    def _process_window_adjust(self, _pkttype, _pktid, packet):
         """Process a send window adjustment"""
-
-        # pylint: disable=unused-argument
 
         if self._recv_state not in {'open', 'eof_pending', 'eof'}:
             raise ProtocolError('Channel not open')
@@ -513,10 +510,8 @@ class SSHChannel(SSHPacketHandler):
 
         self._flush_send_buf()
 
-    def _process_data(self, pkttype, pktid, packet):
+    def _process_data(self, _pkttype, _pktid, packet):
         """Process incoming data"""
-
-        # pylint: disable=unused-argument
 
         if self._recv_state != 'open':
             raise ProtocolError('Channel not open for sending')
@@ -526,10 +521,8 @@ class SSHChannel(SSHPacketHandler):
 
         self._accept_data(data)
 
-    def _process_extended_data(self, pkttype, pktid, packet):
+    def _process_extended_data(self, _pkttype, _pktid, packet):
         """Process incoming extended data"""
-
-        # pylint: disable=unused-argument
 
         if self._recv_state != 'open':
             raise ProtocolError('Channel not open for sending')
@@ -543,10 +536,8 @@ class SSHChannel(SSHPacketHandler):
 
         self._accept_data(data, datatype)
 
-    def _process_eof(self, pkttype, pktid, packet):
+    def _process_eof(self, _pkttype, _pktid, packet):
         """Process an incoming end of file"""
-
-        # pylint: disable=unused-argument
 
         if self._recv_state != 'open':
             raise ProtocolError('Channel not open for sending')
@@ -558,10 +549,8 @@ class SSHChannel(SSHPacketHandler):
         self._recv_state = 'eof_pending'
         self._flush_recv_buf()
 
-    def _process_close(self, pkttype, pktid, packet):
+    def _process_close(self, _pkttype, _pktid, packet):
         """Process an incoming channel close"""
-
-        # pylint: disable=unused-argument
 
         if self._recv_state not in {'open', 'eof_pending', 'eof'}:
             raise ProtocolError('Channel not open')
@@ -575,10 +564,8 @@ class SSHChannel(SSHPacketHandler):
         self._recv_state = 'close_pending'
         self._flush_recv_buf()
 
-    def _process_request(self, pkttype, pktid, packet):
+    def _process_request(self, _pkttype, _pktid, packet):
         """Process an incoming channel request"""
-
-        # pylint: disable=unused-argument
 
         if self._recv_state not in {'open', 'eof_pending', 'eof'}:
             raise ProtocolError('Channel not open')
@@ -595,10 +582,8 @@ class SSHChannel(SSHPacketHandler):
         if len(self._request_queue) == 1:
             self._service_next_request()
 
-    def _process_response(self, pkttype, pktid, packet):
+    def _process_response(self, pkttype, _pktid, packet):
         """Process a success or failure response"""
-
-        # pylint: disable=unused-argument
 
         packet.check_end()
 

@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2018 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2019 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -215,10 +215,9 @@ class _Null:
     """A null value"""
 
     @staticmethod
-    def encode(value):
+    def encode(_value):
         """Encode a DER null value"""
 
-        # pylint: disable=unused-argument
         return b''
 
     @classmethod
@@ -342,9 +341,7 @@ class _Sequence:
 
         value = []
         while offset < length:
-            # pylint: disable=unpacking-non-sequence
             item, consumed = der_decode(content[offset:], partial_ok=True)
-            # pylint: enable=unpacking-non-sequence
             value.append(item)
             offset += consumed
 
@@ -373,9 +370,7 @@ class _Set:
 
         value = set()
         while offset < length:
-            # pylint: disable=unpacking-non-sequence
             item, consumed = der_decode(content[offset:], partial_ok=True)
-            # pylint: enable=unpacking-non-sequence
             value.add(item)
             offset += consumed
 

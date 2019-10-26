@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2018 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2019 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -28,9 +28,6 @@ from .public_key import SSHKey, SSHOpenSSHCertificateV01, KeyExportError
 from .public_key import register_public_key_alg, register_certificate_alg
 from .public_key import register_x509_certificate_alg
 
-# Short variable names are used here, matching names in the spec
-# pylint: disable=invalid-name
-
 
 class _RSAKey(SSHKey):
     """Handler for RSA public key encryption"""
@@ -57,10 +54,8 @@ class _RSAKey(SSHKey):
                      self._key.p, self._key.q))
 
     @classmethod
-    def generate(cls, algorithm, *, key_size=2048, exponent=65537):
+    def generate(cls, _algorithm, *, key_size=2048, exponent=65537):
         """Generate a new RSA private key"""
-
-        # pylint: disable=unused-argument
 
         return cls(RSAPrivateKey.generate(key_size, exponent))
 
@@ -197,8 +192,6 @@ class _RSAKey(SSHKey):
     def sign_der(self, data, sig_algorithm):
         """Compute a DER-encoded signature of the specified data"""
 
-        # pylint: disable=unused-argument
-
         if not self._key.d:
             raise ValueError('Private key needed for signing')
 
@@ -206,8 +199,6 @@ class _RSAKey(SSHKey):
 
     def verify_der(self, data, sig_algorithm, sig):
         """Verify a DER-encoded signature of the specified data"""
-
-        # pylint: disable=unused-argument
 
         return self._key.verify(data, sig, sig_algorithm)
 

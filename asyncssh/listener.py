@@ -28,7 +28,7 @@ from .forward import SSHLocalPortForwarder, SSHLocalPathForwarder
 from .socks import SSHSOCKSForwarder
 
 
-class SSHListener(asyncio.AbstractServer):
+class SSHListener:
     """SSH listener for inbound connections"""
 
     def get_port(self):
@@ -239,6 +239,7 @@ async def create_tcp_local_listener(conn, loop, protocol_factory,
                 exc.errno = errno.EOVERFLOW
                 exc.strerror = str(exc)
 
+            # pylint: disable=no-member
             raise OSError(exc.errno, 'error while attempting to bind on '
                           'address %r: %s' % (sa, exc.strerror)) from None
 

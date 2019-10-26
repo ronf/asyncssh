@@ -91,11 +91,6 @@ class _TestAgent(AsyncTestCase):
     _agent_pid = None
     _public_keys = {}
 
-    # Pylint doesn't like mixed case method names, but this was chosen to
-    # match the convention used in the unittest module.
-
-    # pylint: disable=invalid-name
-
     @staticmethod
     def set_askpass(status):
         """Set return status for ssh-askpass"""
@@ -103,6 +98,11 @@ class _TestAgent(AsyncTestCase):
         with open('ssh-askpass', 'w') as f:
             f.write('#!/bin/sh\nexit %d\n' % status)
             os.chmod('ssh-askpass', 0o755)
+
+    # Pylint doesn't like mixed case method names, but this was chosen to
+    # match the convention used in the unittest module.
+
+    # pylint: disable=invalid-name
 
     @classmethod
     async def asyncSetUpClass(cls):
@@ -355,8 +355,6 @@ class _TestAgent(AsyncTestCase):
     @asynctest
     async def test_errors(self):
         """Test getting error responses from SSH agent"""
-
-        # pylint: disable=bad-whitespace
 
         key = asyncssh.generate_private_key('ssh-rsa')
         keypair = asyncssh.load_keypairs(key)[0]

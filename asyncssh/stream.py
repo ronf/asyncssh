@@ -338,10 +338,8 @@ class SSHStreamSession:
         if waiter and not waiter.done():
             waiter.set_result(None)
 
-    def _should_block_drain(self, datatype):
+    def _should_block_drain(self, _datatype):
         """Return whether output is still being written to the channel"""
-
-        # pylint: disable=unused-argument
 
         return self._write_paused and not self._connection_lost
 
@@ -470,7 +468,7 @@ class SSHStreamSession:
                                 raise exc
 
                     l = len(recv_buf[0])
-                    if n > 0 and l > n:
+                    if l > n > 0:
                         data.append(recv_buf[0][:n])
                         recv_buf[0] = recv_buf[0][n:]
                         self._recv_buf_len -= n
@@ -578,7 +576,7 @@ class SSHStreamSession:
                 exc = BrokenPipeError()
 
             if exc:
-                raise exc   # pylint: disable=raising-bad-type
+                raise exc
 
 
 class SSHClientStreamSession(SSHStreamSession, SSHClientSession):

@@ -1,4 +1,4 @@
-# Copyright (c) 2017-2018 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2017-2019 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -48,16 +48,12 @@ except ImportError: # pragma: no cover
     class GSSClient:
         """Stub client class for reporting that GSS is not available"""
 
-        def __init__(self, host, delegate_creds):
-            # pylint: disable=unused-argument
-
+        def __init__(self, _host, _delegate_creds):
             raise GSSError()
 
 
     class GSSServer:
         """Stub client class for reporting that GSS is not available"""
 
-        def __init__(self, host):
-            # pylint: disable=unused-argument
-
+        def __init__(self, _host):
             raise GSSError()

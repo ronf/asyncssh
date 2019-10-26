@@ -95,9 +95,6 @@ _dh_gex_groups = ((1024, _group1_g,  _group1_p),
 
 # pylint: enable=bad-whitespace,line-too-long
 
-# Short variable names are used here, matching names in the spec
-# pylint: disable=invalid-name
-
 
 class _KexDHBase(Kex):
     """Abstract base class for Diffie-Hellman key exchange"""
@@ -229,10 +226,8 @@ class _KexDHBase(Kex):
 
         self._conn.send_newkeys(k, h)
 
-    def _process_init(self, pkttype, pktid, packet):
+    def _process_init(self, _pkttype, _pktid, packet):
         """Process a DH init message"""
-
-        # pylint: disable=unused-argument
 
         if self._conn.is_client():
             raise ProtocolError('Unexpected kex init msg')
@@ -243,10 +238,8 @@ class _KexDHBase(Kex):
         host_key = self._conn.get_server_host_key()
         self._perform_reply(host_key, host_key.public_data)
 
-    def _process_reply(self, pkttype, pktid, packet):
+    def _process_reply(self, _pkttype, _pktid, packet):
         """Process a DH reply message"""
-
-        # pylint: disable=unused-argument
 
         if self._conn.is_server():
             raise ProtocolError('Unexpected kex reply msg')
@@ -317,10 +310,8 @@ class _KexDHGex(_KexDHBase):
         self._gex_data = args
         self.send_packet(pkttype, args)
 
-    def _process_request(self, pkttype, pktid, packet):
+    def _process_request(self, pkttype, _pktid, packet):
         """Process a DH gex request message"""
-
-        # pylint: disable=unused-argument
 
         if self._conn.is_client():
             raise ProtocolError('Unexpected kex request msg')
@@ -352,10 +343,8 @@ class _KexDHGex(_KexDHBase):
         self._gex_data += MPInt(p) + MPInt(g)
         self.send_packet(self._group_type, MPInt(p), MPInt(g))
 
-    def _process_group(self, pkttype, pktid, packet):
+    def _process_group(self, _pkttype, _pktid, packet):
         """Process a DH gex group message"""
-
-        # pylint: disable=unused-argument
 
         if self._conn.is_server():
             raise ProtocolError('Unexpected kex group msg')
@@ -511,10 +500,8 @@ class _KexGSSBase(_KexDHBase):
 
             raise KeyExchangeFailed(str(exc))
 
-    def _process_init(self, pkttype, pktid, packet):
+    def _process_init(self, _pkttype, _pktid, packet):
         """Process a GSS init message"""
-
-        # pylint: disable=unused-argument
 
         if self._conn.is_client():
             raise ProtocolError('Unexpected kexgss init msg')
@@ -540,10 +527,8 @@ class _KexGSSBase(_KexDHBase):
         else:
             self._send_continue()
 
-    def _process_continue(self, pkttype, pktid, packet):
+    def _process_continue(self, _pkttype, _pktid, packet):
         """Process a GSS continue message"""
-
-        # pylint: disable=unused-argument
 
         token = packet.get_string()
         packet.check_end()
@@ -559,10 +544,8 @@ class _KexGSSBase(_KexDHBase):
         else:
             self._send_continue()
 
-    def _process_complete(self, pkttype, pktid, packet):
+    def _process_complete(self, _pkttype, _pktid, packet):
         """Process a GSS complete message"""
-
-        # pylint: disable=unused-argument
 
         if self._conn.is_server():
             raise ProtocolError('Unexpected kexgss complete msg')
@@ -589,18 +572,14 @@ class _KexGSSBase(_KexDHBase):
         self._verify_reply(self._gss, self._host_key_data, mic)
         self._conn.enable_gss_kex_auth()
 
-    def _process_hostkey(self, pkttype, pktid, packet):
+    def _process_hostkey(self, _pkttype, _pktid, packet):
         """Process a GSS hostkey message"""
-
-        # pylint: disable=unused-argument
 
         self._host_key_data = packet.get_string()
         packet.check_end()
 
-    def _process_error(self, pkttype, pktid, packet):
+    def _process_error(self, _pkttype, _pktid, packet):
         """Process a GSS error message"""
-
-        # pylint: disable=unused-argument
 
         if self._conn.is_server():
             raise ProtocolError('Unexpected kexgss error msg')
@@ -689,6 +668,7 @@ for _curve_id, _hash_name, _hash_alg in ((b'nistp521', b'sha512', sha512),
                      _hash_alg, ECDH, _curve_id)
     register_gss_kex_alg(b'gss-' + _curve_id + b'-' + _hash_name, _KexGSSECDH,
                          _hash_alg, ECDH, _curve_id)
+
 # pylint: disable=bad-whitespace
 
 for _name, _hash_alg in ((b'sha256', sha256), (b'sha1', sha1)):

@@ -121,8 +121,6 @@ class SSHSOCKSForwarder(SSHLocalForwarder):
     def _recv_socks4_hostname(self, data):
         """Parse SOCKSv4 hostname"""
 
-        # pylint: disable=unused-argument
-
         try:
             self._host = data.decode('utf-8')
         except UnicodeDecodeError:

@@ -955,10 +955,8 @@ class SSHKey:
                 if isinstance(passphrase, str):
                     passphrase = passphrase.encode('utf-8')
 
-                # pylint: disable=no-member
                 key = bcrypt.kdf(passphrase, salt, key_size + iv_size,
                                  rounds, ignore_few_rounds)
-                # pylint: enable=no-member
 
                 cipher = get_encryption(alg, key[:key_size], key[key_size:])
                 block_size = max(block_size, 8)
@@ -1464,10 +1462,8 @@ class SSHOpenSSHCertificate(SSHCertificate):
         return b''.join(result)
 
     @staticmethod
-    def _encode_bool(value):
+    def _encode_bool(_value):
         """Encode a boolean option value"""
-
-        # pylint: disable=unused-argument
 
         return b''
 
@@ -1484,10 +1480,8 @@ class SSHOpenSSHCertificate(SSHCertificate):
         return NameList(str(addr).encode('ascii') for addr in source_address)
 
     @staticmethod
-    def _decode_bool(packet):
+    def _decode_bool(_packet):
         """Decode a boolean option value"""
-
-        # pylint: disable=unused-argument
 
         return True
 
@@ -1719,10 +1713,8 @@ class SSHX509CertificateChain(SSHCertificate):
         self._ocsp_responses = ocsp_responses
 
     @classmethod
-    def construct(cls, packet, algorithm, key_handler, comment=None):
+    def construct(cls, packet, algorithm, _key_handler, comment=None):
         """Construct an SSH X.509 certificate from packetized data"""
-
-        # pylint: disable=unused-argument
 
         cert_count = packet.get_uint32()
         certs = [import_certificate(packet.get_string())
@@ -2204,10 +2196,8 @@ def _decode_openssh_private(data, passphrase):
                 passphrase = passphrase.encode('utf-8')
 
             try:
-                # pylint: disable=no-member
                 key = bcrypt.kdf(passphrase, salt, key_size + iv_size,
                                  rounds, ignore_few_rounds=True)
-                # pylint: enable=no-member
             except ValueError:
                 raise KeyEncryptionError('Invalid OpenSSH '
                                          'private key') from None

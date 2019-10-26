@@ -59,7 +59,7 @@ confidence=
 # --enable=similarities". If you want to run only the classes checker, but have
 # no Warning level messages displayed, use"--disable=all --enable=classes
 # --disable=W"
-disable=fixme,locally-enabled,locally-disabled,redefined-variable-type,no-else-return,inconsistent-return-statements
+disable=fixme,locally-enabled,locally-disabled,redefined-variable-type,no-else-break,no-else-raise,no-else-return,inconsistent-return-statements,useless-return,assignment-from-no-return
 
 
 [REPORTS]
@@ -95,7 +95,7 @@ evaluation=10.0 - ((float(5 * error + warning + refactor + convention) / stateme
 bad-functions=map,filter
 
 # Good variable names which should always be accepted, separated by a comma
-good-names=a,av,b,c,ca,ch,cn,f,fd,fp,fs,g,h,i,ip,iv,j,k,l,n,r,s,sa,t,v,x,y,_
+good-names=A,B,D,I,a,av,b,c,ca,ch,cn,d,e,f,fd,fp,fs,g,h,i,ip,iv,j,k,l,n,p,q,r,s,sa,t,v,x,y,_,_e,_f,_g,_k,_p,_q,_x
 
 # Bad variable names which should always be refused, separated by a comma
 bad-names=

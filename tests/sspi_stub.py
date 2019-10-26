@@ -1,4 +1,4 @@
-# Copyright (c) 2017-2018 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2017-2019 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -60,9 +60,7 @@ class SSPIContext:
 class SSPIAuth:
     """Stub class for SSPI authentication"""
 
-    def __init__(self, package=None, spn=None, targetspn=None, scflags=None):
-        # pylint: disable=unused-argument
-
+    def __init__(self, _package=None, spn=None, targetspn=None, scflags=None):
         host = spn or targetspn
 
         if 'init_error' in host:

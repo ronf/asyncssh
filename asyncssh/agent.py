@@ -25,11 +25,9 @@ import errno
 import os
 import sys
 
-import asyncssh
-
 from .misc import async_context_manager, maybe_wait_closed
 from .packet import Byte, String, UInt32, PacketDecodeError, SSHPacket
-from .public_key import SSHKeyPair, load_default_keypairs
+from .public_key import SSHKeyPair, load_default_keypairs, load_keypairs
 
 
 try:
@@ -38,10 +36,8 @@ try:
     else:
         from .agent_unix import open_agent
 except ImportError as exc: # pragma: no cover
-    async def open_agent(agent_path, reason=str(exc)):
+    async def open_agent(_agent_path, reason=str(exc)):
         """Dummy function if we're unable to import agent support"""
-
-        # pylint: disable=unused-argument
 
         raise OSError(errno.ENOENT, 'Agent support unavailable: %s' % reason)
 
@@ -179,7 +175,7 @@ class SSHAgentClient:
     async def connect(self):
         """Connect to the SSH agent"""
 
-        if isinstance(self._agent_path, asyncssh.SSHServerConnection):
+        if hasattr(self._agent_path, 'open_agent_connection'):
             self._reader, self._writer = \
                 await self._agent_path.open_agent_connection()
         else:
@@ -292,7 +288,7 @@ class SSHAgentClient:
         """
 
         if keylist:
-            keypairs = asyncssh.load_keypairs(keylist, passphrase)
+            keypairs = load_keypairs(keylist, passphrase)
         else:
             keypairs = load_default_keypairs(passphrase)
 

@@ -67,8 +67,6 @@ class SSHClient:
 
         """
 
-        pass # pragma: no cover
-
     def connection_lost(self, exc):
         """Called when a connection is lost or closed
 
@@ -83,8 +81,6 @@ class SSHClient:
            :type exc: :class:`Exception`
 
         """
-
-        pass # pragma: no cover
 
     def debug_msg_received(self, msg, lang, always_display):
         """A debug message was received on this connection
@@ -104,8 +100,6 @@ class SSHClient:
            :type always_display: `bool`
 
         """
-
-        pass # pragma: no cover
 
     def validate_host_public_key(self, host, addr, port, key):
         """Return whether key is an authorized key for this host
@@ -204,8 +198,6 @@ class SSHClient:
 
         """
 
-        pass # pragma: no cover
-
     def auth_completed(self):
         """Authentication was completed successfully
 
@@ -220,8 +212,6 @@ class SSHClient:
            doesn't need to be performed in a callback.
 
         """
-
-        pass # pragma: no cover
 
     def public_key_auth_requested(self):
         """Public key authentication has been requested
@@ -316,8 +306,6 @@ class SSHClient:
 
         """
 
-        pass # pragma: no cover
-
     def password_change_failed(self):
         """The requested password change has failed
 
@@ -328,8 +316,6 @@ class SSHClient:
            will automatically be attempted.
 
         """
-
-        pass # pragma: no cover
 
     def kbdint_auth_requested(self):
         """Keyboard-interactive authentication has been requested
