@@ -3,6 +3,63 @@
 Change Log
 ==========
 
+Release 2.0.0 (26 Oct 2019)
+---------------------------
+
+* NEW MAJOR VERSION: See below for potentially incompatible changes.
+
+* Updated AsyncSSH to use the modern async/await syntax internally,
+  now requiring Python 3.6 or later. Those wishing to use AsyncSSH on
+  Python 3.4 or 3.5 should stick to the AsyncSSH 1.x releases.
+
+* Changed first argument of SFTPServer constructor from an
+  SSHServerConnection (conn) to an SSHServerChannel (chan) to allow
+  custom SFTP server implementations to access environment variables
+  set on the channel that SFTP is run over. Applications which subclass
+  the SFTPServer class and implement an __init__ method will need to be
+  updated to account for this change and pass the new argument through
+  to the SFTPServer parent class. If the subclass has no __init__ and
+  just uses the connection, channel, and env properties of SFTPServer
+  to access this information, no changes should be required.
+
+* Removed deprecated "session_encoding" and "session_errors" arguments
+  from create_server() and listen() functions. These arguments were
+  renamed to "encoding" and "errors" back in version 1.16.0 to be
+  consistent with other AsyncSSH APIs.
+
+* Removed get_environment(), get_command(), and get_subsystem() methods
+  on SSHServerProcess class. This information was made available as
+  "env", "command", and "subsystem" properties of SSHServerProcess in
+  AsyncSSH 1.11.0.
+
+* Removed optional loop argument from all public AsyncSSH APIs,
+  consistent with the deprecation of this argument in the asyncio
+  package in Python 3.8. Calls will now always use the event loop
+  which is active at the time of the call.
+
+* Removed support for non-async context managers on AsyncSSH connections
+  and processes and SFTP client connections and file objects. Callers
+  should use "async with" to invoke the async the context managers on
+  these objects.
+
+* Added support for SSHAgentClient being an async context manager. To
+  be consistent with other connect calls, connect_agent() will now
+  raise an exception when no agent is found or a connection failure
+  occurs, rather than logging a warning and returning None. Callers
+  should catch OSError or ChannelOpenError exceptions rather than
+  looking for a return value of None when calling this function.
+
+* Added set_input() and clear_input() methods on SSHLineEditorChannel
+  to change the value of the current input line when line editing is
+  enabled.
+
+* Added is_closing() method to the SSHChannel, SSHProcess, SSHWriter,
+  and SSHSubprocessTransport classes. mirroring the asyncio
+  BaseTransport and StreamWriter methods added in Python 3.7.
+
+* Added wait_closed() async method to the SSHWriter class, mirroring
+  the asyncio StreamWriter method added in Python 3.7.
+
 Release 1.18.0 (23 Aug 2019)
 ----------------------------
 
