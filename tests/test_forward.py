@@ -397,6 +397,16 @@ class _TestTCPForwarding(_CheckForwarding):
             listener.close()
 
     @asynctest
+    async def test_server_context_manager(self):
+        """Test using a remote listener as a context manager"""
+
+        async with self.connect() as conn:
+            listener = await conn.start_server(_listener, '', 0)
+
+            async with listener:
+                await self._check_local_connection(listener.get_port())
+
+    @asynctest
     async def test_server_open(self):
         """Test creating a remote listener which uses open_connection"""
 

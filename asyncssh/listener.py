@@ -31,6 +31,13 @@ from .socks import SSHSOCKSForwarder
 class SSHListener:
     """SSH listener for inbound connections"""
 
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc_info):
+        self.close()
+        await self.wait_closed()
+
     def get_port(self):
         """Return the port number being listened on
 
