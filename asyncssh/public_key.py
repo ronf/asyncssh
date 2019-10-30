@@ -2053,9 +2053,11 @@ def _match_next(data, keytype, public=False):
                 return 'rfc4716', _parse_rfc4716(data), end
             else:
                 try:
-                    return 'openssh', _parse_openssh(line), end
+                    cert = _parse_openssh(line)
                 except KeyImportError:
                     pass
+                else:
+                    return 'openssh', cert, (end if end else len(data))
 
         start = end
 
@@ -3113,7 +3115,7 @@ def load_certificates(certlist):
         if isinstance(cert, (PurePath, str)):
             certs = read_certificate_list(cert)
         elif isinstance(cert, bytes):
-            certs = [import_certificate(cert)]
+            certs = _decode_certificate_list(cert)
         elif isinstance(cert, SSHCertificate):
             certs = [cert]
         else:

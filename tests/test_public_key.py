@@ -409,6 +409,12 @@ class _TestPublicKey(TempDirTestCase):
         certlist = asyncssh.load_certificates([Path('cert')])
         self.assertEqual(certlist[0], cert)
 
+        certlist = asyncssh.load_certificates(certdata +
+                                              b'Extra  text in the middle\n' +
+                                              certdata)
+        self.assertEqual(certlist[0], cert)
+        self.assertEqual(certlist[1], cert)
+
         cert.write_certificate('list', format_name)
         cert.append_certificate('list', format_name)
 
@@ -435,6 +441,22 @@ class _TestPublicKey(TempDirTestCase):
         self.assertEqual(certlist[0], cert)
         self.assertEqual(certlist[1], cert)
         self.assertEqual(certlist[2], cert)
+
+        if format_name == 'openssh':
+            certlist = asyncssh.load_certificates(certdata[:-1])
+            self.assertEqual(certlist[0], cert)
+
+            certlist = asyncssh.load_certificates(certdata + certdata[:-1])
+            self.assertEqual(certlist[0], cert)
+            self.assertEqual(certlist[1], cert)
+
+            certlist = asyncssh.load_certificates(certdata[1:-1])
+            self.assertEqual(len(certlist), 0)
+
+            certlist = asyncssh.load_certificates(certdata[1:] + certdata[:-1])
+            self.assertEqual(len(certlist), 1)
+            self.assertEqual(certlist[0], cert)
+
 
     def import_pkcs1_private(self, fmt, cipher=None, args=None):
         """Check import of a PKCS#1 private key"""
