@@ -3010,7 +3010,6 @@ class SSHClientConnection(SSHConnection):
 
         return process
 
-    @async_context_manager
     async def create_subprocess(self, protocol_factory, *args, input=None,
                                 bufsize=io.DEFAULT_BUFFER_SIZE, encoding=None,
                                 stdin=PIPE, stdout=PIPE, stderr=PIPE, **kwargs):
