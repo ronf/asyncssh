@@ -1814,6 +1814,11 @@ ChannelOpenError
 
 .. autoexception:: ChannelOpenError
 
+ChannelListenError
+------------------
+
+.. autoexception:: ChannelListenError
+
 ProcessError
 ------------
 
