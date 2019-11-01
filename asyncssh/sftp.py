@@ -3844,10 +3844,12 @@ class SFTPServer:
        certificate options or permissions associated with this session.
 
            .. note:: In AsyncSSH 1.x, this first argument was an
-           :class:`SSHServerConnection`, not an :class:`SSHServerChannel`.
-           When moving to AsyncSSH 2.x, subclasses of :class:`SFTPServer`
-           which implement an __init__ method will need to be updated to
-           account for this change, and pass this through to the parent.
+                     :class:`SSHServerConnection`, not an
+                     :class:`SSHServerChannel`. When moving to AsyncSSH
+                     2.x, subclasses of :class:`SFTPServer` which
+                     implement an __init__ method will need to be
+                     updated to account for this change, and pass this
+                     through to the parent.
 
        If the `chroot` argument is specified when this object is
        created, the default :meth:`map_path` and :meth:`reverse_map_path`
