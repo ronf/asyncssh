@@ -299,36 +299,31 @@ class _TestTCPForwarding(_CheckForwarding):
         """Test opening a tunneled SSH listener"""
 
         async with self.connect() as conn:
-            server2 = await conn.listen_ssh(port=0, server_factory=Server,
-                                            server_host_keys=['skey'],
-                                            gss_host=None)
-            listen_port = server2.get_port()
+            async with conn.listen_ssh(port=0, server_factory=Server,
+                                       server_host_keys=['skey'],
+                                       gss_host=None) as server2:
+                listen_port = server2.get_port()
 
-            async with asyncssh.connect('127.0.0.1', listen_port, gss_host=None,
-                                        known_hosts=(['skey.pub'], [], [])):
-                pass
-
-            server2.close()
-            await server2.wait_closed()
+                async with asyncssh.connect('127.0.0.1', listen_port,
+                                            gss_host=None,
+                                            known_hosts=(['skey.pub'], [], [])):
+                    pass
 
     @asynctest
     async def test_ssh_listen_reverse_tunnel(self):
         """Test creating a tunneled reverse direction SSH connection"""
 
         async with self.connect() as conn:
-            server2 = await conn.listen_reverse_ssh(port=0, gss_host=None,
-                                                    known_hosts=(['skey.pub'],
-                                                                 [], []))
-            listen_port = server2.get_port()
+            async with conn.listen_reverse_ssh(port=0, gss_host=None,
+                                               known_hosts=(['skey.pub'],
+                                                            [], [])) as server2:
+                listen_port = server2.get_port()
 
-            async with asyncssh.connect_reverse('127.0.0.1', listen_port,
-                                                server_factory=Server,
-                                                gss_host=None,
-                                                server_host_keys=['skey']):
-                pass
-
-            server2.close()
-            await server2.wait_closed()
+                async with asyncssh.connect_reverse('127.0.0.1', listen_port,
+                                                    server_factory=Server,
+                                                    gss_host=None,
+                                                    server_host_keys=['skey']):
+                    pass
 
     @asynctest
     async def test_connection(self):
@@ -401,9 +396,7 @@ class _TestTCPForwarding(_CheckForwarding):
         """Test using a remote listener as a context manager"""
 
         async with self.connect() as conn:
-            listener = await conn.start_server(_listener, '', 0)
-
-            async with listener:
+            async with conn.start_server(_listener, '', 0) as listener:
                 await self._check_local_connection(listener.get_port())
 
     @asynctest
@@ -435,68 +428,61 @@ class _TestTCPForwarding(_CheckForwarding):
         """Test creating a remote listener using non-async handler"""
 
         async with self.connect() as conn:
-            listener = await conn.start_server(_listener_non_async, '', 0)
-            await self._check_local_connection(listener.get_port())
-            listener.close()
-            await listener.wait_closed()
+            async with conn.start_server(_listener_non_async,
+                                         '', 0) as listener:
+                await self._check_local_connection(listener.get_port())
 
     @asynctest
     async def test_server_failure(self):
         """Test failure in creating a remote listener"""
 
         async with self.connect() as conn:
-            listener = await conn.start_server(_listener, 'fail', 0)
-            self.assertIsNone(listener)
+            with self.assertRaises(asyncssh.ChannelListenError):
+                await conn.start_server(_listener, 'fail', 0)
 
     @asynctest
     async def test_forward_local_port(self):
         """Test forwarding of a local port"""
 
         async with self.connect() as conn:
-            listener = await conn.forward_local_port('', 0, '', 7)
-
-            await self._check_local_connection(listener.get_port(), delay=0.1)
-
-            listener.close()
-            await listener.wait_closed()
+            async with conn.forward_local_port('', 0, '', 7) as listener:
+                await self._check_local_connection(listener.get_port(),
+                                                   delay=0.1)
 
     @asynctest
     async def test_forward_local_port_pause(self):
         """Test pause during forwarding of a local port"""
 
         async with self.connect() as conn:
-            listener = await conn.forward_local_port('', 0, '', 8)
-            listen_port = listener.get_port()
+            async with conn.forward_local_port('', 0, '', 8) as listener:
+                listen_port = listener.get_port()
 
-            reader, writer = await asyncio.open_connection(None, listen_port)
+                reader, writer = await asyncio.open_connection(None,
+                                                               listen_port)
 
-            writer.write(4*1024*1024*b'\0')
-            writer.write_eof()
-            await reader.read()
+                writer.write(4*1024*1024*b'\0')
+                writer.write_eof()
+                await reader.read()
 
-            writer.close()
-            await maybe_wait_closed(writer)
+                writer.close()
+                await maybe_wait_closed(writer)
 
-            listener.close()
-            await listener.wait_closed()
 
     @asynctest
     async def test_forward_local_port_failure(self):
         """Test failure in forwarding a local port"""
 
         async with self.connect() as conn:
-            listener = await conn.forward_local_port('', 0, '', 65535)
-            listen_port = listener.get_port()
+            async with conn.forward_local_port('', 0, '', 65535) as listener:
+                listen_port = listener.get_port()
 
-            reader, writer = await asyncio.open_connection(None, listen_port)
+                reader, writer = await asyncio.open_connection(None,
+                                                               listen_port)
 
-            self.assertEqual((await reader.read()), b'')
+                self.assertEqual((await reader.read()), b'')
 
-            writer.close()
-            await maybe_wait_closed(writer)
-
-            listener.close()
-            await listener.wait_closed()
+                writer.close()
+                await maybe_wait_closed(writer)
 
     @unittest.skipIf(sys.platform == 'win32',
                      'skip dual-stack tests on Windows')
@@ -505,13 +491,10 @@ class _TestTCPForwarding(_CheckForwarding):
         """Test error binding a local forwarding port"""
 
         async with self.connect() as conn:
-            listener = await conn.forward_local_port('0.0.0.0', 0, '', 7)
-
-            with self.assertRaises(OSError):
-                await conn.forward_local_port(None, listener.get_port(), '', 7)
-
-            listener.close()
-            await listener.wait_closed()
+            async with conn.forward_local_port('0.0.0.0', 0, '', 7) as listener:
+                with self.assertRaises(OSError):
+                    await conn.forward_local_port(None, listener.get_port(),
+                                                  '', 7)
 
     @unittest.skipIf(sys.platform == 'win32',
                      'skip dual-stack tests on Windows')
@@ -520,48 +503,40 @@ class _TestTCPForwarding(_CheckForwarding):
         """Test error binding a local forwarding port"""
 
         async with self.connect() as conn:
-            listener = await conn.forward_local_port('::', 0, '', 7)
-
-            with self.assertRaises(OSError):
-                await conn.forward_local_port(None, listener.get_port(), '', 7)
-
-            listener.close()
-            await listener.wait_closed()
+            async with conn.forward_local_port('::', 0, '', 7) as listener:
+                with self.assertRaises(OSError):
+                    await conn.forward_local_port(None, listener.get_port(),
+                                                  '', 7)
 
     @asynctest
     async def test_forward_connect_error(self):
         """Test error connecting a local forwarding port"""
 
         async with self.connect() as conn:
-            listener = await conn.forward_local_port('', 0, '', 1)
-            listen_port = listener.get_port()
+            async with conn.forward_local_port('', 0, '', 1) as listener:
+                listen_port = listener.get_port()
 
-            reader, writer = await asyncio.open_connection(None, listen_port)
+                reader, writer = await asyncio.open_connection(None,
+                                                               listen_port)
 
-            self.assertEqual((await reader.read()), b'')
+                self.assertEqual((await reader.read()), b'')
 
-            writer.close()
-            await maybe_wait_closed(writer)
-
-            listener.close()
-            await listener.wait_closed()
+                writer.close()
+                await maybe_wait_closed(writer)
 
     @asynctest
     async def test_forward_immediate_eof(self):
         """Test getting EOF before forwarded connection is fully open"""
 
         async with self.connect() as conn:
-            listener = await conn.forward_local_port('', 0, '', 7)
-            listen_port = listener.get_port()
+            async with conn.forward_local_port('', 0, '', 7) as listener:
+                listen_port = listener.get_port()
 
-            _, writer = await asyncio.open_connection(None, listen_port)
+                _, writer = await asyncio.open_connection(None, listen_port)
 
-            writer.close()
-            await maybe_wait_closed(writer)
-            await asyncio.sleep(0.1)
-
-            listener.close()
-            await listener.wait_closed()
+                writer.close()
+                await maybe_wait_closed(writer)
+                await asyncio.sleep(0.1)
 
     @asynctest
     async def test_forward_remote_port(self):
@@ -572,12 +547,9 @@ class _TestTCPForwarding(_CheckForwarding):
         server_port = server.sockets[0].getsockname()[1]
 
         async with self.connect() as conn:
-            listener = await conn.forward_remote_port('', 0, '', server_port)
-
-            await self._check_local_connection(listener.get_port())
-
-            listener.close()
-            await listener.wait_closed()
+            async with conn.forward_remote_port('', 0,
+                                                '', server_port) as listener:
+                await self._check_local_connection(listener.get_port())
 
         server.close()
         await server.wait_closed()
@@ -596,13 +568,9 @@ class _TestTCPForwarding(_CheckForwarding):
         sock.close()
 
         async with self.connect() as conn:
-            listener = await conn.forward_remote_port('', remote_port,
-                                                      '', server_port)
-
-            await self._check_local_connection(listener.get_port())
-
-            listener.close()
-            await listener.wait_closed()
+            async with conn.forward_remote_port('', remote_port,
+                                                '', server_port) as listener:
+                await self._check_local_connection(listener.get_port())
 
         server.close()
         await server.wait_closed()
@@ -612,8 +580,8 @@ class _TestTCPForwarding(_CheckForwarding):
         """Test failure of forwarding a remote port"""
 
         async with self.connect() as conn:
-            listener = await conn.forward_remote_port('', 65536, '', 0)
-            self.assertIsNone(listener)
+            with self.assertRaises(asyncssh.ChannelListenError):
+                await conn.forward_remote_port('', 65536, '', 0)
 
     @asynctest
     async def test_forward_remote_port_not_permitted(self):
@@ -626,16 +594,16 @@ class _TestTCPForwarding(_CheckForwarding):
 
         async with self.connect(username='ckey',
                                 client_keys=[(ckey, cert)]) as conn:
-            listener = await conn.forward_remote_port('', 0, '', 0)
-            self.assertIsNone(listener)
+            with self.assertRaises(asyncssh.ChannelListenError):
+                await conn.forward_remote_port('', 0, '', 0)
 
     @asynctest
     async def test_forward_remote_port_invalid_unicode(self):
         """Test TCP/IP forwarding with invalid Unicode in host"""
 
         async with self.connect() as conn:
-            listener = await conn.forward_remote_port(b'\xff', 0, '', 0)
-            self.assertIsNone(listener)
+            with self.assertRaises(asyncssh.ChannelListenError):
+                await conn.forward_remote_port(b'\xff', 0, '', 0)
 
     @asynctest
     async def test_cancel_forward_remote_port_invalid_unicode(self):
@@ -788,13 +756,9 @@ class _TestUNIXForwarding(_CheckForwarding):
         async with self.connect() as conn:
             waiter = self.loop.create_future()
 
-            listener = await conn.start_unix_server(handler_factory, 'open')
-
-            reader, writer = await waiter
-            await self._check_echo_line(reader, writer)
-
-            listener.close()
-            await listener.wait_closed()
+            async with conn.start_unix_server(handler_factory, 'open'):
+                reader, writer = await waiter
+                await self._check_echo_line(reader, writer)
 
     @asynctest
     async def test_unix_server_non_async(self):
@@ -803,11 +767,8 @@ class _TestUNIXForwarding(_CheckForwarding):
         path = os.path.abspath('echo')
 
         async with self.connect() as conn:
-            listener = await conn.start_unix_server(
-                _unix_listener_non_async, path)
-            await self._check_local_unix_connection('echo')
-            listener.close()
-            await listener.wait_closed()
+            async with conn.start_unix_server(_unix_listener_non_async, path):
+                await self._check_local_unix_connection('echo')
 
         os.remove('echo')
 
@@ -816,20 +777,16 @@ class _TestUNIXForwarding(_CheckForwarding):
         """Test failure in creating a remote UNIX listener"""
 
         async with self.connect() as conn:
-            listener = await conn.start_unix_server(_unix_listener, 'fail')
-            self.assertIsNone(listener)
+            with self.assertRaises(asyncssh.ChannelListenError):
+                await conn.start_unix_server(_unix_listener, 'fail')
 
     @asynctest
     async def test_forward_local_path(self):
         """Test forwarding of a local UNIX domain path"""
 
         async with self.connect() as conn:
-            listener = await conn.forward_local_path('local', '/echo')
-
-            await self._check_local_unix_connection('local')
-
-            listener.close()
-            await listener.wait_closed()
+            async with conn.forward_local_path('local', '/echo'):
+                await self._check_local_unix_connection('local')
 
         os.remove('local')
 
@@ -845,12 +802,8 @@ class _TestUNIXForwarding(_CheckForwarding):
         path = os.path.abspath('echo')
 
         async with self.connect() as conn:
-            listener = await conn.forward_remote_path(path, 'local')
-
-            await self._check_local_unix_connection('echo')
-
-            listener.close()
-            await listener.wait_closed()
+            async with conn.forward_remote_path(path, 'local'):
+                await self._check_local_unix_connection('echo')
 
         server.close()
         await server.wait_closed()
@@ -867,8 +820,8 @@ class _TestUNIXForwarding(_CheckForwarding):
         path = os.path.abspath('echo')
 
         async with self.connect() as conn:
-            listener = await conn.forward_remote_path(path, 'local')
-            self.assertIsNone(listener)
+            with self.assertRaises(asyncssh.ChannelListenError):
+                await conn.forward_remote_path(path, 'local')
 
         os.remove('echo')
 
@@ -883,16 +836,16 @@ class _TestUNIXForwarding(_CheckForwarding):
 
         async with self.connect(username='ckey',
                                 client_keys=[(ckey, cert)]) as conn:
-            listener = await conn.forward_remote_path('', 'local')
-            self.assertIsNone(listener)
+            with self.assertRaises(asyncssh.ChannelListenError):
+                await conn.forward_remote_path('', 'local')
 
     @asynctest
     async def test_forward_remote_path_invalid_unicode(self):
         """Test forwarding a UNIX domain path with invalid Unicode in it"""
 
         async with self.connect() as conn:
-            listener = await conn.forward_remote_path(b'\xff', 'local')
-            self.assertIsNone(listener)
+            with self.assertRaises(asyncssh.ChannelListenError):
+                await conn.forward_remote_path(b'\xff', 'local')
 
     @asynctest
     async def test_cancel_forward_remote_path_invalid_unicode(self):
@@ -1016,27 +969,24 @@ class _TestSOCKSForwarding(_CheckForwarding):
         # pylint: enable=bad-whitespace
 
         async with self.connect() as conn:
-            listener = await conn.forward_socks('', 0)
-            listen_port = listener.get_port()
+            async with  conn.forward_socks('', 0) as listener:
+                listen_port = listener.get_port()
 
-            for msg, data in _socks_early_errors:
-                await self._check_socks(self._check_early_error,
-                                        listen_port, msg, data)
+                for msg, data in _socks_early_errors:
+                    await self._check_socks(self._check_early_error,
+                                            listen_port, msg, data)
 
-            for msg, data in _socks5_postauth_errors:
-                await self._check_socks(self._check_socks5_error,
-                                        listen_port, msg, data)
+                for msg, data in _socks5_postauth_errors:
+                    await self._check_socks(self._check_socks5_error,
+                                            listen_port, msg, data)
 
-            for msg, data, result in _socks4_connects:
-                await self._check_socks(self._check_socks4_connect,
-                                        listen_port, msg, data, result)
+                for msg, data, result in _socks4_connects:
+                    await self._check_socks(self._check_socks4_connect,
+                                            listen_port, msg, data, result)
 
-            for msg, data, result in _socks5_connects:
-                await self._check_socks(self._check_socks5_connect,
-                                        listen_port, msg, data, result)
-
-            listener.close()
-            await listener.wait_closed()
+                for msg, data, result in _socks5_connects:
+                    await self._check_socks(self._check_socks5_connect,
+                                            listen_port, msg, data, result)
 
     @unittest.skipIf(sys.platform == 'win32',
                      'Avoid issue with SO_REUSEADDR on Windows')
@@ -1045,10 +995,6 @@ class _TestSOCKSForwarding(_CheckForwarding):
         """Test error binding a local dynamic forwarding port"""
 
         async with self.connect() as conn:
-            listener = await conn.forward_socks(None, 0)
-
-            with self.assertRaises(OSError):
-                await conn.forward_socks(None, listener.get_port())
-
-            listener.close()
-            await listener.wait_closed()
+            async with conn.forward_socks(None, 0) as listener:
+                with self.assertRaises(OSError):
+                    await conn.forward_socks(None, listener.get_port())

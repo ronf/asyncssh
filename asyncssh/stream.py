@@ -21,6 +21,7 @@
 """SSH stream handlers"""
 
 import asyncio
+import inspect
 import re
 
 from .constants import EXTENDED_DATA_STDERR
@@ -640,7 +641,7 @@ class SSHServerStreamSession(SSHStreamSession, SSHServerSession):
         else:
             handler = self._session_factory(stdin, stdout, stderr)
 
-        if asyncio.iscoroutine(handler):
+        if inspect.isawaitable(handler):
             self._conn.create_task(handler, stdin.logger)
 
     def break_received(self, msec):
@@ -687,7 +688,7 @@ class SSHSocketStreamSession(SSHStreamSession):
 
             handler = self._handler_factory(reader, writer)
 
-            if asyncio.iscoroutine(handler):
+            if inspect.isawaitable(handler):
                 self._conn.create_task(handler, reader.logger)
 
 

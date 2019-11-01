@@ -23,6 +23,7 @@
 import asyncio
 import binascii
 import codecs
+import inspect
 import re
 import signal as _signal
 
@@ -431,7 +432,7 @@ class SSHChannel(SSHPacketHandler):
         """Finish processing a channel open request"""
 
         try:
-            if asyncio.iscoroutine(session):
+            if inspect.isawaitable(session):
                 session = await session
 
             if not self._conn:

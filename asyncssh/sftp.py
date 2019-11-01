@@ -26,6 +26,7 @@ import asyncio
 from collections import OrderedDict
 import errno
 from fnmatch import fnmatch
+import inspect
 import os
 from os import SEEK_SET, SEEK_CUR, SEEK_END
 from pathlib import PurePath
@@ -3166,7 +3167,7 @@ class SFTPServerHandler(SFTPHandler):
             for file_obj in self._file_handles.values():
                 result = self._server.close(file_obj)
 
-                if asyncio.iscoroutine(result):
+                if inspect.isawaitable(result):
                     await result
 
             self._server.exit()
@@ -3305,7 +3306,7 @@ class SFTPServerHandler(SFTPHandler):
 
         result = self._server.open(path, pflags, attrs)
 
-        if asyncio.iscoroutine(result):
+        if inspect.isawaitable(result):
             result = await result
 
         handle = self._get_next_handle()
@@ -3324,7 +3325,7 @@ class SFTPServerHandler(SFTPHandler):
         if file_obj:
             result = self._server.close(file_obj)
 
-            if asyncio.iscoroutine(result):
+            if inspect.isawaitable(result):
                 await result
 
             return
@@ -3350,7 +3351,7 @@ class SFTPServerHandler(SFTPHandler):
         if file_obj:
             result = self._server.read(file_obj, offset, length)
 
-            if asyncio.iscoroutine(result):
+            if inspect.isawaitable(result):
                 result = await result
 
             if result:
@@ -3376,7 +3377,7 @@ class SFTPServerHandler(SFTPHandler):
         if file_obj:
             result = self._server.write(file_obj, offset, data)
 
-            if asyncio.iscoroutine(result):
+            if inspect.isawaitable(result):
                 result = await result
 
             return result
@@ -3393,7 +3394,7 @@ class SFTPServerHandler(SFTPHandler):
 
         result = self._server.lstat(path)
 
-        if asyncio.iscoroutine(result):
+        if inspect.isawaitable(result):
             result = await result
 
         return result
@@ -3411,7 +3412,7 @@ class SFTPServerHandler(SFTPHandler):
         if file_obj:
             result = self._server.fstat(file_obj)
 
-            if asyncio.iscoroutine(result):
+            if inspect.isawaitable(result):
                 result = await result
 
             return result
@@ -3429,7 +3430,7 @@ class SFTPServerHandler(SFTPHandler):
 
         result = self._server.setstat(path, attrs)
 
-        if asyncio.iscoroutine(result):
+        if inspect.isawaitable(result):
             result = await result
 
         return result
@@ -3449,7 +3450,7 @@ class SFTPServerHandler(SFTPHandler):
         if file_obj:
             result = self._server.fsetstat(file_obj, attrs)
 
-            if asyncio.iscoroutine(result):
+            if inspect.isawaitable(result):
                 result = await result
 
             return result
@@ -3466,7 +3467,7 @@ class SFTPServerHandler(SFTPHandler):
 
         listdir_result = self._server.listdir(path)
 
-        if asyncio.iscoroutine(listdir_result):
+        if inspect.isawaitable(listdir_result):
             listdir_result = await listdir_result
 
         for i, name in enumerate(listdir_result):
@@ -3478,7 +3479,7 @@ class SFTPServerHandler(SFTPHandler):
                 filename = os.path.join(path, name.filename)
                 attr_result = self._server.lstat(filename)
 
-                if asyncio.iscoroutine(attr_result):
+                if inspect.isawaitable(attr_result):
                     attr_result = await attr_result
 
                 if isinstance(attr_result, os.stat_result):
@@ -3490,7 +3491,7 @@ class SFTPServerHandler(SFTPHandler):
             if not name.longname:
                 longname_result = self._server.format_longname(name)
 
-                if asyncio.iscoroutine(longname_result):
+                if inspect.isawaitable(longname_result):
                     await longname_result
 
         handle = self._get_next_handle()
@@ -3523,7 +3524,7 @@ class SFTPServerHandler(SFTPHandler):
 
         result = self._server.remove(path)
 
-        if asyncio.iscoroutine(result):
+        if inspect.isawaitable(result):
             result = await result
 
         return result
@@ -3539,7 +3540,7 @@ class SFTPServerHandler(SFTPHandler):
 
         result = self._server.mkdir(path, attrs)
 
-        if asyncio.iscoroutine(result):
+        if inspect.isawaitable(result):
             result = await result
 
         return result
@@ -3554,7 +3555,7 @@ class SFTPServerHandler(SFTPHandler):
 
         result = self._server.rmdir(path)
 
-        if asyncio.iscoroutine(result):
+        if inspect.isawaitable(result):
             result = await result
 
         return result
@@ -3569,7 +3570,7 @@ class SFTPServerHandler(SFTPHandler):
 
         result = self._server.realpath(path)
 
-        if asyncio.iscoroutine(result):
+        if inspect.isawaitable(result):
             result = await result
 
         return [SFTPName(result)]
@@ -3584,7 +3585,7 @@ class SFTPServerHandler(SFTPHandler):
 
         result = self._server.stat(path)
 
-        if asyncio.iscoroutine(result):
+        if inspect.isawaitable(result):
             result = await result
 
         return result
@@ -3601,7 +3602,7 @@ class SFTPServerHandler(SFTPHandler):
 
         result = self._server.rename(oldpath, newpath)
 
-        if asyncio.iscoroutine(result):
+        if inspect.isawaitable(result):
             result = await result
 
         return result
@@ -3616,7 +3617,7 @@ class SFTPServerHandler(SFTPHandler):
 
         result = self._server.readlink(path)
 
-        if asyncio.iscoroutine(result):
+        if inspect.isawaitable(result):
             result = await result
 
         return [SFTPName(result)]
@@ -3638,7 +3639,7 @@ class SFTPServerHandler(SFTPHandler):
 
         result = self._server.symlink(oldpath, newpath)
 
-        if asyncio.iscoroutine(result):
+        if inspect.isawaitable(result):
             result = await result
 
         return result
@@ -3655,7 +3656,7 @@ class SFTPServerHandler(SFTPHandler):
 
         result = self._server.posix_rename(oldpath, newpath)
 
-        if asyncio.iscoroutine(result):
+        if inspect.isawaitable(result):
             result = await result
 
         return result
@@ -3670,7 +3671,7 @@ class SFTPServerHandler(SFTPHandler):
 
         result = self._server.statvfs(path)
 
-        if asyncio.iscoroutine(result):
+        if inspect.isawaitable(result):
             result = await result
 
         return result
@@ -3688,7 +3689,7 @@ class SFTPServerHandler(SFTPHandler):
         if file_obj:
             result = self._server.fstatvfs(file_obj)
 
-            if asyncio.iscoroutine(result):
+            if inspect.isawaitable(result):
                 result = await result
 
             return result
@@ -3707,7 +3708,7 @@ class SFTPServerHandler(SFTPHandler):
 
         result = self._server.link(oldpath, newpath)
 
-        if asyncio.iscoroutine(result):
+        if inspect.isawaitable(result):
             result = await result
 
         return result
@@ -3725,7 +3726,7 @@ class SFTPServerHandler(SFTPHandler):
         if file_obj:
             result = self._server.fsync(file_obj)
 
-            if asyncio.iscoroutine(result):
+            if inspect.isawaitable(result):
                 result = await result
 
             return result
@@ -4575,7 +4576,7 @@ class SFTPServerFile:
 
         attrs = self._server.stat(path)
 
-        if asyncio.iscoroutine(attrs):
+        if inspect.isawaitable(attrs):
             attrs = await attrs
 
         if isinstance(attrs, os.stat_result):
@@ -4588,7 +4589,7 @@ class SFTPServerFile:
 
         result = self._server.setstat(path, attrs)
 
-        if asyncio.iscoroutine(result):
+        if inspect.isawaitable(result):
             attrs = await result
 
     async def _mode(self, path):
@@ -4622,7 +4623,7 @@ class SFTPServerFile:
 
         result = self._server.mkdir(path, SFTPAttrs())
 
-        if asyncio.iscoroutine(result):
+        if inspect.isawaitable(result):
             await result
 
     async def listdir(self, path):
@@ -4630,7 +4631,7 @@ class SFTPServerFile:
 
         files = self._server.listdir(path)
 
-        if asyncio.iscoroutine(files):
+        if inspect.isawaitable(files):
             files = await files
 
         return files
@@ -4641,7 +4642,7 @@ class SFTPServerFile:
         pflags, _ = _mode_to_pflags(mode)
         file_obj = self._server.open(path, pflags, SFTPAttrs())
 
-        if asyncio.iscoroutine(file_obj):
+        if inspect.isawaitable(file_obj):
             file_obj = await file_obj
 
         self._file_obj = file_obj
@@ -4652,7 +4653,7 @@ class SFTPServerFile:
 
         data = self._server.read(self._file_obj, offset, size)
 
-        if asyncio.iscoroutine(data):
+        if inspect.isawaitable(data):
             data = await data
 
         return data
@@ -4662,7 +4663,7 @@ class SFTPServerFile:
 
         size = self._server.write(self._file_obj, offset, data)
 
-        if asyncio.iscoroutine(size):
+        if inspect.isawaitable(size):
             size = await size
 
         return size
@@ -4672,7 +4673,7 @@ class SFTPServerFile:
 
         result = self._server.close(self._file_obj)
 
-        if asyncio.iscoroutine(result):
+        if inspect.isawaitable(result):
             await result
 
 

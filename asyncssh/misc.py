@@ -495,6 +495,19 @@ class ChannelOpenError(Error):
     """
 
 
+class ChannelListenError(Exception):
+    """SSH channel listen error
+
+       This exception is raised to report failures in setting up
+       remote SSH connection listeners.
+
+       :param details:
+           Details of the listen failure
+       :type details: `str`
+
+    """
+
+
 class PasswordChangeRequired(Exception):
     """SSH password change required
 

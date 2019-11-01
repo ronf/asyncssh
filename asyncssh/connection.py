@@ -22,6 +22,7 @@
 
 import asyncio
 import getpass
+import inspect
 import io
 import os
 import socket
@@ -86,11 +87,11 @@ from .logging import logger
 
 from .mac import get_mac_algs
 
-from .misc import Options, ChannelOpenError, DisconnectError
+from .misc import ChannelListenError, ChannelOpenError, DisconnectError
 from .misc import CompressionError, ConnectionLost, HostKeyNotVerifiable
 from .misc import KeyExchangeFailed, IllegalUserName, MACError
 from .misc import PasswordChangeRequired, PermissionDenied, ProtocolError
-from .misc import ProtocolNotSupported, ServiceNotAvailable
+from .misc import ProtocolNotSupported, ServiceNotAvailable, Options
 from .misc import async_context_manager, construct_disc_error
 from .misc import get_symbol_names, ip_address, map_handler_name
 
@@ -1237,7 +1238,7 @@ class SSHConnection(SSHPacketHandler):
         if key:
             sig = key.sign(String(self._session_id) + packet)
 
-            if asyncio.iscoroutine(sig):
+            if inspect.isawaitable(sig):
                 sig = await sig
 
             packet += String(sig)
@@ -1279,7 +1280,7 @@ class SSHConnection(SSHPacketHandler):
         if self._acceptor:
             result = self._acceptor(self)
 
-            if asyncio.iscoroutine(result):
+            if inspect.isawaitable(result):
                 self.create_task(result)
 
             self._acceptor = None
@@ -1608,7 +1609,7 @@ class SSHConnection(SSHPacketHandler):
         if not self._owner:
             return
 
-        if asyncio.iscoroutine(result):
+        if inspect.isawaitable(result):
             result = await result
 
         if not result:
@@ -1670,7 +1671,7 @@ class SSHConnection(SSHPacketHandler):
             if self._acceptor:
                 result = self._acceptor(self)
 
-                if asyncio.iscoroutine(result):
+                if inspect.isawaitable(result):
                     self.create_task(result)
 
                 self._acceptor = None
@@ -2164,6 +2165,7 @@ class SSHConnection(SSHPacketHandler):
 
         return SSHForwarder(peer)
 
+    @async_context_manager
     async def forward_local_port(self, listen_host, listen_port,
                                  dest_host, dest_port):
         """Set up local port forwarding
@@ -2221,6 +2223,7 @@ class SSHConnection(SSHPacketHandler):
             self.logger.debug1('Failed to create local TCP listener: %s', exc)
             raise
 
+    @async_context_manager
     async def forward_local_path(self, listen_path, dest_path):
         """Set up local UNIX domain socket forwarding
 
@@ -2533,7 +2536,7 @@ class SSHClientConnection(SSHConnection):
             if not self._client_keys:
                 result = self._owner.public_key_auth_requested()
 
-                if asyncio.iscoroutine(result):
+                if inspect.isawaitable(result):
                     result = await result
 
                 if not result:
@@ -2555,7 +2558,7 @@ class SSHClientConnection(SSHConnection):
         else:
             result = self._owner.password_auth_requested()
 
-            if asyncio.iscoroutine(result):
+            if inspect.isawaitable(result):
                 result = await result
 
         return result
@@ -2565,7 +2568,7 @@ class SSHClientConnection(SSHConnection):
 
         result = self._owner.password_change_requested(prompt, lang)
 
-        if asyncio.iscoroutine(result):
+        if inspect.isawaitable(result):
             result = await result
 
         return result
@@ -2591,7 +2594,7 @@ class SSHClientConnection(SSHConnection):
 
         result = self._owner.kbdint_auth_requested()
 
-        if asyncio.iscoroutine(result):
+        if inspect.isawaitable(result):
             result = await result
 
         if result is NotImplemented:
@@ -2621,7 +2624,7 @@ class SSHClientConnection(SSHConnection):
             result = self._owner.kbdint_challenge_received(name, instructions,
                                                            lang, prompts)
 
-            if asyncio.iscoroutine(result):
+            if inspect.isawaitable(result):
                 result = await result
 
         return result
@@ -3192,6 +3195,7 @@ class SSHClientConnection(SSHConnection):
 
         return SSHReader(session, chan), SSHWriter(session, chan)
 
+    @async_context_manager
     async def create_server(self, session_factory, listen_host, listen_port, *,
                             encoding=None, errors='strict',
                             window=_DEFAULT_WINDOW,
@@ -3232,8 +3236,9 @@ class SSHClientConnection(SSHConnection):
            :type window: `int`
            :type max_pktsize: `int`
 
-           :returns: :class:`SSHListener` or `None` if the listener can't
-                     be opened
+           :returns: :class:`SSHListener`
+
+           :raises: :class:`ChannelListenError` if the listener can't be opened
 
         """
 
@@ -3275,8 +3280,9 @@ class SSHClientConnection(SSHConnection):
         else:
             packet.check_end()
             self.logger.debug1('Failed to create remote TCP listener')
-            return None
+            raise ChannelListenError('Failed to create remote TCP listener')
 
+    @async_context_manager
     async def start_server(self, handler_factory, *args, **kwargs):
         """Start a remote SSH TCP listener
 
@@ -3304,8 +3310,9 @@ class SSHClientConnection(SSHConnection):
                connection should not be accepted
            :type handler_factory: `callable` or coroutine
 
-           :returns: :class:`SSHListener` or `None` if the listener can't
-                     be opened
+           :returns: :class:`SSHListener`
+
+           :raises: :class:`ChannelListenError` if the listener can't be opened
 
         """
 
@@ -3399,6 +3406,7 @@ class SSHClientConnection(SSHConnection):
 
         return SSHReader(session, chan), SSHWriter(session, chan)
 
+    @async_context_manager
     async def create_unix_server(self, session_factory, listen_path, *,
                                  encoding=None, errors='strict',
                                  window=_DEFAULT_WINDOW,
@@ -3436,8 +3444,9 @@ class SSHClientConnection(SSHConnection):
            :type window: `int`
            :type max_pktsize: `int`
 
-           :returns: :class:`SSHListener` or `None` if the listener can't
-                     be opened
+           :returns: :class:`SSHListener`
+
+           :raises: :class:`ChannelListenError` if the listener can't be opened
 
         """
 
@@ -3457,8 +3466,9 @@ class SSHClientConnection(SSHConnection):
             return listener
         else:
             self.logger.debug1('Failed to create remote UNIX listener')
-            return None
+            raise ChannelListenError('Failed to create remote UNIX listener')
 
+    @async_context_manager
     async def start_unix_server(self, handler_factory, *args, **kwargs):
         """Start a remote SSH UNIX domain socket listener
 
@@ -3488,8 +3498,9 @@ class SSHClientConnection(SSHConnection):
                connection should not be accepted
            :type handler_factory: `callable` or coroutine
 
-           :returns: :class:`SSHListener` or `None` if the listener can't
-                     be opened
+           :returns: :class:`SSHListener`
+
+           :raises: :class:`ChannelListenError` if the listener can't be opened
 
         """
 
@@ -3544,6 +3555,7 @@ class SSHClientConnection(SSHConnection):
 
         return await connect_reverse(host, port, tunnel=self, **kwargs)
 
+    @async_context_manager
     async def listen_ssh(self, host='', port=_DEFAULT_PORT, **kwargs):
         """Create a tunneled SSH listener
 
@@ -3557,6 +3569,7 @@ class SSHClientConnection(SSHConnection):
 
         return await listen(host, port, tunnel=self, **kwargs)
 
+    @async_context_manager
     async def listen_reverse_ssh(self, host='', port=_DEFAULT_PORT, **kwargs):
         """Create a tunneled reverse direction SSH listener
 
@@ -3570,6 +3583,7 @@ class SSHClientConnection(SSHConnection):
 
         return await listen_reverse(host, port, tunnel=self, **kwargs)
 
+    @async_context_manager
     async def forward_remote_port(self, listen_host, listen_port,
                                   dest_host, dest_port):
         """Set up remote port forwarding
@@ -3594,8 +3608,9 @@ class SSHClientConnection(SSHConnection):
            :type dest_host: `str`
            :type dest_port: `int`
 
-           :returns: :class:`SSHListener` or `None` if the listener can't
-                     be opened
+           :returns: :class:`SSHListener`
+
+           :raises: :class:`ChannelListenError` if the listener can't be opened
 
         """
 
@@ -3610,6 +3625,7 @@ class SSHClientConnection(SSHConnection):
         return await self.create_server(session_factory, listen_host,
                                         listen_port)
 
+    @async_context_manager
     async def forward_remote_path(self, listen_path, dest_path):
         """Set up remote UNIX domain socket forwarding
 
@@ -3627,8 +3643,9 @@ class SSHClientConnection(SSHConnection):
            :type listen_path: `str`
            :type dest_path: `str`
 
-           :returns: :class:`SSHListener` or `None` if the listener can't
-                     be opened
+           :returns: :class:`SSHListener`
+
+           :raises: :class:`ChannelListenError` if the listener can't be opened
 
         """
 
@@ -3642,6 +3659,7 @@ class SSHClientConnection(SSHConnection):
 
         return await self.create_unix_server(session_factory, listen_path)
 
+    @async_context_manager
     async def forward_socks(self, listen_host, listen_port):
         """Set up local port forwarding via SOCKS
 
@@ -3899,7 +3917,7 @@ class SSHServerConnection(SSHConnection):
         result = self._owner.validate_gss_principal(username, user_principal,
                                                     host_principal)
 
-        if asyncio.iscoroutine(result):
+        if inspect.isawaitable(result):
             result = await result
 
         return result
@@ -3946,7 +3964,7 @@ class SSHServerConnection(SSHConnection):
         result = self._owner.validate_host_based_user(username, client_host,
                                                       client_username)
 
-        if asyncio.iscoroutine(result):
+        if inspect.isawaitable(result):
             result = await result
 
         return result
@@ -3964,7 +3982,7 @@ class SSHServerConnection(SSHConnection):
         if options is None:
             result = self._owner.validate_ca_key(username, cert.signing_key)
 
-            if asyncio.iscoroutine(result):
+            if inspect.isawaitable(result):
                 result = await result
 
             if not result:
@@ -4052,7 +4070,7 @@ class SSHServerConnection(SSHConnection):
         if options is None:
             result = self._owner.validate_public_key(username, key)
 
-            if asyncio.iscoroutine(result):
+            if inspect.isawaitable(result):
                 result = await result
 
             if not result:
@@ -4101,7 +4119,7 @@ class SSHServerConnection(SSHConnection):
 
         result = self._owner.validate_password(username, password)
 
-        if asyncio.iscoroutine(result):
+        if inspect.isawaitable(result):
             result = await result
 
         return result
@@ -4112,7 +4130,7 @@ class SSHServerConnection(SSHConnection):
         result = self._owner.change_password(username, old_password,
                                              new_password)
 
-        if asyncio.iscoroutine(result):
+        if inspect.isawaitable(result):
             result = await result
 
         return result
@@ -4141,7 +4159,7 @@ class SSHServerConnection(SSHConnection):
             result = self._owner.get_kbdint_challenge(username, lang,
                                                       submethods)
 
-            if asyncio.iscoroutine(result):
+            if inspect.isawaitable(result):
                 result = await result
 
         return result
@@ -4157,7 +4175,7 @@ class SSHServerConnection(SSHConnection):
             try:
                 result = self._owner.validate_password(username, responses[0])
 
-                if asyncio.iscoroutine(result):
+                if inspect.isawaitable(result):
                     result = await result
             except PasswordChangeRequired:
                 # Don't support password change requests for now in
@@ -4166,7 +4184,7 @@ class SSHServerConnection(SSHConnection):
         else:
             result = self._owner.validate_kbdint_response(username, responses)
 
-            if asyncio.iscoroutine(result):
+            if inspect.isawaitable(result):
                 result = await result
 
         return result
@@ -4305,13 +4323,10 @@ class SSHServerConnection(SSHConnection):
     async def _finish_port_forward(self, listener, listen_host, listen_port):
         """Finish processing a TCP/IP port forwarding request"""
 
-        if asyncio.iscoroutine(listener):
-            try:
+        try:
+            if inspect.isawaitable(listener):
                 listener = await listener
-            except OSError:
-                listener = None
 
-        if listener:
             if listen_port == 0:
                 listen_port = listener.get_port()
                 result = UInt32(listen_port)
@@ -4324,7 +4339,7 @@ class SSHServerConnection(SSHConnection):
                              (listen_host, listen_port))
 
             self._report_global_response(result)
-        else:
+        except OSError:
             self.logger.debug1('Failed to create TCP listener')
             self._report_global_response(False)
 
@@ -4439,16 +4454,13 @@ class SSHServerConnection(SSHConnection):
     async def _finish_path_forward(self, listener, listen_path):
         """Finish processing a UNIX domain socket forwarding request"""
 
-        if asyncio.iscoroutine(listener):
-            try:
+        try:
+            if inspect.isawaitable(listener):
                 listener = await listener
-            except OSError:
-                listener = None
 
-        if listener:
             self._local_listeners[listen_path] = listener
             self._report_global_response(True)
-        else:
+        except OSError:
             self.logger.debug1('Failed to create UNIX listener')
             self._report_global_response(False)
 
@@ -5688,6 +5700,7 @@ async def connect_reverse(host, port=_DEFAULT_PORT, *, tunnel=None, family=0,
                           conn_factory, 'Opening reverse SSH connection to')
 
 
+@async_context_manager
 async def listen(host=None, port=_DEFAULT_PORT, tunnel=None, family=0,
                  flags=socket.AI_PASSIVE, backlog=100, reuse_address=None,
                  reuse_port=None, acceptor=None, error_handler=None,
@@ -5770,6 +5783,7 @@ async def listen(host=None, port=_DEFAULT_PORT, tunnel=None, family=0,
                          'Creating SSH listener on')
 
 
+@async_context_manager
 async def listen_reverse(host=None, port=_DEFAULT_PORT, *, tunnel=None,
                          family=0, flags=socket.AI_PASSIVE, backlog=100,
                          reuse_address=None, reuse_port=None, acceptor=None,
@@ -5884,6 +5898,7 @@ async def create_connection(client_factory, host, port=_DEFAULT_PORT, **kwargs):
     return conn, conn.get_owner()
 
 
+@async_context_manager
 async def create_server(server_factory, host=None,
                         port=_DEFAULT_PORT, **kwargs):
     """Create an SSH server
