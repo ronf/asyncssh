@@ -3,6 +3,47 @@
 Change Log
 ==========
 
+Release 2.0.1 (2 Nov 2019)
+--------------------------
+
+* Some API changes which should have been included in the 2.0.0 release
+  were missed. This release corrects that, but means that additional
+  changes may be needed in applications moving to 2.0.1. This should
+  hopefully be the last of such changes, but if any other issues are
+  discovered, additional changes will be limited to 2.0.x patch releases
+  and the API will stabilize again in the AsyncSSH 2.1 release. See the
+  next bullet for details about the additional incompatible change.
+
+* To be consistent with other connect and listen functions, all methods
+  on SSHClientConnection which previously returned None on listen
+  failures have been changed to raise an exception instead. A new
+  ChannelListenError exception will now be raised when an SSH server
+  returns failure on a request to open a remote listener. This change
+  affects the following SSHClientConnection methods: create_server,
+  create_unix_server, start_server, start_unix_server,
+  forward_remote_port, and forward_remote_path.
+
+* Restored the ability for SSHListener objects to be used as async
+  context managers. This previously worked in AsyncSSH 1.x and was
+  unintentionally broken in AsyncSSH 2.0.0.
+
+* Added support for a number of additional functions to be called from
+  within an "async with" statement. These functions already returned
+  objects capable of being async context managers, but were not decorated
+  to allow them to be directly called from within "async with". This
+  change applies to the top level functions create_server, listen, and
+  listen_reverse and the SSHClientConnection methods create_server,
+  create_unix_server, start_server, start_unix_server, forward_local_port,
+  forward_local_path, forward_remote_port, forward_remote_path,
+  listen_ssh, and listen_reverse_ssh,
+
+* Fixed a couple of issues in loading OpenSSH-format certificates which
+  were missing a trailing newline.
+
+* Changed load_certificates() to allow multiple certificates to be loaded
+  from a single byte string argument, making it more consistent with
+  how load_certificates() works when reading from a file.
+
 Release 2.0.0 (26 Oct 2019)
 ---------------------------
 
