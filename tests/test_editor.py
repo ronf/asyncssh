@@ -70,6 +70,14 @@ async def _handle_soft_eof(stdin, stdout, _stderr):
     stdout.close()
 
 
+def _trigger_signal(line, pos):
+    """Trigger a signal when Ctrl-Z is input"""
+
+    # pylint: disable=unused-argument
+
+    return 'SIG', -1
+
+
 def _handle_key(_line, pos):
     """Handle exclamation point being input"""
 
@@ -80,19 +88,27 @@ def _handle_key(_line, pos):
     else:
         return False
 
+
 async def _handle_register(stdin, stdout, _stderr):
     """Accept input using read() and echo it back"""
 
     while not stdin.at_eof():
-        data = await stdin.readline()
+        try:
+            data = await stdin.readline()
+        except asyncssh.SignalReceived:
+            stdout.write('SIGNAL')
+            break
+
         if data == 'R\n':
             stdin.channel.register_key('!', _handle_key)
             stdin.channel.register_key('\x1bOP', _handle_key)
+            stdin.channel.register_key('\x1a', _trigger_signal)
         elif data == 'U\n':
             stdin.channel.unregister_key('!')
             stdin.channel.unregister_key('\x1bOP')
             stdin.channel.unregister_key('\x1bOQ') # Test unregistered key
             stdin.channel.unregister_key('\x1b[25~') # Test unregistered prefix
+            stdin.channel.unregister_key('\x1a')
 
     stdout.close()
 
@@ -401,3 +417,16 @@ class _TestEditorRegisterKey(ServerTestCase):
                                  result + '\r\n')
 
             process.stdin.write_eof()
+
+    @asynctest
+    async def test_editor_signal(self):
+        """Test editor register key triggering a signal"""
+
+        async with self.connect() as conn:
+            process = await conn.create_process(term_type='ansi')
+
+            process.stdin.write('R\n')
+            await process.stdout.readline()
+
+            process.stdin.write('\x1a')
+            self.assertEqual((await process.stdout.read()), 'SIGNAL')

@@ -343,8 +343,13 @@ class SSHLineEditor:
         elif result is False:
             self._ring_bell()
         else:
-            self._line, new_pos = result
-            self._update_input(0, new_pos)
+            line, new_pos = result
+
+            if new_pos < 0:
+                self._session.signal_received(line)
+            else:
+                self._line = line
+                self._update_input(0, new_pos)
 
     def _history_prev(self):
         """Replace input with previous line in history"""
@@ -555,6 +560,13 @@ class SSHLineEditorChannel:
            The handler will be called with arguments of the current
            input line and cursor position, and updated versions of these
            two values should be returned as a tuple.
+
+           The handler can also return a tuple of a signal name and
+           negative cursor position to cause a signal to be delivered
+           on the channel. In this case, the current input line is left
+           unchanged but the signal is delivered before processing any
+           additional input. This can be used to define "hot keys" that
+           trigger actions unrelated to editing the input.
 
            If the registered key is printable text, returning `True` will
            insert that text at the current cursor position, acting as if
