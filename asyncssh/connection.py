@@ -165,9 +165,14 @@ async def _connect(host, port, loop, tunnel, family, flags,
                                                family=family, flags=flags,
                                                local_addr=local_addr)
 
-    await conn.wait_established()
-
-    return conn
+    try:
+        await conn.wait_established()
+    except (asyncio.TimeoutError, asyncio.CancelledError):
+        conn.abort()
+        await conn.wait_closed()
+        raise
+    else:
+        return conn
 
 
 async def _listen(host, port, loop, tunnel, family, flags, backlog,
