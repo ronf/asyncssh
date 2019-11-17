@@ -396,7 +396,7 @@ class _SFTPParallelIO:
         while self._bytes_left and len(self._pending) < self._max_requests:
             size = min(self._bytes_left, self._block_size)
 
-            task = asyncio.Task(self.run_task(self._offset, size))
+            task = asyncio.ensure_future(self.run_task(self._offset, size))
             self._pending.add(task)
 
             self._offset += size
