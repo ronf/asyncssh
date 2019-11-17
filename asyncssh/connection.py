@@ -165,9 +165,10 @@ async def _connect(host, port, loop, tunnel, family, flags,
                                                family=family, flags=flags,
                                                local_addr=local_addr)
 
+    # pylint: disable=broad-except
     try:
         await conn.wait_established()
-    except (asyncio.TimeoutError, asyncio.CancelledError):
+    except Exception:
         conn.abort()
         await conn.wait_closed()
         raise

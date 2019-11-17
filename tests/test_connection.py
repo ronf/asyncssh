@@ -263,7 +263,7 @@ class _CloseDuringAuthServer(Server):
         # pylint: disable=unused-argument
 
         await asyncio.sleep(1)
-        return False
+        return False # pragma: no cover - closed before we get here
 
 
 class _InternalErrorServer(Server):
