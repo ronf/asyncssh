@@ -1667,7 +1667,6 @@ class SSHConnection(SSHPacketHandler):
 
             if self._agent:
                 self._agent.close()
-                self._agent = None
 
             self.set_extra_info(username=self._username)
             self._send_deferred_packets()
@@ -1889,6 +1888,9 @@ class SSHConnection(SSHPacketHandler):
            this connection has finished closing.
 
         """
+
+        if self._agent:
+            await self._agent.wait_closed()
 
         await self._close_event.wait()
 
@@ -2409,7 +2411,6 @@ class SSHClientConnection(SSHConnection):
 
         if self._agent:
             self._agent.close()
-            self._agent = None
 
         if self._remote_listeners:
             for listener in self._remote_listeners.values():
