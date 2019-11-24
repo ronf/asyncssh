@@ -576,6 +576,8 @@ class _TestProcessRedirection(_TestProcess):
         self.assertEqual(result.stdout, data)
         self.assertEqual(result.stderr, data)
 
+    @unittest.skipIf(sys.platform == 'win32',
+                     'skip asyncio.subprocess tests on Windows')
     @asynctest
     async def test_stdin_stream(self):
         """Test with stdin redirected to an asyncio stream"""
@@ -766,6 +768,8 @@ class _TestProcessRedirection(_TestProcess):
         self.assertEqual(result.stdout, data)
         self.assertEqual(result.stderr, data)
 
+    @unittest.skipIf(sys.platform == 'win32',
+                     'skip asyncio.subprocess tests on Windows')
     @asynctest
     async def test_stdout_stream(self):
         """Test with stdout redirected to an asyncio stream"""
