@@ -619,3 +619,54 @@ instance:
    .. include:: ../examples/simple_scp_server.py
       :literal:
       :start-line: 29
+
+Reverse Direction Example
+=========================
+
+One of the unique capabilities of AsyncSSH is its ability to support
+"reverse direction" SSH connections, using the functions
+:func:`connect_reverse` and :func:`listen_reverse`. This can be
+helpful when implementing protocols such as "NETCONF Call Home",
+described in :rfc:`8071`. When using this capability, the SSH protocol
+doesn't change, but the roles at the TCP level about which side acts
+as a TCP client and server are reversed, with the TCP client taking
+on the role of the SSH server and the TCP server taking on the role of
+the SSH client once the connection is established.
+
+For these examples to run, the following files must be created:
+
+  * The file ``client_host_key`` must exist on the client and contain an
+    SSH private key for the client to use to authenticate itself as a
+    host to the server. An SSH certificate can optionally be provided
+    in ``client_host_key-cert.pub``.
+  * The file ``trusted_server_keys`` must exist on the client and contain
+    a list of trusted server keys or a ``cert-authority`` entry with a
+    public key trusted to sign server keys if certificates are used. This
+    file should be in "authorized_keys" format.
+  * The file ``server_key`` must exist on the server and contain an SSH
+    private key for the server to use to authenticate itself to the
+    client. An SSH certificate can optionally be provided in
+    ``server_key-cert.pub``.
+  * The file ``trusted_client_host_keys`` must exist on the server and
+    contain a list of trusted client host keys or a ``@cert-authority``
+    entry with a public key trusted to sign client host keys if
+    certificates are used. This file should be in "known_hosts" format.
+
+Reverse Direction Client
+------------------------
+
+The following example shows a reverse-direction SSH client which will run
+arbitrary shell commands given to it by the server it connects to:
+
+   .. include:: ../examples/reverse_client.py
+      :literal:
+      :start-line: 32
+
+Reverse Direction Server
+------------------------
+
+Here is the corresponding server which makes requests to run the commands:
+
+   .. include:: ../examples/reverse_server.py
+      :literal:
+      :start-line: 32
