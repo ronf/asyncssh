@@ -338,6 +338,74 @@ class _ProcessWriter:
         self._process.clear_reader(self._datatype)
 
 
+class _StreamReader(_UnicodeReader):
+    """Forward data from an asyncio stream"""
+
+    def __init__(self, process, reader, bufsize, datatype, encoding, errors):
+        super().__init__(encoding, errors)
+
+        self._process = process
+        self._conn = process.channel.get_connection()
+        self._reader = reader
+        self._bufsize = bufsize
+        self._datatype = datatype
+        self._paused = False
+
+    async def _feed(self):
+        """Feed stream data"""
+
+        while not self._paused:
+            data = await self._reader.read(self._bufsize)
+
+            if data:
+                self._process.feed_data(self.decode(data), self._datatype)
+            else:
+                self.check_partial()
+                self._process.feed_eof(self._datatype)
+                break
+
+    def feed(self):
+        """Start feeding stream data"""
+
+        self._conn.create_task(self._feed())
+
+    def pause_reading(self):
+        """Pause reading from the stream"""
+
+        self._paused = True
+
+    def resume_reading(self):
+        """Resume reading from the stream"""
+
+        self._paused = False
+        self.feed()
+
+    def close(self):
+        """Ignore close -- the caller must clean up the associated transport"""
+
+
+class _StreamWriter(_UnicodeWriter):
+    """Forward data to an asyncio stream"""
+
+    def __init__(self, writer, encoding, errors):
+        super().__init__(encoding, errors)
+
+        self._writer = writer
+
+    def write(self, data):
+        """Write data to the stream"""
+
+        self._writer.write(self.encode(data))
+
+    def write_eof(self):
+        """Write EOF to the stream"""
+
+        self._writer.write_eof()
+
+    def close(self):
+        """Ignore close -- the caller must clean up the associated transport"""
+
+
 class _DevNullWriter:
     """Discard data"""
 
@@ -587,6 +655,9 @@ class SSHProcess:
             writer = _ProcessWriter(self, datatype)
             reader_process.set_writer(writer, reader_datatype)
             reader = _ProcessReader(reader_process, reader_datatype)
+        elif isinstance(source, asyncio.StreamReader):
+            reader = _StreamReader(self, source, bufsize, datatype,
+                                   self._encoding, self._errors)
         else:
             if isinstance(source, str):
                 file = open(source, 'rb', buffering=bufsize)
@@ -615,7 +686,7 @@ class SSHProcess:
 
         self.set_reader(reader, send_eof, datatype)
 
-        if isinstance(reader, _FileReader):
+        if isinstance(reader, (_FileReader, _StreamReader)):
             reader.feed()
         elif isinstance(reader, _ProcessReader):
             reader_process.feed_recv_buf(reader_datatype, writer)
@@ -639,6 +710,8 @@ class SSHProcess:
             reader = _ProcessReader(self, datatype)
             writer_process.set_reader(reader, send_eof, writer_datatype)
             writer = _ProcessWriter(writer_process, writer_datatype)
+        elif isinstance(target, asyncio.StreamWriter):
+            writer = _StreamWriter(target, self._encoding, self._errors)
         else:
             if isinstance(target, str):
                 file = open(target, 'wb', buffering=bufsize)
@@ -903,6 +976,7 @@ class SSHClientProcess(SSHProcess, SSHClientStreamSession):
            The `stdin` argument can be any of the following:
 
                * An :class:`SSHReader` object
+               * An :class:`asyncio.StreamReader` object
                * A file object open for read
                * An `int` file descriptor open for read
                * A connected socket object
@@ -914,6 +988,7 @@ class SSHClientProcess(SSHProcess, SSHClientStreamSession):
            The `stdout` and `stderr` arguments can be any of the following:
 
                * An :class:`SSHWriter` object
+               * An :class:`asyncio.StreamWriter` object
                * A file object open for write
                * An `int` file descriptor open for write
                * A connected socket object
@@ -930,6 +1005,10 @@ class SSHClientProcess(SSHProcess, SSHClientStreamSession):
 
            The default value of `None` means to not change redirection
            for that stream.
+
+           .. note:: When passing in asyncio streams, it is the responsibility
+                     of the caller to close the associated transport when it
+                     is no longer needed.
 
            :param stdin:
                Source of data to feed to standard input
@@ -1173,6 +1252,7 @@ class SSHServerProcess(SSHProcess, SSHServerStreamSession):
            The `stdin` argument can be any of the following:
 
                * An :class:`SSHWriter` object
+               * An :class:`asyncio.StreamWriter` object
                * A file object open for write
                * An `int` file descriptor open for write
                * A connected socket object
@@ -1184,6 +1264,7 @@ class SSHServerProcess(SSHProcess, SSHServerStreamSession):
            The `stdout` and `stderr` arguments can be any of the following:
 
                * An :class:`SSHReader` object
+               * An :class:`asyncio.StreamReader` object
                * A file object open for read
                * An `int` file descriptor open for read
                * A connected socket object
@@ -1197,6 +1278,10 @@ class SSHServerProcess(SSHProcess, SSHServerStreamSession):
 
            The default value of `None` means to not change redirection
            for that stream.
+
+           .. note:: When passing in asyncio streams, it is the responsibility
+                     of the caller to close the associated transport when it
+                     is no longer needed.
 
            :param stdin:
                Target to feed data from standard input to

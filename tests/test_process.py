@@ -577,6 +577,25 @@ class _TestProcessRedirection(_TestProcess):
         self.assertEqual(result.stderr, data)
 
     @asynctest
+    async def test_stdin_stream(self):
+        """Test with stdin redirected to an asyncio stream"""
+
+        data = 4*1024*1024*'*'
+
+        async with self.connect() as conn:
+            proc1 = await asyncio.create_subprocess_shell(
+                'cat', stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE)
+            proc1.stdin.write(data.encode('ascii'))
+            proc1.stdin.write_eof()
+
+            proc2 = await conn.create_process('delay', stdin=proc1.stdout)
+            result = await proc2.wait()
+
+        self.assertEqual(result.stdout, data)
+        self.assertEqual(result.stderr, data)
+
+    @asynctest
     async def test_stdout_devnull(self):
         """Test with stdout redirected to DEVNULL"""
 
@@ -746,6 +765,27 @@ class _TestProcessRedirection(_TestProcess):
 
         self.assertEqual(result.stdout, data)
         self.assertEqual(result.stderr, data)
+
+    @asynctest
+    async def test_stdout_stream(self):
+        """Test with stdout redirected to an asyncio stream"""
+
+        data = str(id(self))
+
+        async with self.connect() as conn:
+            proc2 = await asyncio.create_subprocess_shell(
+                'cat', stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE)
+
+            proc1 = await conn.create_process(stdout=proc2.stdin,
+                                              stderr=asyncssh.DEVNULL)
+
+            proc1.stdin.write(data)
+            proc1.stdin.write_eof()
+
+            stdout_data, _ = await proc2.communicate()
+
+        self.assertEqual(stdout_data, data.encode('ascii'))
 
     @asynctest
     async def test_change_stdout(self):
