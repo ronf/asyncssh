@@ -185,7 +185,7 @@ class SSHChannel(SSHPacketHandler):
 
             self._request_waiters = []
 
-        if self._session:
+        if self._session is not None:
             self._session.connection_lost(exc)
             self._session = None
 
@@ -329,7 +329,7 @@ class SSHChannel(SSHPacketHandler):
             except UnicodeDecodeError as unicode_exc:
                 raise ProtocolError(str(unicode_exc)) from None
 
-        if self._session:
+        if self._session is not None:
             self._session.data_received(data, datatype)
 
     def _accept_data(self, data, datatype=None):
@@ -1824,7 +1824,7 @@ class SSHForwardChannel(SSHChannel):
 
         await super()._finish_open_request(session)
 
-        if self._session:
+        if self._session is not None:
             self._session.session_started()
             self.resume_reading()
 
