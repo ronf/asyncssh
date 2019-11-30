@@ -3,6 +3,30 @@
 Change Log
 ==========
 
+Release 2.1.0 (30 Nov 2019)
+---------------------------
+
+* Added support in the SSHProcess redirect mechanism to accept asyncio
+  StreamReader and StreamWriter objects, allowing asyncio streams to
+  be plugged in as stdin/stdout/stderr in an SSHProcess.
+
+* Added support for key handlers in the AsyncSSH line editor to trigger
+  signals being delivered when certain "hot keys" are hit while reading
+  input.
+
+* Improved cleanup of unreturned connection objects when an error occurs
+  or the connection request is canceled or times out.
+
+* Improved cleanup of SSH agent client objects to avoid triggering a false
+  positive warning in Python 3.8.
+
+* Added an example to the documentation for how to create reverse-direction
+  SSH client and server connections.
+
+* Made check of session objects against None explicit to avoid confusion
+  on user-defined sessions that implement __len__ or __bool__. Thanks go
+  to Lars-Dominik Braun for contributing this improvement!
+
 Release 2.0.1 (2 Nov 2019)
 --------------------------
 
