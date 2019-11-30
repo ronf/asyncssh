@@ -52,7 +52,7 @@ async def run_reverse_client():
         'localhost', 8022, server_host_keys=['client_host_key'],
         authorized_client_keys='trusted_server_keys',
         process_factory=handle_request, encoding=None)
-    
+
     await conn.wait_closed()
 
 try:
