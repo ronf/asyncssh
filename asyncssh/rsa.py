@@ -23,7 +23,7 @@
 from .asn1 import ASN1DecodeError, ObjectIdentifier, der_encode, der_decode
 from .crypto import RSAPrivateKey, RSAPublicKey
 from .misc import all_ints
-from .packet import MPInt
+from .packet import MPInt, String
 from .public_key import SSHKey, SSHOpenSSHCertificateV01, KeyExportError
 from .public_key import register_public_key_alg, register_certificate_alg
 from .public_key import register_x509_certificate_alg
@@ -189,28 +189,21 @@ class _RSAKey(SSHKey):
         return b''.join((MPInt(self._key.d), MPInt(self._key.iqmp),
                          MPInt(self._key.p), MPInt(self._key.q)))
 
-    def sign_der(self, data, sig_algorithm):
-        """Compute a DER-encoded signature of the specified data"""
+    def sign_ssh(self, data, sig_algorithm):
+        """Compute an SSH-encoded signature of the specified data"""
 
         if not self._key.d:
             raise ValueError('Private key needed for signing')
 
-        return self._key.sign(data, sig_algorithm)
+        return String(self._key.sign(data, sig_algorithm))
 
-    def verify_der(self, data, sig_algorithm, sig):
-        """Verify a DER-encoded signature of the specified data"""
-
-        return self._key.verify(data, sig, sig_algorithm)
-
-    def sign_ssh(self, data, sig_algorithm):
-        """Compute an SSH-encoded signature of the specified data"""
-
-        return self.sign_der(data, sig_algorithm)
-
-    def verify_ssh(self, data, sig_algorithm, sig):
+    def verify_ssh(self, data, sig_algorithm, packet):
         """Verify an SSH-encoded signature of the specified data"""
 
-        return self.verify_der(data, sig_algorithm, sig)
+        sig = packet.get_string()
+        packet.check_end()
+
+        return self._key.verify(data, sig, sig_algorithm)
 
     def encrypt(self, data, algorithm):
         """Encrypt a block of data with this key"""

@@ -52,6 +52,7 @@ Features
 
 * Many types and formats of `public keys and certificates`__
 
+  * Including OpenSSH-compatible support for U2F and FIDO2 security keys
   * Including support for X.509 certificates as defined in RFC 6187
 
 * Support for accessing keys managed by `ssh-agent`__ on UNIX systems
@@ -127,6 +128,9 @@ functionality:
 * Install bcrypt from https://pypi.python.org/pypi/bcrypt
   if you want support for OpenSSH private key encryption.
 
+* Install libsk-libfido2 from https://github.com/Yubico/libfido2 if
+  you want support for authenticating with U2F or FIDO2 security keys.
+
 * Install gssapi from https://pypi.python.org/pypi/gssapi if you
   want support for GSSAPI key exchange and authentication on UNIX.
 
@@ -170,8 +174,8 @@ To install bcrypt, libnacl, pyOpenSSL, and pypiwin32 on Windows, you can run:
 
 Note that you will still need to manually install the libsodium library
 listed above for libnacl to work correctly and/or libnettle for UMAC
-support. Unfortunately, since libsodium and libnettle are not Python
-packages, they cannot be directly installed using pip.
+support. Unfortunately, since libsodium, libnettle, and libfido2 are
+not Python packages, they cannot be directly installed using pip.
 
 Installing the development branch
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

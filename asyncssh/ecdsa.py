@@ -265,38 +265,31 @@ class _ECKey(SSHKey):
 
         return MPInt(self._key.d)
 
-    def sign_der(self, data, sig_algorithm):
-        """Compute a DER-encoded signature of the specified data"""
+    def sign_ssh(self, data, sig_algorithm):
+        """Compute an SSH-encoded signature of the specified data"""
 
         # pylint: disable=unused-argument
 
         if not self._key.private_value:
             raise ValueError('Private key needed for signing')
 
-        return self._key.sign(data)
+        r, s = der_decode(self._key.sign(data))
+        return String(MPInt(r) + MPInt(s))
 
-    def verify_der(self, data, sig_algorithm, sig):
-        """Verify a DER-encoded signature of the specified data"""
+    def verify_ssh(self, data, sig_algorithm, packet):
+        """Verify an SSH-encoded signature of the specified data"""
 
         # pylint: disable=unused-argument
 
-        return self._key.verify(data, sig)
-
-    def sign_ssh(self, data, sig_algorithm):
-        """Compute an SSH-encoded signature of the specified data"""
-
-        r, s = der_decode(self.sign_der(data, sig_algorithm))
-        return MPInt(r) + MPInt(s)
-
-    def verify_ssh(self, data, sig_algorithm, sig):
-        """Verify an SSH-encoded signature of the specified data"""
+        sig = packet.get_string()
+        packet.check_end()
 
         packet = SSHPacket(sig)
         r = packet.get_mpint()
         s = packet.get_mpint()
         packet.check_end()
 
-        return self.verify_der(data, sig_algorithm, der_encode((r, s)))
+        return self._key.verify(data, der_encode((r, s)))
 
 
 for _curve_id, _oid in ((b'nistp521', '1.3.132.0.35'),

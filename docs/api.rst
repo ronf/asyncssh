@@ -1990,6 +1990,8 @@ AsyncSSH:
   | x509v3-rsa2048-sha256
   | x509v3-ssh-rsa
   | x509v3-ssh-dss
+  | sk-ssh-ed25519\@openssh.com
+  | sk-ecdsa-sha2-nistp256\@openssh.com
   | ssh-ed25519
   | ssh-ed448
   | ecdsa-sha2-nistp521
@@ -2017,6 +2019,8 @@ supported by AsyncSSH:
   | x509v3-rsa2048-sha256
   | x509v3-ssh-rsa
   | x509v3-ssh-dss
+  | sk-ssh-ed25519-cert-v01\@openssh.com
+  | sk-ecdsa-sha2-nistp256-cert-v01\@openssh.com
   | ssh-ed25519-cert-v01\@openssh.com
   | ssh-ed448-cert-v01\@openssh.com
   | ecdsa-sha2-nistp521-cert-v01\@openssh.com
@@ -2025,6 +2029,8 @@ supported by AsyncSSH:
   | ecdsa-sha2-1.3.132.0.10-cert-v01\@openssh.com
   | ssh-rsa-cert-v01\@openssh.com
   | ssh-dss-cert-v01\@openssh.com
+  | sk-ssh-ed25519\@openssh.com
+  | sk-ecdsa-sha2-nistp256\@openssh.com
   | ssh-ed25519
   | ssh-ed448
   | ecdsa-sha2-nistp521

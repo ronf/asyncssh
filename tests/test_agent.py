@@ -23,16 +23,18 @@
 import asyncio
 import functools
 import os
+from pathlib import Path
 import signal
 import subprocess
-import unittest
 
 import asyncssh
 
 from asyncssh.agent import SSH_AGENT_SUCCESS, SSH_AGENT_FAILURE
+from asyncssh.agent import SSH_AGENT_IDENTITIES_ANSWER
 from asyncssh.crypto import ed25519_available
-from asyncssh.packet import Byte, String
+from asyncssh.packet import Byte, String, UInt32
 
+from .sk_stub import patch_sk
 from .util import AsyncTestCase, asynctest, run
 
 
@@ -55,7 +57,7 @@ class _Agent:
     """Mock SSH agent for testing error cases"""
 
     def __init__(self, response):
-        self._response = response
+        self._response = b'' if response is None else String(response)
         self._path = None
         self._server = None
 
@@ -115,7 +117,7 @@ class _TestAgent(AsyncTestCase):
         try:
             output = run('ssh-agent -a agent 2>/dev/null')
         except subprocess.CalledProcessError: # pragma: no cover
-            raise unittest.SkipTest('ssh-agent not available')
+            return
 
         cls._agent_pid = int(output.splitlines()[2].split()[3][:-1])
         os.environ['SSH_AUTH_SOCK'] = 'agent'
@@ -124,7 +126,14 @@ class _TestAgent(AsyncTestCase):
     async def asyncTearDownClass(cls):
         """Shut down agents"""
 
-        os.kill(cls._agent_pid, signal.SIGTERM)
+        if cls._agent_pid: # pragma: no branch
+            os.kill(cls._agent_pid, signal.SIGTERM)
+
+    def setUp(self):
+        """Skip unit tests if we couldn't start an agent"""
+
+        if not self._agent_pid: # pragma: no cover
+            self.skipTest('ssh-agent not available')
 
     # pylint: enable=invalid-name
 
@@ -230,11 +239,77 @@ class _TestAgent(AsyncTestCase):
         agent_keys = await agent.get_keys()
         self.assertEqual(len(agent_keys), 0)
 
+    @agent_test
+    async def test_add_keys_failure(self, agent):
+        """Test getting keys from the agent"""
+
+        os.mkdir('.ssh', 0o700)
+        key = asyncssh.generate_private_key('ssh-rsa')
+        key.write_private_key(Path('.ssh', 'id_rsa'))
+
+        try:
+            mock_agent = _Agent(Byte(SSH_AGENT_FAILURE))
+            await mock_agent.start('mock_agent')
+
+            async with asyncssh.connect_agent('mock_agent') as agent:
+                async with agent:
+                    await agent.add_keys()
+
+                async with agent:
+                    with self.assertRaises(ValueError):
+                        await agent.add_keys([key])
+        finally:
+            os.remove(os.path.join('.ssh', 'id_rsa'))
+            os.rmdir('.ssh')
+
+    @patch_sk
+    @asynctest
+    async def test_add_sk_keys(self):
+        """Test adding U2F security keys"""
+
+        key = asyncssh.generate_private_key(
+            'sk-ecdsa-sha2-nistp256@openssh.com')
+        cert = key.generate_user_certificate(key, 'test')
+
+        mock_agent = _Agent(Byte(SSH_AGENT_SUCCESS))
+        await mock_agent.start('mock_agent')
+
+        async with asyncssh.connect_agent('mock_agent') as agent:
+            for keypair in asyncssh.load_keypairs([key, (key, cert)]):
+                async with agent:
+                    self.assertIsNone(await agent.add_keys([keypair]))
+
+            async with agent:
+                with self.assertRaises(asyncssh.KeyExportError):
+                    await agent.add_keys([key.convert_to_public()])
+
+        await mock_agent.stop()
+
+    @patch_sk
+    @asynctest
+    async def test_get_sk_keys(self):
+        """Test getting U2F security keys"""
+
+        key = asyncssh.generate_private_key(
+            'sk-ecdsa-sha2-nistp256@openssh.com')
+        cert = key.generate_user_certificate(key, 'test')
+
+        mock_agent = _Agent(Byte(SSH_AGENT_IDENTITIES_ANSWER) + UInt32(2) +
+                            String(key.public_data) + String('') +
+                            String(cert.public_data) + String(''))
+
+        await mock_agent.start('mock_agent')
+
+        async with asyncssh.connect_agent('mock_agent') as agent:
+            await agent.get_keys()
+
+        await mock_agent.stop()
+
     @asynctest
     async def test_add_remove_smartcard_keys(self):
         """Test adding and removing smart card keys"""
 
-        mock_agent = _Agent(String(Byte(SSH_AGENT_SUCCESS)))
+        mock_agent = _Agent(Byte(SSH_AGENT_SUCCESS))
         await mock_agent.start('mock_agent')
 
         async with asyncssh.connect_agent('mock_agent') as agent:
@@ -243,7 +318,7 @@ class _TestAgent(AsyncTestCase):
 
         await mock_agent.stop()
 
-        mock_agent = _Agent(String(Byte(SSH_AGENT_SUCCESS)))
+        mock_agent = _Agent(Byte(SSH_AGENT_SUCCESS))
         await mock_agent.start('mock_agent')
 
         async with asyncssh.connect_agent('mock_agent') as agent:
@@ -300,7 +375,7 @@ class _TestAgent(AsyncTestCase):
     async def test_query_extensions(self):
         """Test query of supported extensions"""
 
-        mock_agent = _Agent(String(Byte(SSH_AGENT_SUCCESS) + String('xxx')))
+        mock_agent = _Agent(Byte(SSH_AGENT_SUCCESS) + String('xxx'))
         await mock_agent.start('mock_agent')
 
         async with asyncssh.connect_agent('mock_agent') as agent:
@@ -309,7 +384,7 @@ class _TestAgent(AsyncTestCase):
 
         await mock_agent.stop()
 
-        mock_agent = _Agent(String(Byte(SSH_AGENT_SUCCESS) + String(b'\xff')))
+        mock_agent = _Agent(Byte(SSH_AGENT_SUCCESS) + String(b'\xff'))
         await mock_agent.start('mock_agent')
 
         async with asyncssh.connect_agent('mock_agent') as agent:
@@ -318,7 +393,7 @@ class _TestAgent(AsyncTestCase):
 
         await mock_agent.stop()
 
-        mock_agent = _Agent(String(Byte(SSH_AGENT_FAILURE)))
+        mock_agent = _Agent(Byte(SSH_AGENT_FAILURE))
         await mock_agent.start('mock_agent')
 
         async with asyncssh.connect_agent('mock_agent') as agent:
@@ -327,7 +402,7 @@ class _TestAgent(AsyncTestCase):
 
         await mock_agent.stop()
 
-        mock_agent = _Agent(String(b'\xff'))
+        mock_agent = _Agent(b'\xff')
         await mock_agent.start('mock_agent')
 
         async with asyncssh.connect_agent('mock_agent') as agent:
@@ -359,8 +434,7 @@ class _TestAgent(AsyncTestCase):
         key = asyncssh.generate_private_key('ssh-rsa')
         keypair = asyncssh.load_keypairs(key)[0]
 
-        for response in (b'', String(b''),
-                         String(Byte(SSH_AGENT_FAILURE)), String(b'\xff')):
+        for response in (None, b'', Byte(SSH_AGENT_FAILURE), b'\xff'):
             mock_agent = _Agent(response)
             await mock_agent.start('mock_agent')
 

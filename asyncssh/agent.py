@@ -68,7 +68,7 @@ SSH_AGENT_EXTENSION_FAILURE              = 28
 # SSH agent constraint numbers
 SSH_AGENT_CONSTRAIN_LIFETIME             = 1
 SSH_AGENT_CONSTRAIN_CONFIRM              = 2
-SSH_AGENT_CONSTRAIN_EXTENSION            = 3
+SSH_AGENT_CONSTRAIN_EXTENSION            = 255
 
 # SSH agent signature flags
 SSH_AGENT_RSA_SHA2_256                   = 2
@@ -92,7 +92,10 @@ class SSHAgentKeyPair(SSHKeyPair):
         self._flags = 0
 
         if self._cert:
-            self.sig_algorithm = algorithm[:-21]
+            if algorithm.startswith(b'sk-'):
+                self.sig_algorithm = algorithm[:-21] + b'@openssh.com'
+            else:
+                self.sig_algorithm = algorithm[:-21]
         else:
             self.sig_algorithm = algorithm
 
@@ -262,13 +265,20 @@ class SSHAgentClient:
 
            :param keylist: (optional)
                The list of keys to add. If not specified, an attempt will
-               be made to load keys from the files :file:`.ssh/id_ed25519`,
+               be made to load keys from the files
+               :file:`.ssh/id_ed25519_sk`, :file:`.ssh/id_ecdsa_sk`,
+               :file:`.ssh/id_ed448`, :file:`.ssh/id_ed25519`,
                :file:`.ssh/id_ecdsa`, :file:`.ssh/id_rsa` and
                :file:`.ssh/id_dsa` in the user's home directory with
                optional matching certificates loaded from the files
+               :file:`.ssh/id_ed25519_sk-cert.pub`,
+               :file:`.ssh/id_ecdsa_sk-cert.pub`,
+               :file:`.ssh/id_ed448-cert.pub`,
                :file:`.ssh/id_ed25519-cert.pub`,
                :file:`.ssh/id_ecdsa-cert.pub`, :file:`.ssh/id_rsa-cert.pub`,
-               and :file:`.ssh/id_dsa-cert.pub`.
+               and :file:`.ssh/id_dsa-cert.pub`. Failures when adding keys
+               are ignored in this case, as the agent may not recognize
+               some of these key types.
            :param passphrase: (optional)
                The passphrase to use to decrypt the keys.
            :param lifetime: (optional)
@@ -289,15 +299,30 @@ class SSHAgentClient:
 
         if keylist:
             keypairs = load_keypairs(keylist, passphrase)
+            ignore_failures = False
         else:
             keypairs = load_default_keypairs(passphrase)
+            ignore_failures = True
 
-        constraints = self.encode_constraints(lifetime, confirm)
-        msgtype = SSH_AGENTC_ADD_ID_CONSTRAINED if constraints else \
-                      SSH_AGENTC_ADD_IDENTITY
+        base_constraints = self.encode_constraints(lifetime, confirm)
+
+        provider = os.environ.get('SSH_SK_PROVIDER') or 'internal'
+
+        sk_constraints = Byte(SSH_AGENT_CONSTRAIN_EXTENSION) + \
+                         String('sk-provider@openssh.com') + \
+                         String(provider)
 
         for keypair in keypairs:
+            constraints = base_constraints
+
+            if keypair.algorithm.startswith(b'sk-'):
+                constraints += sk_constraints
+
+            msgtype = SSH_AGENTC_ADD_ID_CONSTRAINED if constraints else \
+                          SSH_AGENTC_ADD_IDENTITY
+
             comment = keypair.get_comment_bytes()
+
             resptype, resp = \
                 await self._make_request(msgtype,
                                          keypair.get_agent_private_key(),
@@ -306,7 +331,8 @@ class SSHAgentClient:
             if resptype == SSH_AGENT_SUCCESS:
                 resp.check_end()
             elif resptype == SSH_AGENT_FAILURE:
-                raise ValueError('Unable to add key')
+                if not ignore_failures:
+                    raise ValueError('Unable to add key')
             else:
                 raise ValueError('Unknown SSH agent response: %d' % resptype)
 

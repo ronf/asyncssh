@@ -5099,14 +5099,17 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
            A list of keys which will be used to authenticate this client
            via public key authentication. If no client keys are specified,
            an attempt will be made to get them from an ssh-agent process
-           and/or load them from the files :file:`.ssh/id_ed25519`,
-           :file:`.ssh/id_ecdsa`, :file:`.ssh/id_rsa`, and :file:`.ssh/id_dsa`
-           in the user's home directory, with optional certificates loaded
-           from the files :file:`.ssh/id_ed25519-cert.pub`,
-           :file:`.ssh/id_ecdsa-cert.pub`, :file:`.ssh/id_rsa-cert.pub`,
-           and :file:`.ssh/id_dsa-cert.pub`. If this argument is explicitly
-           set to `None`, client public key authentication will not be
-           performed.
+           and/or load them from the files :file:`.ssh/id_ed25519_sk`,
+           :file:`.ssh/id_ecdsa_sk`, :file:`.ssh/id_ed448`,
+           :file:`.ssh/id_ed25519`, :file:`.ssh/id_ecdsa`,
+           :file:`.ssh/id_rsa`, and :file:`.ssh/id_dsa` in the user's
+           home directory, with optional certificates loaded from the files
+           :file:`.ssh/id_ed25519_sk-cert.pub`,
+           :file:`.ssh/id_ecdsa_sk-cert.pub`, :file:`.ssh/id_ed448-cert.pub`,
+           :file:`.ssh/id_ed25519-cert.pub`, :file:`.ssh/id_ecdsa-cert.pub`,
+           :file:`.ssh/id_rsa-cert.pub`, and :file:`.ssh/id_dsa-cert.pub`.
+           If this argument is explicitly set to `None`, client public key
+           authentication will not be performed.
        :param passphrase: (optional)
            The passphrase to use to decrypt client keys when loading them,
            if they are encrypted. If this is not specified, only unencrypted

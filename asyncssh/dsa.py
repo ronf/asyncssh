@@ -23,7 +23,7 @@
 from .asn1 import ASN1DecodeError, ObjectIdentifier, der_encode, der_decode
 from .crypto import DSAPrivateKey, DSAPublicKey
 from .misc import all_ints
-from .packet import MPInt
+from .packet import MPInt, String
 from .public_key import SSHKey, SSHOpenSSHCertificateV01, KeyExportError
 from .public_key import register_public_key_alg, register_certificate_alg
 from .public_key import register_x509_certificate_alg
@@ -200,31 +200,24 @@ class _DSAKey(SSHKey):
 
         return MPInt(self._key.x)
 
-    def sign_der(self, data, sig_algorithm):
-        """Compute a DER-encoded signature of the specified data"""
+    def sign_ssh(self, data, sig_algorithm):
+        """Compute an SSH-encoded signature of the specified data"""
 
         # pylint: disable=unused-argument
 
         if not self._key.x:
             raise ValueError('Private key needed for signing')
 
-        return self._key.sign(data)
+        r, s = der_decode(self._key.sign(data))
+        return String(r.to_bytes(20, 'big') + s.to_bytes(20, 'big'))
 
-    def verify_der(self, data, sig_algorithm, sig):
-        """Verify a DER-encoded signature of the specified data"""
+    def verify_ssh(self, data, sig_algorithm, packet):
+        """Verify an SSH-encoded signature of the specified data"""
 
         # pylint: disable=unused-argument
 
-        return self._key.verify(data, sig)
-
-    def sign_ssh(self, data, sig_algorithm):
-        """Compute an SSH-encoded signature of the specified data"""
-
-        r, s = der_decode(self.sign_der(data, sig_algorithm))
-        return r.to_bytes(20, 'big') + s.to_bytes(20, 'big')
-
-    def verify_ssh(self, data, sig_algorithm, sig):
-        """Verify an SSH-encoded signature of the specified data"""
+        sig = packet.get_string()
+        packet.check_end()
 
         if len(sig) != 40:
             return False
@@ -232,7 +225,7 @@ class _DSAKey(SSHKey):
         r = int.from_bytes(sig[:20], 'big')
         s = int.from_bytes(sig[20:], 'big')
 
-        return self.verify_der(data, sig_algorithm, der_encode((r, s)))
+        return self._key.verify(data, der_encode((r, s)))
 
 
 register_public_key_alg(b'ssh-dss', _DSAKey)

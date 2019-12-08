@@ -1,0 +1,188 @@
+# Copyright (c) 2019 by Ron Frederick <ronf@timeheart.net> and others.
+#
+# This program and the accompanying materials are made available under
+# the terms of the Eclipse Public License v2.0 which accompanies this
+# distribution and is available at:
+#
+#     http://www.eclipse.org/legal/epl-2.0/
+#
+# This program may also be made available under the following secondary
+# licenses when the conditions for such availability set forth in the
+# Eclipse Public License v2.0 are satisfied:
+#
+#    GNU General Public License, Version 2.0, or any later versions of
+#    that license
+#
+# SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-or-later
+#
+# Contributors:
+#     Ron Frederick - initial implementation, API, and documentation
+
+"""U2F ECDSA public key encryption handler"""
+
+from hashlib import sha256
+
+from .asn1 import der_encode
+from .crypto import ECDSAPublicKey
+from .packet import Byte, MPInt, String, UInt32, SSHPacket
+from .public_key import KeyExportError, SSHKey, SSHOpenSSHCertificateV01
+from .public_key import register_public_key_alg, register_certificate_alg
+from .sk import SSH_SK_ECDSA, SSH_SK_USER_PRESENCE_REQD, sk_enroll, sk_sign
+
+
+class _SKECDSAKey(SSHKey):
+    """Handler for elliptic curve public key encryption"""
+
+    def __init__(self, curve_id, public_value, application, flags=None,
+                 key_handle=None, reserved=None):
+        super().__init__(ECDSAPublicKey.construct(curve_id, public_value))
+
+        self.algorithm = b'sk-ecdsa-sha2-' + curve_id + b'@openssh.com'
+        self.sig_algorithms = (self.algorithm,)
+        self.all_sig_algorithms = set(self.sig_algorithms)
+
+        self._application = application
+        self._flags = flags
+        self._key_handle = key_handle
+        self._reserved = reserved
+
+    def __eq__(self, other):
+        # This isn't protected access - both objects are _SKECDSAKey instances
+        # pylint: disable=protected-access
+
+        return (isinstance(other, type(self)) and
+                self._key.curve_id == other._key.curve_id and
+                self._key.public_value == other._key.public_value and
+                self._application == other._application and
+                self._flags == other._flags and
+                self._key_handle == other._key_handle and
+                self._reserved == other._reserved)
+
+    def __hash__(self):
+        return hash((self._key.curve_id, self._key.public_value,
+                     self._application, self._flags, self._key_handle,
+                     self._reserved))
+
+    @classmethod
+    def generate(cls, algorithm, touch_required=True):
+        """Generate a new SK ECDSA private key"""
+
+        application = b'ssh:'
+        flags = SSH_SK_USER_PRESENCE_REQD if touch_required else 0
+
+        public_value, key_handle, _, _ = sk_enroll(SSH_SK_ECDSA, 32*b'\0',
+                                                   application, flags)
+
+        # Strip prefix and suffix of algorithm to get curve_id
+        return cls(algorithm[14:-12], public_value, application,
+                   flags, key_handle, b'')
+
+    @classmethod
+    def make_private(cls, curve_id, public_value, application,
+                     flags, key_handle, reserved):
+        """Construct a U2F ECDSA private key"""
+
+        return cls(curve_id, public_value, application,
+                   flags, key_handle, reserved)
+
+    @classmethod
+    def make_public(cls, curve_id, public_value, application):
+        """Construct a U2F ECDSA public key"""
+
+        return cls(curve_id, public_value, application)
+
+    @classmethod
+    def decode_ssh_private(cls, packet):
+        """Decode an SSH format SK ECDSA private key"""
+
+        curve_id = packet.get_string()
+        public_value = packet.get_string()
+        application = packet.get_string()
+        flags = packet.get_byte()
+        key_handle = packet.get_string()
+        reserved = packet.get_string()
+
+        return curve_id, public_value, application, flags, key_handle, reserved
+
+    @classmethod
+    def decode_ssh_public(cls, packet):
+        """Decode an SSH format SK ECDSA public key"""
+
+        curve_id = packet.get_string()
+        public_value = packet.get_string()
+        application = packet.get_string()
+
+        return curve_id, public_value, application
+
+    def encode_ssh_private(self):
+        """Encode an SSH format SK ECDSA private key"""
+
+        if self._key_handle is None:
+            raise KeyExportError('Key is not private')
+
+        return b''.join((String(self._key.curve_id),
+                         String(self._key.public_value),
+                         String(self._application), Byte(self._flags),
+                         String(self._key_handle), String(self._reserved)))
+
+    def encode_ssh_public(self):
+        """Encode an SSH format SK ECDSA public key"""
+
+        return b''.join((String(self._key.curve_id),
+                         String(self._key.public_value),
+                         String(self._application)))
+
+    def encode_agent_cert_private(self):
+        """Encode U2F ECDSA certificate private key data for agent"""
+
+        if self._key_handle is None:
+            raise KeyExportError('Key is not private')
+
+        return b''.join((String(self._application), Byte(self._flags),
+                         String(self._key_handle), String(self._reserved)))
+
+    def sign_ssh(self, data, sig_algorithm):
+        """Compute an SSH-encoded signature of the specified data"""
+
+        # pylint: disable=unused-argument
+
+        if self._key_handle is None:
+            raise ValueError('Key handle needed for signing')
+
+        flags, counter, r, s = sk_sign(SSH_SK_ECDSA, sha256(data).digest(),
+                                       self._application, self._key_handle,
+                                       self._flags)
+
+        sig = MPInt(int.from_bytes(r, 'big')) + MPInt(int.from_bytes(s, 'big'))
+
+        return String(sig) + Byte(flags) + UInt32(counter)
+
+    def verify_ssh(self, data, sig_algorithm, packet):
+        """Verify an SSH-encoded signature of the specified data"""
+
+        # pylint: disable=unused-argument
+
+        sig = packet.get_string()
+        flags = packet.get_byte()
+        counter = packet.get_uint32()
+        packet.check_end()
+
+        packet = SSHPacket(sig)
+        r = packet.get_mpint()
+        s = packet.get_mpint()
+        packet.check_end()
+
+        sig = der_encode((r, s))
+
+        return self._key.verify(sha256(self._application).digest() +
+                                Byte(flags) + UInt32(counter) +
+                                sha256(data).digest(), sig)
+
+
+for _curve_id in (b'nistp256',):
+    _algorithm = b'sk-ecdsa-sha2-' + _curve_id + b'@openssh.com'
+    _cert_algorithm = b'sk-ecdsa-sha2-' + _curve_id + b'-cert-v01@openssh.com'
+
+    register_public_key_alg(_algorithm, _SKECDSAKey, (_algorithm,))
+    register_certificate_alg(1, _algorithm, _cert_algorithm,
+                             _SKECDSAKey, SSHOpenSSHCertificateV01)

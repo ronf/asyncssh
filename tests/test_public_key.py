@@ -50,6 +50,7 @@ from asyncssh.public_key import get_public_key_algs, get_certificate_algs
 from asyncssh.public_key import get_x509_certificate_algs
 from asyncssh.public_key import import_certificate_subject
 
+from .sk_stub import patch_sk
 from .util import bcrypt_available, x509_available
 from .util import make_certificate, run, TempDirTestCase
 
@@ -137,7 +138,6 @@ openssh_ciphers = (
 
 # pylint: enable=bad-whitespace
 
-# Only test Chacha if libnacl is installed
 if chacha_available: # pragma: no branch
     openssh_ciphers += (('chacha20-poly1305@openssh.com',
                          _openssh_supports_gcm_chacha),)
@@ -1879,7 +1879,7 @@ class _TestPublicKey(TempDirTestCase):
                 self.assertEqual(self.privkey.get_algorithm(), alg_name)
 
                 self.assertEqual(self.usercert.get_algorithm(),
-                                 alg_name + '-cert-v01@openssh.com')
+                                 self.default_cert_version)
 
                 if self.x509_supported:
                     self.rootx509 = self.privca.generate_x509_ca_certificate(
@@ -1944,7 +1944,7 @@ class _TestPublicKey(TempDirTestCase):
 
 
 class TestDSA(_TestPublicKey):
-    """Test DSA public keys"""
+    """Test DSA keys"""
 
     keyclass = 'dsa'
     base_format = 'pkcs8-pem'
@@ -1956,7 +1956,7 @@ class TestDSA(_TestPublicKey):
 
 
 class TestRSA(_TestPublicKey):
-    """Test RSA public keys"""
+    """Test RSA keys"""
 
     keyclass = 'rsa'
     base_format = 'pkcs8-pem'
@@ -1970,8 +1970,8 @@ class TestRSA(_TestPublicKey):
                      ('ssh-rsa', {'exponent': 3}))
 
 
-class TestEC(_TestPublicKey):
-    """Test elliptic curve public keys"""
+class TestECDSA(_TestPublicKey):
+    """Test ECDSA keys"""
 
     keyclass = 'ec'
     base_format = 'pkcs8-pem'
@@ -1989,9 +1989,28 @@ class TestEC(_TestPublicKey):
         return self.privkey.algorithm.decode('ascii') + '-cert-v01@openssh.com'
 
 
+@patch_sk
+class TestSKECDSA(_TestPublicKey):
+    """Test U2F ECDSA keys"""
+
+    keyclass = 'sk-ecdsa'
+    base_format = 'openssh'
+    private_formats = ('openssh',)
+    public_formats = ('openssh',)
+    generate_args = (('sk-ecdsa-sha2-nistp256@openssh.com', {}),)
+    use_openssh = False
+
+    @property
+    def default_cert_version(self):
+        """Return default SSH certificate version"""
+
+        return self.privkey.algorithm.decode('ascii')[:-12] + \
+            '-cert-v01@openssh.com'
+
+
 if ed25519_available: # pragma: no branch
     class TestEd25519(_TestPublicKey):
-        """Test Ed25519 public keys"""
+        """Test Ed25519 keys"""
 
         keyclass = 'ed25519'
         base_format = 'openssh'
@@ -2002,9 +2021,23 @@ if ed25519_available: # pragma: no branch
         use_openssl = False
 
 
+    @patch_sk
+    class TestSKEd25519(_TestPublicKey):
+        """Test U2F Ed25519 keys"""
+
+        keyclass = 'sk-ed25519'
+        base_format = 'openssh'
+        private_formats = ('openssh',)
+        public_formats = ('openssh',)
+        default_cert_version = 'sk-ssh-ed25519-cert-v01@openssh.com'
+        generate_args = (('sk-ssh-ed25519@openssh.com', {}),)
+        use_openssh = False
+        use_openssl = False
+
+
 if ed448_available: # pragma: no branch
     class TestEd448(_TestPublicKey):
-        """Test Ed448 public keys"""
+        """Test Ed448 keys"""
 
         keyclass = 'ed448'
         base_format = 'openssh'

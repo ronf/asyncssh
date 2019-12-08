@@ -141,32 +141,25 @@ class _EdKey(SSHKey):
 
         return self.encode_ssh_private()
 
-    def sign_der(self, data, sig_algorithm):
-        """Compute a DER-encoded signature of the specified data"""
+    def sign_ssh(self, data, sig_algorithm):
+        """Compute an SSH-encoded signature of the specified data"""
 
         # pylint: disable=unused-argument
 
         if not self._key.private_value:
             raise ValueError('Private key needed for signing')
 
-        return self._key.sign(data)
+        return String(self._key.sign(data))
 
-    def verify_der(self, data, sig_algorithm, sig):
-        """Verify a DER-encoded signature of the specified data"""
+    def verify_ssh(self, data, sig_algorithm, packet):
+        """Verify an SSH-encoded signature of the specified data"""
 
         # pylint: disable=unused-argument
 
+        sig = packet.get_string()
+        packet.check_end()
+
         return self._key.verify(data, sig)
-
-    def sign_ssh(self, data, sig_algorithm):
-        """Compute an SSH-encoded signature of the specified data"""
-
-        return self.sign_der(data, sig_algorithm)
-
-    def verify_ssh(self, data, sig_algorithm, sig):
-        """Verify an SSH-encoded signature of the specified data"""
-
-        return self.verify_der(data, sig_algorithm, sig)
 
 
 class _Ed25519Key(_EdKey):

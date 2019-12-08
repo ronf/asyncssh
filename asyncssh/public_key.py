@@ -49,7 +49,8 @@ from .pbe import KeyEncryptionError, pkcs1_encrypt, pkcs8_encrypt
 from .pbe import pkcs1_decrypt, pkcs8_decrypt
 
 # Default file names in .ssh directory to read private keys from
-_DEFAULT_KEY_FILES = ('id_ed448', 'id_ed25519', 'id_ecdsa', 'id_rsa', 'id_dsa')
+_DEFAULT_KEY_FILES = ('id_ed25519_sk', 'if_ecdsa_sk', 'id_ed448',
+                      'id_ed25519', 'id_ecdsa', 'id_rsa', 'id_dsa')
 
 # Default directories and file names to read host keys from
 _DEFAULT_HOST_KEY_DIRS = ('/opt/local/etc', '/opt/local/etc/ssh',
@@ -335,22 +336,12 @@ class SSHKey:
 
         return hash_name.upper() + ':' + fp_text
 
-    def sign_der(self, data, sig_algorithm):
-        """Abstract method to compute a DER-encoded signature"""
-
-        raise NotImplementedError
-
-    def verify_der(self, data, sig_algorithm, sig):
-        """Abstract method to verify a DER-encoded signature"""
-
-        raise NotImplementedError
-
     def sign_ssh(self, data, sig_algorithm):
         """Abstract method to compute an SSH-encoded signature"""
 
         raise NotImplementedError
 
-    def verify_ssh(self, data, sig_algorithm, sig):
+    def verify_ssh(self, data, sig_algorithm, packet):
         """Abstract method to verify an SSH-encoded signature"""
 
         raise NotImplementedError
@@ -362,7 +353,7 @@ class SSHKey:
             raise ValueError('Unrecognized signature algorithm')
 
         return b''.join((String(sig_algorithm),
-                         String(self.sign_ssh(data, sig_algorithm))))
+                         self.sign_ssh(data, sig_algorithm)))
 
     def verify(self, data, sig):
         """Verify an SSH signature of the specified data using this key"""
@@ -370,13 +361,11 @@ class SSHKey:
         try:
             packet = SSHPacket(sig)
             sig_algorithm = packet.get_string()
-            sig = packet.get_string()
-            packet.check_end()
 
             if sig_algorithm not in self.all_sig_algorithms:
                 return False
 
-            return self.verify_ssh(data, sig_algorithm, sig)
+            return self.verify_ssh(data, sig_algorithm, packet)
         except PacketDecodeError:
             return False
 
@@ -2569,21 +2558,28 @@ def generate_private_key(alg_name, comment=None, **kwargs):
        Available algorithms include:
 
            ssh-dss, ssh-rsa, ecdsa-sha2-nistp256, ecdsa-sha2-nistp384,
-           ecdsa-sha2-nistp521, ssh-ed25519
+           ecdsa-sha2-nistp521, ecdsa-sha2-1.3.132.0.10, ssh-ed25519,
+           ssh-ed448, sk-ecdsa-sha2-nistp256\\@openssh.com,
+           sk-ssh-ed25519\\@openssh.com
 
-       For ssh-dss, no parameters are supported. The key size is fixed at
+       For dss keys, no parameters are supported. The key size is fixed at
        1024 bits due to the use of SHA1 signatures.
 
-       For ssh-rsa, the key size can be specified using the `key_size`
+       For rsa keys, the key size can be specified using the `key_size`
        parameter, and the RSA public exponent can be changed using the
        `exponent` parameter. By default, generated keys are 2048 bits
        with a public exponent of 65537.
 
-       For ecdsa, the curve to use is part of the SSH algorithm name
+       For ecdsa keys, the curve to use is part of the SSH algorithm name
        and that determines the key size. No other parameters are supported.
 
-       For ssh-ed25519, no parameters are supported. The key size is fixed
-       by the algorithm at 256 bits.
+       For ed25519 and ed448 keys, no parameters are supported. The key size
+       is fixed by the algorithms at 256 bits and 448 bits, respectively.
+
+       For sk keys, you can enable or disable the security key touch
+       requirement by setting the `touch_required` parameter. By default,
+       the user must confirm their presence by touching the security key
+       whenever they use it to authenticate.
 
        :param alg_name:
            The SSH algorithm name corresponding to the desired type of key.
@@ -2593,10 +2589,14 @@ def generate_private_key(alg_name, comment=None, **kwargs):
            The key size in bits for RSA keys.
        :param exponent: (optional)
            The public exponent for RSA keys.
+       :param touch_required: (optional)
+           Whether or not to require the user to touch the security key
+           when authenticating with it
        :type alg_name: `str`
        :type comment: `str`, `bytes`, or `None`
        :type key_size: `int`
        :type exponent: `int`
+       :type touch_required: `bool`
 
        :returns: An :class:`SSHKey` private key
 
