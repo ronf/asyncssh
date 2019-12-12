@@ -192,6 +192,32 @@ class _TestAgent(AsyncTestCase):
             await agent.remove_keys(agent_keys)
 
     @agent_test
+    async def test_set_certificate(self, agent):
+        """Test setting certificate on an existing keypair"""
+
+        key = asyncssh.generate_private_key('ssh-rsa')
+        cert = key.generate_user_certificate(key, 'name')
+
+        key2 = asyncssh.generate_private_key('ssh-rsa')
+        cert2 = key.generate_user_certificate(key2, 'name')
+
+        await agent.add_keys([key])
+        agent_key = (await agent.get_keys())[0]
+
+        agent_key.set_certificate(cert)
+        self.assertEqual(agent_key.public_data, cert.public_data)
+
+        with self.assertRaises(ValueError):
+            asyncssh.load_keypairs([(agent_key, cert2)])
+
+        agent_key = (await agent.get_keys())[0]
+        agent_key = asyncssh.load_keypairs([(agent_key, cert)])[0]
+        self.assertEqual(agent_key.public_data, cert.public_data)
+
+        with self.assertRaises(ValueError):
+            asyncssh.load_keypairs([(agent_key, cert2)])
+
+    @agent_test
     async def test_reconnect(self, agent):
         """Test reconnecting to the agent after closing it"""
 

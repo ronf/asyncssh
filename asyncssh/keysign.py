@@ -51,6 +51,9 @@ class SSHKeySignKeyPair(SSHKeyPair):
         self._keysign_path = keysign_path
         self._sock_fd = sock_fd
 
+    def set_certificate(self, cert):
+        """Set certificate not applicable to ssh-keysign"""
+
     def set_sig_algorithm(self, sig_algorithm):
         """Only the main signing algorithm is supported by ssh-keysign"""
 

@@ -82,22 +82,28 @@ class SSHAgentKeyPair(SSHKeyPair):
 
     _key_type = 'agent'
 
-    def __init__(self, agent, algorithm, public_data, comment):
-        super().__init__(algorithm, public_data, comment)
+    def __init__(self, agent, algorithm, key_blob, comment):
+        super().__init__(algorithm, key_blob, comment)
 
         self._agent = agent
-        self.public_data = public_data
+        self.key_blob = key_blob
+        self.sig_algorithm = algorithm
+        self.sig_algorithms = (algorithm,)
+        self.host_key_algorithms = self.sig_algorithms
 
         self._cert = algorithm.endswith(b'-cert-v01@openssh.com')
         self._flags = 0
 
+        self._set_algorithms()
+
+    def _set_algorithms(self):
+        """Set the algorithms associated with this key"""
+
         if self._cert:
-            if algorithm.startswith(b'sk-'):
-                self.sig_algorithm = algorithm[:-21] + b'@openssh.com'
+            if self.algorithm.startswith(b'sk-'):
+                self.sig_algorithm = self.algorithm[:-21] + b'@openssh.com'
             else:
-                self.sig_algorithm = algorithm[:-21]
-        else:
-            self.sig_algorithm = algorithm
+                self.sig_algorithm = self.algorithm[:-21]
 
         # Neither Pageant nor the Win10 OpenSSH agent seems to support the
         # ssh-agent protocol flags used to request RSA SHA2 signatures yet
@@ -108,9 +114,20 @@ class SSHAgentKeyPair(SSHKeyPair):
             self.sig_algorithms = (self.sig_algorithm,)
 
         if self._cert:
-            self.host_key_algorithms = (algorithm,)
+            self.host_key_algorithms = (self.algorithm,)
         else:
             self.host_key_algorithms = self.sig_algorithms
+
+    def set_certificate(self, cert):
+        """Set certificate to use with this key"""
+
+        if self.key_blob != cert.key.public_data:
+            raise ValueError('Certificate key mismatch')
+
+        self._cert = True
+        self.algorithm = cert.algorithm
+        self.public_data = cert.public_data
+        self._set_algorithms()
 
     def set_sig_algorithm(self, sig_algorithm):
         """Set the signature algorithm to use when signing data"""
@@ -128,7 +145,7 @@ class SSHAgentKeyPair(SSHKeyPair):
     async def sign(self, data):
         """Sign a block of data with this private key"""
 
-        return await self._agent.sign(self.public_data, data, self._flags)
+        return await self._agent.sign(self.key_blob, data, self._flags)
 
     async def remove(self):
         """Remove this key pair from the agent"""

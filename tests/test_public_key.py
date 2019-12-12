@@ -1246,6 +1246,26 @@ class _TestPublicKey(TempDirTestCase):
                 with self.assertRaises(ValueError):
                     self.pubkey.sign(data, self.pubkey.algorithm)
 
+    def check_set_certificate(self):
+        """Check setting certificate on existing keypair"""
+
+        data = os.urandom(8)
+
+        keypair = asyncssh.load_keypairs([self.privkey])[0]
+
+        keypair.set_certificate(self.usercert)
+        self.assertTrue(self.pubkey.verify(data, keypair.sign(data)))
+
+        keypair = asyncssh.load_keypairs([self.privkey])[0]
+        keypair = asyncssh.load_keypairs([(keypair, self.usercert)])[0]
+        self.assertTrue(self.pubkey.verify(data, keypair.sign(data)))
+
+        key2 = asyncssh.generate_private_key('ssh-rsa')
+        cert2 = key2.generate_user_certificate(key2, 'name')
+
+        with self.assertRaises(ValueError):
+            asyncssh.load_keypairs([(keypair, cert2)])
+
     def check_comment(self):
         """Check getting and setting comments"""
 
@@ -1909,6 +1929,7 @@ class _TestPublicKey(TempDirTestCase):
                 self.check_decode_errors()
                 self.check_sshkey_base_errors()
                 self.check_sign_and_verify()
+                self.check_set_certificate()
                 self.check_comment()
 
                 if 'pkcs1' in self.private_formats:

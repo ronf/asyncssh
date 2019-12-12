@@ -1452,6 +1452,7 @@ SSHKeyPair
    ================================= =
    .. automethod:: get_key_type
    .. automethod:: get_algorithm
+   .. automethod:: set_certificate
    .. automethod:: get_comment_bytes
    .. automethod:: get_comment
    .. automethod:: set_comment
