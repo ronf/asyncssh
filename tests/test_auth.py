@@ -32,7 +32,6 @@ from asyncssh.constants import MSG_USERAUTH_REQUEST, MSG_USERAUTH_FAILURE
 from asyncssh.constants import MSG_USERAUTH_SUCCESS
 from asyncssh.gss import GSSClient, GSSServer
 from asyncssh.packet import SSHPacket, Boolean, NameList, String
-from asyncssh.public_key import SSHLocalKeyPair
 
 from .util import asynctest, gss_available, patch_gss
 from .util import AsyncTestCase, ConnectionStub
@@ -186,8 +185,8 @@ class _AuthClientStub(_AuthConnectionStub):
         """Return a host key pair, host, and user to authenticate with"""
 
         if self._client_host_key:
-            keypair = SSHLocalKeyPair(self._client_host_key,
-                                      self._client_host_cert)
+            keypair = asyncssh.load_keypairs((self._client_host_key,
+                                              self._client_host_cert))[0]
         else:
             keypair = None
 
@@ -197,7 +196,8 @@ class _AuthClientStub(_AuthConnectionStub):
         """Return key to use for public key authentication"""
 
         if self._client_key:
-            return SSHLocalKeyPair(self._client_key, self._client_cert)
+            return asyncssh.load_keypairs((self._client_key,
+                                           self._client_cert))[0]
         else:
             return None
 

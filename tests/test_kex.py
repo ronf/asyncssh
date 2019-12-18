@@ -40,7 +40,7 @@ from asyncssh.kex_rsa import MSG_KEXRSA_DONE
 from asyncssh.gss import GSSClient, GSSServer
 from asyncssh.kex import register_kex_alg, get_kex_algs, get_kex
 from asyncssh.packet import SSHPacket, Boolean, Byte, MPInt, String
-from asyncssh.public_key import SSHLocalKeyPair, decode_ssh_public_key
+from asyncssh.public_key import decode_ssh_public_key
 
 from .util import asynctest, gss_available, patch_gss
 from .util import AsyncTestCase, ConnectionStub
@@ -210,7 +210,7 @@ class _KexServerStub(_KexConnectionStub):
             self._server_host_key = None
         else:
             priv_key = asyncssh.generate_private_key('ssh-rsa')
-            self._server_host_key = SSHLocalKeyPair(priv_key)
+            self._server_host_key = asyncssh.load_keypairs(priv_key)[0]
 
     def connection_lost(self, exc):
         """Handle the closing of a connection"""

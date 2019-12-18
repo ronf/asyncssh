@@ -333,7 +333,7 @@ max-bool-expr=20
 max-branches=100
 
 # Maximum number of statements in function / method body
-max-statements=100
+max-statements=150
 
 # Maximum number of parents for a class (see R0901).
 max-parents=10

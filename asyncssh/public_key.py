@@ -176,6 +176,7 @@ class SSHKey:
     def __init__(self, key=None):
         self._key = key
         self._comment = None
+        self._filename = None
 
     @property
     def private_data(self):
@@ -250,6 +251,15 @@ class SSHKey:
 
         return self.algorithm.decode('ascii')
 
+    def has_comment(self):
+        """Return whether a comment is set for this key
+
+           :returns: `bool`
+
+        """
+
+        return bool(self._comment)
+
     def get_comment_bytes(self):
         """Return the comment associated with this key as a byte string
 
@@ -257,7 +267,7 @@ class SSHKey:
 
         """
 
-        return self._comment
+        return self._comment or self._filename
 
     def get_comment(self, encoding='utf-8', errors='strict'):
         """Return the comment associated with this key as a Unicode string
@@ -277,7 +287,9 @@ class SSHKey:
 
         """
 
-        return self._comment.decode(encoding, errors) if self._comment else None
+        comment = self.get_comment_bytes()
+
+        return comment.decode(encoding, errors) if comment else None
 
     def set_comment(self, comment, encoding='utf-8', errors='strict'):
         """Set the comment associated with this key
@@ -302,6 +314,29 @@ class SSHKey:
             comment = comment.encode(encoding, errors)
 
         self._comment = comment or None
+
+    def get_filename(self):
+        """Return the filename associated with this key
+
+           :returns: `bytes` or `None`
+
+        """
+
+        return self._filename
+
+    def set_filename(self, filename):
+        """Set the filename associated with this key
+
+           :param filename:
+               The new filename to associate with this key
+           :type filename: `str`, `bytes`, or `None`
+
+        """
+
+        if isinstance(filename, str):
+            filename = filename.encode('utf-8')
+
+        self._filename = filename or None
 
     def get_fingerprint(self, hash_name='sha256'):
         """Get the fingerprint of this key
@@ -417,6 +452,7 @@ class SSHKey:
 
         result = decode_ssh_public_key(self.public_data)
         result.set_comment(self._comment)
+        result.set_filename(self._filename)
         return result
 
     def generate_user_certificate(self, user_key, key_id, version=1,
@@ -1153,6 +1189,15 @@ class SSHCertificate:
 
         return self.algorithm.decode('ascii')
 
+    def has_comment(self):
+        """Return whether a comment is set for this certificate
+
+           :returns: `bool`
+
+        """
+
+        return bool(self._comment)
+
     def get_comment_bytes(self):
         """Return the comment associated with this certificate as a
            byte string
@@ -1759,10 +1804,12 @@ class SSHKeyPair:
 
     _key_type = 'unknown'
 
-    def __init__(self, algorithm, public_data, comment):
+    def __init__(self, algorithm, public_data, comment, filename=None):
         self.algorithm = algorithm
         self.public_data = public_data
+
         self.set_comment(comment)
+        self._filename = filename
 
     def get_key_type(self):
         """Return what type of key pair this is
@@ -1787,7 +1834,7 @@ class SSHKeyPair:
 
         """
 
-        return self._comment
+        return self._comment or self._filename
 
     def get_comment(self, encoding='utf-8', errors='strict'):
         """Return the comment associated with this key pair as a
@@ -1808,7 +1855,9 @@ class SSHKeyPair:
 
         """
 
-        return self._comment.decode(encoding, errors) if self._comment else None
+        comment = self.get_comment_bytes()
+
+        return comment.decode(encoding, errors) if comment else None
 
     def set_comment(self, comment, encoding='utf-8', errors='strict'):
         """Set the comment associated with this key pair
@@ -1875,10 +1924,22 @@ class SSHLocalKeyPair(SSHKeyPair):
 
     _key_type = 'local'
 
-    def __init__(self, key, cert=None):
+    def __init__(self, key, pubkey=None, cert=None):
+        if pubkey and pubkey.public_data != key.public_data:
+            raise ValueError('Public key mismatch')
+
+        if key.has_comment():
+            comment = key.get_comment_bytes()
+        elif cert and cert.has_comment():
+            comment = cert.get_comment_bytes()
+        elif pubkey and pubkey.has_comment():
+            comment = pubkey.get_comment_bytes()
+        else:
+            comment = None
+
         super().__init__(cert.algorithm if cert else key.algorithm,
                          cert.public_data if cert else key.public_data,
-                         key.get_comment_bytes())
+                         comment, key.get_filename())
 
         self._key = key
         self._cert = cert
@@ -1886,13 +1947,13 @@ class SSHLocalKeyPair(SSHKeyPair):
         self.sig_algorithm = key.algorithm
         self.sig_algorithms = key.sig_algorithms
 
-        self._set_algorithms()
+        self._set_host_key_algorithms()
 
-    def _set_algorithms(self):
+    def _set_host_key_algorithms(self):
         """Set the algorithms associated with this key"""
 
         if self._cert:
-            if self._key.public_data != self._cert.key.public_data:
+            if self._cert.key.public_data != self._key.public_data:
                 raise ValueError('Certificate key mismatch')
 
             self.host_key_algorithms = self._cert.host_key_algorithms
@@ -1913,13 +1974,11 @@ class SSHLocalKeyPair(SSHKeyPair):
     def set_certificate(self, cert):
         """Set certificate to use with this key"""
 
-        if self._key.public_data != cert.key.public_data:
-            raise ValueError('Certificate key mismatch')
-
         self._cert = cert
         self.algorithm = cert.algorithm
         self.public_data = cert.public_data
-        self._set_algorithms()
+
+        self._set_host_key_algorithms()
 
     def set_sig_algorithm(self, sig_algorithm):
         """Set the signature algorithm to use when signing data"""
@@ -2781,8 +2840,7 @@ def read_private_key(filename, passphrase=None):
     with open(filename, 'rb') as f:
         key = import_private_key(f.read(), passphrase)
 
-    if not key.get_comment_bytes():
-        key.set_comment(filename)
+    key.set_filename(filename)
 
     return key
 
@@ -2796,8 +2854,7 @@ def read_private_key_and_certs(filename, passphrase=None):
     with open(filename, 'rb') as f:
         key, cert = import_private_key_and_certs(f.read(), passphrase)
 
-    if not key.get_comment_bytes():
-        key.set_comment(filename)
+    key.set_filename(filename)
 
     return key, cert
 
@@ -2823,8 +2880,7 @@ def read_public_key(filename):
     with open(filename, 'rb') as f:
         key = import_public_key(f.read())
 
-    if not key.get_comment_bytes():
-        key.set_comment(filename)
+    key.set_filename(filename)
 
     return key
 
@@ -2887,8 +2943,7 @@ def read_private_key_list(filename, passphrase=None):
         data = data[end:]
 
     for key in keys:
-        if not key.get_comment_bytes():
-            key.set_comment(filename)
+        key.set_filename(filename)
 
     return keys
 
@@ -2925,8 +2980,7 @@ def read_public_key_list(filename):
         data = data[end:]
 
     for key in keys:
-        if not key.get_comment_bytes():
-            key.set_comment(filename)
+        key.set_filename(filename)
 
     return keys
 
@@ -2994,44 +3048,65 @@ def load_keypairs(keylist, passphrase=None):
 
     for key in keylist:
         allow_certs = False
-        default_cert_file = None
-        ignore_missing_cert = False
+        key_prefix = None
+        pubkey_or_certs = None
+        certs = None
+        pubkey = None
+        saved_exc = None
 
-        if isinstance(key, (PurePath, str)):
-            allow_certs = True
-            default_cert_file = str(key) + '-cert.pub'
-            ignore_missing_cert = True
-        elif isinstance(key, bytes):
+        if isinstance(key, (PurePath, str, bytes)):
             allow_certs = True
         elif isinstance(key, tuple):
-            key, certs = key
-        else:
-            certs = None
+            key, pubkey_or_certs = key
 
         if isinstance(key, (PurePath, str)):
+            key_prefix = str(key)
+
             if allow_certs:
                 key, certs = read_private_key_and_certs(key, passphrase)
 
-                if not certs and default_cert_file:
-                    certs = default_cert_file
+                if not certs:
+                    certs = key_prefix + '-cert.pub'
             else:
                 key = read_private_key(key, passphrase)
+
+            pubkey = key_prefix + '.pub'
         elif isinstance(key, bytes):
             if allow_certs:
                 key, certs = import_private_key_and_certs(key, passphrase)
             else:
                 key = import_private_key(key, passphrase)
 
-        if certs:
+        if pubkey_or_certs:
+            try:
+                certs = load_certificates(pubkey_or_certs)
+            except (TypeError, OSError, KeyImportError) as exc:
+                saved_exc = exc
+                certs = None
+
+            if not certs:
+                pubkey = pubkey_or_certs
+        elif certs:
             try:
                 certs = load_certificates(certs)
-            except OSError:
-                if ignore_missing_cert:
-                    certs = None
-                else:
-                    raise
+            except (OSError, KeyImportError) as exc:
+                certs = None
 
-        if certs is None:
+        if pubkey:
+            try:
+                if isinstance(pubkey, (PurePath, str)):
+                    pubkey = read_public_key(pubkey)
+                elif isinstance(pubkey, bytes):
+                    pubkey = import_public_key(pubkey)
+            except (OSError, KeyImportError):
+                pubkey = None
+            else:
+                saved_exc = None
+
+        if saved_exc:
+            raise saved_exc # pylint: disable=raising-bad-type
+
+        if not certs:
             cert = None
         elif len(certs) == 1 and not certs[0].is_x509:
             cert = certs[0]
@@ -3045,9 +3120,9 @@ def load_keypairs(keylist, passphrase=None):
             result.append(key)
         else:
             if cert:
-                result.append(SSHLocalKeyPair(key, cert))
+                result.append(SSHLocalKeyPair(key, pubkey, cert))
 
-            result.append(SSHLocalKeyPair(key, None))
+            result.append(SSHLocalKeyPair(key, pubkey))
 
     return result
 

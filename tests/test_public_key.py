@@ -1249,22 +1249,18 @@ class _TestPublicKey(TempDirTestCase):
     def check_set_certificate(self):
         """Check setting certificate on existing keypair"""
 
-        data = os.urandom(8)
-
         keypair = asyncssh.load_keypairs([self.privkey])[0]
-
         keypair.set_certificate(self.usercert)
-        self.assertTrue(self.pubkey.verify(data, keypair.sign(data)))
+        self.assertEqual(keypair.public_data, self.usercert.public_data)
 
-        keypair = asyncssh.load_keypairs([self.privkey])[0]
-        keypair = asyncssh.load_keypairs([(keypair, self.usercert)])[0]
-        self.assertTrue(self.pubkey.verify(data, keypair.sign(data)))
+        keypair = asyncssh.load_keypairs(self.privkey)[0]
+        keypair = asyncssh.load_keypairs((keypair, self.usercert))[0]
+        self.assertEqual(keypair.public_data, self.usercert.public_data)
 
         key2 = asyncssh.generate_private_key('ssh-rsa')
-        cert2 = key2.generate_user_certificate(key2, 'name')
 
         with self.assertRaises(ValueError):
-            asyncssh.load_keypairs([(keypair, cert2)])
+            asyncssh.load_keypairs((key2, self.usercert))
 
     def check_comment(self):
         """Check getting and setting comments"""
@@ -1272,8 +1268,8 @@ class _TestPublicKey(TempDirTestCase):
         with self.subTest('Comment test'):
             self.assertEqual(self.privkey.get_comment_bytes(), b'comment')
             self.assertEqual(self.privkey.get_comment(), 'comment')
-            self.assertEqual(self.pubkey.get_comment_bytes(), b'comment')
-            self.assertEqual(self.pubkey.get_comment(), 'comment')
+            self.assertEqual(self.pubkey.get_comment_bytes(), b'pub_comment')
+            self.assertEqual(self.pubkey.get_comment(), 'pub_comment')
 
             key = asyncssh.import_private_key(
                 self.privkey.export_private_key('openssh'))
@@ -1313,8 +1309,8 @@ class _TestPublicKey(TempDirTestCase):
             for fmt in ('openssh', 'rfc4716'):
                 key = asyncssh.import_public_key(
                     self.pubkey.export_public_key(fmt))
-                self.assertEqual(key.get_comment_bytes(), b'comment')
-                self.assertEqual(key.get_comment(), 'comment')
+                self.assertEqual(key.get_comment_bytes(), b'pub_comment')
+                self.assertEqual(key.get_comment(), 'pub_comment')
 
                 key = asyncssh.import_public_key(
                     self.pubca.export_public_key(fmt))
@@ -1332,8 +1328,8 @@ class _TestPublicKey(TempDirTestCase):
             for fmt in ('openssh', 'rfc4716'):
                 cert = asyncssh.import_certificate(
                     self.usercert.export_certificate(fmt))
-                self.assertEqual(cert.get_comment_bytes(), b'comment')
-                self.assertEqual(cert.get_comment(), 'comment')
+                self.assertEqual(cert.get_comment_bytes(), b'user_comment')
+                self.assertEqual(cert.get_comment(), 'user_comment')
 
                 cert = self.privca.generate_user_certificate(
                     self.pubkey, 'name', comment='cert_comment')
@@ -1342,8 +1338,8 @@ class _TestPublicKey(TempDirTestCase):
 
                 cert = asyncssh.import_certificate(
                     self.hostcert.export_certificate(fmt))
-                self.assertEqual(cert.get_comment_bytes(), b'comment')
-                self.assertEqual(cert.get_comment(), 'comment')
+                self.assertEqual(cert.get_comment_bytes(), b'host_comment')
+                self.assertEqual(cert.get_comment(), 'host_comment')
 
                 cert = self.privca.generate_host_certificate(
                     self.pubkey, 'name', comment=b'\xff')
@@ -1367,31 +1363,31 @@ class _TestPublicKey(TempDirTestCase):
                     self.assertEqual(cert.get_comment(), None)
 
                     cert = self.privca.generate_x509_ca_certificate(
-                        self.pubkey, 'OU=root', comment='cert_comment')
-                    self.assertEqual(cert.get_comment_bytes(), b'cert_comment')
-                    self.assertEqual(cert.get_comment(), 'cert_comment')
+                        self.pubkey, 'OU=root', comment='ca_comment')
+                    self.assertEqual(cert.get_comment_bytes(), b'ca_comment')
+                    self.assertEqual(cert.get_comment(), 'ca_comment')
 
                     cert = asyncssh.import_certificate(
                         self.userx509.export_certificate(fmt))
-                    self.assertEqual(cert.get_comment_bytes(), b'comment')
-                    self.assertEqual(cert.get_comment(), 'comment')
+                    self.assertEqual(cert.get_comment_bytes(), b'user_comment')
+                    self.assertEqual(cert.get_comment(), 'user_comment')
 
                     cert = self.privca.generate_x509_user_certificate(
                         self.pubkey, 'OU=user', 'OU=root',
-                        comment='cert_comment')
-                    self.assertEqual(cert.get_comment_bytes(), b'cert_comment')
-                    self.assertEqual(cert.get_comment(), 'cert_comment')
+                        comment='user_comment')
+                    self.assertEqual(cert.get_comment_bytes(), b'user_comment')
+                    self.assertEqual(cert.get_comment(), 'user_comment')
 
                     cert = asyncssh.import_certificate(
                         self.hostx509.export_certificate(fmt))
-                    self.assertEqual(cert.get_comment_bytes(), b'comment')
-                    self.assertEqual(cert.get_comment(), 'comment')
+                    self.assertEqual(cert.get_comment_bytes(), b'host_comment')
+                    self.assertEqual(cert.get_comment(), 'host_comment')
 
                     cert = self.privca.generate_x509_host_certificate(
                         self.pubkey, 'OU=host', 'OU=root',
-                        comment='cert_comment')
-                    self.assertEqual(cert.get_comment_bytes(), b'cert_comment')
-                    self.assertEqual(cert.get_comment(), 'cert_comment')
+                        comment='host_comment')
+                    self.assertEqual(cert.get_comment_bytes(), b'host_comment')
+                    self.assertEqual(cert.get_comment(), 'host_comment')
 
                     cert.set_comment('new_comment')
                     self.assertEqual(cert.get_comment_bytes(), b'new_comment')
@@ -1402,6 +1398,8 @@ class _TestPublicKey(TempDirTestCase):
                     self.assertEqual(cert.get_comment(), 'new_comment')
 
             keypair = asyncssh.load_keypairs([self.privkey])[0]
+            self.assertEqual(keypair.get_comment_bytes(), b'comment')
+            self.assertEqual(keypair.get_comment(), 'comment')
 
             keypair.set_comment('new_comment')
             self.assertEqual(keypair.get_comment_bytes(), b'new_comment')
@@ -1415,6 +1413,58 @@ class _TestPublicKey(TempDirTestCase):
             self.assertEqual(keypair.get_comment_bytes(), b'\xff')
             with self.assertRaises(UnicodeDecodeError):
                 keypair.get_comment()
+
+            priv = asyncssh.read_private_key('priv')
+            priv.set_comment(None)
+
+            keypair = asyncssh.load_keypairs((priv, self.pubkey))[0]
+            self.assertEqual(keypair.get_comment(), 'pub_comment')
+
+            keypair = asyncssh.load_keypairs((priv, self.usercert))[0]
+            self.assertEqual(keypair.get_comment(), 'user_comment')
+
+            pubdata = self.pubkey.export_public_key()
+            keypair = asyncssh.load_keypairs((priv, pubdata))[0]
+            self.assertEqual(keypair.get_comment(), 'pub_comment')
+
+            certdata = self.usercert.export_certificate()
+            keypair = asyncssh.load_keypairs((priv, certdata))[0]
+            self.assertEqual(keypair.get_comment(), 'user_comment')
+
+            priv.write_private_key('key')
+
+            keypair = asyncssh.load_keypairs('key')[0]
+            self.assertEqual(keypair.get_comment(), 'key')
+
+            keypair = asyncssh.load_keypairs(('key', 'sshpub'))[0]
+            self.assertEqual(keypair.get_comment(), 'pub_comment')
+
+            keypair = asyncssh.load_keypairs(('key', 'usercert'))[0]
+            self.assertEqual(keypair.get_comment(), 'user_comment')
+
+            self.pubkey.write_public_key('key.pub')
+
+            keypair = asyncssh.load_keypairs('key')[0]
+            self.assertEqual(keypair.get_comment(), 'pub_comment')
+
+            self.usercert.write_certificate('key-cert.pub')
+
+            keypair = asyncssh.load_keypairs('key')[0]
+            self.assertEqual(keypair.get_comment(), 'user_comment')
+
+            keypair = asyncssh.load_keypairs('key')[1]
+            self.assertEqual(keypair.get_comment(), 'pub_comment')
+
+            keypair = asyncssh.load_keypairs(('key', None))[0]
+            self.assertEqual(keypair.get_comment(), 'pub_comment')
+
+            key2 = asyncssh.generate_private_key('ssh-rsa')
+
+            with self.assertRaises(ValueError):
+                asyncssh.load_keypairs((key2, 'pub'))
+
+            for f in ('key', 'key.pub', 'key-cert.pub'):
+                os.remove(f)
 
     def check_pkcs1_private(self):
         """Check PKCS#1 private key format"""
@@ -1876,6 +1926,8 @@ class _TestPublicKey(TempDirTestCase):
                 self.privkey.write_private_key('priv', self.base_format)
 
                 self.pubkey = self.privkey.convert_to_public()
+                self.pubkey.set_comment('pub_comment')
+
                 self.pubkey.write_public_key('pub', self.base_format)
                 self.pubkey.write_public_key('sshpub', 'openssh')
 
@@ -1886,11 +1938,11 @@ class _TestPublicKey(TempDirTestCase):
                 self.pubca.write_public_key('pubca', self.base_format)
 
                 self.usercert = self.privca.generate_user_certificate(
-                    self.pubkey, 'name')
+                    self.pubkey, 'name', comment='user_comment')
                 self.usercert.write_certificate('usercert')
 
                 self.hostcert = self.privca.generate_host_certificate(
-                    self.pubkey, 'name')
+                    self.pubkey, 'name', comment='host_comment')
                 self.hostcert.write_certificate('hostcert')
 
                 for f in ('priv', 'privca'):
@@ -1908,7 +1960,8 @@ class _TestPublicKey(TempDirTestCase):
                     self.rootx509.write_certificate('rootx509')
 
                     self.userx509 = self.privca.generate_x509_user_certificate(
-                        self.pubkey, 'OU=user', 'OU=root')
+                        self.pubkey, 'OU=user', 'OU=root',
+                        comment='user_comment')
 
                     self.assertEqual(self.userx509.get_algorithm(),
                                      'x509v3-' + alg_name)
@@ -1916,7 +1969,8 @@ class _TestPublicKey(TempDirTestCase):
                     self.userx509.write_certificate('userx509')
 
                     self.hostx509 = self.privca.generate_x509_host_certificate(
-                        self.pubkey, 'OU=host', 'OU=root')
+                        self.pubkey, 'OU=host', 'OU=root',
+                        comment='host_comment')
 
                     self.hostx509.write_certificate('hostx509')
 
