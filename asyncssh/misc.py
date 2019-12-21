@@ -513,7 +513,7 @@ class PasswordChangeRequired(Exception):
 
        This exception is raised during password validation on the
        server to indicate that a password change is required. It
-       shouuld be raised when the password provided is valid but
+       should be raised when the password provided is valid but
        expired, to trigger the client to provide a new password.
 
        :param prompt:
