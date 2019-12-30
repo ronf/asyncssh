@@ -1899,7 +1899,7 @@ The following are the key exchange algorithms currently supported by AsyncSSH:
   | rsa1024-sha1
 
 GSS authentication support is only available when the gssapi package is
-installed on UNIX or the pypiwin32 package is installed on Windows.
+installed on UNIX or the pywin32 package is installed on Windows.
 
 Curve25519 and Curve448 support is available when OpenSSL 1.1.1 or
 later is installed. Alternately, Curve25519 is available when the
