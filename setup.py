@@ -58,7 +58,7 @@ setup(name = 'asyncssh',
           'gssapi':     ['gssapi >= 1.2.0'],
           'libnacl':    ['libnacl >= 1.4.2'],
           'pyOpenSSL':  ['pyOpenSSL >= 17.0.0'],
-          'pypiwin32':  ['pypiwin32 >= 219']
+          'pywin32':    ['pywin32 >= 227']
       },
       packages = ['asyncssh', 'asyncssh.crypto'],
       scripts = [],
