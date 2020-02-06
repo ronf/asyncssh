@@ -5,5 +5,8 @@ branch = True
 exclude_lines =
     pragma: no cover
     raise NotImplementedError
+partial_branches =
+    pragma: no branch
+    for .*
 omit =
     .tox/*
