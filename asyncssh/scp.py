@@ -43,7 +43,7 @@ def _parse_cd_args(args):
     """Parse arguments to an SCP copy or dir request"""
 
     try:
-        permissions, size, name = args.split()
+        permissions, size, name = args.split(None, 2)
         return int(permissions, 8), int(size), name
     except ValueError:
         raise SCPError(FX_BAD_MESSAGE, 'Invalid copy or dir request') from None
@@ -74,7 +74,7 @@ async def _parse_path(path, **kwargs):
     elif isinstance(path, str) and ':' in path:
         conn, path = path.split(':', 1)
     elif isinstance(path, bytes) and b':' in path:
-        conn, path = path.split(b':')
+        conn, path = path.split(b':', 1)
     elif isinstance(path, (str, bytes, PurePath)):
         conn = None
     else:
