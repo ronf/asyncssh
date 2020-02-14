@@ -43,7 +43,7 @@ def _parse_cd_args(args):
     """Parse arguments to an SCP copy or dir request"""
 
     try:
-        permissions, size, name = args.split()
+        permissions, size, name = args.split(b' ', 2)
         return int(permissions, 8), int(size), name
     except ValueError:
         raise SCPError(FX_BAD_MESSAGE, 'Invalid copy or dir request') from None
