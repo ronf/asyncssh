@@ -1,4 +1,4 @@
-# Copyright (c) 2017-2018 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2017-2020 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -41,7 +41,7 @@ _krb5_oid = der_encode(ObjectIdentifier('1.2.840.113554.1.2.2'))
 class _GSSBase:
     """GSS base class"""
 
-    # Overridden in client classes
+    # Overridden in child classes
     _mutual_auth_flag = 0
     _integrity_flag = 0
 
