@@ -1,4 +1,4 @@
-# Copyright (c) 2019 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2019-2020 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -22,16 +22,19 @@
 
 from hashlib import sha256
 
-from .asn1 import der_encode
+from .asn1 import der_encode, der_decode
 from .crypto import ECDSAPublicKey
 from .packet import Byte, MPInt, String, UInt32, SSHPacket
 from .public_key import KeyExportError, SSHKey, SSHOpenSSHCertificateV01
 from .public_key import register_public_key_alg, register_certificate_alg
-from .sk import SSH_SK_ECDSA, SSH_SK_USER_PRESENCE_REQD, sk_enroll, sk_sign
+from .sk import SSH_SK_ECDSA, SSH_SK_USER_PRESENCE_REQD, sk_available
+from .sk import sk_enroll, sk_sign
 
 
 class _SKECDSAKey(SSHKey):
     """Handler for elliptic curve public key encryption"""
+
+    use_executor = True
 
     def __init__(self, curve_id, public_value, application, flags=None,
                  key_handle=None, reserved=None):
@@ -70,8 +73,7 @@ class _SKECDSAKey(SSHKey):
         application = b'ssh:'
         flags = SSH_SK_USER_PRESENCE_REQD if touch_required else 0
 
-        public_value, key_handle, _, _ = sk_enroll(SSH_SK_ECDSA, 32*b'\0',
-                                                   application, flags)
+        public_value, key_handle = sk_enroll(SSH_SK_ECDSA, application)
 
         # Strip prefix and suffix of algorithm to get curve_id
         return cls(algorithm[14:-12], public_value, application,
@@ -149,13 +151,12 @@ class _SKECDSAKey(SSHKey):
         if self._key_handle is None:
             raise ValueError('Key handle needed for signing')
 
-        flags, counter, r, s = sk_sign(SSH_SK_ECDSA, sha256(data).digest(),
-                                       self._application, self._key_handle,
-                                       self._flags)
+        flags, counter, sig = sk_sign(sha256(data).digest(), self._application,
+                                      self._key_handle, self._flags)
 
-        sig = MPInt(int.from_bytes(r, 'big')) + MPInt(int.from_bytes(s, 'big'))
+        r, s = der_decode(sig)
 
-        return String(sig) + Byte(flags) + UInt32(counter)
+        return String(MPInt(r) + MPInt(s)) + Byte(flags) + UInt32(counter)
 
     def verify_ssh(self, data, sig_algorithm, packet):
         """Verify an SSH-encoded signature of the specified data"""
@@ -179,10 +180,12 @@ class _SKECDSAKey(SSHKey):
                                 sha256(data).digest(), sig)
 
 
-for _curve_id in (b'nistp256',):
-    _algorithm = b'sk-ecdsa-sha2-' + _curve_id + b'@openssh.com'
-    _cert_algorithm = b'sk-ecdsa-sha2-' + _curve_id + b'-cert-v01@openssh.com'
+if sk_available: # pragma: no branch
+    for _curve_id in (b'nistp256',):
+        _algorithm = b'sk-ecdsa-sha2-' + _curve_id + b'@openssh.com'
+        _cert_algorithm = b'sk-ecdsa-sha2-' + _curve_id + \
+                          b'-cert-v01@openssh.com'
 
-    register_public_key_alg(_algorithm, _SKECDSAKey, (_algorithm,))
-    register_certificate_alg(1, _algorithm, _cert_algorithm,
-                             _SKECDSAKey, SSHOpenSSHCertificateV01)
+        register_public_key_alg(_algorithm, _SKECDSAKey, (_algorithm,))
+        register_certificate_alg(1, _algorithm, _cert_algorithm,
+                                 _SKECDSAKey, SSHOpenSSHCertificateV01)

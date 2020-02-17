@@ -33,6 +33,7 @@ from asyncssh.public_key import CERT_TYPE_USER, CERT_TYPE_HOST
 
 from .keysign_stub import create_subprocess_exec_stub
 from .server import Server, ServerTestCase
+from .sk_stub import sk_available, patch_sk
 from .util import asynctest, gss_available, patch_getnameinfo, patch_gss
 from .util import make_certificate, x509_available
 
@@ -1246,6 +1247,100 @@ class _TestPreloadedAuthorizedKeys(ServerTestCase):
 
         async with self.connect(username='ckey', client_keys='ckey'):
             pass
+
+
+@unittest.skipUnless(sk_available, 'security key support not available')
+class _TestSKAuth(ServerTestCase):
+    """Unit tests for security key authentication"""
+
+    @classmethod
+    async def start_server(cls):
+        """Start an SSH server which supports security key authentication"""
+
+        def server_factory():
+            """Return an SSH server which trusts specific client keys"""
+
+            return _PublicKeyServer(client_keys=[pubkey])
+
+        with patch_sk([2]):
+            cls._privkey = asyncssh.generate_private_key(
+                'sk-ssh-ed25519@openssh.com')
+
+        pubkey = cls._privkey.export_public_key()
+
+        return await cls.create_server(server_factory)
+
+    @patch_sk([1, 2])
+    @asynctest
+    async def test_sk_auth(self):
+        """Test connecting with a security key"""
+
+        async with self.connect(username='ckey', client_keys=[self._privkey]):
+            pass
+
+    @patch_sk([1])
+    @asynctest
+    async def test_sk_unsupported_alg(self):
+        """Test unsupported security key algorithm"""
+
+        with self.assertRaises(ValueError):
+            asyncssh.generate_private_key('sk-ssh-ed25519@openssh.com')
+
+    @patch_sk([])
+    @asynctest
+    async def test_enroll_sk_not_found(self):
+        """Test generating new key with no security key found"""
+
+        with self.assertRaises(ValueError):
+            asyncssh.generate_private_key('sk-ssh-ed25519@openssh.com')
+
+    @patch_sk([(1, 'err')])
+    @asynctest
+    async def test_enroll_sk_ctap1_error(self):
+        """Test generating new key returning a CTAP 1 error"""
+
+        with self.assertRaises(ValueError):
+            asyncssh.generate_private_key('sk-ecdsa-sha2-nistp256@openssh.com')
+
+    @patch_sk([(2, 'err')])
+    @asynctest
+    async def test_enroll_sk_ctap2_error(self):
+        """Test generating new key returning a CTAP 2 error"""
+
+        with self.assertRaises(ValueError):
+            asyncssh.generate_private_key('sk-ssh-ed25519@openssh.com')
+
+    @patch_sk([])
+    @asynctest
+    async def test_sign_sk_not_found(self):
+        """Test connecting with no security key found"""
+
+        with self.assertRaises(ValueError):
+            await self.connect(username='ckey', client_keys=[self._privkey])
+
+    @patch_sk([(2, 'nocred'), (1, 'nocred')])
+    @asynctest
+    async def test_sign_sk_cred_not_found(self):
+        """Test connecting with no security credential found"""
+
+        with self.assertRaises(ValueError):
+            await self.connect(username='ckey', client_keys=[self._privkey])
+
+    @patch_sk([(1, 'err')])
+    @asynctest
+    async def test_sign_sk_ctap1_error(self):
+        """Test connecting with security key returning a CTAP 1 error"""
+
+        with self.assertRaises(ValueError):
+            await self.connect(username='ckey', client_keys=[self._privkey])
+
+    @patch_sk([(2, 'err')])
+    @asynctest
+    async def test_sign_sk_ctap2_error(self):
+        """Test connecting with security key returning a CTAP 2 error"""
+
+        with self.assertRaises(ValueError):
+            await self.connect(username='ckey', client_keys=[self._privkey])
 
 
 @unittest.skipUnless(x509_available, 'X.509 not available')

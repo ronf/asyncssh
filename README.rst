@@ -131,6 +131,9 @@ functionality:
 * Install libsk-libfido2 from https://github.com/Yubico/libfido2 if
   you want support for authenticating with U2F or FIDO2 security keys.
 
+* Install fido2 from https://pypi.org/project/fido2 if you want support
+  for key exchange and authentication with U2F/FIDO2 security keys.
+
 * Install gssapi from https://pypi.python.org/pypi/gssapi if you
   want support for GSSAPI key exchange and authentication on UNIX.
 
@@ -154,23 +157,25 @@ AsyncSSH defines the following optional PyPI extra packages to make it
 easy to install any or all of these dependencies:
 
   | bcrypt
+  | fido2
   | gssapi
   | libnacl
   | pyOpenSSL
   | pywin32
 
-For example, to install bcrypt, gssapi, libnacl, and pyOpenSSL on UNIX,
+For example, to install bcrypt, fido2, gssapi, libnacl, and pyOpenSSL on UNIX,
 you can run:
 
   ::
 
-    pip install 'asyncssh[bcrypt,gssapi,libnacl,pyOpenSSL]'
+    pip install 'asyncssh[bcrypt,fido2,gssapi,libnacl,pyOpenSSL]'
 
-To install bcrypt, libnacl, pyOpenSSL, and pywin32 on Windows, you can run:
+To install bcrypt, fido2, libnacl, pyOpenSSL, and pywin32 on Windows, you
+can run:
 
   ::
 
-    pip install 'asyncssh[bcrypt,libnacl,pyOpenSSL,pywin32]'
+    pip install 'asyncssh[bcrypt,fido2,libnacl,pyOpenSSL,pywin32]'
 
 Note that you will still need to manually install the libsodium library
 listed above for libnacl to work correctly and/or libnettle for UMAC

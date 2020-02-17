@@ -1,4 +1,4 @@
-# Copyright (c) 2019 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2019-2020 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -22,11 +22,12 @@
 
 from hashlib import sha256
 
-from .crypto import EdDSAPublicKey
+from .crypto import EdDSAPublicKey, ed25519_available
 from .packet import Byte, String, UInt32
 from .public_key import KeyExportError, SSHKey, SSHOpenSSHCertificateV01
 from .public_key import register_public_key_alg, register_certificate_alg
-from .sk import SSH_SK_ED25519, SSH_SK_USER_PRESENCE_REQD, sk_enroll, sk_sign
+from .sk import SSH_SK_ED25519, SSH_SK_USER_PRESENCE_REQD, sk_available
+from .sk import sk_enroll, sk_sign
 
 
 class _SKEd25519Key(SSHKey):
@@ -35,6 +36,7 @@ class _SKEd25519Key(SSHKey):
     algorithm = b'sk-ssh-ed25519@openssh.com'
     sig_algorithms = (algorithm,)
     all_sig_algorithms = set(sig_algorithms)
+    use_executor = True
 
     def __init__(self, public_value, application, flags=None,
                  key_handle=None, reserved=None):
@@ -69,8 +71,7 @@ class _SKEd25519Key(SSHKey):
         application = b'ssh:'
         flags = SSH_SK_USER_PRESENCE_REQD if touch_required else 0
 
-        public_value, key_handle, _, _ = sk_enroll(SSH_SK_ED25519, 32*b'\0',
-                                                   application, flags)
+        public_value, key_handle = sk_enroll(SSH_SK_ED25519, application)
 
         return cls(public_value, application, flags, key_handle, b'')
 
@@ -137,9 +138,8 @@ class _SKEd25519Key(SSHKey):
         if self._key_handle is None:
             raise ValueError('Key handle needed for signing')
 
-        flags, counter, sig, _ = sk_sign(SSH_SK_ED25519, sha256(data).digest(),
-                                         self._application, self._key_handle,
-                                         self._flags)
+        flags, counter, sig = sk_sign(sha256(data).digest(), self._application,
+                                      self._key_handle, self._flags)
 
         return String(sig) + Byte(flags) + UInt32(counter)
 
@@ -158,8 +158,9 @@ class _SKEd25519Key(SSHKey):
                                 sha256(data).digest(), sig)
 
 
-register_public_key_alg(b'sk-ssh-ed25519@openssh.com', _SKEd25519Key)
+if sk_available and ed25519_available: # pragma: no branch
+    register_public_key_alg(b'sk-ssh-ed25519@openssh.com', _SKEd25519Key)
 
-register_certificate_alg(1, b'sk-ssh-ed25519@openssh.com',
-                         b'sk-ssh-ed25519-cert-v01@openssh.com',
-                         _SKEd25519Key, SSHOpenSSHCertificateV01)
+    register_certificate_alg(1, b'sk-ssh-ed25519@openssh.com',
+                             b'sk-ssh-ed25519-cert-v01@openssh.com',
+                             _SKEd25519Key, SSHOpenSSHCertificateV01)

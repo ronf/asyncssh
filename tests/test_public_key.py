@@ -50,7 +50,7 @@ from asyncssh.public_key import get_public_key_algs, get_certificate_algs
 from asyncssh.public_key import get_x509_certificate_algs
 from asyncssh.public_key import import_certificate_subject
 
-from .sk_stub import patch_sk
+from .sk_stub import sk_available, stub_sk, unstub_sk
 from .util import bcrypt_available, x509_available
 from .util import make_certificate, run, TempDirTestCase
 
@@ -2064,7 +2064,34 @@ class TestECDSA(_TestPublicKey):
         return self.privkey.algorithm.decode('ascii') + '-cert-v01@openssh.com'
 
 
-@patch_sk
+@unittest.skipUnless(ed25519_available, 'ed25519 not available')
+class TestEd25519(_TestPublicKey):
+    """Test Ed25519 keys"""
+
+    keyclass = 'ed25519'
+    base_format = 'openssh'
+    private_formats = ('pkcs8', 'openssh')
+    public_formats = ('pkcs8', 'openssh', 'rfc4716')
+    default_cert_version = 'ssh-ed25519-cert-v01@openssh.com'
+    generate_args = (('ssh-ed25519', {}),)
+    use_openssl = False
+
+
+@unittest.skipUnless(ed448_available, 'ed448 not available')
+class TestEd448(_TestPublicKey):
+    """Test Ed448 keys"""
+
+    keyclass = 'ed448'
+    base_format = 'openssh'
+    private_formats = ('pkcs8', 'openssh')
+    public_formats = ('pkcs8', 'openssh', 'rfc4716')
+    default_cert_version = 'ssh-ed448-cert-v01@openssh.com'
+    generate_args = (('ssh-ed448', {}),)
+    use_openssh = False
+    use_openssl = False
+
+
+@unittest.skipUnless(sk_available, 'security key support not available')
 class TestSKECDSA(_TestPublicKey):
     """Test U2F ECDSA keys"""
 
@@ -2075,6 +2102,12 @@ class TestSKECDSA(_TestPublicKey):
     generate_args = (('sk-ecdsa-sha2-nistp256@openssh.com', {}),)
     use_openssh = False
 
+    def setUp(self):
+        """Set up ECDSA security key test"""
+
+        super().setUp()
+        self.addCleanup(unstub_sk, *stub_sk([1]))
+
     @property
     def default_cert_version(self):
         """Return default SSH certificate version"""
@@ -2083,45 +2116,25 @@ class TestSKECDSA(_TestPublicKey):
             '-cert-v01@openssh.com'
 
 
-if ed25519_available: # pragma: no branch
-    class TestEd25519(_TestPublicKey):
-        """Test Ed25519 keys"""
+@unittest.skipUnless(sk_available, 'security key support not available')
+@unittest.skipUnless(ed25519_available, 'ed25519 not available')
+class TestSKEd25519(_TestPublicKey):
+    """Test U2F Ed25519 keys"""
 
-        keyclass = 'ed25519'
-        base_format = 'openssh'
-        private_formats = ('pkcs8', 'openssh')
-        public_formats = ('pkcs8', 'openssh', 'rfc4716')
-        default_cert_version = 'ssh-ed25519-cert-v01@openssh.com'
-        generate_args = (('ssh-ed25519', {}),)
-        use_openssl = False
+    keyclass = 'sk-ed25519'
+    base_format = 'openssh'
+    private_formats = ('openssh',)
+    public_formats = ('openssh',)
+    default_cert_version = 'sk-ssh-ed25519-cert-v01@openssh.com'
+    generate_args = (('sk-ssh-ed25519@openssh.com', {}),)
+    use_openssh = False
+    use_openssl = False
 
+    def setUp(self):
+        """Set up Ed25519 security key test"""
 
-    @patch_sk
-    class TestSKEd25519(_TestPublicKey):
-        """Test U2F Ed25519 keys"""
-
-        keyclass = 'sk-ed25519'
-        base_format = 'openssh'
-        private_formats = ('openssh',)
-        public_formats = ('openssh',)
-        default_cert_version = 'sk-ssh-ed25519-cert-v01@openssh.com'
-        generate_args = (('sk-ssh-ed25519@openssh.com', {}),)
-        use_openssh = False
-        use_openssl = False
-
-
-if ed448_available: # pragma: no branch
-    class TestEd448(_TestPublicKey):
-        """Test Ed448 keys"""
-
-        keyclass = 'ed448'
-        base_format = 'openssh'
-        private_formats = ('pkcs8', 'openssh')
-        public_formats = ('pkcs8', 'openssh', 'rfc4716')
-        default_cert_version = 'ssh-ed448-cert-v01@openssh.com'
-        generate_args = (('ssh-ed448', {}),)
-        use_openssh = False
-        use_openssl = False
+        super().setUp()
+        self.addCleanup(unstub_sk, *stub_sk([2]))
 
 
 del _TestPublicKey

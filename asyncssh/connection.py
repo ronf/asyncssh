@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2019 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2020 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -1242,10 +1242,15 @@ class SSHConnection(SSHPacketHandler):
         packet = self._get_userauth_request_packet(method, args)
 
         if key:
-            sig = key.sign(String(self._session_id) + packet)
+            data = String(self._session_id) + packet
 
-            if inspect.isawaitable(sig):
-                sig = await sig
+            if getattr(key, 'use_executor', False):
+                sig = await self._loop.run_in_executor(None, key.sign, data)
+            else:
+                sig = key.sign(data)
+
+                if inspect.isawaitable(sig):
+                    sig = await sig
 
             packet += String(sig)
 

@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2019 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2020 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -172,6 +172,7 @@ class SSHKey:
     all_sig_algorithms = None
     pem_name = None
     pkcs8_oid = None
+    use_executor = False
 
     def __init__(self, key=None):
         self._key = key
@@ -1804,9 +1805,11 @@ class SSHKeyPair:
 
     _key_type = 'unknown'
 
-    def __init__(self, algorithm, public_data, comment, filename=None):
+    def __init__(self, algorithm, public_data, comment,
+                 filename=None, use_executor=False):
         self.algorithm = algorithm
         self.public_data = public_data
+        self.use_executor = use_executor
 
         self.set_comment(comment)
         self._filename = filename
@@ -1939,7 +1942,7 @@ class SSHLocalKeyPair(SSHKeyPair):
 
         super().__init__(cert.algorithm if cert else key.algorithm,
                          cert.public_data if cert else key.public_data,
-                         comment, key.get_filename())
+                         comment, key.get_filename(), key.use_executor)
 
         self._key = key
         self._cert = cert

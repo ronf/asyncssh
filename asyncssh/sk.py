@@ -1,4 +1,4 @@
-# Copyright (c) 2019 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2019-2020 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -20,106 +20,155 @@
 
 """U2F security key handler"""
 
-from ctypes import CDLL, POINTER, Structure, byref
-from ctypes import c_char, c_size_t, c_uint8, c_uint32
+from hashlib import sha256
+import time
 
-import os
+_CTAP1_POLL_INTERVAL = 0.1
+
+_dummy_hash = 32 * b'\0'
 
 # Flags
 SSH_SK_USER_PRESENCE_REQD = 0x01
 
 # Algorithms
-SSH_SK_ECDSA = 0
-SSH_SK_ED25519 = 1
+SSH_SK_ECDSA = -7
+SSH_SK_ED25519 = -8
 
 
-class SKEnrollResponse(Structure):
-    """A security key enrollment response"""
+def _ctap1_poll(poll_interval, func, *args):
+    """Poll until a CTAP1 response is received"""
 
-    _fields_ = (('public_key', POINTER(c_char)),
-                ('public_key_len', c_size_t),
-                ('key_handle', POINTER(c_char)),
-                ('key_handle_len', c_size_t),
-                ('signature', POINTER(c_char)),
-                ('signature_len', c_size_t),
-                ('attestation_cert', POINTER(c_char)),
-                ('attestation_cert_len', c_size_t))
+    while True:
+        try:
+            return func(*args)
+        except ApduError as exc:
+            if exc.code != APDU.USE_NOT_SATISFIED:
+                raise
 
-
-class SKSignResponse(Structure):
-    """A security key sign response"""
-
-    _fields_ = (('flags', c_uint8),
-                ('counter', c_uint32),
-                ('sig_r', POINTER(c_char)),
-                ('sig_r_len', c_size_t),
-                ('sig_s', POINTER(c_char)),
-                ('sig_s_len', c_size_t))
+            time.sleep(poll_interval)
 
 
-def sk_enroll(alg, challenge, application, flags): # pragma: no cover
+def _ctap1_enroll(dev, alg, application):
+    """Enroll a new security key using CTAP version 1"""
+
+    ctap1 = CTAP1(dev)
+
+    if alg != SSH_SK_ECDSA:
+        raise ValueError('Unsupported algorithm') from None
+
+    app_hash = sha256(application).digest()
+    registration = _ctap1_poll(_CTAP1_POLL_INTERVAL, ctap1.register,
+                               _dummy_hash, app_hash)
+
+    return registration.public_key, registration.key_handle
+
+
+def _ctap2_enroll(dev, alg, application):
+    """Enroll a new security key using CTAP version 2"""
+
+    ctap2 = CTAP2(dev)
+
+    application = application.decode()
+    rp = {'id': application, 'name': application}
+    user = {'id': b'AsyncSSH', 'name': 'AsyncSSH'}
+    key_params = [{'type': 'public-key', 'alg': alg}]
+
+    cred = ctap2.make_credential(_dummy_hash, rp, user, key_params)
+    cdata = cred.auth_data.credential_data
+
+    if alg == SSH_SK_ED25519:
+        public_key = cdata.public_key[-2]
+    else:
+        public_key = b'\x04' + cdata.public_key[-2] + cdata.public_key[-3]
+
+    return public_key, cdata.credential_id
+
+
+def _ctap1_sign(dev, message_hash, application, key_handle):
+    """Sign a message with a security key using CTAP version 1"""
+
+    ctap1 = CTAP1(dev)
+
+    app_hash = sha256(application).digest()
+
+    auth_response = _ctap1_poll(_CTAP1_POLL_INTERVAL, ctap1.authenticate,
+                                message_hash, app_hash, key_handle)
+
+    flags = auth_response[0]
+    counter = int.from_bytes(auth_response[1:5], 'big')
+    sig = auth_response[5:]
+
+    return flags, counter, sig
+
+
+def _ctap2_sign(dev, message_hash, application, key_handle, touch_required):
+    """Sign a message with a security key using CTAP version 2"""
+
+    ctap2 = CTAP2(dev)
+
+    application = application.decode()
+    allow_creds = [{'type': 'public-key', 'id': key_handle}]
+    options = {'up': touch_required}
+
+    assertion = ctap2.get_assertions(application, message_hash,
+                                     allow_creds, options=options)[0]
+
+    auth_data = assertion.auth_data
+
+    return auth_data.flags, auth_data.counter, assertion.signature
+
+
+def sk_enroll(alg, application):
     """Enroll a new security key"""
 
-    if not sk:
-        raise ValueError('Security key provider not available')
+    dev = next(CtapHidDevice.list_devices(), None)
 
-    response_ptr = POINTER(SKEnrollResponse)()
+    if not dev:
+        raise ValueError('No security key found')
 
-    result = sk.sk_enroll(alg, challenge, c_size_t(len(challenge)),
-                          application, c_uint8(flags), byref(response_ptr))
-
-    if result < 0:
-        raise ValueError('Enrollment failed')
-
-    response = response_ptr.contents
-
-    public_key = response.public_key[:response.public_key_len]
-    key_handle = response.key_handle[:response.key_handle_len]
-    signature = response.signature[:response.signature_len]
-    att_cert = response.attestation_cert[:response.attestation_cert_len]
-
-    sk.free(response.public_key)
-    sk.free(response.key_handle)
-    sk.free(response.signature)
-    sk.free(response.attestation_cert)
-    sk.free(response_ptr)
-
-    return public_key, key_handle, signature, att_cert
+    try:
+        return _ctap2_enroll(dev, alg, application)
+    except CtapError as exc:
+        raise ValueError(str(exc)) from None
+    except ValueError:
+        try:
+            return _ctap1_enroll(dev, alg, application)
+        except ApduError as exc:
+            raise ValueError(str(exc)) from None
+    finally:
+        dev.close()
 
 
-def sk_sign(alg, message_hash, application,
-            key_handle, flags): # pragma: no cover
+def sk_sign(message_hash, application, key_handle, flags):
     """Sign a message with a security key"""
 
-    if not sk:
-        raise ValueError('Security key provider not available')
+    touch_required = bool(flags & SSH_SK_USER_PRESENCE_REQD)
 
-    response_ptr = POINTER(SKSignResponse)()
+    for dev in CtapHidDevice.list_devices():
+        try:
+            return _ctap2_sign(dev, message_hash, application,
+                               key_handle, touch_required)
+        except CtapError as exc:
+            if exc.code != CtapError.ERR.NO_CREDENTIALS:
+                raise ValueError(str(exc)) from None
+        except ValueError:
+            try:
+                return _ctap1_sign(dev, message_hash, application, key_handle)
+            except ApduError as exc:
+                if exc.code != APDU.WRONG_DATA:
+                    raise ValueError(str(exc)) from None
+        finally:
+            dev.close()
 
-    result = sk.sk_sign(alg, message_hash, c_size_t(len(message_hash)),
-                        application, key_handle, c_size_t(len(key_handle)),
-                        c_uint8(flags), byref(response_ptr))
+    raise ValueError('Security key credential not found')
 
-    if result < 0:
-        raise ValueError('Signing failed')
-
-    response = response_ptr.contents
-
-    flags = response.flags
-    counter = response.counter
-    sig_r = response.sig_r[:response.sig_r_len]
-    sig_s = response.sig_s[:response.sig_s_len]
-
-    sk.free(response.sig_r)
-    sk.free(response.sig_s)
-    sk.free(response_ptr)
-
-    return flags, counter, sig_r, sig_s
-
-
-_sk_lib = os.environ.get('SSH_SK_PROVIDER') or 'libsk-libfido2.so'
 
 try:
-    sk = CDLL(_sk_lib)
-except OSError: # pragma: no cover
-    sk = None
+    from fido2.hid import CtapHidDevice
+    from fido2.ctap import CtapError
+    from fido2.ctap1 import CTAP1, APDU, ApduError
+    from fido2.ctap2 import CTAP2
+
+    sk_available = True
+except (ImportError, OSError, AttributeError): # pragma: no cover
+    sk_available = False

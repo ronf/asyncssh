@@ -26,6 +26,7 @@ import os
 from pathlib import Path
 import signal
 import subprocess
+import unittest
 
 import asyncssh
 
@@ -34,7 +35,7 @@ from asyncssh.agent import SSH_AGENT_IDENTITIES_ANSWER
 from asyncssh.crypto import ed25519_available
 from asyncssh.packet import Byte, String, UInt32
 
-from .sk_stub import patch_sk
+from .sk_stub import sk_available, patch_sk
 from .util import AsyncTestCase, asynctest, run
 
 
@@ -288,7 +289,8 @@ class _TestAgent(AsyncTestCase):
             os.remove(os.path.join('.ssh', 'id_rsa'))
             os.rmdir('.ssh')
 
-    @patch_sk
+    @unittest.skipUnless(sk_available, 'security key support not available')
+    @patch_sk([2])
     @asynctest
     async def test_add_sk_keys(self):
         """Test adding U2F security keys"""
@@ -311,7 +313,8 @@ class _TestAgent(AsyncTestCase):
 
         await mock_agent.stop()
 
-    @patch_sk
+    @unittest.skipUnless(sk_available, 'security key support not available')
+    @patch_sk([2])
     @asynctest
     async def test_get_sk_keys(self):
         """Test getting U2F security keys"""
