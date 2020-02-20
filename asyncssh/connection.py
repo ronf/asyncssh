@@ -689,7 +689,8 @@ class SSHConnection(SSHPacketHandler):
         self._local_addr, self._local_port = sockname[:2]
 
         peername = transport.get_extra_info('peername')
-        self._peer_addr, self._peer_port = peername[:2]
+        if peername is not None:
+            self._peer_addr, self._peer_port = peername[:2]
 
         self._owner = self._protocol_factory()
         self._protocol_factory = None
