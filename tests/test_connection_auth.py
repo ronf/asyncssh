@@ -157,10 +157,11 @@ class _AsyncPublicKeyClient(_PublicKeyClient):
 class _PublicKeyServer(Server):
     """Server for testing public key authentication"""
 
-    def __init__(self, client_keys=(), authorized_keys=None):
+    def __init__(self, client_keys=(), authorized_keys=None, delay=0):
         super().__init__()
         self._client_keys = client_keys
         self._authorized_keys = authorized_keys
+        self._delay = delay
 
     def connection_made(self, conn):
         """Called when a connection is made"""
@@ -168,13 +169,16 @@ class _PublicKeyServer(Server):
         super().connection_made(conn)
         conn.send_auth_banner('auth banner')
 
-    def begin_auth(self, username):
+    async def begin_auth(self, username):
         """Handle client authentication request"""
 
         if self._authorized_keys:
             self._conn.set_authorized_keys(self._authorized_keys)
         else:
             self._client_keys = asyncssh.load_public_keys(self._client_keys)
+
+        if self._delay:
+            await asyncio.sleep(self._delay)
 
         return True
 
@@ -202,7 +206,7 @@ class _AsyncPublicKeyServer(_PublicKeyServer):
     async def begin_auth(self, username):
         """Handle client authentication request"""
 
-        return super().begin_auth(username)
+        return await super().begin_auth(username)
 
     async def validate_public_key(self, username, key):
         """Return whether key is an authorized client key for this user"""
@@ -1668,8 +1672,32 @@ class _TestKbdintPasswordServerAuth(ServerTestCase):
             await self._connect_kbdint('pw', ['oldpw'])
 
 
-class _TestLoginTimeoutExceeded(ServerTestCase):
-    """Unit test for login timeout"""
+class _TestClientLoginTimeoutExceeded(ServerTestCase):
+    """Unit test for client login timeout"""
+
+    @classmethod
+    async def start_server(cls):
+        """Start an SSH server which supports public key authentication"""
+
+        def server_factory():
+            """Return an SSHServer that delays before starting auth"""
+
+            return _PublicKeyServer(delay=2)
+
+        return await cls.create_server(
+            server_factory, authorized_client_keys='authorized_keys')
+
+    @asynctest
+    async def test_client_login_timeout_exceeded(self):
+        """Test client login timeout exceeded"""
+
+        with self.assertRaises(asyncssh.ConnectionLost):
+            await self.connect(username='ckey', client_keys='ckey',
+                               login_timeout=1)
+
+
+class _TestServerLoginTimeoutExceeded(ServerTestCase):
+    """Unit test for server login timeout"""
 
     @classmethod
     async def start_server(cls):
@@ -1680,8 +1708,8 @@ class _TestLoginTimeoutExceeded(ServerTestCase):
             login_timeout=1)
 
     @asynctest
-    async def test_login_timeout_exceeded(self):
-        """Test login timeout exceeded"""
+    async def test_server_login_timeout_exceeded(self):
+        """Test server_login timeout exceeded"""
 
         def client_factory():
             """Return an SSHClient that delays before providing a key"""
@@ -1693,8 +1721,8 @@ class _TestLoginTimeoutExceeded(ServerTestCase):
                                          client_keys=None)
 
 
-class _TestLoginTimeoutDisabled(ServerTestCase):
-    """Unit test for disabled login timeout"""
+class _TestServerLoginTimeoutDisabled(ServerTestCase):
+    """Unit test for disabled server login timeout"""
 
     @classmethod
     async def start_server(cls):
@@ -1705,7 +1733,7 @@ class _TestLoginTimeoutDisabled(ServerTestCase):
             login_timeout=None)
 
     @asynctest
-    async def test_login_timeout_disabled(self):
+    async def test_server_login_timeout_disabled(self):
         """Test with login timeout disabled"""
 
         async with self.connect(username='ckey', client_keys='ckey'):

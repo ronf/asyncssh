@@ -143,6 +143,11 @@ _DEFAULT_LOGIN_TIMEOUT = 120        # 2 minutes
 _DEFAULT_KEEPALIVE_INTERVAL = 0     # disabled by default
 _DEFAULT_KEEPALIVE_COUNT_MAX = 3
 
+# Default banner and version line length and count
+_MAX_BANNER_LINES = 1024
+_MAX_BANNER_LINE_LEN = 8192
+_MAX_VERSION_LINE_LEN = 255
+
 # Default channel parameters
 _DEFAULT_WINDOW = 2*1024*1024       # 2 MiB
 _DEFAULT_MAX_PKTSIZE = 32768        # 32 kiB
@@ -308,6 +313,7 @@ class SSHConnection(SSHPacketHandler):
         self._inpbuf = b''
         self._packet = b''
         self._pktlen = 0
+        self._banner_lines = 0
 
         self._version = options.version
         self._client_version = b''
@@ -414,6 +420,12 @@ class SSHConnection(SSHPacketHandler):
         self._logger = logger.get_child(context='conn=%d' %
                                         self._get_next_conn())
 
+        if options.login_timeout:
+            self._login_timer = self._loop.call_later(
+                options.login_timeout, self._login_timer_callback)
+        else:
+            self._login_timer = None
+
     async def __aenter__(self):
         """Allow SSHConnection to be used as an async context manager"""
 
@@ -465,10 +477,25 @@ class SSHConnection(SSHPacketHandler):
             self._owner.connection_lost(exc)
             self._owner = None
 
+        self._cancel_login_timer()
         self._close_event.set()
 
         self._inpbuf = b''
         self._recv_handler = None
+
+    def _cancel_login_timer(self):
+        """Cancel the login timer"""
+
+        if self._login_timer:
+            self._login_timer.cancel()
+            self._login_timer = None
+
+    def _login_timer_callback(self):
+        """Close the connection if authentication hasn't completed yet"""
+
+        self._login_timer = None
+
+        self.connection_lost(ConnectionLost('Login timeout expired'))
 
     def _cancel_keepalive_timer(self):
         """Cancel the keepalive timer"""
@@ -838,8 +865,11 @@ class SSHConnection(SSHPacketHandler):
     def _recv_version(self):
         """Receive and parse the remote SSH version"""
 
-        idx = self._inpbuf.find(b'\n')
+        idx = self._inpbuf.find(b'\n', 0, _MAX_BANNER_LINE_LEN)
         if idx < 0:
+            if len(self._inpbuf) >= _MAX_BANNER_LINE_LEN:
+                self._force_close(ProtocolError('Banner line too long'))
+
             return False
 
         version = self._inpbuf[:idx]
@@ -850,6 +880,9 @@ class SSHConnection(SSHPacketHandler):
 
         if (version.startswith(b'SSH-2.0-') or
                 (self.is_client() and version.startswith(b'SSH-1.99-'))):
+            if len(version) > _MAX_VERSION_LINE_LEN:
+                self._force_close(ProtocolError('Version too long'))
+
             # Accept version 2.0, or 1.99 if we're a client
             if self.is_server():
                 self._client_version = version
@@ -863,7 +896,11 @@ class SSHConnection(SSHPacketHandler):
             self._recv_handler = self._recv_pkthdr
         elif self.is_client() and not version.startswith(b'SSH-'):
             # As a client, ignore the line if it doesn't appear to be a version
-            pass
+            self._banner_lines += 1
+
+            if self._banner_lines > _MAX_BANNER_LINES:
+                self._force_close(ProtocolError('Too many banner lines'))
+                return False
         else:
             # Otherwise, reject the unknown version
             self._force_close(ProtocolNotSupported('Unsupported SSH version'))
@@ -1280,12 +1317,8 @@ class SSHConnection(SSHPacketHandler):
         self.set_extra_info(username=self._username)
         self._send_deferred_packets()
 
-        # This method is only in SSHServerConnection
-        # pylint: disable=no-member
         self._cancel_login_timer()
-
         self._set_keepalive_timer()
-
         self._owner.auth_completed()
 
         if self._acceptor:
@@ -1674,6 +1707,7 @@ class SSHConnection(SSHPacketHandler):
                 self._agent.close()
 
             self.set_extra_info(username=self._username)
+            self._cancel_login_timer()
             self._send_deferred_packets()
             self._set_keepalive_timer()
             self._owner.auth_completed()
@@ -3830,12 +3864,6 @@ class SSHServerConnection(SSHConnection):
             except GSSError:
                 pass
 
-        if options.login_timeout:
-            self._login_timer = self._loop.call_later(
-                options.login_timeout, self._login_timer_callback)
-        else:
-            self._login_timer = None
-
         self._server_host_key = None
         self._key_options = {}
         self._cert_options = None
@@ -3850,22 +3878,7 @@ class SSHServerConnection(SSHConnection):
             self._agent_listener.close()
             self._agent_listener = None
 
-        self._cancel_login_timer()
         super()._cleanup(exc)
-
-    def _cancel_login_timer(self):
-        """Cancel the login timer"""
-
-        if self._login_timer:
-            self._login_timer.cancel()
-            self._login_timer = None
-
-    def _login_timer_callback(self):
-        """Close the connection if authentication hasn't completed yet"""
-
-        self._login_timer = None
-
-        self.connection_lost(ConnectionLost('Login timeout expired'))
 
     def _connection_made(self):
         """Handle the opening of a new connection"""
@@ -4991,7 +5004,8 @@ class SSHConnectionOptions(Options):
     def prepare(self, protocol_factory, version, kex_algs, encryption_algs,
                 mac_algs, compression_algs, signature_algs, x509_trusted_certs,
                 x509_trusted_cert_paths, x509_purposes, rekey_bytes,
-                rekey_seconds, keepalive_interval, keepalive_count_max):
+                rekey_seconds, login_timeout, keepalive_interval,
+                keepalive_count_max):
         """Prepare common connection configuration options"""
 
         self.protocol_factory = protocol_factory
@@ -5016,6 +5030,7 @@ class SSHConnectionOptions(Options):
         self.x509_purposes = x509_purposes
         self.rekey_bytes = rekey_bytes
         self.rekey_seconds = rekey_seconds
+        self.login_timeout = login_timeout
         self.keepalive_interval = keepalive_interval
         self.keepalive_count_max = keepalive_count_max
 
@@ -5166,6 +5181,9 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
        :param rekey_seconds: (optional)
            The maximum time in seconds before the SSH session key is
            renegotiated. This defaults to 1 hour.
+       :param login_timeout: (optional)
+           The maximum time in seconds allowed for authentication to
+           complete, defaulting to 2 minutes
        :param keepalive_interval: (optional)
            The time in seconds to wait before sending a keepalive message
            if no data has been received from the server. This defaults to
@@ -5202,6 +5220,7 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
        :type signature_algs: `list` of `str`
        :type rekey_bytes: `int`
        :type rekey_seconds: `int`
+       :type login_timeout: `int` or `float`
        :type keepalive_interval: `int` or `float`
        :type keepalive_count_max: `int`
 
@@ -5214,6 +5233,7 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
                 x509_trusted_cert_paths=(), x509_purposes='secureShellServer',
                 rekey_bytes=_DEFAULT_REKEY_BYTES,
                 rekey_seconds=_DEFAULT_REKEY_SECONDS,
+                login_timeout=_DEFAULT_LOGIN_TIMEOUT,
                 keepalive_interval=_DEFAULT_KEEPALIVE_INTERVAL,
                 keepalive_count_max=_DEFAULT_KEEPALIVE_COUNT_MAX,
                 known_hosts=(), server_host_key_algs=(), username=None,
@@ -5241,8 +5261,8 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
                         kex_algs, encryption_algs, mac_algs, compression_algs,
                         signature_algs, x509_trusted_certs,
                         x509_trusted_cert_paths, x509_purposes,
-                        rekey_bytes, rekey_seconds, keepalive_interval,
-                        keepalive_count_max)
+                        rekey_bytes, rekey_seconds, login_timeout,
+                        keepalive_interval, keepalive_count_max)
 
         self.known_hosts = known_hosts
         self.server_host_key_algs = \
@@ -5443,6 +5463,9 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
        :param rekey_seconds: (optional)
            The maximum time in seconds before the SSH session key is
            renegotiated, defaulting to 1 hour
+       :param login_timeout: (optional)
+           The maximum time in seconds allowed for authentication to
+           complete, defaulting to 2 minutes
        :param keepalive_interval: (optional)
            The time in seconds to wait before sending a keepalive message
            if no data has been received from the client. This defaults to
@@ -5452,9 +5475,6 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
            without getting a response before disconnecting a client.
            This defaults to 3, but only applies when keepalive_interval is
            non-zero.
-       :param login_timeout: (optional)
-           The maximum time in seconds allowed for authentication to
-           complete, defaulting to 2 minutes
        :type server_factory: `callable`
        :type server_host_keys: *see* :ref:`SpecifyingPrivateKeys`
        :type passphrase: `str`
@@ -5487,7 +5507,7 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
        :type signature_algs: `list` of `str`
        :type rekey_bytes: `int`
        :type rekey_seconds: `int`
-       :type login_timeout: `int`
+       :type login_timeout: `int` or `float`
        :type keepalive_interval: `int` or `float`
        :type keepalive_count_max: `int`
 
@@ -5500,6 +5520,7 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
                 x509_trusted_cert_paths=(), x509_purposes='secureShellClient',
                 rekey_bytes=_DEFAULT_REKEY_BYTES,
                 rekey_seconds=_DEFAULT_REKEY_SECONDS,
+                login_timeout=_DEFAULT_LOGIN_TIMEOUT,
                 keepalive_interval=_DEFAULT_KEEPALIVE_INTERVAL,
                 keepalive_count_max=_DEFAULT_KEEPALIVE_COUNT_MAX,
                 server_host_keys=None, passphrase=None,
@@ -5510,16 +5531,15 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
                 agent_forwarding=True, process_factory=None,
                 session_factory=None, encoding='utf-8', errors='strict',
                 sftp_factory=None, allow_scp=False,
-                window=_DEFAULT_WINDOW, max_pktsize=_DEFAULT_MAX_PKTSIZE,
-                login_timeout=_DEFAULT_LOGIN_TIMEOUT):
+                window=_DEFAULT_WINDOW, max_pktsize=_DEFAULT_MAX_PKTSIZE):
         """Prepare server connection configuration options"""
 
         super().prepare(server_factory or SSHServer, server_version,
                         kex_algs, encryption_algs, mac_algs, compression_algs,
                         signature_algs, x509_trusted_certs,
                         x509_trusted_cert_paths, x509_purposes,
-                        rekey_bytes, rekey_seconds, keepalive_interval,
-                        keepalive_count_max)
+                        rekey_bytes, rekey_seconds, login_timeout,
+                        keepalive_interval, keepalive_count_max)
 
         server_keys = load_keypairs(server_host_keys, passphrase)
 
@@ -5567,7 +5587,6 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
         self.allow_scp = allow_scp
         self.window = window
         self.max_pktsize = max_pktsize
-        self.login_timeout = login_timeout
 
 
 @async_context_manager

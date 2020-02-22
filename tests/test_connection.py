@@ -402,16 +402,37 @@ class _TestConnection(ServerTestCase):
         await self._check_version(b'SSH-1.99-Test')
 
     @asynctest
-    async def test_text_before_version(self):
-        """Test additional text before SSH server version"""
+    async def test_banner_before_version(self):
+        """Test banner lines before SSH server version"""
 
-        await self._check_version(leading_text=b'Test\r\n')
+        await self._check_version(leading_text=b'Banner 1\r\nBanner 2\r\n')
+
+    @asynctest
+    async def test_banner_line_too_long(self):
+        """Test excessively long banner line"""
+
+        with self.assertRaises(asyncssh.ProtocolError):
+            await self._check_version(leading_text=8192*b'*' + b'\r\n')
+
+    @asynctest
+    async def test_too_many_banner_lines(self):
+        """Test too many banner lines"""
+
+        with self.assertRaises(asyncssh.ProtocolError):
+            await self._check_version(leading_text=2048*b'Banner line\r\n')
 
     @asynctest
     async def test_version_without_cr(self):
         """Test SSH server version with LF instead of CRLF"""
 
         await self._check_version(newline=b'\n')
+
+    @asynctest
+    async def test_version_line_too_long(self):
+        """Test excessively long version line"""
+
+        with self.assertRaises(asyncssh.ProtocolError):
+            await self._check_version(newline=256*b'*' + b'\r\n')
 
     @asynctest
     async def test_unknown_version(self):
