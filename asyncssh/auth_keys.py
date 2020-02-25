@@ -18,7 +18,7 @@
 # Contributors:
 #     Ron Frederick - initial implementation, API, and documentation
 
-"""Parser for SSH known_hosts files"""
+"""Parser for SSH authorized_keys files"""
 
 import socket
 
