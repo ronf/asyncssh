@@ -713,10 +713,14 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 
         sockname = transport.get_extra_info('sockname')
-        self._local_addr, self._local_port = sockname[:2]
+
+        if sockname: # pragma: no branch
+            self._local_addr, self._local_port = sockname[:2]
 
         peername = transport.get_extra_info('peername')
-        self._peer_addr, self._peer_port = peername[:2]
+
+        if peername: # pragma: no branch
+            self._peer_addr, self._peer_port = peername[:2]
 
         self._owner = self._protocol_factory()
         self._protocol_factory = None
