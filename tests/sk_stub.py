@@ -63,12 +63,13 @@ class _Assertion:
 class _CredentialData:
     """Security key credential data"""
 
-    def __init__(self, alg, public_key, key_handle):
+    def __init__(self, alg, public_value, key_handle):
         if alg == SSH_SK_ED25519:
-            self.public_key = {-2: public_key}
+            self.public_key = {-2: public_value}
         else:
-            self.public_key = {-2: public_key[1:33], -3: public_key[33:]}
+            self.public_key = {-2: public_value[1:33], -3: public_value[33:]}
 
+        self.public_key[3] = alg
         self.credential_id = key_handle
 
 
@@ -95,7 +96,7 @@ class _CTAPStub:
         if dev.version != self._version:
             raise ValueError('Wrong protocol version')
 
-        self._error = dev.error
+        self.dev = dev
 
     @staticmethod
     def _enroll(alg):
@@ -153,7 +154,7 @@ class CTAP1(_CTAPStub):
 
         self._poll()
 
-        if self._error == 'err':
+        if self.dev.error == 'err':
             raise ApduError(0, b'')
 
         public_key, key_handle = self._enroll(SSH_SK_ECDSA)
@@ -165,9 +166,9 @@ class CTAP1(_CTAPStub):
 
         self._poll()
 
-        if self._error == 'nocred':
+        if self.dev.error == 'nocred':
             raise ApduError(APDU.WRONG_DATA, b'')
-        elif self._error == 'err':
+        elif self.dev.error == 'err':
             raise ApduError(0, b'')
 
         flags, counter, sig = self._sign(message_hash, app_hash,
@@ -181,19 +182,29 @@ class CTAP2(_CTAPStub):
 
     _version = 2
 
-    def make_credential(self, client_data_hash, rp, user, key_params):
+    def make_credential(self, client_data_hash, rp, user, key_params,
+                        options, pin_auth, pin_protocol):
         """Enroll a new security key using CTAP version 2"""
 
         # pylint: disable=unused-argument
 
         alg = key_params[0]['alg']
 
-        if self._error == 'err':
+        if self.dev.error == 'err':
             raise CtapError(CtapError.ERR.INVALID_CREDENTIAL)
+        elif self.dev.error == 'pinreq':
+            raise CtapError(CtapError.ERR.PIN_REQUIRED)
+        elif self.dev.error == 'badpin':
+            raise CtapError(CtapError.ERR.PIN_INVALID)
 
         public_key, key_handle = self._enroll(alg)
 
         cdata = _CredentialData(alg, public_key, key_handle)
+
+        if options.get('rk'):
+            cred_mgmt = CredentialManagement(self)
+
+            cred_mgmt.add_resident_key(user['name'], cdata)
 
         return _Credential(_CredentialAuthData(cdata))
 
@@ -204,9 +215,9 @@ class CTAP2(_CTAPStub):
         key_handle = allow_creds[0]['id']
         flags = SSH_SK_USER_PRESENCE_REQD if options['up'] else 0
 
-        if self._error == 'nocred':
+        if self.dev.error == 'nocred':
             raise CtapError(CtapError.ERR.NO_CREDENTIALS)
-        elif self._error == 'err':
+        elif self.dev.error == 'err':
             raise CtapError(CtapError.ERR.INVALID_CREDENTIAL)
 
         flags, counter, sig = self._sign(message_hash, app_hash,
@@ -215,51 +226,126 @@ class CTAP2(_CTAPStub):
         return [_Assertion(_AuthData(flags, counter), sig)]
 
 
+class CredentialManagement:
+    """Stub for unit testing U2F security device resident keys"""
+
+    class RESULT:
+        """Credential management result keys"""
+
+        USER = 6
+        CREDENTIAL_ID = 7
+        PUBLIC_KEY = 8
+
+    def __init__(self, ctap, pin_protocol=None, pin_token=None):
+        # pylint: disable=unused-argument
+
+        self.dev = ctap.dev
+
+        if self.dev.error == 'err':
+            raise CtapError(CtapError.ERR.INVALID_CREDENTIAL)
+        elif self.dev.error == 'nocred':
+            raise CtapError(CtapError.ERR.NO_CREDENTIALS)
+        elif self.dev.error == 'nopin':
+            raise CtapError(CtapError.ERR.PIN_NOT_SET)
+        elif self.dev.error == 'badpin':
+            raise CtapError(CtapError.ERR.PIN_INVALID)
+
+    def enumerate_creds(self, app_hash):
+        """Enumerate resident credentials"""
+
+        # pylint: disable=unused-argument
+
+        return self.dev.resident_keys
+
+    def add_resident_key(self, user, cdata):
+        """Add a resident key to a device"""
+
+        self.dev.resident_keys.append(
+            {self.RESULT.USER: {'id': b'', 'name': user, 'displayName': user},
+             self.RESULT.CREDENTIAL_ID: {'id': cdata.credential_id},
+             self.RESULT.PUBLIC_KEY: cdata.public_key})
+
+
 class Device:
     """Stub for unit testing U2F security devices"""
 
     def __init__(self, version):
-        if isinstance(version, tuple):
-            version, error = version
-        else:
-            error = None
-
         self.version = version
-        self.error = error
+        self.error = None
+        self.resident_keys = []
 
     def close(self):
         """Close this security device"""
 
 
+class PinProtocolV1:
+    """Stub for unit testing U2F security device PINs"""
+
+    VERSION = 1
+
+    def __init__(self, ctap):
+        # pylint: disable=unused-argument
+        pass
+
+    def get_pin_token(self, pin):
+        """Return a PIN token"""
+
+        # pylint: disable=no-self-use
+
+        return pin
+
+
 def stub_sk(devices):
     """Stub out security key module functions for unit testing"""
 
+    devices = list(map(Device, devices))
+
     old_ctap1 = asyncssh.sk.CTAP1
     old_ctap2 = asyncssh.sk.CTAP2
+    old_cred_mgmt = asyncssh.sk.CredentialManagement
+    old_pin_proto = asyncssh.sk.PinProtocolV1
     old_list_devices = asyncssh.sk.CtapHidDevice.list_devices
 
     asyncssh.sk.CTAP1 = CTAP1
     asyncssh.sk.CTAP2 = CTAP2
-    asyncssh.sk.CtapHidDevice.list_devices = lambda: map(Device, devices)
+    asyncssh.sk.CredentialManagement = CredentialManagement
+    asyncssh.sk.PinProtocolV1 = PinProtocolV1
+    asyncssh.sk.CtapHidDevice.list_devices = lambda: iter(devices)
 
-    return old_ctap1, old_ctap2, old_list_devices
+    return old_ctap1, old_ctap2, old_cred_mgmt, old_pin_proto, old_list_devices
 
 
-def unstub_sk(old_ctap1, old_ctap2, old_list_devices):
+def unstub_sk(old_ctap1, old_ctap2, old_cred_mgmt,
+              old_pin_proto, old_list_devices):
     """Restore security key module functions"""
 
     asyncssh.sk.CTAP1 = old_ctap1
     asyncssh.sk.CTAP2 = old_ctap2
+    asyncssh.sk.CredentialManagement = old_cred_mgmt
+    asyncssh.sk.PinProtocolV1 = old_pin_proto
     asyncssh.sk.CtapHidDevice.list_devices = old_list_devices
-
 
 @contextmanager
 def patch_sk(devices):
     """Context manager to stub out security key functions"""
 
-    old_ctap1, old_ctap2, old_list_devices = stub_sk(devices)
+    old_sk_hooks = stub_sk(devices)
 
     try:
         yield
     finally:
-        unstub_sk(old_ctap1, old_ctap2, old_list_devices)
+        unstub_sk(*old_sk_hooks)
+
+
+@contextmanager
+def sk_error(err):
+    """Set security key error condition"""
+
+    try:
+        for dev in asyncssh.sk.CtapHidDevice.list_devices():
+            dev.error = err
+
+        yield
+    finally:
+        for dev in asyncssh.sk.CtapHidDevice.list_devices():
+            dev.error = None

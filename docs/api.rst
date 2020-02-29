@@ -1538,6 +1538,11 @@ load_certificates
 
 .. autofunction:: load_certificates
 
+load_resident_keys
+------------------
+
+.. autofunction:: load_resident_keys
+
 .. index:: SSH agent support
 
 SSH Agent Support

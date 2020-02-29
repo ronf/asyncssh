@@ -4032,6 +4032,10 @@ class SSHServerConnection(SSHConnection):
 
         self._cert_options = cert.options
 
+        cert.key.set_touch_required(
+            not (self.get_key_option('no-touch-required', False) and
+                 self.get_certificate_option('no-touch-required', False)))
+
         return cert.key
 
     async def _validate_x509_certificate_chain(self, username, cert):
@@ -4103,6 +4107,9 @@ class SSHServerConnection(SSHConnection):
             options = {}
 
         self._key_options = options
+
+        key.set_touch_required(
+            not self.get_key_option('no-touch-required', False))
 
         return key
 
@@ -4634,6 +4641,7 @@ class SSHServerConnection(SSHConnection):
                | command (string)
                | environment (dictionary of name/value pairs)
                | from (list of host patterns)
+               | no-touch-required (boolean)
                | permitopen (list of host/port tuples)
                | principals (list of usernames)
 
@@ -4701,6 +4709,7 @@ class SSHServerConnection(SSHConnection):
            The following options are supported:
 
                | force-command (string)
+               | no-touch-required (boolean)
                | source-address (list of CIDR-style IP network addresses)
 
            :param option:

@@ -26,8 +26,8 @@ from .crypto import EdDSAPublicKey, ed25519_available
 from .packet import Byte, String, UInt32
 from .public_key import KeyExportError, SSHKey, SSHOpenSSHCertificateV01
 from .public_key import register_public_key_alg, register_certificate_alg
-from .sk import SSH_SK_ED25519, SSH_SK_USER_PRESENCE_REQD, sk_available
-from .sk import sk_enroll, sk_sign
+from .public_key import register_sk_alg
+from .sk import SSH_SK_ED25519, SSH_SK_USER_PRESENCE_REQD, sk_enroll, sk_sign
 
 
 class _SKEd25519Key(SSHKey):
@@ -63,15 +63,17 @@ class _SKEd25519Key(SSHKey):
                      self._key_handle, self._reserved))
 
     @classmethod
-    def generate(cls, algorithm, touch_required=True):
+    def generate(cls, algorithm, application='ssh:', user='AsyncSSH',
+                 pin=None, resident=False, touch_required=True):
         """Generate a new U2F Ed25519 private key"""
 
         # pylint: disable=unused-argument
 
-        application = b'ssh:'
+        application = application.encode('utf-8')
         flags = SSH_SK_USER_PRESENCE_REQD if touch_required else 0
 
-        public_value, key_handle = sk_enroll(SSH_SK_ED25519, application)
+        public_value, key_handle = sk_enroll(SSH_SK_ED25519, application,
+                                             user, pin, resident)
 
         return cls(public_value, application, flags, key_handle, b'')
 
@@ -153,12 +155,17 @@ class _SKEd25519Key(SSHKey):
         counter = packet.get_uint32()
         packet.check_end()
 
+        if self._touch_required and not flags & SSH_SK_USER_PRESENCE_REQD:
+            return False
+
         return self._key.verify(sha256(self._application).digest() +
                                 Byte(flags) + UInt32(counter) +
                                 sha256(data).digest(), sig)
 
 
-if sk_available and ed25519_available: # pragma: no branch
+if ed25519_available: # pragma: no branch
+    register_sk_alg(SSH_SK_ED25519, _SKEd25519Key)
+
     register_public_key_alg(b'sk-ssh-ed25519@openssh.com', _SKEd25519Key)
 
     register_certificate_alg(1, b'sk-ssh-ed25519@openssh.com',

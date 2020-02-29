@@ -128,9 +128,6 @@ functionality:
 * Install bcrypt from https://pypi.python.org/pypi/bcrypt
   if you want support for OpenSSH private key encryption.
 
-* Install libsk-libfido2 from https://github.com/Yubico/libfido2 if
-  you want support for authenticating with U2F or FIDO2 security keys.
-
 * Install fido2 from https://pypi.org/project/fido2 if you want support
   for key exchange and authentication with U2F/FIDO2 security keys.
 
@@ -179,8 +176,8 @@ can run:
 
 Note that you will still need to manually install the libsodium library
 listed above for libnacl to work correctly and/or libnettle for UMAC
-support. Unfortunately, since libsodium, libnettle, and libfido2 are
-not Python packages, they cannot be directly installed using pip.
+support. Unfortunately, since libsodium and libnettle are not Python
+packages, they cannot be directly installed using pip.
 
 Installing the development branch
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

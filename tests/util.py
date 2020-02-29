@@ -291,7 +291,34 @@ class ConnectionStub:
             self._queue_task = None
 
 
-class TempDirTestCase(unittest.TestCase):
+if hasattr(unittest.TestCase, 'addClassCleanup'):
+    ClassCleanupTestCase = unittest.TestCase
+else: # pragma: no cover
+    class ClassCleanupTestCase(unittest.TestCase):
+        """Stripped down version of class cleanup for Python 3.7 & earlier"""
+
+        _class_cleanups = []
+
+        # pylint: disable=arguments-differ
+
+        @classmethod
+        def addClassCleanup(cls, function, *args, **kwargs):
+            """Add a cleanup to run after tearDownClass"""
+
+            cls._class_cleanups.append((function, args, kwargs))
+
+        @classmethod
+        def tearDownClass(cls):
+            """Run cleanups after tearDown"""
+
+            super().tearDownClass()
+
+            while cls._class_cleanups:
+                function, args, kwargs = cls._class_cleanups.pop()
+                function(*args, **kwargs)
+
+
+class TempDirTestCase(ClassCleanupTestCase):
     """Unit test class which operates in a temporary directory"""
 
     _tempdir = None

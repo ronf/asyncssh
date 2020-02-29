@@ -47,6 +47,7 @@ from .packet import NameList, String, UInt32, UInt64
 from .packet import PacketDecodeError, SSHPacket
 from .pbe import KeyEncryptionError, pkcs1_encrypt, pkcs8_encrypt
 from .pbe import pkcs1_decrypt, pkcs8_decrypt
+from .sk import SSH_SK_USER_PRESENCE_REQD, sk_get_resident
 
 # Default file names in .ssh directory to read private keys from
 _DEFAULT_KEY_FILES = ('id_ed25519_sk', 'if_ecdsa_sk', 'id_ed448',
@@ -66,6 +67,7 @@ _hashes = {'md5': md5, 'sha1': sha1, 'sha256': sha256,
 _public_key_algs = []
 _certificate_algs = []
 _x509_certificate_algs = []
+_sk_alg_map = {}
 _public_key_alg_map = {}
 _certificate_alg_map = {}
 _certificate_version_map = {}
@@ -178,6 +180,7 @@ class SSHKey:
         self._key = key
         self._comment = None
         self._filename = None
+        self._touch_required = False
 
     @property
     def private_data(self):
@@ -372,6 +375,11 @@ class SSHKey:
 
         return hash_name.upper() + ':' + fp_text
 
+    def set_touch_required(self, touch_required):
+        """Set whether touch is required when using a security key"""
+
+        self._touch_required = touch_required
+
     def sign_ssh(self, data, sig_algorithm):
         """Abstract method to compute an SSH-encoded signature"""
 
@@ -464,7 +472,7 @@ class SSHKey:
                                   permit_agent_forwarding=True,
                                   permit_port_forwarding=True,
                                   permit_pty=True, permit_user_rc=True,
-                                  comment=()):
+                                  touch_required=True, comment=()):
         """Generate a new SSH user certificate
 
            This method returns an SSH user certifcate with the requested
@@ -510,6 +518,9 @@ class SSHKey:
            :param permit_user_rc: (optional)
                Whether or not to run the user rc file when this certificate
                is used, defaulting to `True`.
+           :param touch_required: (optional)
+               Whether or not to require the user to touch the security key
+               when authenticating with it, defaulting to `True`.
            :param comment:
                The comment to associate with this certificate. By default,
                the comment will be set to the comment currently set on
@@ -526,6 +537,7 @@ class SSHKey:
            :type permit_port_forwarding: `bool`
            :type permit_pty: `bool`
            :type permit_user_rc: `bool`
+           :type touch_required: `bool`
            :type comment: `str`, `bytes`, or `None`
 
            :returns: :class:`SSHCertificate`
@@ -559,6 +571,9 @@ class SSHKey:
 
         if permit_user_rc:
             cert_options['permit-user-rc'] = True
+
+        if not touch_required:
+            cert_options['no-touch-required'] = True
 
         if comment == ():
             comment = user_key.get_comment_bytes()
@@ -1593,7 +1608,8 @@ class SSHOpenSSHCertificateV01(SSHOpenSSHCertificate):
         ('permit-agent-forwarding', SSHOpenSSHCertificate._encode_bool),
         ('permit-port-forwarding',  SSHOpenSSHCertificate._encode_bool),
         ('permit-pty',              SSHOpenSSHCertificate._encode_bool),
-        ('permit-user-rc',          SSHOpenSSHCertificate._encode_bool)
+        ('permit-user-rc',          SSHOpenSSHCertificate._encode_bool),
+        ('no-touch-required',       SSHOpenSSHCertificate._encode_bool)
     )
 
     _user_option_decoders = {
@@ -1606,7 +1622,8 @@ class SSHOpenSSHCertificateV01(SSHOpenSSHCertificate):
         b'permit-agent-forwarding': SSHOpenSSHCertificate._decode_bool,
         b'permit-port-forwarding':  SSHOpenSSHCertificate._decode_bool,
         b'permit-pty':              SSHOpenSSHCertificate._decode_bool,
-        b'permit-user-rc':          SSHOpenSSHCertificate._decode_bool
+        b'permit-user-rc':          SSHOpenSSHCertificate._decode_bool,
+        b'no-touch-required':       SSHOpenSSHCertificate._decode_bool
     }
 
     # pylint: enable=bad-whitespace
@@ -2552,6 +2569,11 @@ def _decode_certificate_list(data):
     return certs
 
 
+def register_sk_alg(sk_alg, handler, *args):
+    """Register a new security key algorithm"""
+
+    _sk_alg_map[sk_alg] = handler, args
+
 def register_public_key_alg(algorithm, handler, sig_algorithms=None):
     """Register a new public key algorithm"""
 
@@ -2672,10 +2694,24 @@ def generate_private_key(alg_name, comment=None, **kwargs):
        For ed25519 and ed448 keys, no parameters are supported. The key size
        is fixed by the algorithms at 256 bits and 448 bits, respectively.
 
-       For sk keys, you can enable or disable the security key touch
-       requirement by setting the `touch_required` parameter. By default,
-       the user must confirm their presence by touching the security key
-       whenever they use it to authenticate.
+       For sk keys, the application name to associate with the generated
+       key can be specified using the `application` parameter. It defaults
+       to `'ssh:'`. The user name to associate with the generated key can
+       be specified using the `user` parameter. It defaults to `'AsyncSSH'`.
+
+       When generating an sk key, a PIN can be provided via the `pin`
+       parameter if the security key requires it.
+
+       The `resident` parameter can be set to `True` to request that a
+       resident key be created on the security key. This allows the key
+       handle and public key information to later be retrieved so that
+       the generated key can be used without having to store any
+       information on the client system. It defaults to `False`.
+
+       You can enable or disable the security key touch requirement by
+       setting the `touch_required` parameter. It defaults to `True`,
+       requiring that the user confirm their presence by touching the
+       security key each time they use it to authenticate.
 
        :param alg_name:
            The SSH algorithm name corresponding to the desired type of key.
@@ -2685,13 +2721,28 @@ def generate_private_key(alg_name, comment=None, **kwargs):
            The key size in bits for RSA keys.
        :param exponent: (optional)
            The public exponent for RSA keys.
+       :param application: (optional)
+           The application name to associate with the generated SK key,
+           defaulting to `'ssh:'`.
+       :param user: (optional)
+           The user name to associate with the generated SK key, defaulting
+           to `'AsyncSSH'`.
+       :param pin: (optional)
+           The PIN to use to access the security key, defaulting to `None`.
+       :param resident: (optional)
+           Whether or not to create a resident key on the security key,
+           defaulting to `False`.
        :param touch_required: (optional)
            Whether or not to require the user to touch the security key
-           when authenticating with it
+           when authenticating with it, defaulting to `True`.
        :type alg_name: `str`
        :type comment: `str`, `bytes`, or `None`
        :type key_size: `int`
        :type exponent: `int`
+       :type application: `str`
+       :type user: `str`
+       :type pin: `str`
+       :type resident: `bool`
        :type touch_required: `bool`
 
        :returns: An :class:`SSHKey` private key
@@ -3237,5 +3288,54 @@ def load_certificates(certlist):
             certs = cert
 
         result.extend(certs)
+
+    return result
+
+
+def load_resident_keys(pin, *, application='ssh:', user=None,
+                       touch_required=True):
+    """Load keys resident on attached FIDO2 security keys
+
+       This function loads keys resident on any FIDO2 security keys
+       currently attached to the system. The user name associated
+       with each key is returned in the key's comment field.
+
+       :param pin:
+           The PIN to use to access the security keys, defaulting to `None`.
+       :param application: (optional)
+           The application name associated with the keys to load,
+           defaulting to `'ssh:'`.
+       :param user: (optional)
+           The user name associated with the keys to load. By default,
+           keys for all users are loaded.
+       :param touch_required: (optional)
+           Whether or not to require the user to touch the security key
+           when authenticating with it, defaulting to `True`.
+       :type application: `str`
+       :type user: `str`
+       :type pin: `str`
+       :type touch_required: `bool`
+
+    """
+
+    application = application.encode('utf-8')
+    flags = SSH_SK_USER_PRESENCE_REQD if touch_required else 0
+    reserved = b''
+
+    try:
+        resident_keys = sk_get_resident(application, user, pin)
+    except ValueError as exc:
+        raise KeyImportError(str(exc)) from None
+
+    result = []
+
+    for sk_alg, name, public_value, key_handle in resident_keys:
+        handler, args = _sk_alg_map[sk_alg]
+
+        key = handler.make_private(*args, public_value, application,
+                                   flags, key_handle, reserved)
+        key.set_comment(name)
+
+        result.append(key)
 
     return result

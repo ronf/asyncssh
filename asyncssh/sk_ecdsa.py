@@ -27,8 +27,8 @@ from .crypto import ECDSAPublicKey
 from .packet import Byte, MPInt, String, UInt32, SSHPacket
 from .public_key import KeyExportError, SSHKey, SSHOpenSSHCertificateV01
 from .public_key import register_public_key_alg, register_certificate_alg
-from .sk import SSH_SK_ECDSA, SSH_SK_USER_PRESENCE_REQD, sk_available
-from .sk import sk_enroll, sk_sign
+from .public_key import register_sk_alg
+from .sk import SSH_SK_ECDSA, SSH_SK_USER_PRESENCE_REQD, sk_enroll, sk_sign
 
 
 class _SKECDSAKey(SSHKey):
@@ -67,13 +67,15 @@ class _SKECDSAKey(SSHKey):
                      self._reserved))
 
     @classmethod
-    def generate(cls, algorithm, touch_required=True):
+    def generate(cls, algorithm, application='ssh:', user='AsyncSSH',
+                 pin=None, resident=False, touch_required=True):
         """Generate a new SK ECDSA private key"""
 
-        application = b'ssh:'
+        application = application.encode('utf-8')
         flags = SSH_SK_USER_PRESENCE_REQD if touch_required else 0
 
-        public_value, key_handle = sk_enroll(SSH_SK_ECDSA, application)
+        public_value, key_handle = sk_enroll(SSH_SK_ECDSA, application,
+                                             user, pin, resident)
 
         # Strip prefix and suffix of algorithm to get curve_id
         return cls(algorithm[14:-12], public_value, application,
@@ -168,6 +170,9 @@ class _SKECDSAKey(SSHKey):
         counter = packet.get_uint32()
         packet.check_end()
 
+        if self._touch_required and not flags & SSH_SK_USER_PRESENCE_REQD:
+            return False
+
         packet = SSHPacket(sig)
         r = packet.get_mpint()
         s = packet.get_mpint()
@@ -180,12 +185,12 @@ class _SKECDSAKey(SSHKey):
                                 sha256(data).digest(), sig)
 
 
-if sk_available: # pragma: no branch
-    for _curve_id in (b'nistp256',):
-        _algorithm = b'sk-ecdsa-sha2-' + _curve_id + b'@openssh.com'
-        _cert_algorithm = b'sk-ecdsa-sha2-' + _curve_id + \
-                          b'-cert-v01@openssh.com'
+_algorithm = b'sk-ecdsa-sha2-nistp256@openssh.com'
+_cert_algorithm = b'sk-ecdsa-sha2-nistp256-cert-v01@openssh.com'
 
-        register_public_key_alg(_algorithm, _SKECDSAKey, (_algorithm,))
-        register_certificate_alg(1, _algorithm, _cert_algorithm,
-                                 _SKECDSAKey, SSHOpenSSHCertificateV01)
+register_sk_alg(SSH_SK_ECDSA, _SKECDSAKey, b'nistp256')
+
+register_public_key_alg(_algorithm, _SKECDSAKey, (_algorithm,))
+
+register_certificate_alg(1, _algorithm, _cert_algorithm,
+                         _SKECDSAKey, SSHOpenSSHCertificateV01)

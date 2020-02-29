@@ -75,6 +75,7 @@ from .public_key import read_private_key, read_public_key, read_certificate
 from .public_key import read_private_key_list, read_public_key_list
 from .public_key import read_certificate_list
 from .public_key import load_keypairs, load_public_keys, load_certificates
+from .public_key import load_resident_keys
 
 from .scp import scp
 

@@ -1680,7 +1680,7 @@ class _TestPublicKey(TempDirTestCase):
             source_address=['1.2.3.4'], permit_x11_forwarding=False,
             permit_agent_forwarding=False,
             permit_port_forwarding=False, permit_pty=False,
-            permit_user_rc=False)
+            permit_user_rc=False, touch_required=False)
 
         cert.write_certificate('cert')
         self.check_certificate(CERT_TYPE_USER, 'openssh')
