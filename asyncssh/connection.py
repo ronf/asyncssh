@@ -278,7 +278,7 @@ def _validate_server_host_key_algs(server_host_key_algs):
                             allowed_host_key_algs)
 
 
-class SSHConnection(SSHPacketHandler):
+class SSHConnection(SSHPacketHandler, asyncio.Protocol):
     """Parent class for SSH connections"""
 
     _handler_names = get_symbol_names(globals(), 'MSG_')
@@ -752,6 +752,7 @@ class SSHConnection(SSHPacketHandler):
     def session_started(self):
         """Handle session start when opening tunneled SSH connection"""
 
+    # pylint: disable=arguments-differ
     def data_received(self, data, datatype=None):
         """Handle incoming data on the connection"""
 
@@ -771,6 +772,7 @@ class SSHConnection(SSHPacketHandler):
             self._force_close(exc)
         except Exception:
             self.internal_error()
+    # pylint: enable=arguments-differ
 
     def eof_received(self):
         """Handle an incoming end of file on the connection"""
