@@ -3,6 +3,39 @@
 Change Log
 ==========
 
+Release 2.2.0 (29 Feb 2020)
+---------------------------
+
+* Added support for U2F/FIDO2 security keys, with the following capabilities:
+
+  * ECDSA (NISTP256) and Ed25519 key algorithms
+  * Key generation, including control over the application and user the
+    key is associated with and whether touch is required when using the key
+  * Certificate generation, both as a key being signed and a CA key
+  * Resident keys, allowing security keys to be used on multiple machines
+    without any information being stored outside of the key
+  * Access to and management of keys loaded in an OpenSSH ssh-agent
+  * Support for both user and host keys and certificates
+  * Support for "no-touch-required" option in authorized_keys files
+  * Support for "no-touch-required" option in OpenSSH certificates
+  * Compatibility with security key support added in OpenSSH version 8.2
+
+* Added login timeout client option and limits on the length and number
+  of banner lines AsyncSSH will accept prior to the SSH version header.
+
+* Improved load_keypairs() to read public key files, confirming that they
+  are consistent with their associated private key when they are present.
+
+* Fixed issues in the SCP server related to handling filenames with spaces.
+
+* Fixed an issue with resuming reading after readuntil() returns an
+  incomplete read.
+
+* Fixed a potential issue related to asyncio not reporting sockname/peername
+  when a connection is closed immediately after it is opened.
+
+* Made SSHConnection a subclass of asyncio.Protocol to please type checkers.
+
 Release 2.1.0 (30 Nov 2019)
 ---------------------------
 
