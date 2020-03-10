@@ -649,6 +649,26 @@ class _TestSFTP(_CheckSFTP):
     async def test_multiple_copy(self, sftp):
         """Test copying multiple files over SFTP"""
 
+        for method in ('get', 'put', 'copy'):
+            for seq in (list, tuple):
+                with self.subTest(method=method):
+                    try:
+                        self._create_file('src1', 'xxx')
+                        self._create_file('src2', 'yyy')
+                        os.mkdir('dst')
+
+                        await getattr(sftp, method)(seq(('src1', 'src2')),
+                                                    'dst')
+
+                        self._check_file('src1', 'dst/src1')
+                        self._check_file('src2', 'dst/src2')
+                    finally:
+                        remove('src1 src2 dst')
+
+    @sftp_test
+    async def test_multiple_copy_glob(self, sftp):
+        """Test copying multiple files via glob over SFTP"""
+
         for method in ('mget', 'mput', 'mcopy'):
             with self.subTest(method=method):
                 try:

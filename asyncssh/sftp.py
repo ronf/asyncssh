@@ -1958,10 +1958,20 @@ class SFTPClient:
             else:
                 raise
 
-    async def _begin_copy(self, srcfs, dstfs, srcpaths, dstpath, preserve,
-                          recurse, follow_symlinks, block_size, max_requests,
-                          progress_handler, error_handler):
+    async def _begin_copy(self, srcfs, dstfs, srcpaths, dstpath, copy_type,
+                          expand_glob, preserve, recurse, follow_symlinks,
+                          block_size, max_requests, progress_handler,
+                          error_handler):
         """Begin a new file upload, download, or copy"""
+
+        if isinstance(srcpaths, tuple):
+            srcpaths = list(srcpaths)
+
+        self.logger.info('Starting SFTP %s of %s to %s',
+                         copy_type, srcpaths, dstpath)
+
+        if expand_glob:
+            srcpaths = await self._glob(srcfs, srcpaths, error_handler)
 
         dst_isdir = dstpath is None or (await dstfs.isdir(dstpath))
 
@@ -2085,12 +2095,10 @@ class SFTPClient:
 
         """
 
-        self.logger.info('Starting SFTP get of %s to %s',
-                         remotepaths, localpath)
-
-        await self._begin_copy(self, LocalFile, remotepaths, localpath,
-                               preserve, recurse, follow_symlinks, block_size,
-                               max_requests, progress_handler, error_handler)
+        await self._begin_copy(self, LocalFile, remotepaths, localpath, 'get',
+                               False, preserve, recurse, follow_symlinks,
+                               block_size, max_requests, progress_handler,
+                               error_handler)
 
     async def put(self, localpaths, remotepath=None, *, preserve=False,
                   recurse=False, follow_symlinks=False,
@@ -2188,12 +2196,10 @@ class SFTPClient:
 
         """
 
-        self.logger.info('Starting SFTP put of %s to %s',
-                         localpaths, remotepath)
-
-        await self._begin_copy(LocalFile, self, localpaths, remotepath,
-                               preserve, recurse, follow_symlinks, block_size,
-                               max_requests, progress_handler, error_handler)
+        await self._begin_copy(LocalFile, self, localpaths, remotepath, 'put',
+                               False, preserve, recurse, follow_symlinks,
+                               block_size, max_requests, progress_handler,
+                               error_handler)
 
     async def copy(self, srcpaths, dstpath=None, *, preserve=False,
                    recurse=False, follow_symlinks=False,
@@ -2291,12 +2297,10 @@ class SFTPClient:
 
         """
 
-        self.logger.info('Starting SFTP remote copy of %s to %s',
-                         srcpaths, dstpath)
-
-        await self._begin_copy(self, self, srcpaths, dstpath, preserve,
-                               recurse, follow_symlinks, block_size,
-                               max_requests, progress_handler, error_handler)
+        await self._begin_copy(self, self, srcpaths, dstpath, 'remote copy',
+                               False, preserve, recurse, follow_symlinks,
+                               block_size, max_requests, progress_handler,
+                               error_handler)
 
     async def mget(self, remotepaths, localpath=None, *, preserve=False,
                    recurse=False, follow_symlinks=False,
@@ -2313,14 +2317,10 @@ class SFTPClient:
 
         """
 
-        self.logger.info('Starting SFTP mget of %s to %s',
-                         remotepaths, localpath)
-
-        matches = await self._glob(self, remotepaths, error_handler)
-
-        await self._begin_copy(self, LocalFile, matches, localpath,
-                               preserve, recurse, follow_symlinks, block_size,
-                               max_requests, progress_handler, error_handler)
+        await self._begin_copy(self, LocalFile, remotepaths, localpath, 'mget',
+                               True, preserve, recurse, follow_symlinks,
+                               block_size, max_requests, progress_handler,
+                               error_handler)
 
     async def mput(self, localpaths, remotepath=None, *, preserve=False,
                    recurse=False, follow_symlinks=False,
@@ -2337,14 +2337,10 @@ class SFTPClient:
 
         """
 
-        self.logger.info('Starting SFTP mput of %s to %s',
-                         localpaths, remotepath)
-
-        matches = await self._glob(LocalFile, localpaths, error_handler)
-
-        await self._begin_copy(LocalFile, self, matches, remotepath,
-                               preserve, recurse, follow_symlinks, block_size,
-                               max_requests, progress_handler, error_handler)
+        await self._begin_copy(LocalFile, self, localpaths, remotepath, 'mput',
+                               True, preserve, recurse, follow_symlinks,
+                               block_size, max_requests, progress_handler,
+                               error_handler)
 
     async def mcopy(self, srcpaths, dstpath=None, *, preserve=False,
                     recurse=False, follow_symlinks=False,
@@ -2361,14 +2357,10 @@ class SFTPClient:
 
         """
 
-        self.logger.info('Starting SFTP remote mcopy of %s to %s',
-                         srcpaths, dstpath)
-
-        matches = await self._glob(self, srcpaths, error_handler)
-
-        await self._begin_copy(self, self, matches, dstpath, preserve,
-                               recurse, follow_symlinks, block_size,
-                               max_requests, progress_handler, error_handler)
+        await self._begin_copy(self, self, srcpaths, dstpath, 'remote mcopy',
+                               True, preserve, recurse, follow_symlinks,
+                               block_size, max_requests, progress_handler,
+                               error_handler)
 
     async def glob(self, patterns, error_handler=None):
         """Match remote files against glob patterns
