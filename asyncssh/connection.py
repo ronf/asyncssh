@@ -3114,7 +3114,7 @@ class SSHClientConnection(SSHConnection):
         return transport, transport.get_protocol()
     # pylint: enable=redefined-builtin
 
-    async def run(self, *args, check=False, **kwargs):
+    async def run(self, *args, check=False, timeout=None, **kwargs):
         """Run a command on the remote system and collect its output
 
            This method is a coroutine wrapper around :meth:`create_process`
@@ -3133,21 +3133,30 @@ class SSHClientConnection(SSHConnection):
            In addition to the argument below, all arguments to
            :meth:`create_process` are supported and have the same meaning.
 
+           If a timeout is specified and it expires before the process
+           exits, the :exc:`TimeoutError` exception will be raised. By
+           default, no timeout is set and this call will wait indefinitely.
+
            :param check: (optional)
                Whether or not to raise :exc:`ProcessError` when a non-zero
                exit status is returned
+           :param timeout:
+               Amount of time in seconds to wait for process to exit or
+               `None` to wait indefinitely
            :type check: `bool`
+           :type timeout: `int`, `float`, or `None`
 
            :returns: :class:`SSHCompletedProcess`
 
            :raises: | :exc:`ChannelOpenError` if the session can't be opened
                     | :exc:`ProcessError` if checking non-zero exit status
+                    | :exc:`TimeoutError` if the timeout expires before exit
 
         """
 
         process = await self.create_process(*args, **kwargs)
 
-        return await process.wait(check)
+        return await process.wait(check, timeout)
 
     async def create_connection(self, session_factory, remote_host, remote_port,
                                 orig_host='', orig_port=0, *, encoding=None,

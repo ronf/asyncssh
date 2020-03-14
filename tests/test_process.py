@@ -84,6 +84,10 @@ async def _handle_client(process):
         except asyncssh.TerminalSizeChanged as exc:
             process.exit_with_signal('ABRT', False,
                                      '%sx%s' % (exc.width, exc.height))
+    elif action == 'timeout':
+        process.channel.set_encoding('utf-8')
+        process.stdout.write('Sleeping')
+        await asyncio.sleep(1)
     else:
         process.exit(255)
 
@@ -315,6 +319,18 @@ class _TestProcessBasic(_TestProcess):
         self.assertEqual(exc.exception.reason,
                          'Process exited with non-zero exit status 1')
         self.assertEqual(exc.exception.returncode, 1)
+
+    @asynctest
+    async def test_raise_on_timeout(self):
+        """Test raising an exception on timeout"""
+
+        async with self.connect() as conn:
+            with self.assertRaises(asyncssh.ProcessError) as exc:
+                await conn.run('timeout', timeout=0.1)
+
+        self.assertEqual(exc.exception.command, 'timeout')
+        self.assertEqual(exc.exception.reason, '')
+        self.assertEqual(exc.exception.stdout, 'Sleeping')
 
     @asynctest
     async def test_exit_signal(self):

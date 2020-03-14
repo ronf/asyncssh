@@ -67,7 +67,8 @@ and get back an object containing captured output and exit status, the
 :meth:`run() <SSHClientConnection.run>` method can be used. It returns an
 :class:`SSHCompletedProcess` with the results of the run, or can be set up
 to raise :class:`ProcessError` if the process exits with a non-zero exit
-status.
+status. It can also raise :class:`TimeoutError` if a specified timeout
+expires before the process exits.
 
 The client can also set up TCP port forwarding by calling
 :meth:`forward_local_port() <SSHClientConnection.forward_local_port>` or
@@ -316,7 +317,7 @@ SSHClientConnection
    .. automethod:: open_session
    .. automethod:: create_process(*args, bufsize=io.DEFAULT_BUFFER_SIZE, input=None, stdin=PIPE, stdout=PIPE, stderr=PIPE, **kwargs)
    .. automethod:: create_subprocess(protocol_factory, *args, bufsize=io.DEFAULT_BUFFER_SIZE, input=None, stdin=PIPE, stdout=PIPE, stderr=PIPE, **kwargs)
-   .. automethod:: run(*args, check=False, **kwargs)
+   .. automethod:: run(*args, check=False, timeout=None, **kwargs)
    .. automethod:: start_sftp_client
    .. automethod:: create_ssh_connection
    .. automethod:: connect_ssh
@@ -1829,6 +1830,11 @@ ProcessError
 ------------
 
 .. autoexception:: ProcessError
+
+TimeoutError
+------------
+
+.. autoexception:: TimeoutError
 
 SFTPError
 ---------

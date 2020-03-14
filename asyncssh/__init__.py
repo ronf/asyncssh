@@ -65,6 +65,7 @@ from .pbe import KeyEncryptionError
 
 from .process import SSHClientProcess, SSHServerProcess
 from .process import SSHCompletedProcess, ProcessError
+from .process import TimeoutError # pylint: disable=redefined-builtin
 from .process import DEVNULL, PIPE, STDOUT
 
 from .public_key import SSHKey, SSHKeyPair, SSHCertificate

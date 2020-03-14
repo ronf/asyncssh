@@ -454,7 +454,7 @@ class ProcessError(Error):
                       process to execute (if any)
          subsystem    The subsystem the client requested the  `str` or `None`
                       process to open (if any)
-         exit_status  The exit status returned, or -1 if an   `int`
+         exit_status  The exit status returned, or -1 if an   `int` or `None`
                       exit signal is sent
          exit_signal  The exit signal sent (if any) in the    `tuple` or `None`
                       form of a tuple containing the signal
@@ -462,7 +462,7 @@ class ProcessError(Error):
                       occurred, a message associated with the
                       signal, and the language the message
                       was in
-         returncode   The exit status returned, or negative   `int`
+         returncode   The exit status returned, or negative   `int` or `None`
                       of the signal number when an exit
                       signal is sent
          stdout       The output sent by the process to       `str` or `bytes`
@@ -474,7 +474,8 @@ class ProcessError(Error):
     """
 
     def __init__(self, env, command, subsystem, exit_status,
-                 exit_signal, returncode, stdout, stderr):
+                 exit_signal, returncode, stdout, stderr,
+                 reason='', lang=DEFAULT_LANG):
         self.env = env
         self.command = command
         self.subsystem = subsystem
@@ -489,12 +490,28 @@ class ProcessError(Error):
             reason = 'Process exited with signal %s%s%s' % \
                 (signal, ': ' + msg if msg else '',
                  ' (core dumped)' if core_dumped else '')
-        else:
+        elif exit_status:
             reason = 'Process exited with non-zero exit status %s' % \
                 exit_status
-            lang = DEFAULT_LANG
 
         super().__init__(exit_status, reason, lang)
+
+
+# pylint: disable=redefined-builtin
+class TimeoutError(ProcessError, asyncio.TimeoutError):
+    """SSH Process timeout error
+
+       This exception is raised when a timeout occurs when calling the
+       :meth:`wait <SSHClientProcess.wait>` method on :class:`SSHClientProcess`
+       or the :meth:`run <SSHClientConnection.run>` method on
+       :class:`SSHClientConnection`. It is a subclass of :class:`ProcessError`
+       and contains all of the fields documented there, including any output
+       received on stdout and stderr prior to when the timeout occurred. It
+       is also a subclass of :class:`asyncio.TimeoutError`, for code that
+       might be expecting that.
+
+    """
+# pylint: enable=redefined-builtin
 
 
 class SSHCompletedProcess(Record):
@@ -1168,7 +1185,7 @@ class SSHClientProcess(SSHProcess, SSHClientStreamSession):
 
         self._chan.kill()
 
-    async def wait(self, check=False):
+    async def wait(self, check=False, timeout=None):
         """Wait for process to exit
 
            This method is a coroutine which waits for the process to
@@ -1180,18 +1197,37 @@ class SSHClientProcess(SSHProcess, SSHClientStreamSession):
            status from the process with trigger the :exc:`ProcessError`
            exception to be raised.
 
+           If a timeout is specified and it expires before the process
+           exits, the :exc:`TimeoutError` exception will be raised. By
+           default, no timeout is set and this call will wait indefinitely.
+
            :param check:
                Whether or not to raise an error on non-zero exit status
+           :param timeout:
+               Amount of time in seconds to wait for process to exit, or
+               `None` to wait indefinitely
            :type check: `bool`
+           :type timeout: `int`, `float`, or `None`
 
            :returns: :class:`SSHCompletedProcess`
 
-           :raises: :exc:`ProcessError` if check is set to `True`
-                    and the process returns a non-zero exit status
+           :raises: | :exc:`ProcessError` if check is set to `True`
+                      and the process returns a non-zero exit status
+                    | :exc:`TimeoutError` if the timeout expires
+                      before the process exits
 
         """
 
-        stdout_data, stderr_data = await self.communicate()
+        try:
+            stdout_data, stderr_data = \
+                await asyncio.wait_for(self.communicate(), timeout)
+        except asyncio.TimeoutError:
+            stdout_data, stderr_data = self.collect_output()
+
+            raise TimeoutError(self.env, self.command, self.subsystem,
+                               self.exit_status, self.exit_signal,
+                               self.returncode, stdout_data,
+                               stderr_data) from None
 
         if check and self.exit_status:
             raise ProcessError(self.env, self.command, self.subsystem,
