@@ -784,8 +784,8 @@ class SSHServer:
            :returns: One of the following:
 
                      * An :class:`SSHListener` object or a coroutine
-                       which returns an :class:`SSHListener` or `False`
-                       if the listener can't be opened
+                       which returns an :class:`SSHListener`, `True`
+                       or `False` if the listener can't be opened
                      * `True` to set up standard port forwarding
                      * `False` to reject the request
 

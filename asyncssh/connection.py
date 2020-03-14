@@ -4343,27 +4343,27 @@ class SSHServerConnection(SSHConnection):
 
         result = self._owner.server_requested(listen_host, listen_port)
 
-        if not result:
-            self.logger.info('Request for TCP listener on %s denied by '
-                             'application', (listen_host, listen_port))
-
-            self._report_global_response(False)
-            return
-
-        if result is True:
-            result = self.forward_local_port(listen_host, listen_port,
-                                             listen_host, listen_port)
-
         self.create_task(self._finish_port_forward(result, listen_host,
                                                    listen_port))
 
     async def _finish_port_forward(self, listener, listen_host, listen_port):
         """Finish processing a TCP/IP port forwarding request"""
 
-        try:
-            if inspect.isawaitable(listener):
-                listener = await listener
+        if inspect.isawaitable(listener):
+            listener = await listener
 
+        if listener is True:
+            listener = await self.forward_local_port(listen_host, listen_port,
+                                             listen_host, listen_port)
+
+        if not listener:
+            self.logger.info('Request for TCP listener on %s denied by '
+                             'application', (listen_host, listen_port))
+
+            self._report_global_response(False)
+            return
+
+        try:
             if listen_port == 0:
                 listen_port = listener.get_port()
                 result = UInt32(listen_port)

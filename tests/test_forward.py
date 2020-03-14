@@ -167,6 +167,18 @@ class _TCPConnectionServer(Server):
             return listen_host != 'fail'
 
 
+class _TCPAsyncConnectionServer(_TCPConnectionServer):
+    """Server for testing async direct and forwarded TCP connections"""
+
+    async def server_requested(self, listen_host, listen_port):
+        """Handle a request to create a new socket listener"""
+
+        if listen_host == 'open':
+            return _EchoPortListener(self._conn)
+        else:
+            return listen_host != 'fail'
+
+
 class _UNIXConnectionServer(Server):
     """Server for testing direct and forwarded UNIX domain connections"""
 
@@ -645,6 +657,18 @@ class _TestTCPForwarding(_CheckForwarding):
             for listener in listeners:
                 listener.close()
                 await listener.wait_closed()
+
+
+class _TestAsyncTCPForwarding(_TestTCPForwarding):
+    """Unit tests for AsyncSSH TCP connection forwarding with awaitable return"""
+
+    @classmethod
+    async def start_server(cls):
+        """Start an SSH server which supports TCP connection forwarding"""
+
+        return (await cls.create_server(
+            _TCPAsyncConnectionServer, authorized_client_keys='authorized_keys'))
+
 
 
 @unittest.skipIf(sys.platform == 'win32',
