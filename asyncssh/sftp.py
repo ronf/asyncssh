@@ -230,7 +230,7 @@ async def match_glob(fs, pattern, error_handler=None):
             await _glob(fs, basedir, patlist, names)
 
             if not names:
-                raise SFTPError(FX_NO_SUCH_FILE, 'No matches found')
+                raise SFTPNoSuchFile('No matches found')
         else:
             await fs.stat(pattern)
             names.append(pattern)
@@ -541,7 +541,7 @@ class _SFTPFileCopier(_SFTPParallelIO):
             data = await self._src.read(size, offset)
 
             if not data:
-                exc = SFTPError(FX_FAILURE, 'Unexpected EOF during file copy')
+                exc = SFTPFailure('Unexpected EOF during file copy')
 
                 # pylint: disable=attribute-defined-outside-init
                 exc.filename = self._srcpath
@@ -583,13 +583,184 @@ class SFTPError(Error):
            codes <DisconnectReasons>`
        :param reason:
            A human-readable reason for the disconnect
-       :param lang:
+       :param lang: (optional)
            The language the reason is in
        :type code: `int`
        :type reason: `str`
        :type lang: `str`
 
     """
+
+
+class SFTPEOFError(SFTPError):
+    """SFTP EOF error
+
+       This exception is raised when end of file is reached when
+       reading a file or directory.
+
+       :param reason: (optional)
+           Details about the EOF
+       :param lang: (optional)
+           The language the reason is in
+       :type reason: `str`
+       :type lang: `str`
+
+    """
+
+    def __init__(self, reason='', lang=DEFAULT_LANG):
+        super().__init__(FX_EOF, reason, lang)
+
+
+class SFTPNoSuchFile(SFTPError):
+    """SFTP no such file
+
+       This exception is raised when the requested file is not found.
+
+       :param reason:
+           Details about the missing file
+       :param lang: (optional)
+           The language the reason is in
+       :type reason: `str`
+       :type lang: `str`
+
+    """
+
+    def __init__(self, reason, lang=DEFAULT_LANG):
+        super().__init__(FX_NO_SUCH_FILE, reason, lang)
+
+
+class SFTPPermissionDenied(SFTPError):
+    """SFTP permission denied
+
+       This exception is raised when the permissions are not available
+       to perform the requested operation.
+
+       :param reason:
+           Details about the invalid permissions
+       :param lang: (optional)
+           The language the reason is in
+       :type reason: `str`
+       :type lang: `str`
+
+    """
+
+    def __init__(self, reason, lang=DEFAULT_LANG):
+        super().__init__(FX_PERMISSION_DENIED, reason, lang)
+
+
+class SFTPFailure(SFTPError):
+    """SFTP failure
+
+       This exception is raised when an unexpected SFTP failure occurs.
+
+       :param reason:
+           Details about the failure
+       :param lang: (optional)
+           The language the reason is in
+       :type reason: `str`
+       :type lang: `str`
+
+    """
+
+    def __init__(self, reason, lang=DEFAULT_LANG):
+        super().__init__(FX_FAILURE, reason, lang)
+
+
+class SFTPBadMessage(SFTPError):
+    """SFTP bad message
+
+       This exception is raised when an invalid SFTP message is
+       received.
+
+       :param reason:
+           Details about the invalid message
+       :param lang: (optional)
+           The language the reason is in
+       :type reason: `str`
+       :type lang: `str`
+
+    """
+
+    def __init__(self, reason, lang=DEFAULT_LANG):
+        super().__init__(FX_BAD_MESSAGE, reason, lang)
+
+
+class SFTPNoConnection(SFTPError):
+    """SFTP no connection
+
+       This exception is raised when an SFTP request is made on a
+       closed SSH connection.
+
+       :param reason:
+           Details about the closed connection
+       :param lang: (optional)
+           The language the reason is in
+       :type reason: `str`
+       :type lang: `str`
+
+    """
+
+    def __init__(self, reason, lang=DEFAULT_LANG):
+        super().__init__(FX_NO_CONNECTION, reason, lang)
+
+
+class SFTPConnectionLost(SFTPError):
+    """SFTP connection lost
+
+       This exception is raised when the SSH connection is lost or
+       closed while making an SFTP request.
+
+       :param reason:
+           Details about the connection failure
+       :param lang: (optional)
+           The language the reason is in
+       :type reason: `str`
+       :type lang: `str`
+
+    """
+
+    def __init__(self, reason, lang=DEFAULT_LANG):
+        super().__init__(FX_CONNECTION_LOST, reason, lang)
+
+
+class SFTPOpUnsupported(SFTPError):
+    """SFTP operation unsupported
+
+       This exception is raised when the requested SFTP operation
+       is not supported.
+
+       :param reason:
+           Details about the unsupported operation
+       :param lang: (optional)
+           The language the reason is in
+       :type reason: `str`
+       :type lang: `str`
+
+    """
+
+    def __init__(self, reason, lang=DEFAULT_LANG):
+        super().__init__(FX_OP_UNSUPPORTED, reason, lang)
+
+
+_sftp_error_map = {
+    FX_EOF: SFTPEOFError,
+    FX_NO_SUCH_FILE: SFTPNoSuchFile,
+    FX_PERMISSION_DENIED: SFTPPermissionDenied,
+    FX_FAILURE: SFTPFailure,
+    FX_BAD_MESSAGE: SFTPBadMessage,
+    FX_NO_CONNECTION: SFTPNoConnection,
+    FX_CONNECTION_LOST: SFTPConnectionLost,
+    FX_OP_UNSUPPORTED: SFTPOpUnsupported
+}
+
+
+def _construct_sftp_error(code, reason, lang):
+    """Map SFTP error code to appropriate SFTPError exception"""
+
+    try:
+        return _sftp_error_map[code](reason, lang)
+    except KeyError:
+        return SFTPError(code, '%s (error %d)' % (reason, code), lang)
 
 
 class SFTPAttrs(Record):
@@ -681,7 +852,7 @@ class SFTPAttrs(Record):
         attrs = cls()
 
         if flags & FILEXFER_ATTR_UNDEFINED:
-            raise SFTPError(FX_BAD_MESSAGE, 'Unsupported attribute flags')
+            raise SFTPBadMessage('Unsupported attribute flags')
 
         if flags & FILEXFER_ATTR_SIZE:
             attrs.size = packet.get_uint64()
@@ -901,7 +1072,7 @@ class SFTPHandler(SSHPacketLogger):
         try:
             self._writer.write(UInt32(len(payload)) + payload)
         except ConnectionError as exc:
-            raise SFTPError(FX_CONNECTION_LOST, str(exc)) from None
+            raise SFTPConnectionLost(str(exc)) from None
 
         self.log_sent_packet(pkttype, pktid, payload)
 
@@ -928,7 +1099,7 @@ class SFTPHandler(SSHPacketLogger):
 
                 await self._process_packet(pkttype, pktid, packet)
         except PacketDecodeError as exc:
-            await self._cleanup(SFTPError(FX_BAD_MESSAGE, str(exc)))
+            await self._cleanup(SFTPBadMessage(str(exc)))
         except EOFError:
             await self._cleanup(None)
         except (OSError, Error) as exc:
@@ -957,7 +1128,7 @@ class SFTPClientHandler(SFTPHandler):
     async def _cleanup(self, exc):
         """Clean up this SFTP client session"""
 
-        req_exc = exc or SFTPError(FX_CONNECTION_LOST, 'Connection closed')
+        req_exc = exc or SFTPConnectionLost('Connection closed')
 
         for waiter in self._requests.values():
             if not waiter.cancelled(): # pragma: no branch
@@ -975,8 +1146,7 @@ class SFTPClientHandler(SFTPHandler):
         try:
             waiter = self._requests.pop(pktid)
         except KeyError:
-            await self._cleanup(SFTPError(FX_BAD_MESSAGE,
-                                          'Invalid response id'))
+            await self._cleanup(SFTPBadMessage('Invalid response id'))
         else:
             if not waiter.cancelled(): # pragma: no branch
                 waiter.set_result((pkttype, packet))
@@ -985,7 +1155,7 @@ class SFTPClientHandler(SFTPHandler):
         """Send an SFTP request"""
 
         if not self._writer:
-            raise SFTPError(FX_NO_CONNECTION, 'Connection not open')
+            raise SFTPNoConnection('Connection not open')
 
         pktid = self._next_pktid
         self._next_pktid = (self._next_pktid + 1) & 0xffffffff
@@ -1010,15 +1180,14 @@ class SFTPClientHandler(SFTPHandler):
         return_type = self._return_types.get(pkttype)
 
         if resptype not in (FXP_STATUS, return_type):
-            raise SFTPError(FX_BAD_MESSAGE,
-                            'Unexpected response type: %s' % resptype)
+            raise SFTPBadMessage('Unexpected response type: %s' % resptype)
 
         result = self._packet_handlers[resptype](self, resp)
 
         if result is not None or return_type is None:
             return result
         else:
-            raise SFTPError(FX_BAD_MESSAGE, 'Unexpected FX_OK response')
+            raise SFTPBadMessage('Unexpected FX_OK response')
 
     def _process_status(self, packet):
         """Process an incoming SFTP status response"""
@@ -1030,8 +1199,7 @@ class SFTPClientHandler(SFTPHandler):
                 reason = packet.get_string().decode('utf-8')
                 lang = packet.get_string().decode('ascii')
             except UnicodeDecodeError:
-                raise SFTPError(FX_BAD_MESSAGE,
-                                'Invalid status message') from None
+                raise SFTPBadMessage('Invalid status message') from None
         else:
             # Some servers may not always send reason and lang (usually
             # when responding with FX_OK). Tolerate this, automatically
@@ -1046,7 +1214,7 @@ class SFTPClientHandler(SFTPHandler):
             self.logger.debug1('Received OK')
             return None
         else:
-            raise SFTPError(code, reason, lang)
+            raise _construct_sftp_error(code, reason, lang)
 
     def _process_handle(self, packet):
         """Process an incoming SFTP handle response"""
@@ -1131,13 +1299,12 @@ class SFTPClientHandler(SFTPHandler):
             self.log_received_packet(resptype, None, resp)
 
             if resptype != FXP_VERSION:
-                raise SFTPError(FX_BAD_MESSAGE, 'Expected version message')
+                raise SFTPBadMessage('Expected version message')
 
             version = resp.get_uint32()
 
             if version != _SFTP_VERSION:
-                raise SFTPError(FX_BAD_MESSAGE,
-                                'Unsupported version: %d' % version)
+                raise SFTPBadMessage('Unsupported version: %d' % version)
 
             self._version = version
 
@@ -1148,9 +1315,9 @@ class SFTPClientHandler(SFTPHandler):
                 data = resp.get_string()
                 extensions.append((name, data))
         except PacketDecodeError as exc:
-            raise SFTPError(FX_BAD_MESSAGE, str(exc))
+            raise SFTPBadMessage(str(exc))
         except (asyncio.IncompleteReadError, Error) as exc:
-            raise SFTPError(FX_FAILURE, str(exc))
+            raise SFTPFailure(str(exc))
 
         self.logger.debug1('Received version=%d%s', version,
                            ', extensions:' if extensions else '')
@@ -1267,7 +1434,7 @@ class SFTPClientHandler(SFTPHandler):
 
             return vfsattrs
         else:
-            raise SFTPError(FX_OP_UNSUPPORTED, 'statvfs not supported')
+            raise SFTPOpUnsupported('statvfs not supported')
 
     async def fstatvfs(self, handle):
         """Make an SFTP fstatvfs request"""
@@ -1284,7 +1451,7 @@ class SFTPClientHandler(SFTPHandler):
 
             return vfsattrs
         else:
-            raise SFTPError(FX_OP_UNSUPPORTED, 'fstatvfs not supported')
+            raise SFTPOpUnsupported('fstatvfs not supported')
 
     async def remove(self, path):
         """Make an SFTP remove request"""
@@ -1312,7 +1479,7 @@ class SFTPClientHandler(SFTPHandler):
             return await self._make_request(b'posix-rename@openssh.com',
                                             String(oldpath), String(newpath))
         else:
-            raise SFTPError(FX_OP_UNSUPPORTED, 'POSIX rename not supported')
+            raise SFTPOpUnsupported('POSIX rename not supported')
 
     async def opendir(self, path):
         """Make an SFTP opendir request"""
@@ -1379,7 +1546,7 @@ class SFTPClientHandler(SFTPHandler):
             return await self._make_request(b'hardlink@openssh.com',
                                             String(oldpath), String(newpath))
         else:
-            raise SFTPError(FX_OP_UNSUPPORTED, 'link not supported')
+            raise SFTPOpUnsupported('link not supported')
 
     async def fsync(self, handle):
         """Make an SFTP fsync request"""
@@ -1390,7 +1557,7 @@ class SFTPClientHandler(SFTPHandler):
             return await self._make_request(b'fsync@openssh.com',
                                             String(handle))
         else:
-            raise SFTPError(FX_OP_UNSUPPORTED, 'fsync not supported')
+            raise SFTPOpUnsupported('fsync not supported')
 
     def exit(self):
         """Handle a request to close the SFTP session"""
@@ -1813,8 +1980,8 @@ class SFTPClient:
             if self._path_encoding:
                 path = path.encode(self._path_encoding, self._path_errors)
             else:
-                raise SFTPError(FX_BAD_MESSAGE, 'Path must be bytes when '
-                                'encoding is not set')
+                raise SFTPBadMessage('Path must be bytes when '
+                                     'encoding is not set')
 
         return path
 
@@ -1829,8 +1996,7 @@ class SFTPClient:
             try:
                 path = path.decode(self._path_encoding, self._path_errors)
             except UnicodeDecodeError:
-                raise SFTPError(FX_BAD_MESSAGE,
-                                'Unable to decode name') from None
+                raise SFTPBadMessage('Unable to decode name') from None
 
         return path
 
@@ -1857,11 +2023,8 @@ class SFTPClient:
 
         try:
             return (await statfunc(path)).permissions
-        except SFTPError as exc:
-            if exc.code in (FX_NO_SUCH_FILE, FX_PERMISSION_DENIED):
-                return 0
-            else:
-                raise
+        except (SFTPNoSuchFile, SFTPPermissionDenied):
+            return 0
 
     async def _glob(self, fs, patterns, error_handler):
         """Begin a new glob pattern match"""
@@ -1899,8 +2062,8 @@ class SFTPClient:
         try:
             if stat.S_ISDIR(srcattrs.permissions):
                 if not recurse:
-                    raise SFTPError(FX_FAILURE, '%s is a directory' %
-                                    srcpath.decode('utf-8', errors='replace'))
+                    raise SFTPFailure('%s is a directory' %
+                                      srcpath.decode('utf-8', errors='replace'))
 
                 self.logger.info('  Starting copy of directory %s to %s',
                                  srcpath, dstpath)
@@ -1981,8 +2144,8 @@ class SFTPClient:
         if isinstance(srcpaths, (str, bytes, PurePath)):
             srcpaths = [srcpaths]
         elif not dst_isdir:
-            raise SFTPError(FX_FAILURE, '%s must be a directory' %
-                            dstpath.decode('utf-8', errors='replace'))
+            raise SFTPFailure('%s must be a directory' %
+                              dstpath.decode('utf-8', errors='replace'))
 
         for srcfile in srcpaths:
             srcfile = srcfs.encode(srcfile)
@@ -2916,9 +3079,8 @@ class SFTPClient:
         try:
             while True:
                 names.extend((await self._handler.readdir(handle)))
-        except SFTPError as exc:
-            if exc.code != FX_EOF:
-                raise
+        except SFTPEOFError:
+            pass
         finally:
             await self._handler.close(handle)
 
@@ -3007,7 +3169,7 @@ class SFTPClient:
         names = await self._handler.realpath(fullpath)
 
         if len(names) > 1:
-            raise SFTPError(FX_BAD_MESSAGE, 'Too many names returned')
+            raise SFTPBadMessage('Too many names returned')
 
         return self.decode(names[0].filename, isinstance(path, (str, PurePath)))
 
@@ -3058,7 +3220,7 @@ class SFTPClient:
         names = await self._handler.readlink(linkpath)
 
         if len(names) > 1:
-            raise SFTPError(FX_BAD_MESSAGE, 'Too many names returned')
+            raise SFTPBadMessage('Too many names returned')
 
         return self.decode(names[0].filename, isinstance(path, str))
 
@@ -3193,8 +3355,8 @@ class SFTPServerHandler(SFTPHandler):
 
             handler = self._packet_handlers.get(pkttype)
             if not handler:
-                raise SFTPError(FX_OP_UNSUPPORTED,
-                                'Unsupported request type: %s' % pkttype)
+                raise SFTPOpUnsupported('Unsupported request type: %s' %
+                                        pkttype)
 
             return_type = self._return_types.get(pkttype, FXP_STATUS)
             result = await handler(self, packet)
@@ -3325,7 +3487,7 @@ class SFTPServerHandler(SFTPHandler):
         if self._dir_handles.pop(handle, None) is not None:
             return
 
-        raise SFTPError(FX_FAILURE, 'Invalid file handle')
+        raise SFTPFailure('Invalid file handle')
 
     async def _process_read(self, packet):
         """Process an incoming SFTP read request"""
@@ -3349,9 +3511,9 @@ class SFTPServerHandler(SFTPHandler):
             if result:
                 return result
             else:
-                raise SFTPError(FX_EOF, '')
+                raise SFTPEOFError
         else:
-            raise SFTPError(FX_FAILURE, 'Invalid file handle')
+            raise SFTPFailure('Invalid file handle')
 
     async def _process_write(self, packet):
         """Process an incoming SFTP write request"""
@@ -3374,7 +3536,7 @@ class SFTPServerHandler(SFTPHandler):
 
             return result
         else:
-            raise SFTPError(FX_FAILURE, 'Invalid file handle')
+            raise SFTPFailure('Invalid file handle')
 
     async def _process_lstat(self, packet):
         """Process an incoming SFTP lstat request"""
@@ -3409,7 +3571,7 @@ class SFTPServerHandler(SFTPHandler):
 
             return result
         else:
-            raise SFTPError(FX_FAILURE, 'Invalid file handle')
+            raise SFTPFailure('Invalid file handle')
 
     async def _process_setstat(self, packet):
         """Process an incoming SFTP setstat request"""
@@ -3447,7 +3609,7 @@ class SFTPServerHandler(SFTPHandler):
 
             return result
         else:
-            raise SFTPError(FX_FAILURE, 'Invalid file handle')
+            raise SFTPFailure('Invalid file handle')
 
     async def _process_opendir(self, packet):
         """Process an incoming SFTP opendir request"""
@@ -3504,7 +3666,7 @@ class SFTPServerHandler(SFTPHandler):
             del names[:_MAX_READDIR_NAMES]
             return result
         else:
-            raise SFTPError(FX_EOF, '')
+            raise SFTPEOFError
 
     async def _process_remove(self, packet):
         """Process an incoming SFTP remove request"""
@@ -3686,7 +3848,7 @@ class SFTPServerHandler(SFTPHandler):
 
             return result
         else:
-            raise SFTPError(FX_FAILURE, 'Invalid file handle')
+            raise SFTPFailure('Invalid file handle')
 
     async def _process_link(self, packet):
         """Process an incoming SFTP hard link request"""
@@ -3723,7 +3885,7 @@ class SFTPServerHandler(SFTPHandler):
 
             return result
         else:
-            raise SFTPError(FX_FAILURE, 'Invalid file handle')
+            raise SFTPFailure('Invalid file handle')
 
     _packet_handlers = {
         FXP_OPEN:                     _process_open,
@@ -3770,15 +3932,14 @@ class SFTPServerHandler(SFTPHandler):
                 data = packet.get_string()
                 extensions.append((name, data))
         except PacketDecodeError as exc:
-            await self._cleanup(SFTPError(FX_BAD_MESSAGE, str(exc)))
+            await self._cleanup(SFTPBadMessage(str(exc)))
             return
         except Error as exc:
             await self._cleanup(exc)
             return
 
         if pkttype != FXP_INIT:
-            await self._cleanup(SFTPError(FX_BAD_MESSAGE,
-                                          'Expected init message'))
+            await self._cleanup(SFTPBadMessage('Expected init message'))
             return
 
         self.logger.debug1('Received init, version=%d%s', version,
@@ -4058,7 +4219,7 @@ class SFTPServer:
             elif path.startswith(self._chroot + b'/'):
                 return path[len(self._chroot):]
             else:
-                raise SFTPError(FX_NO_SUCH_FILE, 'File not found')
+                raise SFTPNoSuchFile('File not found')
         else:
             return path
 
@@ -4405,7 +4566,7 @@ class SFTPServer:
         newpath = _to_local_path(self.map_path(newpath))
 
         if os.path.exists(newpath):
-            raise SFTPError(FX_FAILURE, 'File already exists')
+            raise SFTPFailure('File already exists')
 
         os.rename(oldpath, newpath)
 
@@ -4495,7 +4656,7 @@ class SFTPServer:
         try:
             return os.statvfs(_to_local_path(self.map_path(path)))
         except AttributeError: # pragma: no cover
-            raise SFTPError(FX_OP_UNSUPPORTED, 'statvfs not supported')
+            raise SFTPOpUnsupported('statvfs not supported')
 
     def fstatvfs(self, file_obj):
         """Return attributes of the file system containing an open file
@@ -4514,7 +4675,7 @@ class SFTPServer:
         try:
             return os.statvfs(file_obj.fileno())
         except AttributeError: # pragma: no cover
-            raise SFTPError(FX_OP_UNSUPPORTED, 'fstatvfs not supported')
+            raise SFTPOpUnsupported('fstatvfs not supported')
 
     def link(self, oldpath, newpath):
         """Create a hard link
@@ -4596,11 +4757,8 @@ class SFTPServerFile:
                 return 0
             else:
                 raise
-        except SFTPError as exc:
-            if exc.code in (FX_NO_SUCH_FILE, FX_PERMISSION_DENIED):
-                return 0
-            else:
-                raise
+        except (SFTPNoSuchFile, SFTPPermissionDenied):
+            return 0
 
     async def exists(self, path):
         """Return if a path exists"""

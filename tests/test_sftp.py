@@ -34,12 +34,12 @@ from unittest.mock import patch
 
 import asyncssh
 
-from asyncssh import SFTPError, SFTPAttrs, SFTPVFSAttrs, SFTPName, SFTPServer
+from asyncssh import SFTPError, SFTPFailure, SFTPPermissionDenied
+from asyncssh import SFTPAttrs, SFTPVFSAttrs, SFTPName, SFTPServer
 from asyncssh import SEEK_CUR, SEEK_END
 from asyncssh import FXP_INIT, FXP_VERSION, FXP_OPEN, FXP_READ
 from asyncssh import FXP_WRITE, FXP_STATUS, FXP_HANDLE, FXP_DATA
-from asyncssh import FILEXFER_ATTR_UNDEFINED
-from asyncssh import FX_OK, FX_PERMISSION_DENIED, FX_FAILURE
+from asyncssh import FILEXFER_ATTR_UNDEFINED, FX_OK
 from asyncssh import scp
 
 from asyncssh.packet import SSHPacket, String, UInt32
@@ -153,7 +153,7 @@ class _IOErrorSFTPServer(SFTPServer):
         """Return an error for reads past 64 KB in a file"""
 
         if offset >= 65536:
-            raise SFTPError(FX_FAILURE, 'I/O error')
+            raise SFTPFailure('I/O error')
         else:
             return super().read(file_obj, offset, size)
 
@@ -161,7 +161,7 @@ class _IOErrorSFTPServer(SFTPServer):
         """Return an error for writes past 64 KB in a file"""
 
         if offset >= 65536:
-            raise SFTPError(FX_FAILURE, 'I/O error')
+            raise SFTPFailure('I/O error')
         else:
             super().write(file_obj, offset, data)
 
@@ -290,9 +290,9 @@ class _SFTPAttrsSFTPServer(SFTPServer):
             return SFTPAttrs.from_local(super().stat(path))
         except OSError as exc:
             if exc.errno == errno.EACCES:
-                raise SFTPError(FX_PERMISSION_DENIED, exc.strerror)
+                raise SFTPPermissionDenied(exc.strerror)
             else:
-                raise SFTPError(FX_FAILURE, exc.strerror)
+                raise SFTPError(99, exc.strerror)
 
 
 class _AsyncSFTPServer(SFTPServer):
@@ -1113,7 +1113,7 @@ class _TestSFTP(_CheckSFTP):
 
             # pylint: disable=unused-argument
 
-            raise SFTPError(FX_FAILURE, 'I/O error')
+            raise SFTPFailure('I/O error')
 
         try:
             os.mkdir('dir')
@@ -2372,6 +2372,25 @@ class _TestSFTPChroot(_CheckSFTP):
             self._check_link('chroot/link2', 'file')
         finally:
             remove('chroot/link1 chroot/link2')
+
+
+class _TestSFTPUnknownError(_CheckSFTP):
+    """Unit test for SFTP server returning unknown error"""
+
+    @classmethod
+    async def start_server(cls):
+        """Start an SFTP server which returns unknown error"""
+
+        return await cls.create_server(sftp_factory=_SFTPAttrsSFTPServer)
+
+    @sftp_test
+    async def test_stat_error(self, sftp):
+        """Test error when getting attributes of a file on an SFTP server"""
+
+        with self.assertRaises(SFTPError) as exc:
+            await sftp.stat('file')
+
+        self.assertEqual(exc.exception.code, 99)
 
 
 class _TestSFTPIOError(_CheckSFTP):

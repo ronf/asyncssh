@@ -1840,6 +1840,14 @@ SFTPError
 ---------
 
 .. autoexception:: SFTPError
+.. autoexception:: SFTPEOFError
+.. autoexception:: SFTPNoSuchFile
+.. autoexception:: SFTPPermissionDenied
+.. autoexception:: SFTPFailure
+.. autoexception:: SFTPBadMessage
+.. autoexception:: SFTPNoConnection
+.. autoexception:: SFTPConnectionLost
+.. autoexception:: SFTPOpUnsupported
 
 KeyImportError
 --------------
