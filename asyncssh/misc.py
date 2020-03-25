@@ -622,7 +622,7 @@ _disc_error_map = {
 
 
 def construct_disc_error(code, reason, lang):
-    """Map discussion error code to appropriate DisconnectError exception"""
+    """Map disconnect error code to appropriate DisconnectError exception"""
 
     try:
         return _disc_error_map[code](reason, lang)
