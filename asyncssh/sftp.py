@@ -139,7 +139,7 @@ def _setstat(path, attrs):
         try:
             os.chown(path, attrs.uid, attrs.gid)
         except AttributeError: # pragma: no cover
-            raise NotImplementedError
+            raise NotImplementedError from None
 
     if attrs.permissions is not None:
         os.chmod(path, stat.S_IMODE(attrs.permissions))
@@ -241,7 +241,7 @@ async def match_glob(fs, pattern, error_handler=None):
         if error_handler:
             error_handler(exc)
         else:
-            raise exc
+            raise
 
     return names
 
@@ -1315,9 +1315,9 @@ class SFTPClientHandler(SFTPHandler):
                 data = resp.get_string()
                 extensions.append((name, data))
         except PacketDecodeError as exc:
-            raise SFTPBadMessage(str(exc))
+            raise SFTPBadMessage(str(exc)) from None
         except (asyncio.IncompleteReadError, Error) as exc:
-            raise SFTPFailure(str(exc))
+            raise SFTPFailure(str(exc)) from None
 
         self.logger.debug1('Received version=%d%s', version,
                            ', extensions:' if extensions else '')
@@ -1667,9 +1667,8 @@ class SFTPClientFile:
                 else:
                     data = await self._handler.read(self._handle, offset, size)
                 self._offset = offset + len(data)
-            except SFTPError as exc:
-                if exc.code != FX_EOF:
-                    raise
+            except SFTPEOFError:
+                pass
 
         if self._encoding:
             data = data.decode(self._encoding, self._errors)
@@ -4656,7 +4655,7 @@ class SFTPServer:
         try:
             return os.statvfs(_to_local_path(self.map_path(path)))
         except AttributeError: # pragma: no cover
-            raise SFTPOpUnsupported('statvfs not supported')
+            raise SFTPOpUnsupported('statvfs not supported') from None
 
     def fstatvfs(self, file_obj):
         """Return attributes of the file system containing an open file
@@ -4675,7 +4674,7 @@ class SFTPServer:
         try:
             return os.statvfs(file_obj.fileno())
         except AttributeError: # pragma: no cover
-            raise SFTPOpUnsupported('fstatvfs not supported')
+            raise SFTPOpUnsupported('fstatvfs not supported') from None
 
     def link(self, oldpath, newpath):
         """Create a hard link
