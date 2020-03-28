@@ -564,11 +564,12 @@ class _SFTPFileCopier(_SFTPParallelIO):
     async def cleanup(self):
         """Clean up parallel copy"""
 
-        if self._src: # pragma: no branch
-            await self._src.close()
-
-        if self._dst: # pragma: no branch
-            await self._dst.close()
+        try:
+            if self._src: # pragma: no branch
+                await self._src.close()
+        finally:
+            if self._dst: # pragma: no branch
+                await self._dst.close()
 
 
 class SFTPError(Error):
