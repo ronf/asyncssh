@@ -31,12 +31,34 @@ import string
 import sys
 
 from .constants import DEFAULT_LANG
-from .constants import FX_BAD_MESSAGE, FX_CONNECTION_LOST, FX_FAILURE
 
 from .misc import plural
 
 from .sftp import LocalFile, match_glob
-from .sftp import SFTP_BLOCK_SIZE, SFTPAttrs, SFTPError, SFTPServerFile
+from .sftp import SFTP_BLOCK_SIZE, SFTPAttrs, SFTPServerFile
+from .sftp import SFTPError, SFTPFailure, SFTPBadMessage, SFTPConnectionLost
+
+
+def _scp_error(exc_class, reason, path=None, fatal=False,
+               suppress_send=False, lang=DEFAULT_LANG):
+    """Construct SCP version of SFTPError exception"""
+
+    if isinstance(reason, bytes):
+        reason = reason.decode('utf-8', errors='replace')
+
+    if isinstance(path, bytes):
+        path = path.decode('utf-8', errors='replace')
+
+    if path:
+        reason = reason + ': ' + path
+
+    exc = exc_class(reason, lang)
+
+    # pylint: disable=attribute-defined-outside-init
+    exc.fatal = fatal
+    exc.suppress_send = suppress_send
+
+    return exc
 
 
 def _parse_cd_args(args):
@@ -46,7 +68,8 @@ def _parse_cd_args(args):
         permissions, size, name = args.split(None, 2)
         return int(permissions, 8), int(size), name
     except ValueError:
-        raise SCPError(FX_BAD_MESSAGE, 'Invalid copy or dir request') from None
+        raise _scp_error(SFTPBadMessage,
+                         'Invalid copy or dir request') from None
 
 
 def _parse_t_args(args):
@@ -56,7 +79,7 @@ def _parse_t_args(args):
         mtime, _, atime, _ = args.split()
         return int(atime), int(mtime)
     except ValueError:
-        raise SCPError(FX_BAD_MESSAGE, 'Invalid time request') from None
+        raise _scp_error(SFTPBadMessage, 'Invalid time request') from None
 
 
 async def _parse_path(path, **kwargs):
@@ -115,25 +138,6 @@ async def _start_remote(conn, source, must_be_dir, preserve, recurse, path):
     return reader, writer
 
 
-class SCPError(SFTPError):
-    """SCP error"""
-
-    def __init__(self, code, reason, path=None, fatal=False,
-                 suppress_send=False, lang=DEFAULT_LANG):
-        if isinstance(reason, bytes):
-            reason = reason.decode('utf-8', errors='replace')
-
-        if isinstance(path, bytes):
-            path = path.decode('utf-8', errors='replace')
-
-        if path:
-            reason = reason + ': ' + path
-
-        super().__init__(code, reason, lang)
-        self.fatal = fatal
-        self.suppress_send = suppress_send
-
-
 class _SCPArgParser(argparse.ArgumentParser):
     """A parser for SCP arguments"""
 
@@ -185,14 +189,14 @@ class _SCPHandler:
             reason = await self._reader.readline()
 
             if not result or not reason.endswith(b'\n'):
-                raise SCPError(FX_CONNECTION_LOST, 'Connection lost',
-                               fatal=True, suppress_send=True)
+                raise _scp_error(SFTPConnectionLost, 'Connection lost',
+                                 fatal=True, suppress_send=True)
 
             if result not in b'\x01\x02':
                 reason = result + reason
 
-            return SCPError(FX_FAILURE, reason[:-1], fatal=result != b'\x01',
-                            suppress_send=True)
+            return _scp_error(SFTPFailure, reason[:-1], fatal=result != b'\x01',
+                              suppress_send=True)
 
         self.logger.debug1('Received SCP OK')
 
@@ -288,8 +292,8 @@ class _SCPHandler:
         """Handle an SCP error"""
 
         if isinstance(exc, BrokenPipeError):
-            exc = SCPError(FX_CONNECTION_LOST, 'Connection lost',
-                           fatal=True, suppress_send=True)
+            exc = _scp_error(SFTPConnectionLost, 'Connection lost',
+                             fatal=True, suppress_send=True)
 
         if not getattr(exc, 'suppress_send', False):
             self.send_error(exc)
@@ -362,7 +366,7 @@ class _SCPSource(_SCPHandler):
                         data = await file_obj.read(blocklen, offset)
 
                         if not data:
-                            raise SCPError(FX_FAILURE, 'Unexpected EOF')
+                            raise _scp_error(SFTPFailure, 'Unexpected EOF')
                     except (OSError, SFTPError) as exc:
                         local_exc = exc
 
@@ -418,7 +422,7 @@ class _SCPSource(_SCPHandler):
             elif stat.S_ISREG(attrs.permissions):
                 await self._send_file(srcpath, dstpath, attrs)
             else:
-                raise SCPError(FX_FAILURE, 'Not a regular file', srcpath)
+                raise _scp_error(SFTPFailure, 'Not a regular file', srcpath)
         except (OSError, SFTPError, ValueError) as exc:
             self.handle_error(exc)
 
@@ -474,8 +478,8 @@ class _SCPSink(_SCPHandler):
                 data = await self.recv_data(blocklen)
 
                 if not data:
-                    raise SCPError(FX_CONNECTION_LOST, 'Connection lost',
-                                   fatal=True, suppress_send=True)
+                    raise _scp_error(SFTPConnectionLost, 'Connection lost',
+                                     fatal=True, suppress_send=True)
 
                 if not local_exc:
                     try:
@@ -507,13 +511,14 @@ class _SCPSink(_SCPHandler):
         """Receive a directory over SCP"""
 
         if not self._recurse:
-            raise SCPError(FX_BAD_MESSAGE, 'Directory received without recurse')
+            raise _scp_error(SFTPBadMessage,
+                             'Directory received without recurse')
 
         self.logger.info('  Starting receive of directory %s', dstpath)
 
         if await self._fs.exists(dstpath):
             if not await self._fs.isdir(dstpath):
-                raise SCPError(FX_FAILURE, 'Not a directory', dstpath)
+                raise _scp_error(SFTPFailure, 'Not a directory', dstpath)
         else:
             await self._fs.mkdir(dstpath)
 
@@ -536,8 +541,8 @@ class _SCPSink(_SCPHandler):
 
             try:
                 if action in b'\x01\x02':
-                    raise SCPError(FX_FAILURE, args, fatal=action != b'\x01',
-                                   suppress_send=True)
+                    raise _scp_error(SFTPFailure, args, fatal=action != b'\x01',
+                                     suppress_send=True)
                 elif action == b'T':
                     if self._preserve:
                         attrs.atime, attrs.mtime = _parse_t_args(args)
@@ -569,7 +574,7 @@ class _SCPSink(_SCPHandler):
                     finally:
                         attrs = SFTPAttrs()
                 else:
-                    raise SCPError(FX_BAD_MESSAGE, 'Unknown request')
+                    raise _scp_error(SFTPBadMessage, 'Unknown request')
             except (OSError, SFTPError) as exc:
                 self.handle_error(exc)
 
@@ -581,8 +586,8 @@ class _SCPSink(_SCPHandler):
                 dstpath = dstpath.encode('utf-8')
 
             if self._must_be_dir and not await self._fs.isdir(dstpath):
-                self.handle_error(SCPError(FX_FAILURE, 'Not a directory',
-                                           dstpath))
+                self.handle_error(_scp_error(SFTPFailure, 'Not a directory',
+                                             dstpath))
             else:
                 await self._recv_files(b'', dstpath)
         except (OSError, SFTPError, ValueError) as exc:
@@ -614,7 +619,7 @@ class _SCPCopier:
         """Handle an SCP error"""
 
         if isinstance(exc, BrokenPipeError):
-            exc = SCPError(FX_CONNECTION_LOST, 'Connection lost', fatal=True)
+            exc = _scp_error(SFTPConnectionLost, 'Connection lost', fatal=True)
 
         self.logger.debug1('Handling SCP error: %s', exc)
 
@@ -652,8 +657,8 @@ class _SCPCopier:
             data = await self._source.recv_data(blocklen)
 
             if not data:
-                raise SCPError(FX_CONNECTION_LOST, 'Connection lost',
-                               fatal=True)
+                raise _scp_error(SFTPConnectionLost, 'Connection lost',
+                                 fatal=True)
 
             await self._sink.send_data(data)
             offset += len(data)
@@ -690,7 +695,7 @@ class _SCPCopier:
             self._sink.send_request(action, args)
 
             if action in b'\x01\x02':
-                exc = SCPError(FX_FAILURE, args, fatal=action != b'\x01')
+                exc = _scp_error(SFTPFailure, args, fatal=action != b'\x01')
                 self._handle_error(exc)
                 continue
 
@@ -729,7 +734,7 @@ class _SCPCopier:
             elif action == b'T':
                 attrs.atime, attrs.mtime = _parse_t_args(args)
             else:
-                raise SCPError(FX_BAD_MESSAGE, 'Unknown SCP action')
+                raise _scp_error(SFTPBadMessage, 'Unknown SCP action')
 
     async def run(self):
         """Start SCP remote-to-remote transfer"""
