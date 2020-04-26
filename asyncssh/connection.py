@@ -846,7 +846,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
     def _get_ext_info_kex_alg(self):
         """Return the kex alg to add if any to request extension info"""
 
-        return [b'ext-info-c'] if self.is_client() else []
+        return [b'ext-info-c'] if self.is_client() else [b'ext-info-s']
 
     def _send(self, data):
         """Send data to the SSH connection"""
@@ -1548,6 +1548,9 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         else:
             self._server_kexinit = packet.get_consumed_payload()
 
+            if b'ext-info-s' in peer_kex_algs and not self._session_id:
+                self._can_send_ext_info = True
+
         if self._kexinit_sent:
             self._kexinit_sent = False
         else:
@@ -1717,6 +1720,10 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
             self._send_deferred_packets()
             self._set_keepalive_timer()
             self._owner.auth_completed()
+
+            if self._can_send_ext_info:
+                self._extensions_sent[b'global-requests-ok'] = b''
+                self._send_ext_info()
 
             if self._acceptor:
                 result = self._acceptor(self)
