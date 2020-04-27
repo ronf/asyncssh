@@ -143,7 +143,7 @@ FILEXFER_ATTR_UIDGID                = 0x00000002
 FILEXFER_ATTR_PERMISSIONS           = 0x00000004
 FILEXFER_ATTR_ACMODTIME             = 0x00000008
 FILEXFER_ATTR_EXTENDED              = 0x80000000
-FILEXFER_ATTR_UNDEFINED             = 0x7ffffff0
+FILEXFER_ATTR_UNDEFINED             = 0x7fffffc0
 
 # OpenSSH statvfs attribute flags
 FXE_STATVFS_ST_RDONLY               = 0x1
