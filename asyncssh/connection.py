@@ -514,8 +514,9 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
     def _reset_keepalive_timer(self):
         """Reset the keepalive timer"""
 
-        self._cancel_keepalive_timer()
-        self._set_keepalive_timer()
+        if self._auth_complete:
+            self._cancel_keepalive_timer()
+            self._set_keepalive_timer()
 
     async def _make_keepalive_request(self):
         """Send keepalive request"""
@@ -764,8 +765,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         self._inpbuf += data
 
-        if self._auth_complete:
-            self._reset_keepalive_timer()
+        self._reset_keepalive_timer()
 
         # pylint: disable=broad-except
         try:
