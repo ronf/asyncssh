@@ -166,8 +166,8 @@ class _SKEd25519Key(SSHKey):
 if ed25519_available: # pragma: no branch
     register_sk_alg(SSH_SK_ED25519, _SKEd25519Key)
 
-    register_public_key_alg(b'sk-ssh-ed25519@openssh.com', _SKEd25519Key)
+    register_public_key_alg(b'sk-ssh-ed25519@openssh.com', _SKEd25519Key, True)
 
     register_certificate_alg(1, b'sk-ssh-ed25519@openssh.com',
                              b'sk-ssh-ed25519-cert-v01@openssh.com',
-                             _SKEd25519Key, SSHOpenSSHCertificateV01)
+                             _SKEd25519Key, SSHOpenSSHCertificateV01, True)

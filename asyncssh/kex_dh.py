@@ -649,40 +649,48 @@ class _KexGSSECDH(_KexGSSBase, _KexECDH):
 
 
 if curve25519_available: # pragma: no branch
-    register_kex_alg(b'curve25519-sha256', _KexECDH, sha256, Curve25519DH)
-    register_kex_alg(b'curve25519-sha256@libssh.org', _KexECDH,
-                     sha256, Curve25519DH)
-    register_gss_kex_alg(b'gss-curve25519-sha256', _KexGSSECDH,
-                         sha256, Curve25519DH)
+    register_kex_alg(b'curve25519-sha256', _KexECDH, sha256,
+                     (Curve25519DH,), True)
+    register_kex_alg(b'curve25519-sha256@libssh.org', _KexECDH, sha256,
+                     (Curve25519DH,), True)
+    register_gss_kex_alg(b'gss-curve25519-sha256', _KexGSSECDH, sha256,
+                         (Curve25519DH,), True)
 
 if curve448_available: # pragma: no branch
-    register_kex_alg(b'curve448-sha512', _KexECDH, sha512, Curve448DH)
-    register_gss_kex_alg(b'gss-curve448-sha512', _KexGSSECDH,
-                         sha512, Curve448DH)
-
-for _curve_id, _hash_name, _hash_alg in ((b'nistp521', b'sha512', sha512),
-                                         (b'nistp384', b'sha384', sha384),
-                                         (b'nistp256', b'sha256', sha256),
-                                         (b'1.3.132.0.10', b'sha256', sha256)):
-    register_kex_alg(b'ecdh-sha2-' + _curve_id, _KexECDH,
-                     _hash_alg, ECDH, _curve_id)
-    register_gss_kex_alg(b'gss-' + _curve_id + b'-' + _hash_name, _KexGSSECDH,
-                         _hash_alg, ECDH, _curve_id)
+    register_kex_alg(b'curve448-sha512', _KexECDH, sha512,
+                     (Curve448DH,), True)
+    register_gss_kex_alg(b'gss-curve448-sha512', _KexGSSECDH, sha512,
+                         (Curve448DH,), True)
 
 # pylint: disable=bad-whitespace
 
-for _name, _hash_alg in ((b'sha256', sha256), (b'sha1', sha1)):
-    register_kex_alg(b'diffie-hellman-group-exchange-' + _name,
-                     _KexDHGex, _hash_alg)
-    register_gss_kex_alg(b'gss-gex-' + _name, _KexGSSGex, _hash_alg)
+for _curve_id, _hash_name, _hash_alg, _default in (
+        (b'nistp521',     b'sha512', sha512, True),
+        (b'nistp384',     b'sha384', sha384, True),
+        (b'nistp256',     b'sha256', sha256, True),
+        (b'1.3.132.0.10', b'sha256', sha256, True)):
+    register_kex_alg(b'ecdh-sha2-' + _curve_id, _KexECDH, _hash_alg,
+                     (ECDH, _curve_id), _default)
+    register_gss_kex_alg(b'gss-' + _curve_id + b'-' + _hash_name, _KexGSSECDH,
+                         _hash_alg, (ECDH, _curve_id), _default)
 
-for _name, _hash_alg, _g, _p in (
-        (b'group14-sha256', sha256, _group14_g, _group14_p),
-        (b'group15-sha512', sha512, _group15_g, _group15_p),
-        (b'group16-sha512', sha512, _group16_g, _group16_p),
-        (b'group17-sha512', sha512, _group17_g, _group17_p),
-        (b'group18-sha512', sha512, _group18_g, _group18_p),
-        (b'group14-sha1',   sha1,   _group14_g, _group14_p),
-        (b'group1-sha1',    sha1,   _group1_g,  _group1_p)):
-    register_kex_alg(b'diffie-hellman-' + _name, _KexDH, _hash_alg, _g, _p)
-    register_gss_kex_alg(b'gss-' + _name, _KexGSS, _hash_alg, _g, _p)
+for _hash_name, _hash_alg, _default in (
+        (b'sha256', sha256, True),
+        (b'sha1',   sha1,   False)):
+    register_kex_alg(b'diffie-hellman-group-exchange-' + _hash_name,
+                     _KexDHGex, _hash_alg, (), _default)
+    register_gss_kex_alg(b'gss-gex-' + _hash_name,
+                         _KexGSSGex, _hash_alg, (), _default)
+
+for _name, _hash_alg, _g, _p, _default in (
+        (b'group14-sha256', sha256, _group14_g, _group14_p, True),
+        (b'group15-sha512', sha512, _group15_g, _group15_p, True),
+        (b'group16-sha512', sha512, _group16_g, _group16_p, True),
+        (b'group17-sha512', sha512, _group17_g, _group17_p, True),
+        (b'group18-sha512', sha512, _group18_g, _group18_p, True),
+        (b'group14-sha1',   sha1,   _group14_g, _group14_p, True),
+        (b'group1-sha1',    sha1,   _group1_g,  _group1_p,  False)):
+    register_kex_alg(b'diffie-hellman-' + _name, _KexDH, _hash_alg,
+                     (_g, _p), _default)
+    register_gss_kex_alg(b'gss-' + _name, _KexGSS, _hash_alg,
+                         (_g, _p), _default)

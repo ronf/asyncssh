@@ -36,6 +36,7 @@ _OPENSSH = b'@openssh.com'
 _ETM = b'-etm' + _OPENSSH
 
 _mac_algs = []
+_default_mac_algs = []
 _mac_handler = {}
 _mac_params = {}
 
@@ -110,20 +111,29 @@ class _UMAC(MAC):
         return self.sign(seq, packet) == sig
 
 
-def register_mac_alg(mac_alg, key_size, hash_size, etm, handler, args):
+def register_mac_alg(mac_alg, key_size, hash_size, etm, handler, args, default):
     """Register a MAC algorithm"""
 
     if mac_alg:
         _mac_algs.append(mac_alg)
+
+        if default:
+            _default_mac_algs.append(mac_alg)
 
     _mac_handler[mac_alg] = (handler, hash_size, args)
     _mac_params[mac_alg] = (key_size, hash_size, etm)
 
 
 def get_mac_algs():
-    """Return a list of available MAC algorithms"""
+    """Return supported MAC algorithms"""
 
     return _mac_algs
+
+
+def get_default_mac_algs():
+    """Return default MAC algorithms"""
+
+    return _default_mac_algs
 
 
 def get_mac_params(mac_alg):
@@ -152,38 +162,40 @@ def get_mac(mac_alg, key):
 # pylint: disable=bad-whitespace
 
 _mac_algs_list = (
-    (b'',                         0,  0, False, _NullMAC, ()),
+    (b'',                         0,  0, False, _NullMAC, (),         True),
 )
 
 if _umac_available: # pragma: no branch
     _mac_algs_list += (
-        (b'umac-64' + _ETM,      16,  8, True,  _UMAC,    (umac64,)),
-        (b'umac-128' + _ETM,     16, 16, True,  _UMAC,    (umac128,)))
+        (b'umac-64' + _ETM,      16,  8, True,  _UMAC,    (umac64,),  True),
+        (b'umac-128' + _ETM,     16, 16, True,  _UMAC,    (umac128,), True))
 
 _mac_algs_list += (
-    (b'hmac-sha2-256' + _ETM,    32, 32, True,  _HMAC,    (sha256,)),
-    (b'hmac-sha2-512' + _ETM,    64, 64, True,  _HMAC,    (sha512,)),
-    (b'hmac-sha1' + _ETM,        20, 20, True,  _HMAC,    (sha1,)),
-    (b'hmac-md5' + _ETM,         16, 16, True,  _HMAC,    (md5,)),
-    (b'hmac-sha2-256-96' + _ETM, 32, 12, True,  _HMAC,    (sha256,)),
-    (b'hmac-sha2-512-96' + _ETM, 64, 12, True,  _HMAC,    (sha512,)),
-    (b'hmac-sha1-96' + _ETM,     20, 12, True,  _HMAC,    (sha1,)),
-    (b'hmac-md5-96' + _ETM,      16, 12, True,  _HMAC,    (md5,)))
+    (b'hmac-sha2-256' + _ETM,    32, 32, True,  _HMAC,    (sha256,),  True),
+    (b'hmac-sha2-512' + _ETM,    64, 64, True,  _HMAC,    (sha512,),  True),
+    (b'hmac-sha1' + _ETM,        20, 20, True,  _HMAC,    (sha1,),    True),
+    (b'hmac-md5' + _ETM,         16, 16, True,  _HMAC,    (md5,),     False),
+    (b'hmac-sha2-256-96' + _ETM, 32, 12, True,  _HMAC,    (sha256,),  False),
+    (b'hmac-sha2-512-96' + _ETM, 64, 12, True,  _HMAC,    (sha512,),  False),
+    (b'hmac-sha1-96' + _ETM,     20, 12, True,  _HMAC,    (sha1,),    False),
+    (b'hmac-md5-96' + _ETM,      16, 12, True,  _HMAC,    (md5,),     False))
 
 if _umac_available: # pragma: no branch
     _mac_algs_list += (
-        (b'umac-64' + _OPENSSH,  16,  8, False, _UMAC,    (umac64,)),
-        (b'umac-128' + _OPENSSH, 16, 16, False, _UMAC,    (umac128,)))
+        (b'umac-64' + _OPENSSH,  16,  8, False, _UMAC,    (umac64,),  True),
+        (b'umac-128' + _OPENSSH, 16, 16, False, _UMAC,    (umac128,), True))
 
 _mac_algs_list += (
-    (b'hmac-sha2-256',           32, 32, False, _HMAC,    (sha256,)),
-    (b'hmac-sha2-512',           64, 64, False, _HMAC,    (sha512,)),
-    (b'hmac-sha1',               20, 20, False, _HMAC,    (sha1,)),
-    (b'hmac-md5',                16, 16, False, _HMAC,    (md5,)),
-    (b'hmac-sha2-256-96',        32, 12, False, _HMAC,    (sha256,)),
-    (b'hmac-sha2-512-96',        64, 12, False, _HMAC,    (sha512,)),
-    (b'hmac-sha1-96',            20, 12, False, _HMAC,    (sha1,)),
-    (b'hmac-md5-96',             16, 12, False, _HMAC,    (md5,)))
+    (b'hmac-sha2-256',           32, 32, False, _HMAC,    (sha256,),  True),
+    (b'hmac-sha2-512',           64, 64, False, _HMAC,    (sha512,),  True),
+    (b'hmac-sha1',               20, 20, False, _HMAC,    (sha1,),    True),
+    (b'hmac-md5',                16, 16, False, _HMAC,    (md5,),     False),
+    (b'hmac-sha2-256-96',        32, 12, False, _HMAC,    (sha256,),  False),
+    (b'hmac-sha2-512-96',        64, 12, False, _HMAC,    (sha512,),  False),
+    (b'hmac-sha1-96',            20, 12, False, _HMAC,    (sha1,),    False),
+    (b'hmac-md5-96',             16, 12, False, _HMAC,    (md5,),     False))
 
-for _alg, _key_size, _hash_size, _etm, _mac_alg, _args in _mac_algs_list:
-    register_mac_alg(_alg, _key_size, _hash_size, _etm, _mac_alg, _args)
+for _alg, _key_size, _hash_size, _etm, \
+        _mac_alg, _args, _default in _mac_algs_list:
+    register_mac_alg(_alg, _key_size, _hash_size, _etm,
+                     _mac_alg, _args, _default)

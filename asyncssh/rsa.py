@@ -216,10 +216,10 @@ class _RSAKey(SSHKey):
         return self._key.decrypt(data, algorithm)
 
 
-register_public_key_alg(b'ssh-rsa', _RSAKey)
+register_public_key_alg(b'ssh-rsa', _RSAKey, True)
 
 register_certificate_alg(1, b'ssh-rsa', b'ssh-rsa-cert-v01@openssh.com',
-                         _RSAKey, SSHOpenSSHCertificateV01)
+                         _RSAKey, SSHOpenSSHCertificateV01, True)
 
 for alg in _RSAKey.x509_algorithms:
-    register_x509_certificate_alg(alg)
+    register_x509_certificate_alg(alg, True)

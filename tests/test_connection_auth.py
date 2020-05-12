@@ -414,7 +414,7 @@ class _TestGSSAuth(ServerTestCase):
     async def test_gss_kex_auth(self):
         """Test GSS key exchange authentication"""
 
-        async with self.connect(kex_algs=['gss-gex-sha1'],
+        async with self.connect(kex_algs=['gss-gex-sha256'],
                                 username='user', gss_host='1'):
             pass
 

@@ -27,9 +27,11 @@ from .packet import MPInt, SSHPacketHandler
 
 
 _kex_algs = []
+_default_kex_algs = []
 _kex_handlers = {}
 
 _gss_kex_algs = []
+_default_gss_kex_algs = []
 _gss_kex_handlers = {}
 
 
@@ -69,24 +71,39 @@ class Kex(SSHPacketHandler):
         return key[:keylen]
 
 
-def register_kex_alg(alg, handler, hash_alg, *args):
+def register_kex_alg(alg, handler, hash_alg, args, default):
     """Register a key exchange algorithm"""
 
     _kex_algs.append(alg)
+
+    if default:
+        _default_kex_algs.append(alg)
+
+
     _kex_handlers[alg] = (handler, hash_alg, args)
 
 
-def register_gss_kex_alg(alg, handler, hash_alg, *args):
+def register_gss_kex_alg(alg, handler, hash_alg, args, default):
     """Register a GSSAPI key exchange algorithm"""
 
     _gss_kex_algs.append(alg)
+
+    if default:
+        _default_gss_kex_algs.append(alg)
+
     _gss_kex_handlers[alg] = (handler, hash_alg, args)
 
 
 def get_kex_algs():
-    """Return a list of available key exchange algorithms"""
+    """Return supported key exchange algorithms"""
 
     return _gss_kex_algs + _kex_algs
+
+
+def get_default_kex_algs():
+    """Return default key exchange algorithms"""
+
+    return _default_gss_kex_algs + _default_kex_algs
 
 
 def expand_kex_algs(kex_algs, mechs, host_key_available):

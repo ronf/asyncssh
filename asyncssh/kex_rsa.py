@@ -153,7 +153,8 @@ class _KexRSA(Kex):
 
 # pylint: disable=bad-whitespace
 
-for _name, _hash_alg, _key_size, _hash_size  in (
-        (b'rsa2048-sha256', sha256, 2048, 256),
-        (b'rsa1024-sha1',   sha1,   1024, 160)):
-    register_kex_alg(_name, _KexRSA, _hash_alg, _key_size, _hash_size)
+for _name, _hash_alg, _key_size, _hash_size, _default in (
+        (b'rsa2048-sha256', sha256, 2048, 256, True),
+        (b'rsa1024-sha1',   sha1,   1024, 160, False)):
+    register_kex_alg(_name, _KexRSA, _hash_alg,
+                     (_key_size, _hash_size), _default)

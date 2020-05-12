@@ -24,7 +24,10 @@ import zlib
 
 
 _cmp_algs = []
+_default_cmp_algs = []
+
 _cmp_params = {}
+
 _cmp_compressors = {}
 _cmp_decompressors = {}
 
@@ -66,19 +69,31 @@ class _ZLibDecompress:
             return None
 
 
-def register_compression_alg(alg, compressor, decompressor, after_auth):
+def register_compression_alg(alg, compressor, decompressor,
+                             after_auth, default):
     """Register a compression algorithm"""
 
     _cmp_algs.append(alg)
+
+    if default:
+        _default_cmp_algs.append(alg)
+
     _cmp_params[alg] = after_auth
+
     _cmp_compressors[alg] = compressor
     _cmp_decompressors[alg] = decompressor
 
 
 def get_compression_algs():
-    """Return a list of available compression algorithms"""
+    """Return supported compression algorithms"""
 
     return _cmp_algs
+
+
+def get_default_compression_algs():
+    """Return default compression algorithms"""
+
+    return _default_cmp_algs
 
 
 def get_compression_params(alg):
@@ -114,8 +129,8 @@ def get_decompressor(alg):
 # pylint: disable=bad-whitespace
 
 register_compression_alg(b'zlib@openssh.com',
-                         _ZLibCompress, _ZLibDecompress, True)
+                         _ZLibCompress, _ZLibDecompress, True,  True)
 register_compression_alg(b'zlib',
-                         _ZLibCompress, _ZLibDecompress, False)
+                         _ZLibCompress, _ZLibDecompress, False, False)
 register_compression_alg(b'none',
-                         _none,         _none,           False)
+                         _none,         _none,           False, True)

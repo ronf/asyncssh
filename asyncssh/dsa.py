@@ -228,10 +228,10 @@ class _DSAKey(SSHKey):
         return self._key.verify(data, der_encode((r, s)))
 
 
-register_public_key_alg(b'ssh-dss', _DSAKey)
+register_public_key_alg(b'ssh-dss', _DSAKey, False)
 
 register_certificate_alg(1, b'ssh-dss', b'ssh-dss-cert-v01@openssh.com',
-                         _DSAKey, SSHOpenSSHCertificateV01)
+                         _DSAKey, SSHOpenSSHCertificateV01, False)
 
 for alg in _DSAKey.x509_algorithms:
-    register_x509_certificate_alg(alg)
+    register_x509_certificate_alg(alg, False)

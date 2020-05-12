@@ -79,4 +79,4 @@ class _TestEncryption(unittest.TestCase):
 
         # pylint: disable=no-self-use
 
-        register_encryption_alg(b'xxx', 'xxx', '')
+        register_encryption_alg('xxx', 'xxx', '', True)

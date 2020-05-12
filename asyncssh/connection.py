@@ -46,7 +46,8 @@ from .channel import SSHX11Channel, SSHAgentChannel
 
 from .client import SSHClient
 
-from .compression import get_compression_algs, get_compression_params
+from .compression import get_compression_algs, get_default_compression_algs
+from .compression import get_compression_params
 from .compression import get_compressor, get_decompressor
 
 from .constants import DEFAULT_LANG
@@ -66,14 +67,14 @@ from .constants import MSG_REQUEST_FAILURE
 from .constants import OPEN_ADMINISTRATIVELY_PROHIBITED, OPEN_CONNECT_FAILED
 from .constants import OPEN_UNKNOWN_CHANNEL_TYPE
 
-from .encryption import get_encryption_algs, get_encryption_params
-from .encryption import get_encryption
+from .encryption import get_encryption_algs, get_default_encryption_algs
+from .encryption import get_encryption_params, get_encryption
 
 from .forward import SSHForwarder
 
 from .gss import GSSClient, GSSServer, GSSError
 
-from .kex import get_kex_algs, expand_kex_algs, get_kex
+from .kex import get_kex_algs, get_default_kex_algs, expand_kex_algs, get_kex
 
 from .keysign import find_keysign, get_keysign_keys
 
@@ -85,7 +86,7 @@ from .listener import create_socks_listener
 
 from .logging import logger
 
-from .mac import get_mac_algs
+from .mac import get_mac_algs, get_default_mac_algs
 
 from .misc import ChannelListenError, ChannelOpenError, DisconnectError
 from .misc import CompressionError, ConnectionLost, HostKeyNotVerifiable
@@ -98,12 +99,16 @@ from .misc import get_symbol_names, ip_address, map_handler_name
 from .packet import Boolean, Byte, NameList, String, UInt32
 from .packet import PacketDecodeError, SSHPacket, SSHPacketHandler
 
+from .pattern import WildcardPatternList
+
 from .process import PIPE, SSHClientProcess, SSHServerProcess
 
 from .public_key import CERT_TYPE_HOST, CERT_TYPE_USER, KeyImportError
 from .public_key import decode_ssh_public_key, decode_ssh_certificate
-from .public_key import get_public_key_algs, get_certificate_algs
+from .public_key import get_public_key_algs, get_default_public_key_algs
+from .public_key import get_certificate_algs, get_default_certificate_algs
 from .public_key import get_x509_certificate_algs
+from .public_key import get_default_x509_certificate_algs
 from .public_key import load_keypairs, load_default_keypairs
 from .public_key import load_public_keys, load_default_host_public_keys
 from .public_key import load_certificates
@@ -224,21 +229,49 @@ def _validate_version(version):
     return version
 
 
-def _select_algs(alg_type, algs, possible_algs, none_value=None):
+def _expand_algs(algs, possible_algs, default_algs):
+    """Expand the set of allowed algorithms"""
+
+    if algs[:1] in '^+-':
+        prefix = algs[:1]
+        algs = algs[1:]
+    else:
+        prefix = ''
+
+    pattern = WildcardPatternList(algs)
+
+    matched = [alg for alg in possible_algs
+               if pattern.matches(alg.decode('ascii'))]
+
+    if prefix == '^':
+        return matched + default_algs
+    elif prefix == '+':
+        return default_algs + matched
+    elif prefix == '-':
+        return [alg for alg in default_algs if alg not in matched]
+    else:
+        return matched
+
+def _select_algs(alg_type, algs, possible_algs, default_algs, none_value=None):
     """Select a set of allowed algorithms"""
 
     if algs == ():
-        return possible_algs
+        return default_algs
     elif algs:
+        if isinstance(algs, str):
+            algs = _expand_algs(algs, possible_algs, default_algs)
+        else:
+            algs = [alg.encode('ascii') for alg in algs]
+
         result = []
 
-        for alg_str in algs:
-            alg = alg_str.encode('ascii')
+        for alg in algs:
             if alg not in possible_algs:
                 raise ValueError('%s is not a valid %s algorithm' %
-                                 (alg_str, alg_type))
+                                 (alg.decode('ascii'), alg_type))
 
-            result.append(alg)
+            if alg not in result:
+                result.append(alg)
 
         return result
     elif none_value:
@@ -251,16 +284,23 @@ def _validate_algs(kex_algs, enc_algs, mac_algs, cmp_algs,
                    sig_algs, allow_x509):
     """Validate requested algorithms"""
 
-    kex_algs = _select_algs('key exchange', kex_algs, get_kex_algs())
-    enc_algs = _select_algs('encryption', enc_algs, get_encryption_algs())
-    mac_algs = _select_algs('MAC', mac_algs, get_mac_algs())
-    cmp_algs = _select_algs('compression', cmp_algs,
-                            get_compression_algs(), b'none')
+    kex_algs = _select_algs('key exchange', kex_algs, get_kex_algs(),
+                            get_default_kex_algs())
+    enc_algs = _select_algs('encryption', enc_algs, get_encryption_algs(),
+                            get_default_encryption_algs())
+    mac_algs = _select_algs('MAC', mac_algs, get_mac_algs(),
+                            get_default_mac_algs())
+    cmp_algs = _select_algs('compression', cmp_algs, get_compression_algs(),
+                            get_default_compression_algs(), b'none')
 
     allowed_sig_algs = get_x509_certificate_algs() if allow_x509 else []
     allowed_sig_algs = allowed_sig_algs + get_public_key_algs()
 
-    sig_algs = _select_algs('signature', sig_algs, allowed_sig_algs)
+    default_sig_algs = get_default_x509_certificate_algs() if allow_x509 else []
+    default_sig_algs = allowed_sig_algs + get_default_public_key_algs()
+
+    sig_algs = _select_algs('signature', sig_algs, allowed_sig_algs,
+                            default_sig_algs)
 
     return kex_algs, enc_algs, mac_algs, cmp_algs, sig_algs
 
@@ -274,8 +314,11 @@ def _validate_server_host_key_algs(server_host_key_algs):
     else:
         allowed_host_key_algs = get_certificate_algs() + get_public_key_algs()
 
+        default_host_key_algs = get_default_certificate_algs() + \
+                                get_default_public_key_algs()
+
         return _select_algs('public key', server_host_key_algs,
-                            allowed_host_key_algs)
+                            allowed_host_key_algs, default_host_key_algs)
 
 
 class SSHConnection(SSHPacketHandler, asyncio.Protocol):
@@ -2444,8 +2487,8 @@ class SSHClientConnection(SSHConnection):
                     get_certificate_algs() + self._server_host_key_algs
 
         if not self._server_host_key_algs:
-            self._server_host_key_algs = (get_certificate_algs() +
-                                          get_public_key_algs())
+            self._server_host_key_algs = (get_default_certificate_algs() +
+                                          get_default_public_key_algs())
 
         if self._x509_trusted_certs is not None:
             if self._x509_trusted_certs or self._x509_trusted_cert_paths:
@@ -5227,7 +5270,7 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
            keepalive_interval is non-zero.
        :type client_factory: `callable`
        :type known_hosts: *see* :ref:`SpecifyingKnownHosts`
-       :type server_host_key_algs: `list` of `str`
+       :type server_host_key_algs: `str` or `list` of `str`
        :type x509_trusted_certs: *see* :ref:`SpecifyingCertificates`
        :type x509_trusted_cert_paths: `list` of `str`
        :type x509_purposes: *see* :ref:`SpecifyingX509Purposes`
@@ -5245,11 +5288,11 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
        :type agent_path: `str` or :class:`SSHServerConnection`
        :type agent_forwarding: `bool`
        :type client_version: `str`
-       :type kex_algs: `list` of `str`
-       :type encryption_algs: `list` of `str`
-       :type mac_algs: `list` of `str`
-       :type compression_algs: `list` of `str`
-       :type signature_algs: `list` of `str`
+       :type kex_algs: `str` or `list` of `str`
+       :type encryption_algs: `str` or `list` of `str`
+       :type mac_algs: `str` or `list` of `str`
+       :type compression_algs: `str` or `list` of `str`
+       :type signature_algs: `str` or `list` of `str`
        :type rekey_bytes: `int`
        :type rekey_seconds: `int`
        :type login_timeout: `int` or `float`
@@ -5532,11 +5575,11 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
        :type window: `int`
        :type max_pktsize: `int`
        :type server_version: `str`
-       :type kex_algs: `list` of `str`
-       :type encryption_algs: `list` of `str`
-       :type mac_algs: `list` of `str`
-       :type compression_algs: `list` of `str`
-       :type signature_algs: `list` of `str`
+       :type kex_algs: `str` or `list` of `str`
+       :type encryption_algs: `str` or `list` of `str`
+       :type mac_algs: `str` or `list` of `str`
+       :type compression_algs: `str` or `list` of `str`
+       :type signature_algs: `str` or `list` of `str`
        :type rekey_bytes: `int`
        :type rekey_seconds: `int`
        :type login_timeout: `int` or `float`
@@ -6034,8 +6077,8 @@ async def get_server_host_key(host, port=_DEFAULT_PORT, *, tunnel=None,
        :type flags: flags to pass to :meth:`getaddrinfo() <socket.getaddrinfo>`
        :type local_addr: tuple of `str` and `int`
        :type client_version: `str`
-       :type kex_algs: `list` of `str`
-       :type server_host_key_algs: `list` of `str`
+       :type kex_algs: `str` or `list` of `str`
+       :type server_host_key_algs: `str` or `list` of `str`
 
        :returns: An :class:`SSHKey` public key or `None`
 

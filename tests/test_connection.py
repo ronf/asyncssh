@@ -47,6 +47,15 @@ from .server import Server, ServerTestCase
 from .util import asynctest, gss_available, patch_gss, x509_available
 
 
+class _CheckAlgsClientConnection(asyncssh.SSHClientConnection):
+    """Test specification of encryption algorithms"""
+
+    def get_enc_algs(self):
+        """Return the selected encryption algorithms"""
+
+        return self._enc_algs
+
+
 class _SplitClientConnection(asyncssh.SSHClientConnection):
     """Test SSH messages being split into multiple packets"""
 
@@ -332,6 +341,9 @@ class _TestConnection(ServerTestCase):
             conn.logger.info('Acceptor called')
 
         return (await cls.create_server(_TunnelServer, gss_host=(),
+                                        compression_algs='*',
+                                        encryption_algs='*',
+                                        kex_algs='*', mac_algs='*',
                                         acceptor=acceptor))
 
     async def get_server_host_key(self, **kwargs):
@@ -678,6 +690,43 @@ class _TestConnection(ServerTestCase):
             with self.subTest(kex_alg=kex):
                 async with self.connect(kex_algs=[kex], gss_host='1'):
                     pass
+
+    @asynctest
+    async def test_duplicate_encryption_algs(self):
+        """Test connecting with an duplicated encryption algorithm"""
+
+        with patch('asyncssh.connection.SSHClientConnection',
+                   _CheckAlgsClientConnection):
+            async with self.connect(
+                    encryption_algs=['aes256-ctr', 'aes256-ctr']) as conn:
+                self.assertEqual(conn.get_enc_algs(), [b'aes256-ctr'])
+
+    @asynctest
+    async def test_leading_encryption_alg(self):
+        """Test adding a new first encryption algorithm"""
+
+        with patch('asyncssh.connection.SSHClientConnection',
+                   _CheckAlgsClientConnection):
+            async with self.connect(encryption_algs='^aes256-ctr') as conn:
+                self.assertEqual(conn.get_enc_algs()[0], b'aes256-ctr')
+
+    @asynctest
+    async def test_trailing_encryption_alg(self):
+        """Test adding a new last encryption algorithm"""
+
+        with patch('asyncssh.connection.SSHClientConnection',
+                   _CheckAlgsClientConnection):
+            async with self.connect(encryption_algs='+3des-cbc') as conn:
+                self.assertEqual(conn.get_enc_algs()[-1], b'3des-cbc')
+
+    @asynctest
+    async def test_removing_encryption_alg(self):
+        """Test removing an encryption algorithm"""
+
+        with patch('asyncssh.connection.SSHClientConnection',
+                   _CheckAlgsClientConnection):
+            async with self.connect(encryption_algs='-aes256-ctr') as conn:
+                self.assertTrue(b'aes256-ctr' not in conn.get_enc_algs())
 
     @asynctest
     async def test_empty_kex_algs(self):

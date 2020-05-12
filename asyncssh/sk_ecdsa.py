@@ -190,7 +190,7 @@ _cert_algorithm = b'sk-ecdsa-sha2-nistp256-cert-v01@openssh.com'
 
 register_sk_alg(SSH_SK_ECDSA, _SKECDSAKey, b'nistp256')
 
-register_public_key_alg(_algorithm, _SKECDSAKey, (_algorithm,))
+register_public_key_alg(_algorithm, _SKECDSAKey, True, (_algorithm,))
 
 register_certificate_alg(1, _algorithm, _cert_algorithm,
-                         _SKECDSAKey, SSHOpenSSHCertificateV01)
+                         _SKECDSAKey, SSHOpenSSHCertificateV01, True)

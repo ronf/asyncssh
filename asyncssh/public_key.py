@@ -65,8 +65,14 @@ _hashes = {'md5': md5, 'sha1': sha1, 'sha256': sha256,
            'sha384': sha384, 'sha512': sha512}
 
 _public_key_algs = []
+_default_public_key_algs = []
+
 _certificate_algs = []
+_default_certificate_algs = []
+
 _x509_certificate_algs = []
+_default_x509_certificate_algs = []
+
 _sk_alg_map = {}
 _public_key_alg_map = {}
 _certificate_alg_map = {}
@@ -2574,14 +2580,18 @@ def register_sk_alg(sk_alg, handler, *args):
 
     _sk_alg_map[sk_alg] = handler, args
 
-def register_public_key_alg(algorithm, handler, sig_algorithms=None):
+def register_public_key_alg(algorithm, handler, default, sig_algorithms=None):
     """Register a new public key algorithm"""
 
     if not sig_algorithms:
         sig_algorithms = handler.sig_algorithms
 
-    _public_key_alg_map[algorithm] = handler
     _public_key_algs.extend(sig_algorithms)
+
+    if default:
+        _default_public_key_algs.extend(sig_algorithms)
+
+    _public_key_alg_map[algorithm] = handler
 
     if handler.pem_name:
         _pem_map[handler.pem_name] = handler
@@ -2591,22 +2601,30 @@ def register_public_key_alg(algorithm, handler, sig_algorithms=None):
 
 
 def register_certificate_alg(version, algorithm, cert_algorithm,
-                             key_handler, cert_handler):
+                             key_handler, cert_handler, default):
     """Register a new certificate algorithm"""
 
-    _certificate_alg_map[cert_algorithm] = (key_handler, cert_handler)
     _certificate_algs.append(cert_algorithm)
+
+    if default:
+        _default_certificate_algs.append(cert_algorithm)
+
+    _certificate_alg_map[cert_algorithm] = (key_handler, cert_handler)
 
     _certificate_version_map[algorithm, version] = \
         (cert_algorithm, cert_handler)
 
 
-def register_x509_certificate_alg(cert_algorithm):
+def register_x509_certificate_alg(cert_algorithm, default):
     """Register a new X.509 certificate algorithm"""
 
     if _x509_available: # pragma: no branch
-        _certificate_alg_map[cert_algorithm] = (None, SSHX509CertificateChain)
         _x509_certificate_algs.append(cert_algorithm)
+
+        if default:
+            _default_x509_certificate_algs.append(cert_algorithm)
+
+        _certificate_alg_map[cert_algorithm] = (None, SSHX509CertificateChain)
 
 
 def get_public_key_algs():
@@ -2615,16 +2633,34 @@ def get_public_key_algs():
     return _public_key_algs
 
 
+def get_default_public_key_algs():
+    """Return default public key algorithms"""
+
+    return _default_public_key_algs
+
+
 def get_certificate_algs():
     """Return supported certificate-based public key algorithms"""
 
     return _certificate_algs
 
 
+def get_default_certificate_algs():
+    """Return default certificate-based public key algorithms"""
+
+    return _default_certificate_algs
+
+
 def get_x509_certificate_algs():
     """Return supported X.509 certificate-based public key algorithms"""
 
     return _x509_certificate_algs
+
+
+def get_default_x509_certificate_algs():
+    """Return default X.509 certificate-based public key algorithms"""
+
+    return _default_x509_certificate_algs
 
 
 def decode_ssh_public_key(data):

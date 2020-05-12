@@ -26,6 +26,8 @@ from .packet import UInt64
 
 
 _enc_algs = []
+_default_enc_algs = []
+
 _enc_params = {}
 
 
@@ -203,7 +205,7 @@ class ChachaEncryption(Encryption):
                                                UInt64(seq), mac)
 
 
-def register_encryption_alg(enc_alg, encryption, cipher_name):
+def register_encryption_alg(enc_alg, encryption, cipher_name, default):
     """Register an encryption algorithm"""
 
     try:
@@ -212,13 +214,23 @@ def register_encryption_alg(enc_alg, encryption, cipher_name):
         pass
     else:
         _enc_algs.append(enc_alg)
+
+        if default:
+            _default_enc_algs.append(enc_alg)
+
         _enc_params[enc_alg] = (encryption, cipher_name)
 
 
 def get_encryption_algs():
-    """Return a list of available encryption algorithms"""
+    """Return supported encryption algorithms"""
 
     return _enc_algs
+
+
+def get_default_encryption_algs():
+    """Return default encryption algorithms"""
+
+    return _default_enc_algs
 
 
 def get_encryption_params(enc_alg, mac_alg=b''):
@@ -243,21 +255,36 @@ def get_encryption(enc_alg, key, iv, mac_alg=b'', mac_key=b'', etm=False):
 # pylint: disable=bad-whitespace
 
 _enc_alg_list = (
-    (b'chacha20-poly1305@openssh.com', ChachaEncryption, 'chacha20-poly1305'),
-    (b'aes256-gcm@openssh.com',        GCMEncryption,    'aes256-gcm'),
-    (b'aes128-gcm@openssh.com',        GCMEncryption,    'aes128-gcm'),
-    (b'aes256-ctr',                    BasicEncryption,  'aes256-ctr'),
-    (b'aes192-ctr',                    BasicEncryption,  'aes192-ctr'),
-    (b'aes128-ctr',                    BasicEncryption,  'aes128-ctr'),
-    (b'aes256-cbc',                    BasicEncryption,  'aes256-cbc'),
-    (b'aes192-cbc',                    BasicEncryption,  'aes192-cbc'),
-    (b'aes128-cbc',                    BasicEncryption,  'aes128-cbc'),
-    (b'3des-cbc',                      BasicEncryption,  'des3-cbc'),
-    (b'blowfish-cbc',                  BasicEncryption,  'blowfish-cbc'),
-    (b'cast128-cbc',                   BasicEncryption,  'cast128-cbc'),
-    (b'arcfour256',                    BasicEncryption,  'arcfour256'),
-    (b'arcfour128',                    BasicEncryption,  'arcfour128'),
-    (b'arcfour',                       BasicEncryption,  'arcfour')
+    (b'chacha20-poly1305@openssh.com', ChachaEncryption,
+     'chacha20-poly1305', True),
+    (b'aes256-gcm@openssh.com',        GCMEncryption,
+     'aes256-gcm',        True),
+    (b'aes128-gcm@openssh.com',        GCMEncryption,
+     'aes128-gcm',        True),
+    (b'aes256-ctr',                    BasicEncryption,
+     'aes256-ctr',        True),
+    (b'aes192-ctr',                    BasicEncryption,
+     'aes192-ctr',        True),
+    (b'aes128-ctr',                    BasicEncryption,
+     'aes128-ctr',        True),
+    (b'aes256-cbc',                    BasicEncryption,
+     'aes256-cbc',        False),
+    (b'aes192-cbc',                    BasicEncryption,
+     'aes192-cbc',        False),
+    (b'aes128-cbc',                    BasicEncryption,
+     'aes128-cbc',        False),
+    (b'3des-cbc',                      BasicEncryption,
+     'des3-cbc',          False),
+    (b'blowfish-cbc',                  BasicEncryption,
+     'blowfish-cbc',      False),
+    (b'cast128-cbc',                   BasicEncryption,
+     'cast128-cbc',       False),
+    (b'arcfour256',                    BasicEncryption,
+     'arcfour256',        False),
+    (b'arcfour128',                    BasicEncryption,
+     'arcfour128',        False),
+    (b'arcfour',                       BasicEncryption,
+     'arcfour',           False)
 )
 
 for _enc_alg_args in _enc_alg_list:

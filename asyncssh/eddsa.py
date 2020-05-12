@@ -181,14 +181,14 @@ class _Ed448Key(_EdKey):
 
 
 if ed25519_available: # pragma: no branch
-    register_public_key_alg(b'ssh-ed25519', _Ed25519Key)
+    register_public_key_alg(b'ssh-ed25519', _Ed25519Key, True)
 
     register_certificate_alg(1, b'ssh-ed25519',
                              b'ssh-ed25519-cert-v01@openssh.com',
-                             _Ed25519Key, SSHOpenSSHCertificateV01)
+                             _Ed25519Key, SSHOpenSSHCertificateV01, True)
 
 if ed448_available: # pragma: no branch
-    register_public_key_alg(b'ssh-ed448', _Ed448Key)
+    register_public_key_alg(b'ssh-ed448', _Ed448Key, True)
 
     register_certificate_alg(1, b'ssh-ed448', b'ssh-ed448-cert-v01@openssh.com',
-                             _Ed448Key, SSHOpenSSHCertificateV01)
+                             _Ed448Key, SSHOpenSSHCertificateV01, True)

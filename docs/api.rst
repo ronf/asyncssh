@@ -1875,13 +1875,27 @@ KeyGenerationError
 Supported Algorithms
 ====================
 
+Algorithms can be specified as either an ordered list of exact algorithm
+names or as a string of comma-separated positive and negative wildcard
+patterns. A "*" in a pattern matches zero or more characters and a "?"
+matches exactly one character. Negative patterns are prefixed with a "!"
+and will exclude things otherwise matched by the positive patterns from
+being returned.
+
+When specifying algorithms as a string, it can also be prefixed with "^"
+to insert the matching algorithms in front of the default algorithms of
+that type, a "+" to insert the matching algorithms after the default
+algorithms, or a "-" to return the default algorithms with the matching
+algorithms removed.
+
 .. index:: Key exchange algorithms
 .. _KexAlgs:
 
 Key exchange algorithms
 -----------------------
 
-The following are the key exchange algorithms currently supported by AsyncSSH:
+The following are the default key exchange algorithms currently supported
+by AsyncSSH:
 
   | gss-curve25519-sha256
   | gss-curve448-sha512
@@ -1890,14 +1904,12 @@ The following are the key exchange algorithms currently supported by AsyncSSH:
   | gss-nistp256-sha256
   | gss-1.3.132.0.10-sha256
   | gss-gex-sha256
-  | gss-gex-sha1
   | gss-group14-sha256
   | gss-group15-sha512
   | gss-group16-sha512
   | gss-group17-sha512
   | gss-group18-sha512
   | gss-group14-sha1
-  | gss-group1-sha1
   | curve25519-sha256
   | curve25519-sha256\@libssh.org
   | curve448-sha512
@@ -1906,15 +1918,21 @@ The following are the key exchange algorithms currently supported by AsyncSSH:
   | ecdh-sha2-nistp256
   | ecdh-sha2-1.3.132.0.10
   | diffie-hellman-group-exchange-sha256
-  | diffie-hellman-group-exchange-sha1
   | diffie-hellman-group14-sha256
   | diffie-hellman-group15-sha512
   | diffie-hellman-group16-sha512
   | diffie-hellman-group17-sha512
   | diffie-hellman-group18-sha512
   | diffie-hellman-group14-sha1
-  | diffie-hellman-group1-sha1
   | rsa2048-sha256
+
+The following key exchange algorithms are supported by AsyncSSH, but
+disabled by default:
+
+  | gss-gex-sha1
+  | gss-group1-sha1
+  | diffie-hellman-group-exchange-sha1
+  | diffie-hellman-group1-sha1
   | rsa1024-sha1
 
 GSS authentication support is only available when the gssapi package is
@@ -1930,14 +1948,19 @@ libnacl package and libsodium library are installed.
 Encryption algorithms
 ---------------------
 
-The following are the encryption algorithms currently supported by AsyncSSH:
+The following are the default encryption algorithms currently supported
+by AsyncSSH:
 
   | chacha20-poly1305\@openssh.com
+  | aes256-gcm\@openssh.com
+  | aes128-gcm\@openssh.com
   | aes256-ctr
   | aes192-ctr
   | aes128-ctr
-  | aes256-gcm\@openssh.com
-  | aes128-gcm\@openssh.com
+
+The following encryption algorithms are supported by AsyncSSH, but
+disabled by default:
+
   | aes256-cbc
   | aes192-cbc
   | aes128-cbc
@@ -1957,23 +1980,27 @@ or the libnacl package and libsodium library are installed.
 MAC algorithms
 --------------
 
-The following are the MAC algorithms currently supported by AsyncSSH:
+The following are the default MAC algorithms currently supported by AsyncSSH:
 
   | umac-64-etm\@openssh.com
   | umac-128-etm\@openssh.com
   | hmac-sha2-256-etm\@openssh.com
   | hmac-sha2-512-etm\@openssh.com
   | hmac-sha1-etm\@openssh.com
-  | hmac-md5-etm\@openssh.com
-  | hmac-sha2-256-96-etm\@openssh.com
-  | hmac-sha2-512-96-etm\@openssh.com
-  | hmac-sha1-96-etm\@openssh.com
-  | hmac-md5-96-etm\@openssh.com
   | umac-64\@openssh.com
   | umac-128\@openssh.com
   | hmac-sha2-256
   | hmac-sha2-512
   | hmac-sha1
+
+The following MAC algorithms are supported by AsyncSSH, but disabled
+by default:
+
+  | hmac-md5-etm\@openssh.com
+  | hmac-sha2-256-96-etm\@openssh.com
+  | hmac-sha2-512-96-etm\@openssh.com
+  | hmac-sha1-96-etm\@openssh.com
+  | hmac-md5-96-etm\@openssh.com
   | hmac-md5
   | hmac-sha2-256-96
   | hmac-sha2-512-96
@@ -1988,11 +2015,16 @@ UMAC support is only available when the nettle library is installed.
 Compression algorithms
 ----------------------
 
-The following are the compression algorithms currently supported by AsyncSSH:
+The following are the default compression algorithms currently supported
+by AsyncSSH:
 
   | zlib\@openssh.com
-  | zlib
   | none
+
+The following compression algorithms are supported by AsyncSSH, but disabled
+by default:
+
+  | zlib
 
 .. index:: Signature algorithms
 .. _SignatureAlgs:
@@ -2000,8 +2032,8 @@ The following are the compression algorithms currently supported by AsyncSSH:
 Signature algorithms
 --------------------
 
-The following are the public key signature algorithms currently supported by
-AsyncSSH:
+The following are the default public key signature algorithms currently
+supported by AsyncSSH:
 
   | x509v3-ecdsa-sha2-nistp521
   | x509v3-ecdsa-sha2-nistp384
@@ -2009,7 +2041,6 @@ AsyncSSH:
   | x509v3-ecdsa-sha2-1.3.132.0.10
   | x509v3-rsa2048-sha256
   | x509v3-ssh-rsa
-  | x509v3-ssh-dss
   | sk-ssh-ed25519\@openssh.com
   | sk-ecdsa-sha2-nistp256\@openssh.com
   | ssh-ed25519
@@ -2021,6 +2052,11 @@ AsyncSSH:
   | rsa-sha2-256
   | rsa-sha2-512
   | ssh-rsa
+
+The following public key signature algorithms are supported by AsyncSSH,
+but disabled by default:
+
+  | x509v3-ssh-dss
   | ssh-dss
 
 .. index:: Public key & certificate algorithms
@@ -2029,8 +2065,8 @@ AsyncSSH:
 Public key & certificate algorithms
 -----------------------------------
 
-The following are the public key and certificate algorithms currently
-supported by AsyncSSH:
+The following are the default public key and certificate algorithms
+currently supported by AsyncSSH:
 
   | x509v3-ecdsa-sha2-nistp521
   | x509v3-ecdsa-sha2-nistp384
@@ -2038,7 +2074,6 @@ supported by AsyncSSH:
   | x509v3-ecdsa-sha2-1.3.132.0.10
   | x509v3-rsa2048-sha256
   | x509v3-ssh-rsa
-  | x509v3-ssh-dss
   | sk-ssh-ed25519-cert-v01\@openssh.com
   | sk-ecdsa-sha2-nistp256-cert-v01\@openssh.com
   | ssh-ed25519-cert-v01\@openssh.com
@@ -2048,7 +2083,6 @@ supported by AsyncSSH:
   | ecdsa-sha2-nistp256-cert-v01\@openssh.com
   | ecdsa-sha2-1.3.132.0.10-cert-v01\@openssh.com
   | ssh-rsa-cert-v01\@openssh.com
-  | ssh-dss-cert-v01\@openssh.com
   | sk-ssh-ed25519\@openssh.com
   | sk-ecdsa-sha2-nistp256\@openssh.com
   | ssh-ed25519
@@ -2060,6 +2094,12 @@ supported by AsyncSSH:
   | rsa-sha2-256
   | rsa-sha2-512
   | ssh-rsa
+
+The following public key and certificate algorithms are supported by
+AsyncSSH, but disabled by default:
+
+  | x509v3-ssh-dss
+  | ssh-dss-cert-v01\@openssh.com
   | ssh-dss
 
 Ed25519 and Ed448 support is available when OpenSSL 1.1.1b or later is
