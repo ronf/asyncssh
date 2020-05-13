@@ -99,7 +99,7 @@ from .misc import get_symbol_names, ip_address, map_handler_name
 from .packet import Boolean, Byte, NameList, String, UInt32
 from .packet import PacketDecodeError, SSHPacket, SSHPacketHandler
 
-from .pattern import WildcardPatternList
+from .pattern import WildcardPattern
 
 from .process import PIPE, SSHClientProcess, SSHServerProcess
 
@@ -238,10 +238,13 @@ def _expand_algs(algs, possible_algs, default_algs):
     else:
         prefix = ''
 
-    pattern = WildcardPatternList(algs)
+    matched = []
 
-    matched = [alg for alg in possible_algs
-               if pattern.matches(alg.decode('ascii'))]
+    for alg in algs.split(','):
+        pattern = WildcardPattern(alg)
+
+        matched.extend([alg for alg in possible_algs
+                        if pattern.matches(alg.decode('ascii'))])
 
     if prefix == '^':
         return matched + default_algs

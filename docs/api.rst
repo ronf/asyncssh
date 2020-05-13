@@ -1875,17 +1875,15 @@ KeyGenerationError
 Supported Algorithms
 ====================
 
-Algorithms can be specified as either an ordered list of exact algorithm
-names or as a string of comma-separated positive and negative wildcard
-patterns. A "*" in a pattern matches zero or more characters and a "?"
-matches exactly one character. Negative patterns are prefixed with a "!"
-and will exclude things otherwise matched by the positive patterns from
-being returned.
+Algorithms can be specified as either an list of exact algorithm names
+or as a string of comma-separated algorithm names that may optionally
+include wildcards. A '*' in a name matches zero or more characters and
+a '?' matches exactly one character.
 
-When specifying algorithms as a string, it can also be prefixed with "^"
+When specifying algorithms as a string, it can also be prefixed with '^'
 to insert the matching algorithms in front of the default algorithms of
-that type, a "+" to insert the matching algorithms after the default
-algorithms, or a "-" to return the default algorithms with the matching
+that type, a '+' to insert the matching algorithms after the default
+algorithms, or a '-' to return the default algorithms with the matching
 algorithms removed.
 
 .. index:: Key exchange algorithms
