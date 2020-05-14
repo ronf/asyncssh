@@ -2915,8 +2915,8 @@ class SSHClientConnection(SSHConnection):
                 self._x11_listener = None
 
     async def create_session(self, session_factory, command=None, *,
-                             subsystem=None, env={}, term_type=None,
-                             term_size=None, term_modes={},
+                             subsystem=None, env=None, send_env=None,
+                             term_type=None, term_size=None, term_modes=None,
                              x11_forwarding=False, x11_display=None,
                              x11_auth_path=None, x11_single_connection=False,
                              encoding='utf-8', errors='strict',
@@ -2951,16 +2951,22 @@ class SSHClientConnection(SSHConnection):
            :param subsystem: (optional)
                The name of a remote subsystem to start up
            :param env: (optional)
-               The set of environment variables to set for this session.
-               Keys and values passed in here will be converted to
-               Unicode strings encoded as UTF-8 (ISO 10646) for
-               transmission.
+               The  environment variables to set for this session. Keys and
+               values passed in here will be converted to Unicode strings
+               encoded as UTF-8 (ISO 10646) for transmission.
 
                .. note:: Many SSH servers restrict which environment
                          variables a client is allowed to set. The
                          server's configuration may need to be edited
                          before environment variables can be
                          successfully set in the remote environment.
+           :param send_env: (optional)
+               A list of environment variable names to pull from
+               `os.environ` and set for this session. Wildcards patterns
+               using `'*'` and `'?'` are allowed, and all variables with
+               matching names will be sent with whatever value is set
+               in the local environment.  If a variable is present in both
+               env and send_env, the value from env will be used.
            :param term_type: (optional)
                The terminal type to set for this session. If this is not set,
                a pseudo-terminal will not be requested for this session.
@@ -2997,6 +3003,7 @@ class SSHClientConnection(SSHConnection):
            :type command: `str`
            :type subsystem: `str`
            :type env: `dict`
+           :type send_env: `str` or `list` of `str`
            :type term_type: `str`
            :type term_size: `tuple` of 2 or 4 `int` values
            :type term_modes: `dict`
@@ -3015,13 +3022,28 @@ class SSHClientConnection(SSHConnection):
 
         """
 
+        new_env = {}
+
+        if send_env:
+            if isinstance(send_env, str):
+                send_env = send_env.split()
+
+            for key in send_env:
+                pattern = WildcardPattern(key)
+                new_env.update((key, value) for key, value in os.environ.items()
+                               if pattern.matches(key))
+
+        if env:
+            new_env.update(env)
+
         chan = SSHClientChannel(self, self._loop, encoding, errors,
                                 window, max_pktsize)
 
         session = await chan.create(session_factory, command, subsystem,
-                                    env, term_type, term_size, term_modes,
-                                    x11_forwarding, x11_display,
-                                    x11_auth_path, x11_single_connection,
+                                    new_env, term_type, term_size,
+                                    term_modes or {}, x11_forwarding,
+                                    x11_display, x11_auth_path,
+                                    x11_single_connection,
                                     bool(self._agent_forward_path))
 
         return chan, session
@@ -3818,8 +3840,8 @@ class SSHClientConnection(SSHConnection):
             raise
 
     @async_context_manager
-    async def start_sftp_client(self, env=None, path_encoding='utf-8',
-                                path_errors='strict'):
+    async def start_sftp_client(self, env=None, send_env=None,
+                                path_encoding='utf-8', path_errors='strict'):
         """Start an SFTP client
 
            This method is a coroutine which attempts to start a secure
@@ -3834,21 +3856,29 @@ class SSHClientConnection(SSHConnection):
            strings.
 
            :param env: (optional)
-               The set of environment variables to set for this SFTP
-               session. Keys and values passed in here will be converted
-               to Unicode strings encoded as UTF-8 (ISO 10646) for
-               transmission.
+               The environment variables to set for this SFTP session. Keys
+               and values passed in here will be converted to Unicode
+               strings encoded as UTF-8 (ISO 10646) for transmission.
 
                .. note:: Many SSH servers restrict which environment
                          variables a client is allowed to set. The
                          server's configuration may need to be edited
                          before environment variables can be
                          successfully set in the remote environment.
+           :param send_env: (optional)
+               A list of environment variable names to pull from
+               `os.environ` and set for this SFTP session. Wildcards
+               patterns using `'*'` and `'?'` are allowed, and all variables
+               with matching names will be sent with whatever value is set
+               in the local environment.  If a variable is present in both
+               env and send_env, the value from env will be used.
            :param path_encoding:
                The Unicode encoding to apply when sending and receiving
                remote pathnames
            :param path_errors:
                The error handling strategy to apply on encode/decode errors
+           :type env: `dict`
+           :type send_env: `list` of `str`
            :type path_encoding: `str`
            :type path_errors: `str`
 
@@ -3859,7 +3889,7 @@ class SSHClientConnection(SSHConnection):
         """
 
         writer, reader, _ = await self.open_session(subsystem='sftp',
-                                                    env=env or {},
+                                                    env=env, send_env=send_env,
                                                     encoding=None)
 
         return await start_sftp_client(self, self._loop, reader, writer,

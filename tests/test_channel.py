@@ -21,6 +21,7 @@
 """Unit tests for AsyncSSH channel API"""
 
 import asyncio
+import os
 import tempfile
 from signal import SIGINT
 
@@ -1025,7 +1026,7 @@ class _TestChannel(ServerTestCase):
 
     @asynctest
     async def test_env(self):
-        """Test sending environment"""
+        """Test setting environment"""
 
         async with self.connect() as conn:
             chan, session = await _create_session(conn, 'env',
@@ -1035,6 +1036,41 @@ class _TestChannel(ServerTestCase):
 
             result = ''.join(session.recv_buf[None])
             self.assertEqual(result, 'test\n')
+
+    @asynctest
+    async def test_send_env(self):
+        """Test sending local environment"""
+
+        async with self.connect() as conn:
+            try:
+                os.environ['TEST'] = 'test'
+                chan, session = await _create_session(conn, 'env',
+                                                      send_env=['TEST'])
+            finally:
+                del os.environ['TEST']
+
+            await chan.wait_closed()
+
+            result = ''.join(session.recv_buf[None])
+            self.assertEqual(result, 'test\n')
+
+    @asynctest
+    async def test_mixed_env(self):
+        """Test sending a mix of local environment and new values"""
+
+        async with self.connect() as conn:
+            try:
+                os.environ['TEST'] = '1'
+                chan, session = await _create_session(conn, 'env',
+                                                      env={'TEST': 2},
+                                                      send_env='TEST')
+            finally:
+                del os.environ['TEST']
+
+            await chan.wait_closed()
+
+            result = ''.join(session.recv_buf[None])
+            self.assertEqual(result, '2\n')
 
     @asynctest
     async def test_invalid_env(self):
