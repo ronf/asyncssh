@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2019 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2020 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -26,6 +26,7 @@ import ipaddress
 import socket
 
 from collections import OrderedDict
+from pathlib import Path
 from random import SystemRandom
 
 from .constants import DEFAULT_LANG
@@ -135,6 +136,12 @@ def ip_network(addr):
         mask = ''
 
     return ipaddress.ip_network(_normalize_scoped_ip(addr) + mask)
+
+
+def open_file(filename, *args, **kwargs):
+    """Open a file with home directory expansion"""
+
+    return open(Path(filename).expanduser(), *args, **kwargs)
 
 
 def async_context_manager(coro):

@@ -1,4 +1,4 @@
-# Copyright (c) 2016-2019 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2016-2020 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -31,7 +31,7 @@ import socket
 import stat
 
 from .constants import DEFAULT_LANG, EXTENDED_DATA_STDERR
-from .misc import Error, ProtocolError, Record
+from .misc import Error, ProtocolError, Record, open_file
 from .stream import SSHClientStreamSession, SSHServerStreamSession
 from .stream import SSHReader, SSHWriter
 
@@ -677,9 +677,9 @@ class SSHProcess:
                                    self._encoding, self._errors)
         else:
             if isinstance(source, str):
-                file = open(source, 'rb', buffering=bufsize)
+                file = open_file(source, 'rb', buffering=bufsize)
             elif isinstance(source, PurePath):
-                file = open(str(source), 'rb', buffering=bufsize)
+                file = open_file(str(source), 'rb', buffering=bufsize)
             elif isinstance(source, int):
                 file = os.fdopen(source, 'rb', buffering=bufsize)
             elif isinstance(source, socket.socket):
@@ -731,9 +731,9 @@ class SSHProcess:
             writer = _StreamWriter(target, self._encoding, self._errors)
         else:
             if isinstance(target, str):
-                file = open(target, 'wb', buffering=bufsize)
+                file = open_file(target, 'wb', buffering=bufsize)
             elif isinstance(target, PurePath):
-                file = open(str(target), 'wb', buffering=bufsize)
+                file = open_file(str(target), 'wb', buffering=bufsize)
             elif isinstance(target, int):
                 file = os.fdopen(target, 'wb', buffering=bufsize)
             elif isinstance(target, socket.socket):

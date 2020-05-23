@@ -32,6 +32,7 @@ import time
 
 from collections import OrderedDict
 from functools import partial
+from pathlib import Path
 
 from .agent import SSHAgentClient, SSHAgentListener
 
@@ -2463,12 +2464,12 @@ class SSHClientConnection(SSHConnection):
             self._trusted_ca_keys = None
         else:
             if not self._known_hosts:
-                default_known_hosts = os.path.join(os.path.expanduser('~'),
-                                                   '.ssh', 'known_hosts')
+                default_known_hosts = Path('~', '.ssh',
+                                           'known_hosts').expanduser()
 
-                if (os.path.isfile(default_known_hosts) and
+                if (default_known_hosts.is_file() and
                         os.access(default_known_hosts, os.R_OK)):
-                    self._known_hosts = default_known_hosts
+                    self._known_hosts = str(default_known_hosts)
                 else:
                     self._known_hosts = b''
 
@@ -4661,7 +4662,7 @@ class SSHServerConnection(SSHConnection):
 
         try:
             tempdir = tempfile.TemporaryDirectory(prefix='asyncssh-')
-            path = os.path.join(tempdir.name, 'agent')
+            path = str(Path(tempdir.name, 'agent'))
 
             unix_listener = await create_unix_forward_listener(
                 self, self._loop, self.create_agent_connection, path)
@@ -5130,7 +5131,7 @@ class SSHConnectionOptions(Options):
 
         if x509_trusted_cert_paths:
             for path in x509_trusted_cert_paths:
-                if not os.path.isdir(path):
+                if not Path(path).is_dir():
                     raise ValueError('Path not a directory: ' + str(path))
 
         self.x509_trusted_certs = x509_trusted_certs
@@ -5352,18 +5353,16 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
         """Prepare client connection configuration options"""
 
         if x509_trusted_certs == ():
-            default_x509_certs = os.path.join(os.path.expanduser('~'),
-                                              '.ssh', 'ca-bundle.crt')
+            default_x509_certs = Path('~', '.ssh', 'ca-bundle.crt').expanduser()
 
             if os.access(default_x509_certs, os.R_OK):
-                x509_trusted_certs = default_x509_certs
+                x509_trusted_certs = str(default_x509_certs)
 
         if x509_trusted_cert_paths == ():
-            default_x509_cert_path = os.path.join(os.path.expanduser('~'),
-                                                  '.ssh', 'crt')
+            default_x509_cert_path = Path('~', '.ssh', 'crt').expanduser()
 
-            if os.path.isdir(default_x509_cert_path):
-                x509_trusted_cert_paths = [default_x509_cert_path]
+            if default_x509_cert_path.is_dir():
+                x509_trusted_cert_paths = [str(default_x509_cert_path)]
 
         super().prepare(client_factory or SSHClient, client_version,
                         kex_algs, encryption_algs, mac_algs, compression_algs,

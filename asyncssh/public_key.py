@@ -42,7 +42,7 @@ except ImportError: # pragma: no cover
 
 from .asn1 import ASN1DecodeError, BitString, der_encode, der_decode
 from .encryption import get_encryption_params, get_encryption
-from .misc import ip_network
+from .misc import ip_network, open_file
 from .packet import NameList, String, UInt32, UInt64
 from .packet import PacketDecodeError, SSHPacket
 from .pbe import KeyEncryptionError, pkcs1_encrypt, pkcs8_encrypt
@@ -1116,7 +1116,7 @@ class SSHKey:
         if isinstance(filename, PurePath):
             filename = str(filename)
 
-        with open(filename, 'wb') as f:
+        with open_file(filename, 'wb') as f:
             f.write(self.export_private_key(*args, **kwargs))
 
     def write_public_key(self, filename, *args, **kwargs):
@@ -1137,7 +1137,7 @@ class SSHKey:
         if isinstance(filename, PurePath):
             filename = str(filename)
 
-        with open(filename, 'wb') as f:
+        with open_file(filename, 'wb') as f:
             f.write(self.export_public_key(*args, **kwargs))
 
     def append_private_key(self, filename, *args, **kwargs):
@@ -1158,7 +1158,7 @@ class SSHKey:
         if isinstance(filename, PurePath):
             filename = str(filename)
 
-        with open(filename, 'ab') as f:
+        with open_file(filename, 'ab') as f:
             f.write(self.export_private_key(*args, **kwargs))
 
     def append_public_key(self, filename, *args, **kwargs):
@@ -1179,7 +1179,7 @@ class SSHKey:
         if isinstance(filename, PurePath):
             filename = str(filename)
 
-        with open(filename, 'ab') as f:
+        with open_file(filename, 'ab') as f:
             f.write(self.export_public_key(*args, **kwargs))
 
 
@@ -1347,7 +1347,7 @@ class SSHCertificate:
         if isinstance(filename, PurePath):
             filename = str(filename)
 
-        with open(filename, 'wb') as f:
+        with open_file(filename, 'wb') as f:
             f.write(self.export_certificate(*args, **kwargs))
 
     def append_certificate(self, filename, *args, **kwargs):
@@ -1368,7 +1368,7 @@ class SSHCertificate:
         if isinstance(filename, PurePath):
             filename = str(filename)
 
-        with open(filename, 'ab') as f:
+        with open_file(filename, 'ab') as f:
             f.write(self.export_certificate(*args, **kwargs))
 
 
@@ -2927,7 +2927,7 @@ def read_private_key(filename, passphrase=None):
     if isinstance(filename, PurePath):
         filename = str(filename)
 
-    with open(filename, 'rb') as f:
+    with open_file(filename, 'rb') as f:
         key = import_private_key(f.read(), passphrase)
 
     key.set_filename(filename)
@@ -2941,7 +2941,7 @@ def read_private_key_and_certs(filename, passphrase=None):
     if isinstance(filename, PurePath):
         filename = str(filename)
 
-    with open(filename, 'rb') as f:
+    with open_file(filename, 'rb') as f:
         key, cert = import_private_key_and_certs(f.read(), passphrase)
 
     key.set_filename(filename)
@@ -2967,7 +2967,7 @@ def read_public_key(filename):
     if isinstance(filename, PurePath):
         filename = str(filename)
 
-    with open(filename, 'rb') as f:
+    with open_file(filename, 'rb') as f:
         key = import_public_key(f.read())
 
     key.set_filename(filename)
@@ -2993,7 +2993,7 @@ def read_certificate(filename):
     if isinstance(filename, PurePath):
         filename = str(filename)
 
-    with open(filename, 'rb') as f:
+    with open_file(filename, 'rb') as f:
         return import_certificate(f.read())
 
 
@@ -3019,7 +3019,7 @@ def read_private_key_list(filename, passphrase=None):
     if isinstance(filename, PurePath):
         filename = str(filename)
 
-    with open(filename, 'rb') as f:
+    with open_file(filename, 'rb') as f:
         data = f.read()
 
     keys = []
@@ -3056,7 +3056,7 @@ def read_public_key_list(filename):
     if isinstance(filename, PurePath):
         filename = str(filename)
 
-    with open(filename, 'rb') as f:
+    with open_file(filename, 'rb') as f:
         data = f.read()
 
     keys = []
@@ -3093,7 +3093,7 @@ def read_certificate_list(filename):
     if isinstance(filename, PurePath):
         filename = str(filename)
 
-    with open(filename, 'rb') as f:
+    with open_file(filename, 'rb') as f:
         data = f.read()
 
     return _decode_certificate_list(data)
@@ -3224,7 +3224,7 @@ def load_default_keypairs(passphrase=None):
 
     for file in _DEFAULT_KEY_FILES:
         try:
-            file = Path(os.path.expanduser('~'), '.ssh', file)
+            file = Path('~', '.ssh', file).expanduser()
             result.extend(load_keypairs(file, passphrase))
         except KeyImportError as exc:
             # Ignore encrypted default keys if a passphrase isn't provided

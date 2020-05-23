@@ -1,4 +1,4 @@
-# Copyright (c) 2015-2018 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2015-2020 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -28,7 +28,7 @@ try:
 except ImportError: # pragma: no cover
     _x509_available = False
 
-from .misc import ip_address
+from .misc import ip_address, open_file
 from .pattern import HostPatternList, WildcardPatternList
 from .public_key import KeyImportError, import_public_key
 from .public_key import import_certificate, import_certificate_subject
@@ -308,5 +308,5 @@ def read_authorized_keys(filename):
 
     """
 
-    with open(filename, 'r') as f:
+    with open_file(filename, 'r') as f:
         return import_authorized_keys(f.read())

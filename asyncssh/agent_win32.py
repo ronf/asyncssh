@@ -1,4 +1,4 @@
-# Copyright (c) 2016-2019 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2016-2020 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -27,6 +27,8 @@ import asyncio
 import ctypes
 import ctypes.wintypes
 import errno
+
+from .misc import open_file
 
 try:
     import mmapfile
@@ -125,7 +127,7 @@ class _W10OpenSSHTransport:
     """Transport to connect to OpenSSH agent on Windows 10"""
 
     def __init__(self, agent_path):
-        self._agentfile = open(agent_path, 'r+b')
+        self._agentfile = open_file(agent_path, 'r+b')
 
     def write(self, data):
         """Write request data to OpenSSH agent"""

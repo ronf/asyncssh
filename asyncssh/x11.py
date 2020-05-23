@@ -1,4 +1,4 @@
-# Copyright (c) 2016-2019 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2016-2020 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -26,6 +26,7 @@ import socket
 import time
 
 from collections import namedtuple
+from pathlib import Path
 
 from .constants import OPEN_CONNECT_FAILED
 from .forward import SSHForwarder
@@ -352,7 +353,7 @@ def get_xauth_path(auth_path):
         auth_path = os.environ.get('XAUTHORITY')
 
     if not auth_path:
-        auth_path = os.path.join(os.path.expanduser('~'), '.Xauthority')
+        auth_path = str(Path('~', '.Xauthority').expanduser())
 
     return auth_path
 
