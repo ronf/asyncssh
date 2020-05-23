@@ -307,6 +307,10 @@ class _TestPublicKey(TempDirTestCase):
             self.assertEqual(keypair.public_data, chain.public_data)
             self.assertIsNotNone(keypair.get_agent_private_key())
 
+            keypair = asyncssh.load_keypairs('new', passphrase, 'new_cert')[0]
+            self.assertEqual(keypair.public_data, chain.public_data)
+            self.assertIsNotNone(keypair.get_agent_private_key())
+
             newkey.write_private_key('new_bundle', format_name, passphrase)
             cert.append_certificate('new_bundle', 'pem')
 
@@ -1423,12 +1427,18 @@ class _TestPublicKey(TempDirTestCase):
             keypair = asyncssh.load_keypairs((priv, self.usercert))[0]
             self.assertEqual(keypair.get_comment(), 'user_comment')
 
+            keypair = asyncssh.load_keypairs(priv, None, self.usercert)[0]
+            self.assertEqual(keypair.get_comment(), 'user_comment')
+
             pubdata = self.pubkey.export_public_key()
             keypair = asyncssh.load_keypairs((priv, pubdata))[0]
             self.assertEqual(keypair.get_comment(), 'pub_comment')
 
             certdata = self.usercert.export_certificate()
             keypair = asyncssh.load_keypairs((priv, certdata))[0]
+            self.assertEqual(keypair.get_comment(), 'user_comment')
+
+            keypair = asyncssh.load_keypairs(priv, None, certdata)[0]
             self.assertEqual(keypair.get_comment(), 'user_comment')
 
             priv.write_private_key('key')
@@ -1440,6 +1450,9 @@ class _TestPublicKey(TempDirTestCase):
             self.assertEqual(keypair.get_comment(), 'pub_comment')
 
             keypair = asyncssh.load_keypairs(('key', 'usercert'))[0]
+            self.assertEqual(keypair.get_comment(), 'user_comment')
+
+            keypair = asyncssh.load_keypairs('key', None, 'usercert')[0]
             self.assertEqual(keypair.get_comment(), 'user_comment')
 
             self.pubkey.write_public_key('key.pub')

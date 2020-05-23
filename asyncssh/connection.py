@@ -5216,6 +5216,9 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
            them in their typical locations. If `client_host_keysign` is
            not set, host private keys must be specified explicitly or
            host-based authentication will not be performed.
+       :param client_host_certs: (optional)
+           A list of optional certificates which can be paired with the
+           provided client host keys.
        :param client_host: (optional)
            The local hostname to use when performing host-based
            authentication. If not specified, the hostname associated with
@@ -5239,6 +5242,9 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
            :file:`.ssh/id_rsa-cert.pub`, and :file:`.ssh/id_dsa-cert.pub`.
            If this argument is explicitly set to `None`, client public key
            authentication will not be performed.
+       :param client_certs: (optional)
+           A list of optional certificates which can be paired with the
+           provided client keys.
        :param passphrase: (optional)
            The passphrase to use to decrypt client keys when loading them,
            if they are encrypted. If this is not specified, only unencrypted
@@ -5313,9 +5319,11 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
        :type client_host_keysign: `bool` or `str`
        :type client_host_keys:
            *see* :ref:`SpecifyingPrivateKeys` or :ref:`SpecifyingPublicKeys`
+       :type client_host_certs: *see* :ref:`SpecifyingCertificates`
        :type client_host: `str`
        :type client_username: `str`
        :type client_keys: *see* :ref:`SpecifyingPrivateKeys`
+       :type client_certs: *see* :ref:`SpecifyingCertificates`
        :type passphrase: `str`
        :type gss_host: `str`
        :type gss_delegate_creds: `bool`
@@ -5346,8 +5354,9 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
                 keepalive_interval=_DEFAULT_KEEPALIVE_INTERVAL,
                 keepalive_count_max=_DEFAULT_KEEPALIVE_COUNT_MAX,
                 known_hosts=(), server_host_key_algs=(), username=None,
-                password=None, client_host_keysign=False, client_host_keys=None,
-                client_host=None, client_username=None, client_keys=(),
+                password=None, client_host_keysign=False,
+                client_host_keys=None, client_host_certs=(), client_host=None,
+                client_username=None, client_keys=(), client_certs=(),
                 passphrase=None, gss_host=(), gss_delegate_creds=False,
                 agent_path=(), agent_forwarding=False):
         """Prepare client connection configuration options"""
@@ -5389,7 +5398,8 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
             else:
                 client_host_keys = load_default_host_public_keys()
         else:
-            client_host_keys = load_keypairs(client_host_keys, passphrase)
+            client_host_keys = load_keypairs(client_host_keys, passphrase,
+                                             client_host_certs)
 
         if client_username is None:
             client_username = getpass.getuser()
@@ -5408,13 +5418,13 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
         self.agent_path = None
 
         if client_keys:
-            client_keys = load_keypairs(client_keys, passphrase)
+            client_keys = load_keypairs(client_keys, passphrase, client_certs)
         else:
             if client_keys is not None:
                 self.agent_path = agent_path
 
             if client_keys == ():
-                client_keys = load_default_keypairs(passphrase)
+                client_keys = load_default_keypairs(passphrase, client_certs)
 
         self.agent_forward_path = agent_path if agent_forwarding else None
         self.client_keys = client_keys
@@ -5434,6 +5444,9 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
            used by the server as a host key. Either this argument or
            `gss_host` must be specified. If this is not specified,
            only GSS-based key exchange will be supported.
+       :param server_host_certs: (optional)
+           A list of optional certificates which can be paired with the
+           provided server host keys.
        :param passphrase: (optional)
            The passphrase to use to decrypt server host keys when loading
            them, if they are encrypted. If this is not specified, only
@@ -5584,6 +5597,7 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
            non-zero.
        :type server_factory: `callable`
        :type server_host_keys: *see* :ref:`SpecifyingPrivateKeys`
+       :type server_host_certs: *see* :ref:`SpecifyingCertificates`
        :type passphrase: `str`
        :type known_client_hosts: *see* :ref:`SpecifyingKnownHosts`
        :type trust_client_host: `bool`
@@ -5630,7 +5644,7 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
                 login_timeout=_DEFAULT_LOGIN_TIMEOUT,
                 keepalive_interval=_DEFAULT_KEEPALIVE_INTERVAL,
                 keepalive_count_max=_DEFAULT_KEEPALIVE_COUNT_MAX,
-                server_host_keys=None, passphrase=None,
+                server_host_keys=None, server_host_certs=(), passphrase=None,
                 known_client_hosts=None, trust_client_host=False,
                 authorized_client_keys=None, gss_host=(), allow_pty=True,
                 line_editor=True, line_history=_DEFAULT_LINE_HISTORY,
@@ -5648,7 +5662,8 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
                         rekey_bytes, rekey_seconds, login_timeout,
                         keepalive_interval, keepalive_count_max)
 
-        server_keys = load_keypairs(server_host_keys, passphrase)
+        server_keys = load_keypairs(server_host_keys, passphrase,
+                                    server_host_certs)
 
         self.server_host_keys = OrderedDict()
 

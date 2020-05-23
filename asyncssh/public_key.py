@@ -3099,7 +3099,7 @@ def read_certificate_list(filename):
     return _decode_certificate_list(data)
 
 
-def load_keypairs(keylist, passphrase=None):
+def load_keypairs(keylist, passphrase=None, certlist=()):
     """Load SSH private keys and optional matching certificates
 
        This function loads a list of SSH keys and optional matching
@@ -3112,14 +3112,21 @@ def load_keypairs(keylist, passphrase=None):
            The list of private keys and certificates to load.
        :param passphrase: (optional)
            The passphrase to use to decrypt private keys.
+       :param certlist: (optional)
+           A list of certificates to attempt to pair with the provided
+           list of private keys.
        :type keylist: *see* :ref:`SpecifyingPrivateKeys`
        :type passphrase: `str` or `bytes`
+       :type certlist: *see* :ref:`SpecifyingCertificates`
 
        :returns: A list of :class:`SSHKeyPair` objects
 
     """
 
     result = []
+
+    certlist = load_certificates(certlist)
+    certdict = {cert.key.public_data: cert for cert in certlist}
 
     if isinstance(keylist, (PurePath, str)):
         try:
@@ -3197,7 +3204,10 @@ def load_keypairs(keylist, passphrase=None):
             raise saved_exc # pylint: disable=raising-bad-type
 
         if not certs:
-            cert = None
+            cert = certdict.get(key.public_data)
+
+            if cert and cert.is_x509:
+                cert = SSHX509CertificateChain.construct_from_certs(certlist)
         elif len(certs) == 1 and not certs[0].is_x509:
             cert = certs[0]
         else:
@@ -3217,7 +3227,7 @@ def load_keypairs(keylist, passphrase=None):
     return result
 
 
-def load_default_keypairs(passphrase=None):
+def load_default_keypairs(passphrase=None, certlist=()):
     """Return a list of default keys from the user's home directory"""
 
     result = []
@@ -3225,7 +3235,7 @@ def load_default_keypairs(passphrase=None):
     for file in _DEFAULT_KEY_FILES:
         try:
             file = Path('~', '.ssh', file).expanduser()
-            result.extend(load_keypairs(file, passphrase))
+            result.extend(load_keypairs(file, passphrase, certlist))
         except KeyImportError as exc:
             # Ignore encrypted default keys if a passphrase isn't provided
             # and unknown key types that might not be supported

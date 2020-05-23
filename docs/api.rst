@@ -1297,6 +1297,12 @@ provided. These certificates should form a trust chain from a user or
 host certificate up to some self-signed root certificate authority
 which is trusted by the remote system.
 
+Instead of passing tuples of keys and certificates or relying on file
+naming conventions for certificates, you also have the option of
+providing a list of keys and a seperate list of certificates. In this
+case, AsyncSSH will automatically match up the keys with their
+associated certificates when they are present.
+
 New private keys can be generated using the :func:`generate_private_key`
 function. The resulting :class:`SSHKey` objects have methods which can
 then be used to export the generated keys in several formats for
