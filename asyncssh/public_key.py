@@ -21,12 +21,13 @@
 """SSH asymmetric encryption handlers"""
 
 import binascii
-from datetime import datetime, timedelta
-from hashlib import md5, sha1, sha256, sha384, sha512
 import os
-from pathlib import Path, PurePath
 import re
 import time
+
+from datetime import datetime
+from hashlib import md5, sha1, sha256, sha384, sha512
+from pathlib import Path, PurePath
 
 try:
     from .crypto import generate_x509_certificate, import_x509_certificate
@@ -42,7 +43,7 @@ except ImportError: # pragma: no cover
 
 from .asn1 import ASN1DecodeError, BitString, der_encode, der_decode
 from .encryption import get_encryption_params, get_encryption
-from .misc import ip_network, open_file
+from .misc import ip_network, open_file, parse_time_interval
 from .packet import NameList, String, UInt32, UInt64
 from .packet import PacketDecodeError, SSHPacket
 from .pbe import KeyEncryptionError, pkcs1_encrypt, pkcs8_encrypt
@@ -82,11 +83,6 @@ _pkcs8_oid_map = {}
 
 _abs_date_pattern = re.compile(r'\d{8}')
 _abs_time_pattern = re.compile(r'\d{14}')
-_rel_time_pattern = re.compile(r'(?:(?P<weeks>[+-]?\d+)[Ww]|'
-                               r'(?P<days>[+-]?\d+)[Dd]|'
-                               r'(?P<hours>[+-]?\d+)[Hh]|'
-                               r'(?P<minutes>[+-]?\d+)[Mm]|'
-                               r'(?P<seconds>[+-]?\d+)[Ss])+')
 
 _subject_pattern = re.compile(r'(?:Distinguished[ -_]?Name|Subject|DN)[=:]?\s?',
                               re.IGNORECASE)
@@ -124,10 +120,10 @@ def _parse_time(t):
         if match:
             return int(datetime.strptime(t, '%Y%m%d%H%M%S').timestamp())
 
-        match = _rel_time_pattern.fullmatch(t)
-        if match:
-            delta = {k: int(v) for k, v in match.groupdict(0).items()}
-            return int(time.time() + timedelta(**delta).total_seconds())
+        try:
+            return int(time.time() + parse_time_interval(t))
+        except ValueError:
+            pass
 
     raise ValueError('Unrecognized time value')
 

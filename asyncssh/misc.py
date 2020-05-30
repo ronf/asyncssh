@@ -23,6 +23,7 @@
 import codecs
 import functools
 import ipaddress
+import re
 import socket
 
 from collections import OrderedDict
@@ -42,6 +43,11 @@ from .constants import DISC_SERVICE_NOT_AVAILABLE
 # we get back numbers suitable for cryptographic use.
 _random = SystemRandom()
 randrange = _random.randrange
+
+_unit_pattern = re.compile(r'([A-Za-z])')
+_byte_units = {'': 1, 'k': 1024, 'm': 1024*1024, 'g': 1024*1024*1024}
+_time_units = {'': 1, 's': 1, 'm': 60, 'h': 60*60,
+               'd': 24*60*60, 'w': 7*24*60*60}
 
 
 def hide_empty(value, prefix=', '):
@@ -142,6 +148,35 @@ def open_file(filename, *args, **kwargs):
     """Open a file with home directory expansion"""
 
     return open(Path(filename).expanduser(), *args, **kwargs)
+
+
+def _parse_units(value, suffixes, label):
+    """Parse a series of integers followed by unit suffixes"""
+
+    matches = _unit_pattern.split(value)
+
+    if matches[-1]:
+        matches.append('')
+    else:
+        matches.pop()
+
+    try:
+        return sum(float(matches[i]) * suffixes[matches[i+1].lower()]
+                   for i in range(0, len(matches), 2))
+    except KeyError:
+        raise ValueError('Invalid ' + label) from None
+
+
+def parse_byte_count(value):
+    """Parse a byte count with optional k, m, or g suffixes"""
+
+    return _parse_units(value, _byte_units, 'byte count')
+
+
+def parse_time_interval(value):
+    """Parse a time interval with optional s, m, h, d, or w suffixes"""
+
+    return _parse_units(value, _time_units, 'time interval')
 
 
 def async_context_manager(coro):
