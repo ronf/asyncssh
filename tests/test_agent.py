@@ -286,6 +286,7 @@ class _TestAgent(AsyncTestCase):
                     with self.assertRaises(ValueError):
                         await agent.add_keys([key])
         finally:
+            await mock_agent.stop()
             os.remove(os.path.join('.ssh', 'id_rsa'))
             os.rmdir('.ssh')
 

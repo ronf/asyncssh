@@ -960,14 +960,38 @@ class _TestConnection(ServerTestCase):
             await conn.wait_closed()
 
     @asynctest
+    async def test_client_keepalive_string(self):
+        """Test sending keepalive from client with string argument"""
+
+        with patch('asyncssh.connection.SSHServerConnection',
+                   _KeepaliveServerConnection):
+            conn = await self.connect(keepalive_interval='0.1s')
+            await conn.wait_closed()
+
+    @asynctest
     async def test_client_set_keepalive_interval(self):
         """Test sending keepalive interval with set_keepalive"""
 
         with patch('asyncssh.connection.SSHServerConnection',
                    _KeepaliveServerConnection):
             conn = await self.connect()
-            conn.set_keepalive(0.1)
+            conn.set_keepalive('0m0.1s')
             await conn.wait_closed()
+
+    @asynctest
+    async def test_invalid_client_keepalive(self):
+        """Test setting invalid keepalive from client"""
+
+        with self.assertRaises(ValueError):
+            await self.connect(keepalive_interval=-1)
+
+    @asynctest
+    async def test_client_set_invalid_keepalive_interval(self):
+        """Test setting invalid keepalive interval with set_keepalive"""
+
+        async with self.connect() as conn:
+            with self.assertRaises(ValueError):
+                conn.set_keepalive(interval=-1)
 
     @asynctest
     async def test_client_set_keepalive_count_max(self):
@@ -980,6 +1004,21 @@ class _TestConnection(ServerTestCase):
             await conn.wait_closed()
 
     @asynctest
+    async def test_invalid_client_keepalive_count_max(self):
+        """Test setting invalid keepalive count max from client"""
+
+        with self.assertRaises(ValueError):
+            await self.connect(keepalive_count_max=-1)
+
+    @asynctest
+    async def test_client_set_invalid_keepalive_count_max(self):
+        """Test setting invalid keepalive count max with set_keepalive"""
+
+        async with self.connect() as conn:
+            with self.assertRaises(ValueError):
+                conn.set_keepalive(count_max=-1)
+
+    @asynctest
     async def test_client_keepalive_failure(self):
         """Test client keepalive failure"""
 
@@ -989,13 +1028,69 @@ class _TestConnection(ServerTestCase):
             await conn.wait_closed()
 
     @asynctest
-    async def test_rekey(self):
-        """Test SSH re-keying"""
+    async def test_rekey_bytes(self):
+        """Test SSH re-keying with byte limit"""
 
         async with self.connect(rekey_bytes=1) as conn:
             await asyncio.sleep(0.1)
             conn.send_debug('test')
             await asyncio.sleep(0.1)
+
+    @asynctest
+    async def test_rekey_bytes_string(self):
+        """Test SSH re-keying with string byte limit"""
+
+        async with self.connect(rekey_bytes='1') as conn:
+            await asyncio.sleep(0.1)
+            conn.send_debug('test')
+            await asyncio.sleep(0.1)
+
+    @asynctest
+    async def test_invalid_rekey_bytes(self):
+        """Test invalid rekey bytes"""
+
+        for desc, rekey_bytes in (
+                ('Negative inteeger ', -1),
+                ('Missing value', ''),
+                ('Missing integer', 'k'),
+                ('Invalid integer', '!'),
+                ('Invalid integer', '!'),
+                ('Invalid suffix', '1x')):
+            with self.subTest(desc):
+                with self.assertRaises(ValueError):
+                    await self.connect(rekey_bytes=rekey_bytes)
+
+    @asynctest
+    async def test_rekey_seconds(self):
+        """Test SSH re-keying with time limit"""
+
+        async with self.connect(rekey_seconds=0.1) as conn:
+            await asyncio.sleep(0.1)
+            conn.send_debug('test')
+            await asyncio.sleep(0.1)
+
+    @asynctest
+    async def test_rekey_seconds_string(self):
+        """Test SSH re-keying with string time limit"""
+
+        async with self.connect(rekey_seconds='0m0.1s') as conn:
+            await asyncio.sleep(0.1)
+            conn.send_debug('test')
+            await asyncio.sleep(0.1)
+
+    @asynctest
+    async def test_rekey_time_disabled(self):
+        """Test SSH re-keying by time being disabled"""
+
+        async with self.connect(rekey_seconds=None):
+            pass
+
+    @asynctest
+    async def test_invalid_rekey_seconds(self):
+        """Test invalid rekey seconds"""
+
+        with self.assertRaises(ValueError):
+            await self.connect(rekey_seconds=-1)
 
     @asynctest
     async def test_kex_in_progress(self):
@@ -1233,6 +1328,28 @@ class _TestConnectionAsyncAcceptor(ServerTestCase):
             async with self.connect():
                 pass
 
+@patch_gss
+class _TestConnectionServerCerts(ServerTestCase):
+    """Unit tests for AsyncSSH server using server_certs argument"""
+
+    @classmethod
+    async def start_server(cls):
+        """Start an SSH server to connect to"""
+
+        return (await cls.create_server(_TunnelServer, gss_host=(),
+                                        compression_algs='*',
+                                        encryption_algs='*',
+                                        kex_algs='*', mac_algs='*',
+                                        server_host_keys='skey',
+                                        server_host_certs='skey-cert.pub'))
+
+    @asynctest
+    async def test_connect(self):
+        """Test connecting with async context manager"""
+
+        async with self.connect(known_hosts=([], ['skey.pub'], [])):
+            pass
+
 
 class _TestConnectionReverse(ServerTestCase):
     """Unit test for reverse direction connections"""
@@ -1325,7 +1442,8 @@ class _TestConnectionKeepalive(ServerTestCase):
     async def start_server(cls):
         """Start an SSH server which sends keepalive messages"""
 
-        return await cls.create_server(keepalive_interval=0.1)
+        return await cls.create_server(keepalive_interval=0.1,
+                                       keepalive_count_max=3)
 
     @asynctest
     async def test_server_keepalive(self):

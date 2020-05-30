@@ -1401,6 +1401,31 @@ and should not normally need to be changed. However, certificates which
 contain other purposes can be supported by providing alternate values to
 match against, or by passing in the purpose 'any' to disable this checking.
 
+.. index:: Specifying byte counts
+.. _SpecifyingByteCounts:
+
+Specifying byte counts
+----------------------
+
+A byte count may be passed into AsyncSSH as an integer value, or as a
+string made up of a mix of numbers followed by an optional letter of
+'k', 'm', or 'g', indicating kilobytes, megabytes, or gigabytes,
+respectively. Multiple of these values can be included. For instance,
+'2.5m' means 2.5 megabytes. This could also be expressed as '2m512k'
+or '2560k'.
+
+.. index:: Specifying time intervals
+.. _SpecifyingTimeIntervals:
+
+Specifying time intervals
+-------------------------
+
+A time interval may be passed into AsyncSSH as an integer or float value,
+or as a string made up of a mix of positive or negative numbers and the
+letters 'w', 'd', 'h', 'm', and 's', indicating weeks, days, hours,
+minutes, or seconds, respectively. Multiple of these values can be
+included. For instance, '1w2d3h' means 1 week, 2 days, and 3 hours.
+
 .. index:: Specifying time values
 .. _SpecifyingTimeValues:
 
@@ -1420,11 +1445,10 @@ methods. These values can be specified in any of the following ways:
     * A string value in the form ``YYYYMMDD`` to specify an absolute date.
     * A string value in the form ``YYYYMMDDHHMMSS`` to specify an
       absolute date and time.
-    * A relative time made up of a mix of positive or negative numbers and
-      the letters 'w', 'd', 'h', 'm', and 's', representing an offset from
-      the current time in weeks, days, hours, minutes, or seconds,
-      respectively. Multiple of these values can be included. For
-      instance, '+1w2d3h' means 1 week, 2 days, and 3 hours in the future.
+    * A time interval described in :ref:`SpecifyingTimeIntervals` which is
+      interpreted as a relative time from now. This value can be negative
+      to refer to times in the past or positive to refer to times in the
+      future.
 
 SSHKey
 ------
@@ -1874,6 +1898,11 @@ KeyGenerationError
 ------------------
 
 .. autoexception:: KeyGenerationError
+
+ConfigParseError
+----------------
+
+.. autoexception:: ConfigParseError
 
 .. index:: Supported algorithms
 .. _SupportedAlgorithms:

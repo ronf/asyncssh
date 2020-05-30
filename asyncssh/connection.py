@@ -51,6 +51,8 @@ from .compression import get_compression_algs, get_default_compression_algs
 from .compression import get_compression_params
 from .compression import get_compressor, get_decompressor
 
+from .config import load_client_config, load_server_config
+
 from .constants import DEFAULT_LANG
 from .constants import DISC_BY_APPLICATION
 from .constants import EXTENDED_DATA_STDERR
@@ -96,6 +98,7 @@ from .misc import PasswordChangeRequired, PermissionDenied, ProtocolError
 from .misc import ProtocolNotSupported, ServiceNotAvailable, Options
 from .misc import async_context_manager, construct_disc_error
 from .misc import get_symbol_names, ip_address, map_handler_name
+from .misc import parse_byte_count, parse_time_interval
 
 from .packet import Boolean, Byte, NameList, String, UInt32
 from .packet import PacketDecodeError, SSHPacket, SSHPacketHandler
@@ -256,8 +259,12 @@ def _expand_algs(algs, possible_algs, default_algs):
     else:
         return matched
 
-def _select_algs(alg_type, algs, possible_algs, default_algs, none_value=None):
+def _select_algs(alg_type, algs, possible_algs, default_algs,
+                 config_algs, none_value=None):
     """Select a set of allowed algorithms"""
+
+    if algs == ():
+        algs = config_algs
 
     if algs == ():
         return default_algs
@@ -284,18 +291,21 @@ def _select_algs(alg_type, algs, possible_algs, default_algs, none_value=None):
         raise ValueError('No %s algorithms selected' % alg_type)
 
 
-def _validate_algs(kex_algs, enc_algs, mac_algs, cmp_algs,
+def _validate_algs(config, kex_algs, enc_algs, mac_algs, cmp_algs,
                    sig_algs, allow_x509):
     """Validate requested algorithms"""
 
     kex_algs = _select_algs('key exchange', kex_algs, get_kex_algs(),
-                            get_default_kex_algs())
+                            get_default_kex_algs(),
+                            config.get('KexAlgorithms', ()))
     enc_algs = _select_algs('encryption', enc_algs, get_encryption_algs(),
-                            get_default_encryption_algs())
+                            get_default_encryption_algs(),
+                            config.get('Ciphers', ()))
     mac_algs = _select_algs('MAC', mac_algs, get_mac_algs(),
-                            get_default_mac_algs())
+                            get_default_mac_algs(), config.get('MACs', ()))
     cmp_algs = _select_algs('compression', cmp_algs, get_compression_algs(),
-                            get_default_compression_algs(), b'none')
+                            get_default_compression_algs(),
+                            config.get_compression_algs(()), b'none')
 
     allowed_sig_algs = get_x509_certificate_algs() if allow_x509 else []
     allowed_sig_algs = allowed_sig_algs + get_public_key_algs()
@@ -303,14 +313,18 @@ def _validate_algs(kex_algs, enc_algs, mac_algs, cmp_algs,
     default_sig_algs = get_default_x509_certificate_algs() if allow_x509 else []
     default_sig_algs = allowed_sig_algs + get_default_public_key_algs()
 
-    sig_algs = _select_algs('signature', sig_algs, allowed_sig_algs,
-                            default_sig_algs)
+    sig_algs = _select_algs('signature', sig_algs,
+                            allowed_sig_algs, default_sig_algs,
+                            config.get('CASignatureAlgorithms', ()))
 
     return kex_algs, enc_algs, mac_algs, cmp_algs, sig_algs
 
 
-def _validate_server_host_key_algs(server_host_key_algs):
+def _validate_server_host_key_algs(config, server_host_key_algs):
     """Validate server host key algorithms"""
+
+    if server_host_key_algs == ():
+        server_host_key_algs = config.get('HostKeyAlgorithms', ())
 
     if server_host_key_algs == ():
         # Unlike other alg lists, don't default this to all algorithms
@@ -322,7 +336,8 @@ def _validate_server_host_key_algs(server_host_key_algs):
                                 get_default_public_key_algs()
 
         return _select_algs('public key', server_host_key_algs,
-                            allowed_host_key_algs, default_host_key_algs)
+                            allowed_host_key_algs, default_host_key_algs,
+                            config.get('HostKeyAlgorithms', ()))
 
 
 class SSHConnection(SSHPacketHandler, asyncio.Protocol):
@@ -342,6 +357,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
     def __init__(self, loop, options, acceptor, error_handler, wait, server):
         self._loop = loop
+        self._config = options.config
         self._protocol_factory = options.protocol_factory
         self._acceptor = acceptor
         self._error_handler = error_handler
@@ -418,9 +434,9 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         self._gss_mic_auth = False
 
         self._rekey_bytes = options.rekey_bytes
-        self._rekey_bytes_sent = 0
         self._rekey_seconds = options.rekey_seconds
-        self._rekey_time = time.time() + options.rekey_seconds
+        self._rekey_bytes_sent = 0
+        self._rekey_time = 0
 
         self._keepalive_count = 0
         self._keepalive_count_max = options.keepalive_count_max
@@ -1068,7 +1084,8 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         if (self._auth_complete and self._kex_complete and
                 (self._rekey_bytes_sent >= self._rekey_bytes or
-                 time.monotonic() >= self._rekey_time)):
+                 (self._rekey_seconds and
+                  time.monotonic() >= self._rekey_time))):
             self._send_kexinit()
             self._kexinit_sent = True
 
@@ -1143,7 +1160,9 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         self._kex_complete = False
         self._rekey_bytes_sent = 0
-        self._rekey_time = time.monotonic() + self._rekey_seconds
+
+        if self._rekey_seconds:
+            self._rekey_time = time.monotonic() + self._rekey_seconds
 
         gss_mechs = self._gss.mechs if self._gss else []
         kex_algs = expand_kex_algs(self._kex_algs, gss_mechs,
@@ -2082,15 +2101,24 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
                without getting a response before closing the connection.
                This defaults to 3, but only applies when *interval* is
                non-zero.
-           :type interval: `int` or `float`
+           :type interval: `int`, `float`, or `str`
            :type count_max: `int`
 
         """
 
         if interval is not None:
+            if isinstance(interval, str):
+                interval = parse_time_interval(interval)
+
+            if interval < 0:
+                raise ValueError('Keepalive interval cannot be negative')
+
             self._keepalive_interval = interval
 
         if count_max is not None:
+            if count_max < 0:
+                raise ValueError('Keepalive count max cannot be negative')
+
             self._keepalive_count_max = count_max
 
         self._reset_keepalive_timer()
@@ -2398,13 +2426,13 @@ class SSHClientConnection(SSHConnection):
 
     """
 
-    def __init__(self, host, port, loop, options, acceptor=None,
+    def __init__(self, loop, options, acceptor=None,
                  error_handler=None, wait=None):
         super().__init__(loop, options, acceptor, error_handler,
                          wait, server=False)
 
-        self._host = host
-        self._port = port
+        self._host = options.host
+        self._port = options.port
 
         self._known_hosts = options.known_hosts
 
@@ -2428,7 +2456,7 @@ class SSHClientConnection(SSHConnection):
         self._agent_forward_path = options.agent_forward_path
         self._get_agent_keys = bool(self._agent)
 
-        gss_host = options.gss_host if options.gss_host != () else host
+        gss_host = options.gss_host if options.gss_host != () else options.host
 
         if gss_host:
             try:
@@ -2915,10 +2943,10 @@ class SSHClientConnection(SSHConnection):
             if self._x11_listener.detach(chan):
                 self._x11_listener = None
 
-    async def create_session(self, session_factory, command=None, *,
-                             subsystem=None, env=None, send_env=None,
+    async def create_session(self, session_factory, command=(), *,
+                             subsystem=None, env=(), send_env=(),
                              term_type=None, term_size=None, term_modes=None,
-                             x11_forwarding=False, x11_display=None,
+                             x11_forwarding=(), x11_display=None,
                              x11_auth_path=None, x11_single_connection=False,
                              encoding='utf-8', errors='strict',
                              window=_DEFAULT_WINDOW,
@@ -3023,19 +3051,34 @@ class SSHClientConnection(SSHConnection):
 
         """
 
+        if command == ():
+            command = self._config.get('RemoteCommand')
+
         new_env = {}
 
-        if send_env:
-            if isinstance(send_env, str):
-                send_env = send_env.split()
+        if send_env == ():
+            send_env = self._config.get('SendEnv')
 
+        if send_env:
             for key in send_env:
                 pattern = WildcardPattern(key)
                 new_env.update((key, value) for key, value in os.environ.items()
                                if pattern.matches(key))
 
+        if env == ():
+            env = self._config.get('SetEnv')
+
         if env:
-            new_env.update(env)
+            try:
+                if isinstance(env, list):
+                    env = (item.split('=', 2) for item in env)
+
+                new_env.update(env)
+            except ValueError:
+                raise ValueError('Invalid environment value') from None
+
+        if x11_forwarding == ():
+            x11_forwarding = self._config.get('ForwardX11Trusted')
 
         chan = SSHClientChannel(self, self._loop, encoding, errors,
                                 window, max_pktsize)
@@ -3648,7 +3691,7 @@ class SSHClientConnection(SSHConnection):
         return await self.create_unix_server(session_factory, *args, **kwargs)
 
     async def create_ssh_connection(self, client_factory, host,
-                                    port=_DEFAULT_PORT, **kwargs):
+                                    port=(), **kwargs):
         """Create a tunneled SSH client connection
 
            This method is a coroutine which can be called to open an
@@ -3664,7 +3707,7 @@ class SSHClientConnection(SSHConnection):
                                         tunnel=self, **kwargs))
 
     @async_context_manager
-    async def connect_ssh(self, host, port=_DEFAULT_PORT, **kwargs):
+    async def connect_ssh(self, host, port=(), **kwargs):
         """Make a tunneled SSH client connection
 
            This method is a coroutine which can be called to open an
@@ -3678,7 +3721,7 @@ class SSHClientConnection(SSHConnection):
         return await connect(host, port, tunnel=self, **kwargs)
 
     @async_context_manager
-    async def connect_reverse_ssh(self, host, port=_DEFAULT_PORT, **kwargs):
+    async def connect_reverse_ssh(self, host, port=(), **kwargs):
         """Make a tunneled reverse direction SSH connection
 
            This method is a coroutine which can be called to open an
@@ -3692,7 +3735,7 @@ class SSHClientConnection(SSHConnection):
         return await connect_reverse(host, port, tunnel=self, **kwargs)
 
     @async_context_manager
-    async def listen_ssh(self, host='', port=_DEFAULT_PORT, **kwargs):
+    async def listen_ssh(self, host='', port=(), **kwargs):
         """Create a tunneled SSH listener
 
            This method is a coroutine which can be called to open a remote
@@ -3706,7 +3749,7 @@ class SSHClientConnection(SSHConnection):
         return await listen(host, port, tunnel=self, **kwargs)
 
     @async_context_manager
-    async def listen_reverse_ssh(self, host='', port=_DEFAULT_PORT, **kwargs):
+    async def listen_reverse_ssh(self, host='', port=(), **kwargs):
         """Create a tunneled reverse direction SSH listener
 
            This method is a coroutine which can be called to open a remote
@@ -3841,7 +3884,7 @@ class SSHClientConnection(SSHConnection):
             raise
 
     @async_context_manager
-    async def start_sftp_client(self, env=None, send_env=None,
+    async def start_sftp_client(self, env=(), send_env=(),
                                 path_encoding='utf-8', path_errors='strict'):
         """Start an SFTP client
 
@@ -5110,19 +5153,29 @@ class SSHConnectionOptions(Options):
     """SSH connection options"""
 
     # pylint: disable=arguments-differ
-    def prepare(self, protocol_factory, version, kex_algs, encryption_algs,
-                mac_algs, compression_algs, signature_algs, x509_trusted_certs,
+    def prepare(self, config, protocol_factory, version, host, port,
+                family, local_addr, kex_algs, encryption_algs, mac_algs,
+                compression_algs, signature_algs, x509_trusted_certs,
                 x509_trusted_cert_paths, x509_purposes, rekey_bytes,
                 rekey_seconds, login_timeout, keepalive_interval,
                 keepalive_count_max):
         """Prepare common connection configuration options"""
 
+        self.config = config
         self.protocol_factory = protocol_factory
         self.version = _validate_version(version)
 
+        self.host = config.get('Hostname', host)
+        self.port = port if port != () else config.get('Port', _DEFAULT_PORT)
+
+        self.family = family if family is not None else \
+            config.get('AddressFamily', socket.AF_UNSPEC)
+        self.local_addr = local_addr if local_addr != () else \
+            (config.get('BindAddress'), 0)
+
         self.kex_algs, self.encryption_algs, self.mac_algs, \
         self.compression_algs, self.signature_algs = \
-            _validate_algs(kex_algs, encryption_algs, mac_algs,
+            _validate_algs(config, kex_algs, encryption_algs, mac_algs,
                            compression_algs, signature_algs,
                            x509_trusted_certs is not None)
 
@@ -5137,7 +5190,52 @@ class SSHConnectionOptions(Options):
         self.x509_trusted_certs = x509_trusted_certs
         self.x509_trusted_cert_paths = x509_trusted_cert_paths
         self.x509_purposes = x509_purposes
-        self.rekey_bytes = rekey_bytes
+
+        config_rekey_bytes, config_rekey_seconds = \
+            config.get('RekeyLimit', ((), ()))
+
+        if rekey_bytes == ():
+            rekey_bytes = config_rekey_bytes
+
+        if rekey_bytes == ():
+            rekey_bytes = _DEFAULT_REKEY_BYTES
+        elif isinstance(rekey_bytes, str):
+            rekey_bytes = parse_byte_count(rekey_bytes)
+
+        if rekey_bytes <= 0:
+            raise ValueError('Rekey bytes cannot be negative or zero')
+
+        if rekey_seconds == ():
+            rekey_seconds = config_rekey_seconds
+
+        if rekey_seconds == ():
+            rekey_seconds = _DEFAULT_REKEY_SECONDS
+        elif isinstance(rekey_seconds, str):
+            rekey_seconds = parse_time_interval(rekey_seconds)
+
+        if rekey_seconds and rekey_seconds <= 0:
+            raise ValueError('Rekey seconds cannot be negative or zero')
+
+        if login_timeout == ():
+            login_timeout = config.get('ConnectTimeout',
+                                       _DEFAULT_LOGIN_TIMEOUT)
+
+        if isinstance(login_timeout, str):
+            login_timeout = parse_time_interval(login_timeout)
+
+        if login_timeout and login_timeout < 0:
+            raise ValueError('Login timeout cannot be negative')
+
+        if isinstance(keepalive_interval, str):
+            keepalive_interval = parse_time_interval(keepalive_interval)
+
+        if keepalive_interval and keepalive_interval < 0:
+            raise ValueError('Keepalive interval cannot be negative')
+
+        if keepalive_count_max <= 0:
+            raise ValueError('Keepalive count max cannot be negative or zero')
+
+        self.rekey_bytes = int(rekey_bytes)
         self.rekey_seconds = rekey_seconds
         self.login_timeout = login_timeout
         self.keepalive_interval = keepalive_interval
@@ -5298,7 +5396,8 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
            renegotiated. This defaults to 1 hour.
        :param login_timeout: (optional)
            The maximum time in seconds allowed for authentication to
-           complete, defaulting to 2 minutes
+           complete, defaulting to 2 minutes. Setting this to 0 will
+           disable the login timeout.
        :param keepalive_interval: (optional)
            The time in seconds to wait before sending a keepalive message
            if no data has been received from the server. This defaults to
@@ -5335,31 +5434,33 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
        :type mac_algs: `str` or `list` of `str`
        :type compression_algs: `str` or `list` of `str`
        :type signature_algs: `str` or `list` of `str`
-       :type rekey_bytes: `int`
-       :type rekey_seconds: `int`
-       :type login_timeout: `int` or `float`
-       :type keepalive_interval: `int` or `float`
+       :type rekey_bytes: *see* :ref:`SpecifyingByteCounts`
+       :type rekey_seconds: *see* :ref:`SpecifyingTimeIntervals`
+       :type login_timeout: *see* :ref:`SpecifyingTimeIntervals`
+       :type keepalive_interval: *see* :ref:`SpecifyingTimeIntervals`
        :type keepalive_count_max: `int`
 
     """
 
     # pylint: disable=arguments-differ
-    def prepare(self, client_factory=None, client_version=(), kex_algs=(),
-                encryption_algs=(), mac_algs=(), compression_algs=(),
-                signature_algs=(), x509_trusted_certs=(),
+    def prepare(self, config=(), client_factory=None, client_version=(),
+                host=None, port=(), family=None, local_addr=(),
+                kex_algs=(), encryption_algs=(), mac_algs=(),
+                compression_algs=(), signature_algs=(), x509_trusted_certs=(),
                 x509_trusted_cert_paths=(), x509_purposes='secureShellServer',
-                rekey_bytes=_DEFAULT_REKEY_BYTES,
-                rekey_seconds=_DEFAULT_REKEY_SECONDS,
-                login_timeout=_DEFAULT_LOGIN_TIMEOUT,
-                keepalive_interval=_DEFAULT_KEEPALIVE_INTERVAL,
-                keepalive_count_max=_DEFAULT_KEEPALIVE_COUNT_MAX,
-                known_hosts=(), server_host_key_algs=(), username=None,
-                password=None, client_host_keysign=False,
+                rekey_bytes=(), rekey_seconds=(), login_timeout=(),
+                keepalive_interval=(), keepalive_count_max=(),
+                known_hosts=(), server_host_key_algs=(), username=(),
+                password=None, client_host_keysign=(),
                 client_host_keys=None, client_host_certs=(), client_host=None,
-                client_username=None, client_keys=(), client_certs=(),
+                client_username=(), client_keys=(), client_certs=(),
                 passphrase=None, gss_host=(), gss_delegate_creds=False,
-                agent_path=(), agent_forwarding=False):
+                agent_path=(), agent_forwarding=()):
         """Prepare client connection configuration options"""
+
+        local_username = getpass.getuser()
+
+        config = load_client_config(local_username, username, host, config)
 
         if x509_trusted_certs == ():
             default_x509_certs = Path('~', '.ssh', 'ca-bundle.crt').expanduser()
@@ -5373,22 +5474,36 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
             if default_x509_cert_path.is_dir():
                 x509_trusted_cert_paths = [str(default_x509_cert_path)]
 
-        super().prepare(client_factory or SSHClient, client_version,
-                        kex_algs, encryption_algs, mac_algs, compression_algs,
+        if keepalive_interval == ():
+            keepalive_interval = config.get('ServerAliveInterval',
+                                            _DEFAULT_KEEPALIVE_INTERVAL)
+
+        if keepalive_count_max == ():
+            keepalive_count_max = config.get('ServerAliveCountMax',
+                                             _DEFAULT_KEEPALIVE_COUNT_MAX)
+
+        super().prepare(config, client_factory or SSHClient, client_version,
+                        host, port, family, local_addr, kex_algs,
+                        encryption_algs, mac_algs, compression_algs,
                         signature_algs, x509_trusted_certs,
                         x509_trusted_cert_paths, x509_purposes,
                         rekey_bytes, rekey_seconds, login_timeout,
                         keepalive_interval, keepalive_count_max)
 
-        self.known_hosts = known_hosts
-        self.server_host_key_algs = \
-            _validate_server_host_key_algs(server_host_key_algs)
+        self.known_hosts = known_hosts if known_hosts != () else \
+            config.get('UserKnownHostsFile', ())
 
-        if username is None:
-            username = getpass.getuser()
+        self.server_host_key_algs = \
+            _validate_server_host_key_algs(config, server_host_key_algs)
+
+        if username == ():
+            username = config.get('User', local_username)
 
         self.username = saslprep(username)
         self.password = password
+
+        if client_host_keysign == ():
+            client_host_keysign = config.get('EnableSSHKeySign', False)
 
         if client_host_keysign:
             client_host_keysign = find_keysign(client_host_keysign)
@@ -5401,8 +5516,8 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
             client_host_keys = load_keypairs(client_host_keys, passphrase,
                                              client_host_certs)
 
-        if client_username is None:
-            client_username = getpass.getuser()
+        if client_username == ():
+            client_username = local_username
 
         self.client_host_keysign = client_host_keysign
         self.client_host_keys = client_host_keys
@@ -5413,9 +5528,18 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
         self.gss_delegate_creds = gss_delegate_creds
 
         if agent_path == ():
+            agent_path = config.get('IdentityAgent', ())
+
+        if agent_path == ():
             agent_path = os.environ.get('SSH_AUTH_SOCK', None)
 
         self.agent_path = None
+
+        if client_keys == ():
+            client_keys = config.get('IdentityFile', ())
+
+        if client_certs == ():
+            client_certs = config.get('CertificateFile', ())
 
         if client_keys:
             client_keys = load_keypairs(client_keys, passphrase, client_certs)
@@ -5425,6 +5549,9 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
 
             if client_keys == ():
                 client_keys = load_default_keypairs(passphrase, client_certs)
+
+        if agent_forwarding == ():
+            agent_forwarding = config.get('ForwardAgent', False)
 
         self.agent_forward_path = agent_path if agent_forwarding else None
         self.client_keys = client_keys
@@ -5585,7 +5712,8 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
            renegotiated, defaulting to 1 hour
        :param login_timeout: (optional)
            The maximum time in seconds allowed for authentication to
-           complete, defaulting to 2 minutes
+           complete, defaulting to 2 minutes. Setting this to 0
+           will disable the login timeout.
        :param keepalive_interval: (optional)
            The time in seconds to wait before sending a keepalive message
            if no data has been received from the client. This defaults to
@@ -5596,6 +5724,7 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
            This defaults to 3, but only applies when keepalive_interval is
            non-zero.
        :type server_factory: `callable`
+       :type family: `socket.AF_UNSPEC`, `socket.AF_INET`, or `socket.AF_INET6`
        :type server_host_keys: *see* :ref:`SpecifyingPrivateKeys`
        :type server_host_certs: *see* :ref:`SpecifyingCertificates`
        :type passphrase: `str`
@@ -5626,25 +5755,23 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
        :type mac_algs: `str` or `list` of `str`
        :type compression_algs: `str` or `list` of `str`
        :type signature_algs: `str` or `list` of `str`
-       :type rekey_bytes: `int`
-       :type rekey_seconds: `int`
-       :type login_timeout: `int` or `float`
-       :type keepalive_interval: `int` or `float`
+       :type rekey_bytes: *see* :ref:`SpecifyingByteCounts`
+       :type rekey_seconds: *see* :ref:`SpecifyingTimeIntervals`
+       :type login_timeout: *see* :ref:`SpecifyingTimeIntervals`
+       :type keepalive_interval: *see* :ref:`SpecifyingTimeIntervals`
        :type keepalive_count_max: `int`
 
     """
 
     # pylint: disable=arguments-differ
-    def prepare(self, server_factory=None, server_version=(), kex_algs=(),
-                encryption_algs=(), mac_algs=(), compression_algs=(),
-                signature_algs=(), x509_trusted_certs=(),
+    def prepare(self, config=(), server_factory=None, server_version=(),
+                host=None, port=(), family=None, local_addr=(),
+                kex_algs=(), encryption_algs=(), mac_algs=(),
+                compression_algs=(), signature_algs=(), x509_trusted_certs=(),
                 x509_trusted_cert_paths=(), x509_purposes='secureShellClient',
-                rekey_bytes=_DEFAULT_REKEY_BYTES,
-                rekey_seconds=_DEFAULT_REKEY_SECONDS,
-                login_timeout=_DEFAULT_LOGIN_TIMEOUT,
-                keepalive_interval=_DEFAULT_KEEPALIVE_INTERVAL,
-                keepalive_count_max=_DEFAULT_KEEPALIVE_COUNT_MAX,
-                server_host_keys=None, server_host_certs=(), passphrase=None,
+                rekey_bytes=(), rekey_seconds=(), login_timeout=(),
+                keepalive_interval=(), keepalive_count_max=(),
+                server_host_keys=(), server_host_certs=(), passphrase=None,
                 known_client_hosts=None, trust_client_host=False,
                 authorized_client_keys=None, gss_host=(), allow_pty=True,
                 line_editor=True, line_history=_DEFAULT_LINE_HISTORY,
@@ -5655,12 +5782,29 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
                 window=_DEFAULT_WINDOW, max_pktsize=_DEFAULT_MAX_PKTSIZE):
         """Prepare server connection configuration options"""
 
-        super().prepare(server_factory or SSHServer, server_version,
-                        kex_algs, encryption_algs, mac_algs, compression_algs,
+        config = load_server_config(config)
+
+        if keepalive_interval == ():
+            keepalive_interval = config.get('ClientAliveInterval',
+                                            _DEFAULT_KEEPALIVE_INTERVAL)
+
+        if keepalive_count_max == ():
+            keepalive_count_max = config.get('ClientAliveCountMax',
+                                             _DEFAULT_KEEPALIVE_COUNT_MAX)
+
+        super().prepare(config, server_factory or SSHServer, server_version,
+                        host, port, family, local_addr, kex_algs,
+                        encryption_algs, mac_algs, compression_algs,
                         signature_algs, x509_trusted_certs,
                         x509_trusted_cert_paths, x509_purposes,
                         rekey_bytes, rekey_seconds, login_timeout,
                         keepalive_interval, keepalive_count_max)
+
+        if server_host_keys == ():
+            server_host_keys = config.get('HostKey')
+
+        if server_host_certs == ():
+            server_host_certs = config.get('HostCertificate', ())
 
         server_keys = load_keypairs(server_host_keys, passphrase,
                                     server_host_certs)
@@ -5712,8 +5856,8 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
 
 
 @async_context_manager
-async def connect(host, port=_DEFAULT_PORT, *, tunnel=None, family=0, flags=0,
-                  local_addr=None, options=None, **kwargs):
+async def connect(host, port=(), *, tunnel=None, family=None, flags=0,
+                  local_addr=None, config=(), options=None, **kwargs):
     """Make an SSH client connection
 
        This function is a coroutine which can be run to create an outbound SSH
@@ -5763,6 +5907,14 @@ async def connect(host, port=_DEFAULT_PORT, *, tunnel=None, family=0, flags=0,
            The flags to pass to getaddrinfo() when looking up the host address
        :param local_addr: (optional)
            The host and port to bind the socket to before connecting
+       :param config: (optional)
+           Paths to OpenSSH client configuration files to load. This
+           configuration will be used as a fallback to override the
+           defaults for settings which are not explcitly specified using
+           AsyncSSH's configuration arguments. If no paths are specified,
+           an attempt will be made to get the configuration from the file
+           :file:`.ssh/config`. If this argument is explicitly set to
+           `None`, no OpenSSH configuration will be loaded.
        :param options: (optional)
            Options to use when establishing the SSH client connection. These
            options can be specified either through this parameter or as direct
@@ -5773,6 +5925,7 @@ async def connect(host, port=_DEFAULT_PORT, *, tunnel=None, family=0, flags=0,
        :type family: `socket.AF_UNSPEC`, `socket.AF_INET`, or `socket.AF_INET6`
        :type flags: flags to pass to :meth:`getaddrinfo() <socket.getaddrinfo>`
        :type local_addr: tuple of `str` and `int`
+       :type config: `list` of `str`
        :type options: :class:`SSHClientConnectionOptions`
 
        :returns: :class:`SSHClientConnection`
@@ -5782,20 +5935,23 @@ async def connect(host, port=_DEFAULT_PORT, *, tunnel=None, family=0, flags=0,
     def conn_factory():
         """Return an SSH client connection factory"""
 
-        return SSHClientConnection(host, port, loop, options, wait='auth')
+        return SSHClientConnection(loop, options, wait='auth')
 
     loop = asyncio.get_event_loop()
 
-    if not options or kwargs:
-        options = SSHClientConnectionOptions(options, **kwargs)
+    options = SSHClientConnectionOptions(options, config=config, host=host,
+                                         port=port, family=family,
+                                         local_addr=local_addr, **kwargs)
 
-    return await _connect(host, port, loop, tunnel, family, flags, local_addr,
+    return await _connect(options.host, options.port, loop, tunnel,
+                          options.family, flags, options.local_addr,
                           conn_factory, 'Opening SSH connection to')
 
 
 @async_context_manager
-async def connect_reverse(host, port=_DEFAULT_PORT, *, tunnel=None, family=0,
-                          flags=0, local_addr=None, options=None, **kwargs):
+async def connect_reverse(host, port=(), *, tunnel=None, family=None,
+                          flags=0, local_addr=None, config=(),
+                          options=None, **kwargs):
     """Create a reverse direction SSH connection
 
        This function is a coroutine which behaves similar to :func:`connect`,
@@ -5825,6 +5981,12 @@ async def connect_reverse(host, port=_DEFAULT_PORT, *, tunnel=None, family=0,
            The flags to pass to getaddrinfo() when looking up the host address
        :param local_addr: (optional)
            The host and port to bind the socket to before connecting
+       :param config: (optional)
+           Paths to OpenSSH server configuration files to load. This
+           configuration will be used as a fallback to override the
+           defaults for settings which are not explcitly specified using
+           AsyncSSH's configuration arguments. By default, no OpenSSH
+           configuration will be loaded.
        :param options: (optional)
            Options to use when starting the reverse-direction SSH server.
            These options can be specified either through this parameter
@@ -5835,6 +5997,7 @@ async def connect_reverse(host, port=_DEFAULT_PORT, *, tunnel=None, family=0,
        :type family: `socket.AF_UNSPEC`, `socket.AF_INET`, or `socket.AF_INET6`
        :type flags: flags to pass to :meth:`getaddrinfo() <socket.getaddrinfo>`
        :type local_addr: tuple of `str` and `int`
+       :type config: `list` of `str`
        :type options: :class:`SSHServerConnectionOptions`
 
        :returns: :class:`SSHServerConnection`
@@ -5848,18 +6011,20 @@ async def connect_reverse(host, port=_DEFAULT_PORT, *, tunnel=None, family=0,
 
     loop = asyncio.get_event_loop()
 
-    if not options or kwargs:
-        options = SSHServerConnectionOptions(options, **kwargs)
+    options = SSHServerConnectionOptions(options, config=config, host=host,
+                                         port=port, family=family,
+                                         local_addr=local_addr, **kwargs)
 
-    return await _connect(host, port, loop, tunnel, family, flags, local_addr,
+    return await _connect(options.host, options.port, loop, tunnel,
+                          options.family, flags, options.local_addr,
                           conn_factory, 'Opening reverse SSH connection to')
 
 
 @async_context_manager
-async def listen(host=None, port=_DEFAULT_PORT, tunnel=None, family=0,
+async def listen(host=None, port=(), tunnel=None, family=None,
                  flags=socket.AI_PASSIVE, backlog=100, reuse_address=None,
                  reuse_port=None, acceptor=None, error_handler=None,
-                 options=None, **kwargs):
+                 config=(), options=None, **kwargs):
     """Start an SSH server
 
        This function is a coroutine which can be run to create an SSH server
@@ -5904,6 +6069,12 @@ async def listen(host=None, port=_DEFAULT_PORT, tunnel=None, family=0,
            :class:`SSHServerConnection` and an exception object describing
            the failure. If not specified, failed handshakes result in the
            connection object being silently cleaned up.
+       :param config: (optional)
+           Paths to OpenSSH server configuration files to load. This
+           configuration will be used as a fallback to override the
+           defaults for settings which are not explcitly specified using
+           AsyncSSH's configuration arguments. By default, no OpenSSH
+           configuration will be loaded.
        :param options: (optional)
            Options to use when accepting SSH server connections. These
            options can be specified either through this parameter or
@@ -5917,6 +6088,7 @@ async def listen(host=None, port=_DEFAULT_PORT, tunnel=None, family=0,
        :type backlog: `int`
        :type reuse_address: `bool`
        :type reuse_port: `bool`
+       :type config: `list` of `str`
        :type options: :class:`SSHServerConnectionOptions`
 
        :returns: :class:`asyncio.Server`
@@ -5930,19 +6102,20 @@ async def listen(host=None, port=_DEFAULT_PORT, tunnel=None, family=0,
 
     loop = asyncio.get_event_loop()
 
-    if not options or kwargs:
-        options = SSHServerConnectionOptions(options, **kwargs)
+    options = SSHServerConnectionOptions(options, config=config, host=host,
+                                         port=port, family=family, **kwargs)
 
-    return await _listen(host, port, loop, tunnel, family, flags, backlog,
-                         reuse_address, reuse_port, conn_factory,
-                         'Creating SSH listener on')
+    return await _listen(options.host, options.port, loop, tunnel,
+                         options.family, flags, backlog, reuse_address,
+                         reuse_port, conn_factory, 'Creating SSH listener on')
 
 
 @async_context_manager
-async def listen_reverse(host=None, port=_DEFAULT_PORT, *, tunnel=None,
-                         family=0, flags=socket.AI_PASSIVE, backlog=100,
-                         reuse_address=None, reuse_port=None, acceptor=None,
-                         error_handler=None, options=None, **kwargs):
+async def listen_reverse(host=None, port=(), *, tunnel=None, family=None,
+                         flags=socket.AI_PASSIVE, backlog=100,
+                         reuse_address=None, reuse_port=None,
+                         acceptor=None, error_handler=None, config=(),
+                         options=None, **kwargs):
     """Create a reverse-direction SSH listener
 
        This function is a coroutine which behaves similar to :func:`listen`,
@@ -5997,6 +6170,14 @@ async def listen_reverse(host=None, port=_DEFAULT_PORT, *, tunnel=None,
            :class:`SSHClientConnection` and an exception object describing
            the failure. If not specified, failed handshakes result in the
            connection object being silently cleaned up.
+       :param config: (optional)
+           Paths to OpenSSH client configuration files to load. This
+           configuration will be used as a fallback to override the
+           defaults for settings which are not explcitly specified using
+           AsyncSSH's configuration arguments. If no paths are specified,
+           an attempt will be made to get the configuration from the file
+           :file:`.ssh/config`. If this argument is explicitly set to
+           `None`, no OpenSSH configuration will be loaded.
        :param options: (optional)
            Options to use when starting reverse-direction SSH clients.
            These options can be specified either through this parameter
@@ -6010,6 +6191,7 @@ async def listen_reverse(host=None, port=_DEFAULT_PORT, *, tunnel=None,
        :type backlog: `int`
        :type reuse_address: `bool`
        :type reuse_port: `bool`
+       :type config: `list` of `str`
        :type options: :class:`SSHClientConnectionOptions`
 
        :returns: :class:`asyncio.Server`
@@ -6019,20 +6201,20 @@ async def listen_reverse(host=None, port=_DEFAULT_PORT, *, tunnel=None,
     def conn_factory():
         """Return an SSH client connection factory"""
 
-        return SSHClientConnection(None, None, loop, options,
-                                   acceptor, error_handler)
+        return SSHClientConnection(loop, options, acceptor, error_handler)
 
     loop = asyncio.get_event_loop()
 
-    if not options or kwargs:
-        options = SSHClientConnectionOptions(options, **kwargs)
+    options = SSHClientConnectionOptions(options, config=config, host=host,
+                                         port=port, family=family, **kwargs)
 
-    return await _listen(host, port, loop, tunnel, family, flags, backlog,
-                         reuse_address, reuse_port, conn_factory,
+    return await _listen(options.host, options.port, loop, tunnel,
+                         options.family, flags, backlog, reuse_address,
+                         reuse_port, conn_factory,
                          'Creating reverse direction SSH listener on')
 
 
-async def create_connection(client_factory, host, port=_DEFAULT_PORT, **kwargs):
+async def create_connection(client_factory, host, port=(), **kwargs):
     """Create an SSH client connection
 
        This is a coroutine which wraps around :func:`connect`, providing
@@ -6054,8 +6236,7 @@ async def create_connection(client_factory, host, port=_DEFAULT_PORT, **kwargs):
 
 
 @async_context_manager
-async def create_server(server_factory, host=None,
-                        port=_DEFAULT_PORT, **kwargs):
+async def create_server(server_factory, host=None, port=(), **kwargs):
     """Create an SSH server
 
        This is a coroutine which wraps around :func:`listen`, providing
@@ -6070,10 +6251,9 @@ async def create_server(server_factory, host=None,
     return await listen(host, port, server_factory=server_factory, **kwargs)
 
 
-async def get_server_host_key(host, port=_DEFAULT_PORT, *, tunnel=None,
-                              family=0, flags=0, local_addr=None,
-                              client_version=(), kex_algs=(),
-                              server_host_key_algs=()):
+async def get_server_host_key(host, port=(), *, tunnel=None, family=None,
+                              flags=0, local_addr=None, client_version=(),
+                              kex_algs=(), server_host_key_algs=(), config=()):
     """Retrieve an SSH server's host key
 
        This is a coroutine which can be run to connect to an SSH server and
@@ -6117,6 +6297,14 @@ async def get_server_host_key(host, port=_DEFAULT_PORT, *, tunnel=None,
            A list of server host key algorithms to allow during the SSH
            handshake, taken from :ref:`server host key algorithms
            <PublicKeyAlgs>`.
+       :param config: (optional)
+           Paths to OpenSSH client configuration files to load. This
+           configuration will be used as a fallback to override the
+           defaults for settings which are not explcitly specified using
+           AsyncSSH's configuration arguments. If no paths are specified,
+           an attempt will be made to get the configuration from the file
+           :file:`.ssh/config`. If this argument is explicitly set to
+           `None`, no OpenSSH configuration will be loaded.
        :type host: `str`
        :type port: `int`
        :type tunnel: :class:`SSHClientConnection`
@@ -6126,6 +6314,7 @@ async def get_server_host_key(host, port=_DEFAULT_PORT, *, tunnel=None,
        :type client_version: `str`
        :type kex_algs: `str` or `list` of `str`
        :type server_host_key_algs: `str` or `list` of `str`
+       :type config: `list` of `str`
 
        :returns: An :class:`SSHKey` public key or `None`
 
@@ -6134,17 +6323,19 @@ async def get_server_host_key(host, port=_DEFAULT_PORT, *, tunnel=None,
     def conn_factory():
         """Return an SSH client connection factory"""
 
-        return SSHClientConnection(host, port, loop, options, wait='kex')
+        return SSHClientConnection(loop, options, wait='kex')
 
     loop = asyncio.get_event_loop()
 
     options = SSHClientConnectionOptions(
-        known_hosts=None, server_host_key_algs=server_host_key_algs,
-        x509_trusted_certs=None, x509_trusted_cert_paths=None,
-        x509_purposes='any', gss_host=None, kex_algs=kex_algs,
-        client_version=client_version)
+        config=config, host=host, port=port, family=family,
+        local_addr=local_addr, known_hosts=None,
+        server_host_key_algs=server_host_key_algs, x509_trusted_certs=None,
+        x509_trusted_cert_paths=None, x509_purposes='any', gss_host=None,
+        kex_algs=kex_algs, client_version=client_version)
 
-    conn = await _connect(host, port, loop, tunnel, family, flags, local_addr,
+    conn = await _connect(options.host, options.port, loop, tunnel,
+                          options.family, flags, options.local_addr,
                           conn_factory, 'Fetching server host key from')
 
     server_host_key = conn.get_server_host_key()

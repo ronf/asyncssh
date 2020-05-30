@@ -235,6 +235,7 @@ class _ChannelServer(Server):
 
             if agent_path:
                 async with asyncssh.connect_agent(agent_path) as agent:
+                    await asyncio.sleep(0.1)
                     stdout.write(str(len((await agent.get_keys()))) + '\n')
             else:
                 stdout.channel.exit(1)
@@ -1036,6 +1037,27 @@ class _TestChannel(ServerTestCase):
 
             result = ''.join(session.recv_buf[None])
             self.assertEqual(result, 'test\n')
+
+    @asynctest
+    async def test_env_list(self):
+        """Test setting environment using a list of name=value strings"""
+
+        async with self.connect() as conn:
+            chan, session = await _create_session(conn, 'env',
+                                                  env=['TEST=test'])
+
+            await chan.wait_closed()
+
+            result = ''.join(session.recv_buf[None])
+            self.assertEqual(result, 'test\n')
+
+    @asynctest
+    async def test_invalid_env_list(self):
+        """Test setting environment using an invalid string"""
+
+        with self.assertRaises(ValueError):
+            async with self.connect() as conn:
+                await _create_session(conn, 'env', env=['XXX'])
 
     @asynctest
     async def test_send_env(self):

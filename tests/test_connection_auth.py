@@ -881,6 +881,14 @@ class _TestPublicKeyAuth(ServerTestCase):
         return conn
 
     @asynctest
+    async def test_client_certs(self):
+        """Test trusted client certificate via client_certs"""
+
+        async with self.connect(username='ckey', client_keys='ckey',
+                                client_certs='ckey-cert.pub'):
+            pass
+
+    @asynctest
     async def test_agent_auth(self):
         """Test connecting with ssh-agent authentication"""
 
@@ -1577,7 +1585,7 @@ class _TestKbdintPasswordServerAuth(ServerTestCase):
             await self._connect_kbdint('pw', ['oldpw'])
 
 
-class _TestClientLoginTimeoutExceeded(ServerTestCase):
+class _TestClientLoginTimeout(ServerTestCase):
     """Unit test for client login timeout"""
 
     @classmethod
@@ -1599,6 +1607,21 @@ class _TestClientLoginTimeoutExceeded(ServerTestCase):
         with self.assertRaises(asyncssh.ConnectionLost):
             await self.connect(username='ckey', client_keys='ckey',
                                login_timeout=1)
+
+    @asynctest
+    async def test_client_login_timeout_exceeded_string(self):
+        """Test client login timeout exceeded with string value"""
+
+        with self.assertRaises(asyncssh.ConnectionLost):
+            await self.connect(username='ckey', client_keys='ckey',
+                               login_timeout='0m1s')
+
+    @asynctest
+    async def test_invalid_client_login_timeout(self):
+        """Test invalid client login timeout"""
+
+        with self.assertRaises(ValueError):
+            await self.connect(login_timeout=-1)
 
 
 class _TestServerLoginTimeoutExceeded(ServerTestCase):
