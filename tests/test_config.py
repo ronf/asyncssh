@@ -132,7 +132,7 @@ class _TestConfig(TempDirTestCase):
         with open('include', 'w') as f:
             f.write('Port 2222')
 
-        for path in ('include', Path('include').absolute()):
+        for path in ('include', Path('include').absolute().as_posix()):
             config = self._parse_config('Include %s' % path)
             self.assertEqual(config.get('Port'), 2222)
 
