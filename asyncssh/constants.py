@@ -25,6 +25,9 @@
 # Default language for error messages
 DEFAULT_LANG                        = 'en-US'
 
+# Default SSH listening port
+DEFAULT_PORT                        = 22
+
 # SSH message codes
 MSG_DISCONNECT                      = 1
 MSG_IGNORE                          = 2

@@ -53,7 +53,7 @@ from .compression import get_compressor, get_decompressor
 
 from .config import load_client_config, load_server_config
 
-from .constants import DEFAULT_LANG
+from .constants import DEFAULT_LANG, DEFAULT_PORT
 from .constants import DISC_BY_APPLICATION
 from .constants import EXTENDED_DATA_STDERR
 from .constants import MSG_DISCONNECT, MSG_IGNORE, MSG_UNIMPLEMENTED, MSG_DEBUG
@@ -133,9 +133,6 @@ from .version import __version__
 
 from .x11 import create_x11_client_listener, create_x11_server_listener
 
-
-# SSH default port
-_DEFAULT_PORT = 22
 
 # SSH service names
 _USERAUTH_SERVICE = b'ssh-userauth'
@@ -2501,7 +2498,7 @@ class SSHClientConnection(SSHConnection):
                 else:
                     self._known_hosts = b''
 
-            port = self._port if self._port != _DEFAULT_PORT else None
+            port = self._port if self._port != DEFAULT_PORT else None
 
             self._match_known_hosts(self._known_hosts, self._host,
                                     self._peer_addr, port)
@@ -5166,7 +5163,7 @@ class SSHConnectionOptions(Options):
         self.version = _validate_version(version)
 
         self.host = config.get('Hostname', host)
-        self.port = port if port != () else config.get('Port', _DEFAULT_PORT)
+        self.port = port if port != () else config.get('Port', DEFAULT_PORT)
 
         self.family = family if family is not None else \
             config.get('AddressFamily', socket.AF_UNSPEC)
@@ -5460,7 +5457,8 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
 
         local_username = getpass.getuser()
 
-        config = load_client_config(local_username, username, host, config)
+        config = load_client_config(local_username, username,
+                                    host, port, config)
 
         if x509_trusted_certs == ():
             default_x509_certs = Path('~', '.ssh', 'ca-bundle.crt').expanduser()
@@ -5532,6 +5530,9 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
 
         if agent_path == ():
             agent_path = os.environ.get('SSH_AUTH_SOCK', None)
+
+        if agent_path:
+            agent_path = str(Path(agent_path).expanduser())
 
         self.agent_path = None
 

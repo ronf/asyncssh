@@ -20,9 +20,13 @@
 
 """Unit tests for parsing OpenSSH-compatible config file"""
 
+import os
 import socket
+import unittest
 
 from pathlib import Path
+from unittest.mock import patch
+
 import asyncssh
 
 from asyncssh.config import load_client_config, load_server_config
@@ -38,13 +42,13 @@ class _TestConfig(TempDirTestCase):
 
         raise NotImplementedError
 
-    def _parse_config(self, config_data):
+    def _parse_config(self, config_data, **kwargs):
         """Return a config object based on the specified data"""
 
         with open('config', 'w') as f:
             f.write(config_data)
 
-        return self._load_config('config')
+        return self._load_config('config', **kwargs)
 
     def test_blank__and_comment(self):
         """Test blank and comment lines"""
@@ -185,10 +189,13 @@ class _TestConfig(TempDirTestCase):
 class _TestClientConfig(_TestConfig):
     """Unit tests for client config objects"""
 
-    def _load_config(self, config_paths):
+    def _load_config(self, config_paths, local_user='user', user=(),
+                     host='host', port=()):
         """Load a client configuration"""
 
-        return load_client_config('localuser', 'user', 'host', config_paths)
+        # pylint: disable=arguments-differ
+
+        return load_client_config(local_user, user, host, port, config_paths)
 
     def test_append_string(self):
         """Test appending a string config option to a list"""
@@ -217,12 +224,13 @@ class _TestClientConfig(_TestConfig):
     def test_set_and_match_hostname(self):
         """Test setting and matching hostname"""
 
-        config = self._parse_config('Hostname newhost\n'
+        config = self._parse_config('Host host\n'
+                                    '  Hostname new%h\n'
                                     'Match originalhost host\n'
                                     '  BindAddress addr\n'
                                     'Match host host\n'
                                     '  Port 1111\n'
-                                    'Host new*\n'
+                                    'Match host newhost\n'
                                     '  Hostname newhost2\n'
                                     '  Port 2222')
 
@@ -234,7 +242,7 @@ class _TestClientConfig(_TestConfig):
         """Test setting and matching user"""
 
         config = self._parse_config('User newuser\n'
-                                    'Match localuser localuser\n'
+                                    'Match localuser user\n'
                                     '  BindAddress addr\n'
                                     'Match user user\n'
                                     '  Port 1111\n'
@@ -246,12 +254,76 @@ class _TestClientConfig(_TestConfig):
         self.assertEqual(config.get('BindAddress'), 'addr')
         self.assertEqual(config.get('Port'), 2222)
 
+    def test_port_already_set(self):
+        """Test that port is ignored if set outside of the config"""
+
+        config = self._parse_config('Port 2222', port=22)
+
+        self.assertIsNone(config.get('Port'))
+
+    def test_user_already_set(self):
+        """Test that user is ignored if set outside of the config"""
+
+        config = self._parse_config('User newuser', user='user')
+
+        self.assertIsNone(config.get('User'))
+
+    def test_percent_expansion(self):
+        """Test token percent expansion"""
+
+        def mock_gethostname():
+            """Return a static local hostname for testing"""
+
+            return 'thishost.local'
+
+        def mock_home():
+            """Return a static local home directory"""
+
+            return '/home/user'
+
+        with patch('socket.gethostname', mock_gethostname):
+            with patch('pathlib.Path.home', mock_home):
+                config = self._parse_config(
+                    'Hostname newhost\n'
+                    'User newuser\n'
+                    'Port 2222\n'
+                    'RemoteCommand %% %C %d %h %L %l %n %p %r %u')
+
+        self.assertEqual(config.get('RemoteCommand'),
+                         '% 98625d1ca14854f2cdc34268f2afcad5237e2d9d '
+                         '/home/user newhost thishost thishost.local '
+                         'host 2222 newuser user')
+
+    @unittest.skipUnless(hasattr(os, 'getuid'), 'UID not available')
+    def test_uid_percent_expansion(self):
+        """Test UID token percent expansion where available"""
+
+        def mock_getuid():
+            """Return a static local UID"""
+
+            return 123
+
+        with patch('os.getuid', mock_getuid):
+            config = self._parse_config('RemoteCommand %i')
+
+        self.assertEqual(config.get('RemoteCommand'), '123')
+
     def test_missing_match_pattern(self):
         """Test match with a missing pattern"""
 
         with self.assertRaises(asyncssh.ConfigParseError):
             self._parse_config('Match host')
 
+    def test_invalid_percent_expansion(self):
+        """Test invalid percent expansion"""
+
+        for desc, config_data in (
+                ('Bad token in hostname', 'Hostname %p'),
+                ('Invalid token', 'IdentityFile %x'),
+                ('Percent at end', 'IdentityFile %')):
+            with self.subTest(desc):
+                with self.assertRaises(asyncssh.ConfigParseError):
+                    self._parse_config(config_data)
 
 class _TestServerConfig(_TestConfig):
     """Unit tests for server config objects"""
