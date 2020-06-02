@@ -2745,10 +2745,15 @@ class SSHClientConnection(SSHConnection):
             if not prompts:
                 # Silently drop any empty challenges used to print messages
                 result = []
-            elif len(prompts) == 1 and 'password' in prompts[0][0].lower():
-                password = await self.password_auth_requested()
+            elif len(prompts) == 1:
+                prompt = prompts[0][0].lower()
 
-                result = [password] if password is not None else None
+                if 'password' in prompt or 'passcode' in prompt:
+                    password = await self.password_auth_requested()
+
+                    result = [password] if password is not None else None
+                else:
+                    result = None
             else:
                 result = None
         else:

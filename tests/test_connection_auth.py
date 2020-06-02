@@ -361,12 +361,19 @@ class _KbdintServer(Server):
         """Return a password challenge after the instructions"""
 
         if self._kbdint_round == 0:
-            result = ('', '', '', [('Password:', False)])
+            if username == 'pw':
+                result = ('', '', '', [('Password:', False)])
+            elif username == 'pc':
+                result = ('', '', '', [('Passcode:', False)])
+            elif username == 'multi':
+                result = ('', '', '', [('Prompt1:', True), ('Prompt2', True)])
+            else:
+                result = ('', '', '', [('Other Challenge:', False)])
         else:
-            if len(responses) == 1 and responses[0] == 'kbdint':
+            if responses in (['kbdint'], ['1', '2']):
                 result = True
             else:
-                result = ('', '', '', [('Other Challenge:', True)])
+                result = ('', '', '', [('Second Challenge:', True)])
 
         self._kbdint_round += 1
         return result
@@ -1499,12 +1506,36 @@ class _TestKbdintAuth(ServerTestCase):
         return conn
 
     @asynctest
-    async def test_kbdint_auth(self):
-        """Test connecting with keyboard-interactive authentication"""
+    async def test_kbdint_auth_password(self):
+        """Test keyboard-interactive authentication via password"""
 
-        async with self.connect(username='kbdint', password='kbdint',
+        async with self.connect(username='pw', password='kbdint',
                                 client_keys=None):
             pass
+
+    @asynctest
+    async def test_kbdint_auth_passcode(self):
+        """Test keyboard-interactive authentication via passcode"""
+
+        async with self.connect(username='pc', password='kbdint',
+                                client_keys=None):
+            pass
+
+    @asynctest
+    async def test_kbdint_auth_not_password(self):
+        """Test keyboard-interactive authentication other than password"""
+
+        with self.assertRaises(asyncssh.PermissionDenied):
+            await self.connect(username='kbdint', password='kbdint',
+                               client_keys=None)
+
+    @asynctest
+    async def test_kbdint_auth_multi_not_password(self):
+        """Test keyboard-interactive authentication with multiple prompts"""
+
+        with self.assertRaises(asyncssh.PermissionDenied):
+            await self.connect(username='multi', password='kbdint',
+                               client_keys=None)
 
     @asynctest
     async def test_kbdint_auth_failure(self):
@@ -1522,8 +1553,15 @@ class _TestKbdintAuth(ServerTestCase):
             pass
 
     @asynctest
+    async def test_kbdint_auth_callback_multi(self):
+        """Test keyboard-interactive auth callback with multiple challenges"""
+
+        async with self._connect_kbdint('multi', ['1', '2'], test_async=True):
+            pass
+
+    @asynctest
     async def test_kbdint_auth_callback_faliure(self):
-        """Test failure connection with keyboard-interactive auth callback"""
+        """Test failure connecting with keyboard-interactive auth callback"""
 
         with self.assertRaises(asyncssh.PermissionDenied):
             await self._connect_kbdint('kbdint', ['badpw'])
