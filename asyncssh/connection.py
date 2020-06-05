@@ -430,6 +430,8 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         self._gss_kex_auth = False
         self._gss_mic_auth = False
 
+        self._preferred_auth = None
+
         self._rekey_bytes = options.rekey_bytes
         self._rekey_seconds = options.rekey_seconds
         self._rekey_bytes_sent = 0
@@ -1740,12 +1742,21 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
     def _process_userauth_failure(self, _pkttype, pktid, packet):
         """Process a user authentication failure response"""
 
-        self._auth_methods = packet.get_namelist()
+        auth_methods = packet.get_namelist()
         partial_success = packet.get_boolean()
         packet.check_end()
 
         self.logger.debug2('Remaining auth methods: %s',
-                           self._auth_methods or 'None')
+                           auth_methods or 'None')
+
+        if self._preferred_auth:
+            self.logger.debug2('Preferred auth methods: %s',
+                               self._preferred_auth or 'None')
+
+            auth_methods = [method for method in self._preferred_auth
+                            if method in auth_methods]
+
+        self._auth_methods = auth_methods
 
         if self.is_client() and self._auth:
             if partial_success: # pragma: no cover
@@ -2446,6 +2457,9 @@ class SSHClientConnection(SSHConnection):
         self._client_username = options.client_username
         self._client_keys = None if options.client_keys is None else \
                             list(options.client_keys)
+
+        self._preferred_auth = [method.encode('ascii') for method in
+                                options.preferred_auth]
 
         if options.agent_path is not None:
             self._agent = SSHAgentClient(options.agent_path)
@@ -5358,6 +5372,13 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
        :param gss_delegate_creds: (optional)
            Whether or not to forward GSS credentials to the server being
            accessed. By default, GSS credential delegation is disabled.
+       :param preferred_auth:
+           A list of authentication methods the client should attempt to
+           use in order of preference. By default, the preferred list is
+           gssapi-keyex, gssapi-with-mic, hostbased, publickey,
+           keyboard-interactive, and then password. This list may be
+           limited by which auth methods are implemented by the client
+           and which methods the server accepts.
        :param agent_path: (optional)
            The path of a UNIX domain socket to use to contact an ssh-agent
            process which will perform the operations needed for client
@@ -5428,6 +5449,7 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
        :type passphrase: `str`
        :type gss_host: `str`
        :type gss_delegate_creds: `bool`
+       :type preferred_auth: `str` or `list` of `str`
        :type agent_path: `str` or :class:`SSHServerConnection`
        :type agent_forwarding: `bool`
        :type client_version: `str`
@@ -5457,7 +5479,7 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
                 client_host_keys=None, client_host_certs=(), client_host=None,
                 client_username=(), client_keys=(), client_certs=(),
                 passphrase=None, gss_host=(), gss_delegate_creds=False,
-                agent_path=(), agent_forwarding=()):
+                preferred_auth=(), agent_path=(), agent_forwarding=()):
         """Prepare client connection configuration options"""
 
         local_username = getpass.getuser()
@@ -5529,6 +5551,14 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
 
         self.gss_host = gss_host
         self.gss_delegate_creds = gss_delegate_creds
+
+        if preferred_auth == ():
+            preferred_auth = config.get('PreferredAuthentications', ())
+
+        if isinstance(preferred_auth, str):
+            preferred_auth = preferred_auth.split(',')
+
+        self.preferred_auth = preferred_auth
 
         if agent_path == ():
             agent_path = config.get('IdentityAgent', ())

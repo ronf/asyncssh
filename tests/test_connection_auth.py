@@ -945,6 +945,14 @@ class _TestPublicKeyAuth(ServerTestCase):
             pass
 
     @asynctest
+    async def test_public_key_auth_not_preferred(self):
+        """Test public key authentication not being in preferred auth list"""
+
+        with self.assertRaises(asyncssh.PermissionDenied):
+            await self.connect(username='ckey', client_keys='ckey',
+                               preferred_auth='password')
+
+    @asynctest
     async def test_public_key_signature_algs(self):
         """Test public key authentication with specific signature algorithms"""
 
