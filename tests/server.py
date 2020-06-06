@@ -59,6 +59,7 @@ class ServerTestCase(AsyncTestCase):
     _agent_pid = None
 
     @classmethod
+    @async_context_manager
     async def listen(cls, *, server_factory=(), options=None, **kwargs):
         """Create an SSH server for the tests to use"""
 
@@ -73,6 +74,7 @@ class ServerTestCase(AsyncTestCase):
                                      options=options, **kwargs)
 
     @classmethod
+    @async_context_manager
     async def listen_reverse(cls, *, options=None, **kwargs):
         """Create a reverse SSH server for the tests to use"""
 
@@ -244,7 +246,7 @@ class ServerTestCase(AsyncTestCase):
             with open('skey.pub') as skey_pub:
                 shutil.copyfileobj(skey_pub, known_hosts)
 
-            known_hosts.write('@cert-authority ' + host)
+            known_hosts.write('@cert-authority *')
 
             with open('skey.pub') as skey_pub:
                 shutil.copyfileobj(skey_pub, known_hosts)

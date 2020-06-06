@@ -438,6 +438,7 @@ class SSHClientConfig(SSHConfig):
         ('MACs',                     SSHConfig._set_string),
         ('PreferredAuthentications', SSHConfig._set_string),
         ('Port',                     _set_port),
+        ('ProxyJump',                SSHConfig._set_string),
         ('RekeyLimit',               SSHConfig._set_rekey_limits),
         ('RemoteCommand',            SSHConfig._set_string),
         ('SendEnv',                  SSHConfig._append_string_list),

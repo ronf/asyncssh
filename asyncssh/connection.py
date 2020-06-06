@@ -162,11 +162,37 @@ _DEFAULT_MAX_PKTSIZE = 32768        # 32 kiB
 _DEFAULT_LINE_HISTORY = 1000        # 1000 lines
 
 
+async def _open_tunnel(tunnel):
+    """Parse and open connection to tunnel over"""
+
+    if isinstance(tunnel, str):
+        if '@' in tunnel:
+            username, host = tunnel.rsplit('@', 1)
+        else:
+            username, host = (), tunnel
+
+        if ':' in host:
+            host, port = host.rsplit(':', 1)
+            port = int(port)
+        else:
+            port = ()
+
+        return await connect(host, port, username=username)
+    else:
+        return None
+
+
 async def _connect(host, port, loop, tunnel, family, flags,
                    local_addr, conn_factory, msg):
     """Make outbound TCP or SSH tunneled connection"""
 
-    if tunnel:
+    new_tunnel = await _open_tunnel(tunnel)
+
+    if new_tunnel:
+        new_tunnel.logger.info('%s %s via %s', msg, (host, port), tunnel)
+        _, conn = await new_tunnel.create_connection(conn_factory, host, port)
+        conn.set_tunnel(new_tunnel)
+    elif tunnel:
         tunnel_logger = getattr(tunnel, 'logger', logger)
         tunnel_logger.info('%s %s via SSH tunnel', msg, (host, port))
         _, conn = await tunnel.create_connection(conn_factory, host, port)
@@ -184,6 +210,9 @@ async def _connect(host, port, loop, tunnel, family, flags,
         await conn.wait_closed()
         raise
     else:
+        if new_tunnel:
+            conn.set_tunnel(new_tunnel)
+
         return conn
 
 
@@ -196,7 +225,21 @@ async def _listen(host, port, loop, tunnel, family, flags, backlog,
 
         return conn_factory()
 
-    if tunnel:
+    new_tunnel = await _open_tunnel(tunnel)
+
+    if new_tunnel:
+        new_tunnel.logger.info('%s %s via %s', msg, (host, port), tunnel)
+
+        # pylint: disable=broad-except
+        try:
+            server = await new_tunnel.create_server(tunnel_factory, host, port)
+        except Exception:
+            new_tunnel.close()
+            await new_tunnel.wait_closed()
+            raise
+        else:
+            server.set_tunnel(new_tunnel)
+    elif tunnel:
         tunnel_logger = getattr(tunnel, 'logger', logger)
         tunnel_logger.info('%s %s via SSH tunnel', msg, (host, port))
         server = await tunnel.create_server(tunnel_factory, host, port)
@@ -442,6 +485,8 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         self._keepalive_interval = options.keepalive_interval
         self._keepalive_timer = None
 
+        self._tunnel = None
+
         self._enc_alg_cs = None
         self._enc_alg_sc = None
 
@@ -544,6 +589,10 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         self._inpbuf = b''
         self._recv_handler = None
+
+        if self._tunnel:
+            self._tunnel.close()
+            self._tunnel = None
 
     def _cancel_login_timer(self):
         """Cancel the login timer"""
@@ -665,6 +714,11 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
                          String(self._server_version),
                          String(self._client_kexinit),
                          String(self._server_kexinit)))
+
+    def set_tunnel(self, tunnel):
+        """Set tunnel used to open this connection"""
+
+        self._tunnel = tunnel
 
     def _match_known_hosts(self, known_hosts, host, addr, port):
         """Determine the set of trusted host keys and certificates"""
@@ -5169,7 +5223,7 @@ class SSHConnectionOptions(Options):
     """SSH connection options"""
 
     # pylint: disable=arguments-differ
-    def prepare(self, config, protocol_factory, version, host, port,
+    def prepare(self, config, protocol_factory, version, host, port, tunnel,
                 family, local_addr, kex_algs, encryption_algs, mac_algs,
                 compression_algs, signature_algs, x509_trusted_certs,
                 x509_trusted_cert_paths, x509_purposes, rekey_bytes,
@@ -5184,7 +5238,9 @@ class SSHConnectionOptions(Options):
         self.host = config.get('Hostname', host)
         self.port = port if port != () else config.get('Port', DEFAULT_PORT)
 
-        self.family = family if family is not None else \
+        self.tunnel = tunnel if tunnel != () else config.get('ProxyJump')
+
+        self.family = family if family != () else \
             config.get('AddressFamily', socket.AF_UNSPEC)
         self.local_addr = local_addr if local_addr != () else \
             (config.get('BindAddress'), 0)
@@ -5468,7 +5524,7 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
 
     # pylint: disable=arguments-differ
     def prepare(self, config=(), client_factory=None, client_version=(),
-                host=None, port=(), family=None, local_addr=(),
+                host='', port=(), tunnel=(), family=(), local_addr=(),
                 kex_algs=(), encryption_algs=(), mac_algs=(),
                 compression_algs=(), signature_algs=(), x509_trusted_certs=(),
                 x509_trusted_cert_paths=(), x509_purposes='secureShellServer',
@@ -5508,7 +5564,7 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
                                              _DEFAULT_KEEPALIVE_COUNT_MAX)
 
         super().prepare(config, client_factory or SSHClient, client_version,
-                        host, port, family, local_addr, kex_algs,
+                        host, port, tunnel, family, local_addr, kex_algs,
                         encryption_algs, mac_algs, compression_algs,
                         signature_algs, x509_trusted_certs,
                         x509_trusted_cert_paths, x509_purposes,
@@ -5801,7 +5857,7 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
 
     # pylint: disable=arguments-differ
     def prepare(self, config=(), server_factory=None, server_version=(),
-                host=None, port=(), family=None, local_addr=(),
+                host='', port=(), tunnel=(), family=(), local_addr=(),
                 kex_algs=(), encryption_algs=(), mac_algs=(),
                 compression_algs=(), signature_algs=(), x509_trusted_certs=(),
                 x509_trusted_cert_paths=(), x509_purposes='secureShellClient',
@@ -5829,7 +5885,7 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
                                              _DEFAULT_KEEPALIVE_COUNT_MAX)
 
         super().prepare(config, server_factory or SSHServer, server_version,
-                        host, port, family, local_addr, kex_algs,
+                        host, port, tunnel, family, local_addr, kex_algs,
                         encryption_algs, mac_algs, compression_algs,
                         signature_algs, x509_trusted_certs,
                         x509_trusted_cert_paths, x509_purposes,
@@ -5892,7 +5948,7 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
 
 
 @async_context_manager
-async def connect(host, port=(), *, tunnel=None, family=None, flags=0,
+async def connect(host, port=(), *, tunnel=(), family=(), flags=0,
                   local_addr=None, config=(), options=None, **kwargs):
     """Make an SSH client connection
 
@@ -5935,7 +5991,10 @@ async def connect(host, port=(), *, tunnel=None, family=None, flags=0,
            An existing SSH client connection that this new connection should
            be tunneled over. If set, a direct TCP/IP tunnel will be opened
            over this connection to the requested host and port rather than
-           connecting directly via TCP.
+           connecting directly via TCP. A string of the form
+           [user@]host[:port] may also be specified, in which case a
+           connection will first be made to that host and it will then be
+           used as a tunnel.
        :param family: (optional)
            The address family to use when creating the socket. By default,
            the address family is automatically selected based on the host.
@@ -5957,7 +6016,7 @@ async def connect(host, port=(), *, tunnel=None, family=None, flags=0,
            keyword arguments to this function.
        :type host: `str`
        :type port: `int`
-       :type tunnel: :class:`SSHClientConnection`
+       :type tunnel: :class:`SSHClientConnection` or `str`
        :type family: `socket.AF_UNSPEC`, `socket.AF_INET`, or `socket.AF_INET6`
        :type flags: flags to pass to :meth:`getaddrinfo() <socket.getaddrinfo>`
        :type local_addr: tuple of `str` and `int`
@@ -5976,18 +6035,18 @@ async def connect(host, port=(), *, tunnel=None, family=None, flags=0,
     loop = asyncio.get_event_loop()
 
     options = SSHClientConnectionOptions(options, config=config, host=host,
-                                         port=port, family=family,
-                                         local_addr=local_addr, **kwargs)
+                                         port=port, tunnel=tunnel,
+                                         family=family, local_addr=local_addr,
+                                         **kwargs)
 
-    return await _connect(options.host, options.port, loop, tunnel,
+    return await _connect(options.host, options.port, loop, options.tunnel,
                           options.family, flags, options.local_addr,
                           conn_factory, 'Opening SSH connection to')
 
 
 @async_context_manager
-async def connect_reverse(host, port=(), *, tunnel=None, family=None,
-                          flags=0, local_addr=None, config=(),
-                          options=None, **kwargs):
+async def connect_reverse(host, port=(), *, tunnel=(), family=(), flags=0,
+                          local_addr=None, config=(), options=None, **kwargs):
     """Create a reverse direction SSH connection
 
        This function is a coroutine which behaves similar to :func:`connect`,
@@ -6009,7 +6068,10 @@ async def connect_reverse(host, port=(), *, tunnel=None, family=None,
            An existing SSH client connection that this new connection should
            be tunneled over. If set, a direct TCP/IP tunnel will be opened
            over this connection to the requested host and port rather than
-           connecting directly via TCP.
+           connecting directly via TCP. A string of the form
+           [user@]host[:port] may also be specified, in which case a
+           connection will first be made to that host and it will then be
+           used as a tunnel.
        :param family: (optional)
            The address family to use when creating the socket. By default,
            the address family is automatically selected based on the host.
@@ -6029,7 +6091,7 @@ async def connect_reverse(host, port=(), *, tunnel=None, family=None,
            or as direct keyword arguments to this function.
        :type host: `str`
        :type port: `int`
-       :type tunnel: :class:`SSHClientConnection`
+       :type tunnel: :class:`SSHClientConnection` or `str`
        :type family: `socket.AF_UNSPEC`, `socket.AF_INET`, or `socket.AF_INET6`
        :type flags: flags to pass to :meth:`getaddrinfo() <socket.getaddrinfo>`
        :type local_addr: tuple of `str` and `int`
@@ -6048,16 +6110,17 @@ async def connect_reverse(host, port=(), *, tunnel=None, family=None,
     loop = asyncio.get_event_loop()
 
     options = SSHServerConnectionOptions(options, config=config, host=host,
-                                         port=port, family=family,
-                                         local_addr=local_addr, **kwargs)
+                                         port=port, tunnel=tunnel,
+                                         family=family, local_addr=local_addr,
+                                         **kwargs)
 
-    return await _connect(options.host, options.port, loop, tunnel,
+    return await _connect(options.host, options.port, loop, options.tunnel,
                           options.family, flags, options.local_addr,
                           conn_factory, 'Opening reverse SSH connection to')
 
 
 @async_context_manager
-async def listen(host=None, port=(), tunnel=None, family=None,
+async def listen(host='', port=(), tunnel=(), family=(),
                  flags=socket.AI_PASSIVE, backlog=100, reuse_address=None,
                  reuse_port=None, acceptor=None, error_handler=None,
                  config=(), options=None, **kwargs):
@@ -6077,7 +6140,10 @@ async def listen(host=None, port=(), tunnel=None, family=None,
            An existing SSH client connection that this new listener should
            be forwarded over. If set, a remote TCP/IP listener will be
            opened on this connection on the requested host and port rather
-           than listening directly via TCP.
+           than listening directly via TCP. A string of the form
+           [user@]host[:port] may also be specified, in which case a
+           connection will first be made to that host and it will then be
+           used as a tunnel.
        :param family: (optional)
            The address family to use when creating the server. By default,
            the address families are automatically selected based on the host.
@@ -6118,7 +6184,7 @@ async def listen(host=None, port=(), tunnel=None, family=None,
        :type protocol_factory: `callable`
        :type host: `str`
        :type port: `int`
-       :type tunnel: :class:`SSHClientConnection`
+       :type tunnel: :class:`SSHClientConnection` or `str`
        :type family: `socket.AF_UNSPEC`, `socket.AF_INET`, or `socket.AF_INET6`
        :type flags: flags to pass to :meth:`getaddrinfo() <socket.getaddrinfo>`
        :type backlog: `int`
@@ -6139,15 +6205,16 @@ async def listen(host=None, port=(), tunnel=None, family=None,
     loop = asyncio.get_event_loop()
 
     options = SSHServerConnectionOptions(options, config=config, host=host,
-                                         port=port, family=family, **kwargs)
+                                         port=port, tunnel=tunnel,
+                                         family=family, **kwargs)
 
-    return await _listen(options.host, options.port, loop, tunnel,
+    return await _listen(options.host, options.port, loop, options.tunnel,
                          options.family, flags, backlog, reuse_address,
                          reuse_port, conn_factory, 'Creating SSH listener on')
 
 
 @async_context_manager
-async def listen_reverse(host=None, port=(), *, tunnel=None, family=None,
+async def listen_reverse(host='', port=(), *, tunnel=(), family=(),
                          flags=socket.AI_PASSIVE, backlog=100,
                          reuse_address=None, reuse_port=None,
                          acceptor=None, error_handler=None, config=(),
@@ -6178,7 +6245,10 @@ async def listen_reverse(host=None, port=(), *, tunnel=None, family=None,
            An existing SSH client connection that this new listener should
            be forwarded over. If set, a remote TCP/IP listener will be
            opened on this connection on the requested host and port rather
-           than listening directly via TCP.
+           than listening directly via TCP. A string of the form
+           [user@]host[:port] may also be specified, in which case a
+           connection will first be made to that host and it will then be
+           used as a tunnel.
        :param family: (optional)
            The address family to use when creating the server. By default,
            the address families are automatically selected based on the host.
@@ -6221,7 +6291,7 @@ async def listen_reverse(host=None, port=(), *, tunnel=None, family=None,
        :type client_factory: `callable`
        :type host: `str`
        :type port: `int`
-       :type tunnel: :class:`SSHClientConnection`
+       :type tunnel: :class:`SSHClientConnection` or `str`
        :type family: `socket.AF_UNSPEC`, `socket.AF_INET`, or `socket.AF_INET6`
        :type flags: flags to pass to :meth:`getaddrinfo() <socket.getaddrinfo>`
        :type backlog: `int`
@@ -6242,9 +6312,10 @@ async def listen_reverse(host=None, port=(), *, tunnel=None, family=None,
     loop = asyncio.get_event_loop()
 
     options = SSHClientConnectionOptions(options, config=config, host=host,
-                                         port=port, family=family, **kwargs)
+                                         port=port, tunnel=tunnel,
+                                         family=family, **kwargs)
 
-    return await _listen(options.host, options.port, loop, tunnel,
+    return await _listen(options.host, options.port, loop, options.tunnel,
                          options.family, flags, backlog, reuse_address,
                          reuse_port, conn_factory,
                          'Creating reverse direction SSH listener on')
@@ -6272,7 +6343,7 @@ async def create_connection(client_factory, host, port=(), **kwargs):
 
 
 @async_context_manager
-async def create_server(server_factory, host=None, port=(), **kwargs):
+async def create_server(server_factory, host='', port=(), **kwargs):
     """Create an SSH server
 
        This is a coroutine which wraps around :func:`listen`, providing
@@ -6287,9 +6358,9 @@ async def create_server(server_factory, host=None, port=(), **kwargs):
     return await listen(host, port, server_factory=server_factory, **kwargs)
 
 
-async def get_server_host_key(host, port=(), *, tunnel=None, family=None,
-                              flags=0, local_addr=None, client_version=(),
-                              kex_algs=(), server_host_key_algs=(), config=()):
+async def get_server_host_key(host, port=(), *, tunnel=(), family=(), flags=0,
+                              local_addr=None, client_version=(), kex_algs=(),
+                              server_host_key_algs=(), config=()):
     """Retrieve an SSH server's host key
 
        This is a coroutine which can be run to connect to an SSH server and
@@ -6315,7 +6386,10 @@ async def get_server_host_key(host, port=(), *, tunnel=None, family=None,
            An existing SSH client connection that this new connection should
            be tunneled over. If set, a direct TCP/IP tunnel will be opened
            over this connection to the requested host and port rather than
-           connecting directly via TCP.
+           connecting directly via TCP. A string of the form
+           [user@]host[:port] may also be specified, in which case a
+           connection will first be made to that host and it will then be
+           used as a tunnel.
        :param family: (optional)
            The address family to use when creating the socket. By default,
            the address family is automatically selected based on the host.
@@ -6343,7 +6417,7 @@ async def get_server_host_key(host, port=(), *, tunnel=None, family=None,
            `None`, no OpenSSH configuration will be loaded.
        :type host: `str`
        :type port: `int`
-       :type tunnel: :class:`SSHClientConnection`
+       :type tunnel: :class:`SSHClientConnection` or `str`
        :type family: `socket.AF_UNSPEC`, `socket.AF_INET`, or `socket.AF_INET6`
        :type flags: flags to pass to :meth:`getaddrinfo() <socket.getaddrinfo>`
        :type local_addr: tuple of `str` and `int`
@@ -6364,13 +6438,13 @@ async def get_server_host_key(host, port=(), *, tunnel=None, family=None,
     loop = asyncio.get_event_loop()
 
     options = SSHClientConnectionOptions(
-        config=config, host=host, port=port, family=family,
+        config=config, host=host, port=port, tunnel=tunnel, family=family,
         local_addr=local_addr, known_hosts=None,
         server_host_key_algs=server_host_key_algs, x509_trusted_certs=None,
         x509_trusted_cert_paths=None, x509_purposes='any', gss_host=None,
         kex_algs=kex_algs, client_version=client_version)
 
-    conn = await _connect(options.host, options.port, loop, tunnel,
+    conn = await _connect(options.host, options.port, loop, options.tunnel,
                           options.family, flags, options.local_addr,
                           conn_factory, 'Fetching server host key from')
 

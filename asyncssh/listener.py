@@ -31,10 +31,18 @@ from .socks import SSHSOCKSForwarder
 class SSHListener:
     """SSH listener for inbound connections"""
 
+    def __init__(self):
+        self._tunnel = None
+
     async def __aenter__(self):
         return self
 
     async def __aexit__(self, *exc_info):
+        if self._tunnel:
+            self._tunnel.close()
+            await self._tunnel.wait_closed()
+            self._tunnel = None
+
         self.close()
         await self.wait_closed()
 
@@ -54,6 +62,11 @@ class SSHListener:
         # pylint: disable=no-self-use
 
         return 0
+
+    def set_tunnel(self, tunnel):
+        """Set tunnel associated with listener"""
+
+        self._tunnel = tunnel
 
     def close(self):
         """Stop listening for new connections
@@ -81,6 +94,8 @@ class SSHClientListener(SSHListener):
 
     def __init__(self, conn, session_factory,
                  encoding, errors, window, max_pktsize):
+        super().__init__()
+
         self._conn = conn
         self._session_factory = session_factory
         self._encoding = encoding
@@ -177,6 +192,8 @@ class SSHForwardListener(SSHListener):
     """A listener used when forwarding traffic from local ports"""
 
     def __init__(self, servers, listen_port=0):
+        super().__init__()
+
         self._servers = servers
         self._listen_port = listen_port
 
