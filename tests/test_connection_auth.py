@@ -434,6 +434,29 @@ class _TestGSSAuth(ServerTestCase):
             pass
 
     @asynctest
+    async def test_gss_delegate(self):
+        """Test GSS credential delegation"""
+
+        async with self.connect(username='user', gss_host='1',
+                                gss_delegate_creds=True):
+            pass
+
+    @asynctest
+    async def test_gss_kex_disabled(self):
+        """Test GSS key exchange being disabled"""
+
+        with self.assertRaises(asyncssh.PermissionDenied):
+            await self.connect(username='user', gss_host=(), gss_kex=False,
+                               preferred_auth='gssapi-keyex')
+
+    @asynctest
+    async def test_gss_auth_disabled(self):
+        """Test GSS authentication being disabled"""
+
+        with self.assertRaises(asyncssh.PermissionDenied):
+            await self.connect(username='user', gss_host=(), gss_auth=False)
+
+    @asynctest
     async def test_gss_auth_unavailable(self):
         """Test GSS authentication being unavailable"""
 
@@ -446,6 +469,36 @@ class _TestGSSAuth(ServerTestCase):
 
         with self.assertRaises(asyncssh.PermissionDenied):
             await self.connect(gss_host='1,init_error', username='user')
+
+
+@unittest.skipUnless(gss_available, 'GSS not available')
+@patch_gss
+class _TestGSSServerAuthDisabled(ServerTestCase):
+    """Unit tests for with GSS key exchange and auth disabled on server"""
+
+    @classmethod
+    async def start_server(cls):
+        """Start an SSH server with GSS key exchange and auth disabled"""
+
+        return await cls.create_server(gss_host='1', gss_kex=False,
+                                       gss_auth=False)
+
+    @asynctest
+    async def test_gss_kex_unavailable(self):
+        """Test GSS key exchange being unavailable"""
+
+        with self.assertRaises(asyncssh.PermissionDenied):
+            await self.connect(username='user', gss_host=(),
+                               preferred_auth='gssapi-keyex')
+
+    @asynctest
+    async def test_gss_auth_unavailable(self):
+        """Test GSS authentication being unavailable"""
+
+        with self.assertRaises(asyncssh.PermissionDenied):
+            await self.connect(username='user', gss_host=(),
+                               preferred_auth='gssapi-with-mic')
+
 
 
 @unittest.skipUnless(gss_available, 'GSS not available')

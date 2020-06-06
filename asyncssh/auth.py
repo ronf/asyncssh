@@ -892,6 +892,13 @@ def register_auth_method(alg, client_handler, server_handler):
     _server_auth_handlers[alg] = server_handler
 
 
+def get_client_auth_methods():
+    """Return a list of supported client auth methods"""
+
+    return [method for method in _client_auth_handlers
+            if method != b'none']
+
+
 def lookup_client_auth(conn, method):
     """Look up the client authentication method to use"""
 
@@ -902,7 +909,7 @@ def lookup_client_auth(conn, method):
 
 
 def get_server_auth_methods(conn):
-    """Return a list of supported auth methods"""
+    """Return a list of supported server auth methods"""
 
     auth_methods = []
 

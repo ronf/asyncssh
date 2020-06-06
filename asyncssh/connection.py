@@ -36,7 +36,7 @@ from pathlib import Path
 
 from .agent import SSHAgentClient, SSHAgentListener
 
-from .auth import lookup_client_auth
+from .auth import get_client_auth_methods, lookup_client_auth
 from .auth import get_server_auth_methods, lookup_server_auth
 
 from .auth_keys import read_authorized_keys
@@ -470,6 +470,8 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         self._ignore_first_kex = False
 
         self._gss = None
+        self._gss_kex = False
+        self._gss_auth = False
         self._gss_kex_auth = False
         self._gss_mic_auth = False
 
@@ -938,7 +940,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
     def enable_gss_kex_auth(self):
         """Enable GSS key exchange authentication"""
 
-        self._gss_kex_auth = True
+        self._gss_kex_auth = self._gss_auth
 
     def _choose_alg(self, alg_type, local_algs, remote_algs):
         """Choose a common algorithm from the client & server lists
@@ -1217,7 +1219,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         if self._rekey_seconds:
             self._rekey_time = time.monotonic() + self._rekey_seconds
 
-        gss_mechs = self._gss.mechs if self._gss else []
+        gss_mechs = self._gss.mechs if self._gss_kex else []
         kex_algs = expand_kex_algs(self._kex_algs, gss_mechs,
                                    bool(self._server_host_key_algs))
 
@@ -1678,7 +1680,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         if self._gss:
             self._gss.reset()
 
-        gss_mechs = self._gss.mechs if self._gss else []
+        gss_mechs = self._gss.mechs if self._gss_kex else []
         kex_algs = expand_kex_algs(self._kex_algs, gss_mechs,
                                    bool(self._server_host_key_algs))
 
@@ -2512,8 +2514,11 @@ class SSHClientConnection(SSHConnection):
         self._client_keys = None if options.client_keys is None else \
                             list(options.client_keys)
 
-        self._preferred_auth = [method.encode('ascii') for method in
-                                options.preferred_auth]
+        if options.preferred_auth != ():
+            self._preferred_auth = [method.encode('ascii') for method in
+                                    options.preferred_auth]
+        else:
+            self._preferred_auth = get_client_auth_methods()
 
         if options.agent_path is not None:
             self._agent = SSHAgentClient(options.agent_path)
@@ -2526,7 +2531,9 @@ class SSHClientConnection(SSHConnection):
         if gss_host:
             try:
                 self._gss = GSSClient(gss_host, options.gss_delegate_creds)
-                self._gss_mic_auth = True
+                self._gss_kex = options.gss_kex
+                self._gss_auth = options.gss_auth
+                self._gss_mic_auth = self._gss_auth
             except GSSError:
                 pass
 
@@ -4072,7 +4079,9 @@ class SSHServerConnection(SSHConnection):
         if options.gss_host:
             try:
                 self._gss = GSSServer(options.gss_host)
-                self._gss_mic_auth = True
+                self._gss_kex = options.gss_kex
+                self._gss_auth = options.gss_auth
+                self._gss_mic_auth = self._gss_auth
             except GSSError:
                 pass
 
@@ -5425,6 +5434,12 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
            authentication. If not specified, this value will be the same
            as the `host` argument. If this argument is explicitly set to
            `None`, GSS key exchange and authentication will not be performed.
+       :param gss_kex: (optional)
+           Whether or not to allow GSS key exchange. By default, GSS
+           key exchange is enabled.
+       :param gss_auth: (optional)
+           Whether or not to allow GSS authentication. By default, GSS
+           authentication is enabled.
        :param gss_delegate_creds: (optional)
            Whether or not to forward GSS credentials to the server being
            accessed. By default, GSS credential delegation is disabled.
@@ -5504,6 +5519,8 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
        :type client_certs: *see* :ref:`SpecifyingCertificates`
        :type passphrase: `str`
        :type gss_host: `str`
+       :type gss_kex: `bool`
+       :type gss_auth: `bool`
        :type gss_delegate_creds: `bool`
        :type preferred_auth: `str` or `list` of `str`
        :type agent_path: `str` or :class:`SSHServerConnection`
@@ -5534,8 +5551,9 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
                 password=None, client_host_keysign=(),
                 client_host_keys=None, client_host_certs=(), client_host=None,
                 client_username=(), client_keys=(), client_certs=(),
-                passphrase=None, gss_host=(), gss_delegate_creds=False,
-                preferred_auth=(), agent_path=(), agent_forwarding=()):
+                passphrase=None, gss_host=(), gss_kex=(), gss_auth=(),
+                gss_delegate_creds=(), preferred_auth=(), agent_path=(),
+                agent_forwarding=()):
         """Prepare client connection configuration options"""
 
         local_username = getpass.getuser()
@@ -5605,7 +5623,18 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
         self.client_host = client_host
         self.client_username = saslprep(client_username)
 
+        if gss_kex == ():
+            gss_kex = config.get('GSSAPIKeyExchange', True)
+
+        if gss_auth == ():
+            gss_auth = config.get('GSSAPIAuthentication', True)
+
+        if gss_delegate_creds == ():
+            gss_delegate_creds = config.get('GSSAPIDelegateCredentials', False)
+
         self.gss_host = gss_host
+        self.gss_kex = gss_kex
+        self.gss_auth = gss_auth
         self.gss_delegate_creds = gss_delegate_creds
 
         if preferred_auth == ():
@@ -5718,6 +5747,12 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
            name. Otherwise, the value used by :func:`socket.getfqdn` will be
            used. If this argument is explicitly set to `None`, GSS
            key exchange and authentication will not be performed.
+       :param gss_kex: (optional)
+           Whether or not to allow GSS key exchange. By default, GSS
+           key exchange is enabled.
+       :param gss_auth: (optional)
+           Whether or not to allow GSS authentication. By default, GSS
+           authentication is enabled.
        :param allow_pty: (optional)
            Whether or not to allow allocation of a pseudo-tty in sessions,
            defaulting to `True`
@@ -5827,6 +5862,8 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
        :type x509_trusted_cert_paths: `list` of `str`
        :type x509_purposes: *see* :ref:`SpecifyingX509Purposes`
        :type gss_host: `str`
+       :type gss_kex: `bool`
+       :type gss_auth: `bool`
        :type allow_pty: `bool`
        :type line_editor: `bool`
        :type line_history: `bool`
@@ -5865,12 +5902,12 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
                 keepalive_interval=(), keepalive_count_max=(),
                 server_host_keys=(), server_host_certs=(), passphrase=None,
                 known_client_hosts=None, trust_client_host=False,
-                authorized_client_keys=None, gss_host=(), allow_pty=True,
-                line_editor=True, line_history=_DEFAULT_LINE_HISTORY,
-                x11_forwarding=False, x11_auth_path=None,
-                agent_forwarding=True, process_factory=None,
-                session_factory=None, encoding='utf-8', errors='strict',
-                sftp_factory=None, allow_scp=False,
+                authorized_client_keys=None, gss_host=(), gss_kex=(),
+                gss_auth=(), allow_pty=True, line_editor=True,
+                line_history=_DEFAULT_LINE_HISTORY, x11_forwarding=False,
+                x11_auth_path=None, agent_forwarding=True,
+                process_factory=None, session_factory=None, encoding='utf-8',
+                errors='strict', sftp_factory=None, allow_scp=False,
                 window=_DEFAULT_WINDOW, max_pktsize=_DEFAULT_MAX_PKTSIZE):
         """Prepare server connection configuration options"""
 
@@ -5926,7 +5963,15 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
             if '.' not in gss_host:
                 gss_host = socket.getfqdn()
 
+        if gss_kex == ():
+            gss_kex = config.get('GSSAPIKeyExchange', True)
+
+        if gss_auth == ():
+            gss_auth = config.get('GSSAPIAuthentication', True)
+
         self.gss_host = gss_host
+        self.gss_kex = gss_kex
+        self.gss_auth = gss_auth
 
         if not server_keys and not gss_host:
             raise ValueError('No server host keys provided')
