@@ -464,6 +464,11 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         self._cmp_algs = options.compression_algs
         self._sig_algs = options.signature_algs
 
+        self._host_based_auth = options.host_based_auth
+        self._public_key_auth = options.public_key_auth
+        self._kbdint_auth = options.kbdint_auth
+        self._password_auth = options.password_auth
+
         self._kex = None
         self._kexinit_sent = False
         self._kex_complete = False
@@ -2705,6 +2710,9 @@ class SSHClientConnection(SSHConnection):
     async def host_based_auth_requested(self):
         """Return a host key pair, host, and user to authenticate with"""
 
+        if not self._host_based_auth:
+            return None, None, None
+
         while True:
             try:
                 keypair = self._client_host_keys.pop(0)
@@ -2728,6 +2736,9 @@ class SSHClientConnection(SSHConnection):
 
     async def public_key_auth_requested(self):
         """Return a client key pair to authenticate with"""
+
+        if not self._public_key_auth:
+            return None
 
         if self._get_agent_keys:
             try:
@@ -2757,6 +2768,9 @@ class SSHClientConnection(SSHConnection):
 
     async def password_auth_requested(self):
         """Return a password to authenticate with"""
+
+        if not self._password_auth and not self._kbdint_password_auth:
+            return None
 
         if self._password is not None:
             result = self._password
@@ -2797,6 +2811,9 @@ class SSHClientConnection(SSHConnection):
            will allow sending the password via keyboard-interactive auth.
 
         """
+
+        if not self._kbdint_auth:
+            return None
 
         result = self._owner.kbdint_auth_requested()
 
@@ -4170,8 +4187,9 @@ class SSHServerConnection(SSHConnection):
     def host_based_auth_supported(self):
         """Return whether or not host based authentication is supported"""
 
-        return (bool(self._known_client_hosts) or
-                self._owner.host_based_auth_supported())
+        return (self._host_based_auth and
+                (bool(self._known_client_hosts) or
+                 self._owner.host_based_auth_supported()))
 
     async def validate_host_based_auth(self, username, key_data, client_host,
                                        client_username, msg, signature):
@@ -4337,8 +4355,9 @@ class SSHServerConnection(SSHConnection):
     def public_key_auth_supported(self):
         """Return whether or not public key authentication is supported"""
 
-        return (bool(self._client_keys) or
-                self._owner.public_key_auth_supported())
+        return (self._public_key_auth and
+                (bool(self._client_keys) or
+                 self._owner.public_key_auth_supported()))
 
     async def validate_public_key(self, username, key_data, msg, signature):
         """Validate the public key or certificate for the specified user
@@ -4364,7 +4383,7 @@ class SSHServerConnection(SSHConnection):
     def password_auth_supported(self):
         """Return whether or not password authentication is supported"""
 
-        return self._owner.password_auth_supported()
+        return self._password_auth and self._owner.password_auth_supported()
 
     async def validate_password(self, username, password):
         """Return whether password is valid for this user"""
@@ -4391,7 +4410,7 @@ class SSHServerConnection(SSHConnection):
         """Return whether or not keyboard-interactive authentication
            is supported"""
 
-        result = self._owner.kbdint_auth_supported()
+        result = self._kbdint_auth and self._owner.kbdint_auth_supported()
 
         if result is True:
             return True
@@ -5234,9 +5253,10 @@ class SSHConnectionOptions(Options):
     # pylint: disable=arguments-differ
     def prepare(self, config, protocol_factory, version, host, port, tunnel,
                 family, local_addr, kex_algs, encryption_algs, mac_algs,
-                compression_algs, signature_algs, x509_trusted_certs,
-                x509_trusted_cert_paths, x509_purposes, rekey_bytes,
-                rekey_seconds, login_timeout, keepalive_interval,
+                compression_algs, signature_algs, host_based_auth,
+                public_key_auth, kbdint_auth, password_auth,
+                x509_trusted_certs, x509_trusted_cert_paths, x509_purposes,
+                rekey_bytes, rekey_seconds, login_timeout, keepalive_interval,
                 keepalive_count_max):
         """Prepare common connection configuration options"""
 
@@ -5259,6 +5279,25 @@ class SSHConnectionOptions(Options):
             _validate_algs(config, kex_algs, encryption_algs, mac_algs,
                            compression_algs, signature_algs,
                            x509_trusted_certs is not None)
+
+        if host_based_auth == ():
+            host_based_auth = config.get('HostbasedAuthentication', True)
+
+        if public_key_auth == ():
+            public_key_auth = config.get('PubkeyAuthentication', True)
+
+        if kbdint_auth == ():
+            kbdint_auth = \
+                config.get('KbdInteractiveAuthentication',
+                           config.get('ChallengeResponseAuthentication', True))
+
+        if password_auth == ():
+            password_auth = config.get('PasswordAuthentication', True)
+
+        self.host_based_auth = host_based_auth
+        self.public_key_auth = public_key_auth
+        self.kbdint_auth = kbdint_auth
+        self.password_auth = password_auth
 
         if x509_trusted_certs is not None:
             x509_trusted_certs = load_certificates(x509_trusted_certs)
@@ -5429,6 +5468,23 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
            if they are encrypted. If this is not specified, only unencrypted
            client keys can be loaded. If the keys passed into client_keys
            are already loaded, this argument is ignored.
+       :param host_based_auth: (optional)
+           Whether or not to allow host-based authentication. By default,
+           host-based authentication is enabled if client host keys are
+           made available.
+       :param public_key_auth: (optional)
+           Whether or not to allow public key authentication. By default,
+           public key authentication is enabled if client keys are made
+           available.
+       :param kbdint_auth: (optional)
+           Whether or not to allow keyboard-interactive authentication. By
+           default, keyboard-interactive authentication is enabled if a
+           password is specified or if callbacks to respond to challenges
+           are made available.
+       :param password_auth: (optional)
+           Whether or not to allow password authentication. By default,
+           password authentication is enabled if a password is specified
+           or if callbacks to provide a password are made availble.
        :param gss_host: (optional)
            The principal name to use for the host in GSS key exchange and
            authentication. If not specified, this value will be the same
@@ -5518,6 +5574,10 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
        :type client_keys: *see* :ref:`SpecifyingPrivateKeys`
        :type client_certs: *see* :ref:`SpecifyingCertificates`
        :type passphrase: `str`
+       :type host_based_auth: `bool`
+       :type public_key_auth: `bool`
+       :type kbdint_auth: `bool`
+       :type password_auth: `bool`
        :type gss_host: `str`
        :type gss_kex: `bool`
        :type gss_auth: `bool`
@@ -5543,8 +5603,10 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
     def prepare(self, config=(), client_factory=None, client_version=(),
                 host='', port=(), tunnel=(), family=(), local_addr=(),
                 kex_algs=(), encryption_algs=(), mac_algs=(),
-                compression_algs=(), signature_algs=(), x509_trusted_certs=(),
-                x509_trusted_cert_paths=(), x509_purposes='secureShellServer',
+                compression_algs=(), signature_algs=(), host_based_auth=(),
+                public_key_auth=(), kbdint_auth=(), password_auth=(),
+                x509_trusted_certs=(), x509_trusted_cert_paths=(),
+                x509_purposes='secureShellServer',
                 rekey_bytes=(), rekey_seconds=(), login_timeout=(),
                 keepalive_interval=(), keepalive_count_max=(),
                 known_hosts=(), server_host_key_algs=(), username=(),
@@ -5584,7 +5646,8 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
         super().prepare(config, client_factory or SSHClient, client_version,
                         host, port, tunnel, family, local_addr, kex_algs,
                         encryption_algs, mac_algs, compression_algs,
-                        signature_algs, x509_trusted_certs,
+                        signature_algs, host_based_auth, public_key_auth,
+                        kbdint_auth, password_auth, x509_trusted_certs,
                         x509_trusted_cert_paths, x509_purposes,
                         rekey_bytes, rekey_seconds, login_timeout,
                         keepalive_interval, keepalive_count_max)
@@ -5743,6 +5806,24 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
            defulting to 'secureShellClient'. If this argument is explicitly
            set to `None`, the client certificate's ExtendedKeyUsage will
            not be checked.
+       :param host_based_auth: (optional)
+           Whether or not to allow host-based authentication. By default,
+           host-based authentication is enabled if known client host keys
+           are specified or if callbacks to validate client host keys
+           are made available.
+       :param public_key_auth: (optional)
+           Whether or not to allow public key authentication. By default,
+           public key authentication is enabled if authorized client keys
+           are specified or if callbacks to validate client keys are made
+           available.
+       :param kbdint_auth: (optional)
+           Whether or not to allow keyboard-interactive authentication. By
+           default, keyboard-interactive authentication is enabled if the
+           callbacks to generate challenges are made available.
+       :param password_auth: (optional)
+           Whether or not to allow password authentication. By default,
+           password authentication is enabled if callbacks to validate a
+           password are made available.
        :param gss_host: (optional)
            The principal name to use for the host in GSS key exchange and
            authentication. If not specified, the value returned by
@@ -5864,6 +5945,10 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
        :type x509_trusted_certs: *see* :ref:`SpecifyingCertificates`
        :type x509_trusted_cert_paths: `list` of `str`
        :type x509_purposes: *see* :ref:`SpecifyingX509Purposes`
+       :type host_based_auth: `bool`
+       :type public_key_auth: `bool`
+       :type kbdint_auth: `bool`
+       :type password_auth: `bool`
        :type gss_host: `str`
        :type gss_kex: `bool`
        :type gss_auth: `bool`
@@ -5899,8 +5984,10 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
     def prepare(self, config=(), server_factory=None, server_version=(),
                 host='', port=(), tunnel=(), family=(), local_addr=(),
                 kex_algs=(), encryption_algs=(), mac_algs=(),
-                compression_algs=(), signature_algs=(), x509_trusted_certs=(),
-                x509_trusted_cert_paths=(), x509_purposes='secureShellClient',
+                compression_algs=(), signature_algs=(), host_based_auth=(),
+                public_key_auth=(), kbdint_auth=(), password_auth=(),
+                x509_trusted_certs=(), x509_trusted_cert_paths=(),
+                x509_purposes='secureShellClient',
                 rekey_bytes=(), rekey_seconds=(), login_timeout=(),
                 keepalive_interval=(), keepalive_count_max=(),
                 server_host_keys=(), server_host_certs=(), passphrase=None,
@@ -5927,7 +6014,8 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
         super().prepare(config, server_factory or SSHServer, server_version,
                         host, port, tunnel, family, local_addr, kex_algs,
                         encryption_algs, mac_algs, compression_algs,
-                        signature_algs, x509_trusted_certs,
+                        signature_algs, host_based_auth, public_key_auth,
+                        kbdint_auth, password_auth, x509_trusted_certs,
                         x509_trusted_cert_paths, x509_purposes,
                         rekey_bytes, rekey_seconds, login_timeout,
                         keepalive_interval, keepalive_count_max)

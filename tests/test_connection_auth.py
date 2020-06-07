@@ -571,6 +571,14 @@ class _TestHostBasedAuth(ServerTestCase):
             pass
 
     @asynctest
+    async def test_client_host_auth_disabled(self):
+        """Test connecting with host-based authentication disabled"""
+
+        with self.assertRaises(asyncssh.PermissionDenied):
+            await self.connect(username='user', client_host_keys='skey',
+                               client_username='user', host_based_auth=False)
+
+    @asynctest
     async def test_client_host_key_bytes(self):
         """Test client host key passed in as bytes"""
 
@@ -996,6 +1004,14 @@ class _TestPublicKeyAuth(ServerTestCase):
 
         async with self.connect(username='ckey', client_keys='ckey'):
             pass
+
+    @asynctest
+    async def test_public_key_auth_disabled(self):
+        """Test connecting with public key authentication disabled"""
+
+        with self.assertRaises(asyncssh.PermissionDenied):
+            await self.connect(username='ckey', client_keys='ckey',
+                               public_key_auth=False)
 
     @asynctest
     async def test_public_key_auth_not_preferred(self):
@@ -1494,6 +1510,14 @@ class _TestPasswordAuth(ServerTestCase):
             pass
 
     @asynctest
+    async def test_password_auth_disabled(self):
+        """Test connecting with password authentication disabled"""
+
+        with self.assertRaises(asyncssh.PermissionDenied):
+            await self.connect(username='pw', password='kbdint',
+                               password_auth=False)
+
+    @asynctest
     async def test_password_auth_failure(self):
         """Test _failure connecting with password authentication"""
 
@@ -1597,6 +1621,14 @@ class _TestKbdintAuth(ServerTestCase):
         with self.assertRaises(asyncssh.PermissionDenied):
             await self.connect(username='multi', password='kbdint',
                                client_keys=None)
+
+    @asynctest
+    async def test_kbdint_auth_disabled(self):
+        """Test connecting with keyboard-interactive authentication disabled"""
+
+        with self.assertRaises(asyncssh.PermissionDenied):
+            await self.connect(username='pw', password='kbdint',
+                               kbdint_auth=False)
 
     @asynctest
     async def test_kbdint_auth_failure(self):
