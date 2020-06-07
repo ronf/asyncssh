@@ -3039,11 +3039,11 @@ class SSHClientConnection(SSHConnection):
 
     async def create_session(self, session_factory, command=(), *,
                              subsystem=None, env=(), send_env=(),
-                             term_type=None, term_size=None, term_modes=None,
-                             x11_forwarding=(), x11_display=None,
-                             x11_auth_path=None, x11_single_connection=False,
-                             encoding='utf-8', errors='strict',
-                             window=_DEFAULT_WINDOW,
+                             request_pty=(), term_type=None, term_size=None,
+                             term_modes=None, x11_forwarding=(),
+                             x11_display=None, x11_auth_path=None,
+                             x11_single_connection=False, encoding='utf-8',
+                             errors='strict', window=_DEFAULT_WINDOW,
                              max_pktsize=_DEFAULT_MAX_PKTSIZE):
         """Create an SSH client session
 
@@ -3090,6 +3090,14 @@ class SSHClientConnection(SSHConnection):
                matching names will be sent with whatever value is set
                in the local environment.  If a variable is present in both
                env and send_env, the value from env will be used.
+           :param request_pty: (optional)
+               Whether or not to request a pseudo-terminal (PTY) for this
+               session.  This defaults tto `True`, which means to request a
+               PTY whenever the `term_type` is set. Other possible values
+               include `False` to never request a PTY, `'force'` to always
+               request a PTY even without `term_type` being set, or `'auto'`
+               to request a TTY when `term_type` is set but only when
+               starting an interactive shell.
            :param term_type: (optional)
                The terminal type to set for this session. If this is not set,
                a pseudo-terminal will not be requested for this session.
@@ -3127,6 +3135,7 @@ class SSHClientConnection(SSHConnection):
            :type subsystem: `str`
            :type env: `dict`
            :type send_env: `str` or `list` of `str`
+           :type request_pty: `bool`, `'force'`, or `'auto'`
            :type term_type: `str`
            :type term_size: `tuple` of 2 or 4 `int` values
            :type term_modes: `dict`
@@ -3171,6 +3180,16 @@ class SSHClientConnection(SSHConnection):
             except ValueError:
                 raise ValueError('Invalid environment value') from None
 
+        if request_pty == ():
+            request_pty = self._config.get('RequestTTY', True)
+
+        if request_pty == 'force':
+            request_pty = True
+        elif request_pty == 'auto':
+            request_pty = bool(term_type and not (command or subsystem))
+        elif request_pty:
+            request_pty = bool(term_type)
+
         if x11_forwarding == ():
             x11_forwarding = self._config.get('ForwardX11Trusted')
 
@@ -3178,7 +3197,7 @@ class SSHClientConnection(SSHConnection):
                                 window, max_pktsize)
 
         session = await chan.create(session_factory, command, subsystem,
-                                    new_env, term_type, term_size,
+                                    new_env, request_pty, term_type, term_size,
                                     term_modes or {}, x11_forwarding,
                                     x11_display, x11_auth_path,
                                     x11_single_connection,
@@ -5993,7 +6012,7 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
                 server_host_keys=(), server_host_certs=(), passphrase=None,
                 known_client_hosts=None, trust_client_host=False,
                 authorized_client_keys=None, gss_host=(), gss_kex=(),
-                gss_auth=(), allow_pty=True, line_editor=True,
+                gss_auth=(), allow_pty=(), line_editor=True,
                 line_history=_DEFAULT_LINE_HISTORY, x11_forwarding=False,
                 x11_auth_path=None, agent_forwarding=True,
                 process_factory=None, session_factory=None, encoding='utf-8',
@@ -6066,6 +6085,9 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
 
         if not server_keys and not gss_host:
             raise ValueError('No server host keys provided')
+
+        if allow_pty == ():
+            allow_pty = config.get('PermitTTY', True)
 
         self.allow_pty = allow_pty
         self.line_editor = line_editor

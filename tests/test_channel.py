@@ -716,7 +716,7 @@ class _TestChannel(ServerTestCase):
             chan, _ = await _create_session(conn)
 
             with self.assertRaises(OSError):
-                await chan.create(None, None, None, {}, None, None,
+                await chan.create(None, None, None, {}, False, None, None,
                                   None, False, None, None, False, False)
 
             chan.close()
@@ -944,6 +944,19 @@ class _TestChannel(ServerTestCase):
 
             result = ''.join(session.recv_buf[None])
             self.assertEqual(result, "('ansi', (80, 24, 480, 240), 9600)\r\n")
+
+    @asynctest
+    async def test_pty_without_term_type(self):
+        """Test requesting a PTY without setting the terminal type"""
+
+        async with self.connect() as conn:
+            chan, session = await _create_session(conn, 'term',
+                                                  request_pty='force')
+
+            await chan.wait_closed()
+
+            result = ''.join(session.recv_buf[None])
+            self.assertEqual(result, "('', (0, 0, 0, 0), None)\n")
 
     @asynctest
     async def test_invalid_terminal_size(self):
@@ -1476,3 +1489,46 @@ class _TestChannel(ServerTestCase):
 
             await chan.wait_closed()
             self.assertEqual(session.exit_status, 255)
+
+
+class _TestChannelNoPTY(ServerTestCase):
+    """Unit tests for AsyncSSH channel module with PTYs disallowed"""
+
+    @classmethod
+    async def start_server(cls):
+        """Start an SSH server for the tests to use"""
+
+        return (await cls.create_server(
+            _ChannelServer, authorized_client_keys='authorized_keys',
+            allow_pty=False))
+
+    @asynctest
+    async def test_shell_pty(self):
+        """Test starting a shell that request a PTY"""
+
+        async with self.connect() as conn:
+            with self.assertRaises(asyncssh.ChannelOpenError):
+                await conn.run(term_type='ansi')
+
+    @asynctest
+    async def test_shell_no_pty(self):
+        """Test starting a shell that doesn't request a PTY"""
+
+        async with self.connect() as conn:
+            await conn.run(request_pty=False, stdin=asyncssh.DEVNULL)
+
+    @asynctest
+    async def test_exec_pty(self):
+        """Test execution of a remote command that requests a PTY"""
+
+        async with self.connect() as conn:
+            with self.assertRaises(asyncssh.ChannelOpenError):
+                await conn.run('echo', request_pty='force')
+
+    @asynctest
+    async def test_exec_no_pty(self):
+        """Test execution of a remote command that doesn't request a PTY"""
+
+        async with self.connect() as conn:
+            await conn.run('echo', term_type='ansi', request_pty='auto',
+                           stdin=asyncssh.DEVNULL)

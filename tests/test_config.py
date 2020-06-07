@@ -231,6 +231,18 @@ class _TestClientConfig(_TestConfig):
         config = self._parse_config('    RemoteCommand     foo  bar  baz')
         self.assertEqual(config.get('RemoteCommand'), 'foo  bar  baz')
 
+    def test_set_request_tty(self):
+        """Test pseudo-terminal request config option"""
+
+        for value, result in (('yes', True), ('true', True),
+                              ('no', False), ('false', False),
+                              ('force', 'force'), ('auto', 'auto')):
+            config = self._parse_config('RequestTTY %s' % value)
+            self.assertEqual(config.get('RequestTTY'), result)
+
+        config = self._parse_config('RequestTTY yes\nRequestTTY no')
+        self.assertEqual(config.get('RequestTTY'), True)
+
     def test_set_and_match_hostname(self):
         """Test setting and matching hostname"""
 
@@ -278,6 +290,16 @@ class _TestClientConfig(_TestConfig):
 
         self.assertIsNone(config.get('User'))
 
+    def test_client_errors(self):
+        """Test client config errors"""
+
+        for desc, config_data in (
+                ('Invalid pseudo-terminal request', 'RequestTTY xxx'),
+                ('Missing match host', 'Match host')):
+            with self.subTest(desc):
+                with self.assertRaises(asyncssh.ConfigParseError):
+                    self._parse_config(config_data)
+
     def test_percent_expansion(self):
         """Test token percent expansion"""
 
@@ -317,12 +339,6 @@ class _TestClientConfig(_TestConfig):
             config = self._parse_config('RemoteCommand %i')
 
         self.assertEqual(config.get('RemoteCommand'), '123')
-
-    def test_missing_match_pattern(self):
-        """Test match with a missing pattern"""
-
-        with self.assertRaises(asyncssh.ConfigParseError):
-            self._parse_config('Match host')
 
     def test_invalid_percent_expansion(self):
         """Test invalid percent expansion"""

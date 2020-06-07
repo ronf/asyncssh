@@ -385,6 +385,21 @@ class SSHClientConfig(SSHConfig):
             self._options[option] = value
             self._port = value
 
+    def _set_request_tty(self, option, args):
+        """Set a pseudo-terminal request config option"""
+
+        value = args.pop(0).lower()
+
+        if value in ('yes', 'true'):
+            value = True
+        elif value in ('no', 'false'):
+            value = False
+        elif value not in ('force', 'auto'):
+            self._error('Invalid %s value: %s', option, value)
+
+        if option not in self._options:
+            self._options[option] = value
+
     def _set_user(self, option, args):
         """Set user config option"""
 
@@ -458,6 +473,7 @@ class SSHClientConfig(SSHConfig):
         ('PubkeyAuthentication',            SSHConfig._set_bool),
         ('RekeyLimit',                      SSHConfig._set_rekey_limits),
         ('RemoteCommand',                   SSHConfig._set_string),
+        ('RequestTTY',                      _set_request_tty),
         ('SendEnv',                         SSHConfig._append_string_list),
         ('ServerAliveCountMax',             SSHConfig._set_int),
         ('ServerAliveInterval',             SSHConfig._set_int),
@@ -506,6 +522,7 @@ class SSHServerConfig(SSHConfig):
         ('KexAlgorithms',                   SSHConfig._set_string),
         ('MACs',                            SSHConfig._set_string),
         ('PasswordAuthentication',          SSHConfig._set_bool),
+        ('PermitTTY',                       SSHConfig._set_bool),
         ('Port',                            SSHConfig._set_int),
         ('PubkeyAuthentication',            SSHConfig._set_bool),
         ('RekeyLimit',                      SSHConfig._set_rekey_limits)

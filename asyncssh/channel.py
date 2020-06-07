@@ -1002,9 +1002,10 @@ class SSHClientChannel(SSHChannel):
         self._exit_status = None
         self._exit_signal = None
 
-    async def create(self, session_factory, command, subsystem, env, term_type,
-                     term_size, term_modes, x11_forwarding, x11_display,
-                     x11_auth_path, x11_single_connection, agent_forwarding):
+    async def create(self, session_factory, command, subsystem, env,
+                     request_pty, term_type, term_size, term_modes,
+                     x11_forwarding, x11_display, x11_auth_path,
+                     x11_single_connection, agent_forwarding):
         """Create an SSH client session"""
 
         self.logger.info('Requesting new SSH session')
@@ -1025,8 +1026,8 @@ class SSHClientChannel(SSHChannel):
             self.logger.debug1('  Env: %s=%s', name, value)
             self._send_request(b'env', String(str(name)), String(str(value)))
 
-        if term_type:
-            self.logger.debug1('  Terminal type: %s', term_type)
+        if request_pty:
+            self.logger.debug1('  Terminal type: %s', term_type or 'None')
 
             if not term_size:
                 width = height = pixwidth = pixheight = 0
@@ -1053,7 +1054,8 @@ class SSHClientChannel(SSHChannel):
 
             modes += Byte(PTY_OP_END)
 
-            if not (await self._make_request(b'pty-req', String(term_type),
+            if not (await self._make_request(b'pty-req',
+                                             String(term_type or ''),
                                              UInt32(width), UInt32(height),
                                              UInt32(pixwidth),
                                              UInt32(pixheight),
