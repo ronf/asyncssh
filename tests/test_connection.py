@@ -581,8 +581,16 @@ class _TestConnection(ServerTestCase):
     async def test_read_known_hosts(self):
         """Test connecting with known hosts object from read_known_hosts"""
 
-        known_hosts_path = os.path.join('.ssh', 'known_hosts')
-        known_hosts = asyncssh.read_known_hosts(known_hosts_path)
+        known_hosts = asyncssh.read_known_hosts('~/.ssh/known_hosts')
+
+        async with self.connect(known_hosts=known_hosts):
+            pass
+
+    @asynctest
+    async def test_read_known_hosts_filelist(self):
+        """Test connecting with known hosts from read_known_hosts file list"""
+
+        known_hosts = asyncssh.read_known_hosts(['~/.ssh/known_hosts'])
 
         async with self.connect(known_hosts=known_hosts):
             pass

@@ -209,6 +209,16 @@ class _TestClientConfig(_TestConfig):
         config = self._parse_config('IdentityFile none')
         self.assertEqual(config.get('IdentityFile'), [])
 
+    def test_set_string_list(self):
+        """Test string list config option"""
+
+        config = self._parse_config('UserKnownHostsFile file1 file2')
+        self.assertEqual(config.get('UserKnownHostsFile'), ['file1', 'file2'])
+
+        config = self._parse_config('UserKnownHostsFile file1\n'
+                                    'UserKnownHostsFile file2')
+        self.assertEqual(config.get('UserKnownHostsFile'), ['file1'])
+
     def test_append_string_list(self):
         """Test appending multiple string config options to a list"""
 

@@ -97,9 +97,15 @@ class _HashedHost:
 class SSHKnownHosts:
     """An SSH known hosts list"""
 
-    def __init__(self, known_hosts):
+    def __init__(self, known_hosts=None):
         self._exact_entries = {}
         self._pattern_entries = []
+
+        if known_hosts:
+            self.load(known_hosts)
+
+    def load(self, known_hosts):
+        """Load known hosts data into this object"""
 
         for line in known_hosts.splitlines():
             line = line.strip()
@@ -264,23 +270,31 @@ def import_known_hosts(data):
 
     return SSHKnownHosts(data)
 
-def read_known_hosts(filename):
-    """Read SSH known hosts from a file
+
+def read_known_hosts(filelist):
+    """Read SSH known hosts from a file or list of files
 
        This function reads known host patterns and keys in
-       OpenSSH known hosts format from a file.
+       OpenSSH known hosts format from a file or list of files.
 
-       :param filename:
-           The file to read the known hosts from
-       :type filename: `str`
+       :param filelist:
+           The file or list of files to read the known hosts from
+       :type filelist: `str` or `list` of `str`
 
        :returns: An :class:`SSHKnownHosts` object
 
     """
 
-    with open_file(filename, 'r') as f:
-        return import_known_hosts(f.read())
+    known_hosts = SSHKnownHosts()
 
+    if isinstance(filelist, str):
+        filelist = [filelist]
+
+    for filename in filelist:
+        with open_file(filename, 'r') as f:
+            known_hosts.load(f.read())
+
+    return known_hosts
 
 def match_known_hosts(known_hosts, host, addr, port):
     """Match a host, IP address, and port against a known_hosts list
@@ -320,7 +334,9 @@ def match_known_hosts(known_hosts, host, addr, port):
 
     """
 
-    if isinstance(known_hosts, str):
+    if isinstance(known_hosts, str) or \
+            (known_hosts and isinstance(known_hosts, list) and
+             isinstance(known_hosts[0], str)):
         known_hosts = read_known_hosts(known_hosts)
     elif isinstance(known_hosts, bytes):
         known_hosts = import_known_hosts(known_hosts.decode())

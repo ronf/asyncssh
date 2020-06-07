@@ -192,6 +192,14 @@ class SSHConfig:
             if option not in self._options:
                 self._options[option] = []
 
+    def _set_string_list(self, option, args):
+        """Set whitespace-separated string config options as a list"""
+
+        if option not in self._options:
+            self._options[option] = args[:]
+
+        args.clear()
+
     def _append_string_list(self, option, args):
         """Append whitespace-separated string config options to a list"""
 
@@ -430,6 +438,7 @@ class SSHClientConfig(SSHConfig):
         ('EnableSSHKeySign',          SSHConfig._set_bool),
         ('ForwardAgent',              SSHConfig._set_bool),
         ('ForwardX11Trusted',         SSHConfig._set_bool),
+        ('GlobalKnownHostsFile',      SSHConfig._set_string_list),
         ('GSSAPIAuthentication',      SSHConfig._set_bool),
         ('GSSAPIDelegateCredentials', SSHConfig._set_bool),
         ('GSSAPIKeyExchange',         SSHConfig._set_bool),
@@ -449,7 +458,7 @@ class SSHClientConfig(SSHConfig):
         ('ServerAliveInterval',       SSHConfig._set_int),
         ('SetEnv',                    SSHConfig._append_string_list),
         ('User',                      _set_user),
-        ('UserKnownHostsFile',        SSHConfig._set_string)
+        ('UserKnownHostsFile',        SSHConfig._set_string_list)
     )}
 
     # pylint: enable=bad-whitespace

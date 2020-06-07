@@ -5589,8 +5589,11 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
                         rekey_bytes, rekey_seconds, login_timeout,
                         keepalive_interval, keepalive_count_max)
 
-        self.known_hosts = known_hosts if known_hosts != () else \
-            config.get('UserKnownHostsFile', ())
+        if known_hosts == ():
+            known_hosts = (config.get('UserKnownHostsFile', []) + \
+                           config.get('GlobalKnownHostsFile', [])) or ()
+
+        self.known_hosts = known_hosts
 
         self.server_host_key_algs = \
             _validate_server_host_key_algs(config, server_host_key_algs)

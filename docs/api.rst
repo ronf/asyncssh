@@ -1666,16 +1666,15 @@ Specifying known hosts
 ----------------------
 
 Known hosts may be passed into AsyncSSH via the ``known_hosts`` argument
-to :func:`create_connection`. This can be the name of a file containing
-a list of known hosts, a byte string containing a list of known hosts,
-or an :class:`SSHKnownHosts` object which was previously imported from
-a string by calling :func:`import_known_hosts` or read from a file by
-calling :func:`read_known_hosts`. In all of these cases, the host patterns
-in the list will be compared against the target host, address, and port
-being connected to and the matching trusted host keys, trusted CA keys,
-revoked keys, trusted X.509 certificates, revoked X.509 certificates,
-trusted X.509 subject names, and revoked X.509 subject names will be
-returned.
+to :func:`create_connection`. This can be the name of a file or list of files
+containing known hosts, a byte string containing data in known hosts format,
+or an :class:`SSHKnownHosts` object which was previously imported from a
+string by calling :func:`import_known_hosts` or read from files by calling
+:func:`read_known_hosts`. In all of these cases, the host patterns in the
+list will be compared against the target host, address, and port being
+connected to and the matching trusted host keys, trusted CA keys, revoked
+keys, trusted X.509 certificates, revoked X.509 certificates, trusted
+X.509 subject names, and revoked X.509 subject names will be returned.
 
 Alternately, a function can be passed in as the ``known_hosts`` argument
 that accepts a target host, address, and port and returns lists containing
