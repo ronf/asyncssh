@@ -1515,7 +1515,7 @@ class _TestPasswordAuth(ServerTestCase):
 
         with self.assertRaises(asyncssh.PermissionDenied):
             await self.connect(username='pw', password='kbdint',
-                               password_auth=False)
+                               password_auth=False, preferred_auth='password')
 
     @asynctest
     async def test_password_auth_failure(self):
