@@ -507,7 +507,9 @@ class SSHServerConfig(SSHConfig):
         ('Include',                         SSHConfig._include),
 
         ('AddressFamily',                   SSHConfig._set_address_family),
+        ('AuthorizedKeysFile',              SSHConfig._set_string_list),
         ('BindAddress',                     SSHConfig._set_string),
+        ('CASignatureAlgorithms',           SSHConfig._set_string),
         ('ChallengeResponseAuthentication', SSHConfig._set_bool),
         ('Ciphers',                         SSHConfig._set_string),
         ('ClientAliveCountMax',             SSHConfig._set_int),

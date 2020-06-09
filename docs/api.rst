@@ -1740,10 +1740,11 @@ Authorized keys may be passed into AsyncSSH via the
 on the :class:`SSHServerConnection` from within the :meth:`begin_auth()
 <SSHServer.begin_auth>` method in :class:`SSHServer`.
 
-Authorized keys can be provided as either the name of a file to read
-the keys from or an :class:`SSHAuthorizedKeys` object which was previously
-imported from a string by calling :func:`import_authorized_keys` or read
-from a file by calling :func:`read_authorized_keys`.
+Authorized keys can be provided as either the name of a file or list of
+files to read authorized keys from or an :class:`SSHAuthorizedKeys` object
+which was previously imported from a string by calling
+:func:`import_authorized_keys` or read from files by calling
+:func:`read_authorized_keys`.
 
 An authorized keys file may contain public keys or X.509 certificates
 in OpenSSH format or X.509 certificate subject names. See

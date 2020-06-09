@@ -296,6 +296,7 @@ def read_known_hosts(filelist):
 
     return known_hosts
 
+
 def match_known_hosts(known_hosts, host, addr, port):
     """Match a host, IP address, and port against a known_hosts list
 

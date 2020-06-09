@@ -1338,7 +1338,30 @@ class _TestPreloadedAuthorizedKeys(ServerTestCase):
 
     @asynctest
     async def test_pre_loaded_authorized_keys(self):
-        """Test set_authorized_keys with pre-loaded authorized keys"""
+        """Test pre-loaded authorized keys file"""
+
+        async with self.connect(username='ckey', client_keys='ckey'):
+            pass
+
+
+class _TestPreloadedAuthorizedKeysFileList(ServerTestCase):
+    """Unit tests with pre-loaded authorized keys file list"""
+
+    @classmethod
+    async def start_server(cls):
+        """Start an SSH server which supports public key authentication"""
+
+        def server_factory():
+            """Return an SSH server which calls set_authorized_keys"""
+
+            authorized_keys = asyncssh.read_authorized_keys(['authorized_keys'])
+            return _PublicKeyServer(authorized_keys=authorized_keys)
+
+        return await cls.create_server(server_factory)
+
+    @asynctest
+    async def test_pre_loaded_authorized_keys(self):
+        """Test pre-loaded authorized keys file list"""
 
         async with self.connect(username='ckey', client_keys='ckey'):
             pass

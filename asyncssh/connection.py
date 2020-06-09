@@ -4883,7 +4883,7 @@ class SSHServerConnection(SSHConnection):
 
         """
 
-        if isinstance(authorized_keys, str):
+        if isinstance(authorized_keys, (str, list)):
             authorized_keys = read_authorized_keys(authorized_keys)
 
         self._client_keys = authorized_keys
@@ -6011,7 +6011,7 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
                 keepalive_interval=(), keepalive_count_max=(),
                 server_host_keys=(), server_host_certs=(), passphrase=None,
                 known_client_hosts=None, trust_client_host=False,
-                authorized_client_keys=None, gss_host=(), gss_kex=(),
+                authorized_client_keys=(), gss_host=(), gss_kex=(),
                 gss_auth=(), allow_pty=(), line_editor=True,
                 line_history=_DEFAULT_LINE_HISTORY, x11_forwarding=False,
                 x11_auth_path=None, agent_forwarding=True,
@@ -6061,7 +6061,10 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
         self.known_client_hosts = known_client_hosts
         self.trust_client_host = trust_client_host
 
-        if isinstance(authorized_client_keys, str):
+        if authorized_client_keys == ():
+            authorized_client_keys = config.get('AuthorizedKeysFile')
+
+        if isinstance(authorized_client_keys, (str, list)):
             self.authorized_client_keys = \
                 read_authorized_keys(authorized_client_keys)
         else:

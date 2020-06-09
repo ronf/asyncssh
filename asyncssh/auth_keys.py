@@ -225,12 +225,18 @@ class _SSHAuthorizedKeyEntry:
 class SSHAuthorizedKeys:
     """An SSH authorized keys list"""
 
-    def __init__(self, data):
+    def __init__(self, authorized_keys=None):
         self._user_entries = []
         self._ca_entries = []
         self._x509_entries = []
 
-        for line in data.splitlines():
+        if authorized_keys:
+            self.load(authorized_keys)
+
+    def load(self, authorized_keys):
+        """Load authorized keys data into this object"""
+
+        for line in authorized_keys.splitlines():
             line = line.strip()
             if not line or line.startswith('#'):
                 continue
@@ -294,19 +300,27 @@ def import_authorized_keys(data):
     return SSHAuthorizedKeys(data)
 
 
-def read_authorized_keys(filename):
-    """Read SSH authorized keys from a file
+def read_authorized_keys(filelist):
+    """Read SSH authorized keys from a file or list of files
 
        This function reads public keys and associated options in
-       OpenSSH authorized_keys format from a file.
+       OpenSSH authorized_keys format from a file or list of files.
 
-       :param filename:
-           The file to read the keys from.
-       :type filename: `str`
+       :param filelist:
+           The file or list of files to read the keys from.
+       :type filenlist: `str` or `list` of `str`
 
        :returns: An :class:`SSHAuthorizedKeys` object
 
     """
 
-    with open_file(filename, 'r') as f:
-        return import_authorized_keys(f.read())
+    authorized_keys = SSHAuthorizedKeys()
+
+    if isinstance(filelist, str):
+        filelist = [filelist]
+
+    for filename in filelist:
+        with open_file(filename, 'r') as f:
+            authorized_keys.load(f.read())
+
+    return authorized_keys
