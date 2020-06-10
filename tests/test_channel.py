@@ -1532,3 +1532,24 @@ class _TestChannelNoPTY(ServerTestCase):
         async with self.connect() as conn:
             await conn.run('echo', term_type='ansi', request_pty='auto',
                            stdin=asyncssh.DEVNULL)
+
+
+class _TestChannelNoAgentForwarding(ServerTestCase):
+    """Unit tests for channel module with agent forwarding disallowed"""
+
+    @classmethod
+    async def start_server(cls):
+        """Start an SSH server with agent forwarding disabled"""
+
+        return (await cls.create_server(
+            _ChannelServer, authorized_client_keys='authorized_keys',
+            agent_forwarding=False))
+
+    @asynctest
+    async def test_agent_forwarding_disallowed(self):
+        """Test starting a shell that request a PTY"""
+
+        async with self.connect(agent_forwarding=True) as conn:
+            result = await conn.run('agent')
+
+        self.assertEqual(result.exit_status, 1)

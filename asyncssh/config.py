@@ -508,6 +508,7 @@ class SSHServerConfig(SSHConfig):
 
         ('AddressFamily',                   SSHConfig._set_address_family),
         ('AuthorizedKeysFile',              SSHConfig._set_string_list),
+        ('AllowAgentForwarding',            SSHConfig._set_bool),
         ('BindAddress',                     SSHConfig._set_string),
         ('CASignatureAlgorithms',           SSHConfig._set_string),
         ('ChallengeResponseAuthentication', SSHConfig._set_bool),
@@ -522,6 +523,7 @@ class SSHServerConfig(SSHConfig):
         ('HostKey',                         SSHConfig._append_string),
         ('KbdInteractiveAuthentication',    SSHConfig._set_bool),
         ('KexAlgorithms',                   SSHConfig._set_string),
+        ('LoginGraceTime',                  SSHConfig._set_int),
         ('MACs',                            SSHConfig._set_string),
         ('PasswordAuthentication',          SSHConfig._set_bool),
         ('PermitTTY',                       SSHConfig._set_bool),

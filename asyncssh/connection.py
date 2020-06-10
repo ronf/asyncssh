@@ -5355,10 +5355,6 @@ class SSHConnectionOptions(Options):
         if rekey_seconds and rekey_seconds <= 0:
             raise ValueError('Rekey seconds cannot be negative or zero')
 
-        if login_timeout == ():
-            login_timeout = config.get('ConnectTimeout',
-                                       _DEFAULT_LOGIN_TIMEOUT)
-
         if isinstance(login_timeout, str):
             login_timeout = parse_time_interval(login_timeout)
 
@@ -5653,6 +5649,10 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
 
             if default_x509_cert_path.is_dir():
                 x509_trusted_cert_paths = [str(default_x509_cert_path)]
+
+        if login_timeout == ():
+            login_timeout = config.get('ConnectTimeout',
+                                       _DEFAULT_LOGIN_TIMEOUT)
 
         if keepalive_interval == ():
             keepalive_interval = config.get('ServerAliveInterval',
@@ -6014,13 +6014,17 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
                 authorized_client_keys=(), gss_host=(), gss_kex=(),
                 gss_auth=(), allow_pty=(), line_editor=True,
                 line_history=_DEFAULT_LINE_HISTORY, x11_forwarding=False,
-                x11_auth_path=None, agent_forwarding=True,
+                x11_auth_path=None, agent_forwarding=(),
                 process_factory=None, session_factory=None, encoding='utf-8',
                 errors='strict', sftp_factory=None, allow_scp=False,
                 window=_DEFAULT_WINDOW, max_pktsize=_DEFAULT_MAX_PKTSIZE):
         """Prepare server connection configuration options"""
 
         config = load_server_config(config)
+
+        if login_timeout == ():
+            login_timeout = config.get('LoginGraceTime',
+                                       _DEFAULT_LOGIN_TIMEOUT)
 
         if keepalive_interval == ():
             keepalive_interval = config.get('ClientAliveInterval',
@@ -6091,6 +6095,9 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
 
         if allow_pty == ():
             allow_pty = config.get('PermitTTY', True)
+
+        if agent_forwarding == ():
+            agent_forwarding = config.get('AllowAgentForwarding', True)
 
         self.allow_pty = allow_pty
         self.line_editor = line_editor
