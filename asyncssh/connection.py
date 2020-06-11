@@ -51,7 +51,7 @@ from .compression import get_compression_algs, get_default_compression_algs
 from .compression import get_compression_params
 from .compression import get_compressor, get_decompressor
 
-from .config import load_client_config, load_server_config
+from .config import SSHClientConfig, SSHServerConfig
 
 from .constants import DEFAULT_LANG, DEFAULT_PORT
 from .constants import DISC_BY_APPLICATION
@@ -5269,6 +5269,10 @@ class SSHServerConnection(SSHConnection):
 class SSHConnectionOptions(Options):
     """SSH connection options"""
 
+    def __init__(self, options=None, **kwargs):
+        last_config = options.config if options else None
+        super().__init__(options=options, last_config=last_config, **kwargs)
+
     # pylint: disable=arguments-differ
     def prepare(self, config, protocol_factory, version, host, port, tunnel,
                 family, local_addr, kex_algs, encryption_algs, mac_algs,
@@ -5615,9 +5619,9 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
     """
 
     # pylint: disable=arguments-differ
-    def prepare(self, config=(), client_factory=None, client_version=(),
-                host='', port=(), tunnel=(), family=(), local_addr=(),
-                kex_algs=(), encryption_algs=(), mac_algs=(),
+    def prepare(self, last_config=None, config=(), client_factory=None,
+                client_version=(), host='', port=(), tunnel=(), family=(),
+                local_addr=(), kex_algs=(), encryption_algs=(), mac_algs=(),
                 compression_algs=(), signature_algs=(), host_based_auth=(),
                 public_key_auth=(), kbdint_auth=(), password_auth=(),
                 x509_trusted_certs=(), x509_trusted_cert_paths=(),
@@ -5635,8 +5639,13 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
 
         local_username = getpass.getuser()
 
-        config = load_client_config(local_username, username,
-                                    host, port, config)
+        if config == () and not last_config:
+            default_config = Path('~', '.ssh', 'config').expanduser()
+            config = [default_config] if os.access(default_config,
+                                                   os.R_OK) else []
+
+        config = SSHClientConfig.load(last_config, config, local_username,
+                                      username, host, port)
 
         if x509_trusted_certs == ():
             default_x509_certs = Path('~', '.ssh', 'ca-bundle.crt').expanduser()
@@ -6000,9 +6009,9 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
     """
 
     # pylint: disable=arguments-differ
-    def prepare(self, config=(), server_factory=None, server_version=(),
-                host='', port=(), tunnel=(), family=(), local_addr=(),
-                kex_algs=(), encryption_algs=(), mac_algs=(),
+    def prepare(self, last_config=None, config=(), server_factory=None,
+                server_version=(), host='', port=(), tunnel=(), family=(),
+                local_addr=(), kex_algs=(), encryption_algs=(), mac_algs=(),
                 compression_algs=(), signature_algs=(), host_based_auth=(),
                 public_key_auth=(), kbdint_auth=(), password_auth=(),
                 x509_trusted_certs=(), x509_trusted_cert_paths=(),
@@ -6020,7 +6029,7 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
                 window=_DEFAULT_WINDOW, max_pktsize=_DEFAULT_MAX_PKTSIZE):
         """Prepare server connection configuration options"""
 
-        config = load_server_config(config)
+        config = SSHServerConfig.load(last_config, config)
 
         if login_timeout == ():
             login_timeout = config.get('LoginGraceTime',
@@ -6174,7 +6183,7 @@ async def connect(host, port=(), *, tunnel=(), family=(), flags=0,
            Paths to OpenSSH client configuration files to load. This
            configuration will be used as a fallback to override the
            defaults for settings which are not explcitly specified using
-           AsyncSSH's configuration arguments. If no paths are specified,
+           AsyncSSH's configuration options. If no paths are specified,
            an attempt will be made to get the configuration from the file
            :file:`.ssh/config`. If this argument is explicitly set to
            `None`, no OpenSSH configuration will be loaded.
@@ -6251,7 +6260,7 @@ async def connect_reverse(host, port=(), *, tunnel=(), family=(), flags=0,
            Paths to OpenSSH server configuration files to load. This
            configuration will be used as a fallback to override the
            defaults for settings which are not explcitly specified using
-           AsyncSSH's configuration arguments. By default, no OpenSSH
+           AsyncSSH's configuration options. By default, no OpenSSH
            configuration will be loaded.
        :param options: (optional)
            Options to use when starting the reverse-direction SSH server.
@@ -6343,7 +6352,7 @@ async def listen(host='', port=(), tunnel=(), family=(),
            Paths to OpenSSH server configuration files to load. This
            configuration will be used as a fallback to override the
            defaults for settings which are not explcitly specified using
-           AsyncSSH's configuration arguments. By default, no OpenSSH
+           AsyncSSH's configuration options. By default, no OpenSSH
            configuration will be loaded.
        :param options: (optional)
            Options to use when accepting SSH server connections. These
@@ -6448,7 +6457,7 @@ async def listen_reverse(host='', port=(), *, tunnel=(), family=(),
            Paths to OpenSSH client configuration files to load. This
            configuration will be used as a fallback to override the
            defaults for settings which are not explcitly specified using
-           AsyncSSH's configuration arguments. If no paths are specified,
+           AsyncSSH's configuration options. If no paths are specified,
            an attempt will be made to get the configuration from the file
            :file:`.ssh/config`. If this argument is explicitly set to
            `None`, no OpenSSH configuration will be loaded.
@@ -6528,7 +6537,7 @@ async def create_server(server_factory, host='', port=(), **kwargs):
 
 async def get_server_host_key(host, port=(), *, tunnel=(), family=(), flags=0,
                               local_addr=None, client_version=(), kex_algs=(),
-                              server_host_key_algs=(), config=()):
+                              server_host_key_algs=(), config=(), options=None):
     """Retrieve an SSH server's host key
 
        This is a coroutine which can be run to connect to an SSH server and
@@ -6579,10 +6588,15 @@ async def get_server_host_key(host, port=(), *, tunnel=(), family=(), flags=0,
            Paths to OpenSSH client configuration files to load. This
            configuration will be used as a fallback to override the
            defaults for settings which are not explcitly specified using
-           AsyncSSH's configuration arguments. If no paths are specified,
+           AsyncSSH's configuration options. If no paths are specified,
            an attempt will be made to get the configuration from the file
            :file:`.ssh/config`. If this argument is explicitly set to
            `None`, no OpenSSH configuration will be loaded.
+       :param options: (optional)
+           Options to use when establishing the SSH client connection used
+           to retrieve the server host key. These options can be specified
+           either through this parameter or as direct keyword arguments to
+           this function.
        :type host: `str`
        :type port: `int`
        :type tunnel: :class:`SSHClientConnection` or `str`
@@ -6593,6 +6607,7 @@ async def get_server_host_key(host, port=(), *, tunnel=(), family=(), flags=0,
        :type kex_algs: `str` or `list` of `str`
        :type server_host_key_algs: `str` or `list` of `str`
        :type config: `list` of `str`
+       :type options: :class:`SSHClientConnectionOptions`
 
        :returns: An :class:`SSHKey` public key or `None`
 
@@ -6606,8 +6621,8 @@ async def get_server_host_key(host, port=(), *, tunnel=(), family=(), flags=0,
     loop = asyncio.get_event_loop()
 
     options = SSHClientConnectionOptions(
-        config=config, host=host, port=port, tunnel=tunnel, family=family,
-        local_addr=local_addr, known_hosts=None,
+        options, config=config, host=host, port=port, tunnel=tunnel,
+        family=family, local_addr=local_addr, known_hosts=None,
         server_host_key_algs=server_host_key_algs, x509_trusted_certs=None,
         x509_trusted_cert_paths=None, x509_purposes='any', gss_host=None,
         kex_algs=kex_algs, client_version=client_version)

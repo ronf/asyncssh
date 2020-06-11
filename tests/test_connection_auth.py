@@ -1226,22 +1226,6 @@ class _TestPublicKeyAuth(ServerTestCase):
                                     agent_path=None):
                 pass
 
-    @asynctest
-    async def test_auth_options_reuse(self):
-        """Test public key auth via SSHClientConnectionOptions"""
-
-        async def connect():
-            """Connect to the server using options"""
-
-            async with asyncssh.connect(self._server_addr, self._server_port,
-                                        options=options):
-                pass
-
-        options = asyncssh.SSHClientConnectionOptions(
-            username='ckey', client_keys=[('ckey', None)], gss_host=None)
-
-        await asyncio.gather(connect(), connect())
-
 
 class _TestPublicKeyAsyncServerAuth(_TestPublicKeyAuth):
     """Unit tests for public key authentication with async server callbacks"""

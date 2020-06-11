@@ -301,6 +301,21 @@ class SSHConfig:
 
                 self._options[option] = value
 
+    @classmethod
+    def load(cls, config, config_paths, *args, **kwargs):
+        """Load a list of OpenSSH config files into a config object"""
+
+        if not config:
+            config = cls(*args, **kwargs)
+
+        if isinstance(config_paths, (str, bytes, PurePath)):
+            config_paths = [config_paths]
+
+        for path in config_paths:
+            config.parse(path)
+
+        return config
+
     def get(self, option, default=None):
         """Get the value of a config option"""
 
@@ -482,8 +497,6 @@ class SSHClientConfig(SSHConfig):
         ('UserKnownHostsFile',              SSHConfig._set_string_list)
     )}
 
-    # pylint: enable=bad-whitespace
-
 
 class SSHServerConfig(SSHConfig):
     """Settings from an OpenSSH server config file"""
@@ -531,41 +544,3 @@ class SSHServerConfig(SSHConfig):
         ('PubkeyAuthentication',            SSHConfig._set_bool),
         ('RekeyLimit',                      SSHConfig._set_rekey_limits)
     )}
-
-    # pylint: enable=bad-whitespace
-
-
-def load_client_config(local_user, user, host, port, config_paths):
-    """Load OpenSSH client config files"""
-
-    config = SSHClientConfig(local_user, user, host, port)
-
-    if config_paths == ():
-        default_config = Path('~', '.ssh', 'config').expanduser()
-        config_paths = [default_config] if os.access(default_config,
-                                                     os.R_OK) else []
-    elif not config_paths:
-        config_paths = []
-    elif isinstance(config_paths, (str, bytes, PurePath)):
-        config_paths = [config_paths]
-
-    for path in config_paths:
-        config.parse(path)
-
-    return config
-
-
-def load_server_config(config_paths):
-    """Load OpenSSH server config files"""
-
-    config = SSHServerConfig()
-
-    if not config_paths:
-        config_paths = []
-    elif isinstance(config_paths, (str, bytes, PurePath)):
-        config_paths = [config_paths]
-
-    for path in config_paths:
-        config.parse(path)
-
-    return config

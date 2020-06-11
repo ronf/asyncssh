@@ -29,7 +29,7 @@ from unittest.mock import patch
 
 import asyncssh
 
-from asyncssh.config import load_client_config, load_server_config
+from asyncssh.config import SSHClientConfig, SSHServerConfig
 
 from .util import TempDirTestCase
 
@@ -37,7 +37,7 @@ from .util import TempDirTestCase
 class _TestConfig(TempDirTestCase):
     """Unit tests for config module"""
 
-    def _load_config(self, config_paths):
+    def _load_config(self, config, last_config=None):
         """Abstract method to load a config object"""
 
         raise NotImplementedError
@@ -189,13 +189,14 @@ class _TestConfig(TempDirTestCase):
 class _TestClientConfig(_TestConfig):
     """Unit tests for client config objects"""
 
-    def _load_config(self, config_paths, local_user='user', user=(),
-                     host='host', port=()):
+    def _load_config(self, config, last_config=None, local_user='user',
+                     user=(), host='host', port=()):
         """Load a client configuration"""
 
         # pylint: disable=arguments-differ
 
-        return load_client_config(local_user, user, host, port, config_paths)
+        return SSHClientConfig.load(last_config, config, local_user,
+                                    user, host, port)
 
     def test_append_string(self):
         """Test appending a string config option to a list"""
@@ -354,10 +355,52 @@ class _TestClientConfig(_TestConfig):
 class _TestServerConfig(_TestConfig):
     """Unit tests for server config objects"""
 
-    def _load_config(self, config_paths):
+    def _load_config(self, config, last_config=None):
         """Load a server configuration"""
 
-        return load_server_config(config_paths)
+        return SSHServerConfig.load(last_config, config)
 
 
 del _TestConfig
+
+
+class _TestOptions(TempDirTestCase):
+    """Test client and server connection options"""
+
+    def test_client_options(self):
+        """Test client connection options"""
+
+        with open('config', 'w') as f:
+            f.write('ServerAliveInterval 1\n')
+
+        options = asyncssh.SSHClientConnectionOptions(
+            username='user', config='config')
+
+        self.assertEqual(options.username, 'user')
+        self.assertEqual(options.keepalive_interval, 1)
+
+        with open('config', 'w') as f:
+            f.write('ServerAliveInterval 2\nServerAliveCountMax 3\n')
+
+        options = asyncssh.SSHClientConnectionOptions(options, config='config')
+
+        self.assertEqual(options.keepalive_interval, 1)
+        self.assertEqual(options.keepalive_count_max, 3)
+
+    def test_server_options(self):
+        """Test public key auth via SSHClientConnectionOptions"""
+
+        with open('config', 'w') as f:
+            f.write('ClientAliveInterval 1\n')
+
+        options = asyncssh.SSHServerConnectionOptions(config='config')
+
+        self.assertEqual(options.keepalive_interval, 1)
+
+        with open('config', 'w') as f:
+            f.write('ClientAliveInterval 2\nClientAliveCountMax 3\n')
+
+        options = asyncssh.SSHServerConnectionOptions(options, config='config')
+
+        self.assertEqual(options.keepalive_interval, 1)
+        self.assertEqual(options.keepalive_count_max, 3)
