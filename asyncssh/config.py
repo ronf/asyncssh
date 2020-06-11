@@ -311,8 +311,9 @@ class SSHConfig:
         if isinstance(config_paths, (str, bytes, PurePath)):
             config_paths = [config_paths]
 
-        for path in config_paths:
-            config.parse(path)
+        if config_paths:
+            for path in config_paths:
+                config.parse(path)
 
         return config
 
