@@ -964,7 +964,10 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
             if alg in server_algs:
                 return alg
 
-        raise KeyExchangeFailed('No matching %s algorithm found' % alg_type)
+        raise KeyExchangeFailed(
+            'No matching %s algorithm found, sent %s and received %s' %
+            (alg_type, b','.join(local_algs).decode('ascii'),
+             b','.join(remote_algs).decode('ascii')))
 
     def _get_ext_info_kex_alg(self):
         """Return the kex alg to add if any to request extension info"""
