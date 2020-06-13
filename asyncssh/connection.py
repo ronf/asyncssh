@@ -1779,6 +1779,10 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
                 self._username = username
 
+                # This method is only in SSHServerConnection
+                # pylint: disable=no-member
+                self._reload_config()
+
                 result = self._owner.begin_auth(username)
             else:
                 result = True
@@ -4095,6 +4099,8 @@ class SSHServerConnection(SSHConnection):
         super().__init__(loop, options, acceptor, error_handler,
                          wait, server=True)
 
+        self._options = options
+
         self._server_host_keys = options.server_host_keys
         self._server_host_key_algs = list(options.server_host_keys.keys())
         self._known_client_hosts = options.known_client_hosts
@@ -4147,6 +4153,32 @@ class SSHServerConnection(SSHConnection):
                          (self._local_addr, self._local_port))
         self.logger.info('  Client address: %s',
                          (self._peer_addr, self._peer_port))
+
+    def _reload_config(self):
+        """Re-evaluate config with updated match options"""
+
+        options = SSHServerConnectionOptions(
+            options=self._options, reload=True,
+            accept_addr=self._local_addr, accept_port=self._local_port,
+            username=self._username, client_addr=self._peer_addr)
+
+        self._config = options.config
+
+        self._host_based_auth = options.host_based_auth
+        self._public_key_auth = options.public_key_auth
+        self._kbdint_auth = options.kbdint_auth
+        self._password_auth = options.password_auth
+
+        self._client_keys = options.authorized_client_keys
+        self._allow_pty = options.allow_pty
+        self._x11_forwarding = options.x11_forwarding
+        self._agent_forwarding = options.agent_forwarding
+
+        self._rekey_bytes = options.rekey_bytes
+        self._rekey_seconds = options.rekey_seconds
+
+        self._keepalive_count_max = options.keepalive_count_max
+        self._keepalive_interval = options.keepalive_interval
 
     def _choose_server_host_key(self, peer_host_key_algs):
         """Choose the server host key to use
@@ -5622,13 +5654,13 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
     """
 
     # pylint: disable=arguments-differ
-    def prepare(self, last_config=None, config=(), client_factory=None,
-                client_version=(), host='', port=(), tunnel=(), family=(),
-                local_addr=(), kex_algs=(), encryption_algs=(), mac_algs=(),
-                compression_algs=(), signature_algs=(), host_based_auth=(),
-                public_key_auth=(), kbdint_auth=(), password_auth=(),
-                x509_trusted_certs=(), x509_trusted_cert_paths=(),
-                x509_purposes='secureShellServer',
+    def prepare(self, last_config=None, config=(), reload=False,
+                client_factory=None, client_version=(), host='', port=(),
+                tunnel=(), family=(), local_addr=(), kex_algs=(),
+                encryption_algs=(), mac_algs=(), compression_algs=(),
+                signature_algs=(), host_based_auth=(), public_key_auth=(),
+                kbdint_auth=(), password_auth=(), x509_trusted_certs=(),
+                x509_trusted_cert_paths=(), x509_purposes='secureShellServer',
                 rekey_bytes=(), rekey_seconds=(), login_timeout=(),
                 keepalive_interval=(), keepalive_count_max=(),
                 known_hosts=(), server_host_key_algs=(), username=(),
@@ -5647,8 +5679,8 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
             config = [default_config] if os.access(default_config,
                                                    os.R_OK) else []
 
-        config = SSHClientConfig.load(last_config, config, local_username,
-                                      username, host, port)
+        config = SSHClientConfig.load(last_config, config, reload,
+                                      local_username, username, host, port)
 
         if x509_trusted_certs == ():
             default_x509_certs = Path('~', '.ssh', 'ca-bundle.crt').expanduser()
@@ -6012,13 +6044,14 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
     """
 
     # pylint: disable=arguments-differ
-    def prepare(self, last_config=None, config=(), server_factory=None,
-                server_version=(), host='', port=(), tunnel=(), family=(),
-                local_addr=(), kex_algs=(), encryption_algs=(), mac_algs=(),
-                compression_algs=(), signature_algs=(), host_based_auth=(),
-                public_key_auth=(), kbdint_auth=(), password_auth=(),
-                x509_trusted_certs=(), x509_trusted_cert_paths=(),
-                x509_purposes='secureShellClient',
+    def prepare(self, last_config=None, config=(), reload=False,
+                accept_addr='', accept_port=0, username='', client_addr='',
+                server_factory=None, server_version=(), host='', port=(),
+                tunnel=(), family=(), local_addr=(), kex_algs=(),
+                encryption_algs=(), mac_algs=(), compression_algs=(),
+                signature_algs=(), host_based_auth=(), public_key_auth=(),
+                kbdint_auth=(), password_auth=(), x509_trusted_certs=(),
+                x509_trusted_cert_paths=(), x509_purposes='secureShellClient',
                 rekey_bytes=(), rekey_seconds=(), login_timeout=(),
                 keepalive_interval=(), keepalive_count_max=(),
                 server_host_keys=(), server_host_certs=(), passphrase=None,
@@ -6032,7 +6065,8 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
                 window=_DEFAULT_WINDOW, max_pktsize=_DEFAULT_MAX_PKTSIZE):
         """Prepare server connection configuration options"""
 
-        config = SSHServerConfig.load(last_config, config)
+        config = SSHServerConfig.load(last_config, config, reload, accept_addr,
+                                      accept_port, username, client_addr)
 
         if login_timeout == ():
             login_timeout = config.get('LoginGraceTime',
@@ -6077,7 +6111,7 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
         self.known_client_hosts = known_client_hosts
         self.trust_client_host = trust_client_host
 
-        if authorized_client_keys == ():
+        if authorized_client_keys == () and reload:
             authorized_client_keys = config.get('AuthorizedKeysFile')
 
         if isinstance(authorized_client_keys, (str, list)):

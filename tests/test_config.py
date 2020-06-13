@@ -37,7 +37,7 @@ from .util import TempDirTestCase
 class _TestConfig(TempDirTestCase):
     """Unit tests for config module"""
 
-    def _load_config(self, config, last_config=None):
+    def _load_config(self, config, last_config=None, reload=False):
         """Abstract method to load a config object"""
 
         raise NotImplementedError
@@ -143,7 +143,7 @@ class _TestConfig(TempDirTestCase):
     def test_match_all(self):
         """Test a match block which always matches"""
 
-        config = self._parse_config('Match all\nPort 2222')
+        config = self._parse_config('Match user xxx\nMatch all\nPort 2222')
         self.assertEqual(config.get('Port'), 2222)
 
     def test_config_disabled(self):
@@ -189,14 +189,14 @@ class _TestConfig(TempDirTestCase):
 class _TestClientConfig(_TestConfig):
     """Unit tests for client config objects"""
 
-    def _load_config(self, config, last_config=None, local_user='user',
-                     user=(), host='host', port=()):
+    def _load_config(self, config, last_config=None, reload=False,
+                     local_user='user', user=(), host='host', port=()):
         """Load a client configuration"""
 
         # pylint: disable=arguments-differ
 
-        return SSHClientConfig.load(last_config, config, local_user,
-                                    user, host, port)
+        return SSHClientConfig.load(last_config, config, reload,
+                                    local_user, user, host, port)
 
     def test_append_string(self):
         """Test appending a string config option to a list"""
@@ -282,14 +282,14 @@ class _TestClientConfig(_TestConfig):
 
         config = self._parse_config('Port 2222', port=22)
 
-        self.assertIsNone(config.get('Port'))
+        self.assertEqual(config.get('Port'), 22)
 
     def test_user_already_set(self):
         """Test that user is ignored if set outside of the config"""
 
         config = self._parse_config('User newuser', user='user')
 
-        self.assertIsNone(config.get('User'))
+        self.assertEqual(config.get('User'), 'user')
 
     def test_client_errors(self):
         """Test client config errors"""
@@ -355,10 +355,55 @@ class _TestClientConfig(_TestConfig):
 class _TestServerConfig(_TestConfig):
     """Unit tests for server config objects"""
 
-    def _load_config(self, config, last_config=None):
+    def _load_config(self, config, last_config=None, reload=False,
+                     local_addr='127.0.0.1', local_port=22,
+                     user='user', addr='127.0.0.1'):
         """Load a server configuration"""
 
-        return SSHServerConfig.load(last_config, config)
+        # pylint: disable=arguments-differ
+
+        return SSHServerConfig.load(last_config, config, reload,
+                                    local_addr, local_port, user, addr)
+
+    def test_match_local_address(self):
+        """Test matching on local address"""
+
+        config = self._parse_config('Match localaddress 127.0.0.1\n'
+                                    'PermitTTY no')
+        self.assertEqual(config.get('PermitTTY'), False)
+
+    def test_match_local_port(self):
+        """Test matching on local port"""
+
+        config = self._parse_config('Match localport 22\nPermitTTY no')
+        self.assertEqual(config.get('PermitTTY'), False)
+
+    def test_match_user(self):
+        """Test matching on user"""
+
+        config = self._parse_config('Match user user\nPermitTTY no')
+        self.assertEqual(config.get('PermitTTY'), False)
+
+    def test_match_address(self):
+        """Test matching on client address"""
+
+        config = self._parse_config('Match address 127.0.0.0/8\nPermitTTY no')
+        self.assertEqual(config.get('PermitTTY'), False)
+
+    def test_reload(self):
+        """Test update of match options"""
+
+        config = self._parse_config('Match address 1.1.1.1\n'
+                                    '  PermitTTY no\n'
+                                    'Match address 2.2.2.2\n'
+                                    '  PermitTTY yes\n', addr='1.1.1.1')
+
+        self.assertEqual(config.get('PermitTTY'), False)
+
+        config = self._load_config('config', config, True,
+                                   '127.0.0.1', 22, 'user', '2.2.2.2')
+
+        self.assertEqual(config.get('PermitTTY'), True)
 
 
 del _TestConfig
@@ -371,7 +416,7 @@ class _TestOptions(TempDirTestCase):
         """Test client connection options"""
 
         with open('config', 'w') as f:
-            f.write('ServerAliveInterval 1\n')
+            f.write('User newuser\nServerAliveInterval 1')
 
         options = asyncssh.SSHClientConnectionOptions(
             username='user', config='config')
@@ -388,10 +433,10 @@ class _TestOptions(TempDirTestCase):
         self.assertEqual(options.keepalive_count_max, 3)
 
     def test_server_options(self):
-        """Test public key auth via SSHClientConnectionOptions"""
+        """Test server connection options"""
 
         with open('config', 'w') as f:
-            f.write('ClientAliveInterval 1\n')
+            f.write('ClientAliveInterval 1\nClientAliveInterval 2')
 
         options = asyncssh.SSHServerConnectionOptions(config='config')
 

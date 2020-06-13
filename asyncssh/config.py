@@ -29,7 +29,8 @@ from hashlib import sha1
 from pathlib import Path, PurePath
 
 from .constants import DEFAULT_PORT
-from .pattern import WildcardPatternList
+from .misc import ip_address
+from .pattern import HostPatternList, WildcardPatternList
 
 
 class ConfigParseError(ValueError):
@@ -41,15 +42,27 @@ class SSHConfig:
 
     _conditionals = {'match'}
     _no_split = set()
-    _percent_expand = set()
+    _percent_expand = {'AuthorizedKeysFile'}
     _handlers = {}
 
-    def __init__(self):
+    def __init__(self, last_config, reload, *args, **kwargs):
+        if last_config:
+            self._last_options = last_config.get_options(reload)
+        else:
+            self._last_options = {}
+
         self._path = ''
         self._line_no = 0
         self._matching = True
-        self._options = {}
-        self._tokens = {'%': '%'}
+        self._options = self._last_options.copy()
+        self._tokens = {}
+
+        self._init_options(*args, **kwargs)
+
+    def _init_options(self):
+        """Set options used for matching and token substitutions"""
+
+        raise NotImplementedError
 
     def _error(self, reason, *args):
         """Raise a configuration parsing error"""
@@ -84,7 +97,7 @@ class SSHConfig:
                                self._tokens[value[idx+1]]])
                 last_idx = idx + 2
             except IndexError:
-                raise ConfigParseError('Invalid token substitution')
+                raise ConfigParseError('Invalid token substitution') from None
             except KeyError:
                 raise ConfigParseError('Invalid token substitution: %s' %
                                        value[idx+1]) from None
@@ -108,7 +121,6 @@ class SSHConfig:
 
             for path in path.glob(pattern):
                 self.parse(path)
-                self._matching = True
 
         args.clear()
 
@@ -121,6 +133,7 @@ class SSHConfig:
             match = args.pop(0).lower()
 
             if match == 'all':
+                self._matching = True
                 continue
 
             match_val = self._match_val(match)
@@ -129,11 +142,15 @@ class SSHConfig:
                 self._error('Invalid match condition')
 
             try:
-                pattern = WildcardPatternList(args.pop(0))
+                if match in ('address', 'localaddress'):
+                    pattern = HostPatternList(args.pop(0))
+                    ip = ip_address(match_val) if match_val else None
+                    self._matching = pattern.matches(None, match_val, ip)
+                else:
+                    pattern = WildcardPatternList(args.pop(0))
+                    self._matching = pattern.matches(match_val)
             except IndexError:
                 self._error('Missing %s match pattern', match)
-
-            self._matching = pattern.matches(match_val)
 
             if not self._matching:
                 args.clear()
@@ -251,6 +268,8 @@ class SSHConfig:
 
         self._path = path
         self._line_no = 0
+        self._matching = True
+        self._tokens = {'%': '%'}
 
         with open(path) as file:
             for line in file:
@@ -301,17 +320,21 @@ class SSHConfig:
 
                 self._options[option] = value
 
+    def get_options(self, reload):
+        """Return options to base a new config object on"""
+
+        return self._last_options.copy() if reload else self._options.copy()
+
     @classmethod
-    def load(cls, config, config_paths, *args, **kwargs):
+    def load(cls, last_config, config_paths, reload, *args, **kwargs):
         """Load a list of OpenSSH config files into a config object"""
 
-        if not config:
-            config = cls(*args, **kwargs)
-
-        if isinstance(config_paths, (str, bytes, PurePath)):
-            config_paths = [config_paths]
+        config = cls(last_config, reload, *args, **kwargs)
 
         if config_paths:
+            if isinstance(config_paths, (str, bytes, PurePath)):
+                config_paths = [config_paths]
+
             for path in config_paths:
                 config.parse(path)
 
@@ -343,26 +366,31 @@ class SSHClientConfig(SSHConfig):
     _percent_expand = {'CertificateFile', 'IdentityAgent',
                        'IdentityFile', 'RemoteCommand'}
 
-    def __init__(self, local_user, user, host, port):
-        super().__init__()
+    def _init_options(self, local_user, user, host, port):
+        """Set options used for matching and token substitutions"""
+
+        # pylint: disable=arguments-differ
 
         self._local_user = local_user
-        self._user = user
         self._orig_host = host
-        self._host = host
-        self._port = port
+
+        if user != ():
+            self._options['User'] = user
+
+        if port != ():
+            self._options['Port'] = port
 
     def _match_val(self, match):
         """Return the value to match against in a match condition"""
 
         if match == 'host':
-            return self._host
+            return self._options.get('Hostname', self._orig_host)
         elif match == 'originalhost':
             return self._orig_host
         elif match == 'localuser':
             return self._local_user
         elif match == 'user':
-            return self._user or self._local_user
+            return self._options.get('User', self._local_user)
         else:
             return None
 
@@ -378,28 +406,11 @@ class SSHClientConfig(SSHConfig):
     def _set_hostname(self, option, args):
         """Set hostname config option"""
 
-        # pylint: disable=unused-argument
-
-        self._tokens['h'] = self._host
-        value = self._expand_val(args.pop(0))
-
-        if option not in self._options:
-            self._options[option] = value
-            self._host = value
-
-    def _set_port(self, option, args):
-        """Set port config option"""
-
         value = args.pop(0)
 
-        try:
-            value = int(value)
-        except ValueError:
-            self._error('Invalid port: %s', value)
-
-        if self._port == ():
-            self._options[option] = value
-            self._port = value
+        if option not in self._options:
+            self._tokens['h'] = self._options.get(option, self._orig_host)
+            self._options[option] = self._expand_val(value)
 
     def _set_request_tty(self, option, args):
         """Set a pseudo-terminal request config option"""
@@ -416,15 +427,6 @@ class SSHClientConfig(SSHConfig):
         if option not in self._options:
             self._options[option] = value
 
-    def _set_user(self, option, args):
-        """Set user config option"""
-
-        value = args.pop(0)
-
-        if self._user == ():
-            self._options[option] = value
-            self._user = value
-
     def _set_tokens(self):
         """Set the tokens available for percent expansion"""
 
@@ -433,15 +435,16 @@ class SSHClientConfig(SSHConfig):
         idx = local_host.find('.')
         short_local_host = local_host if idx < 0 else local_host[:idx]
 
-        port = str(self._port or DEFAULT_PORT)
-        user = self._user or self._local_user
+        host = self._options.get('Hostname', self._orig_host)
+        port = str(self._options.get('Port', DEFAULT_PORT))
+        user = self._options.get('User') or self._local_user
 
-        conn_info = ''.join((local_host, self._host, port, user))
+        conn_info = ''.join((local_host, host, port, user))
         conn_hash = sha1(conn_info.encode('utf-8')).hexdigest()
 
         self._tokens.update({'C': conn_hash,
                              'd': str(Path.home()),
-                             'h': self._host,
+                             'h': host,
                              'L': short_local_host,
                              'l': local_host,
                              'n': self._orig_host,
@@ -455,7 +458,7 @@ class SSHClientConfig(SSHConfig):
     # pylint: disable=bad-whitespace
 
     _handlers = {option.lower(): (option, handler) for option, handler in (
-        ('Host',                         _match_host),
+        ('Host',                            _match_host),
         ('Match',                           SSHConfig._match),
         ('Include',                         SSHConfig._include),
 
@@ -484,7 +487,7 @@ class SSHClientConfig(SSHConfig):
         ('MACs',                            SSHConfig._set_string),
         ('PasswordAuthentication',          SSHConfig._set_bool),
         ('PreferredAuthentications',        SSHConfig._set_string),
-        ('Port',                            _set_port),
+        ('Port',                            SSHConfig._set_int),
         ('ProxyJump',                       SSHConfig._set_string),
         ('PubkeyAuthentication',            SSHConfig._set_bool),
         ('RekeyLimit',                      SSHConfig._set_rekey_limits),
@@ -494,7 +497,7 @@ class SSHClientConfig(SSHConfig):
         ('ServerAliveCountMax',             SSHConfig._set_int),
         ('ServerAliveInterval',             SSHConfig._set_int),
         ('SetEnv',                          SSHConfig._append_string_list),
-        ('User',                            _set_user),
+        ('User',                            SSHConfig._set_string),
         ('UserKnownHostsFile',              SSHConfig._set_string_list)
     )}
 
@@ -502,17 +505,34 @@ class SSHClientConfig(SSHConfig):
 class SSHServerConfig(SSHConfig):
     """Settings from an OpenSSH server config file"""
 
+    def _init_options(self, local_addr, local_port, user, addr):
+        """Set options used for matching and token substitutions"""
+
+        # pylint: disable=arguments-differ
+
+        self._local_addr = local_addr
+        self._local_port = local_port
+        self._user = user
+        self._addr = addr
+
     def _match_val(self, match):
         """Return the value to match against in a match condition"""
 
-        # pylint: disable=unused-argument
-        # TODO
-        return None
+        if match in ('host', 'localaddress'):
+            return self._local_addr
+        elif match == 'localport':
+            return str(self._local_port)
+        elif match == 'user':
+            return self._user
+        elif match == 'address':
+            return self._addr
+        else:
+            return None
 
     def _set_tokens(self):
         """Set the tokens available for percent expansion"""
 
-        # TODO
+        self._tokens.update({'u': self._user})
 
     # pylint: disable=bad-whitespace
 
