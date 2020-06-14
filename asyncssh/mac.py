@@ -90,7 +90,7 @@ class _HMAC(MAC):
     def verify(self, seq, packet, sig):
         """Verify the signature of a message"""
 
-        return self.sign(seq, packet) == sig
+        return hmac.compare_digest(self.sign(seq, packet), sig)
 
 
 class _UMAC(MAC):
@@ -108,7 +108,7 @@ class _UMAC(MAC):
     def verify(self, seq, packet, sig):
         """Verify the signature of a message"""
 
-        return self.sign(seq, packet) == sig
+        return hmac.compare_digest(self.sign(seq, packet), sig)
 
 
 def register_mac_alg(mac_alg, key_size, hash_size, etm, handler, args, default):
