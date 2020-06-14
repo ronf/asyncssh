@@ -357,13 +357,13 @@ class _TestServerConfig(_TestConfig):
 
     def _load_config(self, config, last_config=None, reload=False,
                      local_addr='127.0.0.1', local_port=22,
-                     user='user', addr='127.0.0.1'):
+                     user='user', host=None, addr='127.0.0.1'):
         """Load a server configuration"""
 
         # pylint: disable=arguments-differ
 
         return SSHServerConfig.load(last_config, config, reload,
-                                    local_addr, local_port, user, addr)
+                                    local_addr, local_port, user, host, addr)
 
     def test_match_local_address(self):
         """Test matching on local address"""
@@ -400,8 +400,7 @@ class _TestServerConfig(_TestConfig):
 
         self.assertEqual(config.get('PermitTTY'), False)
 
-        config = self._load_config('config', config, True,
-                                   '127.0.0.1', 22, 'user', '2.2.2.2')
+        config = self._load_config('config', config, True, addr='2.2.2.2')
 
         self.assertEqual(config.get('PermitTTY'), True)
 

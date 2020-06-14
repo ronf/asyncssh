@@ -20,8 +20,6 @@
 
 """Parser for SSH authorized_keys files"""
 
-import socket
-
 try:
     from .crypto import X509NamePattern
     _x509_available = True
@@ -190,14 +188,13 @@ class _SSHAuthorizedKeyEntry:
 
         return line[idx:].strip()
 
-    def match_options(self, client_addr, cert_principals, cert_subject=None):
+    def match_options(self, client_host, client_addr,
+                      cert_principals, cert_subject=None):
         """Match "from", "principals" and "subject" options in entry"""
 
         from_patterns = self.options.get('from')
 
         if from_patterns:
-            client_host, _ = socket.getnameinfo((client_addr, 0),
-                                                socket.NI_NUMERICSERV)
             client_ip = ip_address(client_addr)
 
             if not all(pattern.matches(client_host, client_addr, client_ip)
@@ -258,17 +255,19 @@ class SSHAuthorizedKeys:
                 not self._x509_entries):
             raise ValueError('No valid entries found')
 
-    def validate(self, key, client_addr, cert_principals=None, ca=False):
+    def validate(self, key, client_host, client_addr,
+                 cert_principals=None, ca=False):
         """Return whether a public key or CA is valid for authentication"""
 
         for entry in self._ca_entries if ca else self._user_entries:
             if (entry.key == key and
-                    entry.match_options(client_addr, cert_principals)):
+                    entry.match_options(client_host, client_addr,
+                                        cert_principals)):
                 return entry.options
 
         return None
 
-    def validate_x509(self, cert, client_addr):
+    def validate_x509(self, cert, client_host, client_addr):
         """Return whether an X.509 certificate is valid for authentication"""
 
         for entry in self._x509_entries:
@@ -277,8 +276,8 @@ class SSHAuthorizedKeys:
                      cert.subject != entry.cert.subject)):
                 continue # pragma: no cover (work around bug in coverage tool)
 
-            if entry.match_options(client_addr, cert.user_principals,
-                                   cert.subject):
+            if entry.match_options(client_host, client_addr,
+                                   cert.user_principals, cert.subject):
                 return entry.options, entry.cert
 
         return None, None

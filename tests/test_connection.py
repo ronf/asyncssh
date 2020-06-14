@@ -44,7 +44,9 @@ from asyncssh.mac import _HMAC, _mac_handler, get_mac_algs
 from asyncssh.packet import Boolean, NameList, String, UInt32
 
 from .server import Server, ServerTestCase
-from .util import asynctest, gss_available, patch_gss, x509_available
+
+from .util import asynctest, gss_available, patch_gss
+from .util import patch_getnameinfo, x509_available
 
 
 class _CheckAlgsClientConnection(asyncssh.SSHClientConnection):
@@ -278,8 +280,10 @@ class _CloseDuringAuthServer(Server):
 class _InternalErrorServer(Server):
     """Server for testing internal error during auth"""
 
-    def begin_auth(self, username):
-        """Raise an internal error during auth"""
+    def debug_msg_received(self, msg, lang, always_display):
+        """Process a debug message"""
+
+        # pylint: disable=unused-argument
 
         raise RuntimeError('Exception handler test')
 
@@ -1751,8 +1755,10 @@ class _TestServerInternalError(ServerTestCase):
     async def test_server_internal_error(self):
         """Test server internal error during auth"""
 
-        with self.assertRaises(asyncssh.ConnectionLost):
-            await self.connect()
+        with self.assertRaises(asyncssh.ChannelOpenError):
+            conn = await self.connect()
+            conn.send_debug('Test')
+            await conn.run()
 
 
 class _TestInvalidAuthBanner(ServerTestCase):
@@ -1872,3 +1878,26 @@ class _TestCustomServerVersion(ServerTestCase):
 
         with self.assertRaises(ValueError):
             await self.create_server(server_version='xxx\0')
+
+
+@patch_getnameinfo
+class _TestReverseDNS(ServerTestCase):
+    """Unit test for reverse DNS lookup of client address"""
+
+    @classmethod
+    async def start_server(cls):
+        """Start an SSH server which sends a custom version"""
+
+        with open('config', 'w') as f:
+            f.write('Match host localhost\nPubkeyAuthentication no')
+
+        return await cls.create_server(
+            authorized_client_keys='authorized_keys', rdns_lookup=True,
+            config='config')
+
+    @asynctest
+    async def test_reverse_dns(self):
+        """Test reverse DNS of the client address"""
+
+        with self.assertRaises(asyncssh.PermissionDenied):
+            await self.connect(username='ckey')

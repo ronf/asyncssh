@@ -79,12 +79,7 @@ def patch_getnameinfo(cls):
 
         # pylint: disable=unused-argument
 
-        host, port = sockaddr
-
-        if host == '127.0.0.1':
-            return ('localhost', port)
-        else:
-            return sockaddr
+        return ('localhost', sockaddr[1])
 
     return patch('socket.getnameinfo', getnameinfo)(cls)
 

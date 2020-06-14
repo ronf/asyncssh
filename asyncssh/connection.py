@@ -408,6 +408,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         self._transport = None
         self._local_addr = None
         self._local_port = None
+        self._peer_host = None
         self._peer_addr = None
         self._peer_port = None
         self._owner = None
@@ -1778,29 +1779,31 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
                 self.logger.info('Beginning auth for user %s', username)
 
                 self._username = username
-
-                # This method is only in SSHServerConnection
-                # pylint: disable=no-member
-                self._reload_config()
-
-                result = self._owner.begin_auth(username)
+                begin_auth = True
             else:
-                result = True
+                begin_auth = False
 
-            self.create_task(self._finish_userauth(result, method, packet))
+            self.create_task(self._finish_userauth(begin_auth, method, packet))
 
-    async def _finish_userauth(self, result, method, packet):
+    async def _finish_userauth(self, begin_auth, method, packet):
         """Finish processing a user authentication request"""
 
-        if not self._owner:
+        if not self._owner: # pragma: no cover
             return
 
-        if inspect.isawaitable(result):
-            result = await result
+        if begin_auth:
+            # This method is only in SSHServerConnection
+            # pylint: disable=no-member
+            await self._reload_config()
 
-        if not result:
-            self.send_userauth_success()
-            return
+            result = self._owner.begin_auth(self._username)
+
+            if inspect.isawaitable(result):
+                result = await result
+
+            if not result:
+                self.send_userauth_success()
+                return
 
         if self._auth:
             self._auth.cancel()
@@ -4109,6 +4112,7 @@ class SSHServerConnection(SSHConnection):
         self._allow_pty = options.allow_pty
         self._line_editor = options.line_editor
         self._line_history = options.line_history
+        self._rdns_lookup = options.rdns_lookup
         self._x11_forwarding = options.x11_forwarding
         self._x11_auth_path = options.x11_auth_path
         self._agent_forwarding = options.agent_forwarding
@@ -4154,13 +4158,18 @@ class SSHServerConnection(SSHConnection):
         self.logger.info('  Client address: %s',
                          (self._peer_addr, self._peer_port))
 
-    def _reload_config(self):
+    async def _reload_config(self):
         """Re-evaluate config with updated match options"""
+
+        if self._rdns_lookup:
+            self._peer_host, _ = await self._loop.getnameinfo(
+                (self._peer_addr, self._peer_port), socket.NI_NUMERICSERV)
 
         options = SSHServerConnectionOptions(
             options=self._options, reload=True,
             accept_addr=self._local_addr, accept_port=self._local_port,
-            username=self._username, client_addr=self._peer_addr)
+            username=self._username, client_host=self._peer_host,
+            client_addr=self._peer_addr)
 
         self._config = options.config
 
@@ -4293,6 +4302,7 @@ class SSHServerConnection(SSHConnection):
 
         if self._client_keys:
             options = self._client_keys.validate(cert.signing_key,
+                                                 self._peer_host,
                                                  self._peer_addr,
                                                  cert.principals, ca=True)
 
@@ -4338,7 +4348,8 @@ class SSHServerConnection(SSHConnection):
             return None
 
         options, trusted_cert = \
-            self._client_keys.validate_x509(cert, self._peer_addr)
+            self._client_keys.validate_x509(cert, self._peer_host,
+                                            self._peer_addr)
 
         if options is None:
             return None
@@ -4386,7 +4397,8 @@ class SSHServerConnection(SSHConnection):
         options = None
 
         if self._client_keys:
-            options = self._client_keys.validate(key, self._peer_addr)
+            options = self._client_keys.validate(key, self._peer_host,
+                                                 self._peer_addr)
 
         if options is None:
             result = self._owner.validate_public_key(username, key)
@@ -5909,6 +5921,11 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
        :param line_history: (int)
            The number of lines of input line history to store in the
            line editor when it is enabled, defaulting to 1000
+       :param rdns_lookup: (optional)
+           Whether or not to perform reverse DNS lookups on the client's
+           IP address to enable hostname-based matches in authorized key
+           file "from" options and "Match Host" config options, defaulting
+           to `False`.
        :param x11_forwarding: (optional)
            Whether or not to allow forwarding of X11 connections back
            to the client when the client supports it, defaulting to `False`
@@ -6018,6 +6035,7 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
        :type allow_pty: `bool`
        :type line_editor: `bool`
        :type line_history: `bool`
+       :type rdns_lookup: `bool`
        :type x11_forwarding: `bool`
        :type x11_auth_path: `str`
        :type agent_forwarding: `bool`
@@ -6045,28 +6063,30 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
 
     # pylint: disable=arguments-differ
     def prepare(self, last_config=None, config=(), reload=False,
-                accept_addr='', accept_port=0, username='', client_addr='',
-                server_factory=None, server_version=(), host='', port=(),
-                tunnel=(), family=(), local_addr=(), kex_algs=(),
-                encryption_algs=(), mac_algs=(), compression_algs=(),
-                signature_algs=(), host_based_auth=(), public_key_auth=(),
-                kbdint_auth=(), password_auth=(), x509_trusted_certs=(),
-                x509_trusted_cert_paths=(), x509_purposes='secureShellClient',
-                rekey_bytes=(), rekey_seconds=(), login_timeout=(),
-                keepalive_interval=(), keepalive_count_max=(),
-                server_host_keys=(), server_host_certs=(), passphrase=None,
-                known_client_hosts=None, trust_client_host=False,
-                authorized_client_keys=(), gss_host=(), gss_kex=(),
-                gss_auth=(), allow_pty=(), line_editor=True,
-                line_history=_DEFAULT_LINE_HISTORY, x11_forwarding=False,
-                x11_auth_path=None, agent_forwarding=(),
-                process_factory=None, session_factory=None, encoding='utf-8',
-                errors='strict', sftp_factory=None, allow_scp=False,
-                window=_DEFAULT_WINDOW, max_pktsize=_DEFAULT_MAX_PKTSIZE):
+                accept_addr='', accept_port=0, username='', client_host=None,
+                client_addr='', server_factory=None, server_version=(),
+                host='', port=(), tunnel=(), family=(), local_addr=(),
+                kex_algs=(), encryption_algs=(), mac_algs=(),
+                compression_algs=(), signature_algs=(), host_based_auth=(),
+                public_key_auth=(), kbdint_auth=(), password_auth=(),
+                x509_trusted_certs=(), x509_trusted_cert_paths=(),
+                x509_purposes='secureShellClient', rekey_bytes=(),
+                rekey_seconds=(), login_timeout=(), keepalive_interval=(),
+                keepalive_count_max=(), server_host_keys=(),
+                server_host_certs=(), passphrase=None, known_client_hosts=None,
+                trust_client_host=False, authorized_client_keys=(),
+                gss_host=(), gss_kex=(), gss_auth=(), allow_pty=(),
+                line_editor=True, line_history=_DEFAULT_LINE_HISTORY,
+                rdns_lookup=(), x11_forwarding=False, x11_auth_path=None,
+                agent_forwarding=(), process_factory=None,
+                session_factory=None, encoding='utf-8', errors='strict',
+                sftp_factory=None, allow_scp=False, window=_DEFAULT_WINDOW,
+                max_pktsize=_DEFAULT_MAX_PKTSIZE):
         """Prepare server connection configuration options"""
 
-        config = SSHServerConfig.load(last_config, config, reload, accept_addr,
-                                      accept_port, username, client_addr)
+        config = SSHServerConfig.load(last_config, config, reload,
+                                      accept_addr, accept_port, username,
+                                      client_host, client_addr)
 
         if login_timeout == ():
             login_timeout = config.get('LoginGraceTime',
@@ -6145,9 +6165,13 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
         if agent_forwarding == ():
             agent_forwarding = config.get('AllowAgentForwarding', True)
 
+        if rdns_lookup == ():
+            rdns_lookup = config.get('UseDNS', False)
+
         self.allow_pty = allow_pty
         self.line_editor = line_editor
         self.line_history = line_history
+        self.rdns_lookup = rdns_lookup
         self.x11_forwarding = x11_forwarding
         self.x11_auth_path = x11_auth_path
         self.agent_forwarding = agent_forwarding

@@ -24,10 +24,9 @@ import unittest
 
 import asyncssh
 
-from .util import TempDirTestCase, patch_getnameinfo, x509_available
+from .util import TempDirTestCase, x509_available
 
 
-@patch_getnameinfo
 class _TestAuthorizedKeys(TempDirTestCase):
     """Unit tests for auth_keys module"""
 
@@ -79,18 +78,20 @@ class _TestAuthorizedKeys(TempDirTestCase):
 
         for keys, matches in tests:
             auth_keys = self.build_keys(keys, x509)
-            for (msg, keynum, client_addr, cert_principals, match) in matches:
+            for (msg, keynum, client_host, \
+                    client_addr, cert_principals, match) in matches:
                 with self.subTest(msg, x509=x509):
                     if x509:
                         result, trusted_cert = auth_keys.validate_x509(
-                            self.imported_certlist[keynum], client_addr)
+                            self.imported_certlist[keynum], client_host,
+                            client_addr)
                         if (trusted_cert and trusted_cert.subject !=
                                 self.imported_certlist[keynum].subject):
                             result = None
                     else:
                         result = auth_keys.validate(
-                            self.imported_keylist[keynum], client_addr,
-                            cert_principals, keynum == 1)
+                            self.imported_keylist[keynum], client_host,
+                            client_addr, cert_principals, keynum == 1)
 
                     self.assertEqual(result is not None, match)
 
@@ -99,23 +100,26 @@ class _TestAuthorizedKeys(TempDirTestCase):
 
         tests = (
             ((None, 'cert-authority'),
-             (('Match key or cert', 0, '1.2.3.4', None, True),
-              ('Match CA key or cert', 1, '1.2.3.4', None, True),
-              ('No match', 2, '1.2.3.4', None, False))),
+             (('Match key or cert', 0, '1.2.3.4', '1.2.3.4', None, True),
+              ('Match CA key or cert', 1, '1.2.3.4', '1.2.3.4', None, True),
+              ('No match', 2, '1.2.3.4', '1.2.3.4', None, False))),
             (('from="1.2.3.4"',),
-             (('Match IP', 0, '1.2.3.4', None, True),)),
+             (('Match IP', 0, '1.2.3.4', '1.2.3.4', None, True),)),
             (('from="1.2.3.0/24,!1.2.3.5"',),
-             (('Match subnet', 0, '1.2.3.4', None, True),
-              ('Exclude IP', 0, '1.2.3.5', None, False))),
+             (('Match subnet', 0, '1.2.3.4', '1.2.3.4', None, True),
+              ('Exclude IP', 0, '1.2.3.5', '1.2.3.5', None, False))),
             (('from="localhost*"',),
-             (('Match host name', 0, '127.0.0.1', None, True),)),
+             (('Match host name', 0, 'localhost', '127.0.0.1', None, True),)),
             (('from="1.2.3.*,!1.2.3.5*"',),
-             (('Match host pattern', 0, '1.2.3.4', None, True),
-              ('Exclude host pattern', 0, '1.2.3.5', None, False))),
+             (('Match host pattern', 0, '1.2.3.4', '1.2.3.4', None, True),
+              ('Exclude host pattern', 0, '1.2.3.5', '1.2.3.5',
+               None, False))),
             (('principals="cert*,!cert1"',),
-             (('Match principal', 0, '1.2.3.4', ['cert0'], True),)),
+             (('Match principal', 0, '1.2.3.4', '1.2.3.4',
+               ['cert0'], True),)),
             (('cert-authority,principals="cert*,!cert1"',),
-             (('Exclude principal', 1, '1.2.3.4', ['cert1'], False),))
+             (('Exclude principal', 1, '1.2.3.4', '1.2.3.4',
+               ['cert1'], False),))
         )
 
         self.match_keys(tests)
@@ -158,7 +162,7 @@ class _TestAuthorizedKeys(TempDirTestCase):
         auth_keys = asyncssh.import_authorized_keys(
             'x509v3-ssh-rsa subject=CN=cert0\n')
         result, _ = auth_keys.validate_x509(
-            self.imported_certlist[0], '1.2.3.4')
+            self.imported_certlist[0], '1.2.3.4', '1.2.3.4')
         self.assertIsNotNone(result)
 
     @unittest.skipUnless(x509_available, 'X.509 not available')
@@ -168,7 +172,7 @@ class _TestAuthorizedKeys(TempDirTestCase):
         auth_keys = asyncssh.import_authorized_keys(
             'subject=CN=cert0 ' + self.certlist[0])
         result, _ = auth_keys.validate_x509(
-            self.imported_certlist[0], '1.2.3.4')
+            self.imported_certlist[0], '1.2.3.4', '1.2.3.4')
         self.assertIsNotNone(result)
 
     @unittest.skipUnless(x509_available, 'X.509 not available')
@@ -178,7 +182,7 @@ class _TestAuthorizedKeys(TempDirTestCase):
         auth_keys = asyncssh.import_authorized_keys(
             'subject=CN=cert1 ' + self.certlist[0])
         result, _ = auth_keys.validate_x509(
-            self.imported_certlist[0], '1.2.3.4')
+            self.imported_certlist[0], '1.2.3.4', '1.2.3.4')
         self.assertIsNone(result)
 
     @unittest.skipUnless(x509_available, 'X.509 not available')

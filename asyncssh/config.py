@@ -505,7 +505,7 @@ class SSHClientConfig(SSHConfig):
 class SSHServerConfig(SSHConfig):
     """Settings from an OpenSSH server config file"""
 
-    def _init_options(self, local_addr, local_port, user, addr):
+    def _init_options(self, local_addr, local_port, user, host, addr):
         """Set options used for matching and token substitutions"""
 
         # pylint: disable=arguments-differ
@@ -513,17 +513,20 @@ class SSHServerConfig(SSHConfig):
         self._local_addr = local_addr
         self._local_port = local_port
         self._user = user
+        self._host = host or addr
         self._addr = addr
 
     def _match_val(self, match):
         """Return the value to match against in a match condition"""
 
-        if match in ('host', 'localaddress'):
+        if match == 'localaddress':
             return self._local_addr
         elif match == 'localport':
             return str(self._local_port)
         elif match == 'user':
             return self._user
+        elif match == 'host':
+            return self._host
         elif match == 'address':
             return self._addr
         else:
@@ -563,5 +566,6 @@ class SSHServerConfig(SSHConfig):
         ('PermitTTY',                       SSHConfig._set_bool),
         ('Port',                            SSHConfig._set_int),
         ('PubkeyAuthentication',            SSHConfig._set_bool),
-        ('RekeyLimit',                      SSHConfig._set_rekey_limits)
+        ('RekeyLimit',                      SSHConfig._set_rekey_limits),
+        ('UseDNS',                          SSHConfig._set_bool)
     )}
