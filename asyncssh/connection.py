@@ -5623,6 +5623,28 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
            without getting a response before disconnecting from the
            server. This defaults to 3, but only applies when
            keepalive_interval is non-zero.
+       :param config: (optional)
+           Paths to OpenSSH client configuration files to load. This
+           configuration will be used as a fallback to override the
+           defaults for settings which are not explcitly specified using
+           AsyncSSH's configuration options.
+
+               .. note:: Specifying configuration files when creating an
+                         :class:`SSHClientConnectionOptions` object will
+                         cause the config file to be read and parsed at
+                         the time of creation of the object, including
+                         evaluation of any conditional blocks. If you want
+                         the config to be parsed for every new connection,
+                         this argument should be added to the connect or
+                         listen calls instead. However, if you want to
+                         save the parsing overhead and your configuration
+                         doesn't depend on conditions that would change
+                         between calls, this argument may be an option.
+       :param options: (optional)
+           A previous set of options to use as the base to incrementally
+           build up a configuration. When an option is not explicitly
+           specified, its value will be pulled from this options object
+           (if present) before falling back to the default value.
        :type client_factory: `callable`
        :type known_hosts: *see* :ref:`SpecifyingKnownHosts`
        :type server_host_key_algs: `str` or `list` of `str`
@@ -5662,6 +5684,8 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
        :type login_timeout: *see* :ref:`SpecifyingTimeIntervals`
        :type keepalive_interval: *see* :ref:`SpecifyingTimeIntervals`
        :type keepalive_count_max: `int`
+       :type config: `list` of `str`
+       :type options: :class:`SSHClientConnectionOptions`
 
     """
 
@@ -6014,6 +6038,28 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
            without getting a response before disconnecting a client.
            This defaults to 3, but only applies when keepalive_interval is
            non-zero.
+       :param config: (optional)
+           Paths to OpenSSH server configuration files to load. This
+           configuration will be used as a fallback to override the
+           defaults for settings which are not explcitly specified using
+           AsyncSSH's configuration options.
+
+               .. note:: Specifying configuration files when creating an
+                         :class:`SSHServerConnectionOptions` object will
+                         cause the config file to be read and parsed at
+                         the time of creation of the object, including
+                         evaluation of any conditional blocks. If you want
+                         the config to be parsed for every new connection,
+                         this argument should be added to the connect or
+                         listen calls instead. However, if you want to
+                         save the parsing overhead and your configuration
+                         doesn't depend on conditions that would change
+                         between calls, this argument may be an option.
+       :param options: (optional)
+           A previous set of options to use as the base to incrementally
+           build up a configuration. When an option is not explicitly
+           specified, its value will be pulled from this options object
+           (if present) before falling back to the default value.
        :type server_factory: `callable`
        :type family: `socket.AF_UNSPEC`, `socket.AF_INET`, or `socket.AF_INET6`
        :type server_host_keys: *see* :ref:`SpecifyingPrivateKeys`
@@ -6058,6 +6104,8 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
        :type login_timeout: *see* :ref:`SpecifyingTimeIntervals`
        :type keepalive_interval: *see* :ref:`SpecifyingTimeIntervals`
        :type keepalive_count_max: `int`
+       :type config: `list` of `str`
+       :type options: :class:`SSHServerConnectionOptions`
 
     """
 
@@ -6245,9 +6293,11 @@ async def connect(host, port=(), *, tunnel=(), family=(), flags=0,
            configuration will be used as a fallback to override the
            defaults for settings which are not explcitly specified using
            AsyncSSH's configuration options. If no paths are specified,
-           an attempt will be made to get the configuration from the file
+           an attempt will be made to load the configuration from the file
            :file:`.ssh/config`. If this argument is explicitly set to
-           `None`, no OpenSSH configuration will be loaded.
+           `None`, no OpenSSH configuration files will be loaded. See
+           :ref:`SupportedClientConfigOptions` for details on what
+           configuration options are currently supported.
        :param options: (optional)
            Options to use when establishing the SSH client connection. These
            options can be specified either through this parameter or as direct
@@ -6322,7 +6372,9 @@ async def connect_reverse(host, port=(), *, tunnel=(), family=(), flags=0,
            configuration will be used as a fallback to override the
            defaults for settings which are not explcitly specified using
            AsyncSSH's configuration options. By default, no OpenSSH
-           configuration will be loaded.
+           configuration files will be loaded. See
+           :ref:`SupportedServerConfigOptions` for details on what
+           configuration options are currently supported.
        :param options: (optional)
            Options to use when starting the reverse-direction SSH server.
            These options can be specified either through this parameter
@@ -6414,7 +6466,9 @@ async def listen(host='', port=(), tunnel=(), family=(),
            configuration will be used as a fallback to override the
            defaults for settings which are not explcitly specified using
            AsyncSSH's configuration options. By default, no OpenSSH
-           configuration will be loaded.
+           configuration files will be loaded. See
+           :ref:`SupportedServerConfigOptions` for details on what
+           configuration options are currently supported.
        :param options: (optional)
            Options to use when accepting SSH server connections. These
            options can be specified either through this parameter or
@@ -6519,9 +6573,11 @@ async def listen_reverse(host='', port=(), *, tunnel=(), family=(),
            configuration will be used as a fallback to override the
            defaults for settings which are not explcitly specified using
            AsyncSSH's configuration options. If no paths are specified,
-           an attempt will be made to get the configuration from the file
+           an attempt will be made to load the configuration from the file
            :file:`.ssh/config`. If this argument is explicitly set to
-           `None`, no OpenSSH configuration will be loaded.
+           `None`, no OpenSSH configuration files will be loaded. See
+           :ref:`SupportedClientConfigOptions` for details on what
+           configuration options are currently supported.
        :param options: (optional)
            Options to use when starting reverse-direction SSH clients.
            These options can be specified either through this parameter
@@ -6650,9 +6706,11 @@ async def get_server_host_key(host, port=(), *, tunnel=(), family=(), flags=0,
            configuration will be used as a fallback to override the
            defaults for settings which are not explcitly specified using
            AsyncSSH's configuration options. If no paths are specified,
-           an attempt will be made to get the configuration from the file
+           an attempt will be made to load the configuration from the file
            :file:`.ssh/config`. If this argument is explicitly set to
-           `None`, no OpenSSH configuration will be loaded.
+           `None`, no OpenSSH configuration files will be loaded. See
+           :ref:`SupportedClientConfigOptions` for details on what
+           configuration options are currently supported.
        :param options: (optional)
            Options to use when establishing the SSH client connection used
            to retrieve the server host key. These options can be specified

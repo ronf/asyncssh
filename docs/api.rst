@@ -1401,31 +1401,6 @@ and should not normally need to be changed. However, certificates which
 contain other purposes can be supported by providing alternate values to
 match against, or by passing in the purpose 'any' to disable this checking.
 
-.. index:: Specifying byte counts
-.. _SpecifyingByteCounts:
-
-Specifying byte counts
-----------------------
-
-A byte count may be passed into AsyncSSH as an integer value, or as a
-string made up of a mix of numbers followed by an optional letter of
-'k', 'm', or 'g', indicating kilobytes, megabytes, or gigabytes,
-respectively. Multiple of these values can be included. For instance,
-'2.5m' means 2.5 megabytes. This could also be expressed as '2m512k'
-or '2560k'.
-
-.. index:: Specifying time intervals
-.. _SpecifyingTimeIntervals:
-
-Specifying time intervals
--------------------------
-
-A time interval may be passed into AsyncSSH as an integer or float value,
-or as a string made up of a mix of positive or negative numbers and the
-letters 'w', 'd', 'h', 'm', and 's', indicating weeks, days, hours,
-minutes, or seconds, respectively. Multiple of these values can be
-included. For instance, '1w2d3h' means 1 week, 2 days, and 3 hours.
-
 .. index:: Specifying time values
 .. _SpecifyingTimeValues:
 
@@ -1645,6 +1620,185 @@ connect_agent
 -------------
 
 .. autofunction:: connect_agent
+
+.. index:: Config file support
+.. _ConfigFileSupport:
+
+Config File Support
+===================
+
+AsyncSSH has partial support for parsing OpenSSH client and server
+configuration files (documented in the "ssh_config" and "sshd_config"
+UNIX man pages, respectively). Not all OpenSSH configuration options
+are applicable, so unsupported options are simply ignored. See below
+for the OpenSSH config options that AsyncSSH supports.
+
+AsyncSSH also supports "Host" and "Match" conditional blocks. As with
+the config options themselves, not all match criteria  are supported,
+but the supported criteria should function similar to OpenSSH.
+
+AsyncSSH also supports the "Include" directive, to allow one config
+file trigger the loading of others.
+
+.. index:: Supported client config options
+.. _SupportedClientConfigOptions:
+
+Supported client config options
+-------------------------------
+
+The following OpenSSH client config options are currently supported:
+
+  | AddressFamily
+  | BindAddress
+  | CASignatureAlgorithms
+  | CertificateFile
+  | ChallengeResponseAuthentication
+  | Ciphers
+  | Compression
+  | ConnectTimeout
+  | EnableSSHKeySign
+  | ForwardAgent
+  | ForwardX11Trusted
+  | GlobalKnownHostsFile
+  | GSSAPIAuthentication
+  | GSSAPIDelegateCredentials
+  | GSSAPIKeyExchange
+  | HostbasedAuthentication
+  | HostKeyAlgorithms
+  | Hostname
+  | IdentityAgent
+  | IdentityFile
+  | KbdInteractiveAuthentication
+  | KexAlgorithms
+  | MACs
+  | PasswordAuthentication
+  | PreferredAuthentications
+  | Port
+  | ProxyJump
+  | PubkeyAuthentication
+  | RekeyLimit
+  | RemoteCommand
+  | RequestTTY
+  | SendEnv
+  | ServerAliveCountMax
+  | ServerAliveInterval
+  | SetEnv
+  | User
+  | UserKnownHostsFile
+
+For the "Match" conditional, the following criteria are currently supported:
+
+  | All
+  | Host
+  | LocalUser
+  | OriginalHost
+  | User
+
+The following client config token expansions are currently supported:
+
+  ===== ============================================================
+  Token Expansion
+  ===== ============================================================
+  %%    Literal '%'
+  %C    SHA-1 Hash of connection info (local host, host, port, user)
+  %d    Local user's home directory
+  %h    Remote host
+  %i    Local uid (UNIX-only)
+  %L    Short local hostname (without the domain)
+  %l    Local hostname (including the domain)
+  %n    Original remote host
+  %p    Remote port
+  %r    Remote username
+  %u    Local username
+  ===== ============================================================
+
+These expansions are available in the values of the following config options:
+
+  | CertificateFile
+  | IdentityAgent
+  | IdentityFile
+  | RemoteCommand
+
+.. index:: Supported server config options
+.. _SupportedServerConfigOptions:
+
+Supported server config options
+-------------------------------
+
+The following OpenSSH server config options are currently supported:
+
+  | AddressFamily
+  | AuthorizedKeysFile
+  | AllowAgentForwarding
+  | BindAddress
+  | CASignatureAlgorithms
+  | ChallengeResponseAuthentication
+  | Ciphers
+  | ClientAliveCountMax
+  | ClientAliveInterval
+  | Compression
+  | GSSAPIAuthentication
+  | GSSAPIKeyExchange
+  | HostbasedAuthentication
+  | HostCertificate
+  | HostKey
+  | KbdInteractiveAuthentication
+  | KexAlgorithms
+  | LoginGraceTime
+  | MACs
+  | PasswordAuthentication
+  | PermitTTY
+  | Port
+  | PubkeyAuthentication
+  | RekeyLimit
+  | UseDNS
+
+For the "Match" conditional, the following criteria are currently supported:
+
+  | All
+  | Address
+  | Host
+  | LocalAddress
+  | LocalPort
+  | User
+
+The following server config token expansions are currently supported:
+
+  ===== ===========
+  Token Expansion
+  ===== ===========
+  %%    Literal '%'
+  %u    Username
+  ===== ===========
+
+These expansions are available in the values of the following config options:
+
+  | AuthorizedKeysFile
+
+.. index:: Specifying byte counts
+.. _SpecifyingByteCounts:
+
+Specifying byte counts
+----------------------
+
+A byte count may be passed into AsyncSSH as an integer value, or as a
+string made up of a mix of numbers followed by an optional letter of
+'k', 'm', or 'g', indicating kilobytes, megabytes, or gigabytes,
+respectively. Multiple of these values can be included. For instance,
+'2.5m' means 2.5 megabytes. This could also be expressed as '2m512k'
+or '2560k'.
+
+.. index:: Specifying time intervals
+.. _SpecifyingTimeIntervals:
+
+Specifying time intervals
+-------------------------
+
+A time interval may be passed into AsyncSSH as an integer or float value,
+or as a string made up of a mix of positive or negative numbers and the
+letters 'w', 'd', 'h', 'm', and 's', indicating weeks, days, hours,
+minutes, or seconds, respectively. Multiple of these values can be
+included. For instance, '1w2d3h' means 1 week, 2 days, and 3 hours.
 
 .. index:: Known hosts
 .. _KnownHosts:
