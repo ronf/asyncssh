@@ -497,6 +497,7 @@ class SSHClientConfig(SSHConfig):
         ('ServerAliveCountMax',             SSHConfig._set_int),
         ('ServerAliveInterval',             SSHConfig._set_int),
         ('SetEnv',                          SSHConfig._append_string_list),
+        ('TCPKeepAlive',                    SSHConfig._set_bool),
         ('User',                            SSHConfig._set_string),
         ('UserKnownHostsFile',              SSHConfig._set_string_list)
     )}
@@ -567,5 +568,6 @@ class SSHServerConfig(SSHConfig):
         ('Port',                            SSHConfig._set_int),
         ('PubkeyAuthentication',            SSHConfig._set_bool),
         ('RekeyLimit',                      SSHConfig._set_rekey_limits),
+        ('TCPKeepAlive',                    SSHConfig._set_bool),
         ('UseDNS',                          SSHConfig._set_bool)
     )}

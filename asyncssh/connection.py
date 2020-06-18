@@ -411,6 +411,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         self._peer_host = None
         self._peer_addr = None
         self._peer_port = None
+        self._tcp_keepalive = options.tcp_keepalive
         self._owner = None
         self._extra = {}
 
@@ -834,7 +835,8 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         self._transport = transport
 
         sock = transport.get_extra_info('socket')
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE,
+                        self._tcp_keepalive)
         sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 
         sockname = transport.get_extra_info('sockname')
@@ -5322,8 +5324,8 @@ class SSHConnectionOptions(Options):
 
     # pylint: disable=arguments-differ
     def prepare(self, config, protocol_factory, version, host, port, tunnel,
-                family, local_addr, kex_algs, encryption_algs, mac_algs,
-                compression_algs, signature_algs, host_based_auth,
+                family, local_addr, tcp_keepalive, kex_algs, encryption_algs,
+                mac_algs, compression_algs, signature_algs, host_based_auth,
                 public_key_auth, kbdint_auth, password_auth,
                 x509_trusted_certs, x509_trusted_cert_paths, x509_purposes,
                 rekey_bytes, rekey_seconds, login_timeout, keepalive_interval,
@@ -5343,6 +5345,8 @@ class SSHConnectionOptions(Options):
             config.get('AddressFamily', socket.AF_UNSPEC)
         self.local_addr = local_addr if local_addr != () else \
             (config.get('BindAddress'), 0)
+        self.tcp_keepalive = tcp_keepalive if tcp_keepalive != () else \
+            config.get('TCPKeepAlive', True)
 
         self.kex_algs, self.encryption_algs, self.mac_algs, \
         self.compression_algs, self.signature_algs = \
@@ -5692,20 +5696,20 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
     # pylint: disable=arguments-differ
     def prepare(self, last_config=None, config=(), reload=False,
                 client_factory=None, client_version=(), host='', port=(),
-                tunnel=(), family=(), local_addr=(), kex_algs=(),
-                encryption_algs=(), mac_algs=(), compression_algs=(),
-                signature_algs=(), host_based_auth=(), public_key_auth=(),
-                kbdint_auth=(), password_auth=(), x509_trusted_certs=(),
-                x509_trusted_cert_paths=(), x509_purposes='secureShellServer',
-                rekey_bytes=(), rekey_seconds=(), login_timeout=(),
-                keepalive_interval=(), keepalive_count_max=(),
-                known_hosts=(), server_host_key_algs=(), username=(),
-                password=None, client_host_keysign=(),
-                client_host_keys=None, client_host_certs=(), client_host=None,
-                client_username=(), client_keys=(), client_certs=(),
-                passphrase=None, gss_host=(), gss_kex=(), gss_auth=(),
-                gss_delegate_creds=(), preferred_auth=(), agent_path=(),
-                agent_forwarding=()):
+                tunnel=(), family=(), local_addr=(), tcp_keepalive=(),
+                kex_algs=(), encryption_algs=(), mac_algs=(),
+                compression_algs=(), signature_algs=(), host_based_auth=(),
+                public_key_auth=(), kbdint_auth=(), password_auth=(),
+                x509_trusted_certs=(), x509_trusted_cert_paths=(),
+                x509_purposes='secureShellServer', rekey_bytes=(),
+                rekey_seconds=(), login_timeout=(), keepalive_interval=(),
+                keepalive_count_max=(), known_hosts=(),
+                server_host_key_algs=(), username=(), password=None,
+                client_host_keysign=(), client_host_keys=None,
+                client_host_certs=(), client_host=None, client_username=(),
+                client_keys=(), client_certs=(), passphrase=None, gss_host=(),
+                gss_kex=(), gss_auth=(), gss_delegate_creds=(),
+                preferred_auth=(), agent_path=(), agent_forwarding=()):
         """Prepare client connection configuration options"""
 
         local_username = getpass.getuser()
@@ -5743,8 +5747,8 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
                                              _DEFAULT_KEEPALIVE_COUNT_MAX)
 
         super().prepare(config, client_factory or SSHClient, client_version,
-                        host, port, tunnel, family, local_addr, kex_algs,
-                        encryption_algs, mac_algs, compression_algs,
+                        host, port, tunnel, family, local_addr, tcp_keepalive,
+                        kex_algs, encryption_algs, mac_algs, compression_algs,
                         signature_algs, host_based_auth, public_key_auth,
                         kbdint_auth, password_auth, x509_trusted_certs,
                         x509_trusted_cert_paths, x509_purposes,
@@ -6038,6 +6042,9 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
            without getting a response before disconnecting a client.
            This defaults to 3, but only applies when keepalive_interval is
            non-zero.
+       :param tcp_keepalive: (optional)
+           Whether or not to enable keepalive probes at the TCP level to
+           detect broken connections, defaulting to `True`
        :param config: (optional)
            Paths to OpenSSH server configuration files to load. This
            configuration will be used as a fallback to override the
@@ -6114,7 +6121,7 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
                 accept_addr='', accept_port=0, username='', client_host=None,
                 client_addr='', server_factory=None, server_version=(),
                 host='', port=(), tunnel=(), family=(), local_addr=(),
-                kex_algs=(), encryption_algs=(), mac_algs=(),
+                tcp_keepalive=(), kex_algs=(), encryption_algs=(), mac_algs=(),
                 compression_algs=(), signature_algs=(), host_based_auth=(),
                 public_key_auth=(), kbdint_auth=(), password_auth=(),
                 x509_trusted_certs=(), x509_trusted_cert_paths=(),
@@ -6149,8 +6156,8 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
                                              _DEFAULT_KEEPALIVE_COUNT_MAX)
 
         super().prepare(config, server_factory or SSHServer, server_version,
-                        host, port, tunnel, family, local_addr, kex_algs,
-                        encryption_algs, mac_algs, compression_algs,
+                        host, port, tunnel, family, local_addr, tcp_keepalive,
+                        kex_algs, encryption_algs, mac_algs, compression_algs,
                         signature_algs, host_based_auth, public_key_auth,
                         kbdint_auth, password_auth, x509_trusted_certs,
                         x509_trusted_cert_paths, x509_purposes,

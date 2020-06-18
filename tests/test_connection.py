@@ -23,6 +23,7 @@
 import asyncio
 from copy import copy
 import os
+import socket
 import sys
 import unittest
 from unittest.mock import patch
@@ -401,6 +402,15 @@ class _TestConnection(ServerTestCase):
 
         with self.assertRaises(OSError):
             await asyncssh.connect('0.0.0.1', agent_path=None)
+
+    @asynctest
+    async def test_connect_tcp_keepalive_off(self):
+        """Test connecting with TCP keepalive disabled"""
+
+        async with self.connect(tcp_keepalive=False) as conn:
+            sock = conn.get_extra_info('socket')
+            self.assertEqual(bool(sock.getsockopt(socket.SOL_SOCKET,
+                                                  socket.SO_KEEPALIVE)), False)
 
     @asynctest
     async def test_split_version(self):

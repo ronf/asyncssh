@@ -1683,6 +1683,7 @@ The following OpenSSH client config options are currently supported:
   | ServerAliveCountMax
   | ServerAliveInterval
   | SetEnv
+  | TCPKeepAlive
   | User
   | UserKnownHostsFile
 
@@ -1751,6 +1752,7 @@ The following OpenSSH server config options are currently supported:
   | Port
   | PubkeyAuthentication
   | RekeyLimit
+  | TCPKeepAlive
   | UseDNS
 
 For the "Match" conditional, the following criteria are currently supported:
