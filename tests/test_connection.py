@@ -765,6 +765,13 @@ class _TestConnection(ServerTestCase):
             await self.connect(kex_algs=['xxx'])
 
     @asynctest
+    async def test_invalid_kex_alg_str(self):
+        """Test connecting with invalid key exchange algorithm pattern"""
+
+        with self.assertRaises(ValueError):
+            await self.connect(kex_algs='xxx')
+
+    @asynctest
     async def test_unsupported_kex_alg(self):
         """Test connecting with unsupported key exchange algorithm"""
 

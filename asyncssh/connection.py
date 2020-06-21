@@ -273,7 +273,7 @@ def _validate_version(version):
     return version
 
 
-def _expand_algs(algs, possible_algs, default_algs):
+def _expand_algs(alg_type, algs, possible_algs, default_algs):
     """Expand the set of allowed algorithms"""
 
     if algs[:1] in '^+-':
@@ -284,11 +284,17 @@ def _expand_algs(algs, possible_algs, default_algs):
 
     matched = []
 
-    for alg in algs.split(','):
-        pattern = WildcardPattern(alg)
+    for pat in algs.split(','):
+        pattern = WildcardPattern(pat)
 
-        matched.extend([alg for alg in possible_algs
-                        if pattern.matches(alg.decode('ascii'))])
+        matches = [alg for alg in possible_algs
+                   if pattern.matches(alg.decode('ascii'))]
+
+        if not matches:
+            raise ValueError('"%s" matches no valid %s algorithms' %
+                             (pat, alg_type))
+
+        matched.extend(matches)
 
     if prefix == '^':
         return matched + default_algs
@@ -298,6 +304,7 @@ def _expand_algs(algs, possible_algs, default_algs):
         return [alg for alg in default_algs if alg not in matched]
     else:
         return matched
+
 
 def _select_algs(alg_type, algs, possible_algs, default_algs,
                  config_algs, none_value=None):
@@ -310,7 +317,7 @@ def _select_algs(alg_type, algs, possible_algs, default_algs,
         return default_algs
     elif algs:
         if isinstance(algs, str):
-            algs = _expand_algs(algs, possible_algs, default_algs)
+            algs = _expand_algs(alg_type, algs, possible_algs, default_algs)
         else:
             algs = [alg.encode('ascii') for alg in algs]
 
@@ -329,6 +336,20 @@ def _select_algs(alg_type, algs, possible_algs, default_algs,
         return [none_value]
     else:
         raise ValueError('No %s algorithms selected' % alg_type)
+
+
+def _select_host_key_algs(algs, config_algs, default_algs=()):
+    """Select a set of allowed host key algorithms"""
+
+    possible_algs = (get_x509_certificate_algs() + get_certificate_algs() +
+                     get_public_key_algs())
+
+    if not default_algs:
+        default_algs = (get_default_certificate_algs() +
+                        get_default_public_key_algs())
+
+    return _select_algs('host key', algs, possible_algs,
+                        default_algs, config_algs)
 
 
 def _validate_algs(config, kex_algs, enc_algs, mac_algs, cmp_algs,
@@ -358,26 +379,6 @@ def _validate_algs(config, kex_algs, enc_algs, mac_algs, cmp_algs,
                             config.get('CASignatureAlgorithms', ()))
 
     return kex_algs, enc_algs, mac_algs, cmp_algs, sig_algs
-
-
-def _validate_server_host_key_algs(config, server_host_key_algs):
-    """Validate server host key algorithms"""
-
-    if server_host_key_algs == ():
-        server_host_key_algs = config.get('HostKeyAlgorithms', ())
-
-    if server_host_key_algs == ():
-        # Unlike other alg lists, don't default this to all algorithms
-        return ()
-    else:
-        allowed_host_key_algs = get_certificate_algs() + get_public_key_algs()
-
-        default_host_key_algs = get_default_certificate_algs() + \
-                                get_default_public_key_algs()
-
-        return _select_algs('public key', server_host_key_algs,
-                            allowed_host_key_algs, default_host_key_algs,
-                            config.get('HostKeyAlgorithms', ()))
 
 
 class SSHConnection(SSHPacketHandler, asyncio.Protocol):
@@ -2595,26 +2596,28 @@ class SSHClientConnection(SSHConnection):
             self._match_known_hosts(self._known_hosts, self._host,
                                     self._peer_addr, port)
 
-            if self._server_host_key_algs:
-                self._server_host_key_algs = \
-                    self._trusted_host_key_algs + \
-                    [alg for alg in self._server_host_key_algs
-                     if alg not in self._trusted_host_key_algs]
-            else:
-                self._server_host_key_algs = self._trusted_host_key_algs
+        default_host_key_algs = []
 
-            if self._trusted_ca_keys:
-                self._server_host_key_algs = \
-                    get_certificate_algs() + self._server_host_key_algs
+        if self._trusted_host_key_algs:
+            default_host_key_algs = self._trusted_host_key_algs
 
-        if not self._server_host_key_algs:
-            self._server_host_key_algs = (get_default_certificate_algs() +
-                                          get_default_public_key_algs())
+        if self._trusted_ca_keys:
+            default_host_key_algs = \
+                get_default_certificate_algs() + default_host_key_algs
+
+        if not default_host_key_algs:
+            default_host_key_algs = \
+                get_default_certificate_algs() + get_default_public_key_algs()
 
         if self._x509_trusted_certs is not None:
             if self._x509_trusted_certs or self._x509_trusted_cert_paths:
-                self._server_host_key_algs = \
-                    get_x509_certificate_algs() + self._server_host_key_algs
+                default_host_key_algs = \
+                    get_default_x509_certificate_algs() + default_host_key_algs
+
+        self._server_host_key_algs = \
+            _select_host_key_algs(self._server_host_key_algs,
+                                  self._config.get('HostKeyAlgorithms', ()),
+                                  default_host_key_algs)
 
         self.logger.info('Connection to %s succeeded', (self._host, self._port))
 
@@ -5448,11 +5451,11 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
            If this is explicitly set to `None`, server host key validation
            will be disabled.
        :param server_host_key_algs: (optional)
-           A list of server host key algorithms to add to those present
-           in known_hosts when performing the SSH handshake, taken from
-           :ref:`server host key algorithms <PublicKeyAlgs>`. This is
-           useful when using the validate_host_public_key callback to
-           validate server host keys.
+           A list of server host key algorithms to use instead of the
+           default of those present in known_hosts when performing the SSH
+           handshake, taken from :ref:`server host key algorithms
+           <PublicKeyAlgs>`. This is useful when using the
+           validate_host_public_key callback to validate server host keys.
        :param x509_trusted_certs: (optional)
            A list of certificates which should be trusted for X.509 server
            certificate authentication. If no trusted certificates are
@@ -5761,8 +5764,12 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
 
         self.known_hosts = known_hosts
 
-        self.server_host_key_algs = \
-            _validate_server_host_key_algs(config, server_host_key_algs)
+        self.server_host_key_algs = server_host_key_algs
+
+        # Just validate the input here -- the actual server host key
+        # selection is done later, after the known_hosts lookup is done.
+        _select_host_key_algs(server_host_key_algs,
+                              config.get('HostKeyAlgorithms', ()))
 
         if username == ():
             username = config.get('User', local_username)
