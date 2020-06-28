@@ -395,6 +395,9 @@ class SSHKey:
     def sign(self, data, sig_algorithm):
         """Return an SSH-encoded signature of the specified data"""
 
+        if sig_algorithm.startswith(b'x509v3-'):
+            sig_algorithm = sig_algorithm[7:]
+
         if sig_algorithm not in self.all_sig_algorithms:
             raise ValueError('Unrecognized signature algorithm')
 
@@ -1753,8 +1756,9 @@ class SSHX509CertificateChain(SSHCertificate):
 
     is_x509_chain = True
 
-    def __init__(self, algorithm, data, certs, ocsp_responses, comment):
+    def __init__(self, algorithm, certs, ocsp_responses, comment):
         key = certs[0].key
+        data = self._public_data(algorithm, certs, ocsp_responses)
 
         super().__init__(algorithm, key.x509_algorithms, key.x509_algorithms,
                          key, data, comment)
@@ -1765,6 +1769,15 @@ class SSHX509CertificateChain(SSHCertificate):
 
         self._certs = certs
         self._ocsp_responses = ocsp_responses
+
+    @staticmethod
+    def _public_data(algorithm, certs, ocsp_responses):
+        """Return the X509 chain public data"""
+
+        return (String(algorithm) + UInt32(len(certs)) +
+                b''.join(String(c.public_data) for c in certs) +
+                UInt32(len(ocsp_responses)) +
+                b''.join(String(resp) for resp in ocsp_responses))
 
     @classmethod
     def construct(cls, packet, algorithm, _key_handler, comment=None):
@@ -1779,23 +1792,23 @@ class SSHX509CertificateChain(SSHCertificate):
 
         packet.check_end()
 
-        data = packet.get_consumed_payload()
-
         if not certs:
             raise KeyImportError('No certificates present')
 
-        return cls(algorithm, data, certs, ocsp_responses, comment)
+        return cls(algorithm, certs, ocsp_responses, comment)
 
     @classmethod
     def construct_from_certs(cls, certs):
         """Construct an SSH X.509 certificate chain from certificates"""
 
         cert = certs[0]
-        algorithm = cert.algorithm
-        data = (String(algorithm) + UInt32(len(certs)) +
-                b''.join(String(c.public_data) for c in certs) + UInt32(0))
 
-        return cls(algorithm, data, certs, (), cert.get_comment_bytes())
+        return cls(cert.algorithm, certs, (), cert.get_comment_bytes())
+
+    def adjust_public_data(self, algorithm):
+        """Adjust public data to reflect chosen signature algorithm"""
+
+        return self._public_data(algorithm, self._certs, self._ocsp_responses)
 
     def validate_chain(self, trusted_certs, trusted_cert_paths, revoked_certs,
                        purposes, user_principal=None, host_principal=None):
@@ -1966,20 +1979,25 @@ class SSHLocalKeyPair(SSHKeyPair):
         self._key = key
         self._cert = cert
 
-        self.sig_algorithm = key.algorithm
-        self.sig_algorithms = key.sig_algorithms
+        self._set_algorithms()
 
-        self._set_host_key_algorithms()
-
-    def _set_host_key_algorithms(self):
-        """Set the algorithms associated with this key"""
+    def _set_algorithms(self):
+        """Set the algorithms associated with this keypair"""
 
         if self._cert:
             if self._cert.key.public_data != self._key.public_data:
                 raise ValueError('Certificate key mismatch')
 
+            if self._cert.is_x509_chain:
+                self.sig_algorithm = self._cert.algorithm
+            else:
+                self.sig_algorithm = self._key.algorithm
+
+            self.sig_algorithms = self._cert.sig_algorithms
             self.host_key_algorithms = self._cert.host_key_algorithms
         else:
+            self.sig_algorithm = self._key.algorithm
+            self.sig_algorithms = self._key.sig_algorithms
             self.host_key_algorithms = self._key.sig_algorithms
 
     def get_agent_private_key(self):
@@ -2000,20 +2018,17 @@ class SSHLocalKeyPair(SSHKeyPair):
         self.algorithm = cert.algorithm
         self.public_data = cert.public_data
 
-        self._set_host_key_algorithms()
+        self._set_algorithms()
 
     def set_sig_algorithm(self, sig_algorithm):
         """Set the signature algorithm to use when signing data"""
 
-        if sig_algorithm.startswith(b'x509v3-'):
-            sig_algorithm = sig_algorithm[7:]
-
+        # Disable false positive pylint warning
+        # pylint: disable=attribute-defined-outside-init
         self.sig_algorithm = sig_algorithm
 
-        if not self._cert:
-            self.algorithm = sig_algorithm
-        elif self._cert.algorithm.startswith(b'x509v3-'):
-            self.algorithm = b'x509v3-' + sig_algorithm
+        if self._cert and self._cert.is_x509_chain:
+            self.public_data = self._cert.adjust_public_data(sig_algorithm)
 
     def sign(self, data):
         """Sign a block of data with this private key"""

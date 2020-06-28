@@ -1240,7 +1240,7 @@ class _TestPublicKey(TempDirTestCase):
 
             with self.subTest('Sign with bad algorithm'):
                 with self.assertRaises(ValueError):
-                    self.privkey.sign(data, 'xxx')
+                    self.privkey.sign(data, b'xxx')
 
             with self.subTest('Verify with bad algorithm'):
                 self.assertFalse(self.pubkey.verify(
