@@ -2027,7 +2027,10 @@ class SSHLocalKeyPair(SSHKeyPair):
         # pylint: disable=attribute-defined-outside-init
         self.sig_algorithm = sig_algorithm
 
-        if self._cert and self._cert.is_x509_chain:
+        if not self._cert:
+            self.algorithm = sig_algorithm
+        elif self._cert.is_x509_chain:
+            self.algorithm = sig_algorithm
             self.public_data = self._cert.adjust_public_data(sig_algorithm)
 
     def sign(self, data):
