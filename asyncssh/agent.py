@@ -82,11 +82,10 @@ class SSHAgentKeyPair(SSHKeyPair):
 
     _key_type = 'agent'
 
-    def __init__(self, agent, algorithm, key_blob, comment):
-        super().__init__(algorithm, key_blob, comment)
+    def __init__(self, agent, algorithm, public_data, comment):
+        super().__init__(algorithm, public_data, comment)
 
         self._agent = agent
-        self.key_blob = key_blob
         self.sig_algorithm = algorithm
         self.sig_algorithms = (algorithm,)
         self.host_key_algorithms = self.sig_algorithms
@@ -121,7 +120,7 @@ class SSHAgentKeyPair(SSHKeyPair):
     def set_certificate(self, cert):
         """Set certificate to use with this key"""
 
-        if self.key_blob != cert.key.public_data:
+        if self.public_data != cert.key.public_data:
             raise ValueError('Certificate key mismatch')
 
         self._cert = True
@@ -145,7 +144,7 @@ class SSHAgentKeyPair(SSHKeyPair):
     async def sign(self, data):
         """Sign a block of data with this private key"""
 
-        return await self._agent.sign(self.key_blob, data, self._flags)
+        return await self._agent.sign(self.public_data, data, self._flags)
 
     async def remove(self):
         """Remove this key pair from the agent"""
