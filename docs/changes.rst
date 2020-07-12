@@ -3,6 +3,89 @@
 Change Log
 ==========
 
+Release 2.3.0 (12 Jul 2020)
+---------------------------
+
+* Added initial support for reading configuration from OpenSSH-compatible
+  config files, when present. Both client and server configuration files
+  are supported, but not all config options are supported. See the
+  AsyncSSH documentation for the latest list of what client and server
+  options are supported, as well as what match conditions and percent
+  substitutions are understood.
+
+* Added support for the concept of only a subset of supported algorithms
+  being enabled by default, and for the ability to use wildcards when
+  specifying algorithm names. Also, OpenSSH's syntax of prefixing the
+  list with '^', '+', or '-' is supported for incrementally adjusting
+  the list of algorithms starting from the default set.
+
+* Added support for specifying a preferred list of client authentication
+  methods, in order of preference. Previously, the order of preference
+  was hard-coded into AsyncSSH.
+
+* Added the ability to use AsyncSSH's "password" argument on servers
+  which are using keyboard-interactive authentication to prompt for a
+  "passcode". Previously, this was only supported when the prompt was
+  for a "password".
+
+* Added support for providing separate lists of private keys and
+  certificates, rather than requiring them to be specifying together as
+  a tuple. When this new option is used, AsyncSSH will automatically
+  associate the private keys with their corresponding certificates if
+  matching certificates are present in the list.
+
+* Added support for the "known_hosts" argument to accept a list of known
+  host files, rather than just a single file. Known hosts can also be
+  specified using the GlobalKnownHostFile and UserKnownHostFile config
+  file options, each of which can take multiple filenames.
+
+* Added new "request_tty" option to provide finer grained control over
+  whether AsyncSSH will request a TTY when opening new sessions. The
+  default is to still tie this to whether a "term_type" is specified,
+  but now that can be overridden. Supported options of "yes", "no",
+  "force", and "auto" match the values supported by OpenSSH.
+
+* Added new "rdns_lookup" option to control whether the server does a
+  reverse DNS of client addresses to allow matching of clients based
+  on hostname in authorized keys and config files. When this option
+  is disabled (the default), matches can only be based on client IP.
+
+* Added new "send_env" argument when opening a session to forward local
+  environment variables using their existing values, augmenting the
+  "env" argument that lets you specify remote environment variables to
+  set and their corresponding values.
+
+* Added new "tcp_keepalive" option to control whether TCP-level
+  keepalives are enabled or not on SSH connections. Previously, TCP
+  keepalives were enabled unconditionally and this is still the default,
+  but the new option provides a way to disable them.
+
+* Added support for sending and parsing client EXT_INFO messages, and
+  for sending the "global-requests-ok" option in these messages when
+  AsyncSSH is acting as a client.
+
+* Added support for expansion of '~' home directory expansion when
+  specifying arguments which contain filenames.
+
+* Added support for time intervals and byte counts to optionally be
+  specified as string values with units, allowing for values such as
+  "1.5h" or "1h30m" instead of having to specify that as 5400 seconds.
+  Similarly, a byte count of "1g" can be passed to indicate 1 gigabyte,
+  rather than specifying 1073741824 bytes.
+
+* Enhanced logging to report lists of sent and received algorithms when
+  no matching algorithm is found. Thanks go to Jeremy Schulman for
+  suggesting this.
+
+* Fixed an interoperability issue with PKIXSSH when attempting to use
+  X.509 certificates with a signature algorithm of "x509v3-rsa2048-sha256".
+
+* Fixed an issue with some links not working in the ReadTheDocs sidebar.
+  Thanks go to Christoph Giese for reporting this issue.
+
+* Fixed keepalive handler to avoid leaking a timer object in some cases.
+  Thanks go to Tom van Neerijnen for reporting this issue.
+
 Release 2.2.1 (18 Apr 2020)
 ---------------------------
 
