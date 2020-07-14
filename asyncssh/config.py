@@ -275,13 +275,14 @@ class SSHConfig:
             for line in file:
                 self._line_no += 1
 
+                line = line.strip()
+                if not line or line[0] == '#':
+                    continue
+
                 try:
                     args = shlex.split(line)
                 except ValueError as exc:
                     self._error(str(exc))
-
-                if not args or args[0][:1] == '#':
-                    continue
 
                 option = args.pop(0)
                 loption = option.lower()
