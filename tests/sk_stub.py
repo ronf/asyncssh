@@ -17,7 +17,6 @@
 #
 # Contributors:
 #     Ron Frederick - initial implementation, API, and documentation
-#     Georg Sauthoff - fix for "setup.py test" command on non-Windows
 
 """Stub U2F security key module for unit tests"""
 
