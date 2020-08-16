@@ -382,6 +382,11 @@ class SSHKey:
 
         self._touch_required = touch_required
 
+    def sign_raw(self, data, hash_alg):
+        """Return a raw signature of the specified data"""
+
+        return self._key.sign(data, hash_alg)
+
     def sign_ssh(self, data, sig_algorithm):
         """Abstract method to compute an SSH-encoded signature"""
 
@@ -2847,14 +2852,7 @@ def import_private_key_and_certs(data, passphrase=None):
     key, end = _decode_private(data, passphrase)
 
     if key:
-        certs = _decode_certificate_list(data[end:])
-
-        if certs:
-            chain = SSHX509CertificateChain.construct_from_certs(certs)
-        else:
-            chain = None
-
-        return key, chain
+        return key, import_certificate_chain(data[end:])
     else:
         raise KeyImportError('Invalid private key')
 
@@ -2901,6 +2899,19 @@ def import_certificate(data):
         return cert
     else:
         raise KeyImportError('Invalid certificate')
+
+
+def import_certificate_chain(data):
+    """Import an X.509 certificate chain"""
+
+    certs = _decode_certificate_list(data)
+
+    if certs:
+        chain = SSHX509CertificateChain.construct_from_certs(certs)
+    else:
+        chain = None
+
+    return chain
 
 
 def import_certificate_subject(data):

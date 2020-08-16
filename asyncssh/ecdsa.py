@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2019 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2020 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -33,6 +33,15 @@ from .public_key import register_x509_certificate_alg
 # OID for EC prime fields
 PRIME_FIELD = ObjectIdentifier('1.2.840.10045.1.1')
 
+# pylint: disable=bad-whitespace
+
+_hash_algs = {b'1.3.132.0.10': 'sha256',
+              b'nistp256':     'sha256',
+              b'nistp384':     'sha384',
+              b'nistp521':     'sha512'}
+
+# pylint: enable=bad-whitespace
+
 _alg_oids = {}
 _alg_oid_map = {}
 
@@ -52,6 +61,7 @@ class _ECKey(SSHKey):
         self.all_sig_algorithms = set(self.sig_algorithms)
 
         self._alg_oid = _alg_oids[key.curve_id]
+        self._hash_alg = _hash_algs[key.curve_id]
 
     def __eq__(self, other):
         # This isn't protected access - both objects are _ECKey instances
@@ -273,7 +283,7 @@ class _ECKey(SSHKey):
         if not self._key.private_value:
             raise ValueError('Private key needed for signing')
 
-        r, s = der_decode(self._key.sign(data))
+        r, s = der_decode(self._key.sign(data, self._hash_alg))
         return String(MPInt(r) + MPInt(s))
 
     def verify_ssh(self, data, sig_algorithm, packet):
@@ -289,7 +299,7 @@ class _ECKey(SSHKey):
         s = packet.get_mpint()
         packet.check_end()
 
-        return self._key.verify(data, der_encode((r, s)))
+        return self._key.verify(data, der_encode((r, s)), self._hash_alg)
 
 
 for _curve_id, _oid in ((b'nistp521', '1.3.132.0.35'),

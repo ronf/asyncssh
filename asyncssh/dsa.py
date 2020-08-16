@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2019 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2020 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -208,7 +208,7 @@ class _DSAKey(SSHKey):
         if not self._key.x:
             raise ValueError('Private key needed for signing')
 
-        r, s = der_decode(self._key.sign(data))
+        r, s = der_decode(self._key.sign(data, 'sha1'))
         return String(r.to_bytes(20, 'big') + s.to_bytes(20, 'big'))
 
     def verify_ssh(self, data, sig_algorithm, packet):
@@ -225,7 +225,7 @@ class _DSAKey(SSHKey):
         r = int.from_bytes(sig[:20], 'big')
         s = int.from_bytes(sig[20:], 'big')
 
-        return self._key.verify(data, der_encode((r, s)))
+        return self._key.verify(data, der_encode((r, s)), 'sha1')
 
 
 register_public_key_alg(b'ssh-dss', _DSAKey, False)

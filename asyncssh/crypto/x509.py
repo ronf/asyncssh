@@ -1,4 +1,4 @@
-# Copyright (c) 2017-2018 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2017-2020 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -26,8 +26,6 @@ import re
 import sys
 
 from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives.hashes import MD5, SHA1, SHA224
-from cryptography.hazmat.primitives.hashes import SHA256, SHA384, SHA512
 from cryptography.hazmat.primitives.serialization import Encoding
 from cryptography.hazmat.primitives.serialization import PublicFormat
 from cryptography import x509
@@ -35,6 +33,7 @@ from cryptography import x509
 from OpenSSL import crypto
 
 from ..asn1 import IA5String, der_decode, der_encode
+from .misc import hashes
 
 
 # pylint: disable=bad-whitespace
@@ -48,8 +47,6 @@ _purpose_to_oid = {
 # pylint: enable=bad-whitespace
 
 _purpose_any = '2.5.29.37.0'
-
-_hashes = {h.name: h for h in (MD5, SHA1, SHA224, SHA256, SHA384, SHA512)}
 
 _nscomment_oid = x509.ObjectIdentifier('2.16.840.1.113730.1.13')
 
@@ -375,7 +372,7 @@ def generate_x509_certificate(signing_key, key, subject, issuer, serial,
             x509.UnrecognizedExtension(_nscomment_oid, comment), critical=False)
 
     try:
-        hash_alg = _hashes[hash_alg]()
+        hash_alg = hashes[hash_alg]()
     except KeyError:
         raise ValueError('Unknown hash algorithm') from None
 

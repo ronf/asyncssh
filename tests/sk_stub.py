@@ -119,12 +119,15 @@ class _CTAPStub:
         if alg == SSH_SK_ECDSA:
             key = ECDSAPrivateKey.construct(
                 b'nistp256', public_value, int.from_bytes(private_value, 'big'))
+            hash_alg = 'sha256'
         else:
             key = EdDSAPrivateKey.construct(b'ed25519', private_value)
+            hash_alg = None
 
         counter = 0x12345678
 
-        sig = key.sign(app_hash + Byte(flags) + UInt32(counter) + message_hash)
+        sig = key.sign(app_hash + Byte(flags) + UInt32(counter) +
+                       message_hash, hash_alg)
 
         return flags, counter, sig
 

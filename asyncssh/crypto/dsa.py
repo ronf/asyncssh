@@ -1,4 +1,4 @@
-# Copyright (c) 2014-2018 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2014-2020 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -22,10 +22,9 @@
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives.hashes import SHA1
 from cryptography.hazmat.primitives.asymmetric import dsa
 
-from .misc import PyCAKey
+from .misc import PyCAKey, hashes
 
 
 # Short variable names are used here, matching names in the spec
@@ -98,11 +97,11 @@ class DSAPrivateKey(_DSAKey):
 
         return cls(priv_key, params, pub, priv)
 
-    def sign(self, data):
+    def sign(self, data, hash_alg):
         """Sign a block of data"""
 
         priv_key = self.pyca_key
-        return priv_key.sign(data, SHA1())
+        return priv_key.sign(data, hashes[hash_alg]())
 
 
 class DSAPublicKey(_DSAKey):
@@ -118,12 +117,12 @@ class DSAPublicKey(_DSAKey):
 
         return cls(pub_key, params, pub)
 
-    def verify(self, data, sig):
+    def verify(self, data, sig, hash_alg):
         """Verify the signature on a block of data"""
 
         try:
             pub_key = self.pyca_key
-            pub_key.verify(sig, data, SHA1())
+            pub_key.verify(sig, data, hashes[hash_alg]())
             return True
         except InvalidSignature:
             return False

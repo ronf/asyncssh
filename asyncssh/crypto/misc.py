@@ -1,4 +1,4 @@
-# Copyright (c) 2017-2018 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2017-2020 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -19,6 +19,13 @@
 #     Ron Frederick - initial implementation, API, and documentation
 
 """Miscellaneous PyCA utility classes and functions"""
+
+from cryptography.hazmat.primitives.hashes import MD5, SHA1, SHA224
+from cryptography.hazmat.primitives.hashes import SHA256, SHA384, SHA512
+
+
+hashes = {h.name: h for h in (MD5, SHA1, SHA224, SHA256, SHA384, SHA512)}
+
 
 class PyCAKey:
     """Base class for PyCA private/public keys"""

@@ -1,4 +1,4 @@
-# Copyright (c) 2019 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2019-2020 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -95,8 +95,10 @@ if ed25519_available: # pragma: no branch
 
             return cls(priv_key, pub, priv)
 
-        def sign(self, data):
+        def sign(self, data, hash_alg=None):
             """Sign a block of data"""
+
+            # pylint: disable=unused-argument
 
             return self.pyca_key.sign(data)
 
@@ -116,8 +118,10 @@ if ed25519_available: # pragma: no branch
 
             return cls(pub_key, pub)
 
-        def verify(self, data, sig):
+        def verify(self, data, sig, hash_alg=None):
             """Verify the signature on a block of data"""
+
+            # pylint: disable=unused-argument
 
             try:
                 self.pyca_key.verify(sig, data)
@@ -164,8 +168,10 @@ else: # pragma: no cover
 
             return cls(*_ed25519_generate_keypair())
 
-        def sign(self, data):
+        def sign(self, data, hash_alg=None):
             """Sign a block of data"""
+
+            # pylint: disable=unused-argument
 
             return _ed25519_sign(data, self._priv)[:-len(data)]
 
@@ -184,8 +190,10 @@ else: # pragma: no cover
 
             return cls(pub)
 
-        def verify(self, data, sig):
+        def verify(self, data, sig, hash_alg=None):
             """Verify the signature on a block of data"""
+
+            # pylint: disable=unused-argument
 
             try:
                 return _ed25519_verify(sig + data, self._pub) == data

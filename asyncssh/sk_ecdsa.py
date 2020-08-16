@@ -182,7 +182,7 @@ class _SKECDSAKey(SSHKey):
 
         return self._key.verify(sha256(self._application).digest() +
                                 Byte(flags) + UInt32(counter) +
-                                sha256(data).digest(), sig)
+                                sha256(data).digest(), sig, 'sha256')
 
 
 _algorithm = b'sk-ecdsa-sha2-nistp256@openssh.com'

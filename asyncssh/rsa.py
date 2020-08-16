@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2019 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2020 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -27,6 +27,17 @@ from .packet import MPInt, String
 from .public_key import SSHKey, SSHOpenSSHCertificateV01, KeyExportError
 from .public_key import register_public_key_alg, register_certificate_alg
 from .public_key import register_x509_certificate_alg
+
+
+# pylint: disable=bad-whitespace
+
+_hash_algs = {b'ssh-rsa':        'sha1',
+              b'rsa-sha2-256':   'sha256',
+              b'rsa-sha2-512':   'sha512',
+              b'rsa1024-sha1':   'sha1',
+              b'rsa2048-sha256': 'sha256'}
+
+# pylint: enable=bad-whitespace
 
 
 class _RSAKey(SSHKey):
@@ -195,7 +206,7 @@ class _RSAKey(SSHKey):
         if not self._key.d:
             raise ValueError('Private key needed for signing')
 
-        return String(self._key.sign(data, sig_algorithm))
+        return String(self._key.sign(data, _hash_algs[sig_algorithm]))
 
     def verify_ssh(self, data, sig_algorithm, packet):
         """Verify an SSH-encoded signature of the specified data"""
@@ -203,17 +214,17 @@ class _RSAKey(SSHKey):
         sig = packet.get_string()
         packet.check_end()
 
-        return self._key.verify(data, sig, sig_algorithm)
+        return self._key.verify(data, sig, _hash_algs[sig_algorithm])
 
     def encrypt(self, data, algorithm):
         """Encrypt a block of data with this key"""
 
-        return self._key.encrypt(data, algorithm)
+        return self._key.encrypt(data, _hash_algs[algorithm])
 
     def decrypt(self, data, algorithm):
         """Decrypt a block of data with this key"""
 
-        return self._key.decrypt(data, algorithm)
+        return self._key.decrypt(data, _hash_algs[algorithm])
 
 
 register_public_key_alg(b'ssh-rsa', _RSAKey, True)
