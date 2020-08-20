@@ -131,7 +131,8 @@ class ServerTestCase(AsyncTestCase):
         skey_ecdsa.write_public_key('skey_ecdsa.pub')
 
         skey_cert = skey.generate_host_certificate(skey, 'name',
-                                                   principals=['127.0.0.1'])
+                                                   principals=['127.0.0.1',
+                                                               'localhost'])
         skey_cert.write_certificate('skey-cert.pub')
 
         exp_cert = skey.generate_host_certificate(skey, 'name',
@@ -231,6 +232,7 @@ class ServerTestCase(AsyncTestCase):
 
         os.environ['LOGNAME'] = 'guest'
         os.environ['HOME'] = '.'
+        os.environ['USERPROFILE'] = '.'
 
         cls._server = await cls.start_server()
 
@@ -246,7 +248,7 @@ class ServerTestCase(AsyncTestCase):
             with open('skey.pub') as skey_pub:
                 shutil.copyfileobj(skey_pub, known_hosts)
 
-            known_hosts.write('@cert-authority *')
+            known_hosts.write('@cert-authority * ')
 
             with open('skey.pub') as skey_pub:
                 shutil.copyfileobj(skey_pub, known_hosts)
