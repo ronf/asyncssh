@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2019 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2020 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -64,6 +64,8 @@ from .misc import PasswordChangeRequired
 from .misc import BreakReceived, SignalReceived, TerminalSizeChanged
 
 from .pbe import KeyEncryptionError
+
+from .pkcs11 import load_pkcs11_keys
 
 from .process import SSHClientProcess, SSHServerProcess
 from .process import SSHCompletedProcess, ProcessError

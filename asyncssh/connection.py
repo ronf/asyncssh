@@ -105,6 +105,8 @@ from .packet import PacketDecodeError, SSHPacket, SSHPacketHandler
 
 from .pattern import WildcardPattern
 
+from .pkcs11 import load_pkcs11_keys
+
 from .process import PIPE, SSHClientProcess, SSHServerProcess
 
 from .public_key import CERT_TYPE_HOST, CERT_TYPE_USER, KeyImportError
@@ -2544,6 +2546,10 @@ class SSHClientConnection(SSHConnection):
         self._agent_forward_path = options.agent_forward_path
         self._get_agent_keys = bool(self._agent)
 
+        self._pkcs11_provider = options.pkcs11_provider
+        self._pkcs11_pin = options.pkcs11_pin
+        self._get_pkcs11_keys = bool(self._pkcs11_provider)
+
         gss_host = options.gss_host if options.gss_host != () else options.host
 
         if gss_host:
@@ -2763,6 +2769,13 @@ class SSHClientConnection(SSHConnection):
                 pass
 
             self._get_agent_keys = False
+
+        if self._get_pkcs11_keys:
+            pkcs11_keys = load_pkcs11_keys(self._pkcs11_provider,
+                                           self._pkcs11_pin)
+
+            self._client_keys = pkcs11_keys + (self._client_keys or [])
+            self._get_pkcs11_keys = False
 
         while True:
             if not self._client_keys:
@@ -5592,6 +5605,20 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
            Whether or not to allow forwarding of ssh-agent requests from
            processes running on the server. By default, ssh-agent forwarding
            requests from the server are not allowed.
+       :param pkcs11_provider: (optional)
+           The path of a shared library which should be used as a PKCS#11
+           provider for accessing keys on PIV security tokens. By default,
+           no local security tokens will be accessed.
+       :param pkcs11_pin: (optional)
+           The PIN to use when accessing security tokens via PKCS#11.
+
+               .. note:: If you need to load keys from multiple tokens
+                         with different PINs, you can call the
+                         :func:`load_pkcs1_keys` function multiple
+                         times, passing in different token labels or
+                         serial numbers and corresponding PIN values.
+                         The keys acquired can then be passed in via
+                         the `client_keys` argument.
        :param client_version: (optional)
            An ASCII string to advertise to the SSH server as the version of
            this client, defaulting to `'AsyncSSH'` and its version number.
@@ -5680,6 +5707,8 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
        :type preferred_auth: `str` or `list` of `str`
        :type agent_path: `str` or :class:`SSHServerConnection`
        :type agent_forwarding: `bool`
+       :type pkcs11_provider: `str`
+       :type pkcs11_pin: `str`
        :type client_version: `str`
        :type kex_algs: `str` or `list` of `str`
        :type encryption_algs: `str` or `list` of `str`
@@ -5712,7 +5741,8 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
                 client_host_certs=(), client_host=None, client_username=(),
                 client_keys=(), client_certs=(), passphrase=None, gss_host=(),
                 gss_kex=(), gss_auth=(), gss_delegate_creds=(),
-                preferred_auth=(), agent_path=(), agent_forwarding=()):
+                preferred_auth=(), agent_path=(), agent_forwarding=(),
+                pkcs11_provider=(), pkcs11_pin=None):
         """Prepare client connection configuration options"""
 
         local_username = getpass.getuser()
@@ -5830,7 +5860,12 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
         if agent_path:
             agent_path = str(Path(agent_path).expanduser())
 
+        if pkcs11_provider == ():
+            pkcs11_provider = config.get('PKCS11Provider')
+
         self.agent_path = None
+        self.pkcs11_provider = None
+        self.pkcs11_pin = None
 
         if client_keys == ():
             client_keys = config.get('IdentityFile', ())
@@ -5843,6 +5878,8 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
         else:
             if client_keys is not None:
                 self.agent_path = agent_path
+                self.pkcs11_provider = pkcs11_provider
+                self.pkcs11_pin = pkcs11_pin
 
             if client_keys == ():
                 client_keys = load_default_keypairs(passphrase, client_certs)

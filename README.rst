@@ -53,6 +53,7 @@ Features
 * Many types and formats of `public keys and certificates`__
 
   * Including OpenSSH-compatible support for U2F and FIDO2 security keys
+  * Including PKCS#11 support for accessing PIV security tokens
   * Including support for X.509 certificates as defined in RFC 6187
 
 * Support for accessing keys managed by `ssh-agent`__ on UNIX systems
@@ -133,6 +134,9 @@ functionality:
 * Install fido2 from https://pypi.org/project/fido2 if you want support
   for key exchange and authentication with U2F/FIDO2 security keys.
 
+* Install python-pkcs11 from https://pypi.org/project/python-pkcs11 if
+  you want support for accessing PIV keys on PKCS#11 security tokens.
+
 * Install gssapi from https://pypi.python.org/pypi/gssapi if you
   want support for GSSAPI key exchange and authentication on UNIX.
 
@@ -159,22 +163,23 @@ easy to install any or all of these dependencies:
   | fido2
   | gssapi
   | libnacl
+  | pkcs11
   | pyOpenSSL
   | pywin32
 
-For example, to install bcrypt, fido2, gssapi, libnacl, and pyOpenSSL on UNIX,
-you can run:
+For example, to install bcrypt, fido2, gssapi, libnacl, pkcs11, and
+pyOpenSSL on UNIX, you can run:
 
   ::
 
-    pip install 'asyncssh[bcrypt,fido2,gssapi,libnacl,pyOpenSSL]'
+    pip install 'asyncssh[bcrypt,fido2,gssapi,libnacl,pkcs11,pyOpenSSL]'
 
-To install bcrypt, fido2, libnacl, pyOpenSSL, and pywin32 on Windows, you
-can run:
+To install bcrypt, fido2, libnacl, pkcs11, pyOpenSSL, and pywin32 on
+Windows, you can run:
 
   ::
 
-    pip install 'asyncssh[bcrypt,fido2,libnacl,pyOpenSSL,pywin32]'
+    pip install 'asyncssh[bcrypt,fido2,libnacl,pkcs11,pyOpenSSL,pywin32]'
 
 Note that you will still need to manually install the libsodium library
 listed above for libnacl to work correctly and/or libnettle for UMAC

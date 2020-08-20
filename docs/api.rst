@@ -1544,6 +1544,11 @@ load_certificates
 
 .. autofunction:: load_certificates
 
+load_pkcs11_keys
+----------------
+
+.. autofunction:: load_pkcs11_keys
+
 load_resident_keys
 ------------------
 

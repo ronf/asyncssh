@@ -487,6 +487,7 @@ class SSHClientConfig(SSHConfig):
         ('KexAlgorithms',                   SSHConfig._set_string),
         ('MACs',                            SSHConfig._set_string),
         ('PasswordAuthentication',          SSHConfig._set_bool),
+        ('PKCS11Provider',                  SSHConfig._set_string),
         ('PreferredAuthentications',        SSHConfig._set_string),
         ('Port',                            SSHConfig._set_int),
         ('ProxyJump',                       SSHConfig._set_string),
