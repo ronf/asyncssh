@@ -82,6 +82,25 @@ class SSHReader:
 
         return self._chan.get_extra_info(name, default)
 
+    def feed_eof(self):
+        """Emulate EOF received condition for the underlying session
+
+           This method is for compatibility with the :meth:`feed_eof()
+           <asyncio.StreamReader.feed_eof>` on :class:`asyncio.StreamReader`.
+           Mostly usefull for testing.
+       """
+        self._session.eof_received()
+
+    def feed_data(self, data, datatype=None):
+        """Feeds data as if it was received through the underlying session
+
+           This method is for compatibility with the :meth:`feed_data()
+           <asyncio.StreamReader.feed_data>` on :class:`asyncio.StreamReader`.
+           Mostly usefull for testing.
+       """
+        assert not self.at_eof, 'feed_data after eof received'
+        self._session.data_received(data, datatype)
+
     async def read(self, n=-1):
         """Read data from the stream
 
