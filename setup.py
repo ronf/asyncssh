@@ -58,7 +58,7 @@ setup(name = 'asyncssh',
           'fido2':      ['fido2 >= 0.8.1'],
           'gssapi':     ['gssapi >= 1.2.0'],
           'libnacl':    ['libnacl >= 1.4.2'],
-          'pkcs11':     ['python-pkcs11 >= 0.6.0'],
+          'pkcs11':     ['python-pkcs11 >= 0.7.0'],
           'pyOpenSSL':  ['pyOpenSSL >= 17.0.0'],
           'pywin32':    ['pywin32 >= 227']
       },
