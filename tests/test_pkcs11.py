@@ -154,6 +154,11 @@ class _TestPKCS11Auth(_CheckPKCS11Auth):
         """Test authenticating with explicitly loaded PKCS#11 keys"""
 
         for key in asyncssh.load_pkcs11_keys('xxx'):
-            async with self.connect(username='ckey', pkcs11_provider='xxx',
-                                    client_keys=[key]):
-                pass
+            for sig_alg in key.sig_algorithms:
+                sig_alg = sig_alg.decode('ascii')
+
+                with self.subTest(key=key.get_comment(), sig_alg=sig_alg):
+                    async with self.connect(
+                            username='ckey', pkcs11_provider='xxx',
+                            client_keys=[key], signature_algs=[sig_alg]):
+                        pass

@@ -82,6 +82,7 @@ if pkcs11_available:
             """Set the signature algorithm to use when signing data"""
 
             self.algorithm = sig_algorithm
+            self.sig_algorithm = sig_algorithm
 
             if self._cert:
                 self.public_data = self._cert.adjust_public_data(sig_algorithm)
