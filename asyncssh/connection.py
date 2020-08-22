@@ -5621,7 +5621,6 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
                          returned keys via the `client_keys` argument to
                          any calls that need them.
 
-
                          Calling :func:`load_pkcs11_keys` explicitly also
                          gives you the ability to load keys from multiple
                          tokens with different PINs and to select which
