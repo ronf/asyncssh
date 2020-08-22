@@ -153,7 +153,17 @@ if pkcs11_available:
         def get_keys(self, load_certs, key_label, key_id):
             """Return the private keys found on this token"""
 
+            if isinstance(key_id, str):
+                key_id = codecs.decode(key_id, 'hex')
+
             key_attrs = {Attribute.CLASS: ObjectClass.PRIVATE_KEY}
+
+            if key_label is not None:
+                key_attrs[Attribute.LABEL] = key_label
+
+            if key_id is not None:
+                key_attrs[Attribute.OBJECT_ID] = key_id
+
             cert_attrs = {Attribute.CLASS: ObjectClass.CERTIFICATE}
 
             if load_certs:
@@ -165,18 +175,9 @@ if pkcs11_available:
             else:
                 certdict = {}
 
-            if isinstance(key_id, str):
-                key_id = codecs.decode(key_id, 'hex')
-
             keys = []
 
             for key in self._session.get_objects(key_attrs):
-                if key_label and key_label != key.label:
-                    continue
-
-                if key_id and key_id != key.id:
-                    continue
-
                 encoder = encoders.get(key.key_type)
 
                 if key[Attribute.SIGN] and encoder:
@@ -217,6 +218,15 @@ if pkcs11_available:
            those values will be loaded. Key IDs can be specified as
            either raw bytes or a string containing hex digits.
 
+               .. note:: If you have an active asyncio event loop at
+                         the time you call this function, you may want
+                         to consider running it via a call to
+                         :meth:`asyncio.AbstractEventLoop.run_in_executor`.
+                         While retrieving the keys generally takes only a
+                         fraction of a second, calling this function
+                         directly could block asyncio event processing
+                         until it completes.
+
            :param provider:
                The path to the PKCS#11 provider's shared library.
            :param pin: (optional)
@@ -250,16 +260,11 @@ if pkcs11_available:
 
         keys = []
 
-        for token in lib.get_tokens():
-            if isinstance(token_serial, str):
-                token_serial = token_serial.encode('utf-8')
+        if isinstance(token_serial, str):
+            token_serial = token_serial.encode('utf-8')
 
-            if token_label and token_label != token.label:
-                continue
-
-            if token_serial and token_serial != token.serial:
-                continue
-
+        for token in lib.get_tokens(token_label=token_label,
+                                    token_serial=token_serial):
             with SSHPKCS11Session.open(token, pin) as session:
                 keys.extend(session.get_keys(load_certs, key_label, key_id))
 

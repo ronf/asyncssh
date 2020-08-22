@@ -2771,8 +2771,8 @@ class SSHClientConnection(SSHConnection):
             self._get_agent_keys = False
 
         if self._get_pkcs11_keys:
-            pkcs11_keys = load_pkcs11_keys(self._pkcs11_provider,
-                                           self._pkcs11_pin)
+            pkcs11_keys = await self._loop.run_in_executor(
+                None, load_pkcs11_keys, self._pkcs11_provider, self._pkcs11_pin)
 
             self._client_keys = pkcs11_keys + (self._client_keys or [])
             self._get_pkcs11_keys = False
@@ -5612,13 +5612,22 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
        :param pkcs11_pin: (optional)
            The PIN to use when accessing security tokens via PKCS#11.
 
-               .. note:: If you need to load keys from multiple tokens
-                         with different PINs, you can call the
-                         :func:`load_pkcs1_keys` function multiple
-                         times, passing in different token labels or
-                         serial numbers and corresponding PIN values.
-                         The keys acquired can then be passed in via
-                         the `client_keys` argument.
+               .. note:: If your application opens multiple SSH connections
+                         using PKCS#11 keys, you should consider calling
+                         :func:`load_pkcs11_keys` explicitly instead of
+                         using these arguments. This allows you to pay
+                         the cost of loading the key information from the
+                         security tokens only once. You can then pass the
+                         returned keys via the `client_keys` argument to
+                         any calls that need them.
+
+
+                         Calling :func:`load_pkcs11_keys` explicitly also
+                         gives you the ability to load keys from multiple
+                         tokens with different PINs and to select which
+                         tokens to load keys from and which keys on those
+                         tokens to load.
+
        :param client_version: (optional)
            An ASCII string to advertise to the SSH server as the version of
            this client, defaulting to `'AsyncSSH'` and its version number.

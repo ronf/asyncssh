@@ -117,10 +117,20 @@ class _PKCS11Session:
     def get_objects(self, attrs):
         """Return a list of PKCS#11 key or certificate objects"""
 
-        if attrs[Attribute.CLASS] == ObjectClass.PRIVATE_KEY:
-            return self._keys
-        else:
-            return self._certs
+        label = attrs.get(Attribute.LABEL)
+        obj_id = attrs.get(Attribute.OBJECT_ID)
+
+        objs = self._keys if attrs[Attribute.CLASS] == \
+                   ObjectClass.PRIVATE_KEY else self._certs
+
+        for obj in objs:
+            if label is not None and obj.label != label:
+                continue
+
+            if obj_id is not None and obj.id != obj_id:
+                continue
+
+            yield obj
 
     def close(self):
         """Close this session"""
@@ -195,10 +205,17 @@ class PKCS11Lib:
 
         pass
 
-    def get_tokens(self):
+    def get_tokens(self, token_label=None, token_serial=None):
         """Return PKCS#11 security tokens"""
 
-        return self.tokens
+        for token in self.tokens:
+            if token_label is not None and token.label != token_label:
+                continue
+
+            if token_serial is not None and token.serial != token_serial:
+                continue
+
+            yield token
 
 
 def get_pkcs11_public_keys():
