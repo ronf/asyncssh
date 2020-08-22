@@ -151,6 +151,20 @@ class _TestStream(ServerTestCase):
             await self._check_session(conn, large_block=True)
 
     @asynctest
+    async def test_feed(self):
+        """Test feeding data into an SSHReader"""
+
+        async with self.connect() as conn:
+            _, stdout, stderr = await conn.open_session()
+
+            stdout.feed_data('stdout')
+            stderr.feed_data('stderr')
+            stdout.feed_eof()
+
+            self.assertEqual(await stdout.read(), 'stdout')
+            self.assertEqual(await stderr.read(), 'stderr')
+
+    @asynctest
     async def test_async_iterator(self):
         """Test reading lines by using SSHReader as an async iterator"""
 

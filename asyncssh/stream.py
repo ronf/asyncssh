@@ -82,6 +82,32 @@ class SSHReader:
 
         return self._chan.get_extra_info(name, default)
 
+    def feed_data(self, data):
+        """Feed data to the associated session
+
+           This method feeds data to the SSH session associated with
+           this stream, providing compatibility with the
+           :meth:`feed_data() <asyncio.StreamReader.feed_data>` method
+           on :class:`asyncio.StreamReader`. This is mostly useful
+           for testing.
+
+        """
+
+        self._session.data_received(data, self._datatype)
+
+    def feed_eof(self):
+        """Feed EOF to the associated session
+
+           This method feeds an end-of-file indication to the SSH session
+           associated with this stream, providing compatibility with the
+           :meth:`feed_eof() <asyncio.StreamReader.feed_data>` method
+           on :class:`asyncio.StreamReader`. This is mostly useful
+           for testing.
+
+        """
+
+        self._session.eof_received()
+
     async def read(self, n=-1):
         """Read data from the stream
 

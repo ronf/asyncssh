@@ -1025,6 +1025,8 @@ SSHReader
    .. autoattribute:: channel
    .. autoattribute:: logger
    .. automethod:: get_extra_info
+   .. automethod:: feed_data
+   .. automethod:: feed_eof
    .. automethod:: at_eof
    .. automethod:: read
    .. automethod:: readline
