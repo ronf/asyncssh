@@ -49,6 +49,7 @@ _alg_oid_map = {}
 class _ECKey(SSHKey):
     """Handler for elliptic curve public key encryption"""
 
+    default_hash_alg = 'sha256'
     pem_name = b'EC'
     pkcs8_oid = ObjectIdentifier('1.2.840.10045.2.1')
 

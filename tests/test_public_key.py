@@ -2085,6 +2085,7 @@ class TestEd25519(_TestPublicKey):
     base_format = 'openssh'
     private_formats = ('pkcs8', 'openssh')
     public_formats = ('pkcs8', 'openssh', 'rfc4716')
+    x509_supported = x509_available
     default_cert_version = 'ssh-ed25519-cert-v01@openssh.com'
     generate_args = (('ssh-ed25519', {}),)
     use_openssl = False
@@ -2098,6 +2099,7 @@ class TestEd448(_TestPublicKey):
     base_format = 'openssh'
     private_formats = ('pkcs8', 'openssh')
     public_formats = ('pkcs8', 'openssh', 'rfc4716')
+    x509_supported = x509_available
     default_cert_version = 'ssh-ed448-cert-v01@openssh.com'
     generate_args = (('ssh-ed448', {}),)
     use_openssh = False
@@ -2270,3 +2272,19 @@ class _TestPublicKeyTopLevel(TempDirTestCase):
         privkey = asyncssh.generate_private_key('ssh-rsa', 2048)
 
         self.assertIsNone(privkey.decrypt(b'', privkey.algorithm))
+
+    @unittest.skipUnless(x509_available, 'x509 not available')
+    def test_x509_certificate_hashes(self):
+        """Test X.509 certificate hash algorithms"""
+
+        privkey = asyncssh.generate_private_key('ssh-rsa')
+        pubkey = privkey.convert_to_public()
+
+        for hash_alg in ('sha1', 'sha256', 'sha512'):
+            cert = privkey.generate_x509_user_certificate(
+                pubkey, 'OU=user', hash_alg=hash_alg)
+
+            cert.write_certificate('cert', 'pem')
+
+            cert2 = asyncssh.read_certificate('cert')
+            self.assertEqual(str(cert2.subject), 'OU=user')

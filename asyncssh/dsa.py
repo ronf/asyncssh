@@ -33,6 +33,7 @@ class _DSAKey(SSHKey):
     """Handler for DSA public key encryption"""
 
     algorithm = b'ssh-dss'
+    default_hash_alg = 'sha1'
     pem_name = b'DSA'
     pkcs8_oid = ObjectIdentifier('1.2.840.10040.4.1')
     sig_algorithms = (algorithm,)

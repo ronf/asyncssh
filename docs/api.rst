@@ -2231,6 +2231,8 @@ Signature algorithms
 The following are the default public key signature algorithms currently
 supported by AsyncSSH:
 
+  | x509v3-ssh-ed25519
+  | x509v3-ssh-ed448
   | x509v3-ecdsa-sha2-nistp521
   | x509v3-ecdsa-sha2-nistp384
   | x509v3-ecdsa-sha2-nistp256
@@ -2264,6 +2266,8 @@ Public key & certificate algorithms
 The following are the default public key and certificate algorithms
 currently supported by AsyncSSH:
 
+  | x509v3-ssh-ed25519
+  | x509v3-ssh-ed448
   | x509v3-ecdsa-sha2-nistp521
   | x509v3-ecdsa-sha2-nistp384
   | x509v3-ecdsa-sha2-nistp256

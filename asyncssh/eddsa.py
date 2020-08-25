@@ -27,6 +27,7 @@ from .packet import String
 from .public_key import OMIT, SSHKey, SSHOpenSSHCertificateV01
 from .public_key import KeyImportError, KeyExportError
 from .public_key import register_public_key_alg, register_certificate_alg
+from .public_key import register_x509_certificate_alg
 
 
 class _EdKey(SSHKey):
@@ -168,6 +169,7 @@ class _Ed25519Key(_EdKey):
     algorithm = b'ssh-ed25519'
     pkcs8_oid = ObjectIdentifier('1.3.101.112')
     sig_algorithms = (algorithm,)
+    x509_algorithms = (b'x509v3-' + algorithm,)
     all_sig_algorithms = set(sig_algorithms)
 
 
@@ -177,6 +179,7 @@ class _Ed448Key(_EdKey):
     algorithm = b'ssh-ed448'
     pkcs8_oid = ObjectIdentifier('1.3.101.113')
     sig_algorithms = (algorithm,)
+    x509_algorithms = (b'x509v3-' + algorithm,)
     all_sig_algorithms = set(sig_algorithms)
 
 
@@ -187,8 +190,14 @@ if ed25519_available: # pragma: no branch
                              b'ssh-ed25519-cert-v01@openssh.com',
                              _Ed25519Key, SSHOpenSSHCertificateV01, True)
 
+    for alg in _Ed25519Key.x509_algorithms:
+        register_x509_certificate_alg(alg, True)
+
 if ed448_available: # pragma: no branch
     register_public_key_alg(b'ssh-ed448', _Ed448Key, True)
 
     register_certificate_alg(1, b'ssh-ed448', b'ssh-ed448-cert-v01@openssh.com',
                              _Ed448Key, SSHOpenSSHCertificateV01, True)
+
+    for alg in _Ed448Key.x509_algorithms:
+        register_x509_certificate_alg(alg, True)

@@ -372,7 +372,7 @@ def generate_x509_certificate(signing_key, key, subject, issuer, serial,
             x509.UnrecognizedExtension(_nscomment_oid, comment), critical=False)
 
     try:
-        hash_alg = hashes[hash_alg]()
+        hash_alg = hashes[hash_alg]() if hash_alg else None
     except KeyError:
         raise ValueError('Unknown hash algorithm') from None
 

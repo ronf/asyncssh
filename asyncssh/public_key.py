@@ -174,6 +174,7 @@ class SSHKey:
     sig_algorithms = None
     x509_algorithms = None
     all_sig_algorithms = None
+    default_hash_alg = None
     pem_name = None
     pkcs8_oid = None
     use_executor = False
@@ -245,6 +246,9 @@ class SSHKey:
         if valid_before <= valid_after:
             raise ValueError('Valid before time must be later than '
                              'valid after time')
+
+        if hash_alg == ():
+            hash_alg = key.default_hash_alg
 
         return SSHX509Certificate.generate(self, key, subject, issuer, serial,
                                            valid_after, valid_before, ca,
@@ -652,7 +656,7 @@ class SSHKey:
                                        valid_after=0,
                                        valid_before=0xffffffffffffffff,
                                        purposes='secureShellClient',
-                                       hash_alg='sha256', comment=()):
+                                       hash_alg=(), comment=()):
         """Generate a new X.509 user certificate
 
            This method returns an X.509 user certifcate with the requested
@@ -724,7 +728,7 @@ class SSHKey:
                                        valid_after=0,
                                        valid_before=0xffffffffffffffff,
                                        purposes='secureShellServer',
-                                       hash_alg='sha256', comment=()):
+                                       hash_alg=(), comment=()):
         """Generate a new X.509 host certificate
 
            This method returns a X.509 host certifcate with the requested
@@ -793,7 +797,7 @@ class SSHKey:
     def generate_x509_ca_certificate(self, ca_key, subject, issuer=None,
                                      serial=None, valid_after=0,
                                      valid_before=0xffffffffffffffff,
-                                     ca_path_len=None, hash_alg='sha256',
+                                     ca_path_len=None, hash_alg=(),
                                      comment=()):
         """Generate a new X.509 CA certificate
 
