@@ -72,6 +72,9 @@ _openssl_available = _openssl_version != b''
 # The openssl "-v2prf" option is only available in OpenSSL 1.0.2 or later
 _openssl_supports_v2prf = _openssl_version >= b'OpenSSL 1.0.2'
 
+# Ed25519/Ed448 support via "pkey" is only available in OpenSSL 1.1.1 or later
+_openssl_supports_pkey = _openssl_version >= b'OpenSSL 1.1.1'
+
 try:
     if sys.platform != 'win32':
         _openssh_version = run('ssh -V')
@@ -587,9 +590,13 @@ class _TestPublicKey(TempDirTestCase):
 
         format_name = 'pkcs8-%s' % fmt
 
-        if self.use_openssl: # pragma: no branch
-            run('openssl %s -pubin -in pub -inform pem -out new -outform %s' %
-                (self.keyclass, fmt))
+        if self.use_openssl:
+            if _openssl_supports_pkey:
+                run('openssl pkey -pubin -in pub -inform pem -out new '
+                    '-outform %s' % fmt)
+            else: # pragma: no cover
+                run('openssl %s -pubin -in pub -inform pem -out new '
+                    '-outform %s' % (self.keyclass, fmt))
         else: # pragma: no cover
             self.pubkey.write_public_key('new', format_name)
 
@@ -601,9 +608,13 @@ class _TestPublicKey(TempDirTestCase):
         format_name = 'pkcs8-%s' % fmt
         self.privkey.write_public_key('pubout', format_name)
 
-        if self.use_openssl: # pragma: no branch
-            run('openssl %s -pubin -in pubout -inform %s -out new '
-                '-outform pem' % (self.keyclass, fmt))
+        if self.use_openssl:
+            if _openssl_supports_pkey:
+                run('openssl pkey -pubin -in pubout -inform %s -out new '
+                    '-outform pem' % fmt)
+            else: # pragma: no cover
+                run('openssl %s -pubin -in pubout -inform %s -out new '
+                    '-outform pem' % (self.keyclass, fmt))
         else: # pragma: no cover
             pub = asyncssh.read_public_key('pubout')
             pub.write_public_key('new', format_name)
@@ -2082,13 +2093,14 @@ class TestEd25519(_TestPublicKey):
     """Test Ed25519 keys"""
 
     keyclass = 'ed25519'
-    base_format = 'openssh'
+    base_format = 'pkcs8-pem'
     private_formats = ('pkcs8', 'openssh')
     public_formats = ('pkcs8', 'openssh', 'rfc4716')
     x509_supported = x509_available
     default_cert_version = 'ssh-ed25519-cert-v01@openssh.com'
     generate_args = (('ssh-ed25519', {}),)
-    use_openssl = False
+    use_openssh = False
+    use_openssl = _openssl_supports_pkey
 
 
 @unittest.skipUnless(ed448_available, 'ed448 not available')
@@ -2096,14 +2108,14 @@ class TestEd448(_TestPublicKey):
     """Test Ed448 keys"""
 
     keyclass = 'ed448'
-    base_format = 'openssh'
+    base_format = 'pkcs8-pem'
     private_formats = ('pkcs8', 'openssh')
     public_formats = ('pkcs8', 'openssh', 'rfc4716')
     x509_supported = x509_available
     default_cert_version = 'ssh-ed448-cert-v01@openssh.com'
     generate_args = (('ssh-ed448', {}),)
     use_openssh = False
-    use_openssl = False
+    use_openssl = _openssl_supports_pkey
 
 
 @unittest.skipUnless(sk_available, 'security key support not available')
@@ -2143,7 +2155,6 @@ class TestSKEd25519(_TestPublicKey):
     default_cert_version = 'sk-ssh-ed25519-cert-v01@openssh.com'
     generate_args = (('sk-ssh-ed25519@openssh.com', {}),)
     use_openssh = False
-    use_openssl = False
 
     def setUp(self):
         """Set up Ed25519 security key test"""
