@@ -37,6 +37,11 @@ if pkcs11_available: # pragma: no branch
     _encoders = {KeyType.RSA: _encode_public,
                  KeyType.EC:  _encode_public}
 
+    _key_types = {'ssh-rsa':             KeyType.RSA,
+                  'ecdsa-sha2-nistp256': KeyType.EC,
+                  'ecdsa-sha2-nistp384': KeyType.EC,
+                  'ssh-ed25519':         KeyType.EC_EDWARDS}
+
     _hash_algs = {Mechanism.SHA1_RSA_PKCS:   'sha1',
                   Mechanism.SHA256_RSA_PKCS: 'sha256',
                   Mechanism.SHA512_RSA_PKCS: 'sha512',
@@ -49,18 +54,10 @@ class _PKCS11Key:
     """Stub for unit testing PKCS#11 keys"""
 
     def __init__(self, alg, key_type, key_label, key_id):
-        if alg == 'no-sign':
-            self._priv = None
-        else:
-            self._priv = generate_private_key(alg, comment=key_label)
-
+        self._priv = generate_private_key(alg, comment=key_label)
         self.key_type = key_type
         self.label = key_label
         self.id = key_id
-
-    def __getitem__(self, key):
-        if key == Attribute.SIGN: # pragma: no branch
-            return bool(self._priv)
 
     def get_cert(self):
         """Return self-signed X.509 cert for this key"""
@@ -149,8 +146,7 @@ class _PKCS11Token:
         self._certs = []
 
         for i, (alg, key_label) in enumerate(key_info, 1):
-            key_type = KeyType.EC if alg.startswith('ecdsa') else KeyType.RSA
-            self._add_key(alg, key_type, key_label, i)
+            self._add_key(alg, _key_types[alg], key_label, i)
 
     def _add_key(self, alg, key_type, key_label, key_id):
         """Add key to this token"""
@@ -158,14 +154,12 @@ class _PKCS11Token:
         key = _PKCS11Key(alg, key_type, key_label, bytes((key_id,)))
 
         self._keys.append(key)
+        self._pubkeys.append(key.get_public())
 
-        if alg != 'no-sign':
-            self._pubkeys.append(key.get_public())
-
-            try:
-                self._certs.append(_PKCS11Cert(key))
-            except asyncssh.KeyGenerationError:
-                pass
+        try:
+            self._certs.append(_PKCS11Cert(key))
+        except asyncssh.KeyGenerationError:
+            pass
 
     def get_pubkeys(self):
         """Return public keys associated with this token"""

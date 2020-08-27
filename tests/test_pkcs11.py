@@ -42,7 +42,7 @@ class _CheckPKCS11Auth(ServerTestCase):
         ('Token 1', b'1234', [('ssh-rsa',             'RSA key'),
                               ('ecdsa-sha2-nistp256', 'EC key 1')]),
         ('Token 2', b'5678', [('ecdsa-sha2-nistp384', 'EC key 2'),
-                              ('no-sign',             'Non-signing key')])
+                              ('ssh-ed25519',         'ED key (unsupported)')])
     ]
 
     # pylint: enable=bad-whitespace

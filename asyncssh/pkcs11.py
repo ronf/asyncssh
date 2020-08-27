@@ -156,7 +156,8 @@ if pkcs11_available:
             if isinstance(key_id, str):
                 key_id = codecs.decode(key_id, 'hex')
 
-            key_attrs = {Attribute.CLASS: ObjectClass.PRIVATE_KEY}
+            key_attrs = {Attribute.CLASS: ObjectClass.PRIVATE_KEY,
+                         Attribute.SIGN: True}
 
             if key_label is not None:
                 key_attrs[Attribute.LABEL] = key_label
@@ -180,7 +181,7 @@ if pkcs11_available:
             for key in self._session.get_objects(key_attrs):
                 encoder = encoders.get(key.key_type)
 
-                if key[Attribute.SIGN] and encoder:
+                if encoder:
                     pubkey = import_public_key(encoder(key))
 
                     cert = certdict.get(pubkey.public_data)
