@@ -28,7 +28,7 @@ try:
     from pkcs11.util.rsa import encode_rsa_public_key
     from pkcs11.util.ec import encode_ec_public_key
     pkcs11_available = True
-except (ImportError, ModuleNotFoundError):
+except (ImportError, ModuleNotFoundError): # pragma: no cover
     pkcs11_available = False
 
 from .packet import MPInt, String
