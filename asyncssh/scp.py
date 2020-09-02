@@ -167,10 +167,11 @@ class _SCPArgParser(argparse.ArgumentParser):
 class _SCPHandler:
     """SCP handler"""
 
-    def __init__(self, reader, writer, error_handler=None):
+    def __init__(self, reader, writer, error_handler=None, server=False):
         self._reader = reader
         self._writer = writer
         self._error_handler = error_handler
+        self._server = server
 
         self._logger = reader.logger.get_child('sftp')
 
@@ -309,7 +310,12 @@ class _SCPHandler:
         """Close an SCP session"""
 
         self.logger.info('Stopping remote SCP')
-        self._writer.close()
+
+        if self._server:
+            self._writer.channel.exit(0)
+        else:
+            self._writer.close()
+
         await self._writer.channel.wait_closed()
 
 
@@ -318,8 +324,8 @@ class _SCPSource(_SCPHandler):
 
     def __init__(self, fs, reader, writer, preserve, recurse,
                  block_size=SFTP_BLOCK_SIZE, progress_handler=None,
-                 error_handler=None):
-        super().__init__(reader, writer, error_handler)
+                 error_handler=None, server=False):
+        super().__init__(reader, writer, error_handler, server)
 
         self._fs = fs
         self._preserve = preserve
@@ -451,8 +457,8 @@ class _SCPSink(_SCPHandler):
 
     def __init__(self, fs, reader, writer, must_be_dir, preserve, recurse,
                  block_size=SFTP_BLOCK_SIZE, progress_handler=None,
-                 error_handler=None):
-        super().__init__(reader, writer, error_handler)
+                 error_handler=None, server=False):
+        super().__init__(reader, writer, error_handler, server)
 
         self._fs = fs
         self._must_be_dir = must_be_dir
@@ -934,9 +940,9 @@ def run_scp_server(sftp_server, command, stdin, stdout, stderr):
 
     if args.source:
         handler = _SCPSource(fs, stdin, stdout, args.preserve, args.recurse,
-                             error_handler=False)
+                             error_handler=False, server=True)
     else:
         handler = _SCPSink(fs, stdin, stdout, args.must_be_dir, args.preserve,
-                           args.recurse, error_handler=False)
+                           args.recurse, error_handler=False, server=True)
 
     return run_handler()
