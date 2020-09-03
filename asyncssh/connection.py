@@ -2433,10 +2433,12 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
                                                          tunnel_connection,
                                                          listen_host,
                                                          listen_port)
-
+            
+            self._local_listeners[listen_host, listen_port] = listener
+                
             if dest_port == 0:
                 dest_port = listener.get_port()
-
+            
             return listener
         except OSError as exc:
             self.logger.debug1('Failed to create local TCP listener: %s', exc)
