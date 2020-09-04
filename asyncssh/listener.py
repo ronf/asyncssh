@@ -191,10 +191,12 @@ class SSHUNIXClientListener(SSHClientListener):
 class SSHForwardListener(SSHListener):
     """A listener used when forwarding traffic from local ports"""
 
-    def __init__(self, servers, listen_port=0):
+    def __init__(self, conn, servers, listen_key, listen_port=0):
         super().__init__()
 
+        self._conn = conn
         self._servers = servers
+        self._listen_key = listen_key
         self._listen_port = listen_port
 
     def get_port(self):
@@ -205,8 +207,13 @@ class SSHForwardListener(SSHListener):
     def close(self):
         """Close this listener"""
 
-        for server in self._servers:
-            server.close()
+        if self._conn:
+            self._conn.close_forward_listener(self._listen_key)
+
+            for server in self._servers:
+                server.close()
+
+            self._conn = None
 
     async def wait_closed(self):
         """Wait for this listener to finish closing"""
@@ -274,7 +281,8 @@ async def create_tcp_local_listener(conn, loop, protocol_factory,
         server = await loop.create_server(protocol_factory, sock=sock)
         servers.append(server)
 
-    return SSHForwardListener(servers, listen_port)
+    listen_key = listen_host, listen_port
+    return SSHForwardListener(conn, servers, listen_key, listen_port)
 
 
 async def create_tcp_forward_listener(conn, loop, coro,
@@ -300,7 +308,7 @@ async def create_unix_forward_listener(conn, loop, coro, listen_path):
 
     server = await loop.create_unix_server(protocol_factory, listen_path)
 
-    return SSHForwardListener([server])
+    return SSHForwardListener(conn, [server], listen_path)
 
 
 async def create_socks_listener(conn, loop, coro, listen_host, listen_port):

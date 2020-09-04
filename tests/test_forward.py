@@ -713,6 +713,15 @@ class _TestTCPForwarding(_CheckForwarding):
                 listener.close()
                 await listener.wait_closed()
 
+    @asynctest
+    async def test_listener_close_on_conn_close(self):
+        """Test listener closes when connection closes"""
+
+        async with self.connect() as conn:
+            listener = await conn.forward_local_port('', 0, '', 80)
+            await conn.open_connection('', 10)
+            await listener.wait_closed()
+
 
 class _TestAsyncTCPForwarding(_TestTCPForwarding):
     """Unit tests for AsyncSSH TCP connection forwarding with async return"""
@@ -1065,6 +1074,19 @@ class _TestSOCKSForwarding(_CheckForwarding):
                 for msg, data, result in _socks5_connects:
                     await self._check_socks(self._check_socks5_connect,
                                             listen_port, msg, data, result)
+
+    @asynctest
+    async def test_forward_socks_specific_port(self):
+        """Test dynamic forwarding on a specific port"""
+
+        sock = socket.socket()
+        sock.bind(('', 0))
+        listen_port = sock.getsockname()[1]
+        sock.close()
+
+        async with self.connect() as conn:
+            async with conn.forward_socks(None, listen_port):
+                pass
 
     @unittest.skipIf(sys.platform == 'win32',
                      'Avoid issue with SO_REUSEADDR on Windows')

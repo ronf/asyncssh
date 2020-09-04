@@ -192,8 +192,17 @@ async def _connect(host, port, loop, tunnel, family, flags,
 
     if new_tunnel:
         new_tunnel.logger.info('%s %s via %s', msg, (host, port), tunnel)
-        _, conn = await new_tunnel.create_connection(conn_factory, host, port)
-        conn.set_tunnel(new_tunnel)
+
+        # pylint: disable=broad-except
+        try:
+            _, conn = await new_tunnel.create_connection(conn_factory,
+                                                         host, port)
+        except Exception:
+            new_tunnel.close()
+            await new_tunnel.wait_closed()
+            raise
+        else:
+            conn.set_tunnel(new_tunnel)
     elif tunnel:
         tunnel_logger = getattr(tunnel, 'logger', logger)
         tunnel_logger.info('%s %s via SSH tunnel', msg, (host, port))
@@ -1810,6 +1819,9 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
                 self.send_userauth_success()
                 return
 
+        if not self._owner: # pragma: no cover
+            return
+
         if self._auth:
             self._auth.cancel()
 
@@ -2433,14 +2445,16 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
                                                          tunnel_connection,
                                                          listen_host,
                                                          listen_port)
-
-            if dest_port == 0:
-                dest_port = listener.get_port()
-
-            return listener
         except OSError as exc:
             self.logger.debug1('Failed to create local TCP listener: %s', exc)
             raise
+
+        if listen_port == 0:
+            listen_port = listener.get_port()
+
+        self._local_listeners[listen_host, listen_port] = listener
+
+        return listener
 
     @async_context_manager
     async def forward_local_path(self, listen_path, dest_path):
@@ -2474,12 +2488,21 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
                          listen_path, dest_path)
 
         try:
-            return await create_unix_forward_listener(self, self._loop,
-                                                      tunnel_connection,
-                                                      listen_path)
+            listener = await create_unix_forward_listener(self, self._loop,
+                                                          tunnel_connection,
+                                                          listen_path)
         except OSError as exc:
             self.logger.debug1('Failed to create local UNIX listener: %s', exc)
             raise
+
+        self._local_listeners[listen_path] = listener
+
+        return listener
+
+    def close_forward_listener(self, listen_key):
+        """Mark a local forwarding listener as closed"""
+
+        self._local_listeners.pop(listen_key, None)
 
 
 class SSHClientConnection(SSHConnection):
@@ -4018,11 +4041,19 @@ class SSHClientConnection(SSHConnection):
                          (listen_host, listen_port))
 
         try:
-            return await create_socks_listener(self, self._loop, tunnel_socks,
-                                               listen_host, listen_port)
+            listener = await create_socks_listener(self, self._loop,
+                                                   tunnel_socks,
+                                                   listen_host, listen_port)
         except OSError as exc:
             self.logger.debug1('Failed to create local SOCKS listener: %s', exc)
             raise
+
+        if listen_port == 0:
+            listen_port = listener.get_port()
+
+        self._local_listeners[listen_host, listen_port] = listener
+
+        return listener
 
     @async_context_manager
     async def start_sftp_client(self, env=(), send_env=(),
