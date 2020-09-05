@@ -3,6 +3,25 @@
 Change Log
 ==========
 
+Release 2.4.1 (5 Sep 2020)
+--------------------------
+
+* Fixed SCP server to send back an exit status when closing the SSH
+  channel, since the OpenSSH scp client returns this status to the
+  shell which executed it. Thanks go to girtsf for catching this.
+
+* Fixed listeners created by forward_local_port(), forward_local_path(),
+  and forward_socks() to automatically close when the SSH connection
+  closes, unblocking any wait_closed() calls which are in progress.
+  Thanks go to rmawatson for catching this.
+
+* Fixed a potential exception that could trigger when the SSH
+  connection is closed while authentication is in progress.
+
+* Fixed tunnel connect code to properly clean up an implicitly created
+  tunnel when a failure occurs in trying to open a connection over
+  that tunnel.
+
 Release 2.4.0 (29 Aug 2020)
 ---------------------------
 
