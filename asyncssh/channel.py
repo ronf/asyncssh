@@ -302,7 +302,8 @@ class SSHChannel(SSHPacketHandler):
             if self._recv_state == 'eof_pending':
                 self._recv_state = 'eof'
 
-                if (not self._session.eof_received() and
+                if (self._session and
+                        not self._session.eof_received() and
                         self._send_state == 'open'):
                     self.write_eof()
             elif self._recv_state == 'close_pending':
