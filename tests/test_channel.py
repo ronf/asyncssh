@@ -378,6 +378,7 @@ class _ChannelServer(Server):
             stdin.channel.send_packet(MSG_CHANNEL_EXTENDED_DATA,
                                       UInt32(255), String(''))
         elif action == 'double_eof':
+            await asyncio.sleep(0.1)
             stdin.channel.send_packet(MSG_CHANNEL_EOF)
             stdin.channel.write_eof()
         elif action == 'double_close':

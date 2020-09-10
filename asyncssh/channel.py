@@ -291,7 +291,7 @@ class SSHChannel(SSHPacketHandler):
         while self._recv_buf and not self._recv_paused:
             self._deliver_data(*self._recv_buf.pop(0))
 
-        if not self._recv_buf:
+        if not self._recv_buf and self._recv_paused != 'starting':
             if self._encoding and not exc and \
                     self._recv_state in ('eof_pending', 'close_pending'):
                 try:
