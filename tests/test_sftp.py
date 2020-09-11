@@ -2773,7 +2773,17 @@ class _CheckSCP(_CheckSFTP):
 
         return await cls.create_server(sftp_factory=True, allow_scp=True)
 
-    async def check_progress(self, srcpath, dstpath):
+    async def _check_scp(self, src, dst, data=(), **kwargs):
+        """Check copying a file over SCP"""
+
+        try:
+            self._create_file('src', data)
+            await scp(src, dst, **kwargs)
+            self._check_file('src', 'dst')
+        finally:
+            remove('src dst')
+
+    async def _check_progress(self, src, dst):
         """Check copying a file over SCP with progress reporting"""
 
         def _report_progress(_srcpath, _dstpath, bytes_copied, _total_bytes):
@@ -2785,16 +2795,11 @@ class _CheckSCP(_CheckSFTP):
             with self.subTest(size=size):
                 reports = []
 
-                try:
-                    self._create_file('src', size * 'a')
-                    await scp(srcpath, dstpath, block_size=8192,
-                              progress_handler=_report_progress)
-                    self._check_file('src', 'dst')
+                await self._check_scp(src, dst, size * 'a', block_size=8192,
+                                      progress_handler=_report_progress)
 
-                    self.assertEqual(len(reports), (size // 8192) + 1)
-                    self.assertEqual(reports[-1], size)
-                finally:
-                    remove('src dst')
+                self.assertEqual(len(reports), (size // 8192) + 1)
+                self.assertEqual(reports[-1], size)
 
 
 class _TestSCP(_CheckSCP):
@@ -2807,29 +2812,13 @@ class _TestSCP(_CheckSCP):
         for src in ('src', b'src', Path('src')):
             for dst in ('dst', b'dst', Path('dst')):
                 with self.subTest(src=type(src), dst=type(dst)):
-                    try:
-                        self._create_file('src')
-                        await scp((self._scp_server, src), dst)
-                        self._check_file('src', 'dst')
-                    finally:
-                        remove('src dst')
-
-    @asynctest
-    async def test_get_bytes_path(self):
-        """Test getting a file with a byte string path over SCP"""
-
-        try:
-            self._create_file('src')
-            await scp((self._scp_server, b'src'), b'dst')
-            self._check_file('src', 'dst')
-        finally:
-            remove('src dst')
+                    await self._check_scp((self._scp_server, src), dst)
 
     @asynctest
     async def test_get_progress(self):
         """Test getting a file over SCP with progress reporting"""
 
-        await self.check_progress((self._scp_server, 'src'), 'dst')
+        await self._check_progress((self._scp_server, 'src'), 'dst')
 
     @asynctest
     async def test_get_preserve(self):
@@ -2949,29 +2938,16 @@ class _TestSCP(_CheckSCP):
     async def test_put(self):
         """Test putting a file over SCP"""
 
-        try:
-            self._create_file('src')
-            await scp('src', (self._scp_server, 'dst'))
-            self._check_file('src', 'dst')
-        finally:
-            remove('src dst')
-
-    @asynctest
-    async def test_put_bytes_path(self):
-        """Test putting a file with a byte string path over SCP"""
-
-        try:
-            self._create_file('src')
-            await scp(b'src', (self._scp_server, b'dst'))
-            self._check_file('src', 'dst')
-        finally:
-            remove('src dst')
+        for src in ('src', b'src', Path('src')):
+            for dst in ('dst', b'dst', Path('dst')):
+                with self.subTest(src=type(src), dst=type(dst)):
+                    await self._check_scp(src, (self._scp_server, dst))
 
     @asynctest
     async def test_put_progress(self):
         """Test putting a file over SCP with progress reporting"""
 
-        await self.check_progress('src', (self._scp_server, 'dst'))
+        await self._check_progress('src', (self._scp_server, 'dst'))
 
     @asynctest
     async def test_put_preserve(self):
@@ -3115,19 +3091,18 @@ class _TestSCP(_CheckSCP):
     async def test_copy(self):
         """Test copying a file between remote hosts over SCP"""
 
-        try:
-            self._create_file('src')
-            await scp((self._scp_server, 'src'), (self._scp_server, 'dst'))
-            self._check_file('src', 'dst')
-        finally:
-            remove('src dst')
+        for src in ('src', b'src', Path('src')):
+            for dst in ('dst', b'dst', Path('dst')):
+                with self.subTest(src=type(src), dst=type(dst)):
+                    await self._check_scp((self._scp_server, src),
+                                          (self._scp_server, dst))
 
     @asynctest
     async def test_copy_progress(self):
         """Test copying a file over SCP with progress reporting"""
 
-        await self.check_progress((self._scp_server, 'src'),
-                                  (self._scp_server, 'dst'))
+        await self._check_progress((self._scp_server, 'src'),
+                                   (self._scp_server, 'dst'))
 
     @asynctest
     async def test_copy_preserve(self):

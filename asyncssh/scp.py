@@ -439,6 +439,9 @@ class _SCPSource(_SCPHandler):
         """Start SCP transfer"""
 
         try:
+            if isinstance(srcpath, PurePath):
+                srcpath = str(srcpath)
+
             if isinstance(srcpath, str):
                 srcpath = srcpath.encode('utf-8')
 
@@ -594,6 +597,9 @@ class _SCPSink(_SCPHandler):
         """Start SCP file receive"""
 
         try:
+            if isinstance(dstpath, PurePath):
+                dstpath = str(dstpath)
+
             if isinstance(dstpath, str):
                 dstpath = dstpath.encode('utf-8')
 
@@ -869,7 +875,7 @@ async def scp(srcpaths, dstpath=None, *, preserve=False, recurse=False,
 
     """
 
-    if (isinstance(srcpaths, (str, bytes)) or
+    if (isinstance(srcpaths, (str, bytes, PurePath)) or
             (isinstance(srcpaths, tuple) and len(srcpaths) == 2)):
         srcpaths = [srcpaths]
 
