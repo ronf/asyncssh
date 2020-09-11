@@ -2054,12 +2054,12 @@ class SFTPClient:
                     progress_handler, error_handler):
         """Copy a file, directory, or symbolic link"""
 
-        if follow_symlinks:
-            srcattrs = await srcfs.stat(srcpath)
-        else:
-            srcattrs = await srcfs.lstat(srcpath)
-
         try:
+            if follow_symlinks:
+                srcattrs = await srcfs.stat(srcpath)
+            else:
+                srcattrs = await srcfs.lstat(srcpath)
+
             if stat.S_ISDIR(srcattrs.permissions):
                 if not recurse:
                     raise SFTPFailure('%s is a directory' %
