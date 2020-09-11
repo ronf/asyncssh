@@ -362,6 +362,9 @@ class _SCPSource(_SCPHandler):
         try:
             await self._make_cd_request(b'C', attrs, size, srcpath)
 
+            if self._progress_handler and size == 0:
+                self._progress_handler(srcpath, dstpath, 0, 0)
+
             while offset < size:
                 blocklen = min(size - offset, self._block_size)
 
@@ -478,6 +481,9 @@ class _SCPSink(_SCPHandler):
 
         try:
             self.send_ok()
+
+            if self._progress_handler and size == 0:
+                self._progress_handler(srcpath, dstpath, 0, 0)
 
             while offset < size:
                 blocklen = min(size - offset, self._block_size)
@@ -657,6 +663,9 @@ class _SCPCopier:
         self.logger.info('  Copying file %s, size %d', path, size)
 
         offset = 0
+
+        if self._progress_handler and size == 0:
+            self._progress_handler(path, path, 0, 0)
 
         while offset < size:
             blocklen = min(size - offset, self._block_size)

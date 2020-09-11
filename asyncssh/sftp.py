@@ -534,6 +534,9 @@ class _SFTPFileCopier(_SFTPParallelIO):
         self._src = await self._srcfs.open(self._srcpath, 'rb', block_size=None)
         self._dst = await self._dstfs.open(self._dstpath, 'wb', block_size=None)
 
+        if self._progress_handler and self._total_bytes == 0:
+            self._progress_handler(self._srcpath, self._dstpath, 0, 0)
+
     async def run_task(self, offset, size):
         """Copy the next block of the file"""
 

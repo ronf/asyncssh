@@ -530,20 +530,21 @@ class _TestSFTP(_CheckSFTP):
             reports.append(bytes_copied)
 
         for method in ('get', 'put', 'copy'):
-            reports = []
+            for size in (0, 100000):
+                with self.subTest(method=method, size=size):
+                    reports = []
 
-            with self.subTest(method=method):
-                try:
-                    self._create_file('src', 100000*'a')
-                    await getattr(sftp, method)(
-                        'src', 'dst', block_size=8192,
-                        progress_handler=_report_progress)
-                    self._check_file('src', 'dst')
+                    try:
+                        self._create_file('src', size * 'a')
+                        await getattr(sftp, method)(
+                            'src', 'dst', block_size=8192,
+                            progress_handler=_report_progress)
+                        self._check_file('src', 'dst')
 
-                    self.assertEqual(len(reports), 13)
-                    self.assertEqual(reports[-1], 100000)
-                finally:
-                    remove('src dst')
+                        self.assertEqual(len(reports), (size // 8192) + 1)
+                        self.assertEqual(reports[-1], size)
+                    finally:
+                        remove('src dst')
 
     @sftp_test
     async def test_copy_preserve(self, sftp):
@@ -2772,6 +2773,29 @@ class _CheckSCP(_CheckSFTP):
 
         return await cls.create_server(sftp_factory=True, allow_scp=True)
 
+    async def check_progress(self, srcpath, dstpath):
+        """Check copying a file over SCP with progress reporting"""
+
+        def _report_progress(_srcpath, _dstpath, bytes_copied, _total_bytes):
+            """Monitor progress of copy"""
+
+            reports.append(bytes_copied)
+
+        for size in (0, 100000):
+            with self.subTest(size=size):
+                reports = []
+
+                try:
+                    self._create_file('src', size * 'a')
+                    await scp(srcpath, dstpath, block_size=8192,
+                              progress_handler=_report_progress)
+                    self._check_file('src', 'dst')
+
+                    self.assertEqual(len(reports), (size // 8192) + 1)
+                    self.assertEqual(reports[-1], size)
+                finally:
+                    remove('src dst')
+
 
 class _TestSCP(_CheckSCP):
     """Unit tests for AsyncSSH SCP client and server"""
@@ -2805,25 +2829,7 @@ class _TestSCP(_CheckSCP):
     async def test_get_progress(self):
         """Test getting a file over SCP with progress reporting"""
 
-        def _report_progress(srcpath, dstpath, bytes_copied, total_bytes):
-            """Monitor progress of copy"""
-
-            # pylint: disable=unused-argument
-
-            reports.append(bytes_copied)
-
-        reports = []
-
-        try:
-            self._create_file('src', 100000*'a')
-            await scp((self._scp_server, 'src'), 'dst', block_size=8192,
-                      progress_handler=_report_progress)
-            self._check_file('src', 'dst')
-
-            self.assertEqual(len(reports), 13)
-            self.assertEqual(reports[-1], 100000)
-        finally:
-            remove('src dst')
+        await self.check_progress((self._scp_server, 'src'), 'dst')
 
     @asynctest
     async def test_get_preserve(self):
@@ -2965,25 +2971,7 @@ class _TestSCP(_CheckSCP):
     async def test_put_progress(self):
         """Test putting a file over SCP with progress reporting"""
 
-        def _report_progress(srcpath, dstpath, bytes_copied, total_bytes):
-            """Monitor progress of copy"""
-
-            # pylint: disable=unused-argument
-
-            reports.append(bytes_copied)
-
-        reports = []
-
-        try:
-            self._create_file('src', 100000*'a')
-            await scp('src', (self._scp_server, 'dst'), block_size=8192,
-                      progress_handler=_report_progress)
-            self._check_file('src', 'dst')
-
-            self.assertEqual(len(reports), 13)
-            self.assertEqual(reports[-1], 100000)
-        finally:
-            remove('src dst')
+        await self.check_progress('src', (self._scp_server, 'dst'))
 
     @asynctest
     async def test_put_preserve(self):
@@ -3138,26 +3126,8 @@ class _TestSCP(_CheckSCP):
     async def test_copy_progress(self):
         """Test copying a file over SCP with progress reporting"""
 
-        def _report_progress(srcpath, dstpath, bytes_copied, total_bytes):
-            """Monitor progress of copy"""
-
-            # pylint: disable=unused-argument
-
-            reports.append(bytes_copied)
-
-        reports = []
-
-        try:
-            self._create_file('src', 100000*'a')
-            await scp((self._scp_server, 'src'),
-                      (self._scp_server, 'dst'), block_size=8192,
-                      progress_handler=_report_progress)
-            self._check_file('src', 'dst')
-
-            self.assertEqual(len(reports), 13)
-            self.assertEqual(reports[-1], 100000)
-        finally:
-            remove('src dst')
+        await self.check_progress((self._scp_server, 'src'),
+                                  (self._scp_server, 'dst'))
 
     @asynctest
     async def test_copy_preserve(self):
