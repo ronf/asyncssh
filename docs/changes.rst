@@ -3,6 +3,20 @@
 Change Log
 ==========
 
+Release 2.4.2 (11 Sep 2020)
+---------------------------
+
+* Fixed a potential race condition when receiving EOF right after a
+  channel is opened. Thanks go to Alex Shafer for reporting this and
+  helping to track down the root cause.
+
+* Fixed a couple of issues related to the error_handler and
+  progress_handler callbacks in AsyncSSH SFTP/SCP. Thanks go to
+  geraldnj for noticing and reporting these.
+
+* Fixed a couple of issues related to using pathlib objects with
+  AsyncSSH SCP.
+
 Release 2.4.1 (5 Sep 2020)
 --------------------------
 
