@@ -1134,7 +1134,7 @@ class SFTPClientHandler(SFTPHandler):
 
         req_exc = exc or SFTPConnectionLost('Connection closed')
 
-        for waiter in self._requests.values():
+        for waiter in list(self._requests.values()):
             if not waiter.cancelled(): # pragma: no branch
                 waiter.set_exception(req_exc)
 
@@ -3321,7 +3321,7 @@ class SFTPServerHandler(SFTPHandler):
         """Clean up this SFTP server session"""
 
         if self._server: # pragma: no branch
-            for file_obj in self._file_handles.values():
+            for file_obj in list(self._file_handles.values()):
                 result = self._server.close(file_obj)
 
                 if inspect.isawaitable(result):

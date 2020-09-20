@@ -776,10 +776,10 @@ class SSHProcess:
 
         super().connection_lost(exc)
 
-        for reader in self._readers.values():
+        for reader in list(self._readers.values()):
             reader.close()
 
-        for writer in self._writers.values():
+        for writer in list(self._writers.values()):
             writer.close()
 
         self._readers = {}
@@ -808,7 +808,7 @@ class SSHProcess:
 
         super().pause_writing()
 
-        for reader in self._readers.values():
+        for reader in list(self._readers.values()):
             reader.pause_reading()
 
     def resume_writing(self):
