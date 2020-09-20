@@ -581,7 +581,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         for chan in list(self._channels.values()):
             chan.process_connection_close(exc)
 
-        for listener in self._local_listeners.values():
+        for listener in list(self._local_listeners.values()):
             listener.close()
 
         while self._global_request_waiters:
