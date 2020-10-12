@@ -196,20 +196,6 @@ class _TestX509(unittest.TestCase):
         with self.assertRaises(ValueError):
             cert.validate([int_ca, root_ca], None, None, None)
 
-    def test_expired_root(self):
-        """Test failed validation of expired X.509 root CA"""
-
-        root_ca = self.generate_certificate('OU=root', ca=True, ca_path_len=1,
-                                            valid_before=time.time() - 60)
-
-        int_ca = self.generate_certificate('OU=int', 'OU=root',
-                                           ca=True, ca_path_len=0)
-
-        cert = self.generate_certificate('OU=user', 'OU=int')
-
-        with self.assertRaises(ValueError):
-            cert.validate([int_ca, root_ca], None, None, None)
-
     def test_purpose_mismatch(self):
         """Test failed validation due to purpose mismatch"""
 
