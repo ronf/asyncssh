@@ -155,11 +155,7 @@ class _PKCS11Token:
 
         self._keys.append(key)
         self._pubkeys.append(key.get_public())
-
-        try:
-            self._certs.append(_PKCS11Cert(key))
-        except asyncssh.KeyGenerationError:
-            pass
+        self._certs.append(_PKCS11Cert(key))
 
     def get_pubkeys(self):
         """Return public keys associated with this token"""
