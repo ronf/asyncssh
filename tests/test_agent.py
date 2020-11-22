@@ -111,7 +111,7 @@ class _TestAgent(AsyncTestCase):
     async def asyncSetUpClass(cls):
         """Set up keys and an SSH server for the tests to use"""
 
-        os.environ['DISPLAY'] = ''
+        os.environ['DISPLAY'] = ' '
         os.environ['HOME'] = '.'
         os.environ['SSH_ASKPASS'] = os.path.join(os.getcwd(), 'ssh-askpass')
 
