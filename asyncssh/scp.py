@@ -23,6 +23,7 @@
 """SCP handlers"""
 
 import argparse
+import asyncio
 import posixpath
 from pathlib import PurePath
 import shlex
@@ -229,6 +230,7 @@ class _SCPHandler:
 
         self._writer.write(data)
         await self._writer.drain()
+        #await asyncio.sleep(0)
 
     def send_ok(self):
         """Send an SCP OK response"""
