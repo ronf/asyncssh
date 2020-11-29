@@ -203,6 +203,7 @@ class ServerTestCase(AsyncTestCase):
         shutil.copy('ckey_ecdsa.pub', os.path.join('.ssh', 'id_ecdsa.pub'))
         shutil.copy('ckey_encrypted', os.path.join('.ssh', 'id_rsa'))
         shutil.copy('ckey.pub', os.path.join('.ssh', 'id_rsa.pub'))
+        shutil.copy('ckey-cert.pub', os.path.join('.ssh', 'id_rsa-cert.pub'))
 
         with open('authorized_keys', 'w') as auth_keys:
             with open('ckey.pub') as ckey_pub:

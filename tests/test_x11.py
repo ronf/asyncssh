@@ -595,8 +595,8 @@ class _TestX11(ServerTestCase):
         cert = ckey.generate_user_certificate(ckey, 'name', principals=['ckey'],
                                               permit_x11_forwarding=False)
 
-        async with self.connect(username='ckey',
-                                client_keys=[(ckey, cert)]) as conn:
+        async with self.connect(username='ckey', client_keys=[(ckey, cert)],
+                                agent_path=None) as conn:
             with self.assertRaises(asyncssh.ChannelOpenError):
                 await _create_x11_process(conn, 'connect l')
 

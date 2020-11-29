@@ -530,8 +530,8 @@ class _TestChannel(ServerTestCase):
                                 CERT_TYPE_USER, ckey, ckey, ['ckey'],
                                 options={'force-command': String('echo')})
 
-        async with self.connect(username='ckey',
-                                client_keys=[(ckey, cert)]) as conn:
+        async with self.connect(username='ckey', client_keys=[(ckey, cert)],
+                                agent_path=None) as conn:
             await self._check_session(conn)
 
     @asynctest
@@ -861,7 +861,7 @@ class _TestChannel(ServerTestCase):
                                 extensions={'no-agent-forwarding': ''})
 
         async with self.connect(username='ckey', client_keys=[(ckey, cert)],
-                                agent_forwarding=True) as conn:
+                                agent_path=None, agent_forwarding=True) as conn:
             chan, session = await _create_session(conn, 'agent')
 
             await chan.wait_closed()
@@ -988,8 +988,8 @@ class _TestChannel(ServerTestCase):
                                 CERT_TYPE_USER, ckey, ckey, ['ckey'],
                                 extensions={'no-pty': ''})
 
-        async with self.connect(username='ckey',
-                                client_keys=[(ckey, cert)]) as conn:
+        async with self.connect(username='ckey', client_keys=[(ckey, cert)],
+                                agent_path=None) as conn:
             with self.assertRaises(asyncssh.ChannelOpenError):
                 await _create_session(conn, 'term', term_type='ansi')
 

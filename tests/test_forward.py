@@ -424,8 +424,8 @@ class _TestTCPForwarding(_CheckForwarding):
                                 CERT_TYPE_USER, ckey, ckey, ['ckey'],
                                 extensions={'no-port-forwarding': ''})
 
-        async with self.connect(username='ckey',
-                                client_keys=[(ckey, cert)]) as conn:
+        async with self.connect(username='ckey', client_keys=[(ckey, cert)],
+                                agent_path=None) as conn:
             with self.assertRaises(asyncssh.ChannelOpenError):
                 await conn.open_connection('', 7)
 
@@ -433,8 +433,8 @@ class _TestTCPForwarding(_CheckForwarding):
     async def test_connection_not_permitted_open(self):
         """Test open permission denied in opening a remote connection"""
 
-        async with self.connect(username='ckey',
-                                client_keys=['ckey']) as conn:
+        async with self.connect(username='ckey', client_keys=['ckey'],
+                                agent_path=None) as conn:
             with self.assertRaises(asyncssh.ChannelOpenError):
                 await conn.open_connection('fail', 7)
 
@@ -659,8 +659,8 @@ class _TestTCPForwarding(_CheckForwarding):
                                 CERT_TYPE_USER, ckey, ckey, ['ckey'],
                                 extensions={'no-port-forwarding': ''})
 
-        async with self.connect(username='ckey',
-                                client_keys=[(ckey, cert)]) as conn:
+        async with self.connect(username='ckey', client_keys=[(ckey, cert)],
+                                agent_path=None) as conn:
             with self.assertRaises(asyncssh.ChannelListenError):
                 await conn.forward_remote_port('', 0, '', 0)
 
@@ -797,8 +797,8 @@ class _TestUNIXForwarding(_CheckForwarding):
                                 CERT_TYPE_USER, ckey, ckey, ['ckey'],
                                 extensions={'no-port-forwarding': ''})
 
-        async with self.connect(username='ckey',
-                                client_keys=[(ckey, cert)]) as conn:
+        async with self.connect(username='ckey', client_keys=[(ckey, cert)],
+                                agent_path=None) as conn:
             with self.assertRaises(asyncssh.ChannelOpenError):
                 await conn.open_unix_connection('/echo')
 
@@ -921,8 +921,8 @@ class _TestUNIXForwarding(_CheckForwarding):
                                 CERT_TYPE_USER, ckey, ckey, ['ckey'],
                                 extensions={'no-port-forwarding': ''})
 
-        async with self.connect(username='ckey',
-                                client_keys=[(ckey, cert)]) as conn:
+        async with self.connect(username='ckey', client_keys=[(ckey, cert)],
+                                agent_path=None) as conn:
             with self.assertRaises(asyncssh.ChannelListenError):
                 await conn.forward_remote_path('', 'local')
 

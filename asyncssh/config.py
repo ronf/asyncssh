@@ -481,6 +481,7 @@ class SSHClientConfig(SSHConfig):
         ('HostbasedAuthentication',         SSHConfig._set_bool),
         ('HostKeyAlgorithms',               SSHConfig._set_string),
         ('Hostname',                        _set_hostname),
+        ('IdentitiesOnly',                  SSHConfig._set_bool),
         ('IdentityAgent',                   SSHConfig._set_string),
         ('IdentityFile',                    SSHConfig._append_string),
         ('KbdInteractiveAuthentication',    SSHConfig._set_bool),

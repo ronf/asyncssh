@@ -224,11 +224,15 @@ class SSHAgentClient:
                 await self._cleanup()
                 raise ValueError(str(exc)) from None
 
-    async def get_keys(self):
+    async def get_keys(self, identities=()):
         """Request the available client keys
 
            This method is a coroutine which returns a list of client keys
            available in the ssh-agent.
+
+           :param identities: (optional)
+               A list of allowed byte string identities to return. If empty,
+               all identities on the SSH agent will be returned.
 
            :returns: A list of :class:`SSHKeyPair` objects
 
@@ -244,6 +248,9 @@ class SSHAgentClient:
             for _ in range(num_keys):
                 key_blob = resp.get_string()
                 comment = resp.get_string()
+
+                if identities and key_blob not in identities:
+                    continue
 
                 packet = SSHPacket(key_blob)
                 algorithm = packet.get_string()

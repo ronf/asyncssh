@@ -41,6 +41,7 @@ import asyncssh
 from asyncssh.asn1 import der_encode, BitString, ObjectIdentifier
 from asyncssh.asn1 import TaggedDERObject
 from asyncssh.crypto import chacha_available, ed25519_available, ed448_available
+from asyncssh.misc import write_file
 from asyncssh.packet import MPInt, String, UInt32
 from asyncssh.pbe import pkcs1_decrypt
 from asyncssh.public_key import CERT_TYPE_USER, CERT_TYPE_HOST, SSHKey
@@ -49,6 +50,7 @@ from asyncssh.public_key import decode_ssh_certificate
 from asyncssh.public_key import get_public_key_algs, get_certificate_algs
 from asyncssh.public_key import get_x509_certificate_algs
 from asyncssh.public_key import import_certificate_subject
+from asyncssh.public_key import load_identities
 
 from .sk_stub import sk_available, stub_sk, unstub_sk
 from .util import bcrypt_available, x509_available
@@ -285,11 +287,21 @@ class _TestPublicKey(TempDirTestCase):
             with self.assertRaises((asyncssh.KeyEncryptionError,
                                     asyncssh.KeyImportError)):
                 asyncssh.load_keypairs('new', 'xxx')
+
+            if format_name == 'openssh':
+                identities = load_identities(['new'])
+                self.assertEqual(identities[0], pubdata)
+            else:
+                with self.assertRaises(asyncssh.KeyImportError):
+                    load_identities(['new'])
+
+                identities = load_identities(['new'], skip_private=True)
+                self.assertEqual(identities, [])
         else:
             newkey.write_private_key('list', format_name)
             newkey.append_private_key('list', format_name)
 
-            keylist = asyncssh.load_keypairs('list')
+            keylist = asyncssh.read_private_key_list('list')
             self.assertEqual(keylist[0].public_data, pubdata)
             self.assertEqual(keylist[1].public_data, pubdata)
 
@@ -327,41 +339,44 @@ class _TestPublicKey(TempDirTestCase):
         """Check for a public key match"""
 
         newkey = asyncssh.read_public_key('new')
-        pubdata = newkey.export_public_key()
+        pubkey = newkey.export_public_key()
+        pubdata = newkey.public_data
 
         self.assertEqual(newkey, self.pubkey)
         self.assertEqual(hash(newkey), hash(self.pubkey))
 
-        keypair = asyncssh.load_public_keys('new')[0]
-        self.assertEqual(keypair, newkey)
+        pubkey = asyncssh.load_public_keys('new')[0]
+        self.assertEqual(pubkey, newkey)
 
-        keypair = asyncssh.load_public_keys([newkey])[0]
-        self.assertEqual(keypair, newkey)
+        pubkey = asyncssh.load_public_keys([newkey])[0]
+        self.assertEqual(pubkey, newkey)
 
-        keypair = asyncssh.load_public_keys([pubdata])[0]
-        self.assertEqual(keypair, newkey)
+        pubkey = asyncssh.load_public_keys([pubkey])[0]
+        self.assertEqual(pubkey, newkey)
 
-        keypair = asyncssh.load_public_keys(['new'])[0]
-        self.assertEqual(keypair, newkey)
+        pubkey = asyncssh.load_public_keys(['new'])[0]
+        self.assertEqual(pubkey, newkey)
 
-        keypair = asyncssh.load_public_keys(Path('new'))[0]
-        self.assertEqual(keypair, newkey)
+        pubkey = asyncssh.load_public_keys(Path('new'))[0]
+        self.assertEqual(pubkey, newkey)
 
-        keypair = asyncssh.load_public_keys([Path('new')])[0]
-        self.assertEqual(keypair, newkey)
+        pubkey = asyncssh.load_public_keys([Path('new')])[0]
+        self.assertEqual(pubkey, newkey)
+
+        identity = load_identities(['new'])[0]
+        self.assertEqual(identity, pubdata)
 
         newkey.write_public_key('list', format_name)
         newkey.append_public_key('list', format_name)
 
-        keylist = asyncssh.load_public_keys('list')
+        keylist = asyncssh.read_public_key_list('list')
         self.assertEqual(keylist[0], newkey)
         self.assertEqual(keylist[1], newkey)
 
         newkey.write_public_key(Path('list'), format_name)
         newkey.append_public_key(Path('list'), format_name)
 
-        with open('list', 'ab') as f:
-            f.write(b'Extra text at end of key list\n')
+        write_file('list', b'Extra text at end of key list\n', 'ab')
 
         keylist = asyncssh.load_public_keys(Path('list'))
         self.assertEqual(keylist[0], newkey)
@@ -432,8 +447,7 @@ class _TestPublicKey(TempDirTestCase):
         cert.write_certificate(Path('list'), format_name)
         cert.append_certificate(Path('list'), format_name)
 
-        with open('list', 'ab') as f:
-            f.write(b'Extra text at end of certificate list\n')
+        write_file('list', b'Extra text at end of certificate list\n', 'ab')
 
         certlist = asyncssh.load_certificates(Path('list'))
         self.assertEqual(certlist[0], cert)
@@ -710,9 +724,7 @@ class _TestPublicKey(TempDirTestCase):
         self.check_public('rfc4716')
 
         pubdata = self.pubkey.export_public_key('rfc4716')
-
-        with open('new', 'wb') as f:
-            f.write(pubdata.replace(b'\n', b'\nXXX:\n', 1))
+        write_file('new', pubdata.replace(b'\n', b'\nXXX:\n', 1))
 
         self.check_public('rfc4716')
 
@@ -1150,6 +1162,20 @@ class _TestPublicKey(TempDirTestCase):
              b'ssh-dss ' + binascii.b2a_base64(String('xxx'))),
             ('Invalid OpenSSH body',
              b'ssh-dss ' + binascii.b2a_base64(String('ssh-dss'))),
+            ('Unknown format OpenSSH key',
+             b'-----BEGIN OPENSSH PRIVATE KEY-----\n' +
+             binascii.b2a_base64(b'XXX') +
+             b'-----END OPENSSH PRIVATE KEY-----'),
+            ('Incomplete OpenSSH key',
+             b'-----BEGIN OPENSSH PRIVATE KEY-----\n' +
+             binascii.b2a_base64(b'openssh-key-v1\0') +
+             b'-----END OPENSSH PRIVATE KEY-----'),
+            ('Invalid OpenSSH nkeys',
+             b'-----BEGIN OPENSSH PRIVATE KEY-----\n' +
+             binascii.b2a_base64(b''.join(
+                 (b'openssh-key-v1\0', String(''), String(''), String(''),
+                  UInt32(2), String(''), String('')))) +
+             b'-----END OPENSSH PRIVATE KEY-----'),
             ('Invalid RFC4716 header', b'---- XXX ----\n'),
             ('Missing RFC4716 footer', b'---- BEGIN SSH2 PUBLIC KEY ----\n'),
             ('Invalid RFC4716 header',
@@ -1853,9 +1879,7 @@ class _TestPublicKey(TempDirTestCase):
 
         with self.subTest('Invalid DER format in certificate list'):
             with self.assertRaises(asyncssh.KeyImportError):
-                with open('certlist', 'wb') as f:
-                    f.write(b'\x30\x00')
-
+                write_file('certlist', b'\x30\x00')
                 asyncssh.read_certificate_list('certlist')
 
         with self.subTest('Invalid PEM format'):
@@ -2186,8 +2210,7 @@ class _TestPublicKeyTopLevel(TempDirTestCase):
         with self.assertRaises(asyncssh.KeyImportError):
             asyncssh.import_public_key(keydata)
 
-        with open('list', 'wb') as f:
-            f.write(keydata)
+        write_file('list', keydata)
 
         with self.assertRaises(asyncssh.KeyImportError):
             asyncssh.read_public_key_list('list')

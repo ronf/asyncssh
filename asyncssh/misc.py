@@ -150,6 +150,20 @@ def open_file(filename, *args, **kwargs):
     return open(Path(filename).expanduser(), *args, **kwargs)
 
 
+def read_file(filename, mode='rb'):
+    """Read from a file with home directory expansion"""
+
+    with open_file(filename, mode) as f:
+        return f.read()
+
+
+def write_file(filename, data, mode='wb'):
+    """Write or append to a file with home directory expansion"""
+
+    with open_file(filename, mode) as f:
+        return f.write(data)
+
+
 def _parse_units(value, suffixes, label):
     """Parse a series of integers followed by unit suffixes"""
 

@@ -118,6 +118,7 @@ from .public_key import get_default_x509_certificate_algs
 from .public_key import load_keypairs, load_default_keypairs
 from .public_key import load_public_keys, load_default_host_public_keys
 from .public_key import load_certificates
+from .public_key import load_identities, load_default_identities
 
 from .saslprep import saslprep, SASLPrepError
 
@@ -2566,6 +2567,7 @@ class SSHClientConnection(SSHConnection):
         if options.agent_path is not None:
             self._agent = SSHAgentClient(options.agent_path)
 
+        self._agent_identities = options.agent_identities
         self._agent_forward_path = options.agent_forward_path
         self._get_agent_keys = bool(self._agent)
 
@@ -2786,7 +2788,7 @@ class SSHClientConnection(SSHConnection):
 
         if self._get_agent_keys:
             try:
-                agent_keys = await self._agent.get_keys()
+                agent_keys = await self._agent.get_keys(self._agent_identities)
                 self._client_keys = agent_keys + (self._client_keys or [])
             except ValueError:
                 pass
@@ -5585,6 +5587,13 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
            if they are encrypted. If this is not specified, only unencrypted
            client keys can be loaded. If the keys passed into client_keys
            are already loaded, this argument is ignored.
+       :param agent_identities: (optional)
+           A list of identities used to restrict which SSH agent keys may
+           be used. These may be specified as byte strings in binary SSH
+           format or as public keys or certificates (*see*
+           :ref:`SpecifyingPublicKeys` and :ref:`SpecifyingCertificates`).
+           If set to `None`, all keys loaded into the SSH agent will be
+           made available for use. This is the default.
        :param host_based_auth: (optional)
            Whether or not to allow host-based authentication. By default,
            host-based authentication is enabled if client host keys are
@@ -5745,6 +5754,8 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
        :type gss_delegate_creds: `bool`
        :type preferred_auth: `str` or `list` of `str`
        :type agent_path: `str` or :class:`SSHServerConnection`
+       :type agent_identities:
+           *see* :ref:`SpecifyingPublicKeys` and :ref:`SpecifyingCertificates`
        :type agent_forwarding: `bool`
        :type pkcs11_provider: `str`
        :type pkcs11_pin: `str`
@@ -5780,8 +5791,8 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
                 client_host_certs=(), client_host=None, client_username=(),
                 client_keys=(), client_certs=(), passphrase=None, gss_host=(),
                 gss_kex=(), gss_auth=(), gss_delegate_creds=(),
-                preferred_auth=(), agent_path=(), agent_forwarding=(),
-                pkcs11_provider=(), pkcs11_pin=None):
+                preferred_auth=(), agent_path=(), agent_identities=(),
+                agent_forwarding=(), pkcs11_provider=(), pkcs11_pin=None):
         """Prepare client connection configuration options"""
 
         local_username = getpass.getuser()
@@ -5912,22 +5923,40 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
         if client_certs == ():
             client_certs = config.get('CertificateFile', ())
 
-        if client_keys:
-            client_keys = load_keypairs(client_keys, passphrase, client_certs)
-        else:
-            if client_keys is not None:
-                self.agent_path = agent_path
-                self.pkcs11_provider = pkcs11_provider
-                self.pkcs11_pin = pkcs11_pin
+        identities_only = config.get('IdentitiesOnly')
 
+        if agent_identities == ():
+            if identities_only:
+                agent_identities = client_keys
+            else:
+                agent_identities = None
+
+        if agent_identities:
+            self.agent_identities = load_identities(agent_identities,
+                                                    identities_only)
+        elif agent_identities == ():
+            self.agent_identities = load_default_identities()
+        else:
+            self.agent_identities = None
+
+        if client_keys:
+            self.client_keys = load_keypairs(client_keys, passphrase,
+                                             client_certs, identities_only)
+        else:
             if client_keys == ():
                 client_keys = load_default_keypairs(passphrase, client_certs)
+
+            self.client_keys = client_keys
+
+        if client_keys is not None:
+            self.agent_path = agent_path
+            self.pkcs11_provider = pkcs11_provider
+            self.pkcs11_pin = pkcs11_pin
 
         if agent_forwarding == ():
             agent_forwarding = config.get('ForwardAgent', False)
 
         self.agent_forward_path = agent_path if agent_forwarding else None
-        self.client_keys = client_keys
 
 
 class SSHServerConnectionOptions(SSHConnectionOptions):

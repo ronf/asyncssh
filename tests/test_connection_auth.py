@@ -27,7 +27,7 @@ import unittest
 from unittest.mock import patch
 
 import asyncssh
-from asyncssh.misc import async_context_manager
+from asyncssh.misc import async_context_manager, write_file
 from asyncssh.packet import String
 from asyncssh.public_key import CERT_TYPE_USER, CERT_TYPE_HOST
 
@@ -967,6 +967,53 @@ class _TestPublicKeyAuth(ServerTestCase):
             pass
 
     @asynctest
+    async def test_agent_identities(self):
+        """Test connecting with ssh-agent auth with specific identities"""
+
+        if not self.agent_available(): # pragma: no cover
+            self.skipTest('ssh-agent not available')
+
+        ckey = asyncssh.read_private_key('ckey')
+        ckey.write_private_key('ckey.pem', 'pkcs8-pem')
+
+        ckey_cert = asyncssh.read_certificate('ckey-cert.pub')
+        ckey_ecdsa = asyncssh.read_public_key('ckey_ecdsa.pub')
+
+        for pubkey in ('ckey-cert.pub', 'ckey_ecdsa.pub', 'ckey.pem',
+                       ckey_cert, ckey_ecdsa, ckey_ecdsa.public_data):
+            async with self.connect(username='ckey', agent_identities=pubkey):
+                pass
+
+    @asynctest
+    async def test_agent_identities_config(self):
+        """Test connecting with ssh-agent auth and IdentitiesOnly config"""
+
+        if not self.agent_available(): # pragma: no cover
+            self.skipTest('ssh-agent not available')
+
+        write_file('ckey_err', b'')
+
+        write_file('config', 'IdentitiesOnly True\n'
+                   'IdentityFile ckey-cert.pub\n'
+                   'IdentityFile ckey_ecdsa.pub\n'
+                   'IdentityFile ckey_err\n', 'w')
+
+        async with self.connect(username='ckey', config='config'):
+            pass
+
+    @asynctest
+    async def test_agent_identities_config_default_keys(self):
+        """Test connecting with ssh-agent auth and default IdentitiesOnly"""
+
+        if not self.agent_available(): # pragma: no cover
+            self.skipTest('ssh-agent not available')
+
+        write_file('config', 'IdentitiesOnly True\n', 'w')
+
+        async with self.connect(username='ckey', config='config'):
+            pass
+
+    @asynctest
     async def test_agent_signature_algs(self):
         """Test ssh-agent keys with specific signature algorithms"""
 
@@ -1112,7 +1159,8 @@ class _TestPublicKeyAuth(ServerTestCase):
         """Test untrusted client key"""
 
         with self.assertRaises(asyncssh.PermissionDenied):
-            await self.connect(username='ckey', client_keys='skey')
+            await self.connect(username='ckey', client_keys='skey',
+                               agent_path=None)
 
     @asynctest
     async def test_missing_cert(self):
@@ -1133,7 +1181,8 @@ class _TestPublicKeyAuth(ServerTestCase):
                                 valid_before=1)
 
         with self.assertRaises(asyncssh.PermissionDenied):
-            await self.connect(username='ckey', client_keys=[(skey, cert)])
+            await self.connect(username='ckey', client_keys=[(skey, cert)],
+                               agent_path=None)
 
     @asynctest
     async def test_allowed_address(self):
@@ -1162,7 +1211,8 @@ class _TestPublicKeyAuth(ServerTestCase):
                                 options={'source-address': String('0.0.0.0')})
 
         with self.assertRaises(asyncssh.PermissionDenied):
-            await self.connect(username='ckey', client_keys=[(skey, cert)])
+            await self.connect(username='ckey', client_keys=[(skey, cert)],
+                               agent_path=None)
 
     @asynctest
     async def test_untrusted_ca(self):
@@ -1174,7 +1224,8 @@ class _TestPublicKeyAuth(ServerTestCase):
                                 CERT_TYPE_USER, skey, skey, ['skey'])
 
         with self.assertRaises(asyncssh.PermissionDenied):
-            await self.connect(username='ckey', client_keys=[(skey, cert)])
+            await self.connect(username='ckey', client_keys=[(skey, cert)],
+                               agent_path=None)
 
     @asynctest
     async def test_mismatched_ca(self):
