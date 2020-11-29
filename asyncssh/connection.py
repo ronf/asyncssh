@@ -141,6 +141,14 @@ from .x11 import create_x11_client_listener, create_x11_server_listener
 _USERAUTH_SERVICE = b'ssh-userauth'
 _CONNECTION_SERVICE = b'ssh-connection'
 
+# Max banner and version line length and count
+_MAX_BANNER_LINES = 1024
+_MAX_BANNER_LINE_LEN = 8192
+_MAX_VERSION_LINE_LEN = 255
+
+# Max allowed username length
+_MAX_USERNAME_LEN = 1024
+
 # Default rekey parameters
 _DEFAULT_REKEY_BYTES = 1 << 30      # 1 GiB
 _DEFAULT_REKEY_SECONDS = 3600       # 1 hour
@@ -151,11 +159,6 @@ _DEFAULT_LOGIN_TIMEOUT = 120        # 2 minutes
 # Default keepalive interval and count max
 _DEFAULT_KEEPALIVE_INTERVAL = 0     # disabled by default
 _DEFAULT_KEEPALIVE_COUNT_MAX = 3
-
-# Default banner and version line length and count
-_MAX_BANNER_LINES = 1024
-_MAX_BANNER_LINE_LEN = 8192
-_MAX_VERSION_LINE_LEN = 255
 
 # Default channel parameters
 _DEFAULT_WINDOW = 2*1024*1024       # 2 MiB
@@ -1775,6 +1778,9 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         username = packet.get_string()
         service = packet.get_string()
         method = packet.get_string()
+
+        if len(username) >= _MAX_USERNAME_LEN:
+            raise IllegalUserName('Username too long')
 
         if service != _CONNECTION_SERVICE:
             raise ServiceNotAvailable('Unexpected service in auth request')

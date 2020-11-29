@@ -1192,6 +1192,13 @@ class _TestConnection(ServerTestCase):
         await conn.wait_closed()
 
     @asynctest
+    async def test_username_too_long(self):
+        """Test username being too long in userauth request"""
+
+        with self.assertRaises(asyncssh.IllegalUserName):
+            await self.connect(username=2048*'a')
+
+    @asynctest
     async def test_extra_userauth_request(self):
         """Test userauth request after auth is complete"""
 
