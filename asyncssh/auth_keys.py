@@ -26,7 +26,7 @@ try:
 except ImportError: # pragma: no cover
     _x509_available = False
 
-from .misc import ip_address, open_file
+from .misc import ip_address, read_file
 from .pattern import HostPatternList, WildcardPatternList
 from .public_key import KeyImportError, import_public_key
 from .public_key import import_certificate, import_certificate_subject
@@ -319,7 +319,6 @@ def read_authorized_keys(filelist):
         filelist = [filelist]
 
     for filename in filelist:
-        with open_file(filename, 'r') as f:
-            authorized_keys.load(f.read())
+        authorized_keys.load(read_file(filename, 'r'))
 
     return authorized_keys

@@ -35,7 +35,7 @@ try:
 except ImportError: # pragma: no cover
     _x509_available = False
 
-from .misc import ip_address, open_file
+from .misc import ip_address, read_file
 from .pattern import HostPatternList
 from .public_key import KeyImportError, import_public_key
 from .public_key import import_certificate, import_certificate_subject
@@ -291,8 +291,7 @@ def read_known_hosts(filelist):
         filelist = [filelist]
 
     for filename in filelist:
-        with open_file(filename, 'r') as f:
-            known_hosts.load(f.read())
+        known_hosts.load(read_file(filename, 'r'))
 
     return known_hosts
 
