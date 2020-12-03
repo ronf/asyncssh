@@ -356,6 +356,14 @@ def generate_x509_certificate(signing_key, key, subject, issuer, serial,
         builder = builder.add_extension(x509.ExtendedKeyUsage(purpose_oids),
                                         critical=False)
 
+    skid = x509.SubjectKeyIdentifier.from_public_key(key.pyca_key)
+    builder = builder.add_extension(skid, critical=False)
+
+    if not self_signed:
+        issuer_pk = signing_key.convert_to_public().pyca_key
+        akid = x509.AuthorityKeyIdentifier.from_issuer_public_key(issuer_pk)
+        builder = builder.add_extension(akid, critical=False)
+
     sans = _encode_user_principals(user_principals) + \
            _encode_host_principals(host_principals)
 
