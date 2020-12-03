@@ -997,6 +997,9 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         """Send data to the SSH connection"""
 
         if self._transport:
+            if self._transport.is_closing():
+                raise BrokenPipeError
+
             self._transport.write(data)
 
     def _send_version(self):
