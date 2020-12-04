@@ -5914,7 +5914,7 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
             agent_path = config.get('IdentityAgent', ())
 
         if agent_path == ():
-            agent_path = os.environ.get('SSH_AUTH_SOCK', None)
+            agent_path = os.environ.get('SSH_AUTH_SOCK', ())
 
         if agent_path:
             agent_path = str(Path(agent_path).expanduser())
