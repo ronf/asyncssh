@@ -56,6 +56,9 @@ class SSHLineEditor:
         self._right_pos = 0
         self._pos = 0
         self._line = ''
+        self._bell_rung = False
+        self._early_wrap = set()
+        self._outbuf = []
         self._keymap = {}
         self._key_state = self._keymap
         self._erased = ''
@@ -92,10 +95,17 @@ class SSHLineEditor:
 
         keymap.pop(key[-1], None)
 
-    def _determine_column(self, data, start):
+    def _char_width(self, pos):
+        """Return width of character at specified position"""
+
+        return 1 + _is_wide(self._line[pos]) + ((pos + 1) in self._early_wrap)
+
+    def _determine_column(self, data, column, pos=None):
         """Determine new output column after output occurs"""
 
-        column = start
+        offset = pos
+        last_wrap_pos = pos
+        wrapped_data = []
 
         for ch in data:
             if ch == '\b':
@@ -104,161 +114,213 @@ class SSHLineEditor:
                 if _is_wide(ch) and (column % self._width) == self._width - 1:
                     column += 1
 
-                column += 2 if _is_wide(ch) else 1
+                    if pos is not None:
+                        wrapped_data.append(data[last_wrap_pos - offset:
+                                                 pos - offset])
+                        last_wrap_pos = pos
 
-        return column
+                        self._early_wrap.add(pos)
+                else:
+                    if pos is not None:
+                        self._early_wrap.discard(pos)
 
-    def _column(self, pos):
-        """Determine output column of end of current input line"""
+                column += 1 + _is_wide(ch)
 
-        return self._determine_column(self._line[self._left_pos:pos],
-                                      self._start_column)
+            if pos is not None:
+                pos += 1
 
-    def _output(self, data):
+        if pos is not None:
+            wrapped_data.append(data[last_wrap_pos-offset:])
+            return ' '.join(wrapped_data), column
+        else:
+            return data, column
+
+    def _output(self, data, pos=None):
         """Generate output and calculate new output column"""
-
-        self._chan.write(data.replace('\n', '\r\n'))
 
         idx = data.rfind('\n')
 
         if idx >= 0:
+            self._outbuf.append(data[:idx+1])
             tail = data[idx+1:]
             self._cursor = 0
         else:
             tail = data
 
-        self._cursor = self._determine_column(tail, self._cursor)
+        data, self._cursor = self._determine_column(tail, self._cursor, pos)
 
-        if (self._line_mode and self._cursor and
-                self._cursor % self._width == 0):
-            self._chan.write(' \b')
+        self._outbuf.append(data)
+
+        if self._cursor and self._cursor % self._width == 0:
+            self._outbuf.append(' \b')
 
     def _ring_bell(self):
         """Ring the terminal bell"""
 
-        self._chan.write('\a')
+        if not self._bell_rung:
+            self._outbuf.append('\a')
+            self._bell_rung = True
 
-    def _update_input_window(self, pos):
+    def _update_input_window(self, new_pos):
         """Update visible input window when not wrapping onto multiple lines"""
 
-        if pos < self._left_pos:
-            self._left_pos = pos
+        line_len = len(self._line)
+
+        if new_pos < self._left_pos:
+            self._left_pos = new_pos
         else:
-            if pos < len(self._line):
+            if new_pos < line_len:
+                new_pos += 1
+
+            pos = self._pos
+            column = self._cursor
+
+            while pos < new_pos:
+                column += self._char_width(pos)
                 pos += 1
 
-            if self._column(pos) >= self._width:
-                while self._column(pos) >= self._width:
+            if column >= self._width:
+                while column >= self._width:
+                    column -= self._char_width(self._left_pos)
                     self._left_pos += 1
             else:
                 while self._left_pos > 0:
-                    self._left_pos -= 1
-                    if self._column(pos) >= self._width:
-                        self._left_pos += 1
+                    column += self._char_width(self._left_pos)
+
+                    if column < self._width:
+                        self._left_pos -= 1
+                    else:
                         break
 
         column = self._start_column
         self._right_pos = self._left_pos
 
-        while self._right_pos < len(self._line):
-            column += 1 + _is_wide(self._line[self._right_pos])
+        while self._right_pos < line_len:
+            ch_width = self._char_width(self._right_pos)
 
-            if column < self._width:
+            if column + ch_width < self._width:
                 self._right_pos += 1
+                column += ch_width
             else:
                 break
 
-    def _update_line(self, start_pos=None, end_pos=None):
-        """Update display of selected portion of input line"""
+        return column
 
-        self._output(self._line[start_pos:end_pos])
-
-        if self._end_column > self._cursor:
-            new_end_column = self._cursor
-            self._output(' ' * (self._end_column - new_end_column))
-            self._end_column = new_end_column
-        else:
-            self._end_column = self._cursor
-
-    def _move_cursor(self, pos):
+    def _move_cursor(self, column):
         """Move the cursor to selected position in input line"""
 
+        start_row = self._cursor // self._width
+        start_col = self._cursor % self._width
+
+        end_row = column // self._width
+        end_col = column % self._width
+
+        if end_row < start_row:
+            self._outbuf.append('\x1b[' + str(start_row-end_row) + 'A')
+        elif end_row > start_row:
+            self._outbuf.append('\x1b[' + str(end_row-start_row) + 'B')
+
+        if end_col > start_col:
+            self._outbuf.append('\x1b[' + str(end_col-start_col) + 'C')
+        elif end_col < start_col:
+            self._outbuf.append('\x1b[' + str(start_col-end_col) + 'D')
+
+        self._cursor = column
+
+    def _move_back(self, column):
+        """Move the cursor backward to selected position in input line"""
+
         if self._wrap:
-            new_column = self._column(pos)
-
-            start_row = self._cursor // self._width
-            start_col = self._cursor % self._width
-
-            end_row = new_column // self._width
-            end_col = new_column % self._width
-
-            if end_row < start_row:
-                self._chan.write('\x1b[' + str(start_row-end_row) + 'A')
-            elif end_row > start_row:
-                self._chan.write('\x1b[' + str(end_row-start_row) + 'B')
-
-            if end_col > start_col:
-                self._chan.write('\x1b[' + str(end_col-start_col) + 'C')
-            elif end_col < start_col:
-                self._chan.write('\x1b[' + str(start_col-end_col) + 'D')
-
-            self._cursor = new_column
+            self._move_cursor(column)
         else:
-            self._update_input_window(pos)
-            self._output('\b' * (self._cursor - self._start_column))
-            self._update_line(self._left_pos, self._right_pos)
-            self._output('\b' * (self._cursor - self._column(pos)))
+            self._outbuf.append('\b' * (self._cursor - column))
+            self._cursor = column
 
-    def _reposition(self, new_pos):
-        """Reposition the cursor to selected position in input"""
+    def _clear_to_end(self):
+        """Clear any remaining characters from previous input line"""
 
-        if self._line_mode and self._echo:
-            self._move_cursor(new_pos)
+        column = self._cursor
+        remaining = self._end_column - column
 
-        self._pos = new_pos
+        if remaining > 0:
+            self._outbuf.append(' ' * remaining)
+            self._cursor = self._end_column
+
+            if self._cursor % self._width == 0:
+                self._outbuf.append(' \b')
+
+        self._move_back(column)
+        self._end_column = column
 
     def _erase_input(self):
         """Erase current input line"""
 
-        if self._start_column != self._end_column:
-            self._move_cursor(0)
-            self._output(' ' * (self._end_column - self._cursor))
-            self._move_cursor(0)
-            self._end_column = self._start_column
+        self._move_cursor(self._start_column)
+        self._clear_to_end()
+        self._early_wrap.clear()
 
     def _draw_input(self):
         """Draw current input line"""
 
-        if (self._line_mode and self._echo and self._line and
-                self._start_column == self._end_column):
+        if self._line and self._echo:
             if self._wrap:
-                self._update_line()
+                self._output(self._line[:self._pos], 0)
+                column = self._cursor
+                self._output(self._line[self._pos:], self._pos)
             else:
                 self._update_input_window(self._pos)
-                self._update_line(self._left_pos, self._right_pos)
+                self._output(self._line[self._left_pos:self._pos])
+                column = self._cursor
+                self._output(self._line[self._pos:self._right_pos])
 
-            self._move_cursor(self._pos)
+            self._end_column = self._cursor
+            self._move_back(column)
 
-    def _update_input(self, start_pos, new_pos):
+    def _reposition(self, new_pos, new_column):
+        """Reposition the cursor to selected position in input"""
+
+        if self._echo:
+            if self._wrap:
+                self._move_cursor(new_column)
+            else:
+                self._update_input(self._pos, self._cursor, new_pos)
+
+        self._pos = new_pos
+
+    def _update_input(self, pos, column, new_pos):
         """Update selected portion of current input line"""
 
-        if self._line_mode and self._echo:
-            self._move_cursor(start_pos)
-
+        if self._echo:
             if self._wrap:
-                self._update_line(start_pos)
+                if pos in self._early_wrap:
+                    column -= 1
 
-        self._reposition(new_pos)
+                self._move_cursor(column)
+                prev_wrap = new_pos in self._early_wrap
+                self._output(self._line[pos:new_pos], pos)
+                column = self._cursor
+                self._output(self._line[new_pos:], new_pos)
+                column += (new_pos in self._early_wrap) - prev_wrap
+            else:
+                self._update_input_window(new_pos)
+                self._move_back(self._start_column)
+                self._output(self._line[self._left_pos:new_pos])
+                column = self._cursor
+                self._output(self._line[new_pos:self._right_pos])
+
+            self._clear_to_end()
+            self._move_back(column)
+
+        self._pos = new_pos
 
     def _insert_printable(self, data):
         """Insert data into the input line"""
 
-        data_len = len(data)
-        self._line = self._line[:self._pos] + data + self._line[self._pos:]
-        self._pos += data_len
+        pos = self._pos
+        new_pos = pos + len(data)
+        self._line = self._line[:pos] + data + self._line[pos:]
 
-        if self._line_mode and self._echo:
-            self._update_input(self._pos - data_len, self._pos)
+        self._update_input(pos, self._cursor, new_pos)
 
     def _end_line(self):
         """End the current input line and send it to the session"""
@@ -268,9 +330,9 @@ class SSHLineEditor:
             self._output('\b' * (self._cursor - self._start_column) +
                          self._line)
         else:
-            self._reposition(len(self._line))
+            self._move_to_end()
 
-        self._output('\n')
+        self._output('\r\n')
 
         self._start_column = 0
         self._end_column = 0
@@ -302,8 +364,10 @@ class SSHLineEditor:
         """Erase character to the left"""
 
         if self._pos > 0:
-            self._line = self._line[:self._pos-1] + self._line[self._pos:]
-            self._update_input(self._pos - 1, self._pos - 1)
+            pos = self._pos - 1
+            column = self._cursor - self._char_width(pos)
+            self._line = self._line[:pos] + self._line[pos+1:]
+            self._update_input(pos, column, pos)
         else:
             self._ring_bell()
 
@@ -311,8 +375,9 @@ class SSHLineEditor:
         """Erase character to the right"""
 
         if self._pos < len(self._line):
-            self._line = self._line[:self._pos] + self._line[self._pos+1:]
-            self._update_input(self._pos, self._pos)
+            pos = self._pos
+            self._line = self._line[:pos] + self._line[pos+1:]
+            self._update_input(pos, self._cursor, pos)
         else:
             self._ring_bell()
 
@@ -321,14 +386,15 @@ class SSHLineEditor:
 
         self._erased = self._line
         self._line = ''
-        self._update_input(0, 0)
+        self._update_input(0, self._start_column, 0)
 
     def _erase_to_end(self):
         """Erase to end of input line"""
 
-        self._erased = self._line[self._pos:]
-        self._line = self._line[:self._pos]
-        self._update_input(self._pos, self._pos)
+        pos = self._pos
+        self._erased = self._line[pos:]
+        self._line = self._line[:pos]
+        self._update_input(pos, self._cursor, pos)
 
     def _handle_key(self, key, handler):
         """Call an external key handler"""
@@ -349,7 +415,7 @@ class SSHLineEditor:
                 self._session.signal_received(line)
             else:
                 self._line = line
-                self._update_input(0, new_pos)
+                self._update_input(0, self._start_column, new_pos)
 
     def _history_prev(self):
         """Replace input with previous line in history"""
@@ -357,7 +423,7 @@ class SSHLineEditor:
         if self._history_index > 0:
             self._history_index -= 1
             self._line = self._history[self._history_index]
-            self._update_input(0, len(self._line))
+            self._update_input(0, self._start_column, len(self._line))
         else:
             self._ring_bell()
 
@@ -372,7 +438,7 @@ class SSHLineEditor:
             else:
                 self._line = ''
 
-            self._update_input(0, len(self._line))
+            self._update_input(0, self._start_column, len(self._line))
         else:
             self._ring_bell()
 
@@ -380,7 +446,9 @@ class SSHLineEditor:
         """Move left in input line"""
 
         if self._pos > 0:
-            self._reposition(self._pos - 1)
+            pos = self._pos - 1
+            column = self._cursor - self._char_width(pos)
+            self._reposition(pos, column)
         else:
             self._ring_bell()
 
@@ -388,19 +456,21 @@ class SSHLineEditor:
         """Move right in input line"""
 
         if self._pos < len(self._line):
-            self._reposition(self._pos + 1)
+            pos = self._pos
+            column = self._cursor + self._char_width(pos)
+            self._reposition(pos + 1, column)
         else:
             self._ring_bell()
 
     def _move_to_start(self):
         """Move to start of input line"""
 
-        self._reposition(0)
+        self._reposition(0, self._start_column)
 
     def _move_to_end(self):
         """Move to end of input line"""
 
-        self._reposition(len(self._line))
+        self._reposition(len(self._line), self._end_column)
 
     def _redraw(self):
         """Redraw input line"""
@@ -453,7 +523,7 @@ class SSHLineEditor:
         """Set input line and cursor position"""
 
         self._line = line
-        self._update_input(0, pos)
+        self._update_input(0, self._start_column, pos)
 
     def set_line_mode(self, line_mode):
         """Enable/disable input line editing"""
@@ -483,7 +553,8 @@ class SSHLineEditor:
         self._width = width or _DEFAULT_WIDTH
 
         if self._wrap:
-            self._cursor = self._column(self._pos)
+            _, self._cursor = self._determine_column(self._line,
+                                                     self._start_column, 0)
 
         self._redraw()
 
@@ -504,17 +575,30 @@ class SSHLineEditor:
                 else:
                     self._key_state = self._keymap
                     self._ring_bell()
+
+            self._bell_rung = False
+            self._chan.write(''.join(self._outbuf))
+            self._outbuf.clear()
         else:
             self._session.data_received(data, datatype)
 
     def process_output(self, data):
         """Process output to channel"""
 
+        data = data.replace('\n', '\r\n')
+
         self._erase_input()
         self._output(data)
+
+        if not self._wrap:
+            self._cursor %= self._width
+
         self._start_column = self._cursor
         self._end_column = self._cursor
         self._draw_input()
+
+        self._chan.write(''.join(self._outbuf))
+        self._outbuf.clear()
 
 
 class SSHLineEditorChannel:

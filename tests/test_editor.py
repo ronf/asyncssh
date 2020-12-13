@@ -60,8 +60,15 @@ async def _handle_session(stdin, stdout, stderr):
     stdout.close()
 
 
-async def _handle_soft_eof(stdin, stdout, _stderr):
+async def _handle_output_wrap(_stdin, stdout, _stderr):
     """Accept input using read() and echo it back"""
+
+    stdout.write(79*'*' + '\uff10')
+    stdout.close()
+
+
+async def _handle_soft_eof(stdin, stdout, _stderr):
+    """Accept soft EOF using read()"""
 
     while not stdin.at_eof():
         data = await stdin.read()
@@ -163,6 +170,7 @@ class _TestEditor(_CheckEditor):
             ('Erase right at end', 'abc\x04\n', 'abc\r\n'),
             ('Erase line', 'abcdef\x15abc\n', 'abc\r\n'),
             ('Erase to end', 'abcdef\x02\x02\x02\x0b\n', 'abc\r\n'),
+            ('Wrapping erase to end', 80*'*' + '\x02\x0b\n', 79*'*' + '\r\n'),
             ('History previous', 'abc\n\x10\n', 'abc\r\nabc\r\n'),
             ('History previous at top', '\x10abc\n', 'abc\r\n'),
             ('History next', 'a\nb\n\x10\x10\x0e\x08c\n', 'a\r\nb\r\nc\r\n'),
@@ -179,7 +187,7 @@ class _TestEditor(_CheckEditor):
             ('Insert erased', 'abc\x15\x19\x19\n', 'abcabc\r\n'),
             ('Send break', 'abc\x03', 'BREAK'),
             ('Long line', 100*'*' + '\x02\x01\x05\n', 100*'*' + '\r\n'),
-            ('Wide char wrap', 79*'*' + '\uff10\n', 79*'*' + '\uff10\r\n'),
+            ('Wide char wrap', 79*'*' + '\uff10\x08\n', 79*'*' + '\r\n'),
             ('Unknown key', '\x07abc\n', 'abc\r\n')
         )
 
@@ -353,6 +361,25 @@ class _TestEditorEncodingNone(_CheckEditor):
         await self.check_input('abc\n', 'abc\n', set_width=True)
 
 
+class _TestEditorOutputWrap(_CheckEditor):
+    """Unit tests for AsyncSSH line editor wrapping output text"""
+
+    @classmethod
+    async def start_server(cls):
+        """Start an SSH server for the tests to use"""
+
+        return await cls.create_server(session_factory=_handle_output_wrap)
+
+    @asynctest
+    async def test_editor_output_wrap(self):
+        """Test that editor properly wraps wide characters during output"""
+
+        async with self.connect() as conn:
+            process = await conn.create_process(term_type='ansi')
+            output_data = (await process.wait()).stdout
+            self.assertEqual(output_data, 79*'*' + '\uff10')
+
+
 class _TestEditorSoftEOF(ServerTestCase):
     """Unit tests for AsyncSSH line editor sending soft EOF"""
 
@@ -406,6 +433,7 @@ class _TestEditorRegisterKey(ServerTestCase):
                                 ('!a', 'xyza'),
                                 ('a!b', 'a!b'),
                                 ('ab!', 'ab\x07'),
+                                ('ab!!', 'ab\x07'),
                                 ('\x1bOPa', 'xyza'),
                                 ('a\x1bOPb', 'a\x07b'),
                                 ('ab\x1bOP', 'ab\x07'),
