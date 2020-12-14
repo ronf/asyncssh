@@ -41,10 +41,12 @@ def _is_wide(ch):
 class SSHLineEditor:
     """Input line editor"""
 
-    def __init__(self, chan, session, history_size, term_type, width):
+    def __init__(self, chan, session, history_size, max_line_length,
+                 term_type, width):
         self._chan = chan
         self._session = session
         self._history_size = history_size if history_size > 0 else 0
+        self._max_line_length = max_line_length
         self._wrap = term_type in _ansi_terminals
         self._width = width or _DEFAULT_WIDTH
         self._line_mode = True
@@ -316,11 +318,21 @@ class SSHLineEditor:
     def _insert_printable(self, data):
         """Insert data into the input line"""
 
-        pos = self._pos
-        new_pos = pos + len(data)
-        self._line = self._line[:pos] + data + self._line[pos:]
+        line_len = len(self._line)
+        data_len = len(data)
 
-        self._update_input(pos, self._cursor, new_pos)
+        if self._max_line_length:
+            if line_len + data_len > self._max_line_length:
+                self._ring_bell()
+                data_len = self._max_line_length - line_len
+                data = data[:data_len]
+
+        if data:
+            pos = self._pos
+            new_pos = pos + data_len
+            self._line = self._line[:pos] + data + self._line[pos:]
+
+            self._update_input(pos, self._cursor, new_pos)
 
     def _end_line(self):
         """End the current input line and send it to the session"""
@@ -614,10 +626,11 @@ class SSHLineEditorChannel:
 
     """
 
-    def __init__(self, orig_chan, orig_session, history_size):
+    def __init__(self, orig_chan, orig_session, history_size, max_line_length):
         self._orig_chan = orig_chan
         self._orig_session = orig_session
         self._history_size = history_size
+        self._max_line_length = max_line_length
         self._editor = None
 
     def __getattr__(self, attr):
@@ -629,9 +642,9 @@ class SSHLineEditorChannel:
         """Create input line editor if encoding and terminal type are set"""
 
         if self._encoding and self._term_type:
-            self._editor = SSHLineEditor(self._orig_chan, self._orig_session,
-                                         self._history_size, self._term_type,
-                                         self._term_size[0])
+            self._editor = SSHLineEditor(
+                self._orig_chan, self._orig_session, self._history_size,
+                self._max_line_length, self._term_type, self._term_size[0])
 
         return self._editor
 

@@ -1337,7 +1337,7 @@ class SSHServerChannel(SSHChannel):
     _write_datatypes = {EXTENDED_DATA_STDERR}
 
     def __init__(self, conn, loop, allow_pty, line_editor, line_history,
-                 encoding, errors, window, max_pktsize):
+                 max_line_length, encoding, errors, window, max_pktsize):
         """Initialize an SSH server channel"""
 
         super().__init__(conn, loop, encoding, errors, window, max_pktsize)
@@ -1347,6 +1347,7 @@ class SSHServerChannel(SSHChannel):
         self._allow_pty = allow_pty
         self._line_editor = line_editor
         self._line_history = line_history
+        self._max_line_length = max_line_length
         self._term_type = None
         self._term_size = (0, 0, 0, 0)
         self._term_modes = {}
@@ -1358,7 +1359,8 @@ class SSHServerChannel(SSHChannel):
         """Wrap a line editor around the session if enabled"""
 
         if self._line_editor:
-            chan = SSHLineEditorChannel(self, session, self._line_history)
+            chan = SSHLineEditorChannel(self, session, self._line_history,
+                                        self._max_line_length)
             session = SSHLineEditorSession(chan, session)
         else:
             chan = self

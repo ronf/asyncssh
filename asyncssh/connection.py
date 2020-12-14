@@ -166,6 +166,7 @@ _DEFAULT_MAX_PKTSIZE = 32768        # 32 kiB
 
 # Default line editor parameters
 _DEFAULT_LINE_HISTORY = 1000        # 1000 lines
+_DEFAULT_MAX_LINE_LENGTH = 1024     # 1024 characters
 
 
 async def _open_tunnel(tunnel):
@@ -4172,6 +4173,7 @@ class SSHServerConnection(SSHConnection):
         self._allow_pty = options.allow_pty
         self._line_editor = options.line_editor
         self._line_history = options.line_history
+        self._max_line_length = options.max_line_length
         self._rdns_lookup = options.rdns_lookup
         self._x11_forwarding = options.x11_forwarding
         self._x11_auth_path = options.x11_auth_path
@@ -5160,7 +5162,8 @@ class SSHServerConnection(SSHConnection):
 
         return SSHServerChannel(self, self._loop, self._allow_pty,
                                 self._line_editor, self._line_history,
-                                encoding, errors, window, max_pktsize)
+                                self._max_line_length, encoding, errors,
+                                window, max_pktsize)
 
     async def create_connection(self, session_factory, remote_host, remote_port,
                                 orig_host='', orig_port=0, *, encoding=None,
@@ -6070,6 +6073,9 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
        :param line_history: (int)
            The number of lines of input line history to store in the
            line editor when it is enabled, defaulting to 1000
+       :param max_line_length: (int)
+           The maximum number of characters allowed in an input line when
+           the line editor is enabled, defaulting to 1024
        :param rdns_lookup: (optional)
            Whether or not to perform reverse DNS lookups on the client's
            IP address to enable hostname-based matches in authorized key
@@ -6208,7 +6214,8 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
        :type gss_auth: `bool`
        :type allow_pty: `bool`
        :type line_editor: `bool`
-       :type line_history: `bool`
+       :type line_history: `int`
+       :type max_line_length: `int`
        :type rdns_lookup: `bool`
        :type x11_forwarding: `bool`
        :type x11_auth_path: `str`
@@ -6253,11 +6260,11 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
                 trust_client_host=False, authorized_client_keys=(),
                 gss_host=(), gss_kex=(), gss_auth=(), allow_pty=(),
                 line_editor=True, line_history=_DEFAULT_LINE_HISTORY,
-                rdns_lookup=(), x11_forwarding=False, x11_auth_path=None,
-                agent_forwarding=(), process_factory=None,
-                session_factory=None, encoding='utf-8', errors='strict',
-                sftp_factory=None, allow_scp=False, window=_DEFAULT_WINDOW,
-                max_pktsize=_DEFAULT_MAX_PKTSIZE):
+                max_line_length=_DEFAULT_MAX_LINE_LENGTH, rdns_lookup=(),
+                x11_forwarding=False, x11_auth_path=None, agent_forwarding=(),
+                process_factory=None, session_factory=None, encoding='utf-8',
+                errors='strict', sftp_factory=None, allow_scp=False,
+                window=_DEFAULT_WINDOW, max_pktsize=_DEFAULT_MAX_PKTSIZE):
         """Prepare server connection configuration options"""
 
         config = SSHServerConfig.load(last_config, config, reload,
@@ -6347,6 +6354,7 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
         self.allow_pty = allow_pty
         self.line_editor = line_editor
         self.line_history = line_history
+        self.max_line_length = max_line_length
         self.rdns_lookup = rdns_lookup
         self.x11_forwarding = x11_forwarding
         self.x11_auth_path = x11_auth_path

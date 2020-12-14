@@ -188,6 +188,7 @@ class _TestEditor(_CheckEditor):
             ('Send break', 'abc\x03', 'BREAK'),
             ('Long line', 100*'*' + '\x02\x01\x05\n', 100*'*' + '\r\n'),
             ('Wide char wrap', 79*'*' + '\uff10\x08\n', 79*'*' + '\r\n'),
+            ('Line length limit', 1025*'*' + '\n', 1024*'*' + '\r\n'),
             ('Unknown key', '\x07abc\n', 'abc\r\n')
         )
 
@@ -359,6 +360,23 @@ class _TestEditorEncodingNone(_CheckEditor):
         """Test changing the terminal width"""
 
         await self.check_input('abc\n', 'abc\n', set_width=True)
+
+
+class _TestEditorUnlimitedLength(_CheckEditor):
+    """Unit tests for AsyncSSH line editor with no line length limit"""
+
+    @classmethod
+    async def start_server(cls):
+        """Start an SSH server for the tests to use"""
+
+        return await cls.create_server(session_factory=_handle_session,
+                                       max_line_length=None)
+
+    @asynctest
+    async def test_editor_unlimited_length(self):
+        """Test that editor can handle very long lines"""
+
+        await self.check_input(32768*'*' + '\n', 32768*'*' + '\r\n')
 
 
 class _TestEditorOutputWrap(_CheckEditor):
