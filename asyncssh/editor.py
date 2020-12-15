@@ -20,6 +20,9 @@
 
 """Input line editor"""
 
+import re
+
+from bisect import bisect_right
 from functools import partial
 from unicodedata import east_asian_width
 
@@ -71,6 +74,8 @@ class SSHLineEditor:
             for key in keys:
                 self._add_key(key, func)
 
+        self._build_printable()
+
     def _add_key(self, key, func):
         """Add a key to the keymap"""
 
@@ -96,6 +101,27 @@ class SSHLineEditor:
             keymap = keymap[ch]
 
         keymap.pop(key[-1], None)
+
+    def _build_printable(self):
+        """Build a regex of printable ASCII non-registered keys"""
+
+        pat = []
+        keys = sorted(self._keymap.keys())
+        keys = keys[bisect_right(keys, ' '):bisect_right(keys, '\x7f')]
+        start = ord(' ')
+
+        for key in keys:
+            end = ord(key)
+
+            if start != end:
+                pat.append(f'\\x{start:02x}')
+
+                if start + 1 != end:
+                    pat.append(f'-\\x{end-1:02x}')
+
+            start = end + 1
+
+        self._printable = re.compile(r'[' + ''.join(pat) + r']*')
 
     def _char_width(self, pos):
         """Return width of character at specified position"""
@@ -525,11 +551,13 @@ class SSHLineEditor:
 
         self._add_key(key, partial(SSHLineEditor._handle_key,
                                    key=key, handler=handler))
+        self._build_printable()
 
     def unregister_key(self, key):
         """Remove the handler associated with a key"""
 
         self._del_key(key)
+        self._build_printable()
 
     def set_input(self, line, pos):
         """Set input line and cursor position"""
@@ -574,7 +602,13 @@ class SSHLineEditor:
         """Process input from channel"""
 
         if self._line_mode:
-            for ch in data:
+            data_len = len(data)
+            idx = 0
+
+            while idx < data_len:
+                ch = data[idx]
+                idx += 1
+
                 if ch in self._key_state:
                     self._key_state = self._key_state[ch]
                     if callable(self._key_state):
@@ -583,7 +617,13 @@ class SSHLineEditor:
                         finally:
                             self._key_state = self._keymap
                 elif self._key_state == self._keymap and ch.isprintable():
-                    self._insert_printable(ch)
+                    match = self._printable.match(data, idx - 1)[0]
+
+                    if match:
+                        self._insert_printable(match)
+                        idx += len(match) - 1
+                    else:
+                        self._insert_printable(ch)
                 else:
                     self._key_state = self._keymap
                     self._ring_bell()

@@ -108,10 +108,12 @@ async def _handle_register(stdin, stdout, _stderr):
 
         if data == 'R\n':
             stdin.channel.register_key('!', _handle_key)
+            stdin.channel.register_key('"', _handle_key)
             stdin.channel.register_key('\x1bOP', _handle_key)
             stdin.channel.register_key('\x1a', _trigger_signal)
         elif data == 'U\n':
             stdin.channel.unregister_key('!')
+            stdin.channel.unregister_key('"')
             stdin.channel.unregister_key('\x1bOP')
             stdin.channel.unregister_key('\x1bOQ') # Test unregistered key
             stdin.channel.unregister_key('\x1b[25~') # Test unregistered prefix
@@ -188,7 +190,7 @@ class _TestEditor(_CheckEditor):
             ('Send break', 'abc\x03', 'BREAK'),
             ('Long line', 100*'*' + '\x02\x01\x05\n', 100*'*' + '\r\n'),
             ('Wide char wrap', 79*'*' + '\uff10\x08\n', 79*'*' + '\r\n'),
-            ('Line length limit', 1025*'*' + '\n', 1024*'*' + '\r\n'),
+            ('Line length limit', 1024*'*' + '\x05*\n', 1024*'*' + '\r\n'),
             ('Unknown key', '\x07abc\n', 'abc\r\n')
         )
 
