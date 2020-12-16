@@ -2374,6 +2374,30 @@ class _TestSFTPChroot(_CheckSFTP):
         finally:
             remove('chroot/link1 chroot/link2')
 
+    @sftp_test
+    async def test_chroot_makedirs(self, sftp):
+        """Test creating a directory path"""
+
+        try:
+            await sftp.makedirs('dir/dir1')
+            self.assertTrue(os.path.isdir('chroot/dir'))
+            self.assertTrue(os.path.isdir('chroot/dir/dir1'))
+
+            await sftp.makedirs('dir/dir2')
+            self.assertTrue(os.path.isdir('chroot/dir/dir2'))
+
+            await sftp.makedirs('dir/dir2', exist_ok=True)
+            self.assertTrue(os.path.isdir('chroot/dir/dir2'))
+
+            with self.assertRaises(SFTPFailure):
+                await sftp.makedirs('/dir/dir2')
+
+            self._create_file('chroot/file')
+            with self.assertRaises(SFTPFailure):
+                await sftp.makedirs('file/dir')
+        finally:
+            remove('chroot/dir')
+
 
 class _TestSFTPUnknownError(_CheckSFTP):
     """Unit test for SFTP server returning unknown error"""

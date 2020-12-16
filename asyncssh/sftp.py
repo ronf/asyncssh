@@ -2572,6 +2572,53 @@ class SFTPClient:
 
         return await self._glob(self, patterns, error_handler)
 
+    async def makedirs(self, path, attrs=SFTPAttrs(), exist_ok=False):
+        """Create a remote directory with the specified attributes
+
+           This method creates a remote directory at the specified path
+           similar to :meth:`mkdir`, but it will also create any
+           intermediate directories which don't yet exist.
+
+           If the target directory already exists and exist_ok is set
+           to `False`, this method will raise an error.
+
+           :param path:
+               The path of where the new remote directory should be created
+           :param attrs: (optional)
+               The file attributes to use when creating the directory or
+               any intermediate directories
+           :param exist_ok:
+               Whether or not to raise an error if thet target directory
+               already exists
+           :type path: :class:`PurePath <pathlib.PurePath>`, `str`, or `bytes`
+           :type attrs: :class:`SFTPAttrs`
+           :type exist_ok: `bool`
+
+           :raises: :exc:`SFTPError` if the server returns an error
+
+        """
+
+        path = self.encode(path)
+        curpath = b'/' if posixpath.isabs(path) else (self._cwd or b'')
+        exists = True
+
+        for part in path.split(b'/'):
+            curpath = posixpath.join(curpath, part)
+            mode = await self._mode(curpath)
+
+            if stat.S_ISDIR(mode):
+                exists = True
+            elif mode:
+                raise SFTPFailure('%s is not a directory' %
+                                  curpath.decode('utf-8', errors='replace'))
+            else:
+                await self.mkdir(curpath, attrs)
+                exists = False
+
+        if exists and not exist_ok:
+            raise SFTPFailure('%s already exists' %
+                              curpath.decode('utf-8', errors='replace'))
+
     @async_context_manager
     async def open(self, path, pflags_or_mode=FXF_READ, attrs=SFTPAttrs(),
                    encoding='utf-8', errors='strict',

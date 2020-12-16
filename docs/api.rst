@@ -1113,17 +1113,18 @@ SFTPClient
    .. automethod:: islink
    ============================= =
 
-   ============================================== =
+   ================================================= =
    Directory access methods
-   ============================================== =
+   ================================================= =
    .. automethod:: chdir
    .. automethod:: getcwd
    .. automethod:: mkdir(path, attrs=SFTPAttrs())
+   .. automethod:: makedirs(path, attrs=SFTPAttrs())
    .. automethod:: rmdir
    .. automethod:: readdir
    .. automethod:: listdir
    .. automethod:: glob
-   ============================================== =
+   ================================================= =
 
    =========================== =
    Cleanup methods
