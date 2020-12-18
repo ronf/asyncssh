@@ -34,7 +34,8 @@ from unittest.mock import patch
 
 import asyncssh
 
-from asyncssh import SFTPError, SFTPFailure, SFTPPermissionDenied
+from asyncssh import SFTPError, SFTPFailure, SFTPNoSuchFile
+from asyncssh import SFTPPermissionDenied
 from asyncssh import SFTPAttrs, SFTPVFSAttrs, SFTPName, SFTPServer
 from asyncssh import SEEK_CUR, SEEK_END
 from asyncssh import FXP_INIT, FXP_VERSION, FXP_OPEN, FXP_READ
@@ -1147,6 +1148,129 @@ class _TestSFTP(_CheckSFTP):
             with self.assertRaises(FileNotFoundError):
                 os.stat('dir')
         finally:
+            remove('dir')
+
+    @sftp_test
+    async def test_rmtree(self, sftp):
+        """Test removing a directory tree"""
+
+        try:
+            os.mkdir('dir')
+            os.mkdir('dir/dir1')
+            os.mkdir('dir/dir1/dir2')
+            os.mkdir('dir/dir3')
+            self._create_file('dir/file1')
+            self._create_file('dir/file2')
+            self._create_file('dir/dir1/file3')
+            await sftp.rmtree('dir')
+
+            with self.assertRaises(FileNotFoundError):
+                os.stat('dir')
+        finally:
+            remove('dir')
+
+    @sftp_test
+    async def test_rmtree_non_existent(self, sftp):
+        """Test passing a non-existent directory to rmtree"""
+
+        with self.assertRaises(SFTPNoSuchFile):
+            await sftp.rmtree('xxx')
+
+    @sftp_test
+    async def test_rmtree_ignore_errors(self, sftp):
+        """Test ignoring errors in rmtree"""
+
+        await sftp.rmtree('xxx', ignore_errors=True)
+
+    @sftp_test
+    async def test_rmtree_onerror(self, sftp):
+        """Test onerror callback in rmtree"""
+
+        def _error_handler(*args):
+            errors.append(args)
+
+        errors = []
+
+        await sftp.rmtree('xxx', onerror=_error_handler)
+
+        self.assertEqual(errors[0][0], sftp.scandir)
+        self.assertEqual(errors[0][1], b'xxx')
+        self.assertEqual(errors[0][2][0], SFTPNoSuchFile)
+
+    @sftp_test
+    async def test_rmtree_file(self, sftp):
+        """Test passing a file to rmtree"""
+
+        try:
+            self._create_file('file')
+
+            with self.assertRaises(SFTPNoSuchFile):
+                await sftp.rmtree('file')
+        finally:
+            remove('file')
+
+    @sftp_test
+    async def test_rmtree_symlink(self, sftp):
+        """Test passing a symlink to rmtree"""
+
+        try:
+            os.mkdir('dir')
+            os.symlink('dir', 'link')
+
+            with self.assertRaises(SFTPNoSuchFile):
+                await sftp.rmtree('link')
+        finally:
+            remove('dir link')
+
+    @sftp_test
+    async def test_rmtree_symlink_onerror(self, sftp):
+        """Test passing a symlink to rmtree with onerror callback"""
+
+        def _error_handler(*args):
+            errors.append(args)
+
+        errors = []
+
+        try:
+            os.mkdir('dir')
+            os.symlink('dir', 'link')
+
+            await sftp.rmtree('link', onerror=_error_handler)
+
+            self.assertEqual(errors[0][0], sftp.islink)
+            self.assertEqual(errors[0][1], b'link')
+            self.assertEqual(errors[0][2][0], SFTPNoSuchFile)
+        finally:
+            remove('dir link')
+
+    @sftp_test
+    async def test_rmtree_rmdir_failure(self, sftp):
+        """Test rmdir failing in rmtree"""
+
+        try:
+            os.mkdir('dir')
+            os.mkdir('dir/subdir')
+            os.chmod('dir', 0o555)
+
+            with self.assertRaises(SFTPPermissionDenied):
+                await sftp.rmtree('dir')
+        finally:
+            os.chmod('dir', 0o755)
+            remove('dir')
+
+    @sftp_test
+    async def test_rmtree_unlink_failure(self, sftp):
+        """Test unlink failing in rmtree"""
+
+        try:
+            os.mkdir('dir')
+            self._create_file('dir/file')
+            os.chmod('dir', 0o555)
+
+            with self.assertRaises(SFTPPermissionDenied):
+                await sftp.rmtree('dir')
+        finally:
+            os.chmod('dir', 0o755)
             remove('dir')
 
     @sftp_test

@@ -1121,6 +1121,8 @@ SFTPClient
    .. automethod:: mkdir(path, attrs=SFTPAttrs())
    .. automethod:: makedirs(path, attrs=SFTPAttrs())
    .. automethod:: rmdir
+   .. automethod:: rmtree
+   .. automethod:: scandir
    .. automethod:: readdir
    .. automethod:: listdir
    .. automethod:: glob

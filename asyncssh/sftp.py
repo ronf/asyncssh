@@ -2587,7 +2587,7 @@ class SFTPClient:
            :param attrs: (optional)
                The file attributes to use when creating the directory or
                any intermediate directories
-           :param exist_ok:
+           :param exist_ok: (optional)
                Whether or not to raise an error if thet target directory
                already exists
            :type path: :class:`PurePath <pathlib.PurePath>`, `str`, or `bytes`
@@ -2618,6 +2618,92 @@ class SFTPClient:
         if exists and not exist_ok:
             raise SFTPFailure('%s already exists' %
                               curpath.decode('utf-8', errors='replace'))
+
+    async def rmtree(self, path, ignore_errors=False, onerror=None):
+        """Recursively delete a directory tree
+
+           This method removes all the files in a directory tree.
+
+           If ignore_errors is set, errors are ignored. Otherwise,
+           if onerror is set, it will be called with arguments of
+           the function which failed, the path it failed on, and
+           exception information returns by :func:`sys.exc_info()`.
+
+           If follow_symlinks is set, files or directories pointed at by
+           symlinks (and their subdirectories, if any) will be removed
+           in addition to the links pointing at them.
+
+           :param path:
+               The path of the parent directory to remove
+           :param ignore_errors: (optional)
+               Whether or not to ignore errors during the remove
+           :param onerror: (optional)
+               A function to call when errors occur
+           :type path: :class:`PurePath <pathlib.PurePath>`, `str`, or `bytes`
+           :type ignore_errors: `bool`
+           :type onerror: `callable`
+
+           :raises: :exc:`SFTPError` if the server returns an error
+
+        """
+
+        async def _unlink(path):
+            """Internal helper for unlinking non-directories"""
+
+            try:
+                await self.unlink(path)
+            except SFTPError:
+                onerror(self.unlink, path, sys.exc_info())
+
+        async def _rmtree(path):
+            """Internal helper for rmtree recursion"""
+
+            tasks = []
+
+            try:
+                async for entry in self.scandir(path):
+                    if entry.filename in (b'.', b'..'):
+                        continue
+
+                    mode = entry.attrs.permissions
+                    entry = posixpath.join(path, entry.filename)
+
+                    if stat.S_ISDIR(mode):
+                        task = _rmtree(entry)
+                    else:
+                        task = _unlink(entry)
+
+                    tasks.append(asyncio.ensure_future(task))
+            except SFTPError:
+                onerror(self.scandir, path, sys.exc_info())
+
+            await asyncio.gather(*tasks)
+
+            try:
+                await self.rmdir(path)
+            except SFTPError:
+                onerror(self.rmdir, path, sys.exc_info())
+
+        # pylint: disable=function-redefined
+        if ignore_errors:
+            def onerror(*_args):
+                pass
+        elif onerror is None:
+            def onerror(*_args):
+                raise # pylint: disable=misplaced-bare-raise
+        # pylint: enable=function-redefined
+
+        path = self.encode(path)
+
+        try:
+            if await self.islink(path):
+                raise SFTPNoSuchFile('%s must not be a symlink' %
+                                     path.decode('utf-8', errors='replace'))
+        except SFTPError:
+            onerror(self.islink, path, sys.exc_info())
+            return
+
+        await _rmtree(path)
 
     @async_context_manager
     async def open(self, path, pflags_or_mode=FXF_READ, attrs=SFTPAttrs(),
@@ -3102,6 +3188,41 @@ class SFTPClient:
         newpath = self.compose_path(newpath)
         await self._handler.posix_rename(oldpath, newpath)
 
+    async def scandir(self, path='.'):
+        """Return an async iterator of the contents of a remote directory
+
+           This method reads the contents of a directory, returning
+           the names and attributes of what is contained there as an
+           async iterator. If no path is provided, it defaults to the
+           current remote working directory.
+
+           :param path: (optional)
+               The path of the remote directory to read
+           :type path: :class:`PurePath <pathlib.PurePath>`, `str`, or `bytes`
+
+           :returns: An async iterator of :class:`SFTPName` entries, with
+                     path names matching the type used to pass in the path
+
+           :raises: :exc:`SFTPError` if the server returns an error
+
+        """
+
+        dirpath = self.compose_path(path)
+        handle = await self._handler.opendir(dirpath)
+
+        try:
+            while True:
+                for entry in await self._handler.readdir(handle):
+                    if isinstance(path, str):
+                        entry.filename = self.decode(entry.filename)
+                        entry.longname = self.decode(entry.longname)
+
+                    yield entry
+        except SFTPEOFError:
+            pass
+        finally:
+            await self._handler.close(handle)
+
     async def readdir(self, path='.'):
         """Read the contents of a remote directory
 
@@ -3121,25 +3242,7 @@ class SFTPClient:
 
         """
 
-        names = []
-
-        dirpath = self.compose_path(path)
-        handle = await self._handler.opendir(dirpath)
-
-        try:
-            while True:
-                names.extend((await self._handler.readdir(handle)))
-        except SFTPEOFError:
-            pass
-        finally:
-            await self._handler.close(handle)
-
-        if isinstance(path, str):
-            for name in names:
-                name.filename = self.decode(name.filename)
-                name.longname = self.decode(name.longname)
-
-        return names
+        return [entry async for entry in self.scandir(path)]
 
     async def listdir(self, path='.'):
         """Read the names of the files in a remote directory
