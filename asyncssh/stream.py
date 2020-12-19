@@ -43,20 +43,11 @@ class SSHReader:
         self._chan = chan
         self._datatype = datatype
 
-    def __aiter__(self):
+    async def __aiter__(self):
         """Allow SSHReader to be an async iterator"""
 
-        return self
-
-    async def __anext__(self):
-        """Return one line at a time when used as an async iterator"""
-
-        line = await self.readline()
-
-        if line:
-            return line
-        else:
-            raise StopAsyncIteration
+        while not self.at_eof():
+            yield await self.readline()
 
     @property
     def channel(self):
