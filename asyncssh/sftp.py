@@ -2661,23 +2661,29 @@ class SFTPClient:
             tasks = []
 
             try:
-                async for entry in self.scandir(path):
-                    if entry.filename in (b'.', b'..'):
-                        continue
+                async with sem:
+                    async for entry in self.scandir(path):
+                        if entry.filename in (b'.', b'..'):
+                            continue
 
-                    mode = entry.attrs.permissions
-                    entry = posixpath.join(path, entry.filename)
+                        mode = entry.attrs.permissions
+                        entry = posixpath.join(path, entry.filename)
 
-                    if stat.S_ISDIR(mode):
-                        task = _rmtree(entry)
-                    else:
-                        task = _unlink(entry)
+                        if stat.S_ISDIR(mode):
+                            task = _rmtree(entry)
+                        else:
+                            task = _unlink(entry)
 
-                    tasks.append(asyncio.ensure_future(task))
+                        tasks.append(asyncio.ensure_future(task))
             except SFTPError:
                 onerror(self.scandir, path, sys.exc_info())
 
-            await asyncio.gather(*tasks)
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            exc = next((result for result in results
+                        if isinstance(result, Exception)), None)
+
+            if exc:
+                raise exc
 
             try:
                 await self.rmdir(path)
@@ -2694,6 +2700,7 @@ class SFTPClient:
         # pylint: enable=function-redefined
 
         path = self.encode(path)
+        sem = asyncio.Semaphore(_MAX_SFTP_REQUESTS)
 
         try:
             if await self.islink(path):
