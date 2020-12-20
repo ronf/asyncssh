@@ -22,7 +22,6 @@
 
 import re
 
-from bisect import bisect_right
 from functools import partial
 from unicodedata import east_asian_width
 
@@ -105,23 +104,39 @@ class SSHLineEditor:
     def _build_printable(self):
         """Build a regex of printable ASCII non-registered keys"""
 
+        def _escape(c):
+            """Backslash escape special characters in regex character range"""
+
+            ch = chr(c)
+            return ('\\' if (ch in '-&|[]\\^~') else '') + ch
+
+        def _is_printable(ch):
+            """Return if character is printable and has no handler"""
+
+            return ch.isprintable() and ch not in keys
+
         pat = []
-        keys = sorted(self._keymap.keys())
-        keys = keys[bisect_right(keys, ' '):bisect_right(keys, '\x7f')]
+        keys = self._keymap.keys()
         start = ord(' ')
+        limit = 0x10000
 
-        for key in keys:
-            end = ord(key)
+        while start < limit:
+            while start < limit and not _is_printable(chr(start)):
+                start += 1
 
-            if start != end:
-                pat.append(f'\\x{start:02x}')
+            end = start
 
-                if start + 1 != end:
-                    pat.append(f'-\\x{end-1:02x}')
+            while _is_printable(chr(end)):
+                end += 1
+
+            pat.append(_escape(start))
+
+            if start != end - 1:
+                pat.append('-' + _escape(end - 1))
 
             start = end + 1
 
-        self._printable = re.compile(r'[' + ''.join(pat) + r']*')
+        self._printable = re.compile('[' + ''.join(pat) + ']*')
 
     def _char_width(self, pos):
         """Return width of character at specified position"""
