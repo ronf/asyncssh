@@ -3,6 +3,49 @@
 Change Log
 ==========
 
+Release 2.5.0 (23 Dec 2020)
+---------------------------
+
+* Added support for limiting which identities in an SSH agent will be
+  used when making a connection, via a new "agent_identities" config
+  option. This change also adds compatibility with the OpenSSL config
+  file option "IdentitiesOnly".
+
+* Added support for including Subject Key Identifier and Authority Key
+  Identifier extensions in generated X.509 certificates to better comply
+  with RFC 5280.
+
+* Added support for makedirs() and rmtree() methods in the AsyncSSH
+  SFTP client, as well as a new scandir() method which returns an async
+  iterator to more efficiently process very large directories. Thanks
+  go to Joseph Ernest for suggesting these improvements.
+
+* Significantly reworked AsyncSSH line editor support to improve its
+  performance by several orders of magnitude on long input lines, and
+  added a configurable maximum line length when the editor is in use to
+  avoid potential denial-of-service attacks. This limit defaults to
+  1024 bytes, but with the improvements it can reasonably handle lines
+  which are megabytes in size if needed.
+
+* Changed AsyncSSH to allow SSH agent identities to still be used when
+  an explicit list of client keys is specified, for better compatibility
+  with OpenSSH. The previous behavior can still be achieved by explicitly
+  setting the agent_path option to None when setting client_keys.
+
+* Changed AsyncSSH to enforce a limit of 1024 characters on usernames
+  when acting as a server to avoid a potential denial-of-service issue
+  related to SASLprep username normalization.
+
+* Changed SCP implementation to explicitly yield to other coroutines
+  when sending a large file to better share an event loop.
+
+* Fixed a few potential race conditions related to cleanup of objects
+  during connection close. Thanks go to Thomas Léveil for reporting one
+  of these places and suggesting a fix.
+
+* Re-applied a previous fix which was unintentionally lost to allow
+  Pageant to be used by default on Windows.
+
 Release 2.4.2 (11 Sep 2020)
 ---------------------------
 
