@@ -604,8 +604,6 @@ class _TestX11(ServerTestCase):
     async def test_forwarding_ignore_failure(self):
         """Test ignoring failure on an X11 forwarding request"""
 
-        import logging
-        logging.basicConfig(level='INFO')
         ckey = asyncssh.read_private_key('ckey')
         cert = ckey.generate_user_certificate(ckey, 'name', principals=['ckey'],
                                               permit_x11_forwarding=False)
