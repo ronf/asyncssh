@@ -3173,7 +3173,8 @@ class SSHClientConnection(SSHConnection):
                values defined in section 8 of :rfc:`RFC 4254 <4254#section-8>`.
            :param x11_forwarding: (optional)
                Whether or not to request X11 forwarding for this session,
-               defaulting to `False`
+               defaulting to `False`. It can also be set to `'ignore_failure'`
+               to attempt X11 forwarding but ignore failure if that occurs.
            :param x11_display: (optional)
                The display that X11 connections should be forwarded to,
                defaulting to the value in the environment variable `DISPLAY`
@@ -3202,7 +3203,7 @@ class SSHClientConnection(SSHConnection):
            :type term_type: `str`
            :type term_size: `tuple` of 2 or 4 `int` values
            :type term_modes: `dict`
-           :type x11_forwarding: `bool`
+           :type x11_forwarding: `bool` or `'ignore_failure'`
            :type x11_display: `str`
            :type x11_auth_path: `str`
            :type x11_single_connection: `bool`
@@ -3254,7 +3255,8 @@ class SSHClientConnection(SSHConnection):
             request_pty = bool(term_type)
 
         if x11_forwarding == ():
-            x11_forwarding = self._config.get('ForwardX11Trusted')
+            x11_forwarding = \
+                self._config.get('ForwardX11Trusted') and 'ignore_failure'
 
         chan = SSHClientChannel(self, self._loop, encoding, errors,
                                 window, max_pktsize)

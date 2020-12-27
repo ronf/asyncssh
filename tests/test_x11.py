@@ -50,11 +50,11 @@ def _failing_bind(self, address):
     raise OSError
 
 
-async def _create_x11_process(conn, command=None,
+async def _create_x11_process(conn, command=None, x11_forwarding=True,
                               x11_display='test:0', **kwargs):
     """Create a client process with X11 forwarding enabled"""
 
-    return await conn.create_process(command, x11_forwarding=True,
+    return await conn.create_process(command, x11_forwarding=x11_forwarding,
                                      x11_display=x11_display, **kwargs)
 
 
@@ -599,6 +599,26 @@ class _TestX11(ServerTestCase):
                                 agent_path=None) as conn:
             with self.assertRaises(asyncssh.ChannelOpenError):
                 await _create_x11_process(conn, 'connect l')
+
+    @asynctest
+    async def test_forwarding_ignore_failure(self):
+        """Test ignoring failure on an X11 forwarding request"""
+
+        import logging
+        logging.basicConfig(level='INFO')
+        ckey = asyncssh.read_private_key('ckey')
+        cert = ckey.generate_user_certificate(ckey, 'name', principals=['ckey'],
+                                              permit_x11_forwarding=False)
+
+        async with self.connect(username='ckey', client_keys=[(ckey, cert)],
+                                agent_path=None) as conn:
+            proc = await _create_x11_process(
+                conn, x11_forwarding='ignore_failure', x11_display='test')
+            await proc.wait()
+
+            proc = await _create_x11_process(
+                conn, x11_forwarding='ignore_failure')
+            await proc.wait()
 
     @asynctest
     async def test_invalid_x11_forwarding_request(self):

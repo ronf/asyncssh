@@ -1072,19 +1072,30 @@ class SSHClientChannel(SSHChannel):
                     await self._conn.attach_x11_listener(
                         self, x11_display, x11_auth_path, x11_single_connection)
             except ValueError as exc:
-                raise ChannelOpenError(OPEN_REQUEST_X11_FORWARDING_FAILED,
-                                       str(exc)) from None
+                if x11_forwarding != 'ignore_failure':
+                    raise ChannelOpenError(OPEN_REQUEST_X11_FORWARDING_FAILED,
+                                           str(exc)) from None
+                else:
+                    auth_proto = None
+                    self.logger.info('  X11 forwarding attach failure ignored')
 
-            result = await self._make_request(
-                b'x11-req', Boolean(x11_single_connection), String(auth_proto),
-                String(binascii.b2a_hex(remote_auth)), UInt32(screen))
+            if auth_proto:
+                result = await self._make_request(
+                    b'x11-req', Boolean(x11_single_connection),
+                    String(auth_proto), String(binascii.b2a_hex(remote_auth)),
+                    UInt32(screen))
 
-            if not result:
-                if self._conn: # pragma: no branch
-                    self._conn.detach_x11_listener(self)
+                if not result:
+                    if self._conn: # pragma: no branch
+                        self._conn.detach_x11_listener(self)
 
-                raise ChannelOpenError(OPEN_REQUEST_X11_FORWARDING_FAILED,
-                                       'X11 forwarding request failed')
+                    if x11_forwarding != 'ignore_failure':
+                        raise ChannelOpenError(
+                            OPEN_REQUEST_X11_FORWARDING_FAILED,
+                            'X11 forwarding request failed')
+                    else:
+                        self.logger.info(
+                            '  X11 forwarding request failure ignored')
 
         if agent_forwarding:
             self.logger.debug1('  Agent forwarding enabled')
