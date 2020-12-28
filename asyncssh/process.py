@@ -24,6 +24,7 @@ import asyncio
 from asyncio.subprocess import DEVNULL, PIPE, STDOUT
 import codecs
 from collections import OrderedDict
+import inspect
 import io
 import os
 from pathlib import PurePath
@@ -687,7 +688,9 @@ class SSHProcess:
             else:
                 file = source
 
-            if hasattr(file, 'read') and asyncio.iscoroutinefunction(file.read):
+            if hasattr(file, 'read') and \
+                    (asyncio.iscoroutinefunction(file.read) or
+                     inspect.isgeneratorfunction(file.read)):
                 reader = _AsyncFileReader(self, file, bufsize, datatype,
                                           self._encoding, self._errors)
             elif _is_regular_file(file):
@@ -742,7 +745,8 @@ class SSHProcess:
                 file = target
 
             if hasattr(file, 'write') and \
-                    asyncio.iscoroutinefunction(file.write):
+                    (asyncio.iscoroutinefunction(file.write) or
+                     inspect.isgeneratorfunction(file.write)):
                 writer = _AsyncFileWriter(self, file, self._encoding,
                                           self._errors)
             elif _is_regular_file(file):
