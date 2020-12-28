@@ -305,9 +305,10 @@ class SSHChannel(SSHPacketHandler):
                 if (not self._session.eof_received() and
                         self._send_state == 'open'):
                     self.write_eof()
-            elif self._recv_state == 'close_pending':
-                self._recv_state = 'closed'
-                self._loop.call_soon(self._cleanup, exc)
+
+        if not self._recv_buf and self._recv_state == 'close_pending':
+            self._recv_state = 'closed'
+            self._loop.call_soon(self._cleanup, exc)
 
     def _deliver_data(self, data, datatype):
         """Deliver incoming data to the session"""
