@@ -390,6 +390,19 @@ class _TestProcessBasic(_TestProcess):
                 await conn.run('echo', stdin='stdin')
 
     @asynctest
+    async def test_ignoring_invalid_unicode(self):
+        """Test ignoring invalid Unicode data"""
+
+        data = b'\xfftest'
+
+        with open('stdin', 'wb') as file:
+            file.write(data)
+
+        async with self.connect() as conn:
+            await conn.run('echo', stdin='stdin',
+                           encoding='utf-8', errors='ignore')
+
+    @asynctest
     async def test_incomplete_unicode(self):
         """Test incomplete Unicode data"""
 

@@ -456,12 +456,11 @@ class _TestChannel(ServerTestCase):
 
             self.assertEqual(session.exit_status, expected_result)
 
-    async def _check_session(self, conn, command=None, *, subsystem=None,
+    async def _check_session(self, conn, command=(), *,
                              large_block=False, **kwargs):
         """Open a session and test if an input line is echoed back"""
 
-        chan, session = await _create_session(conn, command,
-                                              subsystem=subsystem, *kwargs)
+        chan, session = await _create_session(conn, command, **kwargs)
 
         if large_block:
             data = 4 * [1025*1024*'\0']
@@ -519,7 +518,15 @@ class _TestChannel(ServerTestCase):
         """Test execution of a remote command"""
 
         async with self.connect() as conn:
-            await self._check_session(conn, 'echo')
+            await self._check_session(conn, 'echo', window=1024*1024,
+                                      max_pktsize=16384)
+
+    @asynctest
+    async def test_exec_from_connect(self):
+        """Test execution of a remote command set on connection"""
+
+        async with self.connect(command='echo') as conn:
+            await self._check_session(conn)
 
     @asynctest
     async def test_forced_exec(self):
@@ -1053,6 +1060,18 @@ class _TestChannel(ServerTestCase):
             self.assertEqual(result, 'test\n')
 
     @asynctest
+    async def test_env_from_connect(self):
+        """Test setting environment on connection"""
+
+        async with self.connect(env={'TEST': 'test'}) as conn:
+            chan, session = await _create_session(conn, 'env')
+
+            await chan.wait_closed()
+
+            result = ''.join(session.recv_buf[None])
+            self.assertEqual(result, 'test\n')
+
+    @asynctest
     async def test_env_list(self):
         """Test setting environment using a list of name=value strings"""
 
@@ -1089,6 +1108,23 @@ class _TestChannel(ServerTestCase):
 
             result = ''.join(session.recv_buf[None])
             self.assertEqual(result, 'test\n')
+
+    @asynctest
+    async def test_send_env_from_connect(self):
+        """Test sending local environment on connection"""
+
+        try:
+            os.environ['TEST'] = 'test'
+
+            async with self.connect(send_env=['TEST']) as conn:
+                chan, session = await _create_session(conn, 'env')
+
+                await chan.wait_closed()
+
+                result = ''.join(session.recv_buf[None])
+                self.assertEqual(result, 'test\n')
+        finally:
+            del os.environ['TEST']
 
     @asynctest
     async def test_mixed_env(self):
@@ -1525,6 +1561,14 @@ class _TestChannelNoPTY(ServerTestCase):
         async with self.connect() as conn:
             with self.assertRaises(asyncssh.ChannelOpenError):
                 await conn.run('echo', request_pty='force')
+
+    @asynctest
+    async def test_exec_pty_from_connect(self):
+        """Test execution of a command that requests a PTY on the connection"""
+
+        async with self.connect(request_pty='force') as conn:
+            with self.assertRaises(asyncssh.ChannelOpenError):
+                await conn.run('echo')
 
     @asynctest
     async def test_exec_no_pty(self):

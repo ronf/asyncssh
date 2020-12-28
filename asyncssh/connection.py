@@ -414,7 +414,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
     def __init__(self, loop, options, acceptor, error_handler, wait, server):
         self._loop = loop
-        self._config = options.config
+        self._options = options
         self._protocol_factory = options.protocol_factory
         self._acceptor = acceptor
         self._error_handler = error_handler
@@ -2656,9 +2656,10 @@ class SSHClientConnection(SSHConnection):
                     get_default_x509_certificate_algs() + default_host_key_algs
 
         self._server_host_key_algs = \
-            _select_host_key_algs(self._server_host_key_algs,
-                                  self._config.get('HostKeyAlgorithms', ()),
-                                  default_host_key_algs)
+            _select_host_key_algs(
+                self._server_host_key_algs,
+                self._options.config.get('HostKeyAlgorithms', ()),
+                default_host_key_algs)
 
         self.logger.info('Connection to %s succeeded', (self._host, self._port))
 
@@ -3101,13 +3102,12 @@ class SSHClientConnection(SSHConnection):
                 self._x11_listener = None
 
     async def create_session(self, session_factory, command=(), *,
-                             subsystem=None, env=(), send_env=(),
-                             request_pty=(), term_type=None, term_size=None,
-                             term_modes=None, x11_forwarding=(),
-                             x11_display=None, x11_auth_path=None,
-                             x11_single_connection=False, encoding='utf-8',
-                             errors='strict', window=_DEFAULT_WINDOW,
-                             max_pktsize=_DEFAULT_MAX_PKTSIZE):
+                             subsystem=(), env=(), send_env=(),
+                             request_pty=(), term_type=(), term_size=(),
+                             term_modes=(), x11_forwarding=(),
+                             x11_display=(), x11_auth_path=(),
+                             x11_single_connection=(), encoding=(),
+                             errors=(), window=(), max_pktsize=()):
         """Create an SSH client session
 
            This method is a coroutine which can be called to create an SSH
@@ -3135,7 +3135,7 @@ class SSHClientConnection(SSHConnection):
                The remote command to execute. By default, an interactive
                shell is started if no command or subsystem is provided.
            :param subsystem: (optional)
-               The name of a remote subsystem to start up
+               The name of a remote subsystem to start up.
            :param env: (optional)
                The  environment variables to set for this session. Keys and
                values passed in here will be converted to Unicode strings
@@ -3151,49 +3151,51 @@ class SSHClientConnection(SSHConnection):
                `os.environ` and set for this session. Wildcards patterns
                using `'*'` and `'?'` are allowed, and all variables with
                matching names will be sent with whatever value is set
-               in the local environment.  If a variable is present in both
+               in the local environment. If a variable is present in both
                env and send_env, the value from env will be used.
            :param request_pty: (optional)
                Whether or not to request a pseudo-terminal (PTY) for this
-               session.  This defaults tto `True`, which means to request a
+               session. This defaults to `True`, which means to request a
                PTY whenever the `term_type` is set. Other possible values
                include `False` to never request a PTY, `'force'` to always
                request a PTY even without `term_type` being set, or `'auto'`
                to request a TTY when `term_type` is set but only when
                starting an interactive shell.
            :param term_type: (optional)
-               The terminal type to set for this session. If this is not set,
-               a pseudo-terminal will not be requested for this session.
+               The terminal type to set for this session.
            :param term_size: (optional)
                The terminal width and height in characters and optionally
-               the width and height in pixels
+               the width and height in pixels.
            :param term_modes: (optional)
-               POSIX terminal modes to set for this session, where keys
-               are taken from :ref:`POSIX terminal modes <PTYModes>` with
-               values defined in section 8 of :rfc:`RFC 4254 <4254#section-8>`.
+               POSIX terminal modes to set for this session, where keys are
+               taken from :ref:`POSIX terminal modes <PTYModes>` with values
+               defined in section 8 of :rfc:`RFC 4254 <4254#section-8>`.
            :param x11_forwarding: (optional)
                Whether or not to request X11 forwarding for this session,
-               defaulting to `False`. It can also be set to `'ignore_failure'`
-               to attempt X11 forwarding but ignore failure if that occurs.
+               defaulting to `False`. If set to `True`, X11 forwarding will
+               be requested and a failure will raise :exc:`ChannelOpenError`.
+               It can also be set to `'ignore_failure'` to attempt X11
+               forwarding but ignore failures.
            :param x11_display: (optional)
                The display that X11 connections should be forwarded to,
-               defaulting to the value in the environment variable `DISPLAY`
+               defaulting to the value in the environment variable `DISPLAY`.
            :param x11_auth_path: (optional)
                The path to the Xauthority file to read X11 authentication
                data from, defaulting to the value in the environment variable
                `XAUTHORITY` or the file :file:`.Xauthority` in the user's
-               home directory if that's not set
+               home directory if that's not set.
            :param x11_single_connection: (optional)
                Whether or not to limit X11 forwarding to a single connection,
-               defaulting to `False`
+               defaulting to `False`.
            :param encoding: (optional)
-               The Unicode encoding to use for data exchanged on the connection
+               The Unicode encoding to use for data exchanged on this session.
            :param errors: (optional)
-               The error handling strategy to apply on encode/decode errors
+               The error handling strategy to apply on Unicode encode/decode
+               errors.
            :param window: (optional)
-               The receive window size for this session
+               The receive window size for this session.
            :param max_pktsize: (optional)
-               The maximum packet size for this session
+               The maximum packet size for this session.
            :type session_factory: `callable`
            :type command: `str`
            :type subsystem: `str`
@@ -3219,21 +3221,60 @@ class SSHClientConnection(SSHConnection):
         """
 
         if command == ():
-            command = self._config.get('RemoteCommand')
+            command = self._options.command
 
-        new_env = {}
+        if subsystem == ():
+            subsystem = self._options.subsystem
+
+        if env == ():
+            env = self._options.env
 
         if send_env == ():
-            send_env = self._config.get('SendEnv')
+            send_env = self._options.send_env
+
+        if request_pty == ():
+            request_pty = self._options.request_pty
+
+        if term_type == ():
+            term_type = self._options.term_type
+
+        if term_size == ():
+            term_size = self._options.term_size
+
+        if term_modes == ():
+            term_modes = self._options.term_modes
+
+        if x11_forwarding == ():
+            x11_forwarding = self._options.x11_forwarding
+
+        if x11_display == ():
+            x11_display = self._options.x11_display
+
+        if x11_auth_path == ():
+            x11_auth_path = self._options.x11_auth_path
+
+        if x11_single_connection == ():
+            x11_single_connection = self._options.x11_single_connection
+
+        if encoding == ():
+            encoding = self._options.encoding
+
+        if errors == ():
+            errors = self._options.errors
+
+        if window == ():
+            window = self._options.window
+
+        if max_pktsize == ():
+            max_pktsize = self._options.max_pktsize
+
+        new_env = {}
 
         if send_env:
             for key in send_env:
                 pattern = WildcardPattern(key)
                 new_env.update((key, value) for key, value in os.environ.items()
                                if pattern.matches(key))
-
-        if env == ():
-            env = self._config.get('SetEnv')
 
         if env:
             try:
@@ -3244,19 +3285,12 @@ class SSHClientConnection(SSHConnection):
             except ValueError:
                 raise ValueError('Invalid environment value') from None
 
-        if request_pty == ():
-            request_pty = self._config.get('RequestTTY', True)
-
         if request_pty == 'force':
             request_pty = True
         elif request_pty == 'auto':
             request_pty = bool(term_type and not (command or subsystem))
         elif request_pty:
             request_pty = bool(term_type)
-
-        if x11_forwarding == ():
-            x11_forwarding = \
-                self._config.get('ForwardX11Trusted') and 'ignore_failure'
 
         chan = SSHClientChannel(self, self._loop, encoding, errors,
                                 window, max_pktsize)
@@ -4100,7 +4134,7 @@ class SSHClientConnection(SSHConnection):
                `os.environ` and set for this SFTP session. Wildcards
                patterns using `'*'` and `'?'` are allowed, and all variables
                with matching names will be sent with whatever value is set
-               in the local environment.  If a variable is present in both
+               in the local environment. If a variable is present in both
                env and send_env, the value from env will be used.
            :param path_encoding:
                The Unicode encoding to apply when sending and receiving
@@ -4235,7 +4269,7 @@ class SSHServerConnection(SSHConnection):
             username=self._username, client_host=self._peer_host,
             client_addr=self._peer_addr)
 
-        self._config = options.config
+        self._options = options
 
         self._host_based_auth = options.host_based_auth
         self._public_key_auth = options.public_key_auth
@@ -5652,7 +5686,7 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
            public key authentication, or the :class:`SSHServerConnection`
            to use to forward ssh-agent requests over. If this is not
            specified and the environment variable `SSH_AUTH_SOCK` is
-           set, its value will be used as the path.  If `client_keys`
+           set, its value will be used as the path. If `client_keys`
            is specified or this argument is explicitly set to `None`,
            an ssh-agent will not be used.
        :param agent_forwarding: (optional)
@@ -5719,6 +5753,73 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
            without getting a response before disconnecting from the
            server. This defaults to 3, but only applies when
            keepalive_interval is non-zero.
+       :param command: (optional)
+           The default remote command to execute on client sessions.
+           An interactive shell is started if no command or subsystem is
+           specified.
+       :param subsystem: (optional)
+           The default remote subsystem to start on client sessions.
+       :param env: (optional)
+           The  default environment variables to set for client sessions.
+           Keys and values passed in here will be converted to Unicode
+           strings encoded as UTF-8 (ISO 10646) for transmission.
+
+           .. note:: Many SSH servers restrict which environment
+                     variables a client is allowed to set. The
+                     server's configuration may need to be edited
+                     before environment variables can be
+                     successfully set in the remote environment.
+       :param send_env: (optional)
+           A list of environment variable names to pull from
+           `os.environ` and set by default for client sessions. Wildcards
+           patterns using `'*'` and `'?'` are allowed, and all variables
+           with matching names will be sent with whatever value is set in
+           the local environment. If a variable is present in both env
+           and send_env, the value from env will be used.
+       :param request_pty: (optional)
+           Whether or not to request a pseudo-terminal (PTY) by default for
+           client sessions. This defaults to `True`, which means to request
+           a PTY whenever the `term_type` is set. Other possible values
+           include `False` to never request a PTY, `'force'` to always
+           request a PTY even without `term_type` being set, or `'auto'`
+           to request a TTY when `term_type` is set but only when starting
+           an interactive shell.
+       :param term_type: (optional)
+           The default terminal type to set for client sessions.
+       :param term_size: (optional)
+           The terminal width and height in characters and optionally
+           the width and height in pixels to set for client sessions.
+       :param term_modes: (optional)
+           POSIX terminal modes to set for client sessions, where keys are
+           taken from :ref:`POSIX terminal modes <PTYModes>` with values
+           defined in section 8 of :rfc:`RFC 4254 <4254#section-8>`.
+       :param x11_forwarding: (optional)
+           Whether or not to request X11 forwarding for client sessions,
+           defaulting to `False`. If set to `True`, X11 forwarding will be
+           requested and a failure will raise :exc:`ChannelOpenError`. It
+           can also be set to `'ignore_failure'` to attempt X11 forwarding
+           but ignore failures.
+       :param x11_display: (optional)
+           The display that X11 connections should be forwarded to,
+           defaulting to the value in the environment variable `DISPLAY`.
+       :param x11_auth_path: (optional)
+           The path to the Xauthority file to read X11 authentication
+           data from, defaulting to the value in the environment variable
+           `XAUTHORITY` or the file :file:`.Xauthority` in the user's
+           home directory if that's not set.
+       :param x11_single_connection: (optional)
+           Whether or not to limit X11 forwarding to a single connection,
+           defaulting to `False`.
+       :param encoding: (optional)
+           The default Unicode encoding to use for data exchanged on client
+           sessions.
+       :param errors: (optional)
+           The default error handling strategy to apply on Unicode
+           encode/decode errors.
+       :param window: (optional)
+           The default receive window size to set for client sessions.
+       :param max_pktsize: (optional)
+           The default maximum packet size to set for client sessions.
        :param config: (optional)
            Paths to OpenSSH client configuration files to load. This
            configuration will be used as a fallback to override the
@@ -5784,6 +5885,22 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
        :type login_timeout: *see* :ref:`SpecifyingTimeIntervals`
        :type keepalive_interval: *see* :ref:`SpecifyingTimeIntervals`
        :type keepalive_count_max: `int`
+       :type command: `str`
+       :type subsystem: `str`
+       :type env: `dict`
+       :type send_env: `str` or `list` of `str`
+       :type request_pty: `bool`, `'force'`, or `'auto'`
+       :type term_type: `str`
+       :type term_size: `tuple` of 2 or 4 `int` values
+       :type term_modes: `dict`
+       :type x11_forwarding: `bool` or `'ignore_failure'`
+       :type x11_display: `str`
+       :type x11_auth_path: `str`
+       :type x11_single_connection: `bool`
+       :type encoding: `str`
+       :type errors: `str`
+       :type window: `int`
+       :type max_pktsize: `int`
        :type config: `list` of `str`
        :type options: :class:`SSHClientConnectionOptions`
 
@@ -5806,7 +5923,13 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
                 client_keys=(), client_certs=(), passphrase=None, gss_host=(),
                 gss_kex=(), gss_auth=(), gss_delegate_creds=(),
                 preferred_auth=(), agent_path=(), agent_identities=(),
-                agent_forwarding=(), pkcs11_provider=(), pkcs11_pin=None):
+                agent_forwarding=(), pkcs11_provider=(), pkcs11_pin=None,
+                command=(), subsystem=None, env=(), send_env=(),
+                request_pty=(), term_type=None, term_size=None,
+                term_modes=None, x11_forwarding=(), x11_display=None,
+                x11_auth_path=None, x11_single_connection=False,
+                encoding='utf-8', errors='strict', window=_DEFAULT_WINDOW,
+                max_pktsize=_DEFAULT_MAX_PKTSIZE):
         """Prepare client connection configuration options"""
 
         local_username = getpass.getuser()
@@ -5972,6 +6095,39 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
 
         self.agent_forward_path = agent_path if agent_forwarding else None
 
+        if command == ():
+            command = config.get('RemoteCommand')
+
+        if env == ():
+            env = config.get('SetEnv')
+
+        if send_env == ():
+            send_env = config.get('SendEnv')
+
+        if request_pty == ():
+            request_pty = config.get('RequestTTY', True)
+
+        if x11_forwarding == ():
+            x11_forwarding = config.get('ForwardX11Trusted') and \
+                'ignore_failure'
+
+        self.command = command
+        self.subsystem = subsystem
+        self.env = env
+        self.send_env = send_env
+        self.request_pty = request_pty
+        self.term_type = term_type
+        self.term_size = term_size
+        self.term_modes = term_modes
+        self.x11_forwarding = x11_forwarding
+        self.x11_display = x11_display
+        self.x11_auth_path = x11_auth_path
+        self.x11_single_connection = x11_single_connection
+        self.encoding = encoding
+        self.errors = errors
+        self.window = window
+        self.max_pktsize = max_pktsize
+
 
 class SSHServerConnectionOptions(SSHConnectionOptions):
     """SSH server connection options
@@ -6011,7 +6167,7 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
            trusted for certifcate-based client public key authentication.
        :param x509_trusted_certs: (optional)
            A list of certificates which should be trusted for X.509 client
-           certificate authentication.  If this argument is explicitly set
+           certificate authentication. If this argument is explicitly set
            to `None`, X.509 client certificate authentication will not
            be performed.
 

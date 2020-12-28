@@ -517,6 +517,14 @@ class _TestX11(ServerTestCase):
             await _create_x11_process(conn, 'sleep', x11_display='test:0')
 
     @asynctest
+    async def test_from_connect(self):
+        """Test requesting X11 forwarding on connection"""
+
+        async with self.connect(x11_forwarding=True,
+                                x11_display='text:0') as conn:
+            await conn.create_process('sleep')
+
+    @asynctest
     async def test_multiple_sessions(self):
         """Test requesting X11 forwarding from two different sessions"""
 
