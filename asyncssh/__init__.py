@@ -40,7 +40,7 @@ from .client import SSHClient
 
 from .config import ConfigParseError
 
-from .connection import SSHClientConnection, SSHServerConnection
+from .connection import SSHAcceptor, SSHClientConnection, SSHServerConnection
 from .connection import SSHClientConnectionOptions, SSHServerConnectionOptions
 from .connection import create_connection, create_server, connect, listen
 from .connection import connect_reverse, listen_reverse, get_server_host_key

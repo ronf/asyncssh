@@ -1002,9 +1002,18 @@ SSHUNIXChannel
 Listener Classes
 ================
 
-SSHListener
+SSHAcceptor
 -----------
 
+.. autoclass:: SSHAcceptor()
+
+   ====================== =
+   .. automethod:: update
+   ====================== =
+
+
+SSHListener
+-----------
 .. autoclass:: SSHListener()
 
    =========================== =

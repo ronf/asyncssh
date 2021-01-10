@@ -270,6 +270,12 @@ class Options:
     def prepare(self):
         """Pre-process configuration options"""
 
+    def update(self, kwargs):
+        """Update options based on keyword parameters passed in"""
+
+        self.kwargs.update(kwargs)
+        self.prepare(**self.kwargs)
+
 
 class Record:
     """General-purpose record type with fixed set of fields"""

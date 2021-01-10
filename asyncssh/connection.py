@@ -189,9 +189,14 @@ async def _open_tunnel(tunnel):
         return None
 
 
-async def _connect(host, port, loop, tunnel, family, flags,
-                   local_addr, conn_factory, msg):
+async def _connect(options, loop, flags, conn_factory, msg):
     """Make outbound TCP or SSH tunneled connection"""
+
+    host = options.host
+    port = options.port
+    tunnel = options.tunnel
+    family = options.family
+    local_addr = options.local_addr
 
     new_tunnel = await _open_tunnel(tunnel)
 
@@ -232,14 +237,19 @@ async def _connect(host, port, loop, tunnel, family, flags,
         return conn
 
 
-async def _listen(host, port, loop, tunnel, family, flags, backlog,
-                  reuse_address, reuse_port, conn_factory, msg):
+async def _listen(options, loop, flags, backlog, reuse_address,
+                  reuse_port, conn_factory, msg):
     """Make inbound TCP or SSH tunneled listener"""
 
     def tunnel_factory(_orig_host, _orig_port):
         """Ignore original host and port"""
 
         return conn_factory()
+
+    host = options.host
+    port = options.port
+    tunnel = options.tunnel
+    family = options.family
 
     new_tunnel = await _open_tunnel(tunnel)
 
@@ -267,7 +277,8 @@ async def _listen(host, port, loop, tunnel, family, flags, backlog,
                                           reuse_address=reuse_address,
                                           reuse_port=reuse_port)
 
-    return server
+    return SSHAcceptor(server, options)
+
 
 def _validate_version(version):
     """Validate requested SSH version"""
@@ -395,6 +406,45 @@ def _validate_algs(config, kex_algs, enc_algs, mac_algs, cmp_algs,
                             config.get('CASignatureAlgorithms', ()))
 
     return kex_algs, enc_algs, mac_algs, cmp_algs, sig_algs
+
+
+class SSHAcceptor:
+    """SSH acceptor
+
+       This class in a wrapper around an :class:`asyncio.Server` listener
+       which provides the ability to update the the set of SSH client or
+       server connection options associated wtih that listener. This is
+       accomplished by calling the :meth:`update` method, which takes the
+       same keyword arguments as the :class:`SSHClientConnectionOptions`
+       and :class:`SSHServerConnectionOptions` classes.
+
+       In addition, this class supports all of the methods supported by
+       :class:`asyncio.Server` to control accepting of new connections.
+
+    """
+
+    def __init__(self, server, options):
+        self._server = server
+        self._options = options
+
+    def __getattr__(self, name):
+        return getattr(self._server, name)
+
+    def update(self, **kwargs):
+        """Update options on an SSH listener
+
+           Acceptors started by :func:`listen` support options defined
+           in :class:`SSHServerConnectionOptions`. Acceptors started
+           by :func:`listen_reverse` support options defined in
+           :class:`SSHClientConnectionOptions`.
+
+           Changes apply only to SSH client/server connections accepted
+           after the change is made. Previously accepted connections
+           will continue to use the options set when they were accepted.
+
+        """
+
+        self._options.update(kwargs)
 
 
 class SSHConnection(SSHPacketHandler, asyncio.Protocol):
@@ -6615,9 +6665,8 @@ async def connect(host, port=(), *, tunnel=(), family=(), flags=0,
                                          family=family, local_addr=local_addr,
                                          **kwargs)
 
-    return await _connect(options.host, options.port, loop, options.tunnel,
-                          options.family, flags, options.local_addr,
-                          conn_factory, 'Opening SSH connection to')
+    return await _connect(options, loop, flags, conn_factory,
+                          'Opening SSH connection to')
 
 
 @async_context_manager
@@ -6692,9 +6741,8 @@ async def connect_reverse(host, port=(), *, tunnel=(), family=(), flags=0,
                                          family=family, local_addr=local_addr,
                                          **kwargs)
 
-    return await _connect(options.host, options.port, loop, options.tunnel,
-                          options.family, flags, options.local_addr,
-                          conn_factory, 'Opening reverse SSH connection to')
+    return await _connect(options, loop, flags, conn_factory,
+                          'Opening reverse SSH connection to')
 
 
 @async_context_manager
@@ -6706,7 +6754,7 @@ async def listen(host='', port=(), tunnel=(), family=(),
 
        This function is a coroutine which can be run to create an SSH server
        listening on the specified host and port. The return value is an
-       :class:`asyncio.Server` which can be used to shut down the listener.
+       :class:`SSHAcceptor` which can be used to shut down the listener.
 
        :param host: (optional)
            The hostname or address to listen on. If not specified, listeners
@@ -6773,7 +6821,7 @@ async def listen(host='', port=(), tunnel=(), family=(),
        :type config: `list` of `str`
        :type options: :class:`SSHServerConnectionOptions`
 
-       :returns: :class:`asyncio.Server`
+       :returns: :class:`SSHAcceptor`
 
     """
 
@@ -6788,8 +6836,7 @@ async def listen(host='', port=(), tunnel=(), family=(),
                                          port=port, tunnel=tunnel,
                                          family=family, **kwargs)
 
-    return await _listen(options.host, options.port, loop, options.tunnel,
-                         options.family, flags, backlog, reuse_address,
+    return await _listen(options, loop, flags, backlog, reuse_address,
                          reuse_port, conn_factory, 'Creating SSH listener on')
 
 
@@ -6812,7 +6859,7 @@ async def listen_reverse(host='', port=(), *, tunnel=(), family=(),
        that the `options` are of type :class:`SSHClientConnectionOptions`
        instead of :class:`SSHServerConnectionOptions`.
 
-       The return value is an :class:`asyncio.Server` which can be used to
+       The return value is an :class:`SSHAcceptor` which can be used to
        shut down the reverse listener.
 
        :param host: (optional)
@@ -6882,7 +6929,7 @@ async def listen_reverse(host='', port=(), *, tunnel=(), family=(),
        :type config: `list` of `str`
        :type options: :class:`SSHClientConnectionOptions`
 
-       :returns: :class:`asyncio.Server`
+       :returns: :class:`SSHAcceptor`
 
     """
 
@@ -6897,8 +6944,7 @@ async def listen_reverse(host='', port=(), *, tunnel=(), family=(),
                                          port=port, tunnel=tunnel,
                                          family=family, **kwargs)
 
-    return await _listen(options.host, options.port, loop, options.tunnel,
-                         options.family, flags, backlog, reuse_address,
+    return await _listen(options, loop, flags, backlog, reuse_address,
                          reuse_port, conn_factory,
                          'Creating reverse direction SSH listener on')
 
@@ -7034,9 +7080,8 @@ async def get_server_host_key(host, port=(), *, tunnel=(), family=(), flags=0,
         x509_trusted_cert_paths=None, x509_purposes='any', gss_host=None,
         kex_algs=kex_algs, client_version=client_version)
 
-    conn = await _connect(options.host, options.port, loop, options.tunnel,
-                          options.family, flags, options.local_addr,
-                          conn_factory, 'Fetching server host key from')
+    conn = await _connect(options, loop, flags, conn_factory,
+                          'Fetching server host key from')
 
     server_host_key = conn.get_server_host_key()
 

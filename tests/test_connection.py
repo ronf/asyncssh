@@ -700,6 +700,20 @@ class _TestConnection(ServerTestCase):
                 await self.connect()
 
     @asynctest
+    async def test_changing_server_host_key(self):
+        """Test changing server host key"""
+
+        self._server.update(server_host_keys=['skey_ecdsa'])
+
+        async with self.connect(known_hosts=None):
+            pass
+
+        self._server.update(server_host_keys=['skey'])
+
+        with self.assertRaises(asyncssh.KeyExchangeFailed):
+            await self.connect(known_hosts=(['skey_ecdsa.pub'], [], []))
+
+    @asynctest
     async def test_kex_algs(self):
         """Test connecting with different key exchange algorithms"""
 
