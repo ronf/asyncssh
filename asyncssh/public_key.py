@@ -2095,7 +2095,7 @@ def _parse_rfc4716(data):
         else:
             hdr += line
             if b':' in hdr:
-                hdr, value = hdr.split(b':')
+                hdr, value = hdr.split(b':', 1)
 
                 if hdr.strip() == b'Comment':
                     comment = value.strip()
