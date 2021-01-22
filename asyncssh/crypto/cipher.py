@@ -25,7 +25,7 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.ciphers import Cipher
 from cryptography.hazmat.primitives.ciphers.algorithms import AES, ARC4
 from cryptography.hazmat.primitives.ciphers.algorithms import Blowfish, CAST5
-from cryptography.hazmat.primitives.ciphers.algorithms import TripleDES
+from cryptography.hazmat.primitives.ciphers.algorithms import SEED, TripleDES
 
 from cryptography.hazmat.primitives.ciphers.modes import CBC, CTR, GCM
 
@@ -147,7 +147,8 @@ _cipher_alg_list = (
     ('cast128-cbc',  CAST5,     CBC,     0, 16,  8,  8),
     ('des-cbc',      TripleDES, CBC,     0,  8,  8,  8),
     ('des2-cbc',     TripleDES, CBC,     0, 16,  8,  8),
-    ('des3-cbc',     TripleDES, CBC,     0, 24,  8,  8)
+    ('des3-cbc',     TripleDES, CBC,     0, 24,  8,  8),
+    ('seed-cbc',     SEED,      CBC,     0, 16, 16, 16)
 )
 
 # pylint: enable=bad-whitespace

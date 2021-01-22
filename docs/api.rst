@@ -2175,6 +2175,7 @@ disabled by default:
   | 3des-cbc
   | blowfish-cbc
   | cast128-cbc
+  | seed-cbc
   | arcfour256
   | arcfour128
   | arcfour

@@ -279,6 +279,8 @@ _enc_alg_list = (
      'blowfish-cbc',      False),
     (b'cast128-cbc',                   BasicEncryption,
      'cast128-cbc',       False),
+    (b'seed-cbc@ssh.com',              BasicEncryption,
+     'seed-cbc',          False),
     (b'arcfour256',                    BasicEncryption,
      'arcfour256',        False),
     (b'arcfour128',                    BasicEncryption,
