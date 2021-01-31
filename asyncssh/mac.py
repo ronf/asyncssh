@@ -21,7 +21,7 @@
 """SSH message authentication handlers"""
 
 import hmac
-from hashlib import md5, sha1, sha256, sha512
+from hashlib import md5, sha1, sha224, sha256, sha384, sha512
 
 from .packet import UInt32, UInt64
 
@@ -189,6 +189,11 @@ _mac_algs_list += (
     (b'hmac-sha2-256',           32, 32, False, _HMAC,    (sha256,),  True),
     (b'hmac-sha2-512',           64, 64, False, _HMAC,    (sha512,),  True),
     (b'hmac-sha1',               20, 20, False, _HMAC,    (sha1,),    True),
+    (b'hmac-sha256-2@ssh.com',   32, 32, False, _HMAC,    (sha256,),  True),
+    (b'hmac-sha224@ssh.com',     28, 28, False, _HMAC,    (sha224,),  True),
+    (b'hmac-sha256@ssh.com',     16, 32, False, _HMAC,    (sha256,),  True),
+    (b'hmac-sha384@ssh.com',     48, 48, False, _HMAC,    (sha384,),  True),
+    (b'hmac-sha512@ssh.com',     64, 64, False, _HMAC,    (sha512,),  True),
     (b'hmac-md5',                16, 16, False, _HMAC,    (md5,),     False),
     (b'hmac-sha2-256-96',        32, 12, False, _HMAC,    (sha256,),  False),
     (b'hmac-sha2-512-96',        64, 12, False, _HMAC,    (sha512,),  False),

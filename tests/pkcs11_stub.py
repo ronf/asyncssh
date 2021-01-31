@@ -43,7 +43,9 @@ if pkcs11_available: # pragma: no branch
                   'ssh-ed25519':         KeyType.EC_EDWARDS}
 
     _hash_algs = {Mechanism.SHA1_RSA_PKCS:   'sha1',
+                  Mechanism.SHA224_RSA_PKCS: 'sha224',
                   Mechanism.SHA256_RSA_PKCS: 'sha256',
+                  Mechanism.SHA384_RSA_PKCS: 'sha384',
                   Mechanism.SHA512_RSA_PKCS: 'sha512',
                   Mechanism.ECDSA_SHA256:    'sha256',
                   Mechanism.ECDSA_SHA384:    'sha384',

@@ -31,11 +31,15 @@ from .public_key import register_x509_certificate_alg
 
 # pylint: disable=bad-whitespace
 
-_hash_algs = {b'ssh-rsa':        'sha1',
-              b'rsa-sha2-256':   'sha256',
-              b'rsa-sha2-512':   'sha512',
-              b'rsa1024-sha1':   'sha1',
-              b'rsa2048-sha256': 'sha256'}
+_hash_algs = {b'ssh-rsa':                'sha1',
+              b'rsa-sha2-256':           'sha256',
+              b'rsa-sha2-512':           'sha512',
+              b'ssh-rsa-sha224@ssh.com': 'sha224',
+              b'ssh-rsa-sha256@ssh.com': 'sha256',
+              b'ssh-rsa-sha384@ssh.com': 'sha384',
+              b'ssh-rsa-sha512@ssh.com': 'sha512',
+              b'rsa1024-sha1':           'sha1',
+              b'rsa2048-sha256':         'sha256'}
 
 # pylint: enable=bad-whitespace
 
@@ -47,7 +51,10 @@ class _RSAKey(SSHKey):
     default_hash_alg = 'sha256'
     pem_name = b'RSA'
     pkcs8_oid = ObjectIdentifier('1.2.840.113549.1.1.1')
-    sig_algorithms = (b'rsa-sha2-256', b'rsa-sha2-512', b'ssh-rsa')
+    sig_algorithms = (b'rsa-sha2-256', b'rsa-sha2-512',
+                      b'ssh-rsa-sha224@ssh.com', b'ssh-rsa-sha256@ssh.com',
+                      b'ssh-rsa-sha384@ssh.com', b'ssh-rsa-sha512@ssh.com',
+                      b'ssh-rsa')
     x509_sig_algorithms = (b'rsa2048-sha256', b'ssh-rsa')
     x509_algorithms = tuple(b'x509v3-' + alg for alg in x509_sig_algorithms)
     all_sig_algorithms = set(x509_sig_algorithms + sig_algorithms)

@@ -2131,6 +2131,7 @@ by AsyncSSH:
   | diffie-hellman-group16-sha512
   | diffie-hellman-group17-sha512
   | diffie-hellman-group18-sha512
+  | diffie-hellman-group14-sha256@ssh.com
   | diffie-hellman-group14-sha1
   | rsa2048-sha256
 
@@ -2140,6 +2141,12 @@ disabled by default:
   | gss-gex-sha1
   | gss-group1-sha1
   | diffie-hellman-group-exchange-sha1
+  | diffie-hellman-group14-sha224@ssh.com
+  | diffie-hellman-group15-sha256@ssh.com
+  | diffie-hellman-group15-sha384@ssh.com
+  | diffie-hellman-group16-sha384@ssh.com
+  | diffie-hellman-group16-sha512@ssh.com
+  | diffie-hellman-group18-sha512@ssh.com
   | diffie-hellman-group1-sha1
   | rsa1024-sha1
 
@@ -2201,6 +2208,11 @@ The following are the default MAC algorithms currently supported by AsyncSSH:
   | hmac-sha2-256
   | hmac-sha2-512
   | hmac-sha1
+  | hmac-sha256-2\@ssh.com
+  | hmac-sha224\@ssh.com
+  | hmac-sha256\@ssh.com
+  | hmac-sha384\@ssh.com
+  | hmac-sha512\@ssh.com
 
 The following MAC algorithms are supported by AsyncSSH, but disabled
 by default:
@@ -2262,6 +2274,10 @@ supported by AsyncSSH:
   | ecdsa-sha2-1.3.132.0.10
   | rsa-sha2-256
   | rsa-sha2-512
+  | ssh-rsa-sha224\@ssh.com
+  | ssh-rsa-sha256\@ssh.com
+  | ssh-rsa-sha384\@ssh.com
+  | ssh-rsa-sha512\@ssh.com
   | ssh-rsa
 
 The following public key signature algorithms are supported by AsyncSSH,
@@ -2306,6 +2322,10 @@ currently supported by AsyncSSH:
   | ecdsa-sha2-1.3.132.0.10
   | rsa-sha2-256
   | rsa-sha2-512
+  | ssh-rsa-sha224\@ssh.com
+  | ssh-rsa-sha256\@ssh.com
+  | ssh-rsa-sha384\@ssh.com
+  | ssh-rsa-sha512\@ssh.com
   | ssh-rsa
 
 The following public key and certificate algorithms are supported by

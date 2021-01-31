@@ -39,14 +39,18 @@ if pkcs11_available:
     encoders = {KeyType.RSA: encode_rsa_public_key,
                 KeyType.EC:  encode_ec_public_key}
 
-    mechanisms = {b'ssh-rsa':             Mechanism.SHA1_RSA_PKCS,
-                  b'rsa-sha2-256':        Mechanism.SHA256_RSA_PKCS,
-                  b'rsa-sha2-512':        Mechanism.SHA512_RSA_PKCS,
-                  b'rsa1024-sha1':        Mechanism.SHA1_RSA_PKCS,
-                  b'rsa2048-sha256':      Mechanism.SHA256_RSA_PKCS,
-                  b'ecdsa-sha2-nistp256': Mechanism.ECDSA_SHA256,
-                  b'ecdsa-sha2-nistp384': Mechanism.ECDSA_SHA384,
-                  b'ecdsa-sha2-nistp521': Mechanism.ECDSA_SHA512}
+    mechanisms = {b'ssh-rsa':                Mechanism.SHA1_RSA_PKCS,
+                  b'rsa-sha2-256':           Mechanism.SHA256_RSA_PKCS,
+                  b'rsa-sha2-512':           Mechanism.SHA512_RSA_PKCS,
+                  b'ssh-rsa-sha224@ssh.com': Mechanism.SHA224_RSA_PKCS,
+                  b'ssh-rsa-sha256@ssh.com': Mechanism.SHA256_RSA_PKCS,
+                  b'ssh-rsa-sha384@ssh.com': Mechanism.SHA384_RSA_PKCS,
+                  b'ssh-rsa-sha512@ssh.com': Mechanism.SHA512_RSA_PKCS,
+                  b'rsa1024-sha1':           Mechanism.SHA1_RSA_PKCS,
+                  b'rsa2048-sha256':         Mechanism.SHA256_RSA_PKCS,
+                  b'ecdsa-sha2-nistp256':    Mechanism.ECDSA_SHA256,
+                  b'ecdsa-sha2-nistp384':    Mechanism.ECDSA_SHA384,
+                  b'ecdsa-sha2-nistp521':    Mechanism.ECDSA_SHA512}
 
 
     class SSHPKCS11KeyPair(SSHKeyPair):

@@ -20,7 +20,7 @@
 
 """SSH Diffie-Hellman, ECDH, and Edwards DH key exchange handlers"""
 
-from hashlib import sha1, sha256, sha384, sha512
+from hashlib import sha1, sha224, sha256, sha384, sha512
 
 from .constants import DEFAULT_LANG
 from .crypto import curve25519_available, curve448_available
@@ -675,22 +675,36 @@ for _curve_id, _hash_name, _hash_alg, _default in (
                          _hash_alg, (ECDH, _curve_id), _default)
 
 for _hash_name, _hash_alg, _default in (
-        (b'sha256', sha256, True),
-        (b'sha1',   sha1,   False)):
+        (b'sha256',         sha256, True),
+        (b'sha224@ssh.com', sha224, False),
+        (b'sha384@ssh.com', sha384, False),
+        (b'sha512@ssh.com', sha512, False),
+        (b'sha1',           sha1,   False)):
     register_kex_alg(b'diffie-hellman-group-exchange-' + _hash_name,
                      _KexDHGex, _hash_alg, (), _default)
-    register_gss_kex_alg(b'gss-gex-' + _hash_name,
-                         _KexGSSGex, _hash_alg, (), _default)
+
+    if not _hash_name.endswith(b'@ssh.com'):
+        register_gss_kex_alg(b'gss-gex-' + _hash_name,
+                             _KexGSSGex, _hash_alg, (), _default)
 
 for _name, _hash_alg, _g, _p, _default in (
-        (b'group14-sha256', sha256, _group14_g, _group14_p, True),
-        (b'group15-sha512', sha512, _group15_g, _group15_p, True),
-        (b'group16-sha512', sha512, _group16_g, _group16_p, True),
-        (b'group17-sha512', sha512, _group17_g, _group17_p, True),
-        (b'group18-sha512', sha512, _group18_g, _group18_p, True),
-        (b'group14-sha1',   sha1,   _group14_g, _group14_p, True),
-        (b'group1-sha1',    sha1,   _group1_g,  _group1_p,  False)):
+        (b'group14-sha256',         sha256, _group14_g, _group14_p, True),
+        (b'group15-sha512',         sha512, _group15_g, _group15_p, True),
+        (b'group16-sha512',         sha512, _group16_g, _group16_p, True),
+        (b'group17-sha512',         sha512, _group17_g, _group17_p, True),
+        (b'group18-sha512',         sha512, _group18_g, _group18_p, True),
+        (b'group14-sha256@ssh.com', sha256, _group14_g, _group14_p, True),
+        (b'group14-sha224@ssh.com', sha224, _group14_g, _group14_p, False),
+        (b'group15-sha256@ssh.com', sha256, _group15_g, _group15_p, False),
+        (b'group15-sha384@ssh.com', sha384, _group15_g, _group15_p, False),
+        (b'group16-sha384@ssh.com', sha384, _group16_g, _group16_p, False),
+        (b'group16-sha512@ssh.com', sha512, _group16_g, _group16_p, False),
+        (b'group18-sha512@ssh.com', sha512, _group18_g, _group18_p, False),
+        (b'group14-sha1',           sha1,   _group14_g, _group14_p, True),
+        (b'group1-sha1',            sha1,   _group1_g,  _group1_p,  False)):
     register_kex_alg(b'diffie-hellman-' + _name, _KexDH, _hash_alg,
                      (_g, _p), _default)
-    register_gss_kex_alg(b'gss-' + _name, _KexGSS, _hash_alg,
-                         (_g, _p), _default)
+
+    if not _name.endswith(b'@ssh.com'):
+        register_gss_kex_alg(b'gss-' + _name, _KexGSS, _hash_alg,
+                             (_g, _p), _default)
