@@ -5987,8 +5987,7 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
         except KeyError:
             raise ValueError('Unknown local username: set one of '
                              'LOGNAME, USER, LNAME, or USERNAME in '
-                             'the environment or add a pwd entry for '
-                             'uid %d' % os.getuid()) from None
+                             'the environment') from None
 
         if config == () and not last_config:
             default_config = Path('~', '.ssh', 'config').expanduser()
