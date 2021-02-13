@@ -1195,6 +1195,17 @@ class _TestConnection(ServerTestCase):
         await conn.wait_closed()
 
     @asynctest
+    async def test_no_local_username(self):
+        """Test username being too long in userauth request"""
+
+        def _failing_getuser():
+            raise KeyError
+
+        with patch('getpass.getuser', _failing_getuser):
+            with self.assertRaises(ValueError):
+                await self.connect()
+
+    @asynctest
     async def test_invalid_username(self):
         """Test invalid username in userauth request"""
 

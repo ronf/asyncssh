@@ -5982,7 +5982,13 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
                 max_pktsize=_DEFAULT_MAX_PKTSIZE):
         """Prepare client connection configuration options"""
 
-        local_username = getpass.getuser()
+        try:
+            local_username = getpass.getuser()
+        except KeyError:
+            raise ValueError('Unknown local username: set one of '
+                             'LOGNAME, USER, LNAME, or USERNAME in '
+                             'the environment or add a pwd entry for '
+                             'uid %d' % os.getuid()) from None
 
         if config == () and not last_config:
             default_config = Path('~', '.ssh', 'config').expanduser()
