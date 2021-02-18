@@ -2604,16 +2604,16 @@ class SFTPClient:
 
         for part in path.split(b'/'):
             curpath = posixpath.join(curpath, part)
-            mode = await self._mode(curpath)
 
-            if stat.S_ISDIR(mode):
-                exists = True
-            elif mode:
-                raise SFTPFailure('%s is not a directory' %
-                                  curpath.decode('utf-8', errors='replace'))
-            else:
+            try:
                 await self.mkdir(curpath, attrs)
                 exists = False
+            except SFTPFailure:
+                mode = await self._mode(curpath)
+
+                if not stat.S_ISDIR(mode):
+                    path = curpath.decode('utf-8', errors='replace')
+                    raise SFTPFailure('%s is not a directory' % path) from None
 
         if exists and not exist_ok:
             raise SFTPFailure('%s already exists' %
