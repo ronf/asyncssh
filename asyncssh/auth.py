@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2020 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2021 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -31,8 +31,6 @@ from .packet import Boolean, String, UInt32, SSHPacketHandler
 from .saslprep import saslprep, SASLPrepError
 
 
-# pylint: disable=bad-whitespace
-
 # SSH message values for GSS auth
 MSG_USERAUTH_GSSAPI_RESPONSE          = 60
 MSG_USERAUTH_GSSAPI_TOKEN             = 61
@@ -50,8 +48,6 @@ MSG_USERAUTH_INFO_RESPONSE            = 61
 
 # SSH message values for password auth
 MSG_USERAUTH_PASSWD_CHANGEREQ         = 60
-
-# pylint: enable=bad-whitespace
 
 _auth_methods = []
 _client_auth_handlers = {}
@@ -932,8 +928,6 @@ def lookup_server_auth(conn, username, method, packet):
         return None
 
 
-# pylint: disable=bad-whitespace
-
 _auth_method_list = (
     (b'none',                 _ClientNullAuth,      _ServerNullAuth),
     (b'gssapi-keyex',         _ClientGSSKexAuth,    _ServerGSSKexAuth),
@@ -943,8 +937,6 @@ _auth_method_list = (
     (b'keyboard-interactive', _ClientKbdIntAuth,    _ServerKbdIntAuth),
     (b'password',             _ClientPasswordAuth,  _ServerPasswordAuth)
 )
-
-# pylint: enable=bad-whitespace
 
 for _args in _auth_method_list:
     register_auth_method(*_args)

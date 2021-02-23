@@ -1,4 +1,4 @@
-# Copyright (c) 2018 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2018-2021 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -24,8 +24,6 @@ from ipaddress import ip_address
 
 from .forward import SSHLocalForwarder
 
-# pylint: disable=bad-whitespace
-
 SOCKS4                  = 0x04
 SOCKS5                  = 0x05
 
@@ -45,8 +43,6 @@ SOCKS5_OK_RESPONSE      = bytes((SOCKS5, SOCKS5_OK, 0,
                                  SOCKS5_ADDR_HOSTNAME, 0, 0, 0))
 
 _socks5_addr_len = { SOCKS5_ADDR_IPV4: 4, SOCKS5_ADDR_IPV6: 16 }
-
-# pylint: enable=bad-whitespace
 
 
 class SSHSOCKSForwarder(SSHLocalForwarder):

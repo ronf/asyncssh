@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2020 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2021 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -125,8 +125,6 @@ def get_decompressor(alg):
     """
 
     return _cmp_decompressors[alg]()
-
-# pylint: disable=bad-whitespace
 
 register_compression_alg(b'zlib@openssh.com',
                          _ZLibCompress, _ZLibDecompress, True,  True)

@@ -1,4 +1,4 @@
-# Copyright (c) 2016-2020 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2016-2021 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -34,8 +34,6 @@ from .listener import create_tcp_forward_listener
 from .logging import logger
 from .misc import ChannelOpenError
 
-# pylint: disable=bad-whitespace
-
 # Xauth address families
 XAUTH_FAMILY_IPV4     = 0
 XAUTH_FAMILY_DECNET   = 1
@@ -60,8 +58,6 @@ X11_MAX_DISPLAYS      = 64
 
 # Host to listen on when doing X11 forwarding
 X11_LISTEN_HOST       = 'localhost'
-
-# pylint: enable=bad-whitespace
 
 
 def _parse_display(display):

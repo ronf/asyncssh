@@ -30,8 +30,6 @@ from asyncssh.packet import NameList, PacketDecodeError, SSHPacket
 class _TestPacket(unittest.TestCase):
     """Unit tests for SSH packet module"""
 
-    # pylint: disable=bad-whitespace
-
     tests = [
         (Byte, SSHPacket.get_byte, [
             (0,                               '00'),
@@ -130,8 +128,6 @@ class _TestPacket(unittest.TestCase):
         (SSHPacket.get_string,                '12345678'),
         (SSHPacket.get_string,                '000000011234')
     ]
-
-    # pylint: enable=bad-whitespace
 
     def test_packet(self):
         """Unit test SSH packet module"""

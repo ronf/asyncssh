@@ -1,4 +1,4 @@
-# Copyright (c) 2016-2020 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2016-2021 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -42,8 +42,6 @@ except ImportError as exc: # pragma: no cover
         raise OSError(errno.ENOENT, 'Agent support unavailable: %s' % reason)
 
 
-# pylint: disable=bad-whitespace
-
 # Client request message numbers
 SSH_AGENTC_REQUEST_IDENTITIES            = 11
 SSH_AGENTC_SIGN_REQUEST                  = 13
@@ -73,8 +71,6 @@ SSH_AGENT_CONSTRAIN_EXTENSION            = 255
 # SSH agent signature flags
 SSH_AGENT_RSA_SHA2_256                   = 2
 SSH_AGENT_RSA_SHA2_512                   = 4
-
-# pylint: enable=bad-whitespace
 
 
 class SSHAgentKeyPair(SSHKeyPair):
@@ -530,7 +526,7 @@ class SSHAgentClient:
                 try:
                     exttype = exttype.decode('utf-8')
                 except UnicodeDecodeError:
-                    raise ValueError('Invalid extension type name')
+                    raise ValueError('Invalid extension type name') from None
 
                 result.append(exttype)
 

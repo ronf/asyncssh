@@ -1024,8 +1024,6 @@ class _TestSOCKSForwarding(_CheckForwarding):
     async def test_forward_socks(self):
         """Test dynamic port forwarding via SOCKS"""
 
-        # pylint: disable=bad-whitespace
-
         _socks_early_errors = [
             ('Bad version',               '0000'),
             ('Bad SOCKSv4 command',       '0400'),
@@ -1052,8 +1050,6 @@ class _TestSOCKSForwarding(_CheckForwarding):
             ('IPv6',        '05010004' + 15*'00' + '010007',    True),
             ('Rejected',    '05010003000001',                   False)
         ]
-
-        # pylint: enable=bad-whitespace
 
         async with self.connect() as conn:
             async with  conn.forward_socks('', 0) as listener:

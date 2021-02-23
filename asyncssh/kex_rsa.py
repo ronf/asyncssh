@@ -1,4 +1,4 @@
-# Copyright (c) 2018-2020 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2018-2021 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -28,14 +28,10 @@ from .packet import MPInt, String, SSHPacket
 from .public_key import KeyImportError
 from .public_key import decode_ssh_public_key, generate_private_key
 
-# pylint: disable=bad-whitespace
-
 # SSH KEXRSA message values
 MSG_KEXRSA_PUBKEY  = 30
 MSG_KEXRSA_SECRET  = 31
 MSG_KEXRSA_DONE    = 32
-
-# pylint: enable=bad-whitespace
 
 
 class _KexRSA(Kex):
@@ -150,8 +146,6 @@ class _KexRSA(Kex):
         MSG_KEXRSA_DONE:   _process_done
     }
 
-
-# pylint: disable=bad-whitespace
 
 for _name, _hash_alg, _key_size, _hash_size, _default in (
         (b'rsa2048-sha256', sha256, 2048, 256, True),

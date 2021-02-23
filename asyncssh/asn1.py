@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2019 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2021 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -32,8 +32,6 @@
 
 """
 
-# pylint: disable=bad-whitespace
-
 # ASN.1 object classes
 UNIVERSAL         = 0x00
 APPLICATION       = 0x01
@@ -52,8 +50,6 @@ UTF8_STRING       = 0x0c
 SEQUENCE          = 0x10
 SET               = 0x11
 IA5_STRING        = 0x16
-
-# pylint: enable=bad-whitespace
 
 _asn1_class = ('Universal', 'Application', 'Context-specific', 'Private')
 
@@ -554,7 +550,8 @@ class ObjectIdentifier:
         try:
             components = [int(c) for c in self.value.split('.')]
         except ValueError:
-            raise ASN1EncodeError('Component values must be integers')
+            raise ASN1EncodeError('Component values must be '
+                                  'integers') from None
 
         if len(components) < 2:
             raise ASN1EncodeError('Object identifiers must have at least two '

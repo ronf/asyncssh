@@ -1,4 +1,4 @@
-# Copyright (c) 2015-2020 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2015-2021 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -291,9 +291,9 @@ class _SFTPAttrsSFTPServer(SFTPServer):
             return SFTPAttrs.from_local(super().stat(path))
         except OSError as exc:
             if exc.errno == errno.EACCES:
-                raise SFTPPermissionDenied(exc.strerror)
+                raise SFTPPermissionDenied(exc.strerror) from None
             else:
-                raise SFTPError(99, exc.strerror)
+                raise SFTPError(99, exc.strerror) from None
 
 
 class _AsyncSFTPServer(SFTPServer):
@@ -762,8 +762,6 @@ class _TestSFTP(_CheckSFTP):
     async def test_glob(self, sftp):
         """Test a glob pattern match over SFTP"""
 
-        # pylint: disable=bad-whitespace
-
         glob_tests = (
             ('file*',                    ['file1', 'filedir']),
             ('./file*',                  ['./file1', './filedir']),
@@ -795,8 +793,6 @@ class _TestSFTP(_CheckSFTP):
                                           'filedir/filedir2/file5']),
             ('./**/filedir2/file4',      ['./filedir/filedir2/file4']),
             ('**/filedir2/file4',        ['filedir/filedir2/file4']))
-
-        # pylint: enable=bad-whitespace
 
         try:
             os.mkdir('filedir')

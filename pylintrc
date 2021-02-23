@@ -59,7 +59,7 @@ confidence=
 # --enable=similarities". If you want to run only the classes checker, but have
 # no Warning level messages displayed, use"--disable=all --enable=classes
 # --disable=W"
-disable=fixme,locally-enabled,locally-disabled,redefined-variable-type,no-else-break,no-else-continue,no-else-raise,no-else-return,inconsistent-return-statements,useless-return
+disable=fixme,locally-enabled,locally-disabled,redefined-variable-type,no-else-break,no-else-continue,no-else-raise,no-else-return,inconsistent-return-statements,invalid-overridden-method,unbalanced-tuple-unpacking,useless-return
 
 
 [REPORTS]

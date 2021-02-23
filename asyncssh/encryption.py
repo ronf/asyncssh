@@ -252,8 +252,6 @@ def get_encryption(enc_alg, key, iv, mac_alg=b'', mac_key=b'', etm=False):
     return encryption.new(cipher_name, key, iv, mac_alg, mac_key, etm)
 
 
-# pylint: disable=bad-whitespace
-
 _enc_alg_list = (
     (b'chacha20-poly1305@openssh.com', ChachaEncryption,
      'chacha20-poly1305', True),

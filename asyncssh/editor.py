@@ -1,4 +1,4 @@
-# Copyright (c) 2016-2020 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2016-2021 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -541,8 +541,6 @@ class SSHLineEditor:
 
         self._session.break_received(0)
 
-    # pylint: disable=bad-whitespace
-
     _keylist = ((_end_line,      ('\n', '\r', '\x1bOM')),
                 (_eof_or_delete, ('\x04',)),
                 (_erase_left,    ('\x08', '\x7f')),
@@ -558,8 +556,6 @@ class SSHLineEditor:
                 (_redraw,        ('\x12',)),
                 (_insert_erased, ('\x19',)),
                 (_send_break,    ('\x03', '\x1b[33~')))
-
-    # pylint: enable=bad-whitespace
 
     def register_key(self, key, handler):
         """Register a handler to be called when a key is pressed"""

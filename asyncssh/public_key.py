@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2020 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2021 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -1446,7 +1446,7 @@ class SSHOpenSSHCertificate(SSHCertificate):
         try:
             key_id = key_id.decode('utf-8')
         except UnicodeDecodeError:
-            raise KeyImportError('Invalid characters in key ID')
+            raise KeyImportError('Invalid characters in key ID') from None
 
         packet = SSHPacket(principals)
         principals = []
@@ -1455,7 +1455,8 @@ class SSHOpenSSHCertificate(SSHCertificate):
             try:
                 principal = packet.get_string().decode('utf-8')
             except UnicodeDecodeError:
-                raise KeyImportError('Invalid characters in principal name')
+                raise KeyImportError('Invalid characters in principal '
+                                     'name') from None
 
             principals.append(principal)
 
@@ -1589,8 +1590,6 @@ class SSHOpenSSHCertificate(SSHCertificate):
 class SSHOpenSSHCertificateV01(SSHOpenSSHCertificate):
     """Encoder/decoder class for version 01 OpenSSH certificates"""
 
-    # pylint: disable=bad-whitespace
-
     _user_option_encoders = (
         ('force-command',           SSHOpenSSHCertificate._encode_force_cmd),
         ('source-address',          SSHOpenSSHCertificate._encode_source_addr)
@@ -1618,8 +1617,6 @@ class SSHOpenSSHCertificateV01(SSHOpenSSHCertificate):
         b'permit-user-rc':          SSHOpenSSHCertificate._decode_bool,
         b'no-touch-required':       SSHOpenSSHCertificate._decode_bool
     }
-
-    # pylint: enable=bad-whitespace
 
     @classmethod
     def _encode(cls, key, serial, cert_type, key_id, principals,
@@ -2351,7 +2348,7 @@ def _decode_openssh_private(data, passphrase):
         key.set_comment(comment)
         return key
     except PacketDecodeError:
-        raise KeyImportError('Invalid OpenSSH private key')
+        raise KeyImportError('Invalid OpenSSH private key') from None
 
 
 def _decode_openssh_public(data):
@@ -2375,7 +2372,7 @@ def _decode_openssh_public(data):
 
         return decode_ssh_public_key(pubkey)
     except PacketDecodeError:
-        raise KeyImportError('Invalid OpenSSH private key')
+        raise KeyImportError('Invalid OpenSSH private key') from None
 
 
 def _decode_der_private(key_data, passphrase):

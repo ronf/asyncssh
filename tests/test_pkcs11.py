@@ -34,8 +34,6 @@ from .util import asynctest
 class _CheckPKCS11Auth(ServerTestCase):
     """Common code for testing security key authentication"""
 
-    # pylint: disable=bad-whitespace
-
     _certs_available = False
 
     _pkcs11_tokens = [
@@ -44,8 +42,6 @@ class _CheckPKCS11Auth(ServerTestCase):
         ('Token 2', b'5678', [('ecdsa-sha2-nistp384', 'EC key 2'),
                               ('ssh-ed25519',         'ED key (unsupported)')])
     ]
-
-    # pylint: enable=bad-whitespace
 
     @classmethod
     async def start_server(cls):

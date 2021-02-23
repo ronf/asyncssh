@@ -31,7 +31,7 @@ from .misc import KeyExchangeFailed, ProtocolError, get_symbol_names, randrange
 from .packet import Boolean, MPInt, String, UInt32
 
 
-# pylint: disable=bad-whitespace,line-too-long
+# pylint: disable=line-too-long
 
 # SSH KEX DH message values
 MSG_KEXDH_INIT             = 30
@@ -93,7 +93,7 @@ _dh_gex_groups = ((1024, _group1_g,  _group1_p),
                   (6144, _group17_g, _group17_p),
                   (8192, _group18_g, _group18_p))
 
-# pylint: enable=bad-whitespace,line-too-long
+# pylint: enable=line-too-long
 
 
 class _KexDHBase(Kex):
@@ -498,7 +498,7 @@ class _KexGSSBase(_KexDHBase):
             if exc.token:
                 self.send_packet(MSG_KEXGSS_CONTINUE, String(exc.token))
 
-            raise KeyExchangeFailed(str(exc))
+            raise KeyExchangeFailed(str(exc)) from None
 
     def _process_init(self, _pkttype, _pktid, packet):
         """Process a GSS init message"""
@@ -661,8 +661,6 @@ if curve448_available: # pragma: no branch
                      (Curve448DH,), True)
     register_gss_kex_alg(b'gss-curve448-sha512', _KexGSSECDH, sha512,
                          (Curve448DH,), True)
-
-# pylint: disable=bad-whitespace
 
 for _curve_id, _hash_name, _hash_alg, _default in (
         (b'nistp521',     b'sha512', sha512, True),

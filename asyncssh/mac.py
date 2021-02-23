@@ -159,8 +159,6 @@ def get_mac(mac_alg, key):
     return handler(key, hash_size, *args)
 
 
-# pylint: disable=bad-whitespace
-
 _mac_algs_list = (
     (b'',                         0,  0, False, _NullMAC, (),         True),
 )

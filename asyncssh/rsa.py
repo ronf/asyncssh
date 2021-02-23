@@ -29,8 +29,6 @@ from .public_key import register_public_key_alg, register_certificate_alg
 from .public_key import register_x509_certificate_alg
 
 
-# pylint: disable=bad-whitespace
-
 _hash_algs = {b'ssh-rsa':                'sha1',
               b'rsa-sha2-256':           'sha256',
               b'rsa-sha2-512':           'sha512',
@@ -40,8 +38,6 @@ _hash_algs = {b'ssh-rsa':                'sha1',
               b'ssh-rsa-sha512@ssh.com': 'sha512',
               b'rsa1024-sha1':           'sha1',
               b'rsa2048-sha256':         'sha256'}
-
-# pylint: enable=bad-whitespace
 
 
 class _RSAKey(SSHKey):

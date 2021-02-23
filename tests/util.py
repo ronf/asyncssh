@@ -130,7 +130,7 @@ async def echo(stdin, stdout, stderr=None):
         stdout.write_eof()
     except SignalReceived as exc:
         if exc.signal == 'ABRT':
-            raise ConnectionLost('Abort')
+            raise ConnectionLost('Abort') from None
         else:
             stdin.channel.exit_with_signal(exc.signal)
     except OSError:

@@ -1,4 +1,4 @@
-# Copyright (c) 2017-2020 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2017-2021 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -148,7 +148,7 @@ class GSSClient(_GSSBase):
             self._ctx = ClientAuth('Kerberos', targetspn=self._host,
                                    scflags=flags)
         except SSPIError as exc:
-            raise GSSError(1, 1, details=exc.strerror)
+            raise GSSError(1, 1, details=exc.strerror) from None
 
         self._init_token = self.step(None)
 
@@ -167,7 +167,7 @@ class GSSServer(_GSSBase):
         try:
             self._ctx = ServerAuth('Kerberos', spn=self._host, scflags=flags)
         except SSPIError as exc:
-            raise GSSError(1, 1, details=exc.strerror)
+            raise GSSError(1, 1, details=exc.strerror) from None
 
 
 class GSSError(Exception):

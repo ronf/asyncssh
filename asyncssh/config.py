@@ -1,4 +1,4 @@
-# Copyright (c) 2020 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2020-2021 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -456,8 +456,6 @@ class SSHClientConfig(SSHConfig):
         if hasattr(os, 'getuid'): # pragma: no branch
             self._tokens['i'] = str(os.getuid())
 
-    # pylint: disable=bad-whitespace
-
     _handlers = {option.lower(): (option, handler) for option, handler in (
         ('Host',                            _match_host),
         ('Match',                           SSHConfig._match),
@@ -540,8 +538,6 @@ class SSHServerConfig(SSHConfig):
         """Set the tokens available for percent expansion"""
 
         self._tokens.update({'u': self._user})
-
-    # pylint: disable=bad-whitespace
 
     _handlers = {option.lower(): (option, handler) for option, handler in (
         ('Match',                           SSHConfig._match),

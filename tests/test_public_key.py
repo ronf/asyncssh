@@ -93,8 +93,6 @@ _openssh_supports_gcm_chacha = _openssh_version >= b'OpenSSH_6.9'
 _openssh_supports_arcfour_blowfish_cast = (_openssh_available and
                                            _openssh_version < b'OpenSSH_7.6')
 
-# pylint: disable=bad-whitespace
-
 pkcs1_ciphers = (('aes128-cbc', '-aes128'),
                  ('aes192-cbc', '-aes192'),
                  ('aes256-cbc', '-aes256'),
@@ -140,8 +138,6 @@ openssh_ciphers = (
     ('aes256-ctr',              _openssh_available),
     ('3des-cbc',                _openssh_available)
 )
-
-# pylint: enable=bad-whitespace
 
 if chacha_available: # pragma: no branch
     openssh_ciphers += (('chacha20-poly1305@openssh.com',

@@ -1,4 +1,4 @@
-# Copyright (c) 2017-2020 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2017-2021 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -36,15 +36,11 @@ from ..asn1 import IA5String, der_decode, der_encode
 from .misc import hashes
 
 
-# pylint: disable=bad-whitespace
-
 _purpose_to_oid = {
     'serverAuth':        x509.ExtendedKeyUsageOID.SERVER_AUTH,
     'clientAuth':        x509.ExtendedKeyUsageOID.CLIENT_AUTH,
     'secureShellClient': x509.ObjectIdentifier('1.3.6.1.5.5.7.3.21'),
     'secureShellServer': x509.ObjectIdentifier('1.3.6.1.5.5.7.3.22')}
-
-# pylint: enable=bad-whitespace
 
 _purpose_any = '2.5.29.37.0'
 
@@ -130,8 +126,6 @@ class X509Name(x509.Name):
     _split_rdn = re.compile(r'(?:[^+\\]+|\\.)+')
     _split_name = re.compile(r'(?:[^,\\]+|\\.)+')
 
-# pylint: disable=bad-whitespace
-
     _attrs = (
         ('C',  x509.NameOID.COUNTRY_NAME),
         ('ST', x509.NameOID.STATE_OR_PROVINCE_NAME),
@@ -140,8 +134,6 @@ class X509Name(x509.Name):
         ('OU', x509.NameOID.ORGANIZATIONAL_UNIT_NAME),
         ('CN', x509.NameOID.COMMON_NAME),
         ('DC', x509.NameOID.DOMAIN_COMPONENT))
-
-# pylint: enable=bad-whitespace
 
     _to_oid = dict((k, v) for k, v in _attrs)
     _from_oid = dict((v, k) for k, v in _attrs)
