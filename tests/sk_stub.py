@@ -86,7 +86,7 @@ class _Credential:
         self.auth_data = auth_data
 
 
-class _CTAPStub:
+class _CtapStub:
     """Stub for unit testing U2F security key support"""
 
     _version = None
@@ -132,7 +132,7 @@ class _CTAPStub:
         return flags, counter, sig
 
 
-class CTAP1(_CTAPStub):
+class Ctap1(_CtapStub):
     """Stub for unit testing U2F security keys using CTAP version 1"""
 
     _version = 1
@@ -179,13 +179,13 @@ class CTAP1(_CTAPStub):
         return Byte(flags) + UInt32(counter) + sig
 
 
-class CTAP2(_CTAPStub):
+class Ctap2(_CtapStub):
     """Stub for unit testing U2F security keys using CTAP version 2"""
 
     _version = 2
 
     def make_credential(self, client_data_hash, rp, user, key_params,
-                        options, pin_auth, pin_protocol):
+                        options, pin_uv_param, pin_uv_protocol):
         """Enroll a new security key using CTAP version 2"""
 
         # pylint: disable=unused-argument
@@ -238,7 +238,7 @@ class CredentialManagement:
         CREDENTIAL_ID = 7
         PUBLIC_KEY = 8
 
-    def __init__(self, ctap, pin_protocol=None, pin_token=None):
+    def __init__(self, ctap, pin_uv_protocol=None, pin_uv_token=None):
         # pylint: disable=unused-argument
 
         self.dev = ctap.dev
@@ -280,12 +280,10 @@ class Device:
         """Close this security device"""
 
 
-class PinProtocolV1:
+class ClientPin:
     """Stub for unit testing U2F security device PINs"""
 
-    VERSION = 1
-
-    def __init__(self, ctap):
+    def __init__(self, ctap, protocol):
         # pylint: disable=unused-argument
         pass
 
@@ -297,32 +295,42 @@ class PinProtocolV1:
         return pin
 
 
+class PinProtocolV1:
+    """Stub for unit testing U2F pin protocol version 1"""
+
+    VERSION = 1
+
+
 def stub_sk(devices):
     """Stub out security key module functions for unit testing"""
 
     devices = list(map(Device, devices))
 
-    old_ctap1 = asyncssh.sk.CTAP1
-    old_ctap2 = asyncssh.sk.CTAP2
+    old_ctap1 = asyncssh.sk.Ctap1
+    old_ctap2 = asyncssh.sk.Ctap2
+    old_client_pin = asyncssh.sk.ClientPin
     old_cred_mgmt = asyncssh.sk.CredentialManagement
     old_pin_proto = asyncssh.sk.PinProtocolV1
     old_list_devices = asyncssh.sk.CtapHidDevice.list_devices
 
-    asyncssh.sk.CTAP1 = CTAP1
-    asyncssh.sk.CTAP2 = CTAP2
+    asyncssh.sk.Ctap1 = Ctap1
+    asyncssh.sk.Ctap2 = Ctap2
+    asyncssh.sk.ClientPin = ClientPin
     asyncssh.sk.CredentialManagement = CredentialManagement
     asyncssh.sk.PinProtocolV1 = PinProtocolV1
     asyncssh.sk.CtapHidDevice.list_devices = lambda: iter(devices)
 
-    return old_ctap1, old_ctap2, old_cred_mgmt, old_pin_proto, old_list_devices
+    return old_ctap1, old_ctap2, old_client_pin, \
+        old_cred_mgmt, old_pin_proto, old_list_devices
 
 
-def unstub_sk(old_ctap1, old_ctap2, old_cred_mgmt,
+def unstub_sk(old_ctap1, old_ctap2, old_client_pin, old_cred_mgmt,
               old_pin_proto, old_list_devices):
     """Restore security key module functions"""
 
-    asyncssh.sk.CTAP1 = old_ctap1
-    asyncssh.sk.CTAP2 = old_ctap2
+    asyncssh.sk.Ctap1 = old_ctap1
+    asyncssh.sk.Ctap2 = old_ctap2
+    asyncssh.sk.ClientPin = old_client_pin
     asyncssh.sk.CredentialManagement = old_cred_mgmt
     asyncssh.sk.PinProtocolV1 = old_pin_proto
     asyncssh.sk.CtapHidDevice.list_devices = old_list_devices

@@ -61,7 +61,7 @@ def _ctap1_poll(poll_interval, func, *args):
 def _ctap1_enroll(dev, alg, application):
     """Enroll a new security key using CTAP version 1"""
 
-    ctap1 = CTAP1(dev)
+    ctap1 = Ctap1(dev)
 
     if alg != SSH_SK_ECDSA:
         raise ValueError('Unsupported algorithm')
@@ -76,7 +76,7 @@ def _ctap1_enroll(dev, alg, application):
 def _ctap2_enroll(dev, alg, application, user, pin, resident):
     """Enroll a new security key using CTAP version 2"""
 
-    ctap2 = CTAP2(dev)
+    ctap2 = Ctap2(dev)
 
     application = application.decode('utf-8')
     rp = {'id': application, 'name': application}
@@ -85,18 +85,16 @@ def _ctap2_enroll(dev, alg, application, user, pin, resident):
     options = {'rk': resident}
 
     if pin:
-        pin_protocol = PinProtocolV1(ctap2)
-        pin_token = pin_protocol.get_pin_token(pin)
-
-        pin_version = pin_protocol.VERSION
+        pin_protocol = PinProtocolV1()
+        pin_token = ClientPin(ctap2, pin_protocol).get_pin_token(pin)
         pin_auth = hmac.new(pin_token, _dummy_hash, sha256).digest()[:16]
     else:
-        pin_version = None
+        pin_protocol = None
         pin_auth = None
 
     cred = ctap2.make_credential(_dummy_hash, rp, user, key_params,
-                                 options=options, pin_auth=pin_auth,
-                                 pin_protocol=pin_version)
+                                 options=options, pin_uv_param=pin_auth,
+                                 pin_uv_protocol=pin_protocol)
     cdata = cred.auth_data.credential_data
 
     return _decode_public_key(alg, cdata.public_key), cdata.credential_id
@@ -105,7 +103,7 @@ def _ctap2_enroll(dev, alg, application, user, pin, resident):
 def _ctap1_sign(dev, message_hash, application, key_handle):
     """Sign a message with a security key using CTAP version 1"""
 
-    ctap1 = CTAP1(dev)
+    ctap1 = Ctap1(dev)
 
     app_hash = sha256(application).digest()
 
@@ -122,7 +120,7 @@ def _ctap1_sign(dev, message_hash, application, key_handle):
 def _ctap2_sign(dev, message_hash, application, key_handle, touch_required):
     """Sign a message with a security key using CTAP version 2"""
 
-    ctap2 = CTAP2(dev)
+    ctap2 = Ctap2(dev)
 
     application = application.decode('utf-8')
     allow_creds = [{'type': 'public-key', 'id': key_handle}]
@@ -194,13 +192,11 @@ def sk_get_resident(application, user, pin):
 
     for dev in CtapHidDevice.list_devices():
         try:
-            ctap2 = CTAP2(dev)
+            ctap2 = Ctap2(dev)
 
-            pin_protocol = PinProtocolV1(ctap2)
-            pin_token = pin_protocol.get_pin_token(pin)
-
-            cred_mgmt = CredentialManagement(ctap2, pin_protocol.VERSION,
-                                             pin_token)
+            pin_protocol = PinProtocolV1()
+            pin_token = ClientPin(ctap2, pin_protocol).get_pin_token(pin)
+            cred_mgmt = CredentialManagement(ctap2, pin_protocol, pin_token)
 
             for cred in cred_mgmt.enumerate_creds(app_hash):
                 name = cred[CredentialManagement.RESULT.USER]['name']
@@ -234,8 +230,9 @@ def sk_get_resident(application, user, pin):
 try:
     from fido2.hid import CtapHidDevice
     from fido2.ctap import CtapError
-    from fido2.ctap1 import CTAP1, APDU, ApduError
-    from fido2.ctap2 import CTAP2, CredentialManagement, PinProtocolV1
+    from fido2.ctap1 import Ctap1, APDU, ApduError
+    from fido2.ctap2 import Ctap2, ClientPin, PinProtocolV1
+    from fido2.ctap2 import CredentialManagement
 
     sk_available = True
 except (ImportError, OSError, AttributeError): # pragma: no cover
