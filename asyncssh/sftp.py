@@ -3220,7 +3220,7 @@ class SFTPClient:
         try:
             while True:
                 for entry in await self._handler.readdir(handle):
-                    if isinstance(path, str):
+                    if isinstance(path, (str, PurePath)):
                         entry.filename = self.decode(entry.filename)
                         entry.longname = self.decode(entry.longname)
 
@@ -3382,7 +3382,7 @@ class SFTPClient:
         if len(names) > 1:
             raise SFTPBadMessage('Too many names returned')
 
-        return self.decode(names[0].filename, isinstance(path, str))
+        return self.decode(names[0].filename, isinstance(path, (str, PurePath)))
 
     async def symlink(self, oldpath, newpath):
         """Create a remote symbolic link
