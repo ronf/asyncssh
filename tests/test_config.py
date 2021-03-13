@@ -50,7 +50,7 @@ class _TestConfig(TempDirTestCase):
 
         return self._load_config('config', **kwargs)
 
-    def test_blank__and_comment(self):
+    def test_blank_and_comment(self):
         """Test blank and comment lines"""
 
         config = self._parse_config('\n#Port 22')
