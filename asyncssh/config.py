@@ -285,6 +285,17 @@ class SSHConfig:
                     self._error(str(exc))
 
                 option = args.pop(0)
+
+                if option.endswith('='):
+                    option = option[:-1]
+                elif '=' in option:
+                    option, arg = option.split('=', 1)
+                    args[:0] =[arg]
+                elif args and args[0] == '=':
+                    del args[0]
+                elif args and args[0].startswith('='):
+                    args[0] = args[0][1:]
+
                 loption = option.lower()
 
                 if loption in self._no_split:

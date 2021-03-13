@@ -164,6 +164,13 @@ class _TestConfig(TempDirTestCase):
         self.assertEqual(config.get('BindAddress'), 'addr')
         self.assertEqual(config.get('Port'), 2222)
 
+    def test_equals(self):
+        """Test config option with equals instead of space"""
+
+        for delimiter in ('=', ' =', '= ', ' = '):
+            config = self._parse_config('Compression%syes' % delimiter)
+            self.assertEqual(config.get('Compression'), True)
+
     def test_unknown(self):
         """Test unknown config option"""
 
