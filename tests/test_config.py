@@ -85,9 +85,6 @@ class _TestConfig(TempDirTestCase):
         config = self._parse_config('BindAddress addr1\nBindAddress addr2')
         self.assertEqual(config.get('BindAddress'), 'addr1')
 
-        config = self._parse_config('BindAddress none')
-        self.assertIsNone(config.get('BindAddress', ()))
-
     def test_set_address_family(self):
         """Test address family config option"""
 
@@ -204,6 +201,12 @@ class _TestClientConfig(_TestConfig):
 
         return SSHClientConfig.load(last_config, config, reload,
                                     local_user, user, host, port)
+
+    def test_set_string_none(self):
+        """Test string config option"""
+
+        config = self._parse_config('IdentityAgent none')
+        self.assertIsNone(config.get('IdentityAgent', ()))
 
     def test_append_string(self):
         """Test appending a string config option to a list"""

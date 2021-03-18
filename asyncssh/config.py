@@ -327,7 +327,7 @@ class SSHConfig:
             else:
                 if isinstance(value, list):
                     value = [self._expand_val(item) for item in value]
-                else:
+                elif isinstance(value, str):
                     value = self._expand_val(value)
 
                 self._options[option] = value
