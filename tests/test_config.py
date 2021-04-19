@@ -261,6 +261,15 @@ class _TestClientConfig(_TestConfig):
         self.assertEqual(config.get('BindAddress'), 'addr')
         self.assertEqual(config.get('Port'), 2222)
 
+    def test_host_key_alias(self):
+        """Test setting HostKeyAlias"""
+
+        config = self._parse_config('Host host\n'
+                                    '  Hostname 127.0.0.1\n'
+                                    '  HostKeyAlias alias')
+
+        self.assertEqual(config.get('HostKeyAlias'), 'alias')
+
     def test_set_and_match_user(self):
         """Test setting and matching user"""
 
