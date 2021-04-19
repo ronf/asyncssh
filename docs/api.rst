@@ -1684,6 +1684,7 @@ The following OpenSSH client config options are currently supported:
   | GSSAPIKeyExchange
   | HostbasedAuthentication
   | HostKeyAlgorithms
+  | HostKeyAlias
   | Hostname
   | IdentityAgent
   | IdentityFile

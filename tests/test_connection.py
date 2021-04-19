@@ -23,6 +23,7 @@
 import asyncio
 from copy import copy
 import os
+from pathlib import Path
 import socket
 import sys
 import unittest
@@ -1799,6 +1800,73 @@ class _TestServerWithoutCert(ServerTestCase):
 
         async with self.connect(known_hosts=None):
             pass
+
+
+class _TestHostKeyAlias(ServerTestCase):
+    """Unit test for HostKeyAlias"""
+
+    @classmethod
+    async def start_server(cls):
+        """Start an SSH server to connect to"""
+
+        skey = asyncssh.read_private_key('skey')
+        skey_cert = skey.generate_host_certificate(
+            skey, 'name', principals=['certifiedfakehost'])
+        skey_cert.write_certificate('skey-cert.pub')
+
+        return await cls.create_server(server_host_keys=['skey'])
+
+    @classmethod
+    async def asyncSetUpClass(cls):
+        """Set up keys, custom host cert, and suitable known_hosts"""
+
+        await super().asyncSetUpClass()
+
+        skey_str = Path('skey.pub').read_text()
+
+        Path('.ssh/known_hosts').write_text(
+            f"fakehost {skey_str}"
+            f"@cert-authority certifiedfakehost {skey_str}")
+
+        Path('.ssh/config').write_text(
+            'Host server-with-key-config\n'
+            '  Hostname 127.0.0.1\n'
+            '  HostKeyAlias fakehost\n'
+            '\n'
+            'Host server-with-cert-config\n'
+            '  Hostname 127.0.0.1\n'
+            '  HostKeyAlias certifiedfakehost\n')
+
+    @asynctest
+    async def test_host_key_mismatch(self):
+        """Test host key mismatch"""
+
+        with self.assertRaises(asyncssh.HostKeyNotVerifiable):
+            await self.connect()
+
+    @asynctest
+    async def test_host_key_match(self):
+        """Test host key match"""
+
+        await self.connect(host_key_alias='fakehost')
+
+    @asynctest
+    async def test_host_cert_match(self):
+        """Test host cert match"""
+
+        await self.connect(host_key_alias='certifiedfakehost')
+
+    @asynctest
+    async def test_host_key_match_config(self):
+        """Test host key match using HostKeyAlias in config file"""
+
+        await self.connect('server-with-key-config')
+
+    @asynctest
+    async def test_host_cert_match_config(self):
+        """Test host cert match using HostKeyAlias in config file"""
+
+        await self.connect('server-with-cert-config')
 
 
 class _TestServerInternalError(ServerTestCase):

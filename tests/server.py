@@ -301,22 +301,23 @@ class ServerTestCase(AsyncTestCase):
         return bool(self._agent_pid)
 
     @async_context_manager
-    async def connect(self, options=None, **kwargs):
+    async def connect(self, host=(), port=(), gss_host=None,
+                      options=None, **kwargs):
         """Open a connection to the test server"""
 
-        options = asyncssh.SSHClientConnectionOptions(options, gss_host=None)
-
-        return await asyncssh.connect(self._server_addr, self._server_port,
-                                      options=options, **kwargs)
+        return await asyncssh.connect(host or self._server_addr,
+                                      port or self._server_port,
+                                      gss_host=gss_host, options=options,
+                                      **kwargs)
 
     @async_context_manager
-    async def connect_reverse(self, options=None, **kwargs):
+    async def connect_reverse(self, options=None, gss_host=None, **kwargs):
         """Create a connection to the test server"""
 
         options = asyncssh.SSHServerConnectionOptions(options,
                                                       server_factory=Server,
                                                       server_host_keys=['skey'],
-                                                      gss_host=None)
+                                                      gss_host=gss_host)
 
         return await asyncssh.connect_reverse(self._server_addr,
                                               self._server_port,

@@ -2607,6 +2607,7 @@ class SSHClientConnection(SSHConnection):
         self._port = options.port
 
         self._known_hosts = options.known_hosts
+        self._host_key_alias = options.host_key_alias
 
         self._server_host_key_algs = options.server_host_key_algs
         self._server_host_key = None
@@ -2688,7 +2689,8 @@ class SSHClientConnection(SSHConnection):
 
             port = self._port if self._port != DEFAULT_PORT else None
 
-            self._match_known_hosts(self._known_hosts, self._host,
+            self._match_known_hosts(self._known_hosts,
+                                    self._host_key_alias or self._host,
                                     self._peer_addr, port)
 
         default_host_key_algs = []
@@ -2759,8 +2761,9 @@ class SSHClientConnection(SSHConnection):
         """Validate and return the server's host key"""
 
         try:
-            host_key = self._validate_host_key(self._host, self._peer_addr,
-                                               self._port, key_data)
+            host_key = self._validate_host_key(
+                self._host_key_alias or self._host,
+                self._peer_addr, self._port, key_data)
         except ValueError as exc:
             raise HostKeyNotVerifiable(str(exc)) from None
 
@@ -5598,6 +5601,9 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
            the keys will be looked up in the file :file:`.ssh/known_hosts`.
            If this is explicitly set to `None`, server host key validation
            will be disabled.
+       :param host_key_alias: (optional)
+           An alias to use instead of the real host name when looking up a host
+           key in known_hosts and when validating host certificates.
        :param server_host_key_algs: (optional)
            A list of server host key algorithms to use instead of the
            default of those present in known_hosts when performing the SSH
@@ -5898,6 +5904,7 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
            (if present) before falling back to the default value.
        :type client_factory: `callable`
        :type known_hosts: *see* :ref:`SpecifyingKnownHosts`
+       :type host_key_alias: `str`
        :type server_host_key_algs: `str` or `list` of `str`
        :type x509_trusted_certs: *see* :ref:`SpecifyingCertificates`
        :type x509_trusted_cert_paths: `list` of `str`
@@ -5970,7 +5977,7 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
                 x509_trusted_certs=(), x509_trusted_cert_paths=(),
                 x509_purposes='secureShellServer', rekey_bytes=(),
                 rekey_seconds=(), login_timeout=(), keepalive_interval=(),
-                keepalive_count_max=(), known_hosts=(),
+                keepalive_count_max=(), known_hosts=(), host_key_alias=None,
                 server_host_key_algs=(), username=(), password=None,
                 client_host_keysign=(), client_host_keys=None,
                 client_host_certs=(), client_host=None, client_username=(),
@@ -6039,6 +6046,7 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
                            config.get('GlobalKnownHostsFile', [])) or ()
 
         self.known_hosts = known_hosts
+        self.host_key_alias = host_key_alias or config.get('HostKeyAlias')
 
         self.server_host_key_algs = server_host_key_algs
 
