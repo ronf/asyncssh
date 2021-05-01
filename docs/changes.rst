@@ -3,6 +3,105 @@
 Change Log
 ==========
 
+Release 2.6.0 (1 May 2021)
+--------------------------
+
+* Added support for the HostKeyAlias client config option and a
+  corresponding host_key_alias option, allowing known_hosts lookups
+  and host certificate validation to be done against a different
+  hoetname than what is used to make the connection. Thanks go to
+  Pritam Baral for contributing this feature!
+
+* Added the capability to specify client channel options as connection
+  options, allowing them to be set in a connect() call or as values in
+  SSHClientConnectionOptions. These values will act as defaults for
+  any sessions opened on the connection but can still be overridden
+  via arguments in the create_session() call.
+
+* Added support for dynamically updating SSH options set up in a
+  listen() or listen_reverse() call. A new SSHAcceptor class is now
+  returned by these calls which has an update() method which takes
+  the same keyword arguments as SSHClientConnectionOptions or
+  SSHServerConnectionOptions, allowing you to update any of the
+  options on an existing listener except those involved in setting
+  up the listening sockets themselves. Updates will apply to future
+  connections accepted by that listener.
+
+* Added support for a number of algorithms supported by the ssh.com
+  Tectia SSH client/server:
+
+    Key exchange:
+
+      | diffie-hellman-group14-sha256\@ssh.com (enabled by default)
+
+      | diffie-hellman-group14-sha224\@ssh.com (available but not default)
+      | diffie-hellman-group15-sha256\@ssh.com
+      | diffie-hellman-group15-sha384\@ssh.com
+      | diffie-hellman-group16-sha384\@ssh.com
+      | diffie-hellman-group16-sha512\@ssh.com
+      | diffie-hellman-group18-sha512\@ssh.com
+
+    HMAC:
+
+      | hmac-sha256-2\@ssh.com     (all enabled by default)
+      | hmac-sha224\@ssh.com
+      | hmac-sha256\@ssh.com
+      | hmac-sha384\@ssh.com
+      | hmac-sha512\@ssh.com
+
+    RSA public key algorithms:
+
+      | ssh-rsa-sha224\@ssh.com    (all enabled by default)
+      | ssh-rsa-sha256\@ssh.com
+      | ssh-rsa-sha384\@ssh.com
+      | ssh-rsa-sha512\@ssh.com
+
+    Encryption:
+
+      | seed-cbc\@ssh.com          (available but not default)
+
+* Added a new 'ignore-failure' value to the x11_forwarding argument in
+  create_session(). When specified, AsyncSSH will attempt to set up X11
+  forwarding but ignore failures, behaving as if forwarding was never
+  requested instead of raising a ConnectionOpenError.
+
+* Extended support for replacing certificates in an SSHKeyPair, allowing
+  alternate certificates to be used with SSH agent and PKCS11 keys. This
+  provides a way to use X.509 certificates with an SSH agent key or
+  OpenSSH certificates with a PKCS11 key.
+
+* Extended the config file parser to support '=' as a delimiter between
+  keywords and arguments. While this syntax appears to be rarely used,
+  it is supported by OpenSSH.
+
+* Updated Fido2 support to use version 0.9.1 of the fido2 package,
+  which included some changes that were not backward compatible with
+  0.8.1.
+
+* Fixed problem with setting config options with percent substitutions
+  to 'none'. Percent subsitution should not be performed in this case.
+  Thanks go to Yuqing Miao for finding and reporting this issue!
+
+* Fixed return type of filenames in SFTPClient scandir() and readlink()
+  when the argument passed in is a Path value. Previously, the return
+  value in this case was bytes, but that was only meant to apply when the
+  input argument was passed as bytes.
+
+* Fixed a race condition related to closing a channel before it is fully
+  open, preventing a client from potentially hanging forever if a
+  session was closed while the client was still attempting to request a
+  PTY or make other requests as part of opening the session.
+
+* Fixed a potential race condition related to making parallel calls to
+  SFTPClient makedirs() which try to create the same directory or a
+  common parent directory.
+
+* Fixed RFC 4716 parser to allow colons in header values.
+
+* Improved error message when AsyncSSH is unable to get the local
+  username on a client. Thanks go to Matthew Plachter for reporting
+  this issue.
+
 Release 2.5.0 (23 Dec 2020)
 ---------------------------
 
