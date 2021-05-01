@@ -59,6 +59,18 @@ class _CheckPKCS11Auth(ServerTestCase):
         for key in pubkeys:
             key.append_public_key('auth_keys')
 
+        if pubkeys:
+            ca_key = asyncssh.read_private_key('ckey')
+
+            cert = ca_key.generate_user_certificate(pubkeys[0], 'name',
+                                                    principals=['ckey'])
+
+            with open('auth_keys', 'a') as auth_keys:
+                auth_keys.write('cert-authority ')
+
+            ca_key.append_public_key('auth_keys')
+            cert.write_certificate('pkcs11_cert.pub')
+
         auth_keys = 'auth_keys' if cls._pkcs11_tokens else ()
 
         return await cls.create_server(authorized_client_keys=auth_keys,
@@ -158,3 +170,13 @@ class _TestPKCS11Auth(_CheckPKCS11Auth):
                             username='ckey', pkcs11_provider='xxx',
                             client_keys=[key], signature_algs=[sig_alg]):
                         pass
+
+    @asynctest
+    async def test_pkcs11_with_replaced_cert(self):
+        """Test authenticating with a PKCS#11 with replaced cert"""
+
+        ckey = asyncssh.load_pkcs11_keys('xxx')[1]
+
+        async with self.connect(username='ckey', pkcs11_provider='xxx',
+                                client_keys=[(ckey, 'pkcs11_cert.pub')]):
+            pass

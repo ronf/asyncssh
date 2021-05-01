@@ -1155,6 +1155,30 @@ class _TestPublicKeyAuth(ServerTestCase):
                     pass
 
     @asynctest
+    async def test_keypair_with_replaced_cert(self):
+        """Test connecting with a keypair with replaced cert"""
+
+        ckey = asyncssh.load_keypairs(['ckey'])[0]
+
+        async with self.connect(username='ckey',
+                                client_keys=[(ckey, 'ckey-cert.pub')]):
+            pass
+
+    @asynctest
+    async def test_agent_keypair_with_replaced_cert(self):
+        """Test connecting with sn agent key with replaced cert"""
+
+        if not self.agent_available(): # pragma: no cover
+            self.skipTest('ssh-agent not available')
+
+        async with asyncssh.connect_agent() as agent:
+            ckey = (await agent.get_keys())[2]
+
+            async with self.connect(username='ckey',
+                                    client_keys=[(ckey, 'ckey-cert.pub')]):
+                pass
+
+    @asynctest
     async def test_untrusted_client_key(self):
         """Test untrusted client key"""
 
@@ -1428,6 +1452,30 @@ class _TestX509Auth(ServerTestCase):
         async with self.connect(username='ckey',
                                 client_keys=['ckey_x509_chain']):
             pass
+
+    @asynctest
+    async def test_keypair_with_x509_cert(self):
+        """Test connecting with a keypair with replaced X.509 cert"""
+
+        ckey = asyncssh.load_keypairs(['ckey'])[0]
+
+        async with self.connect(username='ckey',
+                                client_keys=[(ckey, 'ckey_x509_chain')]):
+            pass
+
+    @asynctest
+    async def test_agent_keypair_with_x509_cert(self):
+        """Test connecting with sn agent key with replaced X.509 cert"""
+
+        if not self.agent_available(): # pragma: no cover
+            self.skipTest('ssh-agent not available')
+
+        async with asyncssh.connect_agent() as agent:
+            ckey = (await agent.get_keys())[2]
+
+            async with self.connect(username='ckey',
+                                    client_keys=[(ckey, 'ckey_x509_chain')]):
+                pass
 
     @asynctest
     async def test_x509_incomplete_chain(self):

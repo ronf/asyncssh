@@ -1822,14 +1822,38 @@ class SSHKeyPair:
 
     _key_type = 'unknown'
 
-    def __init__(self, algorithm, public_data, comment,
-                 filename=None, use_executor=False):
-        self.algorithm = algorithm
-        self.public_data = public_data
-        self.use_executor = use_executor
+    def __init__(self, algorithm, sig_algorithm, sig_algorithms,
+                 host_key_algorithms, public_data, comment,
+                 cert=None, filename=None, use_executor=False):
+        self.key_algorithm = algorithm
+        self.key_public_data = public_data
 
         self.set_comment(comment)
+        self._cert = cert
         self._filename = filename
+
+        self.use_executor = use_executor
+
+        if cert:
+            if cert.key.public_data != self.key_public_data:
+                raise ValueError('Certificate key mismatch')
+
+            self.algorithm = cert.algorithm
+
+            if cert.is_x509_chain:
+                self.sig_algorithm = cert.algorithm
+            else:
+                self.sig_algorithm = sig_algorithm
+
+            self.sig_algorithms = cert.sig_algorithms
+            self.host_key_algorithms = cert.host_key_algorithms
+            self.public_data = cert.public_data
+        else:
+            self.algorithm = algorithm
+            self.sig_algorithm = algorithm
+            self.sig_algorithms = sig_algorithms
+            self.host_key_algorithms = host_key_algorithms
+            self.public_data = public_data
 
     def get_key_type(self):
         """Return what type of key pair this is
@@ -1904,28 +1928,33 @@ class SSHKeyPair:
         self._comment = comment or None
 
     def set_certificate(self, cert):
-        """Set certificate to use with this key
+        """Set certificate to use with this key"""
 
-           This method allows you to change the certificate associated
-           with a key pair. This is particularly useful for specifying
-           certificates to use with smart card keys as there's no way
-           to load an SSH certificate onto the smart card.
+        if cert.key.public_data != self.key_public_data:
+            raise ValueError('Certificate key mismatch')
 
-           :param cert:
-               The new certificate to associate with this key
-           :type cert: :class:`SSHCertificate`
+        self._cert = cert
+        self.algorithm = cert.algorithm
 
-           :raises: :exc:`ValueError` if the certificate doesn't
-                    match the key
+        if cert.is_x509_chain:
+            self.sig_algorithm = cert.algorithm
+        else:
+            self.sig_algorithm = self.key_algorithm
 
-        """
-
-        raise NotImplementedError
+        self.sig_algorithms = cert.sig_algorithms
+        self.host_key_algorithms = cert.host_key_algorithms
+        self.public_data = cert.public_data
 
     def set_sig_algorithm(self, sig_algorithm):
         """Set the signature algorithm to use when signing data"""
 
-        raise NotImplementedError
+        self.sig_algorithm = sig_algorithm
+
+        if not self._cert:
+            self.algorithm = sig_algorithm
+        elif self._cert.is_x509_chain:
+            self.algorithm = sig_algorithm
+            self.public_data = self._cert.adjust_public_data(sig_algorithm)
 
     def sign(self, data):
         """Sign a block of data with this private key"""
@@ -1957,33 +1986,11 @@ class SSHLocalKeyPair(SSHKeyPair):
         else:
             comment = None
 
-        super().__init__(cert.algorithm if cert else key.algorithm,
-                         cert.public_data if cert else key.public_data,
-                         comment, key.get_filename(), key.use_executor)
+        super().__init__(key.algorithm, key.algorithm, key.sig_algorithms,
+                         key.sig_algorithms, key.public_data, comment, cert,
+                         key.get_filename(), key.use_executor)
 
         self._key = key
-        self._cert = cert
-
-        self._set_algorithms()
-
-    def _set_algorithms(self):
-        """Set the algorithms associated with this keypair"""
-
-        if self._cert:
-            if self._cert.key.public_data != self._key.public_data:
-                raise ValueError('Certificate key mismatch')
-
-            if self._cert.is_x509_chain:
-                self.sig_algorithm = self._cert.algorithm
-            else:
-                self.sig_algorithm = self._key.algorithm
-
-            self.sig_algorithms = self._cert.sig_algorithms
-            self.host_key_algorithms = self._cert.host_key_algorithms
-        else:
-            self.sig_algorithm = self._key.algorithm
-            self.sig_algorithms = self._key.sig_algorithms
-            self.host_key_algorithms = self._key.sig_algorithms
 
     def get_agent_private_key(self):
         """Return binary encoding of keypair for upload to SSH agent"""
@@ -1995,28 +2002,6 @@ class SSHLocalKeyPair(SSHKeyPair):
             data = self._key.encode_ssh_private()
 
         return String(self.algorithm) + data
-
-    def set_certificate(self, cert):
-        """Set certificate to use with this key"""
-
-        self._cert = cert
-        self.algorithm = cert.algorithm
-        self.public_data = cert.public_data
-
-        self._set_algorithms()
-
-    def set_sig_algorithm(self, sig_algorithm):
-        """Set the signature algorithm to use when signing data"""
-
-        # Disable false positive pylint warning
-        # pylint: disable=attribute-defined-outside-init
-        self.sig_algorithm = sig_algorithm
-
-        if not self._cert:
-            self.algorithm = sig_algorithm
-        elif self._cert.is_x509_chain:
-            self.algorithm = sig_algorithm
-            self.public_data = self._cert.adjust_public_data(sig_algorithm)
 
     def sign(self, data):
         """Sign a block of data with this private key"""
@@ -3202,7 +3187,12 @@ def load_keypairs(keylist, passphrase=None, certlist=(), skip_public=False):
             raise saved_exc # pylint: disable=raising-bad-type
 
         if not certs:
-            cert = certdict.get(key.public_data)
+            if isinstance(key, SSHKeyPair):
+                pubdata = key.key_public_data
+            else:
+                pubdata = key.public_data
+
+            cert = certdict.get(pubdata)
 
             if cert and cert.is_x509:
                 cert = SSHX509CertificateChain.construct_from_certs(certlist)

@@ -40,22 +40,15 @@ class SSHKeySignKeyPair(SSHKeyPair):
 
     def __init__(self, keysign_path, sock_fd, key_or_cert):
         algorithm = key_or_cert.algorithm
+        sig_algorithms = key_or_cert.sig_algorithms[:1]
         public_data = key_or_cert.public_data
         comment = key_or_cert.get_comment_bytes()
 
-        super().__init__(algorithm, public_data, comment)
-
-        self.sig_algorithm = key_or_cert.algorithm
-        self.sig_algorithms = key_or_cert.sig_algorithms[:1]
+        super().__init__(algorithm, algorithm, sig_algorithms, sig_algorithms,
+                         public_data, comment)
 
         self._keysign_path = keysign_path
         self._sock_fd = sock_fd
-
-    def set_certificate(self, cert):
-        """Set certificate not applicable to ssh-keysign"""
-
-    def set_sig_algorithm(self, sig_algorithm):
-        """Only the main signing algorithm is supported by ssh-keysign"""
 
     async def sign(self, data):
         """Use ssh-keysign to sign a block of data with this key"""

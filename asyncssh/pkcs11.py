@@ -58,38 +58,17 @@ if pkcs11_available:
 
         _key_type = 'pkcs11'
 
-        def __init__(self, session, key, pubkey=None, cert=None):
-            super().__init__(cert.algorithm if cert else pubkey.algorithm,
-                             cert.public_data if cert else pubkey.public_data,
-                             key.label, use_executor=True)
+        def __init__(self, session, key, pubkey, cert=None):
+            super().__init__(pubkey.algorithm, pubkey.algorithm,
+                             pubkey.sig_algorithms, pubkey.sig_algorithms,
+                             pubkey.public_data, key.label, cert,
+                             use_executor=True)
 
             self._session = session
             self._key = key
-            self._cert = cert
-
-            if cert:
-                self.sig_algorithm = cert.algorithm
-                self.sig_algorithms = cert.sig_algorithms
-                self.host_key_algorithms = cert.host_key_algorithms
-            else:
-                self.sig_algorithm = pubkey.algorithm
-                self.sig_algorithms = pubkey.sig_algorithms
-                self.host_key_algorithms = pubkey.sig_algorithms
 
         def __del__(self):
             self._session.close()
-
-        def set_certificate(self, cert):
-            """Set certificate not applicable to PKCS#11 keys"""
-
-        def set_sig_algorithm(self, sig_algorithm):
-            """Set the signature algorithm to use when signing data"""
-
-            self.algorithm = sig_algorithm
-            self.sig_algorithm = sig_algorithm
-
-            if self._cert:
-                self.public_data = self._cert.adjust_public_data(sig_algorithm)
 
         def sign(self, data):
             """Sign a block of data with this private key"""
@@ -191,7 +170,7 @@ if pkcs11_available:
                     cert = certdict.get(pubkey.public_data)
 
                     if cert:
-                        keys.append(SSHPKCS11KeyPair(self, key, cert=cert))
+                        keys.append(SSHPKCS11KeyPair(self, key, pubkey, cert))
 
                     keys.append(SSHPKCS11KeyPair(self, key, pubkey))
 
