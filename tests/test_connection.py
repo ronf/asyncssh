@@ -783,7 +783,17 @@ class _TestConnection(ServerTestCase):
         """Test connecting with invalid key exchange algorithm pattern"""
 
         with self.assertRaises(ValueError):
-            await self.connect(kex_algs='xxx')
+            await self.connect(kex_algs='diffie-hallman-group14-sha1,xxx')
+
+    @asynctest
+    async def test_invalid_kex_alg_config(self):
+        """Test connecting with invalid key exchange algorithm config"""
+
+        with open('config', 'w') as f:
+            f.write('KexAlgorithms diffie-hellman-group14-sha1,xxx')
+
+        async with self.connect(config='config'):
+            pass
 
     @asynctest
     async def test_unsupported_kex_alg(self):

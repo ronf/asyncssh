@@ -300,7 +300,7 @@ def _validate_version(version):
     return version
 
 
-def _expand_algs(alg_type, algs, possible_algs, default_algs):
+def _expand_algs(alg_type, algs, possible_algs, default_algs, strict_match):
     """Expand the set of allowed algorithms"""
 
     if algs[:1] in '^+-':
@@ -317,7 +317,7 @@ def _expand_algs(alg_type, algs, possible_algs, default_algs):
         matches = [alg for alg in possible_algs
                    if pattern.matches(alg.decode('ascii'))]
 
-        if not matches:
+        if not matches and strict_match:
             raise ValueError('"%s" matches no valid %s algorithms' %
                              (pat, alg_type))
 
@@ -339,12 +339,16 @@ def _select_algs(alg_type, algs, possible_algs, default_algs,
 
     if algs == ():
         algs = config_algs
+        strict_match = False
+    else:
+        strict_match = True
 
     if algs == ():
         return default_algs
     elif algs:
         if isinstance(algs, str):
-            algs = _expand_algs(alg_type, algs, possible_algs, default_algs)
+            algs = _expand_algs(alg_type, algs, possible_algs,
+                                default_algs, strict_match)
         else:
             algs = [alg.encode('ascii') for alg in algs]
 
