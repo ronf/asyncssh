@@ -2132,7 +2132,7 @@ by AsyncSSH:
   | diffie-hellman-group16-sha512
   | diffie-hellman-group17-sha512
   | diffie-hellman-group18-sha512
-  | diffie-hellman-group14-sha256@ssh.com
+  | diffie-hellman-group14-sha256\@ssh.com
   | diffie-hellman-group14-sha1
   | rsa2048-sha256
 
@@ -2142,12 +2142,12 @@ disabled by default:
   | gss-gex-sha1
   | gss-group1-sha1
   | diffie-hellman-group-exchange-sha1
-  | diffie-hellman-group14-sha224@ssh.com
-  | diffie-hellman-group15-sha256@ssh.com
-  | diffie-hellman-group15-sha384@ssh.com
-  | diffie-hellman-group16-sha384@ssh.com
-  | diffie-hellman-group16-sha512@ssh.com
-  | diffie-hellman-group18-sha512@ssh.com
+  | diffie-hellman-group14-sha224\@ssh.com
+  | diffie-hellman-group15-sha256\@ssh.com
+  | diffie-hellman-group15-sha384\@ssh.com
+  | diffie-hellman-group16-sha384\@ssh.com
+  | diffie-hellman-group16-sha512\@ssh.com
+  | diffie-hellman-group18-sha512\@ssh.com
   | diffie-hellman-group1-sha1
   | rsa1024-sha1
 
@@ -2183,7 +2183,7 @@ disabled by default:
   | 3des-cbc
   | blowfish-cbc
   | cast128-cbc
-  | seed-cbc
+  | seed-cbc\@ssh.com
   | arcfour256
   | arcfour128
   | arcfour
