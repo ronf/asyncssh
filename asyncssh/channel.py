@@ -1428,8 +1428,7 @@ class SSHServerChannel(SSHChannel):
             else:
                 raise ProtocolError('Invalid pty modes string')
 
-        result = self._session.pty_requested(self._term_type, self._term_size,
-                                             self._term_modes)
+        result = self._session.pty_requested(term_type, term_size, term_modes)
 
         if result:
             self.logger.info('  PTY created')

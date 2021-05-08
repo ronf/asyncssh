@@ -162,7 +162,6 @@ class _EchoServerSession(asyncssh.SSHServerSession):
 
     def __init__(self):
         self._chan = None
-        self._pty_ok = True
 
     def connection_made(self, chan):
         """Handle session open"""
@@ -173,15 +172,8 @@ class _EchoServerSession(asyncssh.SSHServerSession):
 
         if username == 'close':
             self._chan.close()
-        elif username == 'no_pty':
-            self._pty_ok = False
         elif username == 'task_error':
             raise RuntimeError('Exception handler test')
-
-    def pty_requested(self, term_type, term_size, term_modes):
-        """Handle pseudo-terminal request"""
-
-        return self._pty_ok
 
     def shell_requested(self):
         """Handle shell request"""
@@ -201,6 +193,47 @@ class _EchoServerSession(asyncssh.SSHServerSession):
 
         self._chan.write_eof()
         self._chan.close()
+
+
+class _PTYServerSession(asyncssh.SSHServerSession):
+    """Server for testing PTY requests"""
+
+    def __init__(self):
+        self._chan = None
+        self._pty_ok = True
+
+    def connection_made(self, chan):
+        """Handle session open"""
+
+        self._chan = chan
+
+        username = self._chan.get_extra_info('username')
+
+        if username == 'no_pty':
+            self._pty_ok = False
+
+    def pty_requested(self, term_type, term_size, term_modes):
+        """Handle pseudo-terminal request"""
+
+        self._chan.set_extra_info(
+            pty_args=(term_type, term_size,
+                      term_modes.get(asyncssh.PTY_OP_OSPEED)))
+
+        return self._pty_ok
+
+    def shell_requested(self):
+        """Handle shell request"""
+
+        return True
+
+    def session_started(self):
+        """Handle session start"""
+
+        chan = self._chan
+
+
+        chan.write(f'Req: {chan.get_extra_info("pty_args")}\n')
+        chan.close()
 
 
 class _ChannelServer(Server):
@@ -411,7 +444,8 @@ class _ChannelServer(Server):
 
         return username not in {'guest', 'conn_close_startup',
                                 'conn_close_open', 'close', 'echo',
-                                'no_channels', 'no_pty', 'task_error'}
+                                'no_channels', 'no_pty', 'request_pty',
+                                'task_error'}
 
     def session_requested(self):
         """Handle a request to create a new session"""
@@ -426,8 +460,10 @@ class _ChannelServer(Server):
                 return False
             elif username == 'conn_close_open':
                 return (channel, self._conn_close())
-            elif username in {'close', 'echo', 'no_pty', 'task_error'}:
+            elif username in {'close', 'echo', 'task_error'}:
                 return (channel, _EchoServerSession())
+            elif username in {'request_pty', 'no_pty'}:
+                return (channel, _PTYServerSession())
             elif username != 'no_channels':
                 return (channel, self._begin_session)
             else:
@@ -920,21 +956,20 @@ class _TestChannel(ServerTestCase):
             self.assertEqual(session.exit_status, 1)
 
     @asynctest
-    async def test_terminal_info(self):
-        """Test sending terminal information"""
+    async def test_request_pty(self):
+        """Test reuquesting a PTY with terminal information"""
 
         modes = {asyncssh.PTY_OP_OSPEED: 9600}
 
-        async with self.connect() as conn:
-            chan, session = await _create_session(conn, 'term',
-                                                  term_type='ansi',
+        async with self.connect(username='request_pty') as conn:
+            chan, session = await _create_session(conn, term_type='ansi',
                                                   term_size=(80, 24),
                                                   term_modes=modes)
 
             await chan.wait_closed()
 
             result = ''.join(session.recv_buf[None])
-            self.assertEqual(result, "('ansi', (80, 24, 0, 0), 9600)\r\n")
+            self.assertEqual(result, "Req: ('ansi', (80, 24, 0, 0), 9600)\r\n")
 
     @asynctest
     async def test_terminal_full_size(self):
@@ -1006,7 +1041,7 @@ class _TestChannel(ServerTestCase):
 
         async with self.connect(username='no_pty') as conn:
             with self.assertRaises(asyncssh.ChannelOpenError):
-                await _create_session(conn, 'term', term_type='ansi')
+                await _create_session(conn, term_type='ansi')
 
     @asynctest
     async def test_invalid_term_type(self):
