@@ -1687,6 +1687,27 @@ class SSHServerChannel(SSHChannel):
 
         return self._term_modes.get(mode)
 
+    def get_terminal_modes(self):
+        """Return all TTY modes for this session
+
+           This method returns all the values of POSIX terminal modes
+           set by the client when the session was opened. If the client
+           didn't request a pseudo-terminal or didn't set the requested
+           TTY mode opcode, this method will return an empty dictionary.
+           Calls to this method should only be made after
+           :meth:`session_started <SSHServerSession.session_started>`
+           has been called on the :class:`SSHServerSession`. When using
+           the stream-based API, calls to this can be made at any time
+           after the handler function has started up.
+
+           :returns: A dictionary containing all the requested POSIX
+                     terminal modes or an empty dictionary if no modes
+                     were requested
+
+        """
+
+        return self._term_modes
+
     def get_x11_display(self):
         """Return the display to use for X11 forwarding
 
