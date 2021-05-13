@@ -316,7 +316,8 @@ class _ChannelServer(Server):
         elif action == 'term':
             chan = stdin.channel
             info = str((chan.get_terminal_type(), chan.get_terminal_size(),
-                        chan.get_terminal_mode(asyncssh.PTY_OP_OSPEED)))
+                        chan.get_terminal_mode(asyncssh.PTY_OP_OSPEED),
+                        sorted(chan.get_terminal_modes().items())))
             stdout.write(info + '\n')
         elif action == 'xon_xoff':
             stdin.channel.set_xon_xoff(True)
@@ -934,7 +935,7 @@ class _TestChannel(ServerTestCase):
             await chan.wait_closed()
 
             result = ''.join(session.recv_buf[None])
-            self.assertEqual(result, "('ansi', (80, 24, 0, 0), 9600)\r\n")
+            self.assertEqual(result, "('ansi', (80, 24, 0, 0), 9600, [(129, 9600)])\r\n")
 
     @asynctest
     async def test_terminal_full_size(self):
@@ -951,7 +952,7 @@ class _TestChannel(ServerTestCase):
             await chan.wait_closed()
 
             result = ''.join(session.recv_buf[None])
-            self.assertEqual(result, "('ansi', (80, 24, 480, 240), 9600)\r\n")
+            self.assertEqual(result, "('ansi', (80, 24, 480, 240), 9600, [(129, 9600)])\r\n")
 
     @asynctest
     async def test_pty_without_term_type(self):
@@ -964,7 +965,7 @@ class _TestChannel(ServerTestCase):
             await chan.wait_closed()
 
             result = ''.join(session.recv_buf[None])
-            self.assertEqual(result, "('', (0, 0, 0, 0), None)\n")
+            self.assertEqual(result, "('', (0, 0, 0, 0), None, [])\n")
 
     @asynctest
     async def test_invalid_terminal_size(self):
@@ -1032,7 +1033,7 @@ class _TestChannel(ServerTestCase):
                 await chan.wait_closed()
 
                 result = ''.join(session.recv_buf[None])
-                self.assertEqual(result, "('ansi', (0, 0, 0, 0), 9600)\r\n")
+                self.assertEqual(result, "('ansi', (0, 0, 0, 0), 9600, [(129, 9600)])\r\n")
 
     @asynctest
     async def test_term_modes_incomplete(self):

@@ -75,7 +75,8 @@ async def _handle_client(process):
         await process.stderr.drain()
     elif action == 'term':
         info = str((process.get_terminal_type(), process.get_terminal_size(),
-                    process.get_terminal_mode(asyncssh.PTY_OP_OSPEED)))
+                    process.get_terminal_mode(asyncssh.PTY_OP_OSPEED),
+                    sorted(process.get_terminal_modes().items())))
         process.channel.set_encoding('utf-8')
         process.stdout.write(info)
     elif action == 'term_size':
@@ -222,7 +223,7 @@ class _TestProcessBasic(_TestProcess):
                                                 term_modes=modes)
             result = await process.wait()
 
-        self.assertEqual(result.stdout, "('ansi', (80, 24, 0, 0), 9600)")
+        self.assertEqual(result.stdout, "('ansi', (80, 24, 0, 0), 9600, [(129, 9600)])")
 
     @asynctest
     async def test_change_terminal_size(self):
