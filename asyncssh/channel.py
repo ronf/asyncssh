@@ -26,6 +26,7 @@ import codecs
 import inspect
 import re
 import signal as _signal
+import types
 
 from .constants import DEFAULT_LANG, EXTENDED_DATA_STDERR
 from .constants import MSG_CHANNEL_OPEN, MSG_CHANNEL_WINDOW_ADJUST
@@ -1706,7 +1707,7 @@ class SSHServerChannel(SSHChannel):
 
         """
 
-        return self._term_modes
+        return types.MappingProxyType(self._term_modes)
 
     def get_x11_display(self):
         """Return the display to use for X11 forwarding
