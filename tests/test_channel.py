@@ -970,7 +970,7 @@ class _TestChannel(ServerTestCase):
             await chan.wait_closed()
 
             result = ''.join(session.recv_buf[None])
-            self.assertEqual(result, "Req: ('ansi', (80, 24, 0, 0), 9600, [(129, 9600)])\r\n")
+            self.assertEqual(result, "Req: ('ansi', (80, 24, 0, 0), 9600)\r\n")
 
     @asynctest
     async def test_terminal_full_size(self):
