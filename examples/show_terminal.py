@@ -30,11 +30,10 @@
 import asyncio, asyncssh, sys
 
 async def handle_client(process):
-    term_type = process.get_terminal_type()
-    width, height, pixwidth, pixheight = process.get_terminal_size()
+    width, height, pixwidth, pixheight = process.term_size
 
     process.stdout.write('Terminal type: %s, size: %sx%s' %
-                         (term_type, width, height))
+                         (process.term_type, width, height))
     if pixwidth and pixheight:
         process.stdout.write(' (%sx%s pixels)' % (pixwidth, pixheight))
     process.stdout.write('\nTry resizing your window!\n')

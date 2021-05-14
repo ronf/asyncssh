@@ -490,23 +490,23 @@ SSHServerProcess
    ============================== =
    .. autoattribute:: channel
    .. autoattribute:: logger
-   .. autoattribute:: env
    .. autoattribute:: command
    .. autoattribute:: subsystem
+   .. autoattribute:: env
+   .. autoattribute:: term_type
+   .. autoattribute:: term_size
+   .. autoattribute:: term_modes
    .. autoattribute:: stdin
    .. autoattribute:: stdout
    .. autoattribute:: stderr
    ============================== =
 
-   ================================= =
+   ============================== =
    Other server process methods
-   ================================= =
+   ============================== =
    .. automethod:: get_extra_info
-   .. automethod:: get_terminal_type
-   .. automethod:: get_terminal_size
-   .. automethod:: get_terminal_mode
    .. automethod:: redirect
-   ================================= =
+   ============================== =
 
    ================================ =
    Server process close methods
@@ -848,15 +848,16 @@ SSHServerChannel
    .. automethod:: get_subsystem
    =============================== =
 
-   ================================= =
+   ================================== =
    Server channel info methods
-   ================================= =
+   ================================== =
    .. automethod:: get_terminal_type
    .. automethod:: get_terminal_size
    .. automethod:: get_terminal_mode
+   .. automethod:: get_terminal_modes
    .. automethod:: get_x11_display
    .. automethod:: get_agent_path
-   ================================= =
+   ================================== =
 
    ============================== =
    Server channel read methods
