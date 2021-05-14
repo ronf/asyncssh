@@ -598,30 +598,11 @@ class SSHProcess:
         return self._chan.logger
 
     @property
-    def env(self):
-        """The environment set by the client for the process
-
-           This method returns the environment set by the client
-           when the session was opened.
-
-           :returns: A dictionary containing the environment variables
-                     set by the client
-
-        """
-
-        return self._chan.get_environment()
-
-    @property
     def command(self):
         """The command the client requested to execute, if any
 
-           This method returns the command the client requested to
-           execute when the process was started, if any. If the client
-           did not request that a command be executed, this method
-           will return `None`.
-
-           :returns: A `str` containing the command or `None` if
-                     no command was specified
+           If the client did not request that a command be executed,
+           this property will be set to `None`.
 
         """
 
@@ -631,17 +612,54 @@ class SSHProcess:
     def subsystem(self):
         """The subsystem the client requested to open, if any
 
-           This method returns the subsystem the client requested to
-           open when the process was started, if any. If the client
-           did not request that a subsystem be opened, this method will
-           return `None`.
-
-           :returns: A `str` containing the subsystem name or `None`
-                     if no subsystem was specified
+           If the client did not request that a subsystem be opened,
+           this property will be set to `None`.
 
         """
 
         return self._chan.get_subsystem()
+
+    @property
+    def env(self):
+        """A mapping containing the environment set by the client"""
+
+        return self._chan.get_environment()
+
+    @property
+    def term_type(self):
+        """The terminal type set by the client
+
+           If the client didn't request a pseudo-terminal, this
+           property will be set to `None`.
+
+        """
+
+        return self._chan.get_terminal_type()
+
+    @property
+    def term_size(self):
+        """The terminal size set by the client
+
+           This property contains a tuple of four `int` values
+           representing the width and height of the terminal in
+           characters followed by the width and height of the
+           terminal in pixels. If the client hasn't set terminal
+           size information, the values will be set to zero.
+
+        """
+
+        return self._chan.get_terminal_size()
+
+    @property
+    def term_modes(self):
+        """A mapping containing the TTY modes set by the client
+
+           If the client didn't request a pseudo-terminal, this
+           property will be set to an empty mapping.
+
+        """
+
+        return self._chan.get_terminal_modes()
 
     def get_extra_info(self, name, default=None):
         """Return additional information about this process
@@ -1380,7 +1398,7 @@ class SSHServerProcess(SSHProcess, SSHServerStreamSession):
 
         """
 
-        return self._chan.get_terminal_type()
+        return self.term_type
 
     def get_terminal_size(self):
         """Return the terminal size set by the client for the process
@@ -1395,7 +1413,7 @@ class SSHServerProcess(SSHProcess, SSHServerStreamSession):
 
         """
 
-        return self._chan.get_terminal_size()
+        return self.term_size
 
     def get_terminal_mode(self, mode):
         """Return the requested TTY mode for this session
@@ -1416,7 +1434,7 @@ class SSHServerProcess(SSHProcess, SSHServerStreamSession):
 
         """
 
-        return self._chan.get_terminal_mode(mode)
+        return self.term_modes.get(mode)
 
     def exit(self, status):
         """Send exit status and close the channel
