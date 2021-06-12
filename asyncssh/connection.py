@@ -1062,6 +1062,8 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         version = b'SSH-2.0-' + self._version
 
+        self.logger.debug1('Sending version %s', version)
+
         if self.is_client():
             self._client_version = version
             self.set_extra_info(client_version=version.decode('ascii'))
@@ -1099,6 +1101,8 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
             else:
                 self._server_version = version
                 self.set_extra_info(server_version=version.decode('ascii'))
+
+            self.logger.debug1('Received version %s', version)
 
             self._send_kexinit()
             self._kexinit_sent = True
