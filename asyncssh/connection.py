@@ -25,6 +25,7 @@ import getpass
 import inspect
 import io
 import os
+import shlex
 import socket
 import sys
 import tempfile
@@ -169,6 +170,76 @@ _DEFAULT_LINE_HISTORY = 1000        # 1000 lines
 _DEFAULT_MAX_LINE_LENGTH = 1024     # 1024 characters
 
 
+async def _open_proxy(loop, command, conn_factory):
+    """Open a tunnel running a proxy command"""
+
+    class _ProxyCommandTunnel(asyncio.SubprocessProtocol):
+        """SSH proxy command tunnel"""
+
+        def __init__(self):
+            self._transport = None
+            self._stdin = None
+            self._conn = conn_factory()
+            self._close_event = asyncio.Event()
+
+        def get_owner(self):
+            """Return the connection running over this tunnel"""
+
+            return self._conn
+
+        def get_extra_info(self, name, default=None):
+            """Return extra information associated with this tunnel"""
+
+            return self._transport.get_extra_info(name, default)
+
+        def connection_made(self, transport):
+            """Handle startup of the subprocess"""
+
+            self._transport = transport
+            self._stdin = transport.get_pipe_transport(0)
+            self._conn.connection_made(self)
+
+        def pipe_data_received(self, fd, data):
+            """Handle data received from this tunnel"""
+
+            # pylint: disable=unused-argument
+
+            self._conn.data_received(data)
+
+        def pipe_connection_lost(self, fd, exc):
+            """Handle when this tunnel is closed"""
+
+            # pylint: disable=unused-argument
+
+            self._conn.connection_lost(exc)
+
+        def is_closing(self):
+            """Return whether the transport is closing or not"""
+
+            return self._transport.is_closing()
+
+        def write(self, data):
+            """Write data to this tunnel"""
+
+            self._stdin.write(data)
+
+        def abort(self):
+            """Forcibly close this tunnel"""
+
+            self.close()
+
+        def close(self):
+            """Close this tunnel"""
+
+            self._transport.close()
+            self._close_event.set()
+
+
+    _, tunnel = await loop.subprocess_exec(_ProxyCommandTunnel, *command)
+
+    return tunnel.get_owner()
+
+
 async def _open_tunnel(tunnel):
     """Parse and open connection to tunnel over"""
 
@@ -197,6 +268,7 @@ async def _connect(options, loop, flags, conn_factory, msg):
     tunnel = options.tunnel
     family = options.family
     local_addr = options.local_addr
+    proxy_command = options.proxy_command
 
     new_tunnel = await _open_tunnel(tunnel)
 
@@ -217,6 +289,8 @@ async def _connect(options, loop, flags, conn_factory, msg):
         tunnel_logger = getattr(tunnel, 'logger', logger)
         tunnel_logger.info('%s %s via SSH tunnel', msg, (host, port))
         _, conn = await tunnel.create_connection(conn_factory, host, port)
+    elif proxy_command:
+        conn = await _open_proxy(loop, proxy_command, conn_factory)
     else:
         logger.info('%s %s', msg, (host, port))
         _, conn = await loop.create_connection(conn_factory, host, port,
@@ -906,9 +980,11 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         self._transport = transport
 
         sock = transport.get_extra_info('socket')
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE,
-                        self._tcp_keepalive)
-        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+
+        if sock:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE,
+                            self._tcp_keepalive)
+            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 
         sockname = transport.get_extra_info('sockname')
 
@@ -2721,10 +2797,18 @@ class SSHClientConnection(SSHConnection):
                 self._options.config.get('HostKeyAlgorithms', ()),
                 default_host_key_algs)
 
-        self.logger.info('Connection to %s succeeded', (self._host, self._port))
+        self.logger.info('Connected to SSH server at %s',
+                         (self._host, self._port))
 
-        self.logger.info('  Local address: %s',
-                         (self._local_addr, self._local_port))
+        if self._options.proxy_command:
+            proxy_command = ' '.join(shlex.quote(arg) for arg in
+                                     self._options.proxy_command)
+            self.logger.info('  Proxy command: %s', proxy_command)
+        else:
+            self.logger.info('  Local address: %s',
+                             (self._local_addr, self._local_port))
+            self.logger.info('  Peer address: %s',
+                             (self._peer_addr, self._peer_port))
 
 
     def _cleanup(self, exc):
@@ -4312,10 +4396,17 @@ class SSHServerConnection(SSHConnection):
     def _connection_made(self):
         """Handle the opening of a new connection"""
 
-        self.logger.info('Accepted SSH connection on %s',
-                         (self._local_addr, self._local_port))
-        self.logger.info('  Client address: %s',
-                         (self._peer_addr, self._peer_port))
+        self.logger.info('Accepted SSH client connection')
+
+        if self._options.proxy_command:
+            proxy_command = ' '.join(shlex.quote(arg) for arg in
+                                     self._options.proxy_command)
+            self.logger.info('  Proxy command: %s', proxy_command)
+        else:
+            self.logger.info('  Local address: %s',
+                             (self._local_addr, self._local_port))
+            self.logger.info('  Peer address: %s',
+                             (self._peer_addr, self._peer_port))
 
     async def _reload_config(self):
         """Re-evaluate config with updated match options"""
@@ -5482,9 +5573,9 @@ class SSHConnectionOptions(Options):
 
     # pylint: disable=arguments-differ
     def prepare(self, config, protocol_factory, version, host, port, tunnel,
-                family, local_addr, tcp_keepalive, kex_algs, encryption_algs,
-                mac_algs, compression_algs, signature_algs, host_based_auth,
-                public_key_auth, kbdint_auth, password_auth,
+                proxy_command, family, local_addr, tcp_keepalive, kex_algs,
+                encryption_algs, mac_algs, compression_algs, signature_algs,
+                host_based_auth, public_key_auth, kbdint_auth, password_auth,
                 x509_trusted_certs, x509_trusted_cert_paths, x509_purposes,
                 rekey_bytes, rekey_seconds, login_timeout, keepalive_interval,
                 keepalive_count_max):
@@ -5498,6 +5589,11 @@ class SSHConnectionOptions(Options):
         self.port = port if port != () else config.get('Port', DEFAULT_PORT)
 
         self.tunnel = tunnel if tunnel != () else config.get('ProxyJump')
+
+        if isinstance(proxy_command, str):
+            proxy_command = shlex.split(proxy_command)
+
+        self.proxy_command = proxy_command or config.get('ProxyCommand')
 
         self.family = family if family != () else \
             config.get('AddressFamily', socket.AF_UNSPEC)
@@ -5599,6 +5695,12 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
        :param client_factory: (optional)
            A `callable` which returns an :class:`SSHClient` object that will
            be created for each new connection.
+       :param proxy_command: (optional)
+           A string or list of strings specifying a command and arguments
+           to run to make a connection to the SSH server. Data will be
+           forwarded to this process over stdin/stdout instead of opening a
+           TCP connection. If specified as a string, standard shell quoting
+           will be applied when splitting the command and its arguments.
        :param known_hosts: (optional)
            The list of keys which will be used to validate the server host
            key presented during the SSH handshake. If this is not specified,
@@ -5907,6 +6009,7 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
            specified, its value will be pulled from this options object
            (if present) before falling back to the default value.
        :type client_factory: `callable`
+       :type proxy_command: `str` or `list` of `str`
        :type known_hosts: *see* :ref:`SpecifyingKnownHosts`
        :type host_key_alias: `str`
        :type server_host_key_algs: `str` or `list` of `str`
@@ -5974,8 +6077,8 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
     # pylint: disable=arguments-differ
     def prepare(self, last_config=None, config=(), reload=False,
                 client_factory=None, client_version=(), host='', port=(),
-                tunnel=(), family=(), local_addr=(), tcp_keepalive=(),
-                kex_algs=(), encryption_algs=(), mac_algs=(),
+                tunnel=(), proxy_command=(), family=(), local_addr=(),
+                tcp_keepalive=(), kex_algs=(), encryption_algs=(), mac_algs=(),
                 compression_algs=(), signature_algs=(), host_based_auth=(),
                 public_key_auth=(), kbdint_auth=(), password_auth=(),
                 x509_trusted_certs=(), x509_trusted_cert_paths=(),
@@ -6037,13 +6140,13 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
                                              _DEFAULT_KEEPALIVE_COUNT_MAX)
 
         super().prepare(config, client_factory or SSHClient, client_version,
-                        host, port, tunnel, family, local_addr, tcp_keepalive,
-                        kex_algs, encryption_algs, mac_algs, compression_algs,
-                        signature_algs, host_based_auth, public_key_auth,
-                        kbdint_auth, password_auth, x509_trusted_certs,
-                        x509_trusted_cert_paths, x509_purposes,
-                        rekey_bytes, rekey_seconds, login_timeout,
-                        keepalive_interval, keepalive_count_max)
+                        host, port, tunnel, proxy_command, family, local_addr,
+                        tcp_keepalive, kex_algs, encryption_algs, mac_algs,
+                        compression_algs, signature_algs, host_based_auth,
+                        public_key_auth, kbdint_auth, password_auth,
+                        x509_trusted_certs, x509_trusted_cert_paths,
+                        x509_purposes, rekey_bytes, rekey_seconds,
+                        login_timeout, keepalive_interval, keepalive_count_max)
 
         if known_hosts == ():
             known_hosts = (config.get('UserKnownHostsFile', []) + \
@@ -6209,6 +6312,13 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
        :param server_factory:
            A `callable` which returns an :class:`SSHServer` object that will
            be created for each new connection.
+       :param proxy_command: (optional)
+           A string or list of strings specifying a command and arguments
+           to run when using :func:`connect_reverse` to make a reverse
+           direction connection to an SSH client. Data will be forwarded
+           to this process over stdin/stdout instead of opening a TCP
+           connection. If specified as a string, standard shell quoting
+           will be applied when splitting the command and its arguments.
        :param server_host_keys: (optional)
            A list of private keys and optional certificates which can be
            used by the server as a host key. Either this argument or
@@ -6424,6 +6534,7 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
            specified, its value will be pulled from this options object
            (if present) before falling back to the default value.
        :type server_factory: `callable`
+       :type proxy_command: `str` or `list` of `str`
        :type family: `socket.AF_UNSPEC`, `socket.AF_INET`, or `socket.AF_INET6`
        :type server_host_keys: *see* :ref:`SpecifyingPrivateKeys`
        :type server_host_certs: *see* :ref:`SpecifyingCertificates`
@@ -6477,18 +6588,19 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
     def prepare(self, last_config=None, config=(), reload=False,
                 accept_addr='', accept_port=0, username='', client_host=None,
                 client_addr='', server_factory=None, server_version=(),
-                host='', port=(), tunnel=(), family=(), local_addr=(),
-                tcp_keepalive=(), kex_algs=(), encryption_algs=(), mac_algs=(),
-                compression_algs=(), signature_algs=(), host_based_auth=(),
-                public_key_auth=(), kbdint_auth=(), password_auth=(),
-                x509_trusted_certs=(), x509_trusted_cert_paths=(),
-                x509_purposes='secureShellClient', rekey_bytes=(),
-                rekey_seconds=(), login_timeout=(), keepalive_interval=(),
-                keepalive_count_max=(), server_host_keys=(),
-                server_host_certs=(), passphrase=None, known_client_hosts=None,
-                trust_client_host=False, authorized_client_keys=(),
-                gss_host=(), gss_kex=(), gss_auth=(), allow_pty=(),
-                line_editor=True, line_history=_DEFAULT_LINE_HISTORY,
+                host='', port=(), tunnel=(), proxy_command=(), family=(),
+                local_addr=(), tcp_keepalive=(), kex_algs=(),
+                encryption_algs=(), mac_algs=(), compression_algs=(),
+                signature_algs=(), host_based_auth=(), public_key_auth=(),
+                kbdint_auth=(), password_auth=(), x509_trusted_certs=(),
+                x509_trusted_cert_paths=(), x509_purposes='secureShellClient',
+                rekey_bytes=(), rekey_seconds=(), login_timeout=(),
+                keepalive_interval=(), keepalive_count_max=(),
+                server_host_keys=(), server_host_certs=(), passphrase=None,
+                known_client_hosts=None, trust_client_host=False,
+                authorized_client_keys=(), gss_host=(), gss_kex=(),
+                gss_auth=(), allow_pty=(), line_editor=True,
+                line_history=_DEFAULT_LINE_HISTORY,
                 max_line_length=_DEFAULT_MAX_LINE_LENGTH, rdns_lookup=(),
                 x11_forwarding=False, x11_auth_path=None, agent_forwarding=(),
                 process_factory=None, session_factory=None, encoding='utf-8',
@@ -6513,13 +6625,13 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
                                              _DEFAULT_KEEPALIVE_COUNT_MAX)
 
         super().prepare(config, server_factory or SSHServer, server_version,
-                        host, port, tunnel, family, local_addr, tcp_keepalive,
-                        kex_algs, encryption_algs, mac_algs, compression_algs,
-                        signature_algs, host_based_auth, public_key_auth,
-                        kbdint_auth, password_auth, x509_trusted_certs,
-                        x509_trusted_cert_paths, x509_purposes,
-                        rekey_bytes, rekey_seconds, login_timeout,
-                        keepalive_interval, keepalive_count_max)
+                        host, port, tunnel, proxy_command, family, local_addr,
+                        tcp_keepalive, kex_algs, encryption_algs, mac_algs,
+                        compression_algs, signature_algs, host_based_auth,
+                        public_key_auth, kbdint_auth, password_auth,
+                        x509_trusted_certs, x509_trusted_cert_paths,
+                        x509_purposes, rekey_bytes, rekey_seconds,
+                        login_timeout, keepalive_interval, keepalive_count_max)
 
         if server_host_keys == ():
             server_host_keys = config.get('HostKey')
@@ -6857,6 +6969,9 @@ async def listen(host='', port=(), tunnel=(), family=(),
                                          port=port, tunnel=tunnel,
                                          family=family, **kwargs)
 
+    # pylint: disable=attribute-defined-outside-init
+    options.proxy_command = None
+
     return await _listen(options, loop, flags, backlog, reuse_address,
                          reuse_port, conn_factory, 'Creating SSH listener on')
 
@@ -6965,6 +7080,9 @@ async def listen_reverse(host='', port=(), *, tunnel=(), family=(),
                                          port=port, tunnel=tunnel,
                                          family=family, **kwargs)
 
+    # pylint: disable=attribute-defined-outside-init
+    options.proxy_command = None
+
     return await _listen(options, loop, flags, backlog, reuse_address,
                          reuse_port, conn_factory,
                          'Creating reverse direction SSH listener on')
@@ -7007,9 +7125,11 @@ async def create_server(server_factory, host='', port=(), **kwargs):
     return await listen(host, port, server_factory=server_factory, **kwargs)
 
 
-async def get_server_host_key(host, port=(), *, tunnel=(), family=(), flags=0,
-                              local_addr=None, client_version=(), kex_algs=(),
-                              server_host_key_algs=(), config=(), options=None):
+async def get_server_host_key(host, port=(), *, tunnel=(), proxy_command=(),
+                              family=(), flags=0, local_addr=None,
+                              client_version=(), kex_algs=(),
+                              server_host_key_algs=(), config=(),
+                              options=None):
     """Retrieve an SSH server's host key
 
        This is a coroutine which can be run to connect to an SSH server and
@@ -7039,6 +7159,12 @@ async def get_server_host_key(host, port=(), *, tunnel=(), family=(), flags=0,
            [user@]host[:port] may also be specified, in which case a
            connection will first be made to that host and it will then be
            used as a tunnel.
+       :param proxy_command: (optional)
+           A string or list of strings specifying a command and arguments
+           to run to make a connection to the SSH server. Data will be
+           forwarded to this process over stdin/stdout instead of opening a
+           TCP connection. If specified as a string, standard shell quoting
+           will be applied when splitting the command and its arguments.
        :param family: (optional)
            The address family to use when creating the socket. By default,
            the address family is automatically selected based on the host.
@@ -7074,6 +7200,7 @@ async def get_server_host_key(host, port=(), *, tunnel=(), family=(), flags=0,
        :type host: `str`
        :type port: `int`
        :type tunnel: :class:`SSHClientConnection` or `str`
+       :type proxy_command: `str` or `list` of `str`
        :type family: `socket.AF_UNSPEC`, `socket.AF_INET`, or `socket.AF_INET6`
        :type flags: flags to pass to :meth:`getaddrinfo() <socket.getaddrinfo>`
        :type local_addr: tuple of `str` and `int`
@@ -7096,10 +7223,11 @@ async def get_server_host_key(host, port=(), *, tunnel=(), family=(), flags=0,
 
     options = SSHClientConnectionOptions(
         options, config=config, host=host, port=port, tunnel=tunnel,
-        family=family, local_addr=local_addr, known_hosts=None,
-        server_host_key_algs=server_host_key_algs, x509_trusted_certs=None,
-        x509_trusted_cert_paths=None, x509_purposes='any', gss_host=None,
-        kex_algs=kex_algs, client_version=client_version)
+        proxy_command=proxy_command, family=family, local_addr=local_addr,
+        known_hosts=None, server_host_key_algs=server_host_key_algs,
+        x509_trusted_certs=None, x509_trusted_cert_paths=None,
+        x509_purposes='any', gss_host=None, kex_algs=kex_algs,
+        client_version=client_version)
 
     conn = await _connect(options, loop, flags, conn_factory,
                           'Fetching server host key from')

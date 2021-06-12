@@ -1695,6 +1695,7 @@ The following OpenSSH client config options are currently supported:
   | PasswordAuthentication
   | PreferredAuthentications
   | Port
+  | ProxyCommand
   | ProxyJump
   | PubkeyAuthentication
   | RekeyLimit
@@ -1771,6 +1772,7 @@ The following OpenSSH server config options are currently supported:
   | PasswordAuthentication
   | PermitTTY
   | Port
+  | ProxyCommand
   | PubkeyAuthentication
   | RekeyLimit
   | TCPKeepAlive

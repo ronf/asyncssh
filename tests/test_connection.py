@@ -25,6 +25,7 @@ from copy import copy
 import os
 from pathlib import Path
 import socket
+import subprocess
 import sys
 import unittest
 from unittest.mock import patch
@@ -47,8 +48,15 @@ from asyncssh.packet import Boolean, NameList, String, UInt32
 
 from .server import Server, ServerTestCase
 
-from .util import asynctest, gss_available, patch_gss
+from .util import asynctest, gss_available, patch_gss, run
 from .util import patch_getnameinfo, x509_available
+
+
+try:
+    run('which nc')
+    _nc_available = True
+except subprocess.CalledProcessError: # pragma: no cover
+    _nc_available = False
 
 
 class _CheckAlgsClientConnection(asyncssh.SSHClientConnection):
@@ -508,6 +516,28 @@ class _TestConnection(ServerTestCase):
 
         with self.assertRaises(OSError):
             await asyncssh.get_server_host_key('0.0.0.1')
+
+    @unittest.skipUnless(_nc_available, 'Netcat not available')
+    @asynctest
+    async def test_get_server_host_key_proxy(self):
+        """Test retrieving a server host key using proxy command"""
+
+        keylist = asyncssh.load_public_keys('skey.pub')
+        proxy_command = ('nc', str(self._server_addr), str(self._server_port))
+
+        key = await self.get_server_host_key(proxy_command=proxy_command)
+
+        self.assertEqual(key, keylist[0])
+
+    @unittest.skipUnless(_nc_available, 'Netcat not available')
+    @asynctest
+    async def test_get_server_host_key_proxy_failure(self):
+        """Test failure retrieving a server host key using proxy command"""
+
+        proxy_command = 'nc 0.0.0.1 1'
+
+        with self.assertRaises(asyncssh.ConnectionLost):
+            await self.connect(proxy_command=proxy_command)
 
     @asynctest
     async def test_known_hosts_not_present(self):
@@ -1444,6 +1474,15 @@ class _TestConnectionReverse(ServerTestCase):
         with self.assertLogs(level='INFO'):
             async with self.connect_reverse():
                 pass
+
+    @asynctest
+    async def test_connect_reverse_proxy(self):
+        """Test reverse direction SSH connection with proxy command"""
+
+        proxy_command = ('nc', str(self._server_addr), str(self._server_port))
+
+        async with self.connect_reverse(proxy_command=proxy_command):
+            pass
 
     @asynctest
     async def test_connect_reverse_options(self):

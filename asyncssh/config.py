@@ -376,7 +376,7 @@ class SSHClientConfig(SSHConfig):
     _conditionals = {'host', 'match'}
     _no_split = {'remotecommand'}
     _percent_expand = {'CertificateFile', 'IdentityAgent',
-                       'IdentityFile', 'RemoteCommand'}
+                       'IdentityFile', 'ProxyCommand', 'RemoteCommand'}
 
     def _init_options(self, local_user, user, host, port):
         """Set options used for matching and token substitutions"""
@@ -501,6 +501,7 @@ class SSHClientConfig(SSHConfig):
         ('PKCS11Provider',                  SSHConfig._set_string),
         ('PreferredAuthentications',        SSHConfig._set_string),
         ('Port',                            SSHConfig._set_int),
+        ('ProxyCommand',                    SSHConfig._set_string_list),
         ('ProxyJump',                       SSHConfig._set_string),
         ('PubkeyAuthentication',            SSHConfig._set_bool),
         ('RekeyLimit',                      SSHConfig._set_rekey_limits),
