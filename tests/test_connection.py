@@ -1475,6 +1475,7 @@ class _TestConnectionReverse(ServerTestCase):
             async with self.connect_reverse():
                 pass
 
+    @unittest.skipUnless(_nc_available, 'Netcat not available')
     @asynctest
     async def test_connect_reverse_proxy(self):
         """Test reverse direction SSH connection with proxy command"""
