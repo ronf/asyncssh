@@ -30,7 +30,7 @@ import subprocess
 import asyncssh
 from asyncssh.misc import async_context_manager
 
-from .util import AsyncTestCase, run, x509_available
+from .util import AsyncTestCase, all_tasks, current_task, run, x509_available
 
 
 class Server(asyncssh.SSHServer):
@@ -284,8 +284,10 @@ class ServerTestCase(AsyncTestCase):
     async def asyncTearDownClass(cls):
         """Shut down test server and agent"""
 
-        # Wait a bit for existing tasks to exit
-        await asyncio.sleep(1)
+        tasks = all_tasks()
+        tasks.remove(current_task())
+
+        await asyncio.gather(*tasks, return_exceptions=True)
 
         cls._server.close()
         await cls._server.wait_closed()

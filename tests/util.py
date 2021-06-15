@@ -59,6 +59,14 @@ from asyncssh.misc import ConnectionLost, SignalReceived
 from asyncssh.packet import Byte, String, UInt32, UInt64
 
 
+if hasattr(asyncio, 'all_tasks'):
+    all_tasks = asyncio.all_tasks
+    current_task = asyncio.current_task
+else:
+    all_tasks = asyncio.Task.all_tasks
+    current_task = asyncio.Task.current_task
+
+
 def asynctest(coro):
     """Decorator for async tests, for use with AsyncTestCase"""
 
