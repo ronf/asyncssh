@@ -269,6 +269,7 @@ async def _connect(options, loop, flags, conn_factory, msg):
     family = options.family
     local_addr = options.local_addr
     proxy_command = options.proxy_command
+    free_conn = True
 
     new_tunnel = await _open_tunnel(tunnel)
 
@@ -300,15 +301,16 @@ async def _connect(options, loop, flags, conn_factory, msg):
     # pylint: disable=broad-except
     try:
         await conn.wait_established()
-    except Exception:
-        conn.abort()
-        await conn.wait_closed()
-        raise
-    else:
+        free_conn = False
+
         if new_tunnel:
             conn.set_tunnel(new_tunnel)
 
         return conn
+    finally:
+        if free_conn:
+            conn.abort()
+            await conn.wait_closed()
 
 
 async def _listen(options, loop, flags, backlog, reuse_address,

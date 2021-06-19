@@ -536,7 +536,7 @@ class _TestConnection(ServerTestCase):
 
         proxy_command = 'nc 0.0.0.1 1'
 
-        with self.assertRaises(asyncssh.ConnectionLost):
+        with self.assertRaises((OSError, asyncssh.ConnectionLost)):
             await self.connect(proxy_command=proxy_command)
 
     @asynctest
@@ -1888,25 +1888,29 @@ class _TestHostKeyAlias(ServerTestCase):
     async def test_host_key_match(self):
         """Test host key match"""
 
-        await self.connect(host_key_alias='fakehost')
+        async with self.connect(host_key_alias='fakehost'):
+            pass
 
     @asynctest
     async def test_host_cert_match(self):
         """Test host cert match"""
 
-        await self.connect(host_key_alias='certifiedfakehost')
+        async with self.connect(host_key_alias='certifiedfakehost'):
+            pass
 
     @asynctest
     async def test_host_key_match_config(self):
         """Test host key match using HostKeyAlias in config file"""
 
-        await self.connect('server-with-key-config')
+        async with self.connect('server-with-key-config'):
+            pass
 
     @asynctest
     async def test_host_cert_match_config(self):
         """Test host cert match using HostKeyAlias in config file"""
 
-        await self.connect('server-with-cert-config')
+        async with self.connect('server-with-cert-config'):
+            pass
 
 
 class _TestServerInternalError(ServerTestCase):
