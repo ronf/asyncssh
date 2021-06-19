@@ -3,6 +3,32 @@
 Change Log
 ==========
 
+Release 2.7.0 (19 Jun 2021)
+---------------------------
+
+* Added support for the ProxyCommand config file option and a
+  corresponding proxy_command argument in the SSH connection options,
+  allowing a subprocess to be used to make the connection to the SSH
+  server. When the config option is used, it should be fully compatible
+  with OpenSSH percent expansion in the command to run.
+
+* Added support for accessing terminal information as properties in the
+  SSHServerProcess class. As part of this change, both the environment
+  and terminal modes are now available as read-only mappings. Thanks
+  again to velavokr for suggesitng this and submitting a PR with a
+  proposed version of the change.
+
+* Fixed terminal information passed to pty_requested() callback to
+  properly reflect requested terminal type, size, and modes. Thanks go
+  to velavokr for reporting this issue and proposing a fix.
+
+* Fixed an edge case where a connection object might not be cleaned up
+  properly if the connection request was cancelled before it was fully
+  established.
+
+* Fixed an issue where some unit tests weren't properly closing
+  connection objects before exiting.
+
 Release 2.6.0 (1 May 2021)
 --------------------------
 
