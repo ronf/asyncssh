@@ -23,19 +23,27 @@
 from fnmatch import fnmatch
 
 from .misc import ip_network
+from ipaddress import IPv4Address
+from ipaddress import IPv6Address
+from typing import Optional
+from typing import Union
+from typing import Any
+from asyncssh.pattern import WildcardPattern
+from asyncssh.pattern import CIDRHostPattern
+from asyncssh.pattern import WildcardHostPattern
 
 
 class WildcardPattern:
     """A pattern matcher for '*' and '?' wildcards"""
 
-    def __init__(self, pattern):
+    def __init__(self, pattern: str) -> None:
         # We need to escape square brackets in host patterns if we
         # want to use Python's fnmatch.
         self._pattern = ''.join('[[]' if ch == '[' else
                                 '[]]' if ch == ']' else
                                 ch for ch in pattern)
 
-    def matches(self, value):
+    def matches(self, value: str) -> bool:
         """Return whether a wild card pattern matches a value"""
 
         return fnmatch(value, self._pattern)
@@ -44,7 +52,7 @@ class WildcardPattern:
 class WildcardHostPattern(WildcardPattern):
     """Match a host name or address against a wildcard pattern"""
 
-    def matches(self, host, addr, _ip):
+    def matches(self, host: str, addr: str, _ip: IPv4Address) -> bool:
         """Return whether a host or address matches a wild card host pattern"""
 
         # Arguments vary by class, but inheritance is still needed here
@@ -57,10 +65,10 @@ class WildcardHostPattern(WildcardPattern):
 class CIDRHostPattern:
     """Match IPv4/v6 address against CIDR-style subnet pattern"""
 
-    def __init__(self, pattern):
+    def __init__(self, pattern: str) -> None:
         self._network = ip_network(pattern)
 
-    def matches(self, _host, _addr, ip):
+    def matches(self, _host: Optional[str], _addr: str, ip: Union[IPv4Address, IPv6Address]) -> bool:
         """Return whether an IP address matches a CIDR address pattern"""
 
         return ip and ip in self._network
@@ -81,7 +89,7 @@ class _PatternList:
 
     """
 
-    def __init__(self, patterns):
+    def __init__(self, patterns: str) -> None:
         self._pos_patterns = []
         self._neg_patterns = []
 
@@ -104,7 +112,7 @@ class _PatternList:
 
         raise NotImplementedError
 
-    def matches(self, *args):
+    def matches(self, *args: Any) -> bool:
         """Match a set of values against positive & negative pattern lists"""
 
         pos_match = any(p.matches(*args) for p in self._pos_patterns)
@@ -116,7 +124,7 @@ class _PatternList:
 class WildcardPatternList(_PatternList):
     """Match names against wildcard patterns"""
 
-    def build_pattern(self, pattern):
+    def build_pattern(self, pattern: str) -> WildcardPattern:
         """Build a wild card pattern"""
 
         return WildcardPattern(pattern)
@@ -125,7 +133,7 @@ class WildcardPatternList(_PatternList):
 class HostPatternList(_PatternList):
     """Match host names & addresses against wildcard and CIDR patterns"""
 
-    def build_pattern(self, pattern):
+    def build_pattern(self, pattern: str) -> Union[CIDRHostPattern, WildcardHostPattern]:
         """Build a CIDR address or wild card host pattern"""
 
         try:

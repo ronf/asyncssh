@@ -27,6 +27,12 @@ from .misc import KeyExchangeFailed, ProtocolError, get_symbol_names, randrange
 from .packet import MPInt, String, SSHPacket
 from .public_key import KeyImportError
 from .public_key import decode_ssh_public_key, generate_private_key
+from tests.test_kex import _KexClientStub
+from tests.test_kex import _KexServerStub
+from typing import Union
+from asyncssh.packet import SSHPacket
+from typing import Any
+from typing import Optional
 
 # SSH KEXRSA message values
 MSG_KEXRSA_PUBKEY  = 30
@@ -39,7 +45,7 @@ class _KexRSA(Kex):
 
     _handler_names = get_symbol_names(globals(), 'MSG_KEXRSA')
 
-    def __init__(self, alg, conn, hash_alg, key_size, hash_size):
+    def __init__(self, alg: bytes, conn: Union[_KexClientStub, _KexServerStub], hash_alg: builtin_function_or_method, key_size: int, hash_size: int) -> None:
         super().__init__(alg, conn, hash_alg)
 
         self._key_size = key_size
@@ -53,7 +59,7 @@ class _KexRSA(Kex):
         self._k = None
         self._encrypted_k = None
 
-    def start(self):
+    def start(self) -> None:
         """Start RSA key exchange"""
 
         if self._conn.is_server():
@@ -66,7 +72,7 @@ class _KexRSA(Kex):
             self.send_packet(MSG_KEXRSA_PUBKEY, String(self._host_key_data),
                              String(self._trans_key_data))
 
-    def _compute_hash(self):
+    def _compute_hash(self) -> bytes:
         """Compute a hash of key information associated with the connection"""
 
         hash_obj = self._hash_alg()
@@ -77,7 +83,7 @@ class _KexRSA(Kex):
         hash_obj.update(MPInt(self._k))
         return hash_obj.digest()
 
-    def _process_pubkey(self, _pkttype, _pktid, packet):
+    def _process_pubkey(self, _pkttype: int, _pktid: Optional[Any], packet: SSHPacket) -> None:
         """Process a KEXRSA pubkey message"""
 
         if self._conn.is_server():
@@ -97,7 +103,7 @@ class _KexRSA(Kex):
 
         self.send_packet(MSG_KEXRSA_SECRET, String(self._encrypted_k))
 
-    def _process_secret(self, _pkttype, _pktid, packet):
+    def _process_secret(self, _pkttype: int, _pktid: Optional[Any], packet: SSHPacket) -> None:
         """Process a KEXRSA secret message"""
 
         if self._conn.is_client():
@@ -123,7 +129,7 @@ class _KexRSA(Kex):
 
         self._conn.send_newkeys(self._k, h)
 
-    def _process_done(self, _pkttype, _pktid, packet):
+    def _process_done(self, _pkttype: int, _pktid: Optional[Any], packet: SSHPacket) -> None:
         """Process a KEXRSA done message"""
 
         if self._conn.is_server():

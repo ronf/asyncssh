@@ -41,7 +41,7 @@ from .chacha import ChachaCipher, chacha_available
 
 # Import umac cryptographic hash if available
 try:
-    from .umac import umac32, umac64, umac96, umac128
+    from .umac import umac32, umac64, umac96, umac128  # type: ignore
 except (ImportError, AttributeError, OSError): # pragma: no cover
     pass
 

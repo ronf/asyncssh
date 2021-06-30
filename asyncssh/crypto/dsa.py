@@ -25,6 +25,15 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import dsa
 
 from .misc import PyCAKey, hashes
+from asyncssh.crypto.dsa import DSAPrivateKey
+from asyncssh.crypto.dsa import DSAPublicKey
+from cryptography.hazmat.backends.openssl.dsa import _DSAPrivateKey
+from cryptography.hazmat.backends.openssl.dsa import _DSAPublicKey
+from cryptography.hazmat.primitives.asymmetric.dsa import DSAParameterNumbers
+from cryptography.hazmat.primitives.asymmetric.dsa import DSAPrivateNumbers
+from cryptography.hazmat.primitives.asymmetric.dsa import DSAPublicNumbers
+from typing import Optional
+from typing import Union
 
 
 # Short variable names are used here, matching names in the spec
@@ -34,7 +43,7 @@ from .misc import PyCAKey, hashes
 class _DSAKey(PyCAKey):
     """Base class for shim around PyCA for DSA keys"""
 
-    def __init__(self, pyca_key, params, pub, priv=None):
+    def __init__(self, pyca_key: Union[_DSAPrivateKey, _DSAPublicKey], params: DSAParameterNumbers, pub: DSAPublicNumbers, priv: Optional[DSAPrivateNumbers] = None) -> None:
         super().__init__(pyca_key)
 
         self._params = params
@@ -42,31 +51,31 @@ class _DSAKey(PyCAKey):
         self._priv = priv
 
     @property
-    def p(self):
+    def p(self) -> int:
         """Return the DSA public modulus"""
 
         return self._params.p
 
     @property
-    def q(self):
+    def q(self) -> int:
         """Return the DSA sub-group order"""
 
         return self._params.q
 
     @property
-    def g(self):
+    def g(self) -> int:
         """Return the DSA generator"""
 
         return self._params.g
 
     @property
-    def y(self):
+    def y(self) -> int:
         """Return the DSA public value"""
 
         return self._pub.y
 
     @property
-    def x(self):
+    def x(self) -> int:
         """Return the DSA private value"""
 
         return self._priv.x if self._priv else None
@@ -87,7 +96,7 @@ class DSAPrivateKey(_DSAKey):
         return cls(priv_key, params, pub, priv)
 
     @classmethod
-    def generate(cls, key_size):
+    def generate(cls, key_size: int) -> DSAPrivateKey:
         """Generate a new DSA private key"""
 
         priv_key = dsa.generate_private_key(key_size, default_backend())
@@ -97,7 +106,7 @@ class DSAPrivateKey(_DSAKey):
 
         return cls(priv_key, params, pub, priv)
 
-    def sign(self, data, hash_alg):
+    def sign(self, data: bytes, hash_alg: str) -> bytes:
         """Sign a block of data"""
 
         priv_key = self.pyca_key
@@ -108,7 +117,7 @@ class DSAPublicKey(_DSAKey):
     """A shim around PyCA for DSA public keys"""
 
     @classmethod
-    def construct(cls, p, q, g, y):
+    def construct(cls, p: int, q: int, g: int, y: int) -> DSAPublicKey:
         """Construct a DSA public key"""
 
         params = dsa.DSAParameterNumbers(p, q, g)
@@ -117,7 +126,7 @@ class DSAPublicKey(_DSAKey):
 
         return cls(pub_key, params, pub)
 
-    def verify(self, data, sig, hash_alg):
+    def verify(self, data: bytes, sig: bytes, hash_alg: str) -> bool:
         """Verify the signature on a block of data"""
 
         try:

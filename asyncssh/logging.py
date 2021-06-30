@@ -22,6 +22,13 @@
 """Logging functions"""
 
 import logging
+from typing import Any
+from typing import Union
+from logging import Logger
+from typing import Optional
+from asyncssh.logging import _SSHLogger
+from typing import Dict
+from typing import Tuple
 
 
 class _SSHLogger(logging.LoggerAdapter):
@@ -30,13 +37,13 @@ class _SSHLogger(logging.LoggerAdapter):
     _debug_level = 1
     _pkg_logger = logging.getLogger(__package__ or 'asyncssh')
 
-    def __init__(self, parent=_pkg_logger, child=None, context=''):
+    def __init__(self, parent: Logger = _pkg_logger, child: Optional[str] = None, context: str = '') -> None:
         self._context = context
         self._logger = parent.getChild(child) if child else parent
 
         super().__init__(self._logger, {})
 
-    def _extend_context(self, context):
+    def _extend_context(self, context: Optional[str]) -> str:
         """Extend context provided by this logger"""
 
         if context:
@@ -47,15 +54,15 @@ class _SSHLogger(logging.LoggerAdapter):
 
         return context
 
-    def get_child(self, child=None, context=None):
+    def get_child(self, child: Optional[str] = None, context: Optional[str] = None) -> _SSHLogger:
         """Return child logger with optional added context"""
 
         return type(self)(self._logger, child, self._extend_context(context))
 
-    def log(self, level, msg, *args, **kwargs):
+    def log(self, level: int, msg: str, *args: Any, **kwargs: Any) -> Optional[Any]:
         """Log a message to the underlying logger"""
 
-        def _text(arg):
+        def _text(arg: Any) -> Union[int, str]:
             """Convert a log argument to text"""
 
             if isinstance(arg, list):
@@ -78,7 +85,7 @@ class _SSHLogger(logging.LoggerAdapter):
 
         return super().log(level, msg, *args, **kwargs)
 
-    def process(self, msg, kwargs):
+    def process(self, msg: str, kwargs: Dict[str, Dict[str, Any]]) -> Tuple[str, Dict[str, Dict[str, Any]]]:
         """Add context to log message"""
 
         extra = kwargs.get('extra', {})
@@ -116,7 +123,7 @@ class _SSHLogger(logging.LoggerAdapter):
         return context + msg + pktdata, kwargs
 
     @classmethod
-    def set_debug_level(cls, level):
+    def set_debug_level(cls, level: int) -> None:
         """Set AsyncSSH debug log level"""
 
         if level < 1 or level > 3:
@@ -124,18 +131,18 @@ class _SSHLogger(logging.LoggerAdapter):
 
         cls._debug_level = level
 
-    def debug1(self, msg, *args, **kwargs):
+    def debug1(self, msg: str, *args: Any, **kwargs: Any) -> None:
         """Write a level 1 debug log message"""
 
         self.debug(msg, *args, **kwargs)
 
-    def debug2(self, msg, *args, **kwargs):
+    def debug2(self, msg: str, *args: Any, **kwargs: Any) -> None:
         """Write a level 2 debug log message"""
 
         if self._debug_level >= 2:
             self.debug(msg, *args, **kwargs)
 
-    def packet(self, pktid, packet, msg, *args, **kwargs):
+    def packet(self, pktid: Optional[int], packet: bytes, msg: str, *args: str, **kwargs: Any) -> None:
         """Write a control packet debug log message"""
 
         if self._debug_level >= 3:
@@ -149,7 +156,7 @@ class _SSHLogger(logging.LoggerAdapter):
             self.debug(msg, *args, **kwargs)
 
 
-def set_log_level(level):
+def set_log_level(level: str) -> None:
     """Set the AsyncSSH log level
 
        This function sets the log level of the AsyncSSH logger. It
@@ -168,7 +175,7 @@ def set_log_level(level):
     logger.setLevel(level)
 
 
-def set_sftp_log_level(level):
+def set_sftp_log_level(level: str) -> None:
     """Set the AsyncSSH SFTP/SCP log level
 
        This function sets the log level of the AsyncSSH SFTP/SCP logger.
@@ -187,7 +194,7 @@ def set_sftp_log_level(level):
     sftp_logger.setLevel(level)
 
 
-def set_debug_level(level):
+def set_debug_level(level: int) -> None:
     """Set the AsyncSSH debug log level
 
        This function sets the level of debugging logging done by the

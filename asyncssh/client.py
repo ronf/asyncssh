@@ -19,6 +19,12 @@
 #     Ron Frederick - initial implementation, API, and documentation
 
 """SSH client protocol handler"""
+from asyncssh.connection import SSHClientConnection
+from tests.test_connection_auth import _InvalidUsernameClientConnection
+from tests.test_connection_auth import _UnknownAuthClientConnection
+from typing import Union
+from typing import Any
+from typing import Optional
 
 
 class SSHClient:
@@ -55,7 +61,7 @@ class SSHClient:
 
     # pylint: disable=no-self-use,unused-argument
 
-    def connection_made(self, conn):
+    def connection_made(self, conn: Union[SSHClientConnection, _InvalidUsernameClientConnection, _UnknownAuthClientConnection]) -> None:
         """Called when a connection is made
 
            This method is called as soon as the TCP connection completes.
@@ -67,7 +73,7 @@ class SSHClient:
 
         """
 
-    def connection_lost(self, exc):
+    def connection_lost(self, exc: Any) -> None:
         """Called when a connection is lost or closed
 
            This method is called when a connection is closed. If the
@@ -182,7 +188,7 @@ class SSHClient:
 
         return False # pragma: no cover
 
-    def auth_banner_received(self, msg, lang):
+    def auth_banner_received(self, msg: str, lang: str) -> None:
         """An incoming authentication banner was received
 
            This method is called when the server sends a banner to display
@@ -198,7 +204,7 @@ class SSHClient:
 
         """
 
-    def auth_completed(self):
+    def auth_completed(self) -> None:
         """Authentication was completed successfully
 
            This method is called when authentication has completed
@@ -213,7 +219,7 @@ class SSHClient:
 
         """
 
-    def public_key_auth_requested(self):
+    def public_key_auth_requested(self) -> Optional[Any]:
         """Public key authentication has been requested
 
            This method should return a private key corresponding to
@@ -239,7 +245,7 @@ class SSHClient:
 
         return None # pragma: no cover
 
-    def password_auth_requested(self):
+    def password_auth_requested(self) -> Optional[Any]:
         """Password authentication has been requested
 
            This method should return a string containing the password
@@ -296,7 +302,7 @@ class SSHClient:
 
         return NotImplemented # pragma: no cover
 
-    def password_changed(self):
+    def password_changed(self) -> None:
         """The requested password change was successful
 
            This method is called to indicate that a requested password
@@ -306,7 +312,7 @@ class SSHClient:
 
         """
 
-    def password_change_failed(self):
+    def password_change_failed(self) -> None:
         """The requested password change has failed
 
            This method is called to indicate that a requested password
@@ -317,7 +323,7 @@ class SSHClient:
 
         """
 
-    def kbdint_auth_requested(self):
+    def kbdint_auth_requested(self) -> NotImplementedType:
         """Keyboard-interactive authentication has been requested
 
            This method should return a string containing a comma-separated

@@ -21,6 +21,18 @@
 """PKCS#11 smart card handler"""
 
 import codecs
+from asyncssh.pkcs11 import SSHPKCS11Session
+from tests.pkcs11_stub import _PKCS11Token
+from typing import Any
+from typing import Optional
+from asyncssh.ecdsa import _ECKey
+from asyncssh.public_key import SSHX509CertificateChain
+from asyncssh.rsa import _RSAKey
+from tests.pkcs11_stub import _PKCS11Key
+from typing import Union
+from typing import Tuple
+from asyncssh.pkcs11 import SSHPKCS11KeyPair
+from typing import List
 
 try:
     import pkcs11
@@ -58,7 +70,7 @@ if pkcs11_available:
 
         _key_type = 'pkcs11'
 
-        def __init__(self, session, key, pubkey, cert=None):
+        def __init__(self, session: SSHPKCS11Session, key: _PKCS11Key, pubkey: Union[_ECKey, _RSAKey], cert: Optional[SSHX509CertificateChain] = None) -> None:
             super().__init__(pubkey.algorithm, pubkey.algorithm,
                              pubkey.sig_algorithms, pubkey.sig_algorithms,
                              pubkey.public_data, key.label, cert,
@@ -67,10 +79,10 @@ if pkcs11_available:
             self._session = session
             self._key = key
 
-        def __del__(self):
+        def __del__(self) -> None:
             self._session.close()
 
-        def sign(self, data):
+        def sign(self, data: bytes) -> bytes:
             """Sign a block of data with this private key"""
 
             sig_algorithm = self.sig_algorithm
@@ -94,23 +106,23 @@ if pkcs11_available:
 
         _sessions = {}
 
-        def __init__(self, token_id, token, pin):
+        def __init__(self, token_id: Tuple[str, bytes], token: _PKCS11Token, pin: Optional[Any]) -> None:
             self._token_id = token_id
             self._session = token.open(user_pin=pin)
             self._refcount = 0
 
-        def __enter__(self):
+        def __enter__(self) -> SSHPKCS11Session:
             """Allow SSHPKCS11Session to be used as a context manager"""
 
             return self
 
-        def __exit__(self, *exc_info):
+        def __exit__(self, *exc_info: Any) -> None:
             """Drop one reference to the session when exiting"""
 
             self.close()
 
         @classmethod
-        def open(cls, token, pin):
+        def open(cls, token: _PKCS11Token, pin: Optional[Any]) -> SSHPKCS11Session:
             """Open a new session, or return an already-open one"""
 
             token_id = (token.manufacturer_id, token.serial)
@@ -124,7 +136,7 @@ if pkcs11_available:
             session._refcount += 1
             return session
 
-        def close(self):
+        def close(self) -> None:
             """Drop one reference to an open session"""
 
             self._refcount -= 1
@@ -133,7 +145,7 @@ if pkcs11_available:
                 self._session.close()
                 del self._sessions[self._token_id]
 
-        def get_keys(self, load_certs, key_label, key_id):
+        def get_keys(self, load_certs: bool, key_label: Optional[str], key_id: Union[None, bytes, str]) -> List[SSHPKCS11KeyPair]:
             """Return the private keys found on this token"""
 
             if isinstance(key_id, str):
@@ -179,9 +191,9 @@ if pkcs11_available:
             return keys
 
 
-    def load_pkcs11_keys(provider, pin=None, *, load_certs=True,
-                         token_label=None, token_serial=None,
-                         key_label=None, key_id=None):
+    def load_pkcs11_keys(provider: str, pin: Optional[Any] = None, *, load_certs: bool = True,
+                         token_label: Optional[str] = None, token_serial: Union[None, bytes, str] = None,
+                         key_label: Optional[str] = None, key_id: Union[None, bytes, str] = None) -> List[SSHPKCS11KeyPair]:
         """Load PIV keys and X.509 certificates from a PKCS#11 token
 
            This function loads a list of SSH keypairs with optional X.509

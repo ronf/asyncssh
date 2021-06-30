@@ -19,6 +19,11 @@
 #     Ron Frederick - initial implementation, API, and documentation
 
 """SSH session handlers"""
+from typing import Any
+from typing import Optional
+from asyncssh.channel import SSHClientChannel
+from typing import Dict
+from typing import Tuple
 
 
 class SSHSession:
@@ -26,7 +31,7 @@ class SSHSession:
 
     # pylint: disable=no-self-use,unused-argument
 
-    def connection_lost(self, exc):
+    def connection_lost(self, exc: Optional[Any]) -> None:
         """Called when a channel is closed
 
            This method is called when a channel is closed. If the channel
@@ -40,7 +45,7 @@ class SSHSession:
 
         """
 
-    def session_started(self):
+    def session_started(self) -> None:
         """Called when the session is started
 
            This method is called when a session has started up. For
@@ -69,7 +74,7 @@ class SSHSession:
 
         """
 
-    def eof_received(self):
+    def eof_received(self) -> bool:
         """Called when EOF is received on the channel
 
            This method is called when an end-of-file indication is received
@@ -128,7 +133,7 @@ class SSHClientSession(SSHSession):
 
     # pylint: disable=no-self-use,unused-argument
 
-    def connection_made(self, chan):
+    def connection_made(self, chan: SSHClientChannel) -> None:
         """Called when a channel is opened successfully
 
            This method is called when a channel is opened successfully. The
@@ -161,7 +166,7 @@ class SSHClientSession(SSHSession):
 
         """
 
-    def exit_status_received(self, status):
+    def exit_status_received(self, status: int) -> None:
         """A remote exit status has been received for this session
 
            This method is called when the shell, command, or subsystem
@@ -178,7 +183,7 @@ class SSHClientSession(SSHSession):
 
         """
 
-    def exit_signal_received(self, signal, core_dumped, msg, lang):
+    def exit_signal_received(self, signal: str, core_dumped: bool, msg: str, lang: str) -> None:
         """A remote exit signal has been received for this session
 
            This method is called when the shell, command, or subsystem
@@ -239,7 +244,7 @@ class SSHServerSession(SSHSession):
 
         """
 
-    def pty_requested(self, term_type, term_size, term_modes):
+    def pty_requested(self, term_type: str, term_size: Tuple[int, int, int, int], term_modes: Dict[int, int]) -> bool:
         """A psuedo-terminal has been requested
 
            This method is called when the client sends a request to allocate

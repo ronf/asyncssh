@@ -21,6 +21,11 @@
 """SSH compression handlers"""
 
 import zlib
+from typing import Any
+from typing import Optional
+from typing import List
+from asyncssh.compression import _ZLibCompress
+from asyncssh.compression import _ZLibDecompress
 
 
 _cmp_algs = []
@@ -32,7 +37,7 @@ _cmp_compressors = {}
 _cmp_decompressors = {}
 
 
-def _none():
+def _none() -> Optional[Any]:
     """Compressor/decompressor for no compression."""
 
     return None
@@ -41,10 +46,10 @@ def _none():
 class _ZLibCompress:
     """Wrapper class to force a sync flush and handle exceptions"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._comp = zlib.compressobj()
 
-    def compress(self, data):
+    def compress(self, data: bytes) -> bytes:
         """Compress data using zlib compression with sync flush"""
 
         try:
@@ -57,10 +62,10 @@ class _ZLibCompress:
 class _ZLibDecompress:
     """Wrapper class to handle exceptions"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._decomp = zlib.decompressobj()
 
-    def decompress(self, data):
+    def decompress(self, data: bytes) -> bytes:
         """Decompress data using zlib compression"""
 
         try:
@@ -84,19 +89,19 @@ def register_compression_alg(alg, compressor, decompressor,
     _cmp_decompressors[alg] = decompressor
 
 
-def get_compression_algs():
+def get_compression_algs() -> List[bytes]:
     """Return supported compression algorithms"""
 
     return _cmp_algs
 
 
-def get_default_compression_algs():
+def get_default_compression_algs() -> List[bytes]:
     """Return default compression algorithms"""
 
     return _default_cmp_algs
 
 
-def get_compression_params(alg):
+def get_compression_params(alg: bytes) -> bool:
     """Get parameters of a compression algorithm
 
        This function returns whether or not a compression algorithm should
@@ -107,7 +112,7 @@ def get_compression_params(alg):
     return _cmp_params[alg]
 
 
-def get_compressor(alg):
+def get_compressor(alg: bytes) -> Optional[_ZLibCompress]:
     """Return an instance of a compressor
 
        This function returns an object that can be used for data compression.
@@ -117,7 +122,7 @@ def get_compressor(alg):
     return _cmp_compressors[alg]()
 
 
-def get_decompressor(alg):
+def get_decompressor(alg: bytes) -> Optional[_ZLibDecompress]:
     """Return an instance of a decompressor
 
        This function returns an object that can be used for data decompression.

@@ -29,6 +29,14 @@ from .public_key import SSHKey, SSHOpenSSHCertificateV01
 from .public_key import KeyImportError, KeyExportError
 from .public_key import register_public_key_alg, register_certificate_alg
 from .public_key import register_x509_certificate_alg
+from asyncssh.asn1 import ObjectIdentifier
+from asyncssh.ecdsa import _ECKey
+from typing import Tuple
+from asyncssh.packet import SSHPacket
+from asyncssh.crypto.ec import ECDSAPrivateKey
+from asyncssh.crypto.ec import ECDSAPublicKey
+from typing import Union
+from asyncssh.rsa import _RSAKey
 
 # OID for EC prime fields
 PRIME_FIELD = ObjectIdentifier('1.2.840.10045.1.1')
@@ -49,7 +57,7 @@ class _ECKey(SSHKey):
     pem_name = b'EC'
     pkcs8_oid = ObjectIdentifier('1.2.840.10045.2.1')
 
-    def __init__(self, key):
+    def __init__(self, key: Union[ECDSAPrivateKey, ECDSAPublicKey]) -> None:
         super().__init__(key)
 
         self.algorithm = b'ecdsa-sha2-' + key.curve_id
@@ -60,7 +68,7 @@ class _ECKey(SSHKey):
         self._alg_oid = _alg_oids[key.curve_id]
         self._hash_alg = _hash_algs[key.curve_id]
 
-    def __eq__(self, other):
+    def __eq__(self, other: Union[Tuple[()], _ECKey, _RSAKey]) -> bool:
         # This isn't protected access - both objects are _ECKey instances
         # pylint: disable=protected-access
 
@@ -75,7 +83,7 @@ class _ECKey(SSHKey):
                      self._key.y, self._key.d))
 
     @classmethod
-    def _lookup_curve(cls, alg_params):
+    def _lookup_curve(cls, alg_params: ObjectIdentifier) -> bytes:
         """Look up an EC curve matching the specified parameters"""
 
         if isinstance(alg_params, ObjectIdentifier):
@@ -108,14 +116,14 @@ class _ECKey(SSHKey):
         return curve_id
 
     @classmethod
-    def generate(cls, algorithm):
+    def generate(cls, algorithm: bytes) -> _ECKey:
         """Generate a new EC private key"""
 
         # Strip 'ecdsa-sha2-' prefix of algorithm to get curve_id
         return cls(ECDSAPrivateKey.generate(algorithm[11:]))
 
     @classmethod
-    def make_private(cls, curve_id, private_value, public_value):
+    def make_private(cls, curve_id: bytes, private_value: int, public_value: bytes) -> _ECKey:
         """Construct an EC private key"""
 
         if isinstance(private_value, bytes):
@@ -125,7 +133,7 @@ class _ECKey(SSHKey):
                                              private_value))
 
     @classmethod
-    def make_public(cls, curve_id, public_value):
+    def make_public(cls, curve_id: bytes, public_value: bytes) -> _ECKey:
         """Construct an EC public key"""
 
         return cls(ECDSAPublicKey.construct(curve_id, public_value))
@@ -187,7 +195,7 @@ class _ECKey(SSHKey):
             return None
 
     @classmethod
-    def decode_pkcs8_public(cls, alg_params, key_data):
+    def decode_pkcs8_public(cls, alg_params: ObjectIdentifier, key_data: bytes) -> Tuple[bytes, bytes]:
         """Decode a PKCS#8 format EC public key"""
 
         if isinstance(alg_params, ObjectIdentifier):
@@ -196,7 +204,7 @@ class _ECKey(SSHKey):
             return None
 
     @classmethod
-    def decode_ssh_private(cls, packet):
+    def decode_ssh_private(cls, packet: SSHPacket) -> Tuple[bytes, int, bytes]:
         """Decode an SSH format EC private key"""
 
         curve_id = packet.get_string()
@@ -206,7 +214,7 @@ class _ECKey(SSHKey):
         return curve_id, private_key, public_key
 
     @classmethod
-    def decode_ssh_public(cls, packet):
+    def decode_ssh_public(cls, packet: SSHPacket) -> Tuple[bytes, bytes]:
         """Decode an SSH format EC public key"""
 
         curve_id = packet.get_string()
@@ -243,12 +251,12 @@ class _ECKey(SSHKey):
         return self._alg_oid, der_encode((1, self._key.private_value,
                                           self.encode_public_tagged()))
 
-    def encode_pkcs8_public(self):
+    def encode_pkcs8_public(self) -> Tuple[ObjectIdentifier, bytes]:
         """Encode a PKCS#8 format EC public key"""
 
         return self._alg_oid, self._key.public_value
 
-    def encode_ssh_private(self):
+    def encode_ssh_private(self) -> bytes:
         """Encode an SSH format EC private key"""
 
         if not self._key.d:
@@ -258,13 +266,13 @@ class _ECKey(SSHKey):
                          String(self._key.public_value),
                          MPInt(self._key.d)))
 
-    def encode_ssh_public(self):
+    def encode_ssh_public(self) -> bytes:
         """Encode an SSH format EC public key"""
 
         return b''.join((String(self._key.curve_id),
                          String(self._key.public_value)))
 
-    def encode_agent_cert_private(self):
+    def encode_agent_cert_private(self) -> bytes:
         """Encode ECDSA certificate private key data for agent"""
 
         if not self._key.d:
@@ -272,7 +280,7 @@ class _ECKey(SSHKey):
 
         return MPInt(self._key.d)
 
-    def sign_ssh(self, data, sig_algorithm):
+    def sign_ssh(self, data: bytes, sig_algorithm: bytes) -> bytes:
         """Compute an SSH-encoded signature of the specified data"""
 
         # pylint: disable=unused-argument
@@ -283,7 +291,7 @@ class _ECKey(SSHKey):
         r, s = der_decode(self._key.sign(data, self._hash_alg))
         return String(MPInt(r) + MPInt(s))
 
-    def verify_ssh(self, data, sig_algorithm, packet):
+    def verify_ssh(self, data: bytes, sig_algorithm: bytes, packet: SSHPacket) -> bool:
         """Verify an SSH-encoded signature of the specified data"""
 
         # pylint: disable=unused-argument

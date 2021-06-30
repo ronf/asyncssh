@@ -22,9 +22,13 @@
 
 import asyncio
 import errno
+from asyncio.streams import StreamReader
+from asyncio.streams import StreamWriter
+from typing import Optional
+from typing import Tuple
 
 
-async def open_agent(agent_path):
+async def open_agent(agent_path: Optional[str]) -> Tuple[StreamReader, StreamWriter]:
     """Open a connection to ssh-agent"""
 
     if not agent_path:

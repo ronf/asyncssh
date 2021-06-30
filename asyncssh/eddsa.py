@@ -28,6 +28,9 @@ from .public_key import OMIT, SSHKey, SSHOpenSSHCertificateV01
 from .public_key import KeyImportError, KeyExportError
 from .public_key import register_public_key_alg, register_certificate_alg
 from .public_key import register_x509_certificate_alg
+from asyncssh.eddsa import _Ed25519Key
+from typing import Tuple
+from asyncssh.packet import SSHPacket
 
 
 class _EdKey(SSHKey):
@@ -47,7 +50,7 @@ class _EdKey(SSHKey):
         return hash((self._key.public_value, self._key.private_value))
 
     @classmethod
-    def generate(cls, algorithm):
+    def generate(cls, algorithm: bytes) -> _Ed25519Key:
         """Generate a new EdDSA private key"""
 
         # Strip 'ssh-' prefix of algorithm to get curve_id
@@ -64,7 +67,7 @@ class _EdKey(SSHKey):
             raise KeyImportError('Invalid EdDSA private key') from None
 
     @classmethod
-    def make_public(cls, public_value):
+    def make_public(cls, public_value: bytes) -> _Ed25519Key:
         """Construct an EdDSA public key"""
 
         try:
@@ -85,7 +88,7 @@ class _EdKey(SSHKey):
             return None
 
     @classmethod
-    def decode_pkcs8_public(cls, alg_params, key_data):
+    def decode_pkcs8_public(cls, alg_params: object, key_data: bytes) -> Tuple[bytes]:
         """Decode a PKCS#8 format EdDSA public key"""
 
         # pylint: disable=unused-argument
@@ -102,7 +105,7 @@ class _EdKey(SSHKey):
         return (private_value[:-len(public_value)],)
 
     @classmethod
-    def decode_ssh_public(cls, packet):
+    def decode_ssh_public(cls, packet: SSHPacket) -> Tuple[bytes]:
         """Decode an SSH format EdDSA public key"""
 
         public_value = packet.get_string()
@@ -122,7 +125,7 @@ class _EdKey(SSHKey):
 
         return OMIT, self._key.public_value
 
-    def encode_ssh_private(self):
+    def encode_ssh_private(self) -> bytes:
         """Encode an SSH format EdDSA private key"""
 
         if self._key.private_value is None:
@@ -132,17 +135,17 @@ class _EdKey(SSHKey):
                          String(self._key.private_value +
                                 self._key.public_value)))
 
-    def encode_ssh_public(self):
+    def encode_ssh_public(self) -> bytes:
         """Encode an SSH format EdDSA public key"""
 
         return String(self._key.public_value)
 
-    def encode_agent_cert_private(self):
+    def encode_agent_cert_private(self) -> bytes:
         """Encode EdDSA certificate private key data for agent"""
 
         return self.encode_ssh_private()
 
-    def sign_ssh(self, data, sig_algorithm):
+    def sign_ssh(self, data: bytes, sig_algorithm: bytes) -> bytes:
         """Compute an SSH-encoded signature of the specified data"""
 
         # pylint: disable=unused-argument
@@ -152,7 +155,7 @@ class _EdKey(SSHKey):
 
         return String(self._key.sign(data))
 
-    def verify_ssh(self, data, sig_algorithm, packet):
+    def verify_ssh(self, data: bytes, sig_algorithm: bytes, packet: SSHPacket) -> bool:
         """Verify an SSH-encoded signature of the specified data"""
 
         # pylint: disable=unused-argument

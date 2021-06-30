@@ -31,6 +31,21 @@ from .session import SSHClientSession, SSHServerSession
 from .session import SSHTCPSession, SSHUNIXSession
 from .sftp import run_sftp_server
 from .scp import run_scp_server
+from asyncssh.channel import SSHServerChannel
+from asyncssh.editor import SSHLineEditorChannel
+from typing import Union
+from asyncssh.logging import _SSHLogger
+from asyncssh.channel import SSHClientChannel
+from tests.test_x11 import _X11ClientChannel
+from typing import Any
+from typing import Optional
+from asyncssh.connection import SSHClientConnection
+from asyncssh.process import SSHClientProcess
+from asyncssh.process import SSHServerProcess
+from typing import Tuple
+from typing import List
+from typing import Callable
+from tests.test_logging import _SFTPServer
 
 _NEWLINE = object()
 
@@ -38,7 +53,7 @@ _NEWLINE = object()
 class SSHReader:
     """SSH read stream handler"""
 
-    def __init__(self, session, chan, datatype=None):
+    def __init__(self, session: Any, chan: Any, datatype: Optional[int] = None) -> None:
         self._session = session
         self._chan = chan
         self._datatype = datatype
@@ -50,18 +65,18 @@ class SSHReader:
             yield await self.readline()
 
     @property
-    def channel(self):
+    def channel(self) -> Union[SSHServerChannel, SSHLineEditorChannel]:
         """The SSH channel associated with this stream"""
 
         return self._chan
 
     @property
-    def logger(self):
+    def logger(self) -> _SSHLogger:
         """The SSH logger associated with this stream"""
 
         return self._chan.logger
 
-    def get_extra_info(self, name, default=None):
+    def get_extra_info(self, name: str, default: Optional[str] = None) -> Union[SSHClientConnection, str]:
         """Return additional information about this stream
 
            This method returns extra information about the channel
@@ -73,7 +88,7 @@ class SSHReader:
 
         return self._chan.get_extra_info(name, default)
 
-    def feed_data(self, data):
+    def feed_data(self, data: str) -> None:
         """Feed data to the associated session
 
            This method feeds data to the SSH session associated with
@@ -86,7 +101,7 @@ class SSHReader:
 
         self._session.data_received(data, self._datatype)
 
-    def feed_eof(self):
+    def feed_eof(self) -> None:
         """Feed EOF to the associated session
 
            This method feeds an end-of-file indication to the SSH session
@@ -187,7 +202,7 @@ class SSHReader:
 
         return await self._session.read(n, self._datatype, exact=True)
 
-    def at_eof(self):
+    def at_eof(self) -> bool:
         """Return whether the stream is at EOF
 
            This method returns `True` when EOF has been received and
@@ -197,7 +212,7 @@ class SSHReader:
 
         return self._session.at_eof(self._datatype)
 
-    def get_redirect_info(self):
+    def get_redirect_info(self) -> Tuple[Union[SSHClientProcess, SSHServerProcess], Optional[int]]:
         """Get information needed to redirect from this SSHReader"""
 
         return self._session, self._datatype
@@ -206,24 +221,24 @@ class SSHReader:
 class SSHWriter:
     """SSH write stream handler"""
 
-    def __init__(self, session, chan, datatype=None):
+    def __init__(self, session: Any, chan: Union[SSHClientChannel, SSHServerChannel, SSHLineEditorChannel], datatype: Optional[int] = None) -> None:
         self._session = session
         self._chan = chan
         self._datatype = datatype
 
     @property
-    def channel(self):
+    def channel(self) -> Union[SSHClientChannel, SSHLineEditorChannel, _X11ClientChannel]:
         """The SSH channel associated with this stream"""
 
         return self._chan
 
     @property
-    def logger(self):
+    def logger(self) -> _SSHLogger:
         """The SSH logger associated with this stream"""
 
         return self._chan.logger
 
-    def get_extra_info(self, name, default=None):
+    def get_extra_info(self, name: str, default: Optional[Any] = None) -> SSHClientConnection:
         """Return additional information about this stream
 
            This method returns extra information about the channel
@@ -235,12 +250,12 @@ class SSHWriter:
 
         return self._chan.get_extra_info(name, default)
 
-    def can_write_eof(self):
+    def can_write_eof(self) -> bool:
         """Return whether the stream supports :meth:`write_eof`"""
 
         return self._chan.can_write_eof()
 
-    def close(self):
+    def close(self) -> Optional[Any]:
         """Close the channel
 
            .. note:: After this is called, no data can be read or written
@@ -250,7 +265,7 @@ class SSHWriter:
 
         return self._chan.close()
 
-    def is_closing(self):
+    def is_closing(self) -> bool:
         """Return if the stream is closing or is closed"""
 
         return self._chan.is_closing()
@@ -278,7 +293,7 @@ class SSHWriter:
 
         return await self._session.drain(self._datatype)
 
-    def write(self, data):
+    def write(self, data: Union[bytes, str]) -> Optional[Any]:
         """Write data to the stream
 
            This method writes bytes or characters to the stream.
@@ -292,12 +307,12 @@ class SSHWriter:
 
         return self._chan.write(data, self._datatype)
 
-    def writelines(self, list_of_data):
+    def writelines(self, list_of_data: List[str]) -> Optional[Any]:
         """Write a collection of data to the stream"""
 
         return self._chan.writelines(list_of_data, self._datatype)
 
-    def write_eof(self):
+    def write_eof(self) -> Optional[Any]:
         """Write EOF on the channel
 
            This method sends an end-of-file indication on the channel,
@@ -312,7 +327,7 @@ class SSHWriter:
 
         return self._chan.write_eof()
 
-    def get_redirect_info(self):
+    def get_redirect_info(self) -> Tuple[Union[SSHClientProcess, SSHServerProcess], None]:
         """Get information needed to redirect to this SSHWriter"""
 
         return self._session, self._datatype
@@ -321,7 +336,7 @@ class SSHWriter:
 class SSHStreamSession:
     """SSH stream session handler"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._chan = None
         self._conn = None
         self._encoding = None
@@ -349,19 +364,19 @@ class SSHStreamSession:
         finally:
             self._read_waiters[datatype] = None
 
-    def _unblock_read(self, datatype):
+    def _unblock_read(self, datatype: Optional[int]) -> None:
         """Signal that more data has arrived on the stream"""
 
         waiter = self._read_waiters[datatype]
         if waiter and not waiter.done():
             waiter.set_result(None)
 
-    def _should_block_drain(self, _datatype):
+    def _should_block_drain(self, _datatype: Optional[int]) -> bool:
         """Return whether output is still being written to the channel"""
 
         return self._write_paused and not self._connection_lost
 
-    def _unblock_drain(self, datatype):
+    def _unblock_drain(self, datatype: Optional[int]) -> None:
         """Signal that more data can be written on the stream"""
 
         if not self._should_block_drain(datatype):
@@ -369,12 +384,12 @@ class SSHStreamSession:
                 if not waiter.done(): # pragma: no branch
                     waiter.set_result(None)
 
-    def _should_pause_reading(self):
+    def _should_pause_reading(self) -> Optional[bool]:
         """Return whether to pause reading from the channel"""
 
         return self._limit and self._recv_buf_len >= self._limit
 
-    def _maybe_pause_reading(self):
+    def _maybe_pause_reading(self) -> bool:
         """Pause reading if necessary"""
 
         if not self._read_paused and self._should_pause_reading():
@@ -384,7 +399,7 @@ class SSHStreamSession:
         else:
             return False
 
-    def _maybe_resume_reading(self):
+    def _maybe_resume_reading(self) -> bool:
         """Resume reading if necessary"""
 
         if self._read_paused and not self._should_pause_reading():
@@ -394,7 +409,7 @@ class SSHStreamSession:
         else:
             return False
 
-    def connection_made(self, chan):
+    def connection_made(self, chan: Any) -> None:
         """Handle a newly opened channel"""
 
         self._chan = chan
@@ -411,7 +426,7 @@ class SSHStreamSession:
         for datatype in chan.get_write_datatypes():
             self._drain_waiters[datatype] = set()
 
-    def connection_lost(self, exc):
+    def connection_lost(self, exc: Any) -> None:
         """Handle an incoming channel close"""
 
         self._connection_lost = True
@@ -427,7 +442,7 @@ class SSHStreamSession:
         for datatype in self._drain_waiters:
             self._unblock_drain(datatype)
 
-    def data_received(self, data, datatype):
+    def data_received(self, data: Union[bytes, str], datatype: Optional[int]) -> None:
         """Handle incoming data on the channel"""
 
         self._recv_buf[datatype].append(data)
@@ -435,7 +450,7 @@ class SSHStreamSession:
         self._unblock_read(datatype)
         self._maybe_pause_reading()
 
-    def eof_received(self):
+    def eof_received(self) -> bool:
         """Handle an incoming end of file on the channel"""
 
         self._eof_received = True
@@ -445,17 +460,17 @@ class SSHStreamSession:
 
         return True
 
-    def at_eof(self, datatype):
+    def at_eof(self, datatype: Optional[Any]) -> bool:
         """Return whether end of file has been received on the channel"""
 
         return self._eof_received and not self._recv_buf[datatype]
 
-    def pause_writing(self):
+    def pause_writing(self) -> None:
         """Handle a request to pause writing on the channel"""
 
         self._write_paused = True
 
-    def resume_writing(self):
+    def resume_writing(self) -> None:
         """Handle a request to resume writing on the channel"""
 
         self._write_paused = False
@@ -605,14 +620,14 @@ class SSHClientStreamSession(SSHStreamSession, SSHClientSession):
 class SSHServerStreamSession(SSHStreamSession, SSHServerSession):
     """SSH server stream session handler"""
 
-    def __init__(self, session_factory, sftp_factory, allow_scp):
+    def __init__(self, session_factory: Callable, sftp_factory: Optional[type], allow_scp: bool) -> None:
         super().__init__()
 
         self._session_factory = session_factory
         self._sftp_factory = sftp_factory
         self._allow_scp = allow_scp and bool(sftp_factory)
 
-    def _init_sftp_server(self):
+    def _init_sftp_server(self) -> _SFTPServer:
         """Initialize an SFTP server for this stream to use"""
 
         self._chan.set_encoding(None)
@@ -620,12 +635,12 @@ class SSHServerStreamSession(SSHStreamSession, SSHServerSession):
 
         return self._sftp_factory(self._chan)
 
-    def shell_requested(self):
+    def shell_requested(self) -> bool:
         """Return whether a shell can be requested"""
 
         return bool(self._session_factory)
 
-    def exec_requested(self, command):
+    def exec_requested(self, command: str) -> bool:
         """Return whether execution of a command can be requested"""
 
         # Avoid incorrect pylint suggestion to use ternary
@@ -634,7 +649,7 @@ class SSHServerStreamSession(SSHStreamSession, SSHServerSession):
         return ((self._allow_scp and command.startswith('scp ')) or
                 bool(self._session_factory))
 
-    def subsystem_requested(self, subsystem):
+    def subsystem_requested(self, subsystem: str) -> bool:
         """Return whether starting a subsystem can be requested"""
 
         if subsystem == 'sftp':
@@ -642,7 +657,7 @@ class SSHServerStreamSession(SSHStreamSession, SSHServerSession):
         else:
             return bool(self._session_factory)
 
-    def session_started(self):
+    def session_started(self) -> None:
         """Start a session for this newly opened server channel"""
 
         command = self._chan.get_command()
@@ -662,26 +677,26 @@ class SSHServerStreamSession(SSHStreamSession, SSHServerSession):
         if inspect.isawaitable(handler):
             self._conn.create_task(handler, stdin.logger)
 
-    def break_received(self, msec):
+    def break_received(self, msec: int) -> bool:
         """Handle an incoming break on the channel"""
 
         self._recv_buf[None].append(BreakReceived(msec))
         self._unblock_read(None)
         return True
 
-    def signal_received(self, signal):
+    def signal_received(self, signal: str) -> None:
         """Handle an incoming signal on the channel"""
 
         self._recv_buf[None].append(SignalReceived(signal))
         self._unblock_read(None)
 
-    def soft_eof_received(self):
+    def soft_eof_received(self) -> None:
         """Handle an incoming soft EOF on the channel"""
 
         self._recv_buf[None].append(SoftEOFReceived())
         self._unblock_read(None)
 
-    def terminal_size_changed(self, width, height, pixwidth, pixheight):
+    def terminal_size_changed(self, width: int, height: int, pixwidth: int, pixheight: int) -> None:
         """Handle an incoming terminal size change on the channel"""
 
         self._recv_buf[None].append(TerminalSizeChanged(width, height,

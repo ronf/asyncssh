@@ -27,6 +27,9 @@ from .packet import MPInt, String
 from .public_key import SSHKey, SSHOpenSSHCertificateV01, KeyExportError
 from .public_key import register_public_key_alg, register_certificate_alg
 from .public_key import register_x509_certificate_alg
+from asyncssh.dsa import _DSAKey
+from asyncssh.packet import SSHPacket
+from typing import Tuple
 
 
 class _DSAKey(SSHKey):
@@ -56,7 +59,7 @@ class _DSAKey(SSHKey):
                      self._key.y, self._key.x))
 
     @classmethod
-    def generate(cls, _algorithm):
+    def generate(cls, _algorithm: bytes) -> _DSAKey:
         """Generate a new DSA private key"""
 
         return cls(DSAPrivateKey.generate(key_size=1024))
@@ -68,7 +71,7 @@ class _DSAKey(SSHKey):
         return cls(DSAPrivateKey.construct(p, q, g, y, x))
 
     @classmethod
-    def make_public(cls, p, q, g, y):
+    def make_public(cls, p: int, q: int, g: int, y: int) -> _DSAKey:
         """Construct a DSA public key"""
 
         return cls(DSAPublicKey.construct(p, q, g, y))
@@ -140,7 +143,7 @@ class _DSAKey(SSHKey):
         return p, q, g, y, x
 
     @classmethod
-    def decode_ssh_public(cls, packet):
+    def decode_ssh_public(cls, packet: SSHPacket) -> Tuple[int, int, int, int]:
         """Decode an SSH format DSA public key"""
 
         p = packet.get_mpint()
@@ -177,7 +180,7 @@ class _DSAKey(SSHKey):
 
         return (self._key.p, self._key.q, self._key.g), der_encode(self._key.y)
 
-    def encode_ssh_private(self):
+    def encode_ssh_private(self) -> bytes:
         """Encode an SSH format DSA private key"""
 
         if not self._key.x:
@@ -187,13 +190,13 @@ class _DSAKey(SSHKey):
                          MPInt(self._key.g), MPInt(self._key.y),
                          MPInt(self._key.x)))
 
-    def encode_ssh_public(self):
+    def encode_ssh_public(self) -> bytes:
         """Encode an SSH format DSA public key"""
 
         return b''.join((MPInt(self._key.p), MPInt(self._key.q),
                          MPInt(self._key.g), MPInt(self._key.y)))
 
-    def encode_agent_cert_private(self):
+    def encode_agent_cert_private(self) -> bytes:
         """Encode DSA certificate private key data for agent"""
 
         if not self._key.x:
@@ -201,7 +204,7 @@ class _DSAKey(SSHKey):
 
         return MPInt(self._key.x)
 
-    def sign_ssh(self, data, sig_algorithm):
+    def sign_ssh(self, data: bytes, sig_algorithm: bytes) -> bytes:
         """Compute an SSH-encoded signature of the specified data"""
 
         # pylint: disable=unused-argument
@@ -212,7 +215,7 @@ class _DSAKey(SSHKey):
         r, s = der_decode(self._key.sign(data, 'sha1'))
         return String(r.to_bytes(20, 'big') + s.to_bytes(20, 'big'))
 
-    def verify_ssh(self, data, sig_algorithm, packet):
+    def verify_ssh(self, data: bytes, sig_algorithm: bytes, packet: SSHPacket) -> bool:
         """Verify an SSH-encoded signature of the specified data"""
 
         # pylint: disable=unused-argument

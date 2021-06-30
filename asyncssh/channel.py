@@ -36,7 +36,7 @@ from .constants import MSG_CHANNEL_SUCCESS, MSG_CHANNEL_FAILURE
 from .constants import OPEN_CONNECT_FAILED, PTY_OP_RESERVED, PTY_OP_END
 from .constants import OPEN_REQUEST_X11_FORWARDING_FAILED
 from .constants import OPEN_REQUEST_PTY_FAILED, OPEN_REQUEST_SESSION_FAILED
-from .constants import __dict__ as constants
+from .constants import __dict__ as constants  # type: ignore
 
 from .editor import SSHLineEditorChannel, SSHLineEditorSession
 
@@ -44,6 +44,22 @@ from .misc import ChannelOpenError, ProtocolError
 from .misc import get_symbol_names, map_handler_name
 
 from .packet import Boolean, Byte, String, UInt32, SSHPacketHandler
+
+from asyncssh.logging import _SSHLogger
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from asyncio.unix_events import _UnixSelectorEventLoop
+from asyncssh.connection import SSHClientConnection, SSHServerConnection
+from typing import Optional, Union, Tuple, Set, Any, List, Mapping
+
+from asyncssh.process import SSHServerProcess
+from asyncssh.stream import SSHServerStreamSession
+from asyncssh.x11 import SSHX11ClientForwarder
+from asyncssh.packet import SSHPacket
+from asyncio.trsock import TransportSocket
+from signal import Signals
+from asyncssh.editor import SSHLineEditorChannel
+from asyncssh.editor import SSHLineEditorSession
 
 
 _pty_mode_names = get_symbol_names(constants, 'PTY_', 4)
@@ -63,7 +79,7 @@ class SSHChannel(SSHPacketHandler):
     _read_datatypes = set()
     _write_datatypes = set()
 
-    def __init__(self, conn, loop, encoding, errors, window, max_pktsize):
+    def __init__(self, conn: Union[SSHClientConnection, SSHServerConnection], loop: "_UnixSelectorEventLoop", encoding: Optional[str], errors: str, window: int, max_pktsize: int) -> None:
         """Initialize an SSH channel
 
            If encoding is set, data sent and received will be in the form
@@ -117,27 +133,27 @@ class SSHChannel(SSHPacketHandler):
         self.set_write_buffer_limits()
 
     @property
-    def logger(self):
+    def logger(self) -> _SSHLogger:
         """A logger associated with this channel"""
 
         return self._logger
 
-    def get_connection(self):
+    def get_connection(self) -> Union[SSHClientConnection, SSHServerConnection]:
         """Return the connection used by this channel"""
 
         return self._conn
 
-    def get_loop(self):
+    def get_loop(self) -> "_UnixSelectorEventLoop":
         """Return the event loop used by this channel"""
 
         return self._loop
 
-    def get_encoding(self):
+    def get_encoding(self) -> Tuple[Optional[str], str]:
         """Return the encoding used by this channel"""
 
         return self._encoding, self._errors
 
-    def set_encoding(self, encoding, errors='strict'):
+    def set_encoding(self, encoding: Optional[str], errors: str = 'strict') -> None:
         """Set the encoding on this channel"""
 
         self._encoding = encoding
@@ -150,22 +166,22 @@ class SSHChannel(SSHPacketHandler):
             self._encoder = None
             self._decoder = None
 
-    def get_recv_window(self):
+    def get_recv_window(self) -> int:
         """Return the configured receive window for this channel"""
 
         return self._init_recv_window
 
-    def get_read_datatypes(self):
+    def get_read_datatypes(self) -> Set[int]:
         """Return the legal read data types for this channel"""
 
         return self._read_datatypes
 
-    def get_write_datatypes(self):
+    def get_write_datatypes(self) -> Set[int]:
         """Return the legal write data types for this channel"""
 
         return self._write_datatypes
 
-    def _cleanup(self, exc=None):
+    def _cleanup(self, exc: Any = None) -> None:
         """Clean up this channel"""
 
         if self._open_waiter:
@@ -203,7 +219,7 @@ class SSHChannel(SSHPacketHandler):
             self._recv_chan = None
             self._conn = None
 
-    def _close_send(self):
+    def _close_send(self) -> None:
         """Discard unsent data and close the channel for sending"""
 
         # Discard unsent data
@@ -215,7 +231,7 @@ class SSHChannel(SSHPacketHandler):
             self._send_chan = None
             self._send_state = 'closed'
 
-    def _discard_recv(self):
+    def _discard_recv(self) -> None:
         """Discard unreceived data and clean up if close received"""
 
         # Discard unreceived data
@@ -238,7 +254,7 @@ class SSHChannel(SSHPacketHandler):
             self._recv_paused = False
             self._flush_recv_buf()
 
-    def _pause_resume_writing(self):
+    def _pause_resume_writing(self) -> None:
         """Pause or resume writing based on send buffer low/high water marks"""
 
         if self._send_paused:
@@ -254,7 +270,7 @@ class SSHChannel(SSHPacketHandler):
                 self._send_paused = True
                 self._session.pause_writing()
 
-    def _flush_send_buf(self):
+    def _flush_send_buf(self) -> None:
         """Flush as much data in send buffer as the send window allows"""
 
         while self._send_buf and self._send_window:
@@ -286,7 +302,7 @@ class SSHChannel(SSHPacketHandler):
             elif self._send_state == 'close_pending':
                 self._close_send()
 
-    def _flush_recv_buf(self, exc=None):
+    def _flush_recv_buf(self, exc: Optional[Any] = None) -> None:
         """Flush as much data in the recv buffer as the application allows"""
 
         while self._recv_buf and not self._recv_paused:
@@ -311,7 +327,7 @@ class SSHChannel(SSHPacketHandler):
             self._recv_state = 'closed'
             self._loop.call_soon(self._cleanup, exc)
 
-    def _deliver_data(self, data, datatype):
+    def _deliver_data(self, data: bytes, datatype: Optional[int]) -> None:
         """Deliver incoming data to the session"""
 
         self._recv_window -= len(data)
@@ -334,7 +350,7 @@ class SSHChannel(SSHPacketHandler):
         if self._session is not None:
             self._session.data_received(data, datatype)
 
-    def _accept_data(self, data, datatype=None):
+    def _accept_data(self, data: bytes, datatype: Optional[int] = None) -> None:
         """Accept new data on the channel
 
            This method accepts new data on the channel, immediately
@@ -370,7 +386,7 @@ class SSHChannel(SSHPacketHandler):
         else:
             self._deliver_data(data, datatype)
 
-    def _service_next_request(self):
+    def _service_next_request(self) -> None:
         """Process next item on channel request queue"""
 
         request, packet, _ = self._request_queue[0]
@@ -387,7 +403,7 @@ class SSHChannel(SSHPacketHandler):
         if result is not None:
             self._report_response(result)
 
-    def _report_response(self, result):
+    def _report_response(self, result: bool) -> None:
         """Report back the response to a previously issued channel request"""
 
         request, _, want_reply = self._request_queue.pop(0)
@@ -405,14 +421,14 @@ class SSHChannel(SSHPacketHandler):
         if self._request_queue:
             self._service_next_request()
 
-    def process_connection_close(self, exc):
+    def process_connection_close(self, exc: Any) -> None:
         """Process the SSH connection closing"""
 
         self.logger.info('Closing channel due to connection close')
 
         self._cleanup(exc)
 
-    def process_open(self, send_chan, send_window, send_pktsize, session):
+    def process_open(self, send_chan: int, send_window: int, send_pktsize: int, session: Union[SSHServerProcess, SSHServerStreamSession, coroutine]) -> None:
         """Process a channel open request"""
 
         self._send_chan = send_chan
@@ -424,7 +440,7 @@ class SSHChannel(SSHPacketHandler):
 
         self._conn.create_task(self._finish_open_request(session), self.logger)
 
-    def _wrap_session(self, session):
+    def _wrap_session(self, session: SSHX11ClientForwarder) -> Tuple["SSHX11Channel", SSHX11ClientForwarder]:
         """Hook to optionally wrap channel and session objects"""
 
         # By default, return the original channel and session objects
@@ -462,8 +478,8 @@ class SSHChannel(SSHPacketHandler):
 
             self._loop.call_soon(self._cleanup)
 
-    def process_open_confirmation(self, send_chan, send_window,
-                                  send_pktsize, packet):
+    def process_open_confirmation(self, send_chan: int, send_window: int,
+                                  send_pktsize: int, packet: SSHPacket) -> None:
         """Process a channel open confirmation"""
 
         if not self._open_waiter:
@@ -484,7 +500,7 @@ class SSHChannel(SSHPacketHandler):
 
         self._open_waiter = None
 
-    def process_open_failure(self, code, reason, lang):
+    def process_open_failure(self, code: int, reason: str, lang: str) -> None:
         """Process a channel open failure"""
 
         if not self._open_waiter:
@@ -497,7 +513,7 @@ class SSHChannel(SSHPacketHandler):
         self._open_waiter = None
         self._loop.call_soon(self._cleanup)
 
-    def _process_window_adjust(self, _pkttype, _pktid, packet):
+    def _process_window_adjust(self, _pkttype: int, _pktid: int, packet: SSHPacket) -> None:
         """Process a send window adjustment"""
 
         if self._recv_state not in {'open', 'eof_pending', 'eof'}:
@@ -513,7 +529,7 @@ class SSHChannel(SSHPacketHandler):
 
         self._flush_send_buf()
 
-    def _process_data(self, _pkttype, _pktid, packet):
+    def _process_data(self, _pkttype: int, _pktid: int, packet: SSHPacket) -> None:
         """Process incoming data"""
 
         if self._recv_state != 'open':
@@ -524,7 +540,7 @@ class SSHChannel(SSHPacketHandler):
 
         self._accept_data(data)
 
-    def _process_extended_data(self, _pkttype, _pktid, packet):
+    def _process_extended_data(self, _pkttype: int, _pktid: int, packet: SSHPacket) -> None:
         """Process incoming extended data"""
 
         if self._recv_state != 'open':
@@ -539,7 +555,7 @@ class SSHChannel(SSHPacketHandler):
 
         self._accept_data(data, datatype)
 
-    def _process_eof(self, _pkttype, _pktid, packet):
+    def _process_eof(self, _pkttype: int, _pktid: int, packet: SSHPacket) -> None:
         """Process an incoming end of file"""
 
         if self._recv_state != 'open':
@@ -552,7 +568,7 @@ class SSHChannel(SSHPacketHandler):
         self._recv_state = 'eof_pending'
         self._flush_recv_buf()
 
-    def _process_close(self, _pkttype, _pktid, packet):
+    def _process_close(self, _pkttype: int, _pktid: int, packet: SSHPacket) -> None:
         """Process an incoming channel close"""
 
         if self._recv_state not in {'open', 'eof_pending', 'eof'}:
@@ -567,7 +583,7 @@ class SSHChannel(SSHPacketHandler):
         self._recv_state = 'close_pending'
         self._flush_recv_buf()
 
-    def _process_request(self, _pkttype, _pktid, packet):
+    def _process_request(self, _pkttype: int, _pktid: int, packet: SSHPacket) -> None:
         """Process an incoming channel request"""
 
         if self._recv_state not in {'open', 'eof_pending', 'eof'}:
@@ -585,7 +601,7 @@ class SSHChannel(SSHPacketHandler):
         if len(self._request_queue) == 1:
             self._service_next_request()
 
-    def _process_response(self, pkttype, _pktid, packet):
+    def _process_response(self, pkttype: int, _pktid: int, packet: SSHPacket) -> None:
         """Process a success or failure response"""
 
         packet.check_end()
@@ -634,7 +650,7 @@ class SSHChannel(SSHPacketHandler):
 
         return await self._open_waiter
 
-    def send_packet(self, pkttype, *args):
+    def send_packet(self, pkttype: int, *args: bytes) -> None:
         """Send a packet on the channel"""
 
         if self._send_chan is None: # pragma: no cover
@@ -644,6 +660,7 @@ class SSHChannel(SSHPacketHandler):
 
         self._conn.send_packet(pkttype, payload, handler=self)
 
+    
     def _send_request(self, request, *args, want_reply=False):
         """Send a channel request"""
 
@@ -661,7 +678,7 @@ class SSHChannel(SSHPacketHandler):
         self._send_request(request, *args, want_reply=True)
         return await waiter
 
-    def abort(self):
+    def abort(self) -> None:
         """Forcibly close the channel
 
            This method can be called to forcibly close the channel, after
@@ -680,7 +697,7 @@ class SSHChannel(SSHPacketHandler):
             # Discard unreceived data
             self._discard_recv()
 
-    def close(self):
+    def close(self) -> None:
         """Cleanly close the channel
 
            This method can be called to cleanly close the channel, after
@@ -701,7 +718,7 @@ class SSHChannel(SSHPacketHandler):
             # Discard unreceived data
             self._discard_recv()
 
-    def is_closing(self):
+    def is_closing(self) -> bool:
         """Return if the channel is closing or is closed"""
 
         return self._send_state != 'open'
@@ -716,7 +733,7 @@ class SSHChannel(SSHPacketHandler):
 
         await self._close_event.wait()
 
-    def get_extra_info(self, name, default=None):
+    def get_extra_info(self, name: str, default: Optional[str] = None) -> Union[TransportSocket, SSHClientConnection, str]:
         """Get additional information about the channel
 
            This method returns extra information about the channel once
@@ -745,7 +762,7 @@ class SSHChannel(SSHPacketHandler):
         return self._extra.get(name, self._conn.get_extra_info(name, default)
                                if self._conn else default)
 
-    def set_extra_info(self, **kwargs):
+    def set_extra_info(self, **kwargs: Any) -> None:
         """Store additional information associated with the channel
 
            This method allows extra information to be associated with the
@@ -758,7 +775,7 @@ class SSHChannel(SSHPacketHandler):
 
         self._extra.update(**kwargs)
 
-    def can_write_eof(self):
+    def can_write_eof(self) -> bool:
         """Return whether the channel supports :meth:`write_eof`
 
            This method always returns `True`.
@@ -768,7 +785,7 @@ class SSHChannel(SSHPacketHandler):
         # pylint: disable=no-self-use
         return True
 
-    def get_write_buffer_size(self):
+    def get_write_buffer_size(self) -> int:
         """Return the current size of the channel's output buffer
 
            This method returns how many bytes are currently in the
@@ -778,7 +795,7 @@ class SSHChannel(SSHPacketHandler):
 
         return self._send_buf_len
 
-    def set_write_buffer_limits(self, high=None, low=None):
+    def set_write_buffer_limits(self, high: Optional[Any] = None, low: Optional[Any] = None) -> None:
         """Set the high- and low-water limits for write flow control
 
            This method sets the limits used when deciding when to call
@@ -807,7 +824,7 @@ class SSHChannel(SSHPacketHandler):
         self._send_low_water = low
         self._pause_resume_writing()
 
-    def write(self, data, datatype=None):
+    def write(self, data: Union[bytes, str], datatype: Optional[int] = None) -> None:
         """Write data on the channel
 
            This method can be called to send data on the channel. If
@@ -860,7 +877,7 @@ class SSHChannel(SSHPacketHandler):
         self._send_buf_len += datalen
         self._flush_send_buf()
 
-    def writelines(self, list_of_data, datatype=None):
+    def writelines(self, list_of_data: Union[List[bytes], List[str]], datatype: Optional[Any] = None) -> Optional[Any]:
         """Write a list of data bytes on the channel
 
            This method can be called to write a list (or any iterable) of
@@ -884,7 +901,7 @@ class SSHChannel(SSHPacketHandler):
         sep = '' if self._encoding else b''
         return self.write(sep.join(list_of_data), datatype)
 
-    def write_eof(self):
+    def write_eof(self) -> None:
         """Write EOF on the channel
 
            This method sends an end-of-file indication on the
@@ -902,7 +919,7 @@ class SSHChannel(SSHPacketHandler):
             self._send_state = 'eof_pending'
             self._flush_send_buf()
 
-    def pause_reading(self):
+    def pause_reading(self) -> None:
         """Pause delivery of incoming data
 
            This method is used to temporarily suspend delivery of incoming
@@ -923,7 +940,7 @@ class SSHChannel(SSHPacketHandler):
 
         self._recv_paused = True
 
-    def resume_reading(self):
+    def resume_reading(self) -> None:
         """Resume delivery of incoming data
 
            This method can be called to resume delivery of incoming data
@@ -940,7 +957,7 @@ class SSHChannel(SSHPacketHandler):
             self._recv_paused = False
             self._flush_recv_buf()
 
-    def get_environment(self):
+    def get_environment(self) -> Mapping:
         """Return the environment for this session
 
            This method returns the environment set by the client when
@@ -958,7 +975,7 @@ class SSHChannel(SSHPacketHandler):
 
         return MappingProxyType(self._env)
 
-    def get_command(self):
+    def get_command(self) -> Optional[str]:
         """Return the command the client requested to execute, if any
 
            This method returns the command the client requested to
@@ -975,7 +992,7 @@ class SSHChannel(SSHPacketHandler):
 
         return self._command
 
-    def get_subsystem(self):
+    def get_subsystem(self) -> Optional[str]:
         """Return the subsystem the client requested to open, if any
 
            This method returns the subsystem the client requested to
@@ -998,7 +1015,7 @@ class SSHClientChannel(SSHChannel):
 
     _read_datatypes = {EXTENDED_DATA_STDERR}
 
-    def __init__(self, conn, loop, encoding, errors, window, max_pktsize):
+    def __init__(self, conn: SSHClientConnection, loop: "_UnixSelectorEventLoop", encoding: Optional[str], errors: str, window: int, max_pktsize: int) -> None:
         super().__init__(conn, loop, encoding, errors, window, max_pktsize)
 
         self._exit_status = None
@@ -1135,7 +1152,7 @@ class SSHClientChannel(SSHChannel):
         self._session.xon_xoff_requested(client_can_do)
         return True
 
-    def _process_exit_status_request(self, packet):
+    def _process_exit_status_request(self, packet: SSHPacket) -> bool:
         """Process a request to deliver exit status"""
 
         status = packet.get_uint32() & 0xff
@@ -1147,7 +1164,7 @@ class SSHClientChannel(SSHChannel):
         self._session.exit_status_received(status)
         return True
 
-    def _process_exit_signal_request(self, packet):
+    def _process_exit_signal_request(self, packet: SSHPacket) -> bool:
         """Process a request to deliver an exit signal"""
 
         signal = packet.get_string()
@@ -1171,7 +1188,7 @@ class SSHClientChannel(SSHChannel):
         self._session.exit_signal_received(signal, core_dumped, msg, lang)
         return True
 
-    def get_exit_status(self):
+    def get_exit_status(self) -> Optional[int]:
         """Return the session's exit status
 
            This method returns the exit status of the session if one has
@@ -1189,7 +1206,7 @@ class SSHClientChannel(SSHChannel):
         else:
             return None
 
-    def get_exit_signal(self):
+    def get_exit_signal(self) -> Optional[Tuple[str, bool, str, str]]:
         """Return the session's exit signal, if one was sent
 
            This method returns information about the exit signal sent on
@@ -1202,7 +1219,7 @@ class SSHClientChannel(SSHChannel):
 
         return self._exit_signal
 
-    def get_returncode(self):
+    def get_returncode(self) -> Optional[int]:
         """Return the session's exit status or signal
 
            This method returns the exit status of the session if one has
@@ -1222,7 +1239,7 @@ class SSHClientChannel(SSHChannel):
         else:
             return None
 
-    def change_terminal_size(self, width, height, pixwidth=0, pixheight=0):
+    def change_terminal_size(self, width: int, height: int, pixwidth: int = 0, pixheight: int = 0) -> None:
         """Change the terminal window size for this session
 
            This method changes the width and height of the terminal
@@ -1252,7 +1269,7 @@ class SSHClientChannel(SSHChannel):
         self._send_request(b'window-change', UInt32(width), UInt32(height),
                            UInt32(pixwidth), UInt32(pixheight))
 
-    def send_break(self, msec):
+    def send_break(self, msec: int) -> None:
         """Send a break to the remote process
 
            This method requests that the server perform a break
@@ -1271,7 +1288,7 @@ class SSHClientChannel(SSHChannel):
 
         self._send_request(b'break', UInt32(msec))
 
-    def send_signal(self, signal):
+    def send_signal(self, signal: Union[Signals, str]) -> None:
         """Send a signal to the remote process
 
            This method can be called to deliver a signal to the remote
@@ -1309,7 +1326,7 @@ class SSHClientChannel(SSHChannel):
 
         self._send_request(b'signal', String(signal))
 
-    def terminate(self):
+    def terminate(self) -> None:
         """Terminate the remote process
 
            This method can be called to terminate the remote process or
@@ -1326,7 +1343,7 @@ class SSHClientChannel(SSHChannel):
 
         self.send_signal('TERM')
 
-    def kill(self):
+    def kill(self) -> None:
         """Forcibly kill the remote process
 
            This method can be called to forcibly stop the remote process
@@ -1349,8 +1366,8 @@ class SSHServerChannel(SSHChannel):
 
     _write_datatypes = {EXTENDED_DATA_STDERR}
 
-    def __init__(self, conn, loop, allow_pty, line_editor, line_history,
-                 max_line_length, encoding, errors, window, max_pktsize):
+    def __init__(self, conn: Union[SSHServerConnection], loop: "_UnixSelectorEventLoop", allow_pty: bool, line_editor: bool, line_history: int,
+                 max_line_length: Optional[int], encoding: Optional[str], errors: str, window: int, max_pktsize: int) -> None:
         """Initialize an SSH server channel"""
 
         super().__init__(conn, loop, encoding, errors, window, max_pktsize)
@@ -1368,7 +1385,7 @@ class SSHServerChannel(SSHChannel):
 
         self.logger.info('New SSH session requested')
 
-    def _wrap_session(self, session):
+    def _wrap_session(self, session: Union[SSHServerProcess, SSHServerStreamSession]) -> Tuple[Union["SSHServerChannel", SSHLineEditorChannel], Union[SSHLineEditorSession, SSHServerStreamSession]]:
         """Wrap a line editor around the session if enabled"""
 
         if self._line_editor:
@@ -1380,7 +1397,7 @@ class SSHServerChannel(SSHChannel):
 
         return chan, session
 
-    def _process_pty_req_request(self, packet):
+    def _process_pty_req_request(self, packet: SSHPacket) -> bool:
         """Process a request to open a pseudo-terminal"""
 
         term_type = packet.get_string()
@@ -1445,7 +1462,7 @@ class SSHServerChannel(SSHChannel):
 
         return result
 
-    def _process_x11_req_request(self, packet):
+    def _process_x11_req_request(self, packet: SSHPacket) -> Optional[bool]:
         """Process request to enable X11 forwarding"""
 
         _ = packet.get_boolean()                        # single_connection
@@ -1494,7 +1511,7 @@ class SSHServerChannel(SSHChannel):
             self.logger.debug1('  Agent forwarding failed')
             self._report_response(False)
 
-    def _process_env_request(self, packet):
+    def _process_env_request(self, packet: SSHPacket) -> bool:
         """Process a request to set an environment variable"""
 
         name = packet.get_string()
@@ -1512,7 +1529,7 @@ class SSHServerChannel(SSHChannel):
         self._env[name] = value
         return True
 
-    def _start_session(self, command=None, subsystem=None):
+    def _start_session(self, command: Optional[str] = None, subsystem: Optional[str] = None) -> bool:
         """Tell the session what type of channel is being requested"""
 
         forced_command = self._conn.get_certificate_option('force-command')
@@ -1536,7 +1553,7 @@ class SSHServerChannel(SSHChannel):
 
         return result
 
-    def _process_shell_request(self, packet):
+    def _process_shell_request(self, packet: SSHPacket) -> bool:
         """Process a request to open a shell"""
 
         packet.check_end()
@@ -1544,7 +1561,7 @@ class SSHServerChannel(SSHChannel):
         self.logger.info('  Interactive shell requested')
         return self._start_session()
 
-    def _process_exec_request(self, packet):
+    def _process_exec_request(self, packet: SSHPacket) -> bool:
         """Process a request to execute a command"""
 
         command = packet.get_string()
@@ -1558,7 +1575,7 @@ class SSHServerChannel(SSHChannel):
         self.logger.info('  Command: %s', command)
         return self._start_session(command=command)
 
-    def _process_subsystem_request(self, packet):
+    def _process_subsystem_request(self, packet: SSHPacket) -> bool:
         """Process a request to open a subsystem"""
 
         subsystem = packet.get_string()
@@ -1572,7 +1589,7 @@ class SSHServerChannel(SSHChannel):
         self.logger.info('  Subsystem: %s', subsystem)
         return self._start_session(subsystem=subsystem)
 
-    def _process_window_change_request(self, packet):
+    def _process_window_change_request(self, packet: SSHPacket) -> bool:
         """Process a request to change the window size"""
 
         width = packet.get_uint32()
@@ -1591,7 +1608,7 @@ class SSHServerChannel(SSHChannel):
         self._session.terminal_size_changed(width, height, pixwidth, pixheight)
         return True
 
-    def _process_signal_request(self, packet):
+    def _process_signal_request(self, packet: SSHPacket) -> bool:
         """Process a request to send a signal"""
 
         signal = packet.get_string()
@@ -1607,7 +1624,7 @@ class SSHServerChannel(SSHChannel):
         self._session.signal_received(signal)
         return True
 
-    def _process_break_request(self, packet):
+    def _process_break_request(self, packet: SSHPacket) -> bool:
         """Process a request to send a break"""
 
         msec = packet.get_uint32()
@@ -1617,7 +1634,7 @@ class SSHServerChannel(SSHChannel):
 
         return self._session.break_received(msec)
 
-    def get_terminal_type(self):
+    def get_terminal_type(self) -> str:
         """Return the terminal type for this session
 
            This method returns the terminal type set by the client
@@ -1636,7 +1653,7 @@ class SSHServerChannel(SSHChannel):
 
         return self._term_type
 
-    def get_terminal_size(self):
+    def get_terminal_size(self) -> Tuple[int, int, int, int]:
         """Return terminal size information for this session
 
            This method returns the latest terminal size information set
@@ -1687,7 +1704,7 @@ class SSHServerChannel(SSHChannel):
 
         return self._term_modes.get(mode)
 
-    def get_terminal_modes(self):
+    def get_terminal_modes(self) -> Mapping:
         """Return the TTY modes for this session
 
            This method returns a mapping of all the POSIX terminal modes
@@ -1707,7 +1724,7 @@ class SSHServerChannel(SSHChannel):
 
         return MappingProxyType(self._term_modes)
 
-    def get_x11_display(self):
+    def get_x11_display(self) -> Optional[str]:
         """Return the display to use for X11 forwarding
 
            When X11 forwarding has been requested by the client, this
@@ -1790,7 +1807,7 @@ class SSHServerChannel(SSHChannel):
 
         self.writelines(list_of_data, EXTENDED_DATA_STDERR)
 
-    def exit(self, status):
+    def exit(self, status: int) -> None:
         """Send exit status and close the channel
 
            This method can be called to report an exit status for the
@@ -1815,8 +1832,8 @@ class SSHServerChannel(SSHChannel):
             self._send_request(b'exit-status', UInt32(status))
             self.close()
 
-    def exit_with_signal(self, signal, core_dumped=False,
-                         msg='', lang=DEFAULT_LANG):
+    def exit_with_signal(self, signal: str, core_dumped: bool = False,
+                         msg: str = '', lang: str = DEFAULT_LANG) -> None:
         """Send exit signal and close the channel
 
            This method can be called to report that the process
@@ -1963,7 +1980,7 @@ class SSHX11Channel(SSHForwardChannel):
         return await self._open_forward(session_factory, b'x11',
                                         String(orig_host), UInt32(orig_port))
 
-    def set_inbound_peer_names(self, orig_host, orig_port):
+    def set_inbound_peer_names(self, orig_host: bytes, orig_port: int) -> None:
         """Set local and remote peer name for inbound connections"""
 
         self.set_extra_info(local_peername=(None, None),

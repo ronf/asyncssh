@@ -28,6 +28,7 @@ from cryptography.hazmat.primitives.ciphers.algorithms import Blowfish, CAST5
 from cryptography.hazmat.primitives.ciphers.algorithms import SEED, TripleDES
 
 from cryptography.hazmat.primitives.ciphers.modes import CBC, CTR, GCM
+from typing import Tuple
 
 _cipher_algs = {}
 _cipher_params = {}
@@ -36,7 +37,7 @@ _cipher_params = {}
 class BasicCipher:
     """Shim for basic ciphers"""
 
-    def __init__(self, cipher_name, key, iv):
+    def __init__(self, cipher_name: str, key: bytes, iv: bytes) -> None:
         cipher, mode, initial_bytes = _cipher_algs[cipher_name]
 
         self._cipher = Cipher(cipher(key), mode(iv) if mode else None,
@@ -45,7 +46,7 @@ class BasicCipher:
         self._encryptor = None
         self._decryptor = None
 
-    def encrypt(self, data):
+    def encrypt(self, data: bytes) -> bytes:
         """Encrypt a block of data"""
 
         if not self._encryptor:
@@ -56,7 +57,7 @@ class BasicCipher:
 
         return self._encryptor.update(data)
 
-    def decrypt(self, data):
+    def decrypt(self, data: bytes) -> bytes:
         """Decrypt a block of data"""
 
         if not self._decryptor:
@@ -71,19 +72,19 @@ class BasicCipher:
 class GCMCipher:
     """Shim for GCM ciphers"""
 
-    def __init__(self, cipher_name, key, iv):
+    def __init__(self, cipher_name: str, key: bytes, iv: bytes) -> None:
         self._cipher = _cipher_algs[cipher_name][0]
         self._key = key
         self._iv = iv
 
-    def _update_iv(self):
+    def _update_iv(self) -> None:
         """Update the IV after each encrypt/decrypt operation"""
 
         invocation = int.from_bytes(self._iv[4:], 'big')
         invocation = (invocation + 1) & 0xffffffffffffffff
         self._iv = self._iv[:4] + invocation.to_bytes(8, 'big')
 
-    def encrypt_and_sign(self, header, data):
+    def encrypt_and_sign(self, header: bytes, data: bytes) -> Tuple[bytes, bytes]:
         """Encrypt and sign a block of data"""
 
         encryptor = Cipher(self._cipher(self._key), GCM(self._iv),
@@ -98,7 +99,7 @@ class GCMCipher:
 
         return header + data, encryptor.tag
 
-    def verify_and_decrypt(self, header, data, mac):
+    def verify_and_decrypt(self, header: bytes, data: bytes, mac: bytes) -> bytes:
         """Verify the signature of and decrypt a block of data"""
 
         decryptor = Cipher(self._cipher(self._key), GCM(self._iv, mac),
@@ -122,7 +123,7 @@ def register_cipher(cipher_name, key_size, iv_size, block_size):
     _cipher_params[cipher_name] = (key_size, iv_size, block_size)
 
 
-def get_cipher_params(cipher_name):
+def get_cipher_params(cipher_name: str) -> Tuple[int, int, int]:
     """Get parameters of a symmetric cipher"""
 
     return _cipher_params[cipher_name]

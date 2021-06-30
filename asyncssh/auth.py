@@ -29,6 +29,18 @@ from .misc import ProtocolError, PasswordChangeRequired, get_symbol_names
 from .packet import Boolean, String, UInt32, SSHPacketHandler
 
 from .saslprep import saslprep, SASLPrepError
+from asyncssh.logging import _SSHLogger
+from typing import Any
+from asyncssh.packet import SSHPacket
+from typing import Optional
+from asyncssh.connection import SSHClientConnection
+from tests.test_auth import _AuthClientStub
+from typing import Union
+from typing import List
+from typing import Tuple
+from asyncssh.connection import SSHServerConnection
+from tests.test_auth import _AuthServerStub
+from tests.test_connection_auth import _FailValidateHostSSHServerConnection
 
 
 # SSH message values for GSS auth
@@ -57,29 +69,29 @@ _server_auth_handlers = {}
 class _Auth(SSHPacketHandler):
     """Parent class for authentication"""
 
-    def __init__(self, conn, coro):
+    def __init__(self, conn: Any, coro: coroutine) -> None:
         self._conn = conn
         self._logger = conn.logger
         self._coro = conn.create_task(coro)
 
-    def send_packet(self, pkttype, *args):
+    def send_packet(self, pkttype: int, *args: bytes) -> None:
         """Send an auth packet"""
 
         self._conn.send_packet(pkttype, *args, handler=self)
 
     @property
-    def logger(self):
+    def logger(self) -> _SSHLogger:
         """A logger associated with this authentication handler"""
 
         return self._logger
 
-    def create_task(self, coro):
+    def create_task(self, coro: coroutine) -> None:
         """Create an asynchronous auth task"""
 
         self.cancel()
         self._coro = self._conn.create_task(coro)
 
-    def cancel(self):
+    def cancel(self) -> None:
         """Cancel any authentication in progress"""
 
         if self._coro: # pragma: no branch
@@ -90,7 +102,7 @@ class _Auth(SSHPacketHandler):
 class _ClientAuth(_Auth):
     """Parent class for client authentication"""
 
-    def __init__(self, conn, method):
+    def __init__(self, conn: Any, method: bytes) -> None:
         self._method = method
 
         super().__init__(conn, self._start())
@@ -101,10 +113,10 @@ class _ClientAuth(_Auth):
         # Provided by subclass
         raise NotImplementedError
 
-    def auth_succeeded(self):
+    def auth_succeeded(self) -> None:
         """Callback when auth succeeds"""
 
-    def auth_failed(self):
+    def auth_failed(self) -> None:
         """Callback when auth fails"""
 
     async def send_request(self, *args, key=None):
@@ -312,7 +324,7 @@ class _ClientPublicKeyAuth(_ClientAuth):
                                 String(self._keypair.public_data),
                                 key=self._keypair)
 
-    def _process_public_key_ok(self, _pkttype, _pktid, packet):
+    def _process_public_key_ok(self, _pkttype: int, _pktid: Optional[int], packet: SSHPacket) -> bool:
         """Process a public key ok response"""
 
         algorithm = packet.get_string()
@@ -363,7 +375,7 @@ class _ClientKbdIntAuth(_ClientAuth):
         self.send_packet(MSG_USERAUTH_INFO_RESPONSE, UInt32(len(responses)),
                          b''.join(String(r) for r in responses))
 
-    def _process_info_request(self, _pkttype, _pktid, packet):
+    def _process_info_request(self, _pkttype: int, _pktid: Optional[int], packet: SSHPacket) -> bool:
         """Process a keyboard interactive authentication request"""
 
         name = packet.get_string()
@@ -407,7 +419,7 @@ class _ClientPasswordAuth(_ClientAuth):
 
     _handler_names = get_symbol_names(globals(), 'MSG_USERAUTH_PASSWD_')
 
-    def __init__(self, conn, method):
+    def __init__(self, conn: Union[SSHClientConnection, _AuthClientStub], method: bytes) -> None:
         super().__init__(conn, method)
 
         self._password_change = False
@@ -445,17 +457,17 @@ class _ClientPasswordAuth(_ClientAuth):
                                 String(old_password.encode('utf-8')),
                                 String(new_password.encode('utf-8')))
 
-    def auth_succeeded(self):
+    def auth_succeeded(self) -> None:
         if self._password_change:
             self._password_change = False
             self._conn.password_changed()
 
-    def auth_failed(self):
+    def auth_failed(self) -> None:
         if self._password_change:
             self._password_change = False
             self._conn.password_change_failed()
 
-    def _process_password_change(self, _pkttype, _pktid, packet):
+    def _process_password_change(self, _pkttype: int, _pktid: Optional[int], packet: SSHPacket) -> bool:
         """Process a password change request"""
 
         prompt = packet.get_string()
@@ -480,7 +492,7 @@ class _ClientPasswordAuth(_ClientAuth):
 class _ServerAuth(_Auth):
     """Parent class for server authentication"""
 
-    def __init__(self, conn, username, method, packet):
+    def __init__(self, conn: Any, username: str, method: bytes, packet: SSHPacket) -> None:
         self._username = username
         self._method = method
 
@@ -492,12 +504,12 @@ class _ServerAuth(_Auth):
         # Provided by subclass
         raise NotImplementedError
 
-    def send_failure(self, partial_success=False):
+    def send_failure(self, partial_success: bool = False) -> None:
         """Send a user authentication failure response"""
 
         self._conn.send_userauth_failure(partial_success)
 
-    def send_success(self):
+    def send_success(self) -> None:
         """Send a user authentication success response"""
 
         self._conn.send_userauth_success()
@@ -507,7 +519,7 @@ class _ServerNullAuth(_ServerAuth):
     """Server side implementation of null auth"""
 
     @classmethod
-    def supported(cls, _conn):
+    def supported(cls, _conn: Any) -> bool:
         """Return that null authentication is never a supported auth mode"""
 
         return False
@@ -525,7 +537,7 @@ class _ServerGSSKexAuth(_ServerAuth):
         self._gss = conn.get_gss_context()
 
     @classmethod
-    def supported(cls, conn):
+    def supported(cls, conn: Any) -> bool:
         """Return whether GSS key exchange authentication is supported"""
 
         return conn.gss_kex_auth_supported()
@@ -560,7 +572,7 @@ class _ServerGSSMICAuth(_ServerAuth):
         self._gss = conn.get_gss_context()
 
     @classmethod
-    def supported(cls, conn):
+    def supported(cls, conn: Any) -> bool:
         """Return whether GSS MIC authentication is supported"""
 
         return conn.gss_mic_auth_supported()
@@ -676,7 +688,7 @@ class _ServerHostBasedAuth(_ServerAuth):
     """Server side implementation of host based auth"""
 
     @classmethod
-    def supported(cls, conn):
+    def supported(cls, conn: Any) -> bool:
         """Return whether host based authentication is supported"""
 
         return conn.host_based_auth_supported()
@@ -716,7 +728,7 @@ class _ServerPublicKeyAuth(_ServerAuth):
     """Server side implementation of public key auth"""
 
     @classmethod
-    def supported(cls, conn):
+    def supported(cls, conn: Any) -> bool:
         """Return whether public key authentication is supported"""
 
         return conn.public_key_auth_supported()
@@ -759,7 +771,7 @@ class _ServerKbdIntAuth(_ServerAuth):
     _handler_names = get_symbol_names(globals(), 'MSG_USERAUTH_INFO_')
 
     @classmethod
-    def supported(cls, conn):
+    def supported(cls, conn: Any) -> bool:
         """Return whether keyboard interactive authentication is supported"""
 
         return conn.kbdint_auth_supported()
@@ -784,7 +796,7 @@ class _ServerKbdIntAuth(_ServerAuth):
                                                           lang, submethods)
         self._send_challenge(challenge)
 
-    def _send_challenge(self, challenge):
+    def _send_challenge(self, challenge: Union[None, Tuple[Union[bytes, str], str, str, Union[List[Tuple[str, bool]], Tuple[Tuple[Union[bytes, str], bool], ...]]], bool]) -> None:
         """Send a keyboard interactive authentication request"""
 
         if isinstance(challenge, (tuple, list)):
@@ -809,7 +821,7 @@ class _ServerKbdIntAuth(_ServerAuth):
             await self._conn.validate_kbdint_response(self._username, responses)
         self._send_challenge(next_challenge)
 
-    def _process_info_response(self, _pkttype, _pktid, packet):
+    def _process_info_response(self, _pkttype: int, _pktid: Optional[int], packet: SSHPacket) -> bool:
         """Process a keyboard interactive authentication response"""
 
         num_responses = packet.get_uint32()
@@ -839,7 +851,7 @@ class _ServerPasswordAuth(_ServerAuth):
     """Server side implementation of password auth"""
 
     @classmethod
-    def supported(cls, conn):
+    def supported(cls, conn: Any) -> bool:
         """Return whether password authentication is supported"""
 
         return conn.password_auth_supported()
@@ -888,14 +900,14 @@ def register_auth_method(alg, client_handler, server_handler):
     _server_auth_handlers[alg] = server_handler
 
 
-def get_client_auth_methods():
+def get_client_auth_methods() -> List[bytes]:
     """Return a list of supported client auth methods"""
 
     return [method for method in _client_auth_handlers
             if method != b'none']
 
 
-def lookup_client_auth(conn, method):
+def lookup_client_auth(conn: Union[SSHClientConnection, _AuthClientStub], method: bytes) -> Any:
     """Look up the client authentication method to use"""
 
     if method in _auth_methods:
@@ -904,7 +916,7 @@ def lookup_client_auth(conn, method):
         return None
 
 
-def get_server_auth_methods(conn):
+def get_server_auth_methods(conn: Any) -> List[bytes]:
     """Return a list of supported server auth methods"""
 
     auth_methods = []
@@ -916,7 +928,7 @@ def get_server_auth_methods(conn):
     return auth_methods
 
 
-def lookup_server_auth(conn, username, method, packet):
+def lookup_server_auth(conn: Union[SSHServerConnection, _AuthServerStub, _FailValidateHostSSHServerConnection], username: str, method: bytes, packet: SSHPacket) -> Any:
     """Look up the server authentication method to use"""
 
     handler = _server_auth_handlers.get(method)

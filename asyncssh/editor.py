@@ -24,6 +24,16 @@ import re
 
 from functools import partial
 from unicodedata import east_asian_width
+from asyncssh.channel import SSHServerChannel
+from asyncssh.stream import SSHServerStreamSession
+from typing import Optional
+from typing import Callable
+from typing import Tuple
+from typing import Any
+from asyncssh.process import SSHServerProcess
+from typing import Union
+from asyncssh.editor import SSHLineEditor
+from asyncssh.editor import SSHLineEditorChannel
 
 
 _DEFAULT_WIDTH = 80
@@ -34,7 +44,7 @@ _ansi_terminals = ('ansi', 'cygwin', 'linux', 'putty', 'screen', 'teraterm',
                    'rxvt-color')
 
 
-def _is_wide(ch):
+def _is_wide(ch: str) -> bool:
     """Return display width of character"""
 
     return east_asian_width(ch) in 'WF'
@@ -43,8 +53,8 @@ def _is_wide(ch):
 class SSHLineEditor:
     """Input line editor"""
 
-    def __init__(self, chan, session, history_size, max_line_length,
-                 term_type, width):
+    def __init__(self, chan: SSHServerChannel, session: SSHServerStreamSession, history_size: int, max_line_length: Optional[int],
+                 term_type: str, width: int) -> None:
         self._chan = chan
         self._session = session
         self._history_size = history_size if history_size > 0 else 0
@@ -75,7 +85,7 @@ class SSHLineEditor:
 
         self._build_printable()
 
-    def _add_key(self, key, func):
+    def _add_key(self, key: str, func: Callable) -> None:
         """Add a key to the keymap"""
 
         keymap = self._keymap
@@ -88,7 +98,7 @@ class SSHLineEditor:
 
         keymap[key[-1]] = func
 
-    def _del_key(self, key):
+    def _del_key(self, key: str) -> None:
         """Delete a key from the keymap"""
 
         keymap = self._keymap
@@ -101,16 +111,16 @@ class SSHLineEditor:
 
         keymap.pop(key[-1], None)
 
-    def _build_printable(self):
+    def _build_printable(self) -> None:
         """Build a regex of printable ASCII non-registered keys"""
 
-        def _escape(c):
+        def _escape(c: int) -> str:
             """Backslash escape special characters in regex character range"""
 
             ch = chr(c)
             return ('\\' if (ch in '-&|[]\\^~') else '') + ch
 
-        def _is_printable(ch):
+        def _is_printable(ch: str) -> bool:
             """Return if character is printable and has no handler"""
 
             return ch.isprintable() and ch not in keys
@@ -138,12 +148,12 @@ class SSHLineEditor:
 
         self._printable = re.compile('[' + ''.join(pat) + ']*')
 
-    def _char_width(self, pos):
+    def _char_width(self, pos: int) -> int:
         """Return width of character at specified position"""
 
         return 1 + _is_wide(self._line[pos]) + ((pos + 1) in self._early_wrap)
 
-    def _determine_column(self, data, column, pos=None):
+    def _determine_column(self, data: str, column: int, pos: Optional[int] = None) -> Tuple[str, int]:
         """Determine new output column after output occurs"""
 
         offset = pos
@@ -178,7 +188,7 @@ class SSHLineEditor:
         else:
             return data, column
 
-    def _output(self, data, pos=None):
+    def _output(self, data: str, pos: Optional[int] = None) -> None:
         """Generate output and calculate new output column"""
 
         idx = data.rfind('\n')
@@ -197,14 +207,14 @@ class SSHLineEditor:
         if self._cursor and self._cursor % self._width == 0:
             self._outbuf.append(' \b')
 
-    def _ring_bell(self):
+    def _ring_bell(self) -> None:
         """Ring the terminal bell"""
 
         if not self._bell_rung:
             self._outbuf.append('\a')
             self._bell_rung = True
 
-    def _update_input_window(self, new_pos):
+    def _update_input_window(self, new_pos: int) -> int:
         """Update visible input window when not wrapping onto multiple lines"""
 
         line_len = len(self._line)
@@ -249,7 +259,7 @@ class SSHLineEditor:
 
         return column
 
-    def _move_cursor(self, column):
+    def _move_cursor(self, column: int) -> None:
         """Move the cursor to selected position in input line"""
 
         start_row = self._cursor // self._width
@@ -270,7 +280,7 @@ class SSHLineEditor:
 
         self._cursor = column
 
-    def _move_back(self, column):
+    def _move_back(self, column: int) -> None:
         """Move the cursor backward to selected position in input line"""
 
         if self._wrap:
@@ -279,7 +289,7 @@ class SSHLineEditor:
             self._outbuf.append('\b' * (self._cursor - column))
             self._cursor = column
 
-    def _clear_to_end(self):
+    def _clear_to_end(self) -> None:
         """Clear any remaining characters from previous input line"""
 
         column = self._cursor
@@ -295,14 +305,14 @@ class SSHLineEditor:
         self._move_back(column)
         self._end_column = column
 
-    def _erase_input(self):
+    def _erase_input(self) -> None:
         """Erase current input line"""
 
         self._move_cursor(self._start_column)
         self._clear_to_end()
         self._early_wrap.clear()
 
-    def _draw_input(self):
+    def _draw_input(self) -> None:
         """Draw current input line"""
 
         if self._line and self._echo:
@@ -319,7 +329,7 @@ class SSHLineEditor:
             self._end_column = self._cursor
             self._move_back(column)
 
-    def _reposition(self, new_pos, new_column):
+    def _reposition(self, new_pos: int, new_column: int) -> None:
         """Reposition the cursor to selected position in input"""
 
         if self._echo:
@@ -330,7 +340,7 @@ class SSHLineEditor:
 
         self._pos = new_pos
 
-    def _update_input(self, pos, column, new_pos):
+    def _update_input(self, pos: int, column: int, new_pos: int) -> None:
         """Update selected portion of current input line"""
 
         if self._echo:
@@ -356,7 +366,7 @@ class SSHLineEditor:
 
         self._pos = new_pos
 
-    def _insert_printable(self, data):
+    def _insert_printable(self, data: str) -> None:
         """Insert data into the input line"""
 
         line_len = len(self._line)
@@ -375,7 +385,7 @@ class SSHLineEditor:
 
             self._update_input(pos, self._cursor, new_pos)
 
-    def _end_line(self):
+    def _end_line(self) -> None:
         """End the current input line and send it to the session"""
 
         if (self._echo and not self._wrap and
@@ -405,7 +415,7 @@ class SSHLineEditor:
 
         self._session.data_received(data, None)
 
-    def _eof_or_delete(self):
+    def _eof_or_delete(self) -> None:
         """Erase character to the right, or send EOF if input line is empty"""
 
         if not self._line:
@@ -413,7 +423,7 @@ class SSHLineEditor:
         else:
             self._erase_right()
 
-    def _erase_left(self):
+    def _erase_left(self) -> None:
         """Erase character to the left"""
 
         if self._pos > 0:
@@ -424,7 +434,7 @@ class SSHLineEditor:
         else:
             self._ring_bell()
 
-    def _erase_right(self):
+    def _erase_right(self) -> None:
         """Erase character to the right"""
 
         if self._pos < len(self._line):
@@ -434,14 +444,14 @@ class SSHLineEditor:
         else:
             self._ring_bell()
 
-    def _erase_line(self):
+    def _erase_line(self) -> None:
         """Erase entire input line"""
 
         self._erased = self._line
         self._line = ''
         self._update_input(0, self._start_column, 0)
 
-    def _erase_to_end(self):
+    def _erase_to_end(self) -> None:
         """Erase to end of input line"""
 
         pos = self._pos
@@ -449,7 +459,7 @@ class SSHLineEditor:
         self._line = self._line[:pos]
         self._update_input(pos, self._cursor, pos)
 
-    def _handle_key(self, key, handler):
+    def _handle_key(self, key: str, handler: Callable) -> None:
         """Call an external key handler"""
 
         result = handler(self._line, self._pos)
@@ -470,7 +480,7 @@ class SSHLineEditor:
                 self._line = line
                 self._update_input(0, self._start_column, new_pos)
 
-    def _history_prev(self):
+    def _history_prev(self) -> None:
         """Replace input with previous line in history"""
 
         if self._history_index > 0:
@@ -480,7 +490,7 @@ class SSHLineEditor:
         else:
             self._ring_bell()
 
-    def _history_next(self):
+    def _history_next(self) -> None:
         """Replace input with next line in history"""
 
         if self._history_index < len(self._history):
@@ -495,7 +505,7 @@ class SSHLineEditor:
         else:
             self._ring_bell()
 
-    def _move_left(self):
+    def _move_left(self) -> None:
         """Move left in input line"""
 
         if self._pos > 0:
@@ -505,7 +515,7 @@ class SSHLineEditor:
         else:
             self._ring_bell()
 
-    def _move_right(self):
+    def _move_right(self) -> None:
         """Move right in input line"""
 
         if self._pos < len(self._line):
@@ -515,28 +525,28 @@ class SSHLineEditor:
         else:
             self._ring_bell()
 
-    def _move_to_start(self):
+    def _move_to_start(self) -> None:
         """Move to start of input line"""
 
         self._reposition(0, self._start_column)
 
-    def _move_to_end(self):
+    def _move_to_end(self) -> None:
         """Move to end of input line"""
 
         self._reposition(len(self._line), self._end_column)
 
-    def _redraw(self):
+    def _redraw(self) -> None:
         """Redraw input line"""
 
         self._erase_input()
         self._draw_input()
 
-    def _insert_erased(self):
+    def _insert_erased(self) -> None:
         """Insert previously erased input"""
 
         self._insert_printable(self._erased)
 
-    def _send_break(self):
+    def _send_break(self) -> None:
         """Send break to session"""
 
         self._session.break_received(0)
@@ -557,26 +567,26 @@ class SSHLineEditor:
                 (_insert_erased, ('\x19',)),
                 (_send_break,    ('\x03', '\x1b[33~')))
 
-    def register_key(self, key, handler):
+    def register_key(self, key: str, handler: Callable) -> None:
         """Register a handler to be called when a key is pressed"""
 
         self._add_key(key, partial(SSHLineEditor._handle_key,
                                    key=key, handler=handler))
         self._build_printable()
 
-    def unregister_key(self, key):
+    def unregister_key(self, key: str) -> None:
         """Remove the handler associated with a key"""
 
         self._del_key(key)
         self._build_printable()
 
-    def set_input(self, line, pos):
+    def set_input(self, line: str, pos: int) -> None:
         """Set input line and cursor position"""
 
         self._line = line
         self._update_input(0, self._start_column, pos)
 
-    def set_line_mode(self, line_mode):
+    def set_line_mode(self, line_mode: bool) -> None:
         """Enable/disable input line editing"""
 
         if self._line and not line_mode:
@@ -588,7 +598,7 @@ class SSHLineEditor:
 
         self._line_mode = line_mode
 
-    def set_echo(self, echo):
+    def set_echo(self, echo: bool) -> None:
         """Enable/disable echoing of input in line mode"""
 
         if self._echo and not echo:
@@ -598,7 +608,7 @@ class SSHLineEditor:
             self._echo = True
             self._draw_input()
 
-    def set_width(self, width):
+    def set_width(self, width: int) -> None:
         """Set terminal line width"""
 
         self._width = width or _DEFAULT_WIDTH
@@ -609,7 +619,7 @@ class SSHLineEditor:
 
         self._redraw()
 
-    def process_input(self, data, datatype):
+    def process_input(self, data: str, datatype: Optional[Any]) -> None:
         """Process input from channel"""
 
         if self._line_mode:
@@ -645,7 +655,7 @@ class SSHLineEditor:
         else:
             self._session.data_received(data, datatype)
 
-    def process_output(self, data):
+    def process_output(self, data: str) -> None:
         """Process output to channel"""
 
         data = data.replace('\n', '\r\n')
@@ -677,19 +687,19 @@ class SSHLineEditorChannel:
 
     """
 
-    def __init__(self, orig_chan, orig_session, history_size, max_line_length):
+    def __init__(self, orig_chan: SSHServerChannel, orig_session: Union[SSHServerProcess, SSHServerStreamSession], history_size: int, max_line_length: Optional[int]) -> None:
         self._orig_chan = orig_chan
         self._orig_session = orig_session
         self._history_size = history_size
         self._max_line_length = max_line_length
         self._editor = None
 
-    def __getattr__(self, attr):
+    def __getattr__(self, attr: str) -> Callable:
         """Delegate most channel functions to original channel"""
 
         return getattr(self._orig_chan, attr)
 
-    def create_editor(self):
+    def create_editor(self) -> Optional[SSHLineEditor]:
         """Create input line editor if encoding and terminal type are set"""
 
         if self._encoding and self._term_type:
@@ -699,7 +709,7 @@ class SSHLineEditorChannel:
 
         return self._editor
 
-    def register_key(self, key, handler):
+    def register_key(self, key: str, handler: Callable) -> None:
         """Register a handler to be called when a key is pressed
 
            This method registers a handler function which will be called
@@ -737,7 +747,7 @@ class SSHLineEditorChannel:
 
         self._editor.register_key(key, handler)
 
-    def unregister_key(self, key):
+    def unregister_key(self, key: str) -> None:
         """Remove the handler associated with a key
 
            This method removes a handler function associated with
@@ -754,7 +764,7 @@ class SSHLineEditorChannel:
 
         self._editor.unregister_key(key)
 
-    def clear_input(self):
+    def clear_input(self) -> None:
         """Clear input line
 
            This method clears the current input line.
@@ -763,7 +773,7 @@ class SSHLineEditorChannel:
 
         self._editor.set_input('', 0)
 
-    def set_input(self, line, pos):
+    def set_input(self, line: str, pos: int) -> None:
         """Clear input line
 
            This method sets the current input line and cursor position.
@@ -779,7 +789,7 @@ class SSHLineEditorChannel:
 
         self._editor.set_input(line, pos)
 
-    def set_line_mode(self, line_mode):
+    def set_line_mode(self, line_mode: bool) -> None:
         """Enable/disable input line editing
 
            This method enabled or disables input line editing. When set,
@@ -797,7 +807,7 @@ class SSHLineEditorChannel:
 
         self._editor.set_line_mode(line_mode)
 
-    def set_echo(self, echo):
+    def set_echo(self, echo: bool) -> None:
         """Enable/disable echoing of input in line mode
 
            This method enables or disables echoing of input data when
@@ -814,7 +824,7 @@ class SSHLineEditorChannel:
 
         self._editor.set_echo(echo)
 
-    def write(self, data, datatype=None):
+    def write(self, data: Union[bytes, str], datatype: Optional[int] = None) -> None:
         """Process data written to the channel"""
 
         if self._editor and datatype is None:
@@ -826,23 +836,23 @@ class SSHLineEditorChannel:
 class SSHLineEditorSession:
     """Input line editor session wrapper"""
 
-    def __init__(self, chan, orig_session):
+    def __init__(self, chan: SSHLineEditorChannel, orig_session: Union[SSHServerProcess, SSHServerStreamSession]) -> None:
         self._chan = chan
         self._orig_session = orig_session
         self._editor = None
 
-    def __getattr__(self, attr):
+    def __getattr__(self, attr: str) -> Callable:
         """Delegate most channel functions to original session"""
 
         return getattr(self._orig_session, attr)
 
-    def session_started(self):
+    def session_started(self) -> None:
         """Start a session for this newly opened server channel"""
 
         self._editor = self._chan.create_editor()
         self._orig_session.session_started()
 
-    def terminal_size_changed(self, width, height, pixwidth, pixheight):
+    def terminal_size_changed(self, width: int, height: int, pixwidth: int, pixheight: int) -> None:
         """The terminal size has changed"""
 
         if self._editor:
@@ -851,7 +861,7 @@ class SSHLineEditorSession:
         self._orig_session.terminal_size_changed(width, height,
                                                  pixwidth, pixheight)
 
-    def data_received(self, data, datatype):
+    def data_received(self, data: Union[bytes, str], datatype: Optional[Any]) -> None:
         """Process data received from the channel"""
 
         if self._editor:
@@ -859,7 +869,7 @@ class SSHLineEditorSession:
         else:
             self._orig_session.data_received(data, datatype)
 
-    def eof_received(self):
+    def eof_received(self) -> bool:
         """Process EOF received from the channel"""
 
         if self._editor:

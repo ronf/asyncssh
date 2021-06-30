@@ -137,6 +137,26 @@ from .version import __version__
 
 from .x11 import create_x11_client_listener, create_x11_server_listener
 
+from _asyncio import Task
+from asyncssh.auth_keys import SSHAuthorizedKeys
+from asyncssh.channel import SSHClientChannel
+from asyncssh.channel import SSHServerChannel
+from asyncssh.channel import SSHX11Channel
+from asyncssh.config import SSHClientConfig
+from asyncssh.config import SSHServerConfig
+from asyncssh.logging import _SSHLogger
+from asyncssh.misc import ConnectionLost
+from asyncssh.packet import SSHPacket
+from asyncssh.process import SSHServerProcess
+from asyncssh.public_key import SSHLocalKeyPair
+from asyncssh.public_key import SSHOpenSSHCertificateV01
+from asyncssh.rsa import _RSAKey
+from asyncssh.sftp import SFTPClient
+from asyncssh.stream import SSHServerStreamSession
+from asyncssh.subprocess import SSHSubprocessTransport
+from socket import AddressFamily
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+
 
 # SSH service names
 _USERAUTH_SERVICE = b'ssh-userauth'
@@ -240,7 +260,7 @@ async def _open_proxy(loop, command, conn_factory):
     return tunnel.get_owner()
 
 
-async def _open_tunnel(tunnel):
+async def _open_tunnel(tunnel: Optional[Any]) -> Optional[Any]:
     """Parse and open connection to tunnel over"""
 
     if isinstance(tunnel, str):
@@ -260,7 +280,7 @@ async def _open_tunnel(tunnel):
         return None
 
 
-async def _connect(options, loop, flags, conn_factory, msg):
+async def _connect(options: SSHClientConnectionOptions, loop: _UnixSelectorEventLoop, flags: int, conn_factory: Callable, msg: str) -> Union["SSHClientConnection", _UnknownAuthClientConnection]:
     """Make outbound TCP or SSH tunneled connection"""
 
     host = options.host
@@ -356,7 +376,7 @@ async def _listen(options, loop, flags, backlog, reuse_address,
     return SSHAcceptor(server, options)
 
 
-def _validate_version(version):
+def _validate_version(version: Tuple[()]) -> bytes:
     """Validate requested SSH version"""
 
     if version == ():
@@ -409,8 +429,8 @@ def _expand_algs(alg_type, algs, possible_algs, default_algs, strict_match):
         return matched
 
 
-def _select_algs(alg_type, algs, possible_algs, default_algs,
-                 config_algs, none_value=None):
+def _select_algs(alg_type: str, algs: Union[List[str], Tuple[()]], possible_algs: List[bytes], default_algs: List[bytes],
+                 config_algs: Tuple[()], none_value: Optional[bytes] = None) -> List[bytes]:
     """Select a set of allowed algorithms"""
 
     if algs == ():
@@ -445,7 +465,7 @@ def _select_algs(alg_type, algs, possible_algs, default_algs,
         raise ValueError('No %s algorithms selected' % alg_type)
 
 
-def _select_host_key_algs(algs, config_algs, default_algs=()):
+def _select_host_key_algs(algs: Tuple[()], config_algs: Tuple[()], default_algs: Union[List[bytes], Tuple[()]] = ()) -> List[bytes]:
     """Select a set of allowed host key algorithms"""
 
     possible_algs = (get_x509_certificate_algs() + get_certificate_algs() +
@@ -459,8 +479,8 @@ def _select_host_key_algs(algs, config_algs, default_algs=()):
                         default_algs, config_algs)
 
 
-def _validate_algs(config, kex_algs, enc_algs, mac_algs, cmp_algs,
-                   sig_algs, allow_x509):
+def _validate_algs(config: Union[SSHClientConfig, SSHServerConfig], kex_algs: Tuple[()], enc_algs: Tuple[()], mac_algs: Tuple[()], cmp_algs: Tuple[()],
+                   sig_algs: Union[List[str], Tuple[()]], allow_x509: bool) -> Tuple[List[bytes], List[bytes], List[bytes], List[bytes], List[bytes]]:
     """Validate requested algorithms"""
 
     kex_algs = _select_algs('key exchange', kex_algs, get_kex_algs(),
@@ -535,14 +555,14 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
     next_conn = 0    # Next connection number, for logging
 
     @staticmethod
-    def _get_next_conn():
+    def _get_next_conn() -> int:
         """Return the next available connection number (for logging)"""
 
         next_conn = SSHConnection.next_conn
         SSHConnection.next_conn += 1
         return next_conn
 
-    def __init__(self, loop, options, acceptor, error_handler, wait, server):
+    def __init__(self, loop: _UnixSelectorEventLoop, options: Union[SSHClientConnectionOptions, SSHServerConnectionOptions], acceptor: Optional[Any], error_handler: Optional[Any], wait: Optional[str], server: bool) -> None:
         self._loop = loop
         self._options = options
         self._protocol_factory = options.protocol_factory
@@ -703,12 +723,12 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         await self.wait_closed()
 
     @property
-    def logger(self):
+    def logger(self) -> _SSHLogger:
         """A logger associated with this connection"""
 
         return self._logger
 
-    def _cleanup(self, exc):
+    def _cleanup(self, exc: Any) -> None:
         """Clean up this connection"""
 
         self._cancel_keepalive_timer()
@@ -750,35 +770,35 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
             self._tunnel.close()
             self._tunnel = None
 
-    def _cancel_login_timer(self):
+    def _cancel_login_timer(self) -> None:
         """Cancel the login timer"""
 
         if self._login_timer:
             self._login_timer.cancel()
             self._login_timer = None
 
-    def _login_timer_callback(self):
+    def _login_timer_callback(self) -> None:
         """Close the connection if authentication hasn't completed yet"""
 
         self._login_timer = None
 
         self.connection_lost(ConnectionLost('Login timeout expired'))
 
-    def _cancel_keepalive_timer(self):
+    def _cancel_keepalive_timer(self) -> None:
         """Cancel the keepalive timer"""
 
         if self._keepalive_timer:
             self._keepalive_timer.cancel()
             self._keepalive_timer = None
 
-    def _set_keepalive_timer(self):
+    def _set_keepalive_timer(self) -> None:
         """Set the keepalive timer"""
 
         if self._keepalive_interval:
             self._keepalive_timer = self._loop.call_later(
                 self._keepalive_interval, self._keepalive_timer_callback)
 
-    def _reset_keepalive_timer(self):
+    def _reset_keepalive_timer(self) -> None:
         """Reset the keepalive timer"""
 
         if self._auth_complete:
@@ -810,7 +830,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
             self._set_keepalive_timer()
             self.create_task(self._make_keepalive_request())
 
-    def _force_close(self, exc):
+    def _force_close(self, exc: Any) -> None:
         """Force this connection to close immediately"""
 
         if not self._transport:
@@ -821,7 +841,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         self._loop.call_soon(self._cleanup, exc)
 
-    def _reap_task(self, task_logger, task):
+    def _reap_task(self, task_logger: Optional[_SSHLogger], task: Task) -> None:
         """Collect result of an async task, reporting errors"""
 
         # pylint: disable=broad-except
@@ -835,29 +855,29 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         except Exception:
             self.internal_error(error_logger=task_logger)
 
-    def create_task(self, coro, task_logger=None):
+    def create_task(self, coro: coroutine, task_logger: Optional[_SSHLogger] = None) -> Task:
         """Create an asynchronous task which catches and reports errors"""
 
         task = asyncio.ensure_future(coro)
         task.add_done_callback(partial(self._reap_task, task_logger))
         return task
 
-    def is_client(self):
+    def is_client(self) -> bool:
         """Return if this is a client connection"""
 
         return not self._server
 
-    def is_server(self):
+    def is_server(self) -> bool:
         """Return if this is a server connection"""
 
         return self._server
 
-    def get_owner(self):
+    def get_owner(self) -> Any:
         """Return the SSHClient or SSHServer which owns this connection"""
 
         return self._owner
 
-    def get_hash_prefix(self):
+    def get_hash_prefix(self) -> bytes:
         """Return the bytes used in calculating unique connection hashes
 
            This methods returns a packetized version of the client and
@@ -876,7 +896,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         self._tunnel = tunnel
 
-    def _match_known_hosts(self, known_hosts, host, addr, port):
+    def _match_known_hosts(self, known_hosts: str, host: str, addr: str, port: Optional[int]) -> None:
         """Determine the set of trusted host keys and certificates"""
 
         trusted_host_keys, trusted_ca_keys, revoked_host_keys, \
@@ -901,7 +921,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
             self._x509_trusted_subjects = trusted_x509_subjects
             self._x509_revoked_subjects = revoked_x509_subjects
 
-    def _validate_openssh_host_certificate(self, host, addr, port, cert):
+    def _validate_openssh_host_certificate(self, host: str, addr: str, port: int, cert: SSHOpenSSHCertificateV01) -> _RSAKey:
         """Validate an OpenSSH host certificate"""
 
         if self._trusted_ca_keys is not None:
@@ -944,7 +964,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         return cert.key
 
-    def _validate_host_key(self, host, addr, port, key_data):
+    def _validate_host_key(self, host: str, addr: str, port: int, key_data: bytes) -> _RSAKey:
         """Validate and return a trusted host key"""
 
         try:
@@ -976,7 +996,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         raise ValueError('Unable to decode host key')
 
-    def connection_made(self, transport):
+    def connection_made(self, transport: _SelectorSocketTransport) -> None:
         """Handle a newly opened connection"""
 
         self._transport = transport
@@ -1009,7 +1029,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         except Exception:
             self._loop.call_soon(self.internal_error, sys.exc_info())
 
-    def connection_lost(self, exc=None):
+    def connection_lost(self, exc: Union[BrokenPipeError, None, ConnectionLost] = None) -> None:
         """Handle the closing of a connection"""
 
         if exc is None and self._transport:
@@ -1017,7 +1037,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         self._force_close(exc)
 
-    def internal_error(self, exc_info=None, error_logger=None):
+    def internal_error(self, exc_info: Optional[Any] = None, error_logger: Optional[Any] = None) -> None:
         """Handle a fatal error in connection processing"""
 
         if not exc_info:
@@ -1033,7 +1053,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         """Handle session start when opening tunneled SSH connection"""
 
     # pylint: disable=arguments-differ
-    def data_received(self, data, datatype=None):
+    def data_received(self, data: bytes, datatype: Optional[Any] = None) -> None:
         """Handle incoming data on the connection"""
 
         # pylint: disable=unused-argument
@@ -1053,7 +1073,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
             self.internal_error()
     # pylint: enable=arguments-differ
 
-    def eof_received(self):
+    def eof_received(self) -> None:
         """Handle an incoming end of file on the connection"""
 
         self.connection_lost(None)
@@ -1068,7 +1088,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         # Do nothing with this for now
 
-    def add_channel(self, chan):
+    def add_channel(self, chan: Any) -> int:
         """Add a new channel, returning its channel number"""
 
         if not self._transport:
@@ -1084,7 +1104,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         self._channels[recv_chan] = chan
         return recv_chan
 
-    def remove_channel(self, recv_chan):
+    def remove_channel(self, recv_chan: int) -> None:
         """Remove the channel with the specified channel number"""
 
         del self._channels[recv_chan]
@@ -1099,7 +1119,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         self._gss_kex_auth = self._gss_auth
 
-    def _choose_alg(self, alg_type, local_algs, remote_algs):
+    def _choose_alg(self, alg_type: str, local_algs: List[bytes], remote_algs: List[bytes]) -> bytes:
         """Choose a common algorithm from the client & server lists
 
            This method returns the earliest algorithm on the client's
@@ -1121,12 +1141,12 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
             (alg_type, b','.join(local_algs).decode('ascii'),
              b','.join(remote_algs).decode('ascii')))
 
-    def _get_ext_info_kex_alg(self):
+    def _get_ext_info_kex_alg(self) -> List[bytes]:
         """Return the kex alg to add if any to request extension info"""
 
         return [b'ext-info-c'] if self.is_client() else [b'ext-info-s']
 
-    def _send(self, data):
+    def _send(self, data: bytes) -> None:
         """Send data to the SSH connection"""
 
         if self._transport:
@@ -1135,7 +1155,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
             self._transport.write(data)
 
-    def _send_version(self):
+    def _send_version(self) -> None:
         """Start the SSH handshake"""
 
         version = b'SSH-2.0-' + self._version
@@ -1151,7 +1171,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         self._send(version + b'\r\n')
 
-    def _recv_version(self):
+    def _recv_version(self) -> bool:
         """Receive and parse the remote SSH version"""
 
         idx = self._inpbuf.find(b'\n', 0, _MAX_BANNER_LINE_LEN)
@@ -1199,7 +1219,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         return True
 
-    def _recv_pkthdr(self):
+    def _recv_pkthdr(self) -> bool:
         """Receive and parse an SSH packet header"""
 
         if len(self._inpbuf) < self._recv_blocksize:
@@ -1219,7 +1239,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         self._recv_handler = self._recv_packet
         return True
 
-    def _recv_packet(self):
+    def _recv_packet(self) -> bool:
         """Receive the remainder of an SSH packet and process it"""
 
         rem = 4 + self._pktlen + self._recv_macsize - self._recv_blocksize
@@ -1360,7 +1380,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         handler.log_sent_packet(pkttype, seq, log_data)
 
-    def _send_deferred_packets(self):
+    def _send_deferred_packets(self) -> None:
         """Send packets deferred due to key exchange or auth"""
 
         deferred_packets = self._deferred_packets
@@ -1369,7 +1389,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         for pkttype, args in deferred_packets:
             self.send_packet(pkttype, *args)
 
-    def _send_disconnect(self, code, reason, lang):
+    def _send_disconnect(self, code: int, reason: str, lang: str) -> None:
         """Send a disconnect packet"""
 
         self.logger.info('Sending disconnect: %s (%d)', reason, code)
@@ -1377,7 +1397,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         self.send_packet(MSG_DISCONNECT, UInt32(code),
                          String(reason), String(lang))
 
-    def _send_kexinit(self):
+    def _send_kexinit(self) -> None:
         """Start a key exchange"""
 
         self._kex_complete = False
@@ -1418,7 +1438,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         self.send_packet(MSG_KEXINIT, packet[1:])
 
-    def _send_ext_info(self):
+    def _send_ext_info(self) -> None:
         """Send extension information"""
 
         packet = UInt32(len(self._extensions_sent))
@@ -1432,7 +1452,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         self.send_packet(MSG_EXT_INFO, packet)
 
-    def send_newkeys(self, k, h):
+    def send_newkeys(self, k: int, h: bytes) -> None:
         """Finish a key exchange and send a new keys message"""
 
         if not self._session_id:
@@ -1547,7 +1567,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         self._kex_complete = True
         self._send_deferred_packets()
 
-    def send_service_request(self, service):
+    def send_service_request(self, service: bytes) -> None:
         """Send a service request"""
 
         self.logger.debug2('Requesting service %s', service)
@@ -1555,7 +1575,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         self._next_service = service
         self.send_packet(MSG_SERVICE_REQUEST, String(service))
 
-    def _get_userauth_request_packet(self, method, args):
+    def _get_userauth_request_packet(self, method: bytes, args: Tuple[bytes, ...]) -> bytes:
         """Get packet data for a user authentication request"""
 
         return b''.join((Byte(MSG_USERAUTH_REQUEST), String(self._username),
@@ -1587,7 +1607,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         self.send_packet(MSG_USERAUTH_REQUEST, packet[1:])
 
-    def send_userauth_failure(self, partial_success):
+    def send_userauth_failure(self, partial_success: bool) -> None:
         """Send a user authentication failure response"""
 
         methods = get_server_auth_methods(self)
@@ -1598,7 +1618,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         self.send_packet(MSG_USERAUTH_FAILURE, NameList(methods),
                          Boolean(partial_success))
 
-    def send_userauth_success(self):
+    def send_userauth_success(self) -> None:
         """Send a user authentication success response"""
 
         self.logger.info('Auth for user %s succeeded', self._username)
@@ -1628,16 +1648,16 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
             self._waiter.set_result(None)
             self._wait = None
 
-    def send_channel_open_confirmation(self, send_chan, recv_chan,
-                                       recv_window, recv_pktsize,
-                                       *result_args):
+    def send_channel_open_confirmation(self, send_chan: int, recv_chan: int,
+                                       recv_window: int, recv_pktsize: int,
+                                       *result_args: Any) -> None:
         """Send a channel open confirmation"""
 
         self.send_packet(MSG_CHANNEL_OPEN_CONFIRMATION, UInt32(send_chan),
                          UInt32(recv_chan), UInt32(recv_window),
                          UInt32(recv_pktsize), *result_args)
 
-    def send_channel_open_failure(self, send_chan, code, reason, lang):
+    def send_channel_open_failure(self, send_chan: int, code: int, reason: str, lang: str) -> None:
         """Send a channel open failure"""
 
         self.send_packet(MSG_CHANNEL_OPEN_FAILURE, UInt32(send_chan),
@@ -1686,7 +1706,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         raise NotImplementedError
 
-    def _process_disconnect(self, _pkttype, _pktid, packet):
+    def _process_disconnect(self, _pkttype: int, _pktid: int, packet: SSHPacket) -> None:
         """Process a disconnect message"""
 
         code = packet.get_uint32()
@@ -1709,7 +1729,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         self._force_close(exc)
 
-    def _process_ignore(self, _pkttype, _pktid, packet):
+    def _process_ignore(self, _pkttype: int, _pktid: int, packet: SSHPacket) -> None:
         """Process an ignore message"""
 
         # pylint: disable=no-self-use
@@ -1744,7 +1764,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         self._owner.debug_msg_received(msg, lang, always_display)
 
-    def _process_service_request(self, _pkttype, _pktid, packet):
+    def _process_service_request(self, _pkttype: int, _pktid: int, packet: SSHPacket) -> None:
         """Process a service request"""
 
         service = packet.get_string()
@@ -1763,7 +1783,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         else:
             raise ServiceNotAvailable('Unexpected service request received')
 
-    def _process_service_accept(self, _pkttype, _pktid, packet):
+    def _process_service_accept(self, _pkttype: int, _pktid: int, packet: SSHPacket) -> None:
         """Process a service accept response"""
 
         service = packet.get_string()
@@ -1786,7 +1806,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         else:
             raise ServiceNotAvailable('Unexpected service accept received')
 
-    def _process_ext_info(self, _pkttype, _pktid, packet):
+    def _process_ext_info(self, _pkttype: int, _pktid: int, packet: SSHPacket) -> None:
         """Process extension information"""
 
         extensions = {}
@@ -1807,7 +1827,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
             self._server_sig_algs = \
                 extensions.get(b'server-sig-algs').split(b',')
 
-    def _process_kexinit(self, _pkttype, _pktid, packet):
+    def _process_kexinit(self, _pkttype: int, _pktid: int, packet: SSHPacket) -> None:
         """Process a key exchange request"""
 
         if self._kex:
@@ -1894,7 +1914,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         self._kex.start()
 
-    def _process_newkeys(self, _pkttype, _pktid, packet):
+    def _process_newkeys(self, _pkttype: int, _pktid: int, packet: SSHPacket) -> None:
         """Process a new keys message, finishing a key exchange"""
 
         packet.check_end()
@@ -1912,7 +1932,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         self.logger.debug1('Completed key exchange')
 
-    def _process_userauth_request(self, _pkttype, _pktid, packet):
+    def _process_userauth_request(self, _pkttype: int, _pktid: int, packet: SSHPacket) -> None:
         """Process a user authentication request"""
 
         username = packet.get_string()
@@ -1974,7 +1994,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         self._auth = lookup_server_auth(self, self._username, method, packet)
 
-    def _process_userauth_failure(self, _pkttype, pktid, packet):
+    def _process_userauth_failure(self, _pkttype: int, pktid: int, packet: SSHPacket) -> None:
         """Process a user authentication failure response"""
 
         auth_methods = packet.get_namelist()
@@ -2007,7 +2027,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
             self.logger.debug2('Unexpected userauth failure response')
             self.send_packet(MSG_UNIMPLEMENTED, UInt32(pktid))
 
-    def _process_userauth_success(self, _pkttype, pktid, packet):
+    def _process_userauth_success(self, _pkttype: int, pktid: int, packet: SSHPacket) -> None:
         """Process a user authentication success response"""
 
         packet.check_end()
@@ -2050,7 +2070,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
             self.logger.debug2('Unexpected userauth success response')
             self.send_packet(MSG_UNIMPLEMENTED, UInt32(pktid))
 
-    def _process_userauth_banner(self, _pkttype, _pktid, packet):
+    def _process_userauth_banner(self, _pkttype: int, _pktid: int, packet: SSHPacket) -> None:
         """Process a user authentication banner message"""
 
         msg = packet.get_string()
@@ -2101,7 +2121,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         else:
             raise ProtocolError('Unexpected global response')
 
-    def _process_channel_open(self, _pkttype, _pktid, packet):
+    def _process_channel_open(self, _pkttype: int, _pktid: int, packet: SSHPacket) -> None:
         """Process a channel open request"""
 
         chantype = packet.get_string()
@@ -2131,7 +2151,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
             self.send_channel_open_failure(send_chan, exc.code,
                                            exc.reason, exc.lang)
 
-    def _process_channel_open_confirmation(self, _pkttype, _pktid, packet):
+    def _process_channel_open_confirmation(self, _pkttype: int, _pktid: int, packet: SSHPacket) -> None:
         """Process a channel open confirmation response"""
 
         recv_chan = packet.get_uint32()
@@ -2149,7 +2169,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
             raise ProtocolError('Invalid channel number')
 
-    def _process_channel_open_failure(self, _pkttype, _pktid, packet):
+    def _process_channel_open_failure(self, _pkttype: int, _pktid: int, packet: SSHPacket) -> None:
         """Process a channel open failure response"""
 
         recv_chan = packet.get_uint32()
@@ -2207,7 +2227,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         MSG_CHANNEL_OPEN_FAILURE:       _process_channel_open_failure
     }
 
-    def abort(self):
+    def abort(self) -> None:
         """Forcibly close the SSH connection
 
            This method closes the SSH connection immediately, without
@@ -2224,7 +2244,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         self._force_close(None)
 
-    def close(self):
+    def close(self) -> None:
         """Cleanly close the SSH connection
 
            This method calls :meth:`disconnect` with the reason set to
@@ -2255,7 +2275,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         await self._close_event.wait()
 
-    def disconnect(self, code, reason, lang=DEFAULT_LANG):
+    def disconnect(self, code: int, reason: str, lang: str = DEFAULT_LANG) -> None:
         """Disconnect the SSH connection
 
            This method sends a disconnect message and closes the SSH
@@ -2284,7 +2304,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         self._send_disconnect(code, reason, lang)
         self._force_close(None)
 
-    def get_extra_info(self, name, default=None):
+    def get_extra_info(self, name: str, default: Optional[str] = None) -> Any:
         """Get additional information about the connection
 
            This method returns extra information about the connection once
@@ -2313,7 +2333,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
                                self._transport.get_extra_info(name, default)
                                if self._transport else default)
 
-    def set_extra_info(self, **kwargs):
+    def set_extra_info(self, **kwargs: Any) -> None:
         """Store additional information associated with the connection
 
            This method allows extra information to be associated with the
@@ -2456,8 +2476,8 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         return SSHUNIXChannel(self, self._loop, encoding,
                               errors, window, max_pktsize)
 
-    def create_x11_channel(self, window=_DEFAULT_WINDOW,
-                           max_pktsize=_DEFAULT_MAX_PKTSIZE):
+    def create_x11_channel(self, window: int = _DEFAULT_WINDOW,
+                           max_pktsize: int = _DEFAULT_MAX_PKTSIZE) -> SSHX11Channel:
         """Create an SSH X11 channel to use in X11 forwarding"""
 
         return SSHX11Channel(self, self._loop, None, 'strict',
@@ -2646,7 +2666,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         return listener
 
-    def close_forward_listener(self, listen_key):
+    def close_forward_listener(self, listen_key: Tuple[str, int]) -> None:
         """Mark a local forwarding listener as closed"""
 
         self._local_listeners.pop(listen_key, None)
@@ -2680,8 +2700,8 @@ class SSHClientConnection(SSHConnection):
 
     """
 
-    def __init__(self, loop, options, acceptor=None,
-                 error_handler=None, wait=None):
+    def __init__(self, loop: _UnixSelectorEventLoop, options: SSHClientConnectionOptions, acceptor: Optional[Any] = None,
+                 error_handler: Optional[Any] = None, wait: str = None) -> None:
         super().__init__(loop, options, acceptor, error_handler,
                          wait, server=False)
 
@@ -2738,7 +2758,7 @@ class SSHClientConnection(SSHConnection):
         self._remote_listeners = {}
         self._dynamic_remote_listeners = {}
 
-    def _connection_made(self):
+    def _connection_made(self) -> None:
         """Handle the opening of a new connection"""
 
         if not self._host:
@@ -2813,7 +2833,7 @@ class SSHClientConnection(SSHConnection):
                              (self._peer_addr, self._peer_port))
 
 
-    def _cleanup(self, exc):
+    def _cleanup(self, exc: Any) -> None:
         """Clean up this client connection"""
 
         if self._agent:
@@ -2836,7 +2856,7 @@ class SSHClientConnection(SSHConnection):
         super()._cleanup(exc)
 
 
-    def _choose_signature_alg(self, keypair):
+    def _choose_signature_alg(self, keypair: Any) -> bool:
         """Choose signature algorithm to use for key-based authentication"""
 
         if self._server_sig_algs:
@@ -2847,7 +2867,7 @@ class SSHClientConnection(SSHConnection):
 
         return keypair.sig_algorithms[-1] in self._sig_algs
 
-    def validate_server_host_key(self, key_data):
+    def validate_server_host_key(self, key_data: bytes) -> _RSAKey:
         """Validate and return the server's host key"""
 
         try:
@@ -2874,7 +2894,7 @@ class SSHClientConnection(SSHConnection):
 
         return self._server_host_key
 
-    def try_next_auth(self):
+    def try_next_auth(self) -> None:
         """Attempt client authentication using the next compatible method"""
 
         if self._auth:
@@ -3004,12 +3024,12 @@ class SSHClientConnection(SSHConnection):
 
         return result
 
-    def password_changed(self):
+    def password_changed(self) -> None:
         """Report a successful password change"""
 
         self._owner.password_changed()
 
-    def password_change_failed(self):
+    def password_change_failed(self) -> None:
         """Report a failed password change"""
 
         self._owner.password_change_failed()
@@ -3190,7 +3210,7 @@ class SSHClientConnection(SSHConnection):
         if listen_path in self._remote_listeners:
             del self._remote_listeners[listen_path]
 
-    def _process_x11_open(self, packet):
+    def _process_x11_open(self, packet: SSHPacket) -> Tuple[SSHX11Channel, coroutine]:
         """Process an inbound X11 channel open request"""
 
         orig_host = packet.get_string()
@@ -3241,7 +3261,7 @@ class SSHClientConnection(SSHConnection):
 
         return self._x11_listener.attach(display, chan, single_connection)
 
-    def detach_x11_listener(self, chan):
+    def detach_x11_listener(self, chan: Union[SSHClientChannel, SSHX11Channel, _X11ClientChannel]) -> None:
         """Detach a session from a local X11 listener"""
 
         if self._x11_listener:
@@ -3573,7 +3593,7 @@ class SSHClientConnection(SSHConnection):
 
         """
 
-        def transport_factory():
+        def transport_factory() -> SSHSubprocessTransport:
             """Return a subprocess transport"""
 
             return SSHSubprocessTransport(protocol_factory)
@@ -4251,8 +4271,8 @@ class SSHClientConnection(SSHConnection):
         return listener
 
     @async_context_manager
-    async def start_sftp_client(self, env=(), send_env=(),
-                                path_encoding='utf-8', path_errors='strict'):
+    async def start_sftp_client(self, env: Tuple[()] = (), send_env: Tuple[()] = (),
+                                path_encoding: str = 'utf-8', path_errors: str = 'strict') -> SFTPClient:
         """Start an SFTP client
 
            This method is a coroutine which attempts to start a secure
@@ -4341,8 +4361,8 @@ class SSHServerConnection(SSHConnection):
 
     """
 
-    def __init__(self, loop, options, acceptor=None,
-                 error_handler=None, wait=None):
+    def __init__(self, loop: _UnixSelectorEventLoop, options: SSHServerConnectionOptions, acceptor: Optional[Any] = None,
+                 error_handler: Optional[Any] = None, wait: Optional[Any] = None) -> None:
         super().__init__(loop, options, acceptor, error_handler,
                          wait, server=True)
 
@@ -4386,7 +4406,7 @@ class SSHServerConnection(SSHConnection):
 
         self._agent_listener = None
 
-    def _cleanup(self, exc):
+    def _cleanup(self, exc: Any) -> None:
         """Clean up this server connection"""
 
         if self._agent_listener:
@@ -4395,7 +4415,7 @@ class SSHServerConnection(SSHConnection):
 
         super()._cleanup(exc)
 
-    def _connection_made(self):
+    def _connection_made(self) -> None:
         """Handle the opening of a new connection"""
 
         self.logger.info('Accepted SSH client connection')
@@ -4441,7 +4461,7 @@ class SSHServerConnection(SSHConnection):
         self._keepalive_count_max = options.keepalive_count_max
         self._keepalive_interval = options.keepalive_interval
 
-    def _choose_server_host_key(self, peer_host_key_algs):
+    def _choose_server_host_key(self, peer_host_key_algs: List[bytes]) -> bool:
         """Choose the server host key to use
 
            Given a list of host key algorithms supported by the client,
@@ -4461,7 +4481,7 @@ class SSHServerConnection(SSHConnection):
 
         return False
 
-    def get_server_host_key(self):
+    def get_server_host_key(self) -> SSHLocalKeyPair:
         """Return the chosen server host key
 
            This method returns a keypair object containing the
@@ -4472,12 +4492,12 @@ class SSHServerConnection(SSHConnection):
 
         return self._server_host_key
 
-    def gss_kex_auth_supported(self):
+    def gss_kex_auth_supported(self) -> bool:
         """Return whether GSS key exchange authentication is supported"""
 
         return self._gss_kex_auth and self._gss.complete
 
-    def gss_mic_auth_supported(self):
+    def gss_mic_auth_supported(self) -> bool:
         """Return whether GSS MIC authentication is supported"""
 
         return self._gss_mic_auth
@@ -4499,7 +4519,7 @@ class SSHServerConnection(SSHConnection):
 
         return result
 
-    def host_based_auth_supported(self):
+    def host_based_auth_supported(self) -> bool:
         """Return whether or not host based authentication is supported"""
 
         return (self._host_based_auth and
@@ -4670,7 +4690,7 @@ class SSHServerConnection(SSHConnection):
 
         return key
 
-    def public_key_auth_supported(self):
+    def public_key_auth_supported(self) -> bool:
         """Return whether or not public key authentication is supported"""
 
         return (self._public_key_auth and
@@ -4698,7 +4718,7 @@ class SSHServerConnection(SSHConnection):
         else:
             return True
 
-    def password_auth_supported(self):
+    def password_auth_supported(self) -> bool:
         """Return whether or not password authentication is supported"""
 
         return self._password_auth and self._owner.password_auth_supported()
@@ -4724,7 +4744,7 @@ class SSHServerConnection(SSHConnection):
 
         return result
 
-    def kbdint_auth_supported(self):
+    def kbdint_auth_supported(self) -> bool:
         """Return whether or not keyboard-interactive authentication
            is supported"""
 
@@ -4778,7 +4798,7 @@ class SSHServerConnection(SSHConnection):
 
         return result
 
-    def _process_session_open(self, packet):
+    def _process_session_open(self, packet: SSHPacket) -> Tuple[SSHServerChannel, Union[SSHServerProcess, SSHServerStreamSession]]:
         """Process an incoming session open request"""
 
         packet.check_end()
@@ -5098,7 +5118,7 @@ class SSHServerConnection(SSHConnection):
         else:
             return None
 
-    def detach_x11_listener(self, chan):
+    def detach_x11_listener(self, chan: Union[SSHServerChannel, SSHX11Channel]) -> None:
         """Detach a session from a remote X11 listener"""
 
         if self._x11_listener:
@@ -5140,7 +5160,7 @@ class SSHServerConnection(SSHConnection):
         else:
             return None
 
-    def send_auth_banner(self, msg, lang=DEFAULT_LANG):
+    def send_auth_banner(self, msg: str, lang: str = DEFAULT_LANG) -> None:
         """Send an authentication banner to the client
 
            This method can be called to send an authentication banner to
@@ -5166,7 +5186,7 @@ class SSHServerConnection(SSHConnection):
 
         self.send_packet(MSG_USERAUTH_BANNER, String(msg), String(lang))
 
-    def set_authorized_keys(self, authorized_keys):
+    def set_authorized_keys(self, authorized_keys: Union[SSHAuthorizedKeys, str]) -> None:
         """Set the keys trusted for client public key authentication
 
            This method can be called to set the trusted user and
@@ -5187,7 +5207,7 @@ class SSHServerConnection(SSHConnection):
 
         self._client_keys = authorized_keys
 
-    def get_key_option(self, option, default=None):
+    def get_key_option(self, option: str, default: Union[Dict, None, bool] = None) -> Any:
         """Return option from authorized_keys
 
            If a client key or certificate was presented during authentication,
@@ -5222,7 +5242,7 @@ class SSHServerConnection(SSHConnection):
 
         return self._key_options.get(option, default)
 
-    def check_key_permission(self, permission):
+    def check_key_permission(self, permission: str) -> bool:
         """Check permissions in authorized_keys
 
            If a client key or certificate was presented during
@@ -5257,7 +5277,7 @@ class SSHServerConnection(SSHConnection):
 
         return not self._key_options.get('no-' + permission, False)
 
-    def get_certificate_option(self, option, default=None):
+    def get_certificate_option(self, option: str, default: Optional[Any] = None) -> Optional[Any]:
         """Return option from user certificate
 
            If a user certificate was presented during authentication,
@@ -5286,7 +5306,7 @@ class SSHServerConnection(SSHConnection):
         else:
             return default
 
-    def check_certificate_permission(self, permission):
+    def check_certificate_permission(self, permission: str) -> bool:
         """Check permissions in user certificate
 
            If a user certificate was presented during authentication,
@@ -5319,9 +5339,9 @@ class SSHServerConnection(SSHConnection):
         else:
             return True
 
-    def create_server_channel(self, encoding='utf-8', errors='strict',
-                              window=_DEFAULT_WINDOW,
-                              max_pktsize=_DEFAULT_MAX_PKTSIZE):
+    def create_server_channel(self, encoding: Optional[str] = 'utf-8', errors: str = 'strict',
+                              window: int = _DEFAULT_WINDOW,
+                              max_pktsize: int = _DEFAULT_MAX_PKTSIZE) -> SSHServerChannel:
         """Create an SSH server channel for a new SSH session
 
            This method can be called by :meth:`session_requested()
@@ -5569,18 +5589,18 @@ class SSHServerConnection(SSHConnection):
 class SSHConnectionOptions(Options):
     """SSH connection options"""
 
-    def __init__(self, options=None, **kwargs):
+    def __init__(self, options: Union[None, SSHClientConnectionOptions, SSHServerConnectionOptions] = None, **kwargs: Any) -> None:
         last_config = options.config if options else None
         super().__init__(options=options, last_config=last_config, **kwargs)
 
     # pylint: disable=arguments-differ
-    def prepare(self, config, protocol_factory, version, host, port, tunnel,
-                proxy_command, family, local_addr, tcp_keepalive, kex_algs,
-                encryption_algs, mac_algs, compression_algs, signature_algs,
-                host_based_auth, public_key_auth, kbdint_auth, password_auth,
-                x509_trusted_certs, x509_trusted_cert_paths, x509_purposes,
-                rekey_bytes, rekey_seconds, login_timeout, keepalive_interval,
-                keepalive_count_max):
+    def prepare(self, config: Union[SSHClientConfig, SSHServerConfig], protocol_factory: Union[Callable, type], version: Tuple[()], host: str, port: Union[Tuple[()], int], tunnel: Tuple[()],
+                proxy_command: Tuple[()], family: Union[Tuple[()], AddressFamily], local_addr: Optional[Tuple[()]], tcp_keepalive: Tuple[()], kex_algs: Tuple[()],
+                encryption_algs: Tuple[()], mac_algs: Tuple[()], compression_algs: Tuple[()], signature_algs: Union[List[str], Tuple[()]],
+                host_based_auth: Union[Tuple[()], bool], public_key_auth: Tuple[()], kbdint_auth: Tuple[()], password_auth: Tuple[()],
+                x509_trusted_certs: Union[Tuple[()], str], x509_trusted_cert_paths: Union[List[str], Tuple[()]], x509_purposes: str,
+                rekey_bytes: Tuple[()], rekey_seconds: Tuple[()], login_timeout: int, keepalive_interval: int,
+                keepalive_count_max: int) -> None:
         """Prepare common connection configuration options"""
 
         self.config = config
@@ -6077,29 +6097,29 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
     """
 
     # pylint: disable=arguments-differ
-    def prepare(self, last_config=None, config=(), reload=False,
-                client_factory=None, client_version=(), host='', port=(),
-                tunnel=(), proxy_command=(), family=(), local_addr=(),
-                tcp_keepalive=(), kex_algs=(), encryption_algs=(), mac_algs=(),
-                compression_algs=(), signature_algs=(), host_based_auth=(),
-                public_key_auth=(), kbdint_auth=(), password_auth=(),
-                x509_trusted_certs=(), x509_trusted_cert_paths=(),
-                x509_purposes='secureShellServer', rekey_bytes=(),
-                rekey_seconds=(), login_timeout=(), keepalive_interval=(),
-                keepalive_count_max=(), known_hosts=(), host_key_alias=None,
-                server_host_key_algs=(), username=(), password=None,
-                client_host_keysign=(), client_host_keys=None,
-                client_host_certs=(), client_host=None, client_username=(),
-                client_keys=(), client_certs=(), passphrase=None, gss_host=(),
-                gss_kex=(), gss_auth=(), gss_delegate_creds=(),
-                preferred_auth=(), agent_path=(), agent_identities=(),
-                agent_forwarding=(), pkcs11_provider=(), pkcs11_pin=None,
-                command=(), subsystem=None, env=(), send_env=(),
-                request_pty=(), term_type=None, term_size=None,
-                term_modes=None, x11_forwarding=(), x11_display=None,
-                x11_auth_path=None, x11_single_connection=False,
-                encoding='utf-8', errors='strict', window=_DEFAULT_WINDOW,
-                max_pktsize=_DEFAULT_MAX_PKTSIZE):
+    def prepare(self, last_config: Optional[SSHClientConfig] = None, config: Union[Tuple[()], str] = (), reload: bool = False,
+                client_factory: Optional[Any] = None, client_version: Tuple[()] = (), host: str = '', port: Union[Tuple[()], int] = (),
+                tunnel: Tuple[()] = (), proxy_command: Tuple[()] = (), family: Tuple[()] = (), local_addr: Optional[Tuple[()]] = (),
+                tcp_keepalive: Tuple[()] = (), kex_algs: Tuple[()] = (), encryption_algs: Tuple[()] = (), mac_algs: Tuple[()] = (),
+                compression_algs: Tuple[()] = (), signature_algs: Union[List[str], Tuple[()]] = (), host_based_auth: Union[Tuple[()], bool] = (),
+                public_key_auth: Tuple[()] = (), kbdint_auth: Tuple[()] = (), password_auth: Tuple[()] = (),
+                x509_trusted_certs: Tuple[()] = (), x509_trusted_cert_paths: Tuple[()] = (),
+                x509_purposes: str = 'secureShellServer', rekey_bytes: Tuple[()] = (),
+                rekey_seconds: Tuple[()] = (), login_timeout: Tuple[()] = (), keepalive_interval: Tuple[()] = (),
+                keepalive_count_max: Tuple[()] = (), known_hosts: Tuple[()] = (), host_key_alias: Optional[Any] = None,
+                server_host_key_algs: Tuple[()] = (), username: str = (), password: Optional[Any] = None,
+                client_host_keysign: Tuple[()] = (), client_host_keys: Any = None,
+                client_host_certs: Tuple[()] = (), client_host: Optional[Any] = None, client_username: Union[Tuple[()], str] = (),
+                client_keys: Tuple[()] = (), client_certs: Tuple[()] = (), passphrase: Optional[Any] = None, gss_host: Optional[Tuple[()]] = (),
+                gss_kex: Tuple[()] = (), gss_auth: Tuple[()] = (), gss_delegate_creds: Tuple[()] = (),
+                preferred_auth: Tuple[()] = (), agent_path: Tuple[()] = (), agent_identities: Tuple[()] = (),
+                agent_forwarding: Tuple[()] = (), pkcs11_provider: Tuple[()] = (), pkcs11_pin: Optional[Any] = None,
+                command: Tuple[()] = (), subsystem: Optional[Any] = None, env: Tuple[()] = (), send_env: Tuple[()] = (),
+                request_pty: Tuple[()] = (), term_type: Optional[Any] = None, term_size: Optional[Any] = None,
+                term_modes: Optional[Any] = None, x11_forwarding: Tuple[()] = (), x11_display: Optional[Any] = None,
+                x11_auth_path: Optional[Any] = None, x11_single_connection: bool = False,
+                encoding: str = 'utf-8', errors: str = 'strict', window: int = _DEFAULT_WINDOW,
+                max_pktsize: int = _DEFAULT_MAX_PKTSIZE) -> None:
         """Prepare client connection configuration options"""
 
         try:
@@ -6587,27 +6607,27 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
     """
 
     # pylint: disable=arguments-differ
-    def prepare(self, last_config=None, config=(), reload=False,
-                accept_addr='', accept_port=0, username='', client_host=None,
-                client_addr='', server_factory=None, server_version=(),
-                host='', port=(), tunnel=(), proxy_command=(), family=(),
-                local_addr=(), tcp_keepalive=(), kex_algs=(),
-                encryption_algs=(), mac_algs=(), compression_algs=(),
-                signature_algs=(), host_based_auth=(), public_key_auth=(),
-                kbdint_auth=(), password_auth=(), x509_trusted_certs=(),
-                x509_trusted_cert_paths=(), x509_purposes='secureShellClient',
-                rekey_bytes=(), rekey_seconds=(), login_timeout=(),
-                keepalive_interval=(), keepalive_count_max=(),
-                server_host_keys=(), server_host_certs=(), passphrase=None,
-                known_client_hosts=None, trust_client_host=False,
-                authorized_client_keys=(), gss_host=(), gss_kex=(),
-                gss_auth=(), allow_pty=(), line_editor=True,
-                line_history=_DEFAULT_LINE_HISTORY,
-                max_line_length=_DEFAULT_MAX_LINE_LENGTH, rdns_lookup=(),
-                x11_forwarding=False, x11_auth_path=None, agent_forwarding=(),
-                process_factory=None, session_factory=None, encoding='utf-8',
-                errors='strict', sftp_factory=None, allow_scp=False,
-                window=_DEFAULT_WINDOW, max_pktsize=_DEFAULT_MAX_PKTSIZE):
+    def prepare(self, last_config: Optional[SSHServerConfig] = None, config: Union[Tuple[()], str] = (), reload: bool = False,
+                accept_addr: str = '', accept_port: int = 0, username: str = '', client_host: Optional[Any] = None,
+                client_addr: str = '', server_factory: Union[Callable, None, type] = None, server_version: Tuple[()] = (),
+                host: str = '', port: Union[Tuple[()], int] = (), tunnel: Tuple[()] = (), proxy_command: Tuple[()] = (), family: Union[Tuple[()], AddressFamily] = (),
+                local_addr: Tuple[()] = (), tcp_keepalive: Tuple[()] = (), kex_algs: Tuple[()] = (),
+                encryption_algs: Tuple[()] = (), mac_algs: Tuple[()] = (), compression_algs: Tuple[()] = (),
+                signature_algs: Union[List[str], Tuple[()]] = (), host_based_auth: Tuple[()] = (), public_key_auth: Tuple[()] = (),
+                kbdint_auth: Tuple[()] = (), password_auth: Tuple[()] = (), x509_trusted_certs: Optional[Tuple[()]] = (),
+                x509_trusted_cert_paths: Tuple[()] = (), x509_purposes: str = 'secureShellClient',
+                rekey_bytes: Tuple[()] = (), rekey_seconds: Tuple[()] = (), login_timeout: Tuple[()] = (),
+                keepalive_interval: Tuple[()] = (), keepalive_count_max: Tuple[()] = (),
+                server_host_keys: Union[List[str], Tuple[()]] = (), server_host_certs: Tuple[()] = (), passphrase: Optional[Any] = None,
+                known_client_hosts: Optional[str] = None, trust_client_host: bool = False,
+                authorized_client_keys: Union[Tuple[()], str] = (), gss_host: Optional[Tuple[()]] = (), gss_kex: Tuple[()] = (),
+                gss_auth: Tuple[()] = (), allow_pty: Tuple[()] = (), line_editor: bool = True,
+                line_history: int = _DEFAULT_LINE_HISTORY,
+                max_line_length: int = _DEFAULT_MAX_LINE_LENGTH, rdns_lookup: Tuple[()] = (),
+                x11_forwarding: bool = False, x11_auth_path: Optional[Any] = None, agent_forwarding: Tuple[()] = (),
+                process_factory: Optional[Any] = None, session_factory: Optional[Any] = None, encoding: str = 'utf-8',
+                errors: str = 'strict', sftp_factory: Optional[Any] = None, allow_scp: bool = False,
+                window: int = _DEFAULT_WINDOW, max_pktsize: int = _DEFAULT_MAX_PKTSIZE) -> None:
         """Prepare server connection configuration options"""
 
         config = SSHServerConfig.load(last_config, config, reload,
@@ -6713,8 +6733,8 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
 
 
 @async_context_manager
-async def connect(host, port=(), *, tunnel=(), family=(), flags=0,
-                  local_addr=None, config=(), options=None, **kwargs):
+async def connect(host: str, port: int = (), *, tunnel: Tuple[()] = (), family: Tuple[()] = (), flags: int = 0,
+                  local_addr: Optional[Any] = None, config: Union[Tuple[()], str] = (), options: Optional[SSHClientConnectionOptions] = None, **kwargs: Any) -> Union[SSHClientConnection, _UnknownAuthClientConnection]:
     """Make an SSH client connection
 
        This function is a coroutine which can be run to create an outbound SSH
@@ -6788,7 +6808,7 @@ async def connect(host, port=(), *, tunnel=(), family=(), flags=0,
 
     """
 
-    def conn_factory():
+    def conn_factory() -> Union["SSHClientConnection", _InvalidUsernameClientConnection, _UnknownAuthClientConnection]:
         """Return an SSH client connection factory"""
 
         return SSHClientConnection(loop, options, wait='auth')
@@ -6960,7 +6980,7 @@ async def listen(host='', port=(), tunnel=(), family=(),
 
     """
 
-    def conn_factory():
+    def conn_factory() -> Union[SSHServerConnection, _FailValidateHostSSHServerConnection, _X11ServerConnection]:
         """Return an SSH client connection factory"""
 
         return SSHServerConnection(loop, options, acceptor, error_handler)

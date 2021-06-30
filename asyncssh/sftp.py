@@ -61,6 +61,22 @@ from .misc import hide_empty, plural, to_hex
 
 from .packet import Byte, String, UInt32, UInt64, PacketDecodeError
 from .packet import SSHPacket, SSHPacketLogger
+from asyncssh.packet import SSHPacket
+from asyncssh.sftp import SFTPAttrs
+from os import stat_result
+from asyncssh.logging import _SSHLogger
+from asyncssh.stream import SSHReader
+from asyncssh.stream import SSHWriter
+from asyncio.unix_events import _UnixSelectorEventLoop
+from _asyncio import Future
+from typing import Tuple
+from asyncssh.sftp import SFTPClientHandler
+from tests.test_logging import _SFTPServer
+from asyncssh.editor import SSHLineEditorChannel
+from typing import Any
+from typing import Optional
+from asyncssh.connection import SSHClientConnection
+from asyncssh.sftp import SFTPClient
 
 SFTP_BLOCK_SIZE = 16384
 
@@ -112,7 +128,7 @@ def _from_local_path(path):
     return path
 
 
-def _to_local_path(path):
+def _to_local_path(path: bytes) -> bytes:
     """Convert SFTP path to local path"""
 
     if isinstance(path, PurePath): # pragma: no branch
@@ -723,7 +739,7 @@ class SFTPConnectionLost(SFTPError):
 
     """
 
-    def __init__(self, reason, lang=DEFAULT_LANG):
+    def __init__(self, reason: str, lang: str = DEFAULT_LANG) -> None:
         super().__init__(FX_CONNECTION_LOST, reason, lang)
 
 
@@ -818,7 +834,7 @@ class SFTPAttrs(Record):
         else:
             return str(v)
 
-    def encode(self):
+    def encode(self) -> bytes:
         """Encode SFTP attributes as bytes in an SSH packet"""
 
         flags = 0
@@ -849,7 +865,7 @@ class SFTPAttrs(Record):
         return UInt32(flags) + b''.join(attrs)
 
     @classmethod
-    def decode(cls, packet):
+    def decode(cls, packet: SSHPacket) -> SFTPAttrs:
         """Decode bytes in an SSH packet as SFTP attributes"""
 
         flags = packet.get_uint32()
@@ -884,7 +900,7 @@ class SFTPAttrs(Record):
         return attrs
 
     @classmethod
-    def from_local(cls, result):
+    def from_local(cls, result: stat_result) -> SFTPAttrs:
         """Convert from local stat attributes"""
 
         return cls(result.st_size, result.st_uid, result.st_gid,
@@ -1041,14 +1057,14 @@ class SFTPHandler(SSHPacketLogger):
         b'fstatvfs@openssh.com':  FXP_EXTENDED_REPLY
     }
 
-    def __init__(self, reader, writer):
+    def __init__(self, reader: SSHReader, writer: SSHWriter) -> None:
         self._reader = reader
         self._writer = writer
 
         self._logger = reader.logger.get_child('sftp')
 
     @property
-    def logger(self):
+    def logger(self) -> _SSHLogger:
         """A logger associated with this SFTP handler"""
 
         return self._logger
@@ -1067,6 +1083,7 @@ class SFTPHandler(SSHPacketLogger):
         """Abstract method for processing SFTP packets"""
 
         raise NotImplementedError
+
 
     def send_packet(self, pkttype, pktid, *args):
         """Send an SFTP packet"""
@@ -1115,7 +1132,7 @@ class SFTPClientHandler(SFTPHandler):
 
     _extensions = []
 
-    def __init__(self, loop, reader, writer):
+    def __init__(self, loop: _UnixSelectorEventLoop, reader: SSHReader, writer: SSHWriter) -> None:
         super().__init__(reader, writer)
 
         self._loop = loop
@@ -1155,7 +1172,7 @@ class SFTPClientHandler(SFTPHandler):
             if not waiter.cancelled(): # pragma: no branch
                 waiter.set_result((pkttype, packet))
 
-    def _send_request(self, pkttype, args, waiter):
+    def _send_request(self, pkttype: int, args: Tuple[bytes], waiter: Future) -> None:
         """Send an SFTP request"""
 
         if not self._writer:
@@ -1254,7 +1271,7 @@ class SFTPClientHandler(SFTPHandler):
 
         return names
 
-    def _process_attrs(self, packet):
+    def _process_attrs(self, packet: SSHPacket) -> SFTPAttrs:
         """Process an incoming SFTP attributes response"""
 
         attrs = SFTPAttrs().decode(packet)
@@ -1563,7 +1580,7 @@ class SFTPClientHandler(SFTPHandler):
         else:
             raise SFTPOpUnsupported('fsync not supported')
 
-    def exit(self):
+    def exit(self) -> None:
         """Handle a request to close the SFTP session"""
 
         if self._writer:
@@ -1939,7 +1956,7 @@ class SFTPClient:
 
     """
 
-    def __init__(self, handler, path_encoding, path_errors):
+    def __init__(self, handler: SFTPClientHandler, path_encoding: str, path_errors: str) -> None:
         self._handler = handler
         self._path_encoding = path_encoding
         self._path_errors = path_errors
@@ -1957,7 +1974,7 @@ class SFTPClient:
         await self.wait_closed()
 
     @property
-    def logger(self):
+    def logger(self) -> _SSHLogger:
         """A logger associated with this SFTP client"""
 
         return self._handler.logger
@@ -1969,7 +1986,7 @@ class SFTPClient:
 
         return posixpath.basename(path)
 
-    def encode(self, path):
+    def encode(self, path: str) -> bytes:
         """Encode path name using configured path encoding
 
            This method has no effect if the path is already bytes.
@@ -2003,7 +2020,7 @@ class SFTPClient:
 
         return path
 
-    def compose_path(self, path, parent=...):
+    def compose_path(self, path: str, parent: ellipsis = ...) -> bytes:
         """Compose a path
 
            If parent is not specified, return a path relative to the
@@ -3437,7 +3454,7 @@ class SFTPClient:
         newpath = self.compose_path(newpath)
         await self._handler.link(oldpath, newpath)
 
-    def exit(self):
+    def exit(self) -> None:
         """Exit the SFTP client session
 
            This method exits the SFTP client session, closing the
@@ -3464,7 +3481,7 @@ class SFTPServerHandler(SFTPHandler):
         _extensions += [(b'statvfs@openssh.com', b'2'),
                         (b'fstatvfs@openssh.com', b'2')]
 
-    def __init__(self, server, reader, writer):
+    def __init__(self, server: _SFTPServer, reader: SSHReader, writer: SSHWriter) -> None:
         super().__init__(reader, writer)
 
         self._server = server
@@ -4176,7 +4193,7 @@ class SFTPServer:
     # The default implementation of a number of these methods don't need self
     # pylint: disable=no-self-use
 
-    def __init__(self, chan, chroot=None):
+    def __init__(self, chan: SSHLineEditorChannel, chroot: Optional[Any] = None) -> None:
         # pylint: disable=unused-argument
 
         self._chan = chan
@@ -4214,7 +4231,7 @@ class SFTPServer:
         return self._chan.get_environment()
 
     @property
-    def logger(self):
+    def logger(self) -> _SSHLogger:
         """A logger associated with this SFTP server"""
 
         return self._chan.logger
@@ -4332,7 +4349,7 @@ class SFTPServer:
 
         name.longname = detail.encode('utf-8') + name.filename
 
-    def map_path(self, path):
+    def map_path(self, path: bytes) -> bytes:
         """Map the path requested by the client to a local path
 
            This method can be overridden to provide a custom mapping
@@ -4679,7 +4696,7 @@ class SFTPServer:
         path = os.path.realpath(_to_local_path(self.map_path(path)))
         return self.reverse_map_path(_from_local_path(path))
 
-    def stat(self, path):
+    def stat(self, path: bytes) -> stat_result:
         """Get attributes of a file or directory, following symlinks
 
            This method queries the attributes of a file or directory.
@@ -4869,7 +4886,7 @@ class SFTPServer:
 
         os.fsync(file_obj.fileno())
 
-    def exit(self):
+    def exit(self) -> None:
         """Shut down this SFTP server"""
 
 
@@ -4989,8 +5006,8 @@ class SFTPServerFile:
             await result
 
 
-async def start_sftp_client(conn, loop, reader, writer,
-                            path_encoding, path_errors):
+async def start_sftp_client(conn: SSHClientConnection, loop: _UnixSelectorEventLoop, reader: SSHReader, writer: SSHWriter,
+                            path_encoding: str, path_errors: str) -> SFTPClient:
     """Start an SFTP client"""
 
     handler = SFTPClientHandler(loop, reader, writer)
@@ -5004,7 +5021,7 @@ async def start_sftp_client(conn, loop, reader, writer,
     return SFTPClient(handler, path_encoding, path_errors)
 
 
-def run_sftp_server(sftp_server, reader, writer):
+def run_sftp_server(sftp_server: _SFTPServer, reader: SSHReader, writer: SSHWriter) -> coroutine:
     """Return a handler for an SFTP server session"""
 
     handler = SFTPServerHandler(sftp_server, reader, writer)

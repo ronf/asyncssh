@@ -26,6 +26,11 @@ import subprocess
 
 from .packet import Byte, String, UInt32, PacketDecodeError, SSHPacket
 from .public_key import SSHKeyPair
+from asyncssh.public_key import SSHOpenSSHCertificateV01
+from asyncssh.rsa import _RSAKey
+from typing import Union
+from asyncssh.keysign import SSHKeySignKeyPair
+from typing import List
 
 
 KEYSIGN_VERSION = 2
@@ -38,7 +43,7 @@ _DEFAULT_KEYSIGN_DIRS = ('/opt/local/libexec', '/usr/local/libexec',
 class SSHKeySignKeyPair(SSHKeyPair):
     """Surrogate for a key where signing is done via ssh-keysign"""
 
-    def __init__(self, keysign_path, sock_fd, key_or_cert):
+    def __init__(self, keysign_path: str, sock_fd: int, key_or_cert: Union[SSHOpenSSHCertificateV01, _RSAKey]) -> None:
         algorithm = key_or_cert.algorithm
         sig_algorithms = key_or_cert.sig_algorithms[:1]
         public_data = key_or_cert.public_data
@@ -83,7 +88,7 @@ class SSHKeySignKeyPair(SSHKeyPair):
             raise ValueError('invalid response') from None
 
 
-def find_keysign(path):
+def find_keysign(path: Union[bool, str]) -> str:
     """Return path to ssh-keysign executable"""
 
     if path is True:
@@ -100,7 +105,7 @@ def find_keysign(path):
     return str(path)
 
 
-def get_keysign_keys(keysign_path, sock_fd, keys):
+def get_keysign_keys(keysign_path: str, sock_fd: int, keys: Union[List[Union[SSHOpenSSHCertificateV01, _RSAKey]], List[_RSAKey]]) -> List[SSHKeySignKeyPair]:
     """Return keypair objects which invoke ssh-keysign"""
 
     return [SSHKeySignKeyPair(keysign_path, sock_fd, key) for key in keys]

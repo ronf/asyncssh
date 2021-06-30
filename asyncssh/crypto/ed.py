@@ -33,6 +33,13 @@ from cryptography.hazmat.primitives.serialization import PublicFormat
 from cryptography.hazmat.primitives.serialization import NoEncryption
 
 from .misc import PyCAKey
+from asyncssh.crypto.ed import EdDSAPrivateKey
+from asyncssh.crypto.ed import EdDSAPublicKey
+from cryptography.hazmat.backends.openssl.ed25519 import _Ed25519PrivateKey
+from cryptography.hazmat.backends.openssl.ed25519 import _Ed25519PublicKey
+from typing import Optional
+from typing import Union
+from typing import Any
 
 
 ed25519_available = backend.ed25519_supported()
@@ -45,20 +52,20 @@ if ed25519_available: # pragma: no branch
     class _EdKey(PyCAKey):
         """Base class for shim around PyCA for Ed25519/Ed448 keys"""
 
-        def __init__(self, pyca_key, pub, priv=None):
+        def __init__(self, pyca_key: Union[_Ed25519PrivateKey, _Ed25519PublicKey], pub: bytes, priv: Optional[bytes] = None) -> None:
             super().__init__(pyca_key)
 
             self._pub = pub
             self._priv = priv
 
         @property
-        def public_value(self):
+        def public_value(self) -> bytes:
             """Return the public value encoded as a byte string"""
 
             return self._pub
 
         @property
-        def private_value(self):
+        def private_value(self) -> bytes:
             """Return the private value encoded as a byte string"""
 
             return self._priv
@@ -82,7 +89,7 @@ if ed25519_available: # pragma: no branch
             return cls(priv_key, pub, priv)
 
         @classmethod
-        def generate(cls, curve_id):
+        def generate(cls, curve_id: bytes) -> EdDSAPrivateKey:
             """Generate a new EdDSA private key"""
 
             priv_cls = cls._priv_classes[curve_id]
@@ -95,7 +102,7 @@ if ed25519_available: # pragma: no branch
 
             return cls(priv_key, pub, priv)
 
-        def sign(self, data, hash_alg=None):
+        def sign(self, data: bytes, hash_alg: Optional[Any] = None) -> bytes:
             """Sign a block of data"""
 
             # pylint: disable=unused-argument
@@ -110,7 +117,7 @@ if ed25519_available: # pragma: no branch
                         b'ed448': ed448.Ed448PublicKey}
 
         @classmethod
-        def construct(cls, curve_id, pub):
+        def construct(cls, curve_id: bytes, pub: bytes) -> EdDSAPublicKey:
             """Construct an EdDSA public key"""
 
             pub_cls = cls._pub_classes[curve_id]
@@ -118,7 +125,7 @@ if ed25519_available: # pragma: no branch
 
             return cls(pub_key, pub)
 
-        def verify(self, data, sig, hash_alg=None):
+        def verify(self, data: bytes, sig: bytes, hash_alg: Optional[Any] = None) -> bool:
             """Verify the signature on a block of data"""
 
             # pylint: disable=unused-argument
@@ -219,16 +226,16 @@ if curve25519_available: # pragma: no branch
     class Curve25519DH:
         """Curve25519 Diffie Hellman implementation based on PyCA"""
 
-        def __init__(self):
+        def __init__(self) -> None:
             self._priv_key = x25519.X25519PrivateKey.generate()
 
-        def get_public(self):
+        def get_public(self) -> bytes:
             """Return the public key to send in the handshake"""
 
             return self._priv_key.public_key().public_bytes(Encoding.Raw,
                                                             PublicFormat.Raw)
 
-        def get_shared(self, peer_public):
+        def get_shared(self, peer_public: bytes) -> int:
             """Return the shared key from the peer's public key"""
 
             peer_key = x25519.X25519PublicKey.from_public_bytes(peer_public)
@@ -283,16 +290,16 @@ else: # pragma: no cover
 class Curve448DH:
     """Curve448 Diffie Hellman implementation based on PyCA"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._priv_key = x448.X448PrivateKey.generate()
 
-    def get_public(self):
+    def get_public(self) -> bytes:
         """Return the public key to send in the handshake"""
 
         return self._priv_key.public_key().public_bytes(Encoding.Raw,
                                                         PublicFormat.Raw)
 
-    def get_shared(self, peer_public):
+    def get_shared(self, peer_public: bytes) -> int:
         """Return the shared key from the peer's public key"""
 
         peer_key = x448.X448PublicKey.from_public_bytes(peer_public)

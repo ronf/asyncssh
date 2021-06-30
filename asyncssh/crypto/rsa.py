@@ -27,6 +27,14 @@ from cryptography.hazmat.primitives.asymmetric.padding import PKCS1v15
 from cryptography.hazmat.primitives.asymmetric import rsa
 
 from .misc import PyCAKey, hashes
+from typing import Optional
+from asyncssh.crypto.rsa import RSAPrivateKey
+from asyncssh.crypto.rsa import RSAPublicKey
+from cryptography.hazmat.backends.openssl.rsa import _RSAPrivateKey
+from cryptography.hazmat.backends.openssl.rsa import _RSAPublicKey
+from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateNumbers
+from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicNumbers
+from typing import Union
 
 
 # Short variable names are used here, matching names in the spec
@@ -36,56 +44,56 @@ from .misc import PyCAKey, hashes
 class _RSAKey(PyCAKey):
     """Base class for shim around PyCA for RSA keys"""
 
-    def __init__(self, pyca_key, pub, priv=None):
+    def __init__(self, pyca_key: Union[_RSAPrivateKey, _RSAPublicKey], pub: RSAPublicNumbers, priv: Optional[RSAPrivateNumbers] = None) -> None:
         super().__init__(pyca_key)
 
         self._pub = pub
         self._priv = priv
 
     @property
-    def n(self):
+    def n(self) -> int:
         """Return the RSA public modulus"""
 
         return self._pub.n
 
     @property
-    def e(self):
+    def e(self) -> int:
         """Return the RSA public exponent"""
 
         return self._pub.e
 
     @property
-    def d(self):
+    def d(self) -> Optional[int]:
         """Return the RSA private exponent"""
 
         return self._priv.d if self._priv else None
 
     @property
-    def p(self):
+    def p(self) -> Optional[int]:
         """Return the RSA first private prime"""
 
         return self._priv.p if self._priv else None
 
     @property
-    def q(self):
+    def q(self) -> Optional[int]:
         """Return the RSA second private prime"""
 
         return self._priv.q if self._priv else None
 
     @property
-    def dmp1(self):
+    def dmp1(self) -> int:
         """Return d modulo p-1"""
 
         return self._priv.dmp1 if self._priv else None
 
     @property
-    def dmq1(self):
+    def dmq1(self) -> int:
         """Return q modulo p-1"""
 
         return self._priv.dmq1 if self._priv else None
 
     @property
-    def iqmp(self):
+    def iqmp(self) -> int:
         """Return the inverse of q modulo p"""
 
         return self._priv.iqmp if self._priv else None
@@ -95,7 +103,7 @@ class RSAPrivateKey(_RSAKey):
     """A shim around PyCA for RSA private keys"""
 
     @classmethod
-    def construct(cls, n, e, d, p, q, dmp1, dmq1, iqmp):
+    def construct(cls, n: int, e: int, d: int, p: int, q: int, dmp1: int, dmq1: int, iqmp: int) -> RSAPrivateKey:
         """Construct an RSA private key"""
 
         pub = rsa.RSAPublicNumbers(e, n)
@@ -105,7 +113,7 @@ class RSAPrivateKey(_RSAKey):
         return cls(priv_key, pub, priv)
 
     @classmethod
-    def generate(cls, key_size, exponent):
+    def generate(cls, key_size: int, exponent: int) -> RSAPrivateKey:
         """Generate a new RSA private key"""
 
         priv_key = rsa.generate_private_key(exponent, key_size,
@@ -115,7 +123,7 @@ class RSAPrivateKey(_RSAKey):
 
         return cls(priv_key, pub, priv)
 
-    def decrypt(self, data, hash_alg):
+    def decrypt(self, data: bytes, hash_alg: str) -> Optional[bytes]:
         """Decrypt a block of data"""
 
         try:
@@ -125,7 +133,7 @@ class RSAPrivateKey(_RSAKey):
         except ValueError:
             return None
 
-    def sign(self, data, hash_alg):
+    def sign(self, data: bytes, hash_alg: str) -> bytes:
         """Sign a block of data"""
 
         priv_key = self.pyca_key
@@ -136,7 +144,7 @@ class RSAPublicKey(_RSAKey):
     """A shim around PyCA for RSA public keys"""
 
     @classmethod
-    def construct(cls, n, e):
+    def construct(cls, n: int, e: int) -> RSAPublicKey:
         """Construct an RSA public key"""
 
         pub = rsa.RSAPublicNumbers(e, n)
@@ -144,7 +152,7 @@ class RSAPublicKey(_RSAKey):
 
         return cls(pub_key, pub)
 
-    def encrypt(self, data, hash_alg):
+    def encrypt(self, data: bytes, hash_alg: str) -> bytes:
         """Encrypt a block of data"""
 
         try:
@@ -154,7 +162,7 @@ class RSAPublicKey(_RSAKey):
         except ValueError:
             return None
 
-    def verify(self, data, sig, hash_alg):
+    def verify(self, data: bytes, sig: bytes, hash_alg: str) -> bool:
         """Verify the signature on a block of data"""
 
         try:

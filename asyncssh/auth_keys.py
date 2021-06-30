@@ -30,12 +30,23 @@ from .misc import ip_address, read_file
 from .pattern import HostPatternList, WildcardPatternList
 from .public_key import KeyImportError, import_public_key
 from .public_key import import_certificate, import_certificate_subject
+from asyncssh.crypto.x509 import X509Name
+from typing import List
+from typing import Optional
+from typing import Union
+from asyncssh.rsa import _RSAKey
+from typing import Any
+from asyncssh.public_key import SSHX509Certificate
+from asyncssh.public_key import SSHX509CertificateChain
+from typing import Dict
+from typing import Tuple
+from asyncssh.auth_keys import SSHAuthorizedKeys
 
 
 class _SSHAuthorizedKeyEntry:
     """An entry in an SSH authorized_keys list"""
 
-    def __init__(self, line):
+    def __init__(self, line: str) -> None:
         self.key = None
         self.cert = None
         self.options = {}
@@ -49,7 +60,7 @@ class _SSHAuthorizedKeyEntry:
         line = self._parse_options(line)
         self._import_key_or_cert(line)
 
-    def _import_key_or_cert(self, line):
+    def _import_key_or_cert(self, line: str) -> None:
         """Import key or certificate in this entry"""
 
         try:
@@ -81,12 +92,12 @@ class _SSHAuthorizedKeyEntry:
 
         raise KeyImportError('Unrecognized key, certificate, or subject')
 
-    def _set_string(self, option, value):
+    def _set_string(self, option: str, value: str) -> None:
         """Set an option with a string value"""
 
         self.options[option] = value
 
-    def _add_environment(self, option, value):
+    def _add_environment(self, option: str, value: str) -> None:
         """Add an environment key/value pair"""
 
         if value.startswith('=') or '=' not in value:
@@ -95,12 +106,12 @@ class _SSHAuthorizedKeyEntry:
         name, value = value.split('=', 1)
         self.options.setdefault(option, {})[name] = value
 
-    def _add_from(self, option, value):
+    def _add_from(self, option: str, value: str) -> None:
         """Add a from host pattern"""
 
         self.options.setdefault(option, []).append(HostPatternList(value))
 
-    def _add_permitopen(self, option, value):
+    def _add_permitopen(self, option: str, value: str) -> None:
         """Add a permitopen host/port pair"""
 
         try:
@@ -115,12 +126,12 @@ class _SSHAuthorizedKeyEntry:
 
         self.options.setdefault(option, set()).add((host, port))
 
-    def _add_principals(self, option, value):
+    def _add_principals(self, option: str, value: str) -> None:
         """Add a principals wildcard pattern list"""
 
         self.options.setdefault(option, []).append(WildcardPatternList(value))
 
-    def _add_subject(self, option, value):
+    def _add_subject(self, option: str, value: str) -> None:
         """Add an X.509 subject pattern"""
 
         if _x509_available: # pragma: no branch
@@ -135,7 +146,7 @@ class _SSHAuthorizedKeyEntry:
         'subject':     _add_subject
     }
 
-    def _add_option(self):
+    def _add_option(self) -> None:
         """Add an option value"""
 
         if self._option.startswith('='):
@@ -152,7 +163,7 @@ class _SSHAuthorizedKeyEntry:
         else:
             self.options[self._option] = True
 
-    def _parse_options(self, line):
+    def _parse_options(self, line: str) -> str:
         """Parse options in this entry"""
 
         self._option = ''
@@ -188,8 +199,8 @@ class _SSHAuthorizedKeyEntry:
 
         return line[idx:].strip()
 
-    def match_options(self, client_host, client_addr,
-                      cert_principals, cert_subject=None):
+    def match_options(self, client_host: Optional[str], client_addr: Optional[str],
+                      cert_principals: Union[List[str], None, bool], cert_subject: Optional[X509Name] = None) -> bool:
         """Match "from", "principals" and "subject" options in entry"""
 
         from_patterns = self.options.get('from')
@@ -222,7 +233,7 @@ class _SSHAuthorizedKeyEntry:
 class SSHAuthorizedKeys:
     """An SSH authorized keys list"""
 
-    def __init__(self, authorized_keys=None):
+    def __init__(self, authorized_keys: Optional[str] = None) -> None:
         self._user_entries = []
         self._ca_entries = []
         self._x509_entries = []
@@ -230,7 +241,7 @@ class SSHAuthorizedKeys:
         if authorized_keys:
             self.load(authorized_keys)
 
-    def load(self, authorized_keys):
+    def load(self, authorized_keys: str) -> None:
         """Load authorized keys data into this object"""
 
         for line in authorized_keys.splitlines():
@@ -255,8 +266,8 @@ class SSHAuthorizedKeys:
                 not self._x509_entries):
             raise ValueError('No valid entries found')
 
-    def validate(self, key, client_host, client_addr,
-                 cert_principals=None, ca=False):
+    def validate(self, key: _RSAKey, client_host: str, client_addr: Optional[str],
+                 cert_principals: Optional[bool] = None, ca: bool = False) -> Any:
         """Return whether a public key or CA is valid for authentication"""
 
         for entry in self._ca_entries if ca else self._user_entries:
@@ -267,7 +278,7 @@ class SSHAuthorizedKeys:
 
         return None
 
-    def validate_x509(self, cert, client_host, client_addr):
+    def validate_x509(self, cert: Union[SSHX509Certificate, SSHX509CertificateChain], client_host: Optional[str], client_addr: str) -> Tuple[Dict[str, Any], Optional[SSHX509Certificate]]:
         """Return whether an X.509 certificate is valid for authentication"""
 
         for entry in self._x509_entries:
@@ -282,7 +293,7 @@ class SSHAuthorizedKeys:
 
         return None, None
 
-def import_authorized_keys(data):
+def import_authorized_keys(data: str) -> SSHAuthorizedKeys:
     """Import SSH authorized keys
 
        This function imports public keys and associated options in
@@ -299,7 +310,7 @@ def import_authorized_keys(data):
     return SSHAuthorizedKeys(data)
 
 
-def read_authorized_keys(filelist):
+def read_authorized_keys(filelist: Union[List[str], str]) -> SSHAuthorizedKeys:
     """Read SSH authorized keys from a file or list of files
 
        This function reads public keys and associated options in

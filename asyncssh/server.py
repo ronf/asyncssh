@@ -19,6 +19,8 @@
 #     Ron Frederick - initial implementation, API, and documentation
 
 """SSH server protocol handler"""
+from typing import Any
+from asyncssh.rsa import _RSAKey
 
 
 class SSHServer:
@@ -61,7 +63,7 @@ class SSHServer:
 
         """
 
-    def connection_lost(self, exc):
+    def connection_lost(self, exc: Any) -> None:
         """Called when a connection is lost or closed
 
            This method is called when a connection is closed. If the
@@ -116,7 +118,7 @@ class SSHServer:
 
         return True # pragma: no cover
 
-    def auth_completed(self):
+    def auth_completed(self) -> None:
         """Authentication was completed successfully
 
            This method is called when authentication has completed
@@ -164,7 +166,7 @@ class SSHServer:
         host_domain = host_principal.rsplit('@')[-1]
         return user_principal == username + '@' + host_domain
 
-    def host_based_auth_supported(self):
+    def host_based_auth_supported(self) -> bool:
         """Return whether or not host-based authentication is supported
 
            This method should return `True` if client host-based
@@ -184,8 +186,8 @@ class SSHServer:
 
         return False # pragma: no cover
 
-    def validate_host_public_key(self, client_host, client_addr,
-                                 client_port, key):
+    def validate_host_public_key(self, client_host: str, client_addr: str,
+                                 client_port: int, key: _RSAKey) -> bool:
         """Return whether key is an authorized host key for this client host
 
            Host key based client authentication can be supported by
@@ -230,8 +232,8 @@ class SSHServer:
 
         return False # pragma: no cover
 
-    def validate_host_ca_key(self, client_host, client_addr,
-                             client_port, key):
+    def validate_host_ca_key(self, client_host: str, client_addr: str,
+                             client_port: int, key: _RSAKey) -> bool:
         """Return whether key is an authorized CA key for this client host
 
            Certificate based client host authentication can be
@@ -280,7 +282,7 @@ class SSHServer:
 
         return False # pragma: no cover
 
-    def validate_host_based_user(self, username, client_host, client_username):
+    def validate_host_based_user(self, username: str, client_host: str, client_username: str) -> bool:
         """Return whether remote host and user is authorized for this user
 
            This method should return `True` if the specified client host
@@ -313,7 +315,7 @@ class SSHServer:
 
         return username == client_username
 
-    def public_key_auth_supported(self):
+    def public_key_auth_supported(self) -> bool:
         """Return whether or not public key authentication is supported
 
            This method should return `True` if client public key
@@ -427,7 +429,7 @@ class SSHServer:
 
         return False # pragma: no cover
 
-    def password_auth_supported(self):
+    def password_auth_supported(self) -> bool:
         """Return whether or not password authentication is supported
 
            This method should return `True` if password authentication
@@ -535,7 +537,7 @@ class SSHServer:
 
         return False # pragma: no cover
 
-    def kbdint_auth_supported(self):
+    def kbdint_auth_supported(self) -> NotImplementedType:
         """Return whether or not keyboard-interactive authentication
            is supported
 

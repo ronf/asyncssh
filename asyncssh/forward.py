@@ -24,11 +24,15 @@ import socket
 
 from .misc import ChannelOpenError
 
+from asyncssh.channel import SSHX11Channel
+from asyncssh.misc import ChannelOpenError
+from typing import Any, Callable, Optional, Union
+
 
 class SSHForwarder:
     """SSH port forwarding connection handler"""
 
-    def __init__(self, peer=None):
+    def __init__(self, peer: Union[None, "SSHForwarder"] = None) -> None:
         self._peer = peer
         self._transport = None
         self._inpbuf = b''
@@ -37,17 +41,17 @@ class SSHForwarder:
         if peer:
             peer.set_peer(self)
 
-    def set_peer(self, peer):
+    def set_peer(self, peer: "SSHForwarder") -> None:
         """Set the peer forwarder to exchange data with"""
 
         self._peer = peer
 
-    def write(self, data):
+    def write(self, data: bytes) -> None:
         """Write data to the transport"""
 
         self._transport.write(data)
 
-    def write_eof(self):
+    def write_eof(self) -> None:
         """Write end of file to the transport"""
 
         try:
@@ -55,7 +59,7 @@ class SSHForwarder:
         except OSError: # pragma: no cover
             pass
 
-    def was_eof_received(self):
+    def was_eof_received(self) -> bool:
         """Return whether end of file has been received or not"""
 
         return self._eof_received
@@ -70,7 +74,7 @@ class SSHForwarder:
 
         self._transport.resume_reading()
 
-    def connection_made(self, transport):
+    def connection_made(self, transport: Any) -> None:
         """Handle a newly opened connection"""
 
         self._transport = transport
@@ -79,15 +83,15 @@ class SSHForwarder:
         if sock.family in {socket.AF_INET, socket.AF_INET6}:
             sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 
-    def connection_lost(self, _exc):
+    def connection_lost(self, _exc: Optional[ChannelOpenError]) -> None:
         """Handle an incoming connection close"""
 
         self.close()
 
-    def session_started(self):
+    def session_started(self) -> None:
         """Handle session start"""
 
-    def data_received(self, data, datatype=None):
+    def data_received(self, data: bytes, datatype: Optional[Any] = None) -> None:
         """Handle incoming data from the transport"""
 
         # pylint: disable=unused-argument
@@ -97,7 +101,7 @@ class SSHForwarder:
         else:
             self._inpbuf += data
 
-    def eof_received(self):
+    def eof_received(self) -> bool:
         """Handle an incoming end of file from the transport"""
 
         self._eof_received = True
@@ -119,7 +123,7 @@ class SSHForwarder:
 
         self._peer.resume_reading()
 
-    def close(self):
+    def close(self) -> None:
         """Close this port forwarder"""
 
         if self._transport:
@@ -135,7 +139,7 @@ class SSHForwarder:
 class SSHLocalForwarder(SSHForwarder):
     """Local forwarding connection handler"""
 
-    def __init__(self, conn, coro):
+    def __init__(self, conn: Any, coro: Callable) -> None:
         super().__init__()
         self._conn = conn
         self._coro = coro
@@ -143,7 +147,7 @@ class SSHLocalForwarder(SSHForwarder):
     async def _forward(self, *args):
         """Begin local forwarding"""
 
-        def session_factory():
+        def session_factory() -> SSHForwarder:
             """Return an SSH forwarder"""
 
             return SSHForwarder(self)
@@ -161,7 +165,7 @@ class SSHLocalForwarder(SSHForwarder):
         if self._eof_received:
             self._peer.write_eof()
 
-    def forward(self, *args):
+    def forward(self, *args: Any) -> None:
         """Start a task to begin local forwarding"""
 
         self._conn.create_task(self._forward(*args))
@@ -170,7 +174,7 @@ class SSHLocalForwarder(SSHForwarder):
 class SSHLocalPortForwarder(SSHLocalForwarder):
     """Local TCP port forwarding connection handler"""
 
-    def connection_made(self, transport):
+    def connection_made(self, transport: Any) -> None:
         """Handle a newly opened connection"""
 
         super().connection_made(transport)

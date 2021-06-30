@@ -28,6 +28,15 @@ import binascii
 import hmac
 
 from hashlib import sha1
+from ipaddress import IPv4Address
+from ipaddress import IPv6Address
+from typing import Union
+from typing import Optional
+from asyncssh.rsa import _RSAKey
+from typing import Any
+from typing import List
+from typing import Tuple
+from asyncssh.known_hosts import SSHKnownHosts
 
 try:
     from .crypto import X509NamePattern
@@ -42,7 +51,7 @@ from .public_key import import_certificate, import_certificate_subject
 from .public_key import load_public_keys, load_certificates
 
 
-def _load_subject_names(names):
+def _load_subject_names(names: List) -> List:
     """Load a list of X.509 subject name patterns"""
 
     if not _x509_available: # pragma: no cover
@@ -54,10 +63,10 @@ def _load_subject_names(names):
 class _PlainHost:
     """A plain host entry in a known_hosts file"""
 
-    def __init__(self, pattern):
+    def __init__(self, pattern: str) -> None:
         self._pattern = HostPatternList(pattern)
 
-    def matches(self, host, addr, ip):
+    def matches(self, host: str, addr: str, ip: Union[IPv4Address, IPv6Address]) -> bool:
         """Return whether a host or address matches this host pattern list"""
 
         return self._pattern.matches(host, addr, ip)
@@ -68,7 +77,7 @@ class _HashedHost:
 
     _HMAC_SHA1_MAGIC = '1'
 
-    def __init__(self, pattern):
+    def __init__(self, pattern: str) -> None:
         try:
             magic, salt, hosthash = pattern[1:].split('|')
             self._salt = binascii.a2b_base64(salt)
@@ -82,13 +91,13 @@ class _HashedHost:
             raise ValueError('Invalid known hosts hash type: %s' %
                              magic) from None
 
-    def _match(self, value):
+    def _match(self, value: str) -> bool:
         """Return whether this host hash matches a value"""
 
         hosthash = hmac.new(self._salt, value.encode(), sha1).digest()
         return hosthash == self._hosthash
 
-    def matches(self, host, addr, _ip):
+    def matches(self, host: str, addr: str, _ip: IPv4Address) -> bool:
         """Return whether a host or address matches this host hash"""
 
         return (host and self._match(host)) or (addr and self._match(addr))
@@ -97,14 +106,14 @@ class _HashedHost:
 class SSHKnownHosts:
     """An SSH known hosts list"""
 
-    def __init__(self, known_hosts=None):
+    def __init__(self, known_hosts: Optional[str] = None) -> None:
         self._exact_entries = {}
         self._pattern_entries = []
 
         if known_hosts:
             self.load(known_hosts)
 
-    def load(self, known_hosts):
+    def load(self, known_hosts: str) -> None:
         """Load known hosts data into this object"""
 
         for line in known_hosts.splitlines():
@@ -152,7 +161,7 @@ class SSHKnownHosts:
             else:
                 self._add_exact(marker, pattern, key, cert, subject)
 
-    def _add_exact(self, marker, pattern, key, cert, subject):
+    def _add_exact(self, marker: Optional[str], pattern: str, key: _RSAKey, cert: Optional[Any], subject: Optional[Any]) -> None:
         """Add an exact match entry"""
 
         for entry in pattern.split(','):
@@ -161,7 +170,7 @@ class SSHKnownHosts:
 
             self._exact_entries[entry].append((marker, key, cert, subject))
 
-    def _add_pattern(self, marker, pattern, key, cert, subject):
+    def _add_pattern(self, marker: Optional[str], pattern: str, key: _RSAKey, cert: Optional[Any], subject: Optional[Any]) -> None:
         """Add a pattern match entry"""
 
         if pattern.startswith('|'):
@@ -171,7 +180,7 @@ class SSHKnownHosts:
 
         self._pattern_entries.append((entry, (marker, key, cert, subject)))
 
-    def _match(self, host, addr, port=None):
+    def _match(self, host: str, addr: Optional[str], port: Optional[int] = None) -> Tuple[List[_RSAKey], List[_RSAKey], List, List, List, List, List]:
         """Find host keys matching specified host, address, and port"""
 
         if addr:
@@ -222,7 +231,7 @@ class SSHKnownHosts:
         return (host_keys, ca_keys, revoked_keys, x509_certs, revoked_certs,
                 x509_subjects, revoked_subjects)
 
-    def match(self, host, addr, port):
+    def match(self, host: str, addr: Optional[str], port: Optional[int]) -> Tuple[List[_RSAKey], List[_RSAKey], List[_RSAKey], List, List, List, List]:
         """Match a host, IP address, and port against known_hosts patterns
 
            If the port is not the default port and no match is found
@@ -254,7 +263,7 @@ class SSHKnownHosts:
                 x509_subjects, revoked_subjects)
 
 
-def import_known_hosts(data):
+def import_known_hosts(data: str) -> SSHKnownHosts:
     """Import SSH known hosts
 
        This function imports known host patterns and keys in
@@ -271,7 +280,7 @@ def import_known_hosts(data):
     return SSHKnownHosts(data)
 
 
-def read_known_hosts(filelist):
+def read_known_hosts(filelist: str) -> SSHKnownHosts:
     """Read SSH known hosts from a file or list of files
 
        This function reads known host patterns and keys in
@@ -296,7 +305,7 @@ def read_known_hosts(filelist):
     return known_hosts
 
 
-def match_known_hosts(known_hosts, host, addr, port):
+def match_known_hosts(known_hosts: Any, host: str, addr: str, port: Optional[int]) -> Tuple[List[_RSAKey], List[_RSAKey], List, List, List, List, List]:
     """Match a host, IP address, and port against a known_hosts list
 
        This function looks up a host, IP address, and port in a list of

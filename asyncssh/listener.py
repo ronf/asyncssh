@@ -26,12 +26,20 @@ import socket
 
 from .forward import SSHLocalPortForwarder, SSHLocalPathForwarder
 from .socks import SSHSOCKSForwarder
+from asyncssh.forward import SSHLocalPortForwarder
+from asyncio.base_events import Server
+from tests.test_x11 import _X11ServerConnection
+from typing import List
+from typing import Tuple
+from asyncio.unix_events import _UnixSelectorEventLoop
+from asyncssh.listener import SSHForwardListener
+from typing import Callable
 
 
 class SSHListener:
     """SSH listener for inbound connections"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._tunnel = None
 
     async def __aenter__(self):
@@ -191,7 +199,7 @@ class SSHUNIXClientListener(SSHClientListener):
 class SSHForwardListener(SSHListener):
     """A listener used when forwarding traffic from local ports"""
 
-    def __init__(self, conn, servers, listen_key, listen_port=0):
+    def __init__(self, conn: _X11ServerConnection, servers: List[Server], listen_key: Tuple[str, int], listen_port: int = 0) -> None:
         super().__init__()
 
         self._conn = conn
@@ -204,7 +212,7 @@ class SSHForwardListener(SSHListener):
 
         return self._listen_port
 
-    def close(self):
+    def close(self) -> None:
         """Close this listener"""
 
         if self._conn:
@@ -224,8 +232,8 @@ class SSHForwardListener(SSHListener):
         self._servers = []
 
 
-async def create_tcp_local_listener(conn, loop, protocol_factory,
-                                    listen_host, listen_port):
+async def create_tcp_local_listener(conn: _X11ServerConnection, loop: _UnixSelectorEventLoop, protocol_factory: Callable,
+                                    listen_host: str, listen_port: int) -> SSHForwardListener:
     """Create a listener to forward traffic from a local TCP port over SSH"""
 
     if listen_host == '':
@@ -285,11 +293,11 @@ async def create_tcp_local_listener(conn, loop, protocol_factory,
     return SSHForwardListener(conn, servers, listen_key, listen_port)
 
 
-async def create_tcp_forward_listener(conn, loop, coro,
-                                      listen_host, listen_port):
+async def create_tcp_forward_listener(conn: _X11ServerConnection, loop: _UnixSelectorEventLoop, coro: Callable,
+                                      listen_host: str, listen_port: int) -> SSHForwardListener:
     """Create a listener to forward traffic from a local TCP port over SSH"""
 
-    def protocol_factory():
+    def protocol_factory() -> SSHLocalPortForwarder:
         """Start a port forwarder for each new local connection"""
 
         return SSHLocalPortForwarder(conn, coro)

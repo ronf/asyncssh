@@ -22,6 +22,7 @@
 
 from cryptography.hazmat.primitives.hashes import MD5, SHA1, SHA224
 from cryptography.hazmat.primitives.hashes import SHA256, SHA384, SHA512
+from typing import Any
 
 
 hashes = {h.name: h for h in (MD5, SHA1, SHA224, SHA256, SHA384, SHA512)}
@@ -30,11 +31,11 @@ hashes = {h.name: h for h in (MD5, SHA1, SHA224, SHA256, SHA384, SHA512)}
 class PyCAKey:
     """Base class for PyCA private/public keys"""
 
-    def __init__(self, pyca_key):
+    def __init__(self, pyca_key: Any) -> None:
         self._pyca_key = pyca_key
 
     @property
-    def pyca_key(self):
+    def pyca_key(self) -> Any:
         """Return the PyCA object associated with this key"""
 
         return self._pyca_key

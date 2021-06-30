@@ -27,6 +27,13 @@ from .packet import MPInt, String
 from .public_key import SSHKey, SSHOpenSSHCertificateV01, KeyExportError
 from .public_key import register_public_key_alg, register_certificate_alg
 from .public_key import register_x509_certificate_alg
+from asyncssh.rsa import _RSAKey
+from typing import Tuple
+from typing import Any
+from typing import Optional
+from asyncssh.packet import SSHPacket
+from asyncssh.ecdsa import _ECKey
+from typing import Union
 
 
 _hash_algs = {b'ssh-rsa':                'sha1',
@@ -55,7 +62,7 @@ class _RSAKey(SSHKey):
     x509_algorithms = tuple(b'x509v3-' + alg for alg in x509_sig_algorithms)
     all_sig_algorithms = set(x509_sig_algorithms + sig_algorithms)
 
-    def __eq__(self, other):
+    def __eq__(self, other: Union[None, _ECKey, _RSAKey]) -> bool:
         # This isn't protected access - both objects are _RSAKey instances
         # pylint: disable=protected-access
 
@@ -64,30 +71,30 @@ class _RSAKey(SSHKey):
                 self._key.e == other._key.e and
                 self._key.d == other._key.d)
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         return hash((self._key.n, self._key.e, self._key.d,
                      self._key.p, self._key.q))
 
     @classmethod
-    def generate(cls, _algorithm, *, key_size=2048, exponent=65537):
+    def generate(cls, _algorithm: bytes, *, key_size: int = 2048, exponent: int = 65537) -> _RSAKey:
         """Generate a new RSA private key"""
 
         return cls(RSAPrivateKey.generate(key_size, exponent))
 
     @classmethod
-    def make_private(cls, n, e, d, p, q, dmp1, dmq1, iqmp):
+    def make_private(cls, n: int, e: int, d: int, p: int, q: int, dmp1: int, dmq1: int, iqmp: int) -> _RSAKey:
         """Construct an RSA private key"""
 
         return cls(RSAPrivateKey.construct(n, e, d, p, q, dmp1, dmq1, iqmp))
 
     @classmethod
-    def make_public(cls, n, e):
+    def make_public(cls, n: int, e: int) -> _RSAKey:
         """Construct an RSA public key"""
 
         return cls(RSAPublicKey.construct(n, e))
 
     @classmethod
-    def decode_pkcs1_private(cls, key_data):
+    def decode_pkcs1_private(cls, key_data: Tuple[int, int, int, int, int, int, int, int, int]) -> Tuple[int, int, int, int, int, int, int, int]:
         """Decode a PKCS#1 format RSA private key"""
 
         if (isinstance(key_data, tuple) and all_ints(key_data) and
@@ -97,7 +104,7 @@ class _RSAKey(SSHKey):
             return None
 
     @classmethod
-    def decode_pkcs1_public(cls, key_data):
+    def decode_pkcs1_public(cls, key_data: Tuple[int, int]) -> Tuple[int, int]:
         """Decode a PKCS#1 format RSA public key"""
 
         if (isinstance(key_data, tuple) and all_ints(key_data) and
@@ -107,7 +114,7 @@ class _RSAKey(SSHKey):
             return None
 
     @classmethod
-    def decode_pkcs8_private(cls, alg_params, data):
+    def decode_pkcs8_private(cls, alg_params: Optional[Any], data: bytes) -> Tuple[int, int, int, int, int, int, int, int]:
         """Decode a PKCS#8 format RSA private key"""
 
         if alg_params is not None:
@@ -121,7 +128,7 @@ class _RSAKey(SSHKey):
         return cls.decode_pkcs1_private(key_data)
 
     @classmethod
-    def decode_pkcs8_public(cls, alg_params, data):
+    def decode_pkcs8_public(cls, alg_params: Optional[Any], data: bytes) -> Tuple[int, int]:
         """Decode a PKCS#8 format RSA public key"""
 
         if alg_params is not None:
@@ -135,7 +142,7 @@ class _RSAKey(SSHKey):
         return cls.decode_pkcs1_public(key_data)
 
     @classmethod
-    def decode_ssh_private(cls, packet):
+    def decode_ssh_private(cls, packet: SSHPacket) -> Tuple[int, int, int, int, int, int, int, int]:
         """Decode an SSH format RSA private key"""
 
         n = packet.get_mpint()
@@ -148,7 +155,7 @@ class _RSAKey(SSHKey):
         return n, e, d, p, q, d % (p-1), d % (q-1), iqmp
 
     @classmethod
-    def decode_ssh_public(cls, packet):
+    def decode_ssh_public(cls, packet: SSHPacket) -> Tuple[int, int]:
         """Decode an SSH format RSA public key"""
 
         e = packet.get_mpint()
@@ -156,7 +163,7 @@ class _RSAKey(SSHKey):
 
         return n, e
 
-    def encode_pkcs1_private(self):
+    def encode_pkcs1_private(self) -> Tuple[int, int, int, int, int, int, int, int, int]:
         """Encode a PKCS#1 format RSA private key"""
 
         if not self._key.d:
@@ -165,22 +172,22 @@ class _RSAKey(SSHKey):
         return (0, self._key.n, self._key.e, self._key.d, self._key.p,
                 self._key.q, self._key.dmp1, self._key.dmq1, self._key.iqmp)
 
-    def encode_pkcs1_public(self):
+    def encode_pkcs1_public(self) -> Tuple[int, int]:
         """Encode a PKCS#1 format RSA public key"""
 
         return self._key.n, self._key.e
 
-    def encode_pkcs8_private(self):
+    def encode_pkcs8_private(self) -> Tuple[None, bytes]:
         """Encode a PKCS#8 format RSA private key"""
 
         return None, der_encode(self.encode_pkcs1_private())
 
-    def encode_pkcs8_public(self):
+    def encode_pkcs8_public(self) -> Tuple[None, bytes]:
         """Encode a PKCS#8 format RSA public key"""
 
         return None, der_encode(self.encode_pkcs1_public())
 
-    def encode_ssh_private(self):
+    def encode_ssh_private(self) -> bytes:
         """Encode an SSH format RSA private key"""
 
         if not self._key.d:
@@ -190,12 +197,12 @@ class _RSAKey(SSHKey):
                          MPInt(self._key.d), MPInt(self._key.iqmp),
                          MPInt(self._key.p), MPInt(self._key.q)))
 
-    def encode_ssh_public(self):
+    def encode_ssh_public(self) -> bytes:
         """Encode an SSH format RSA public key"""
 
         return b''.join((MPInt(self._key.e), MPInt(self._key.n)))
 
-    def encode_agent_cert_private(self):
+    def encode_agent_cert_private(self) -> bytes:
         """Encode RSA certificate private key data for agent"""
 
         if not self._key.d:
@@ -204,7 +211,7 @@ class _RSAKey(SSHKey):
         return b''.join((MPInt(self._key.d), MPInt(self._key.iqmp),
                          MPInt(self._key.p), MPInt(self._key.q)))
 
-    def sign_ssh(self, data, sig_algorithm):
+    def sign_ssh(self, data: bytes, sig_algorithm: bytes) -> bytes:
         """Compute an SSH-encoded signature of the specified data"""
 
         if not self._key.d:
@@ -212,7 +219,7 @@ class _RSAKey(SSHKey):
 
         return String(self._key.sign(data, _hash_algs[sig_algorithm]))
 
-    def verify_ssh(self, data, sig_algorithm, packet):
+    def verify_ssh(self, data: bytes, sig_algorithm: bytes, packet: SSHPacket) -> bool:
         """Verify an SSH-encoded signature of the specified data"""
 
         sig = packet.get_string()
@@ -220,12 +227,12 @@ class _RSAKey(SSHKey):
 
         return self._key.verify(data, sig, _hash_algs[sig_algorithm])
 
-    def encrypt(self, data, algorithm):
+    def encrypt(self, data: bytes, algorithm: bytes) -> bytes:
         """Encrypt a block of data with this key"""
 
         return self._key.encrypt(data, _hash_algs[algorithm])
 
-    def decrypt(self, data, algorithm):
+    def decrypt(self, data: bytes, algorithm: bytes) -> Optional[bytes]:
         """Decrypt a block of data with this key"""
 
         return self._key.decrypt(data, _hash_algs[algorithm])

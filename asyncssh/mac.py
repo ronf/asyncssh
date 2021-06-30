@@ -24,6 +24,12 @@ import hmac
 from hashlib import md5, sha1, sha224, sha256, sha384, sha512
 
 from .packet import UInt32, UInt64
+from typing import Callable
+from typing import List
+from typing import Tuple
+from asyncssh.mac import _HMAC
+from asyncssh.mac import _UMAC
+from typing import Union
 
 try:
     from .crypto import umac64, umac128
@@ -44,7 +50,7 @@ _mac_params = {}
 class MAC:
     """Parent class for SSH message authentication handlers"""
 
-    def __init__(self, key, hash_size):
+    def __init__(self, key: bytes, hash_size: int) -> None:
         self._key = key
         self._hash_size = hash_size
 
@@ -76,18 +82,18 @@ class _NullMAC(MAC):
 class _HMAC(MAC):
     """HMAC-based message authentication handler"""
 
-    def __init__(self, key, hash_size, hash_alg):
+    def __init__(self, key: bytes, hash_size: int, hash_alg: builtin_function_or_method) -> None:
         super().__init__(key, hash_size)
         self._hash_alg = hash_alg
 
-    def sign(self, seq, packet):
+    def sign(self, seq: int, packet: bytes) -> bytes:
         """Compute a signature for a message"""
 
         data = UInt32(seq) + packet
         sig = hmac.new(self._key, data, self._hash_alg).digest()
         return sig[:self._hash_size]
 
-    def verify(self, seq, packet, sig):
+    def verify(self, seq: int, packet: bytes, sig: bytes) -> bool:
         """Verify the signature of a message"""
 
         return hmac.compare_digest(self.sign(seq, packet), sig)
@@ -96,16 +102,16 @@ class _HMAC(MAC):
 class _UMAC(MAC):
     """UMAC-based message authentication handler"""
 
-    def __init__(self, key, hash_size, umac_alg):
+    def __init__(self, key: bytes, hash_size: int, umac_alg: Callable) -> None:
         super().__init__(key, hash_size)
         self._umac_alg = umac_alg
 
-    def sign(self, seq, packet):
+    def sign(self, seq: int, packet: bytes) -> bytes:
         """Compute a signature for a message"""
 
         return self._umac_alg(self._key, packet, UInt64(seq)).digest()
 
-    def verify(self, seq, packet, sig):
+    def verify(self, seq: int, packet: bytes, sig: bytes) -> bool:
         """Verify the signature of a message"""
 
         return hmac.compare_digest(self.sign(seq, packet), sig)
@@ -124,19 +130,19 @@ def register_mac_alg(mac_alg, key_size, hash_size, etm, handler, args, default):
     _mac_params[mac_alg] = (key_size, hash_size, etm)
 
 
-def get_mac_algs():
+def get_mac_algs() -> List[bytes]:
     """Return supported MAC algorithms"""
 
     return _mac_algs
 
 
-def get_default_mac_algs():
+def get_default_mac_algs() -> List[bytes]:
     """Return default MAC algorithms"""
 
     return _default_mac_algs
 
 
-def get_mac_params(mac_alg):
+def get_mac_params(mac_alg: bytes) -> Tuple[int, int, bool]:
     """Get parameters of a MAC algorithm
 
        This function returns the key and hash sizes of a MAC algorithm and
@@ -147,7 +153,7 @@ def get_mac_params(mac_alg):
     return _mac_params[mac_alg]
 
 
-def get_mac(mac_alg, key):
+def get_mac(mac_alg: bytes, key: bytes) -> Union[_HMAC, _UMAC]:
     """Return a MAC handler
 
        This function returns a MAC object initialized with the specified

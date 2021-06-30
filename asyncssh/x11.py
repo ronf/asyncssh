@@ -33,6 +33,23 @@ from .forward import SSHForwarder
 from .listener import create_tcp_forward_listener
 from .logging import logger
 from .misc import ChannelOpenError
+from tests.test_x11 import _X11ClientListener
+from tests.test_x11 import _X11Peer
+from typing import Any
+from typing import Optional
+from asyncio.unix_events import _UnixSelectorEventLoop
+from asyncssh.channel import SSHClientChannel
+from typing import Tuple
+from asyncssh.channel import SSHX11Channel
+from typing import Union
+from asyncssh.listener import SSHForwardListener
+from asyncssh.channel import SSHServerChannel
+from socket import AddressFamily
+from typing import List
+from asyncssh.x11 import SSHX11ServerListener
+from tests.test_x11 import _X11ServerConnection
+from asyncssh.x11 import SSHXAuthorityEntry
+from typing import Iterator
 
 # Xauth address families
 XAUTH_FAMILY_IPV4     = 0
@@ -60,7 +77,7 @@ X11_MAX_DISPLAYS      = 64
 X11_LISTEN_HOST       = 'localhost'
 
 
-def _parse_display(display):
+def _parse_display(display: str) -> Tuple[str, str, int]:
     """Parse an X11 display value"""
 
     try:
@@ -80,7 +97,7 @@ def _parse_display(display):
 
     return host, dpynum, screen
 
-async def _lookup_host(loop, host, family):
+async def _lookup_host(loop: _UnixSelectorEventLoop, host: str, family: AddressFamily) -> List[str]:
     """Look up IPv4 or IPv6 addresses of a host name"""
 
     try:
@@ -96,15 +113,15 @@ class SSHXAuthorityEntry(namedtuple('SSHXAuthorityEntry',
                                     'family addr dpynum proto data')):
     """An entry in an Xauthority file"""
 
-    def __bytes__(self):
+    def __bytes__(self) -> bytes:
         """Construct an Xauthority entry"""
 
-        def _uint16(value):
+        def _uint16(value: int) -> bytes:
             """Construct a big-endian 16-bit unsigned integer"""
 
             return value.to_bytes(2, 'big')
 
-        def _string(data):
+        def _string(data: bytes) -> bytes:
             """Construct a binary string with a 16-bit length"""
 
             return _uint16(len(data)) + data
@@ -117,7 +134,7 @@ class SSHXAuthorityEntry(namedtuple('SSHXAuthorityEntry',
 class SSHX11ClientForwarder(SSHForwarder):
     """X11 forwarding connection handler"""
 
-    def __init__(self, listener, peer):
+    def __init__(self, listener: _X11ClientListener, peer: _X11Peer) -> None:
         super().__init__(peer)
 
         self._listener = listener
@@ -137,7 +154,7 @@ class SSHX11ClientForwarder(SSHForwarder):
         self._auth_data = b''
         self._auth_data_pad = b''
 
-    def _encode_uint16(self, value):
+    def _encode_uint16(self, value: int) -> bytes:
         """Encode a 16-bit unsigned integer"""
 
         if self._endian == b'B':
@@ -145,7 +162,7 @@ class SSHX11ClientForwarder(SSHForwarder):
         else:
             return bytes((value & 255, value >> 8))
 
-    def _decode_uint16(self, value):
+    def _decode_uint16(self, value: bytes) -> int:
         """Decode a 16-bit unsigned integer"""
 
         if self._endian == b'B':
@@ -154,19 +171,19 @@ class SSHX11ClientForwarder(SSHForwarder):
             return (value[1] << 8) + value[0]
 
     @staticmethod
-    def _padded_len(length):
+    def _padded_len(length: int) -> int:
         """Return length rounded up to the next multiple of 4 bytes"""
 
         return ((length + 3) // 4) * 4
 
     @staticmethod
-    def _pad(data):
+    def _pad(data: bytes) -> bytes:
         """Pad a string to a multiple of 4 bytes"""
 
         length = len(data) % 4
         return data + ((4 - length) * b'\00' if length else b'')
 
-    def _recv_prefix(self, data):
+    def _recv_prefix(self, data: bytes) -> None:
         """Parse X11 client prefix"""
 
         self._endian = data[:1]
@@ -178,7 +195,7 @@ class SSHX11ClientForwarder(SSHForwarder):
         self._recv_handler = self._recv_auth_proto
         self._bytes_needed = self._padded_len(self._auth_proto_len)
 
-    def _recv_auth_proto(self, data):
+    def _recv_auth_proto(self, data: bytes) -> None:
         """Extract X11 auth protocol"""
 
         self._auth_proto = data[:self._auth_proto_len]
@@ -187,7 +204,7 @@ class SSHX11ClientForwarder(SSHForwarder):
         self._recv_handler = self._recv_auth_data
         self._bytes_needed = self._padded_len(self._auth_data_len)
 
-    def _recv_auth_data(self, data):
+    def _recv_auth_data(self, data: bytes) -> None:
         """Extract X11 auth data"""
 
         self._auth_data = data[:self._auth_data_len]
@@ -219,7 +236,7 @@ class SSHX11ClientForwarder(SSHForwarder):
         self._recv_handler = None
         self._bytes_needed = 0
 
-    def data_received(self, data, datatype=None):
+    def data_received(self, data: bytes, datatype: Optional[Any] = None) -> None:
         """Handle incoming data from the X11 client"""
 
         if self._recv_handler:
@@ -243,7 +260,7 @@ class SSHX11ClientForwarder(SSHForwarder):
 class SSHX11ClientListener:
     """Client listener used to accept forwarded X11 connections"""
 
-    def __init__(self, loop, host, dpynum, auth_proto, auth_data):
+    def __init__(self, loop: _UnixSelectorEventLoop, host: str, dpynum: str, auth_proto: bytes, auth_data: bytes) -> None:
         self._host = host
         self._dpynum = dpynum
         self._auth_proto = auth_proto
@@ -262,7 +279,7 @@ class SSHX11ClientListener:
         self._remote_auth = {}
         self._channel = {}
 
-    def attach(self, display, chan, single_connection):
+    def attach(self, display: str, chan: SSHClientChannel, single_connection: bool) -> Tuple[bytes, bytes, int]:
         """Attach a channel to this listener"""
 
         host, dpynum, screen = _parse_display(display)
@@ -277,7 +294,7 @@ class SSHX11ClientListener:
 
         return self._auth_proto, remote_auth, screen
 
-    def detach(self, chan):
+    def detach(self, chan: Union[SSHClientChannel, SSHX11Channel]) -> bool:
         """Detach a channel from this listener"""
 
         try:
@@ -299,7 +316,7 @@ class SSHX11ClientListener:
 
         return SSHX11ClientForwarder(self, peer)
 
-    def validate_auth(self, remote_auth):
+    def validate_auth(self, remote_auth: bytes) -> bytes:
         """Validate client auth and enforce single connection flag"""
 
         chan, single_connection = self._channel[remote_auth]
@@ -314,19 +331,19 @@ class SSHX11ClientListener:
 class SSHX11ServerListener:
     """Server listener used to forward X11 connections"""
 
-    def __init__(self, tcp_listener, display):
+    def __init__(self, tcp_listener: SSHForwardListener, display: str) -> None:
         self._tcp_listener = tcp_listener
         self._display = display
         self._channels = set()
 
-    def attach(self, chan, screen):
+    def attach(self, chan: SSHServerChannel, screen: int) -> str:
         """Attach a channel to this listener and return its display"""
 
         self._channels.add(chan)
 
         return '%s.%s' % (self._display, screen)
 
-    def detach(self, chan):
+    def detach(self, chan: Union[SSHServerChannel, SSHX11Channel]) -> bool:
         """Detach a channel from this listener"""
 
         try:
@@ -342,7 +359,7 @@ class SSHX11ServerListener:
             return False
 
 
-def get_xauth_path(auth_path):
+def get_xauth_path(auth_path: Optional[str]) -> str:
     """Compute the path to the Xauthority file"""
 
     if not auth_path:
@@ -354,10 +371,10 @@ def get_xauth_path(auth_path):
     return auth_path
 
 
-def walk_xauth(auth_path):
+def walk_xauth(auth_path: str) -> Iterator[Union[Iterator, Iterator[SSHXAuthorityEntry]]]:
     """Walk the entries in an Xauthority file"""
 
-    def _read_bytes(n):
+    def _read_bytes(n: int) -> bytes:
         """Read exactly n bytes"""
 
         data = auth_file.read(n)
@@ -367,12 +384,12 @@ def walk_xauth(auth_path):
 
         return data
 
-    def _read_uint16():
+    def _read_uint16() -> int:
         """Read a 16-bit unsigned integer"""
 
         return int.from_bytes(_read_bytes(2), 'big')
 
-    def _read_string():
+    def _read_string() -> bytes:
         """Read a string"""
 
         return _read_bytes(_read_uint16())
@@ -395,7 +412,7 @@ def walk_xauth(auth_path):
         pass
 
 
-async def lookup_xauth(loop, auth_path, host, dpynum):
+async def lookup_xauth(loop: _UnixSelectorEventLoop, auth_path: Optional[str], host: str, dpynum: Union[bytes, str]) -> Tuple[bytes, bytes]:
     """Look up Xauthority data for the specified display"""
 
     auth_path = get_xauth_path(auth_path)
@@ -437,7 +454,7 @@ async def lookup_xauth(loop, auth_path, host, dpynum):
     logger.debug1('No xauth entry found for display: using random auth')
     return XAUTH_PROTO_COOKIE, os.urandom(XAUTH_COOKIE_LEN)
 
-async def update_xauth(auth_path, host, dpynum, auth_proto, auth_data):
+async def update_xauth(auth_path: Optional[str], host: Union[bytes, str], dpynum: Union[bytes, int, str], auth_proto: bytes, auth_data: bytes) -> None:
     """Update Xauthority data for the specified display"""
 
     if host.startswith('/') or host in ('', 'unix', 'localhost'):
@@ -482,7 +499,7 @@ async def update_xauth(auth_path, host, dpynum, auth_proto, auth_data):
     os.replace(new_auth_path, auth_path)
 
 
-async def create_x11_client_listener(loop, display, auth_path):
+async def create_x11_client_listener(loop: _UnixSelectorEventLoop, display: str, auth_path: Optional[str]) -> _X11ClientListener:
     """Create a listener to accept X11 connections forwarded over SSH"""
 
     host, dpynum, _ = _parse_display(display)
@@ -492,8 +509,8 @@ async def create_x11_client_listener(loop, display, auth_path):
     return SSHX11ClientListener(loop, host, dpynum, auth_proto, auth_data)
 
 
-async def create_x11_server_listener(conn, loop, auth_path,
-                                     auth_proto, auth_data):
+async def create_x11_server_listener(conn: _X11ServerConnection, loop: _UnixSelectorEventLoop, auth_path: Optional[Any],
+                                     auth_proto: bytes, auth_data: bytes) -> SSHX11ServerListener:
     """Create a listener to forward X11 connections over SSH"""
 
     for dpynum in range(X11_DISPLAY_START, X11_MAX_DISPLAYS):

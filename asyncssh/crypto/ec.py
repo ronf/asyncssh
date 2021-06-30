@@ -27,6 +27,14 @@ from cryptography.hazmat.primitives.serialization import Encoding
 from cryptography.hazmat.primitives.serialization import PublicFormat
 
 from .misc import PyCAKey, hashes
+from typing import Optional
+from asyncssh.crypto.ec import ECDSAPrivateKey
+from asyncssh.crypto.ec import ECDSAPublicKey
+from cryptography.hazmat.backends.openssl.ec import _EllipticCurvePrivateKey
+from cryptography.hazmat.backends.openssl.ec import _EllipticCurvePublicKey
+from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurvePrivateNumbers
+from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurvePublicNumbers
+from typing import Union
 
 
 # Short variable names are used here, matching names in the spec
@@ -41,7 +49,7 @@ _curves = {b'1.3.132.0.10': ec.SECP256K1,
 class _ECKey(PyCAKey):
     """Base class for shim around PyCA for EC keys"""
 
-    def __init__(self, pyca_key, curve_id, pub, point, priv=None):
+    def __init__(self, pyca_key: Union[_EllipticCurvePrivateKey, _EllipticCurvePublicKey], curve_id: bytes, pub: EllipticCurvePublicNumbers, point: bytes, priv: Optional[EllipticCurvePrivateNumbers] = None) -> None:
         super().__init__(pyca_key)
 
         self._curve_id = curve_id
@@ -50,7 +58,7 @@ class _ECKey(PyCAKey):
         self._priv = priv
 
     @classmethod
-    def lookup_curve(cls, curve_id):
+    def lookup_curve(cls, curve_id: bytes) -> type:
         """Look up curve and hash algorithm"""
 
         try:
@@ -60,37 +68,37 @@ class _ECKey(PyCAKey):
                              curve_id.decode()) from None
 
     @property
-    def curve_id(self):
+    def curve_id(self) -> bytes:
         """Return the EC curve name"""
 
         return self._curve_id
 
     @property
-    def x(self):
+    def x(self) -> int:
         """Return the EC public x coordinate"""
 
         return self._pub.x
 
     @property
-    def y(self):
+    def y(self) -> int:
         """Return the EC public y coordinate"""
 
         return self._pub.y
 
     @property
-    def d(self):
+    def d(self) -> Optional[int]:
         """Return the EC private value as an integer"""
 
         return self._priv.private_value if self._priv else None
 
     @property
-    def public_value(self):
+    def public_value(self) -> bytes:
         """Return the EC public point value encoded as a byte string"""
 
         return self._point
 
     @property
-    def private_value(self):
+    def private_value(self) -> bytes:
         """Return the EC private value encoded as a byte string"""
 
         if self._priv:
@@ -104,7 +112,7 @@ class ECDSAPrivateKey(_ECKey):
     """A shim around PyCA for ECDSA private keys"""
 
     @classmethod
-    def construct(cls, curve_id, public_value, private_value):
+    def construct(cls, curve_id: bytes, public_value: bytes, private_value: int) -> ECDSAPrivateKey:
         """Construct an ECDSA private key"""
 
         curve = cls.lookup_curve(curve_id)
@@ -116,7 +124,7 @@ class ECDSAPrivateKey(_ECKey):
         return cls(priv_key, curve_id, pub, public_value, priv)
 
     @classmethod
-    def generate(cls, curve_id):
+    def generate(cls, curve_id: bytes) -> ECDSAPrivateKey:
         """Generate a new ECDSA private key"""
 
         curve = cls.lookup_curve(curve_id)
@@ -132,7 +140,7 @@ class ECDSAPrivateKey(_ECKey):
 
         return cls(priv_key, curve_id, pub, public_value, priv)
 
-    def sign(self, data, hash_alg):
+    def sign(self, data: bytes, hash_alg: str) -> bytes:
         """Sign a block of data"""
 
         # pylint: disable=unused-argument
@@ -145,7 +153,7 @@ class ECDSAPublicKey(_ECKey):
     """A shim around PyCA for ECDSA public keys"""
 
     @classmethod
-    def construct(cls, curve_id, public_value):
+    def construct(cls, curve_id: bytes, public_value: bytes) -> ECDSAPublicKey:
         """Construct an ECDSA public key"""
 
         curve = cls.lookup_curve(curve_id)
@@ -156,7 +164,7 @@ class ECDSAPublicKey(_ECKey):
 
         return cls(pub_key, curve_id, pub, public_value)
 
-    def verify(self, data, sig, hash_alg):
+    def verify(self, data: bytes, sig: bytes, hash_alg: str) -> bool:
         """Verify the signature on a block of data"""
 
         try:
@@ -170,7 +178,7 @@ class ECDSAPublicKey(_ECKey):
 class ECDH:
     """A shim around PyCA for ECDH key exchange"""
 
-    def __init__(self, curve_id):
+    def __init__(self, curve_id: bytes) -> None:
         try:
             curve = _curves[curve_id]
         except KeyError: # pragma: no cover, other curves not registered
@@ -179,7 +187,7 @@ class ECDH:
 
         self._priv_key = ec.generate_private_key(curve(), backend)
 
-    def get_public(self):
+    def get_public(self) -> bytes:
         """Return the public key to send in the handshake"""
 
         pub_key = self._priv_key.public_key()
@@ -187,7 +195,7 @@ class ECDH:
         return pub_key.public_bytes(Encoding.X962,
                                     PublicFormat.UncompressedPoint)
 
-    def get_shared(self, peer_public):
+    def get_shared(self, peer_public: bytes) -> int:
         """Return the shared key from the peer's public key"""
 
         peer_key = ec.EllipticCurvePublicKey.from_encoded_point(

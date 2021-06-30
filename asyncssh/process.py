@@ -35,9 +35,23 @@ from .constants import DEFAULT_LANG, EXTENDED_DATA_STDERR
 from .misc import Error, ProtocolError, Record, open_file
 from .stream import SSHClientStreamSession, SSHServerStreamSession
 from .stream import SSHReader, SSHWriter
+from _io import BufferedWriter
+from _io import TextIOWrapper
+from asyncio.streams import StreamReader
+from asyncio.streams import StreamWriter
+from asyncio.trsock import TransportSocket
+from asyncssh.channel import SSHClientChannel
+from asyncssh.connection import SSHClientConnection
+from asyncssh.editor import SSHLineEditorChannel
+from asyncssh.logging import _SSHLogger
+from asyncssh.misc import ConnectionLost
+from asyncssh.stream import SSHReader
+from asyncssh.stream import SSHWriter
+from signal import Signals
+from typing import Any, Callable, Mapping, Optional, Tuple, Union
 
 
-def _is_regular_file(file):
+def _is_regular_file(file: Any) -> bool:
     """Return if argument is a regular file or file-like object"""
 
     try:
@@ -49,13 +63,13 @@ def _is_regular_file(file):
 class _UnicodeReader:
     """Handle buffering partial Unicode data"""
 
-    def __init__(self, encoding, errors, textmode=False):
+    def __init__(self, encoding: Optional[str], errors: str, textmode: bool = False) -> None:
         if encoding and not textmode:
             self._decoder = codecs.getincrementaldecoder(encoding)(errors)
         else:
             self._decoder = None
 
-    def decode(self, data, final=False):
+    def decode(self, data: Union[bytes, str], final: bool = False) -> Union[bytes, str]:
         """Decode Unicode bytes when reading from binary sources"""
 
         if self._decoder:
@@ -66,7 +80,7 @@ class _UnicodeReader:
 
         return data
 
-    def check_partial(self):
+    def check_partial(self) -> None:
         """Check if there's partial Unicode data left at EOF"""
 
         self.decode(b'', True)
@@ -78,13 +92,13 @@ class _UnicodeReader:
 class _UnicodeWriter:
     """Handle encoding Unicode data before writing it"""
 
-    def __init__(self, encoding, errors, textmode=False):
+    def __init__(self, encoding: Optional[str], errors: str, textmode: bool = False) -> None:
         if encoding and not textmode:
             self._encoder = codecs.getincrementalencoder(encoding)(errors)
         else:
             self._encoder = None
 
-    def encode(self, data):
+    def encode(self, data: Union[bytes, str]) -> Union[bytes, str]:
         """Encode Unicode bytes when writing to binary targets"""
 
         if self._encoder:
@@ -96,7 +110,7 @@ class _UnicodeWriter:
 class _FileReader(_UnicodeReader):
     """Forward data from a file"""
 
-    def __init__(self, process, file, bufsize, datatype, encoding, errors):
+    def __init__(self, process: SSHClientProcess, file: Any, bufsize: int, datatype: Optional[Any], encoding: Optional[str], errors: str) -> None:
         super().__init__(encoding, errors, hasattr(file, 'encoding'))
 
         self._process = process
@@ -105,7 +119,7 @@ class _FileReader(_UnicodeReader):
         self._datatype = datatype
         self._paused = False
 
-    def feed(self):
+    def feed(self) -> None:
         """Feed file data"""
 
         while not self._paused:
@@ -118,18 +132,18 @@ class _FileReader(_UnicodeReader):
                 self._process.feed_eof(self._datatype)
                 break
 
-    def pause_reading(self):
+    def pause_reading(self) -> None:
         """Pause reading from the file"""
 
         self._paused = True
 
-    def resume_reading(self):
+    def resume_reading(self) -> None:
         """Resume reading from the file"""
 
         self._paused = False
         self.feed()
 
-    def close(self):
+    def close(self) -> None:
         """Stop forwarding data from the file"""
 
         self._file.close()
@@ -170,22 +184,22 @@ class _AsyncFileReader(_FileReader):
 class _FileWriter(_UnicodeWriter):
     """Forward data to a file"""
 
-    def __init__(self, file, encoding, errors):
+    def __init__(self, file: Union[BufferedWriter, TextIOWrapper], encoding: Optional[str], errors: str) -> None:
         super().__init__(encoding, errors, hasattr(file, 'encoding'))
 
         self._file = file
 
-    def write(self, data):
+    def write(self, data: Union[bytes, str]) -> None:
         """Write data to the file"""
 
         self._file.write(self.encode(data))
 
-    def write_eof(self):
+    def write_eof(self) -> None:
         """Close output file when end of file is received"""
 
         self.close()
 
-    def close(self):
+    def close(self) -> None:
         """Stop forwarding data to the file"""
 
         self._file.close()
@@ -213,40 +227,40 @@ class _AsyncFileWriter(_FileWriter):
 class _PipeReader(_UnicodeReader, asyncio.Protocol):
     """Forward data from a pipe"""
 
-    def __init__(self, process, datatype, encoding, errors):
+    def __init__(self, process: SSHClientProcess, datatype: Optional[Any], encoding: Optional[str], errors: str) -> None:
         super().__init__(encoding, errors)
 
         self._process = process
         self._datatype = datatype
         self._transport = None
 
-    def connection_made(self, transport):
+    def connection_made(self, transport: _UnixReadPipeTransport) -> None:
         """Handle a newly opened pipe"""
 
         self._transport = transport
 
-    def data_received(self, data):
+    def data_received(self, data: bytes) -> None:
         """Forward data from the pipe"""
 
         self._process.feed_data(self.decode(data), self._datatype)
 
-    def eof_received(self):
+    def eof_received(self) -> None:
         """Forward EOF from the pipe"""
 
         self.check_partial()
         self._process.feed_eof(self._datatype)
 
-    def pause_reading(self):
+    def pause_reading(self) -> None:
         """Pause reading from the pipe"""
 
         self._transport.pause_reading()
 
-    def resume_reading(self):
+    def resume_reading(self) -> None:
         """Resume reading from the pipe"""
 
         self._transport.resume_reading()
 
-    def close(self):
+    def close(self) -> None:
         """Stop forwarding data from the pipe"""
 
         self._transport.close()
@@ -255,39 +269,39 @@ class _PipeReader(_UnicodeReader, asyncio.Protocol):
 class _PipeWriter(_UnicodeWriter, asyncio.BaseProtocol):
     """Forward data to a pipe"""
 
-    def __init__(self, process, datatype, encoding, errors):
+    def __init__(self, process: SSHClientProcess, datatype: Optional[int], encoding: Optional[str], errors: str) -> None:
         super().__init__(encoding, errors)
 
         self._process = process
         self._datatype = datatype
         self._transport = None
 
-    def connection_made(self, transport):
+    def connection_made(self, transport: _UnixWritePipeTransport) -> None:
         """Handle a newly opened pipe"""
 
         self._transport = transport
 
-    def pause_writing(self):
+    def pause_writing(self) -> None:
         """Pause writing to the pipe"""
 
         self._process.pause_feeding(self._datatype)
 
-    def resume_writing(self):
+    def resume_writing(self) -> None:
         """Resume writing to the pipe"""
 
         self._process.resume_feeding(self._datatype)
 
-    def write(self, data):
+    def write(self, data: Union[bytes, str]) -> None:
         """Write data to the pipe"""
 
         self._transport.write(self.encode(data))
 
-    def write_eof(self):
+    def write_eof(self) -> None:
         """Write EOF to the pipe"""
 
         self._transport.write_eof()
 
-    def close(self):
+    def close(self) -> None:
         """Stop forwarding data to the pipe"""
 
         self._transport.close()
@@ -296,21 +310,21 @@ class _PipeWriter(_UnicodeWriter, asyncio.BaseProtocol):
 class _ProcessReader:
     """Forward data from another SSH process"""
 
-    def __init__(self, process, datatype):
+    def __init__(self, process: Union[SSHClientProcess, SSHServerProcess], datatype: Optional[int]) -> None:
         self._process = process
         self._datatype = datatype
 
-    def pause_reading(self):
+    def pause_reading(self) -> None:
         """Pause reading from the other channel"""
 
         self._process.pause_feeding(self._datatype)
 
-    def resume_reading(self):
+    def resume_reading(self) -> None:
         """Resume reading from the other channel"""
 
         self._process.resume_feeding(self._datatype)
 
-    def close(self):
+    def close(self) -> None:
         """Stop forwarding data from the other channel"""
 
         self._process.clear_writer(self._datatype)
@@ -319,21 +333,21 @@ class _ProcessReader:
 class _ProcessWriter:
     """Forward data to another SSH process"""
 
-    def __init__(self, process, datatype):
+    def __init__(self, process: Union[SSHClientProcess, SSHServerProcess], datatype: Optional[int]) -> None:
         self._process = process
         self._datatype = datatype
 
-    def write(self, data):
+    def write(self, data: Union[bytes, str]) -> None:
         """Write data to the other channel"""
 
         self._process.feed_data(data, self._datatype)
 
-    def write_eof(self):
+    def write_eof(self) -> None:
         """Write EOF to the other channel"""
 
         self._process.feed_eof(self._datatype)
 
-    def close(self):
+    def close(self) -> None:
         """Stop forwarding data to the other channel"""
 
         self._process.clear_reader(self._datatype)
@@ -342,7 +356,7 @@ class _ProcessWriter:
 class _StreamReader(_UnicodeReader):
     """Forward data from an asyncio stream"""
 
-    def __init__(self, process, reader, bufsize, datatype, encoding, errors):
+    def __init__(self, process: SSHClientProcess, reader: StreamReader, bufsize: int, datatype: Optional[Any], encoding: str, errors: str) -> None:
         super().__init__(encoding, errors)
 
         self._process = process
@@ -365,7 +379,7 @@ class _StreamReader(_UnicodeReader):
                 self._process.feed_eof(self._datatype)
                 break
 
-    def feed(self):
+    def feed(self) -> None:
         """Start feeding stream data"""
 
         self._conn.create_task(self._feed())
@@ -381,60 +395,60 @@ class _StreamReader(_UnicodeReader):
         self._paused = False
         self.feed()
 
-    def close(self):
+    def close(self) -> None:
         """Ignore close -- the caller must clean up the associated transport"""
 
 
 class _StreamWriter(_UnicodeWriter):
     """Forward data to an asyncio stream"""
 
-    def __init__(self, writer, encoding, errors):
+    def __init__(self, writer: StreamWriter, encoding: str, errors: str) -> None:
         super().__init__(encoding, errors)
 
         self._writer = writer
 
-    def write(self, data):
+    def write(self, data: str) -> None:
         """Write data to the stream"""
 
         self._writer.write(self.encode(data))
 
-    def write_eof(self):
+    def write_eof(self) -> None:
         """Write EOF to the stream"""
 
         self._writer.write_eof()
 
-    def close(self):
+    def close(self) -> None:
         """Ignore close -- the caller must clean up the associated transport"""
 
 
 class _DevNullWriter:
     """Discard data"""
 
-    def write(self, data):
+    def write(self, data: str) -> None:
         """Discard data being written"""
 
-    def write_eof(self):
+    def write_eof(self) -> None:
         """Ignore end of file"""
 
-    def close(self):
+    def close(self) -> None:
         """Ignore close"""
 
 
 class _StdoutWriter:
     """Forward data to an SSH process' stdout instead of stderr"""
 
-    def __init__(self, process):
+    def __init__(self, process: SSHClientProcess) -> None:
         self._process = process
 
-    def write(self, data):
+    def write(self, data: str) -> None:
         """Pretend data was received on stdout"""
 
         self._process.data_received(data, None)
 
-    def write_eof(self):
+    def write_eof(self) -> None:
         """Ignore end of file"""
 
-    def close(self):
+    def close(self) -> None:
         """Ignore close"""
 
 
@@ -474,9 +488,9 @@ class ProcessError(Error):
 
     """
 
-    def __init__(self, env, command, subsystem, exit_status,
-                 exit_signal, returncode, stdout, stderr,
-                 reason='', lang=DEFAULT_LANG):
+    def __init__(self, env: Mapping, command: Optional[str], subsystem: Optional[Any], exit_status: Optional[int],
+                 exit_signal: Optional[Tuple[str, bool, str, str]], returncode: Optional[int], stdout: str, stderr: str,
+                 reason: str = '', lang: str = DEFAULT_LANG) -> None:
         self.env = env
         self.command = command
         self.subsystem = subsystem
@@ -563,7 +577,7 @@ class SSHProcess:
     # subclasses of SSHStreamSession.
     # pylint: disable=no-member
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._readers = {}
         self._send_eof = {}
 
@@ -586,19 +600,19 @@ class SSHProcess:
         await self._chan.wait_closed()
 
     @property
-    def channel(self):
+    def channel(self) -> Union[SSHClientChannel, SSHLineEditorChannel]:
         """The channel associated with the process"""
 
         return self._chan
 
     @property
-    def logger(self):
+    def logger(self) -> _SSHLogger:
         """The logger associated with the process"""
 
         return self._chan.logger
 
     @property
-    def command(self):
+    def command(self) -> Optional[str]:
         """The command the client requested to execute, if any
 
            If the client did not request that a command be executed,
@@ -609,7 +623,7 @@ class SSHProcess:
         return self._chan.get_command()
 
     @property
-    def subsystem(self):
+    def subsystem(self) -> Optional[str]:
         """The subsystem the client requested to open, if any
 
            If the client did not request that a subsystem be opened,
@@ -620,13 +634,13 @@ class SSHProcess:
         return self._chan.get_subsystem()
 
     @property
-    def env(self):
+    def env(self) -> Mapping:
         """A mapping containing the environment set by the client"""
 
         return self._chan.get_environment()
 
     @property
-    def term_type(self):
+    def term_type(self) -> str:
         """The terminal type set by the client
 
            If the client didn't request a pseudo-terminal, this
@@ -637,7 +651,7 @@ class SSHProcess:
         return self._chan.get_terminal_type()
 
     @property
-    def term_size(self):
+    def term_size(self) -> Tuple[int, int, int, int]:
         """The terminal size set by the client
 
            This property contains a tuple of four `int` values
@@ -651,7 +665,7 @@ class SSHProcess:
         return self._chan.get_terminal_size()
 
     @property
-    def term_modes(self):
+    def term_modes(self) -> Mapping:
         """A mapping containing the TTY modes set by the client
 
            If the client didn't request a pseudo-terminal, this
@@ -661,7 +675,7 @@ class SSHProcess:
 
         return self._chan.get_terminal_modes()
 
-    def get_extra_info(self, name, default=None):
+    def get_extra_info(self, name: str, default: Optional[Any] = None) -> Union[TransportSocket, SSHClientConnection]:
         """Return additional information about this process
 
            This method returns extra information about the channel
@@ -676,7 +690,7 @@ class SSHProcess:
     async def _create_reader(self, source, bufsize, send_eof, datatype=None):
         """Create a reader to forward data to the SSH channel"""
 
-        def pipe_factory():
+        def pipe_factory() -> _PipeReader:
             """Return a pipe read handler"""
 
             return _PipeReader(self, datatype, self._encoding, self._errors)
@@ -732,7 +746,7 @@ class SSHProcess:
     async def _create_writer(self, target, bufsize, send_eof, datatype=None):
         """Create a writer to forward data from the SSH channel"""
 
-        def pipe_factory():
+        def pipe_factory() -> _PipeWriter:
             """Return a pipe write handler"""
 
             return _PipeWriter(self, datatype, self._encoding, self._errors)
@@ -782,18 +796,18 @@ class SSHProcess:
         if writer:
             self.feed_recv_buf(datatype, writer)
 
-    def _should_block_drain(self, datatype):
+    def _should_block_drain(self, datatype: Optional[int]) -> bool:
         """Return whether output is still being written to the channel"""
 
         return (datatype in self._readers or
                 super()._should_block_drain(datatype))
 
-    def _should_pause_reading(self):
+    def _should_pause_reading(self) -> Optional[bool]:
         """Return whether to pause reading from the channel"""
 
         return self._paused_write_streams or super()._should_pause_reading()
 
-    def connection_lost(self, exc):
+    def connection_lost(self, exc: Optional[ConnectionLost]) -> None:
         """Handle a close of the SSH channel"""
 
         super().connection_lost(exc)
@@ -807,7 +821,7 @@ class SSHProcess:
         self._readers = {}
         self._writers = {}
 
-    def data_received(self, data, datatype):
+    def data_received(self, data: Union[bytes, str], datatype: Optional[int]) -> None:
         """Handle incoming data from the SSH channel"""
 
         writer = self._writers.get(datatype)
@@ -817,7 +831,7 @@ class SSHProcess:
         else:
             super().data_received(data, datatype)
 
-    def eof_received(self):
+    def eof_received(self) -> bool:
         """Handle an incoming end of file from the SSH channel"""
 
         for writer in list(self._writers.values()):
@@ -825,7 +839,7 @@ class SSHProcess:
 
         return super().eof_received()
 
-    def pause_writing(self):
+    def pause_writing(self) -> None:
         """Pause forwarding data to the channel"""
 
         super().pause_writing()
@@ -833,7 +847,7 @@ class SSHProcess:
         for reader in list(self._readers.values()):
             reader.pause_reading()
 
-    def resume_writing(self):
+    def resume_writing(self) -> None:
         """Resume forwarding data to the channel"""
 
         super().resume_writing()
@@ -841,12 +855,12 @@ class SSHProcess:
         for reader in list(self._readers.values()):
             reader.resume_reading()
 
-    def feed_data(self, data, datatype):
+    def feed_data(self, data: Union[bytes, str], datatype: Optional[int]) -> None:
         """Feed data to the channel"""
 
         self._chan.write(data, datatype)
 
-    def feed_eof(self, datatype):
+    def feed_eof(self, datatype: Optional[int]) -> None:
         """Feed EOF to the channel"""
 
         if self._send_eof[datatype]:
@@ -855,7 +869,7 @@ class SSHProcess:
         self._readers[datatype].close()
         self.clear_reader(datatype)
 
-    def feed_recv_buf(self, datatype, writer):
+    def feed_recv_buf(self, datatype: Optional[int], writer: Any) -> None:
         """Feed current receive buffer to a newly set writer"""
 
         for data in self._recv_buf[datatype]:
@@ -869,19 +883,19 @@ class SSHProcess:
 
         self._maybe_resume_reading()
 
-    def pause_feeding(self, datatype):
+    def pause_feeding(self, datatype: Optional[int]) -> None:
         """Pause feeding data from the channel"""
 
         self._paused_write_streams.add(datatype)
         self._maybe_pause_reading()
 
-    def resume_feeding(self, datatype):
+    def resume_feeding(self, datatype: Optional[int]) -> None:
         """Resume feeding data from the channel"""
 
         self._paused_write_streams.remove(datatype)
         self._maybe_resume_reading()
 
-    def set_reader(self, reader, send_eof, datatype):
+    def set_reader(self, reader: Any, send_eof: bool, datatype: Optional[int]) -> None:
         """Set a reader used to forward data to the channel"""
 
         old_reader = self._readers.get(datatype)
@@ -898,14 +912,14 @@ class SSHProcess:
         elif old_reader:
             self.clear_reader(datatype)
 
-    def clear_reader(self, datatype):
+    def clear_reader(self, datatype: Optional[int]) -> None:
         """Clear a reader forwarding data to the channel"""
 
         del self._readers[datatype]
         del self._send_eof[datatype]
         self._unblock_drain(datatype)
 
-    def set_writer(self, writer, datatype):
+    def set_writer(self, writer: Any, datatype: Optional[int]) -> None:
         """Set a writer used to forward data from the channel"""
 
         old_writer = self._writers.get(datatype)
@@ -917,7 +931,7 @@ class SSHProcess:
         if writer:
             self._writers[datatype] = writer
 
-    def clear_writer(self, datatype):
+    def clear_writer(self, datatype: Optional[int]) -> None:
         """Clear a writer forwarding data from the channel"""
 
         if datatype in self._paused_write_streams:
@@ -925,12 +939,12 @@ class SSHProcess:
 
         del self._writers[datatype]
 
-    def close(self):
+    def close(self) -> None:
         """Shut down the process"""
 
         self._chan.close()
 
-    def is_closing(self):
+    def is_closing(self) -> bool:
         """Return if the channel is closing or is closed"""
 
         return self._chan.is_closing()
@@ -944,11 +958,11 @@ class SSHProcess:
 class SSHClientProcess(SSHProcess, SSHClientStreamSession):
     """SSH client process handler"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         SSHProcess.__init__(self)
         SSHClientStreamSession.__init__(self)
 
-    def _collect_output(self, datatype=None):
+    def _collect_output(self, datatype: Optional[int] = None) -> Union[bytes, str]:
         """Return output from the process"""
 
         recv_buf = self._recv_buf[datatype]
@@ -961,7 +975,7 @@ class SSHClientProcess(SSHProcess, SSHClientStreamSession):
         buf = '' if self._encoding else b''
         return buf.join(recv_buf)
 
-    def session_started(self):
+    def session_started(self) -> None:
         """Start a process for this newly opened client channel"""
 
         self._stdin = SSHWriter(self, self._chan)
@@ -969,37 +983,37 @@ class SSHClientProcess(SSHProcess, SSHClientStreamSession):
         self._stderr = SSHReader(self, self._chan, EXTENDED_DATA_STDERR)
 
     @property
-    def exit_status(self):
+    def exit_status(self) -> Optional[int]:
         """The exit status of the process"""
 
         return self._chan.get_exit_status()
 
     @property
-    def exit_signal(self):
+    def exit_signal(self) -> Optional[Tuple[str, bool, str, str]]:
         """Exit signal information for the process"""
 
         return self._chan.get_exit_signal()
 
     @property
-    def returncode(self):
+    def returncode(self) -> Optional[int]:
         """The exit status or negative exit signal number for the process"""
 
         return self._chan.get_returncode()
 
     @property
-    def stdin(self):
+    def stdin(self) -> SSHWriter:
         """The :class:`SSHWriter` to use to write to stdin of the process"""
 
         return self._stdin
 
     @property
-    def stdout(self):
+    def stdout(self) -> SSHReader:
         """The :class:`SSHReader` to use to read from stdout of the process"""
 
         return self._stdout
 
     @property
-    def stderr(self):
+    def stderr(self) -> SSHReader:
         """The :class:`SSHReader` to use to read from stderr of the process"""
 
         return self._stderr
@@ -1094,7 +1108,7 @@ class SSHClientProcess(SSHProcess, SSHClientStreamSession):
 
         await self.redirect(None, None, target, bufsize, send_eof)
 
-    def collect_output(self):
+    def collect_output(self) -> Tuple[Union[bytes, str], Union[bytes, str]]:
         """Collect output from the process without blocking
 
            This method returns a tuple of the output that the process
@@ -1138,7 +1152,7 @@ class SSHClientProcess(SSHProcess, SSHClientStreamSession):
         return self.collect_output()
     # pylint: enable=redefined-builtin
 
-    def change_terminal_size(self, width, height, pixwidth=0, pixheight=0):
+    def change_terminal_size(self, width: int, height: int, pixwidth: int = 0, pixheight: int = 0) -> None:
         """Change the terminal window size for this process
 
            This method changes the width and height of the terminal
@@ -1163,7 +1177,7 @@ class SSHClientProcess(SSHProcess, SSHClientStreamSession):
 
         self._chan.change_terminal_size(width, height, pixwidth, pixheight)
 
-    def send_break(self, msec):
+    def send_break(self, msec: int) -> None:
         """Send a break to the process
 
            :param msec:
@@ -1176,7 +1190,7 @@ class SSHClientProcess(SSHProcess, SSHClientStreamSession):
 
         self._chan.send_break(msec)
 
-    def send_signal(self, signal):
+    def send_signal(self, signal: Union[Signals, str]) -> None:
         """Send a signal to the process
 
            :param signal:
@@ -1189,7 +1203,7 @@ class SSHClientProcess(SSHProcess, SSHClientStreamSession):
 
         self._chan.send_signal(signal)
 
-    def terminate(self):
+    def terminate(self) -> None:
         """Terminate the process
 
            :raises: :exc:`OSError` if the SSH channel is not open
@@ -1198,7 +1212,7 @@ class SSHClientProcess(SSHProcess, SSHClientStreamSession):
 
         self._chan.terminate()
 
-    def kill(self):
+    def kill(self) -> None:
         """Forcibly kill the process
 
            :raises: :exc:`OSError` if the SSH channel is not open
@@ -1265,14 +1279,14 @@ class SSHClientProcess(SSHProcess, SSHClientStreamSession):
 class SSHServerProcess(SSHProcess, SSHServerStreamSession):
     """SSH server process handler"""
 
-    def __init__(self, process_factory, sftp_factory, allow_scp):
+    def __init__(self, process_factory: Callable, sftp_factory: Optional[type], allow_scp: bool) -> None:
         SSHProcess.__init__(self)
         SSHServerStreamSession.__init__(self, self._start_process,
                                         sftp_factory, allow_scp)
 
         self._process_factory = process_factory
 
-    def _start_process(self, stdin, stdout, stderr):
+    def _start_process(self, stdin: SSHReader, stdout: SSHWriter, stderr: SSHWriter) -> coroutine:
         """Start a new server process"""
 
         self._stdin = stdin
@@ -1282,19 +1296,19 @@ class SSHServerProcess(SSHProcess, SSHServerStreamSession):
         return self._process_factory(self)
 
     @property
-    def stdin(self):
+    def stdin(self) -> SSHReader:
         """The :class:`SSHReader` to use to read from stdin of the process"""
 
         return self._stdin
 
     @property
-    def stdout(self):
+    def stdout(self) -> SSHWriter:
         """The :class:`SSHWriter` to use to write to stdout of the process"""
 
         return self._stdout
 
     @property
-    def stderr(self):
+    def stderr(self) -> SSHWriter:
         """The :class:`SSHWriter` to use to write to stderr of the process"""
 
         return self._stderr
@@ -1386,7 +1400,7 @@ class SSHServerProcess(SSHProcess, SSHServerStreamSession):
 
         await self.redirect(None, None, source, bufsize, send_eof)
 
-    def get_terminal_type(self):
+    def get_terminal_type(self) -> str:
         """Return the terminal type set by the client for the process
 
            This method returns the terminal type set by the client
@@ -1400,7 +1414,7 @@ class SSHServerProcess(SSHProcess, SSHServerStreamSession):
 
         return self.term_type
 
-    def get_terminal_size(self):
+    def get_terminal_size(self) -> Tuple[int, int, int, int]:
         """Return the terminal size set by the client for the process
 
            This method returns the latest terminal size information set
@@ -1415,7 +1429,7 @@ class SSHServerProcess(SSHProcess, SSHServerStreamSession):
 
         return self.term_size
 
-    def get_terminal_mode(self, mode):
+    def get_terminal_mode(self, mode: int) -> int:
         """Return the requested TTY mode for this session
 
            This method looks up the value of a POSIX terminal mode
@@ -1436,7 +1450,7 @@ class SSHServerProcess(SSHProcess, SSHServerStreamSession):
 
         return self.term_modes.get(mode)
 
-    def exit(self, status):
+    def exit(self, status: int) -> None:
         """Send exit status and close the channel
 
            This method can be called to report an exit status for the
@@ -1450,8 +1464,8 @@ class SSHServerProcess(SSHProcess, SSHServerStreamSession):
 
         self._chan.exit(status)
 
-    def exit_with_signal(self, signal, core_dumped=False,
-                         msg='', lang=DEFAULT_LANG):
+    def exit_with_signal(self, signal: str, core_dumped: bool = False,
+                         msg: str = '', lang: str = DEFAULT_LANG) -> Optional[Any]:
         """Send exit signal and close the channel
 
            This method can be called to report that the process

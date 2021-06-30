@@ -24,6 +24,13 @@ import binascii
 from hashlib import md5
 
 from .packet import MPInt, SSHPacketHandler
+from asyncssh.logging import _SSHLogger
+from typing import Any
+from typing import Tuple
+from typing import List
+from asyncssh.kex_dh import _KexDH
+from asyncssh.kex_dh import _KexECDH
+from typing import Union
 
 
 _kex_algs = []
@@ -38,7 +45,7 @@ _gss_kex_handlers = {}
 class Kex(SSHPacketHandler):
     """Parent class for key exchange handlers"""
 
-    def __init__(self, alg, conn, hash_alg):
+    def __init__(self, alg: bytes, conn: Any, hash_alg: builtin_function_or_method) -> None:
         self.algorithm = alg
 
         self._conn = conn
@@ -52,12 +59,12 @@ class Kex(SSHPacketHandler):
         self._conn.send_packet(pkttype, *args, handler=self)
 
     @property
-    def logger(self):
+    def logger(self) -> _SSHLogger:
         """A logger associated with this connection"""
 
         return self._logger
 
-    def compute_key(self, k, h, x, session_id, keylen):
+    def compute_key(self, k: int, h: bytes, x: bytes, session_id: bytes, keylen: int) -> bytes:
         """Compute keys from output of key exchange"""
 
         key = b''
@@ -71,7 +78,7 @@ class Kex(SSHPacketHandler):
         return key[:keylen]
 
 
-def register_kex_alg(alg, handler, hash_alg, args, default):
+def register_kex_alg(alg: bytes, handler: type, hash_alg: builtin_function_or_method, args: Tuple[int, ...], default: bool) -> None:
     """Register a key exchange algorithm"""
 
     _kex_algs.append(alg)
@@ -94,19 +101,19 @@ def register_gss_kex_alg(alg, handler, hash_alg, args, default):
     _gss_kex_handlers[alg] = (handler, hash_alg, args)
 
 
-def get_kex_algs():
+def get_kex_algs() -> List[bytes]:
     """Return supported key exchange algorithms"""
 
     return _gss_kex_algs + _kex_algs
 
 
-def get_default_kex_algs():
+def get_default_kex_algs() -> List[bytes]:
     """Return default key exchange algorithms"""
 
     return _default_gss_kex_algs + _default_kex_algs
 
 
-def expand_kex_algs(kex_algs, mechs, host_key_available):
+def expand_kex_algs(kex_algs: List[bytes], mechs: List, host_key_available: bool) -> List[bytes]:
     """Add mechanisms to GSS entries in key exchange algorithm list"""
 
     expanded_kex_algs = []
@@ -122,7 +129,7 @@ def expand_kex_algs(kex_algs, mechs, host_key_available):
     return expanded_kex_algs
 
 
-def get_kex(conn, alg):
+def get_kex(conn: Any, alg: bytes) -> Union[_KexDH, _KexECDH]:
     """Return a key exchange handler
 
        The function looks up a key exchange algorithm and returns a

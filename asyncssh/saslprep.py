@@ -32,13 +32,16 @@
 import stringprep
 # pylint: enable=deprecated-module
 import unicodedata
+from typing import Callable
+from typing import Tuple
+from typing import Union
 
 
 class SASLPrepError(ValueError):
     """Invalid data provided to saslprep"""
 
 
-def _check_bidi(s):
+def _check_bidi(s: str) -> None:
     """Enforce bidirectional character check from RFC 3454 (stringprep)"""
 
     r_and_al_cat = False
@@ -59,7 +62,7 @@ def _check_bidi(s):
         raise SASLPrepError('RandALCat character not at both start and end')
 
 
-def _stringprep(s, check_unassigned, mapping, normalization, prohibited, bidi):
+def _stringprep(s: Union[bytes, str], check_unassigned: bool, mapping: Callable, normalization: str, prohibited: Tuple[Callable, Callable, Callable, Callable, Callable, Callable, Callable, Callable, Callable], bidi: bool) -> str:
     """Implement a stringprep profile as defined in RFC 3454"""
 
     if not isinstance(s, str):
@@ -88,7 +91,7 @@ def _stringprep(s, check_unassigned, mapping, normalization, prohibited, bidi):
     return s
 
 
-def _map_saslprep(s):
+def _map_saslprep(s: str) -> str:
     """Map stringprep table B.1 to nothing and C.1.2 to ASCII space"""
 
     r = []
@@ -102,7 +105,7 @@ def _map_saslprep(s):
     return ''.join(r)
 
 
-def saslprep(s):
+def saslprep(s: Union[bytes, str]) -> str:
     """Implement SASLprep profile defined in RFC 4013"""
 
     prohibited = (stringprep.in_table_c12, stringprep.in_table_c21_c22,

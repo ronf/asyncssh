@@ -34,6 +34,23 @@ from OpenSSL import crypto
 
 from ..asn1 import IA5String, der_decode, der_encode
 from .misc import hashes
+from typing import Any
+from cryptography.x509.name import RelativeDistinguishedName
+from cryptography.x509.name import NameAttribute
+from typing import Iterator
+from asyncssh.crypto.x509 import X509NamePattern
+from asyncssh.crypto.x509 import X509Name
+from cryptography.hazmat.backends.openssl.x509 import _Certificate
+from asyncssh.crypto.x509 import X509Certificate
+from typing import List
+from typing import Optional
+from cryptography.hazmat._oid import ObjectIdentifier
+from typing import Set
+from cryptography.x509.general_name import RFC822Name
+from typing import Tuple
+from typing import Union
+from cryptography.x509.general_name import DNSName
+from asyncssh.rsa import _RSAKey
 
 
 _purpose_to_oid = {
@@ -59,7 +76,7 @@ else:
     _datetime_max = datetime.max.replace(tzinfo=timezone.utc)
 
 
-def _to_generalized_time(t):
+def _to_generalized_time(t: float) -> datetime:
     """Convert a timestamp value to a datetime"""
 
     if t <= 0:
@@ -77,7 +94,7 @@ def _to_generalized_time(t):
                 return _datetime_32bit_max
 
 
-def _to_purpose_oids(purposes):
+def _to_purpose_oids(purposes: Optional[str]) -> Optional[Set[ObjectIdentifier]]:
     """Convert a list of purposes to purpose OIDs"""
 
     if isinstance(purposes, str):
@@ -92,7 +109,7 @@ def _to_purpose_oids(purposes):
     return purpose_oids
 
 
-def _encode_user_principals(principals):
+def _encode_user_principals(principals: Union[Tuple[()], str]) -> List[RFC822Name]:
     """Encode user principals as e-mail addresses"""
 
     if isinstance(principals, str):
@@ -101,7 +118,7 @@ def _encode_user_principals(principals):
     return [x509.RFC822Name(name) for name in principals]
 
 
-def _encode_host_principals(principals):
+def _encode_host_principals(principals: Union[Tuple[()], str]) -> List[DNSName]:
     """Encode host principals as DNS names or IP addresses"""
 
     def _encode_host(name: str) -> x509.GeneralName:
@@ -138,7 +155,7 @@ class X509Name(x509.Name):
     _to_oid = dict((k, v) for k, v in _attrs)
     _from_oid = dict((v, k) for k, v in _attrs)
 
-    def __init__(self, name):
+    def __init__(self, name: Any) -> None:
         if isinstance(name, str):
             rdns = self._parse_name(name)
         elif isinstance(name, x509.Name):
@@ -148,32 +165,32 @@ class X509Name(x509.Name):
 
         super().__init__(rdns)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return ','.join(self._format_rdn(rdn) for rdn in self.rdns)
 
-    def _format_rdn(self, rdn):
+    def _format_rdn(self, rdn: RelativeDistinguishedName) -> str:
         """Format an X.509 RelativeDistinguishedName as a string"""
 
         return '+'.join(sorted(self._format_attr(nameattr) for nameattr in rdn))
 
-    def _format_attr(self, nameattr):
+    def _format_attr(self, nameattr: NameAttribute) -> str:
         """Format an X.509 NameAttribute as a string"""
 
         attr = self._from_oid.get(nameattr.oid) or nameattr.oid.dotted_string
         return attr + '=' + self._escape.sub(r'\\\1', nameattr.value)
 
-    def _parse_name(self, name):
+    def _parse_name(self, name: str) -> Iterator:
         """Parse an X.509 distinguished name"""
 
         return (self._parse_rdn(rdn) for rdn in self._split_name.findall(name))
 
-    def _parse_rdn(self, rdn):
+    def _parse_rdn(self, rdn: str) -> RelativeDistinguishedName:
         """Parse an X.509 relative distinguished name"""
 
         return x509.RelativeDistinguishedName(
             self._parse_nameattr(av) for av in self._split_rdn.findall(rdn))
 
-    def _parse_nameattr(self, av):
+    def _parse_nameattr(self, av: str) -> NameAttribute:
         """Parse an X.509 name attribute/value pair"""
 
         try:
@@ -193,7 +210,7 @@ class X509Name(x509.Name):
 class X509NamePattern:
     """Match X.509 distinguished names"""
 
-    def __init__(self, pattern):
+    def __init__(self, pattern: str) -> None:
         if pattern.endswith(',*'):
             self._pattern = X509Name(pattern[:-2])
             self._prefix_len = len(self._pattern.rdns)
@@ -201,7 +218,7 @@ class X509NamePattern:
             self._pattern = X509Name(pattern)
             self._prefix_len = None
 
-    def __eq__(self, other):
+    def __eq__(self, other: X509NamePattern) -> bool:
         # This isn't protected access - both objects are _RSAKey instances
         # pylint: disable=protected-access
 
@@ -209,10 +226,10 @@ class X509NamePattern:
                 self._pattern == other._pattern and
                 self._prefix_len == other._prefix_len)
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         return hash((self._pattern, self._prefix_len))
 
-    def matches(self, name):
+    def matches(self, name: X509Name) -> bool:
         """Return whether an X.509 name matches this pattern"""
 
         return self._pattern.rdns == name.rdns[:self._prefix_len]
@@ -221,7 +238,7 @@ class X509NamePattern:
 class X509Certificate:
     """A shim around PyCA and PyOpenSSL for X.509 certificates"""
 
-    def __init__(self, cert, data):
+    def __init__(self, cert: _Certificate, data: bytes) -> None:
         self.data = data
 
         self.subject = X509Name(cert.subject)
@@ -266,7 +283,7 @@ class X509Certificate:
     def __hash__(self):
         return hash(self.data)
 
-    def validate(self, trust_store, purposes, user_principal, host_principal):
+    def validate(self, trust_store: List[X509Certificate], purposes: Optional[str], user_principal: Optional[str], host_principal: Optional[str]) -> None:
         """Validate an X.509 certificate"""
 
         purpose_oids = _to_purpose_oids(purposes)
@@ -292,10 +309,10 @@ class X509Certificate:
             raise ValueError(str(exc)) from None
 
 
-def generate_x509_certificate(signing_key, key, subject, issuer, serial,
-                              valid_after, valid_before, ca, ca_path_len,
-                              purposes, user_principals, host_principals,
-                              hash_alg, comment):
+def generate_x509_certificate(signing_key: _RSAKey, key: _RSAKey, subject: str, issuer: Optional[str], serial: Optional[Any],
+                              valid_after: int, valid_before: float, ca: bool, ca_path_len: Optional[int],
+                              purposes: Optional[str], user_principals: Tuple[()], host_principals: Tuple[()],
+                              hash_alg: str, comment: Union[None, bytes, str]) -> X509Certificate:
     """Generate a new X.509 certificate"""
 
     builder = x509.CertificateBuilder()
@@ -382,7 +399,7 @@ def generate_x509_certificate(signing_key, key, subject, issuer, serial,
     return X509Certificate(cert, data)
 
 
-def import_x509_certificate(data):
+def import_x509_certificate(data: bytes) -> X509Certificate:
     """Construct an X.509 certificate from DER data"""
 
     cert = x509.load_der_x509_certificate(data, default_backend())

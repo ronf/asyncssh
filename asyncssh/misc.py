@@ -37,6 +37,25 @@ from .constants import DISC_KEY_EXCHANGE_FAILED, DISC_MAC_ERROR
 from .constants import DISC_NO_MORE_AUTH_METHODS_AVAILABLE
 from .constants import DISC_PROTOCOL_ERROR, DISC_PROTOCOL_VERSION_NOT_SUPPORTED
 from .constants import DISC_SERVICE_NOT_AVAILABLE
+from typing import Any
+from asyncssh.connection import SSHClientConnectionOptions
+from asyncssh.connection import SSHServerConnectionOptions
+from typing import Union
+from typing import Optional
+from asyncio.streams import StreamWriter
+from typing import Tuple
+from ipaddress import IPv4Address
+from ipaddress import IPv6Address
+from ipaddress import IPv4Network
+from ipaddress import IPv6Network
+from _io import BufferedReader
+from _io import BufferedWriter
+from _io import TextIOWrapper
+from pathlib import PosixPath
+from typing import Dict
+from asyncssh.misc import ConnectionLost
+from asyncssh.misc import DisconnectError
+from asyncssh.misc import ProtocolError
 
 
 # Define a version of randrange which is based on SystemRandom(), so that
@@ -57,7 +76,7 @@ def hide_empty(value, prefix=', '):
     return prefix + value if value else ''
 
 
-def plural(length, label, suffix='s'):
+def plural(length: int, label: str, suffix: str = 's') -> str:
     """Return a label with an optional plural suffix"""
 
     return '%d %s%s' % (length, label, suffix if length != 1 else '')
@@ -69,7 +88,7 @@ def to_hex(data):
     return codecs.encode(data, 'hex')
 
 
-def all_ints(seq):
+def all_ints(seq: Tuple[int, ...]) -> bool:
     """Return if a sequence contains all integers"""
 
     return all(isinstance(i, int) for i in seq)
@@ -85,7 +104,7 @@ def get_symbol_names(symbols, prefix, strip_leading=0):
 # Punctuation to map when creating handler names
 _HANDLER_PUNCTUATION = (('@', '_at_'), ('.', '_dot_'), ('-', '_'))
 
-def map_handler_name(name):
+def map_handler_name(name: str) -> str:
     """Map punctuation so a string can be used as a handler name"""
 
     for old, new in _HANDLER_PUNCTUATION:
@@ -94,7 +113,7 @@ def map_handler_name(name):
     return name
 
 
-def _normalize_scoped_ip(addr):
+def _normalize_scoped_ip(addr: str) -> str:
     """Normalize scoped IP address
 
        The ipaddress module doesn't handle scoped addresses properly,
@@ -126,13 +145,13 @@ def _normalize_scoped_ip(addr):
     return addr
 
 
-def ip_address(addr):
+def ip_address(addr: str) -> Union[IPv4Address, IPv6Address]:
     """Wrapper for ipaddress.ip_address which supports scoped addresses"""
 
     return ipaddress.ip_address(_normalize_scoped_ip(addr))
 
 
-def ip_network(addr):
+def ip_network(addr: str) -> Union[IPv4Network, IPv6Network]:
     """Wrapper for ipaddress.ip_network which supports scoped addresses"""
 
     idx = addr.find('/')
@@ -144,27 +163,27 @@ def ip_network(addr):
     return ipaddress.ip_network(_normalize_scoped_ip(addr) + mask)
 
 
-def open_file(filename, *args, **kwargs):
+def open_file(filename: Union[PosixPath, str], *args: str, **kwargs: Any) -> Union[BufferedReader, BufferedWriter, TextIOWrapper]:
     """Open a file with home directory expansion"""
 
     return open(Path(filename).expanduser(), *args, **kwargs)
 
 
-def read_file(filename, mode='rb'):
+def read_file(filename: Union[PosixPath, str], mode: str = 'rb') -> Union[bytes, str]:
     """Read from a file with home directory expansion"""
 
     with open_file(filename, mode) as f:
         return f.read()
 
 
-def write_file(filename, data, mode='wb'):
+def write_file(filename: Union[PosixPath, str], data: Union[bytes, str], mode: str = 'wb') -> int:
     """Write or append to a file with home directory expansion"""
 
     with open_file(filename, mode) as f:
         return f.write(data)
 
 
-def _parse_units(value, suffixes, label):
+def _parse_units(value: str, suffixes: Dict[str, int], label: str) -> float:
     """Parse a series of integers followed by unit suffixes"""
 
     matches = _unit_pattern.split(value)
@@ -187,7 +206,7 @@ def parse_byte_count(value):
     return _parse_units(value, _byte_units, 'byte count')
 
 
-def parse_time_interval(value):
+def parse_time_interval(value: str) -> float:
     """Parse a time interval with optional s, m, h, d, or w suffixes"""
 
     return _parse_units(value, _time_units, 'time interval')
@@ -209,11 +228,11 @@ def async_context_manager(coro):
     class AsyncContextManager:
         """Async context manager wrapper"""
 
-        def __init__(self, coro):
+        def __init__(self, coro: coroutine) -> None:
             self._coro = coro
             self._result = None
 
-        def __await__(self):
+        def __await__(self) -> coroutine_wrapper:
             return self._coro.__await__()
 
         async def __aenter__(self):
@@ -225,7 +244,7 @@ def async_context_manager(coro):
             self._result = None
 
     @functools.wraps(coro)
-    def context_wrapper(*args, **kwargs):
+    def context_wrapper(*args: Any, **kwargs: Any) -> Any:
         """Return an async context manager wrapper for this coroutine"""
 
         return AsyncContextManager(coro(*args, **kwargs))
@@ -233,7 +252,7 @@ def async_context_manager(coro):
     return context_wrapper
 
 
-async def maybe_wait_closed(writer):
+async def maybe_wait_closed(writer: StreamWriter) -> None:
     """Wait for a StreamWriter to close, if Python version supports it
 
        Python 3.8 triggers a false error report about garbage collecting
@@ -254,7 +273,7 @@ async def maybe_wait_closed(writer):
 class Options:
     """Container for configuration options"""
 
-    def __init__(self, options=None, **kwargs):
+    def __init__(self, options: Union[None, SSHClientConnectionOptions, SSHServerConnectionOptions] = None, **kwargs: Any) -> None:
         if options:
             if not isinstance(options, type(self)):
                 raise TypeError('Invalid %s, got %s' %
@@ -282,7 +301,7 @@ class Record:
 
     __slots__ = OrderedDict()
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         for k, v in self.__slots__.items():
             setattr(self, k, v)
 
@@ -314,7 +333,7 @@ class Record:
 class Error(Exception):
     """General SSH error"""
 
-    def __init__(self, code, reason, lang=DEFAULT_LANG):
+    def __init__(self, code: Optional[int], reason: str, lang: str = DEFAULT_LANG) -> None:
 
         super().__init__(reason)
         self.code = code
@@ -381,7 +400,7 @@ class ConnectionLost(DisconnectError):
 
     """
 
-    def __init__(self, reason, lang=DEFAULT_LANG):
+    def __init__(self, reason: str, lang: str = DEFAULT_LANG) -> None:
         super().__init__(DISC_CONNECTION_LOST, reason, lang)
 
 
@@ -437,7 +456,7 @@ class KeyExchangeFailed(DisconnectError):
 
     """
 
-    def __init__(self, reason, lang=DEFAULT_LANG):
+    def __init__(self, reason: str, lang: str = DEFAULT_LANG) -> None:
         super().__init__(DISC_KEY_EXCHANGE_FAILED, reason, lang)
 
 
@@ -476,7 +495,7 @@ class PermissionDenied(DisconnectError):
 
     """
 
-    def __init__(self, reason, lang=DEFAULT_LANG):
+    def __init__(self, reason: str, lang: str = DEFAULT_LANG) -> None:
         super().__init__(DISC_NO_MORE_AUTH_METHODS_AVAILABLE, reason, lang)
 
 
@@ -495,7 +514,7 @@ class ProtocolError(DisconnectError):
 
     """
 
-    def __init__(self, reason, lang=DEFAULT_LANG):
+    def __init__(self, reason: str, lang: str = DEFAULT_LANG) -> None:
         super().__init__(DISC_PROTOCOL_ERROR, reason, lang)
 
 
@@ -587,7 +606,7 @@ class PasswordChangeRequired(Exception):
 
     """
 
-    def __init__(self, prompt, lang=DEFAULT_LANG):
+    def __init__(self, prompt: Union[bytes, str], lang: str = DEFAULT_LANG) -> None:
         super().__init__('Password change required: %s' % prompt)
         self.prompt = prompt
         self.lang = lang
@@ -605,7 +624,7 @@ class BreakReceived(Exception):
 
     """
 
-    def __init__(self, msec):
+    def __init__(self, msec: int) -> None:
         super().__init__('Break for %s msec' % msec)
         self.msec = msec
 
@@ -622,7 +641,7 @@ class SignalReceived(Exception):
 
     """
 
-    def __init__(self, signal):
+    def __init__(self, signal: str) -> None:
         super().__init__('Signal: %s' % signal)
         self.signal = signal
 
@@ -635,7 +654,7 @@ class SoftEOFReceived(Exception):
 
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__('Soft EOF')
 
 
@@ -660,7 +679,7 @@ class TerminalSizeChanged(Exception):
 
     """
 
-    def __init__(self, width, height, pixwidth, pixheight):
+    def __init__(self, width: int, height: int, pixwidth: int, pixheight: int) -> None:
         super().__init__('Terminal size change: (%s, %s, %s, %s)' %
                          (width, height, pixwidth, pixheight))
         self.width = width
@@ -683,7 +702,7 @@ _disc_error_map = {
 }
 
 
-def construct_disc_error(code, reason, lang):
+def construct_disc_error(code: int, reason: str, lang: str) -> Union[ConnectionLost, DisconnectError, ProtocolError]:
     """Map disconnect error code to appropriate DisconnectError exception"""
 
     try:

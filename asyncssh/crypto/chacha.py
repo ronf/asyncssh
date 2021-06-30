@@ -29,6 +29,7 @@ from cryptography.hazmat.primitives.ciphers.algorithms import ChaCha20
 from cryptography.hazmat.primitives.poly1305 import Poly1305
 
 from .cipher import register_cipher
+from typing import Tuple
 
 
 if backend.poly1305_supported():
@@ -37,23 +38,23 @@ if backend.poly1305_supported():
 
     _POLY1305_KEYBYTES = 32
 
-    def chacha20(key, data, nonce, ctr):
+    def chacha20(key: bytes, data: bytes, nonce: bytes, ctr: int) -> bytes:
         """Encrypt/decrypt a block of data with the ChaCha20 cipher"""
 
         return Cipher(ChaCha20(key, (_CTR_1 if ctr else _CTR_0) + nonce),
                       mode=None, backend=backend).encryptor().update(data)
 
-    def poly1305_key(key, nonce):
+    def poly1305_key(key: bytes, nonce: bytes) -> bytes:
         """Derive a Poly1305 key"""
 
         return chacha20(key, _POLY1305_KEYBYTES * b'\0', nonce, 0)
 
-    def poly1305(key, data, nonce):
+    def poly1305(key: bytes, data: bytes, nonce: bytes) -> bytes:
         """Compute a Poly1305 tag for a block of data"""
 
         return Poly1305.generate_tag(poly1305_key(key, nonce), data)
 
-    def poly1305_verify(key, data, nonce, tag):
+    def poly1305_verify(key: bytes, data: bytes, nonce: bytes, tag: bytes) -> bool:
         """Verify a Poly1305 tag for a block of data"""
 
         try:
@@ -125,12 +126,12 @@ else: # pragma: no cover
 class ChachaCipher:
     """Shim for Chacha20-Poly1305 symmetric encryption"""
 
-    def __init__(self, key):
+    def __init__(self, key: bytes) -> None:
         keylen = len(key) // 2
         self._key = key[:keylen]
         self._adkey = key[keylen:]
 
-    def encrypt_and_sign(self, header, data, nonce):
+    def encrypt_and_sign(self, header: bytes, data: bytes, nonce: bytes) -> Tuple[bytes, bytes]:
         """Encrypt and sign a block of data"""
 
         header = chacha20(self._adkey, header, nonce, 0)
@@ -139,12 +140,12 @@ class ChachaCipher:
 
         return header + data, tag
 
-    def decrypt_header(self, header, nonce):
+    def decrypt_header(self, header: bytes, nonce: bytes) -> bytes:
         """Decrypt header data"""
 
         return chacha20(self._adkey, header, nonce, 0)
 
-    def verify_and_decrypt(self, header, data, nonce, tag):
+    def verify_and_decrypt(self, header: bytes, data: bytes, nonce: bytes, tag: bytes) -> bytes:
         """Verify the signature of and decrypt a block of data"""
 
         if poly1305_verify(self._key, header + data, nonce, tag):

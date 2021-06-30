@@ -29,6 +29,14 @@ from .gss import GSSError
 from .kex import Kex, register_kex_alg, register_gss_kex_alg
 from .misc import KeyExchangeFailed, ProtocolError, get_symbol_names, randrange
 from .packet import Boolean, MPInt, String, UInt32
+from typing import Any
+from asyncssh.packet import SSHPacket
+from asyncssh.public_key import SSHLocalKeyPair
+from asyncssh.rsa import _RSAKey
+from typing import Optional
+from tests.test_kex import _KexClientStub
+from tests.test_kex import _KexServerStub
+from typing import Union
 
 
 # pylint: disable=line-too-long
@@ -102,7 +110,7 @@ class _KexDHBase(Kex):
     _init_type = None
     _reply_type = None
 
-    def __init__(self, alg, conn, hash_alg):
+    def __init__(self, alg: bytes, conn: Any, hash_alg: builtin_function_or_method) -> None:
         super().__init__(alg, conn, hash_alg)
 
         self._g = None
@@ -113,14 +121,14 @@ class _KexDHBase(Kex):
         self._f = None
         self._gex_data = b''
 
-    def _init_group(self, g, p):
+    def _init_group(self, g: int, p: int) -> None:
         """Initialize DH group parameters"""
 
         self._g = g
         self._p = p
         self._q = (p - 1) // 2
 
-    def _compute_hash(self, host_key_data, k):
+    def _compute_hash(self, host_key_data: bytes, k: int) -> bytes:
         """Compute a hash of key information associated with the connection"""
 
         hash_obj = self._hash_alg()
@@ -132,7 +140,7 @@ class _KexDHBase(Kex):
         hash_obj.update(MPInt(k))
         return hash_obj.digest()
 
-    def _parse_client_key(self, packet):
+    def _parse_client_key(self, packet: SSHPacket) -> None:
         """Parse a DH client key"""
 
         if not self._p:
@@ -140,7 +148,7 @@ class _KexDHBase(Kex):
 
         self._e = packet.get_mpint()
 
-    def _parse_server_key(self, packet):
+    def _parse_server_key(self, packet: SSHPacket) -> None:
         """Parse a DH server key"""
 
         if not self._p:
@@ -148,28 +156,28 @@ class _KexDHBase(Kex):
 
         self._f = packet.get_mpint()
 
-    def _format_client_key(self):
+    def _format_client_key(self) -> bytes:
         """Format a DH client key"""
 
         return MPInt(self._e)
 
-    def _format_server_key(self):
+    def _format_server_key(self) -> bytes:
         """Format a DH server key"""
 
         return MPInt(self._f)
 
-    def _send_init(self):
+    def _send_init(self) -> None:
         """Send a DH init message"""
 
         self.send_packet(self._init_type, self._format_client_key())
 
-    def _send_reply(self, key_data, sig):
+    def _send_reply(self, key_data: bytes, sig: bytes) -> None:
         """Send a DH reply message"""
 
         self.send_packet(self._reply_type, String(key_data),
                          self._format_server_key(), String(sig))
 
-    def _perform_init(self):
+    def _perform_init(self) -> None:
         """Compute e and send init message"""
 
         self._x = randrange(2, self._q)
@@ -177,7 +185,7 @@ class _KexDHBase(Kex):
 
         self._send_init()
 
-    def _compute_client_shared(self):
+    def _compute_client_shared(self) -> int:
         """Compute client shared key"""
 
         if not 1 <= self._f < self._p:
@@ -190,7 +198,7 @@ class _KexDHBase(Kex):
 
         return k
 
-    def _compute_server_shared(self):
+    def _compute_server_shared(self) -> int:
         """Compute server shared key"""
 
         if not 1 <= self._e < self._p:
@@ -206,7 +214,7 @@ class _KexDHBase(Kex):
 
         return k
 
-    def _perform_reply(self, key, key_data):
+    def _perform_reply(self, key: SSHLocalKeyPair, key_data: bytes) -> None:
         """Compute f and send reply message"""
 
         k = self._compute_server_shared()
@@ -215,7 +223,7 @@ class _KexDHBase(Kex):
 
         self._conn.send_newkeys(k, h)
 
-    def _verify_reply(self, key, key_data, sig):
+    def _verify_reply(self, key: _RSAKey, key_data: bytes, sig: bytes) -> None:
         """Verify a DH reply message"""
 
         k = self._compute_client_shared()
@@ -226,7 +234,7 @@ class _KexDHBase(Kex):
 
         self._conn.send_newkeys(k, h)
 
-    def _process_init(self, _pkttype, _pktid, packet):
+    def _process_init(self, _pkttype: int, _pktid: Optional[int], packet: SSHPacket) -> None:
         """Process a DH init message"""
 
         if self._conn.is_client():
@@ -238,7 +246,7 @@ class _KexDHBase(Kex):
         host_key = self._conn.get_server_host_key()
         self._perform_reply(host_key, host_key.public_data)
 
-    def _process_reply(self, _pkttype, _pktid, packet):
+    def _process_reply(self, _pkttype: int, _pktid: Optional[int], packet: SSHPacket) -> None:
         """Process a DH reply message"""
 
         if self._conn.is_server():
@@ -252,7 +260,7 @@ class _KexDHBase(Kex):
         host_key = self._conn.validate_server_host_key(host_key_data)
         self._verify_reply(host_key, host_key_data, sig)
 
-    def start(self):
+    def start(self) -> None:
         """Start DH key exchange"""
 
         if self._conn.is_client():
@@ -267,7 +275,7 @@ class _KexDH(_KexDHBase):
     _init_type = MSG_KEXDH_INIT
     _reply_type = MSG_KEXDH_REPLY
 
-    def __init__(self, alg, conn, hash_alg, g, p):
+    def __init__(self, alg: bytes, conn: Union[_KexClientStub, _KexServerStub], hash_alg: builtin_function_or_method, g: int, p: int) -> None:
         super().__init__(alg, conn, hash_alg)
 
         self._init_group(g, p)
@@ -288,13 +296,13 @@ class _KexDHGex(_KexDHBase):
     _request_type = MSG_KEX_DH_GEX_REQUEST
     _group_type = MSG_KEX_DH_GEX_GROUP
 
-    def __init__(self, alg, conn, hash_alg, preferred_size=None, max_size=None):
+    def __init__(self, alg: bytes, conn: Union[_KexClientStub, _KexServerStub], hash_alg: builtin_function_or_method, preferred_size: Optional[int] = None, max_size: Optional[int] = None) -> None:
         super().__init__(alg, conn, hash_alg)
 
         self._pref_size = preferred_size
         self._max_size = max_size
 
-    def _send_request(self):
+    def _send_request(self) -> None:
         """Send a DH gex request message"""
 
         if self._pref_size and not self._max_size:
@@ -310,7 +318,7 @@ class _KexDHGex(_KexDHBase):
         self._gex_data = args
         self.send_packet(pkttype, args)
 
-    def _process_request(self, pkttype, _pktid, packet):
+    def _process_request(self, pkttype: int, _pktid: Optional[Any], packet: SSHPacket) -> None:
         """Process a DH gex request message"""
 
         if self._conn.is_client():
@@ -343,7 +351,7 @@ class _KexDHGex(_KexDHBase):
         self._gex_data += MPInt(p) + MPInt(g)
         self.send_packet(self._group_type, MPInt(p), MPInt(g))
 
-    def _process_group(self, _pkttype, _pktid, packet):
+    def _process_group(self, _pkttype: int, _pktid: Optional[Any], packet: SSHPacket) -> None:
         """Process a DH gex group message"""
 
         if self._conn.is_server():
@@ -357,7 +365,7 @@ class _KexDHGex(_KexDHBase):
         self._gex_data += MPInt(p) + MPInt(g)
         self._perform_init()
 
-    def start(self):
+    def start(self) -> None:
         """Start DH group exchange"""
 
         if self._conn.is_client():
@@ -380,7 +388,7 @@ class _KexECDH(_KexDHBase):
     _init_type = MSG_KEX_ECDH_INIT
     _reply_type = MSG_KEX_ECDH_REPLY
 
-    def __init__(self, alg, conn, hash_alg, ecdh_class, *args):
+    def __init__(self, alg: bytes, conn: Any, hash_alg: builtin_function_or_method, ecdh_class: type, *args: bytes) -> None:
         super().__init__(alg, conn, hash_alg)
 
         self._priv = ecdh_class(*args)
@@ -391,27 +399,27 @@ class _KexECDH(_KexDHBase):
         else:
             self._server_pub = pub
 
-    def _parse_client_key(self, packet):
+    def _parse_client_key(self, packet: SSHPacket) -> None:
         """Parse an ECDH client key"""
 
         self._client_pub = packet.get_string()
 
-    def _parse_server_key(self, packet):
+    def _parse_server_key(self, packet: SSHPacket) -> None:
         """Parse an ECDH server key"""
 
         self._server_pub = packet.get_string()
 
-    def _format_client_key(self):
+    def _format_client_key(self) -> bytes:
         """Format an ECDH client key"""
 
         return String(self._client_pub)
 
-    def _format_server_key(self):
+    def _format_server_key(self) -> bytes:
         """Format an ECDH server key"""
 
         return String(self._server_pub)
 
-    def _compute_client_shared(self):
+    def _compute_client_shared(self) -> int:
         """Compute client shared key"""
 
         try:
@@ -419,7 +427,7 @@ class _KexECDH(_KexDHBase):
         except ValueError:
             raise ProtocolError('Invalid ECDH server public key') from None
 
-    def _compute_server_shared(self):
+    def _compute_server_shared(self) -> int:
         """Compute server shared key"""
 
         try:
@@ -427,7 +435,7 @@ class _KexECDH(_KexDHBase):
         except ValueError:
             raise ProtocolError('Invalid ECDH client public key') from None
 
-    def start(self):
+    def start(self) -> None:
         """Start ECDH key exchange"""
 
         if self._conn.is_client():
