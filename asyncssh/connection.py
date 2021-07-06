@@ -169,6 +169,8 @@ _DEFAULT_MAX_PKTSIZE = 32768        # 32 kiB
 _DEFAULT_LINE_HISTORY = 1000        # 1000 lines
 _DEFAULT_MAX_LINE_LENGTH = 1024     # 1024 characters
 
+_STRICT_MODE = False
+
 
 async def _open_proxy(loop, command, conn_factory):
     """Open a tunnel running a proxy command"""
@@ -2792,6 +2794,10 @@ class SSHClientConnection(SSHConnection):
             if self._x509_trusted_certs or self._x509_trusted_cert_paths:
                 default_host_key_algs = \
                     get_default_x509_certificate_algs() + default_host_key_algs
+
+        if _STRICT_MODE:
+            default_host_key_algs = \
+                get_default_certificate_algs() + get_default_public_key_algs()
 
         self._server_host_key_algs = \
             _select_host_key_algs(
