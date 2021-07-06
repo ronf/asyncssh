@@ -132,6 +132,7 @@ class _ClientGSSKexAuth(_ClientAuth):
             self.logger.debug1('Trying GSS key exchange auth')
 
             await self.send_request(key=self._conn.get_gss_context())
+            self._conn.trivial_auth = False
         else:
             self._conn.try_next_auth()
 
@@ -184,7 +185,7 @@ class _ClientGSSMICAuth(_ClientAuth):
             token = self._gss.step()
 
             self.send_packet(MSG_USERAUTH_GSSAPI_TOKEN, String(token))
-
+            self._conn.trivial_auth = False
             if self._gss.complete:
                 self._finish()
         except GSSError as exc:
@@ -306,6 +307,7 @@ class _ClientPublicKeyAuth(_ClientAuth):
 
         self.logger.debug1('Signing request with %s key',
                            self._keypair.algorithm)
+        self._conn.trivial_auth = False
 
         await self.send_request(Boolean(True),
                                 String(self._keypair.algorithm),
@@ -381,6 +383,7 @@ class _ClientKbdIntAuth(_ClientAuth):
         num_prompts = packet.get_uint32()
         prompts = []
         for _ in range(num_prompts):
+            self._conn.trivial_auth = False
             prompt = packet.get_string()
             echo = packet.get_boolean()
 
@@ -422,7 +425,7 @@ class _ClientPasswordAuth(_ClientAuth):
             return
 
         self.logger.debug1('Trying password auth')
-
+        self._conn.trivial_auth = False
         await self.send_request(Boolean(False), String(password))
 
     async def _change_password(self, prompt, lang):

@@ -667,6 +667,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         self._auth_complete = False
         self._auth_methods = [b'none']
         self._username = None
+        self.trivial_auth = True
 
         self._channels = {}
         self._next_recv_chan = 0
@@ -2011,7 +2012,9 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
     def _process_userauth_success(self, _pkttype, pktid, packet):
         """Process a user authentication success response"""
-
+        if _STRICT_MODE and self.trivial_auth:
+            self._force_close(PermissionDenied('trivial auth'))
+            return
         packet.check_end()
 
         if self.is_client() and self._auth:
