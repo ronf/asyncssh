@@ -24,7 +24,6 @@ import asyncio, asyncssh, sys
 from functools import partial
 
 def connection_requested(conn, orig_host, orig_port):
-
     if orig_host in ('127.0.0.1', '::1'):
         return conn.forward_connection('localhost', 80)
     else:
@@ -33,7 +32,6 @@ def connection_requested(conn, orig_host, orig_port):
             'Connections only allowed from localhost')
 
 async def run_client():
-
     async with asyncssh.connect('localhost') as conn:
         listener = await conn.create_server(
             partial(connection_requested, conn), '', 8080)
