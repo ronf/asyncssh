@@ -45,6 +45,9 @@ from asyncssh.encryption import get_encryption_algs
 from asyncssh.kex import get_kex_algs
 from asyncssh.mac import _HMAC, _mac_handler, get_mac_algs
 from asyncssh.packet import Boolean, NameList, String, UInt32
+from asyncssh.public_key import get_default_public_key_algs
+from asyncssh.public_key import get_default_certificate_algs
+from asyncssh.public_key import get_default_x509_certificate_algs
 
 from .server import Server, ServerTestCase
 
@@ -66,6 +69,11 @@ class _CheckAlgsClientConnection(asyncssh.SSHClientConnection):
         """Return the selected encryption algorithms"""
 
         return self._enc_algs
+
+    def get_server_host_key_algs(self):
+        """Return the selected server host key algorithms"""
+
+        return self._server_host_key_algs
 
 
 class _SplitClientConnection(asyncssh.SSHClientConnection):
@@ -340,6 +348,7 @@ def disconnect_on_unimplemented(self, pkttype, pktid, packet):
 
 
 @patch_gss
+@patch('asyncssh.connection.SSHClientConnection', _CheckAlgsClientConnection)
 class _TestConnection(ServerTestCase):
     """Unit tests for AsyncSSH connection API"""
 
@@ -570,31 +579,44 @@ class _TestConnection(ServerTestCase):
     async def test_known_hosts_none(self):
         """Test connecting with known hosts checking disabled"""
 
-        async with self.connect(known_hosts=None):
-            pass
+        default_algs = get_default_x509_certificate_algs() + \
+                       get_default_certificate_algs() + \
+                       get_default_public_key_algs()
+
+        async with self.connect(known_hosts=None) as conn:
+            self.assertEqual(conn.get_server_host_key_algs(), default_algs)
 
     @asynctest
     async def test_known_hosts_none_without_x509(self):
         """Test connecting with known hosts checking and X.509 disabled"""
 
+        non_x509_algs = get_default_certificate_algs() + \
+                        get_default_public_key_algs()
+
         async with self.connect(known_hosts=None,
-                                x509_trusted_certs=None):
-            pass
+                                x509_trusted_certs=None) as conn:
+            self.assertEqual(conn.get_server_host_key_algs(), non_x509_algs)
 
     @asynctest
     async def test_known_hosts_multiple_keys(self):
         """Test connecting with multiple trusted known hosts keys"""
 
-        async with self.connect(known_hosts=(['skey.pub', 'skey.pub'],
-                                             [], [])):
-            pass
+        rsa_algs = [alg for alg in get_default_public_key_algs()
+                    if b'rsa' in alg]
+
+        async with self.connect(x509_trusted_certs=None,
+                                known_hosts=(['skey.pub', 'skey.pub'],
+                                             [], [])) as conn:
+            self.assertEqual(conn.get_server_host_key_algs(), rsa_algs)
 
     @asynctest
     async def test_known_hosts_ca(self):
         """Test connecting with a known hosts CA"""
 
-        async with self.connect(known_hosts=([], ['skey.pub'], [])):
-            pass
+        async with self.connect(known_hosts=([], ['skey.pub'], [])) as conn:
+            self.assertEqual(conn.get_server_host_key_algs(),
+                             get_default_x509_certificate_algs() +
+                             get_default_certificate_algs())
 
     @asynctest
     async def test_known_hosts_bytes(self):
@@ -1785,6 +1807,7 @@ class _TestServerNoHostKey(ServerTestCase):
             await self.connect()
 
 
+@patch('asyncssh.connection.SSHClientConnection', _CheckAlgsClientConnection)
 class _TestServerWithoutCert(ServerTestCase):
     """Unit tests with a server that advertises a host key instead of a cert"""
 
@@ -1826,6 +1849,26 @@ class _TestServerWithoutCert(ServerTestCase):
 
         async with conn:
             pass
+
+    @asynctest
+    async def test_default_server_host_keys(self):
+        """Test validation with default server host key algs"""
+
+        def client_factory():
+            """Return an SSHClient which can validate the sevrer host key"""
+
+            return _ValidateHostKeyClient(host_key='skey.pub')
+
+        default_algs = get_default_x509_certificate_algs() + \
+                       get_default_certificate_algs() + \
+                       get_default_public_key_algs()
+
+        conn, _ = await self.create_connection(client_factory,
+                                               known_hosts=([], [], []),
+                                               server_host_key_algs='default')
+
+        async with conn:
+            self.assertEqual(conn.get_server_host_key_algs(), default_algs)
 
     @asynctest
     async def test_untrusted_known_hosts_key(self):

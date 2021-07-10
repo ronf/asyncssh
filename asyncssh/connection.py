@@ -419,7 +419,7 @@ def _select_algs(alg_type, algs, possible_algs, default_algs,
     else:
         strict_match = True
 
-    if algs == ():
+    if algs in ((), 'default'):
         return default_algs
     elif algs:
         if isinstance(algs, str):
@@ -450,10 +450,6 @@ def _select_host_key_algs(algs, config_algs, default_algs=()):
 
     possible_algs = (get_x509_certificate_algs() + get_certificate_algs() +
                      get_public_key_algs())
-
-    if not default_algs:
-        default_algs = (get_default_certificate_algs() +
-                        get_default_public_key_algs())
 
     return _select_algs('host key', algs, possible_algs,
                         default_algs, config_algs)
@@ -2784,12 +2780,13 @@ class SSHClientConnection(SSHConnection):
 
         default_host_key_algs = []
 
-        if self._trusted_host_key_algs:
-            default_host_key_algs = self._trusted_host_key_algs
+        if self._server_host_key_algs != 'default':
+            if self._trusted_host_key_algs:
+                default_host_key_algs = self._trusted_host_key_algs
 
-        if self._trusted_ca_keys:
-            default_host_key_algs = \
-                get_default_certificate_algs() + default_host_key_algs
+            if self._trusted_ca_keys:
+                default_host_key_algs = \
+                    get_default_certificate_algs() + default_host_key_algs
 
         if not default_host_key_algs:
             default_host_key_algs = \
@@ -5725,6 +5722,15 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
            handshake, taken from :ref:`server host key algorithms
            <PublicKeyAlgs>`. This is useful when using the
            validate_host_public_key callback to validate server host keys.
+           This argument can also be set to 'default' to specify that the
+           client should send its default list of supported algorithms.
+           This can be used to avoid leaking information about what known
+           host algorithm types the client trusts.
+
+               .. note:: The 'default' keywrord should be used with
+                         caution, as it can result in a host key mismatch
+                         if the client trusts only a subset of the host
+                         keys the server might return.
        :param x509_trusted_certs: (optional)
            A list of certificates which should be trusted for X.509 server
            certificate authentication. If no trusted certificates are
