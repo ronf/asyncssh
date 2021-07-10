@@ -38,11 +38,6 @@ class SSHListener:
         return self
 
     async def __aexit__(self, *exc_info):
-        if self._tunnel:
-            self._tunnel.close()
-            await self._tunnel.wait_closed()
-            self._tunnel = None
-
         self.close()
         await self.wait_closed()
 
@@ -76,7 +71,8 @@ class SSHListener:
 
         """
 
-        raise NotImplementedError
+        if self._tunnel:
+            self._tunnel.close()
 
     async def wait_closed(self):
         """Wait for the listener to close
@@ -86,7 +82,9 @@ class SSHListener:
 
         """
 
-        raise NotImplementedError
+        if self._tunnel:
+            await self._tunnel.wait_closed()
+            self._tunnel = None
 
 
 class SSHClientListener(SSHListener):
@@ -113,11 +111,15 @@ class SSHClientListener(SSHListener):
     def close(self):
         """Close this listener asynchronously"""
 
+        super().close()
+
         if self._conn:
             self._conn.create_task(self._close())
 
     async def wait_closed(self):
         """Wait for this listener to finish closing"""
+
+        await super().wait_closed()
 
         await self._close_event.wait()
 
@@ -207,6 +209,8 @@ class SSHForwardListener(SSHListener):
     def close(self):
         """Close this listener"""
 
+        super().close()
+
         if self._conn:
             self._conn.close_forward_listener(self._listen_key)
 
@@ -217,6 +221,8 @@ class SSHForwardListener(SSHListener):
 
     async def wait_closed(self):
         """Wait for this listener to finish closing"""
+
+        await super().wait_closed()
 
         for server in self._servers:
             await server.wait_closed()
