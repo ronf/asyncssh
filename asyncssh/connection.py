@@ -1131,9 +1131,9 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         if self._transport:
             if self._transport.is_closing():
-                raise BrokenPipeError
-
-            self._transport.write(data)
+                self._force_close(BrokenPipeError)
+            else:
+                self._transport.write(data)
 
     def _send_version(self):
         """Start the SSH handshake"""
