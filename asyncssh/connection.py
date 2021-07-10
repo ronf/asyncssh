@@ -507,6 +507,13 @@ class SSHAcceptor:
         self._server = server
         self._options = options
 
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc_info):
+        self.close()
+        await self.wait_closed()
+
     def __getattr__(self, name):
         return getattr(self._server, name)
 

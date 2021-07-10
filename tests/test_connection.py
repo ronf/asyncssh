@@ -2072,3 +2072,23 @@ class _TestReverseDNS(ServerTestCase):
 
         with self.assertRaises(asyncssh.PermissionDenied):
             await self.connect(username='ckey')
+
+
+class _TestListenerContextManager(ServerTestCase):
+    """Test using an SSH listener as a context manager"""
+
+    @classmethod
+    async def start_server(cls):
+        """Defer starting the SSH server to the test"""
+
+    @asynctest
+    async def test_ssh_listen_context_manager(self):
+        """Test using an SSH listener as a context manager"""
+
+        async with self.listen() as server:
+            listen_port = server.sockets[0].getsockname()[1]
+
+
+            async with asyncssh.connect('127.0.0.1', listen_port,
+                                        known_hosts=(['skey.pub'], [], [])):
+                pass
