@@ -170,10 +170,8 @@ class _AuthClientStub(_AuthConnectionStub):
         self._auth_waiter = None
 
     async def send_userauth_request(self, method, *args, key=None,
-                                    trivial=False):
+                                    trivial=True):
         """Send a user authentication request"""
-
-        # pylint: disable=unused-argument
 
         packet = self._get_userauth_request_packet(method, args)
 
