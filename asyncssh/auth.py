@@ -278,8 +278,7 @@ class _ClientHostBasedAuth(_ClientAuth):
             await self.send_request(String(keypair.algorithm),
                                     String(keypair.public_data),
                                     String(client_host),
-                                    String(client_username), key=keypair,
-                                    trivial=False)
+                                    String(client_username), key=keypair)
         except ValueError as exc:
             self.logger.debug1('Host based auth failed: %s', exc)
             self._conn.try_next_auth()

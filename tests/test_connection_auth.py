@@ -782,10 +782,10 @@ class _TestHostBasedAuth(ServerTestCase):
     async def test_disabled_trivial_client_host_auth(self):
         """Test disabling trivial auth with host-based authentication"""
 
-        async with self.connect(username='user', client_host_keys='skey',
-                                client_username='user',
-                                disable_trivial_auth=True):
-            pass
+        with self.assertRaises(asyncssh.PermissionDenied):
+            await self.connect(username='user', client_host_keys='skey',
+                               client_username='user',
+                               disable_trivial_auth=True)
 
 
 @patch_getnameinfo

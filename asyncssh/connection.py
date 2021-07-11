@@ -5738,13 +5738,14 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
            default of those present in known_hosts when performing the SSH
            handshake, taken from :ref:`server host key algorithms
            <PublicKeyAlgs>`. This is useful when using the
-           validate_host_public_key callback to validate server host keys.
-           This argument can also be set to 'default' to specify that the
-           client should send its default list of supported algorithms.
-           This can be used to avoid leaking information about what known
-           host algorithm types the client trusts.
+           validate_host_public_key callback to validate server host keys,
+           since AsyncSSH can not determine which server host key algorithms
+           are preferred. This argument can also be set to 'default' to
+           specify that the client should always send its default list of
+           supported algorithms to avoid leaking information about what
+           algorithms are present for the server in known_hosts.
 
-               .. note:: The 'default' keywrord should be used with
+               .. note:: The 'default' keyword should be used with
                          caution, as it can result in a host key mismatch
                          if the client trusts only a subset of the host
                          keys the server might return.
