@@ -1,4 +1,4 @@
-# Copyright (c) 2019 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2019-2021 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -20,23 +20,36 @@
 
 """SSH subprocess handlers"""
 
+from typing import TYPE_CHECKING, Any, AnyStr, Callable
+from typing import Dict, Generic, Iterable, Optional
+
 from .constants import EXTENDED_DATA_STDERR
 from .process import SSHClientProcess
+from .session import DataType
 
 
-class SSHSubprocessPipe:
+if TYPE_CHECKING:
+    # pylint: disable=cyclic-import
+    from .channel import SSHChannel, SSHClientChannel
+
+
+SubprocessFactory = Callable[[], 'SSHSubprocessProtocol']
+
+
+class SSHSubprocessPipe(Generic[AnyStr]):
     """SSH subprocess pipe"""
 
-    def __init__(self, chan, datatype=None):
-        self._chan = chan
+    def __init__(self, chan: 'SSHClientChannel[AnyStr]',
+                 datatype: DataType = None):
+        self._chan: 'SSHClientChannel[AnyStr]' = chan
         self._datatype = datatype
 
-    def close(self):
+    def close(self) -> None:
         """Shut down the remote process"""
 
         self._chan.close()
 
-    def get_extra_info(self, name, default=None):
+    def get_extra_info(self, name: str, default: Any = None) -> Any:
         """Return additional information about the remote process
 
            This method returns extra information about the channel
@@ -49,60 +62,61 @@ class SSHSubprocessPipe:
         return self._chan.get_extra_info(name, default)
 
 
-class SSHSubprocessReadPipe(SSHSubprocessPipe):
+class SSHSubprocessReadPipe(SSHSubprocessPipe[AnyStr]):
     """SSH subprocess pipe reader"""
 
-    def pause_reading(self):
+    def pause_reading(self) -> None:
         """Pause delivery of incoming data from the remote process"""
 
         self._chan.pause_reading()
 
-    def resume_reading(self):
+    def resume_reading(self) -> None:
         """Resume delivery of incoming data from the remote process"""
 
         self._chan.resume_reading()
 
 
-class SSHSubprocessWritePipe(SSHSubprocessPipe):
+class SSHSubprocessWritePipe(SSHSubprocessPipe[AnyStr]):
     """SSH subprocess pipe writer"""
 
-    def abort(self):
+    def abort(self) -> None:
         """Forcibly close the channel to the remote process"""
 
         self._chan.abort()
 
-    def can_write_eof(self):
+    def can_write_eof(self) -> bool:
         """Return whether the pipe supports :meth:`write_eof`"""
 
         return self._chan.can_write_eof()
 
-    def get_write_buffer_size(self):
+    def get_write_buffer_size(self) -> int:
         """Return the current size of the pipe's output buffer"""
 
         return self._chan.get_write_buffer_size()
 
-    def set_write_buffer_limits(self, high=None, low=None):
+    def set_write_buffer_limits(self, high: int = None,
+                                low: int = None) -> None:
         """Set the high- and low-water limits for write flow control"""
 
         self._chan.set_write_buffer_limits(high, low)
 
-    def write(self, data):
+    def write(self, data: AnyStr) -> None:
         """Write data on this pipe"""
 
         self._chan.write(data, self._datatype)
 
-    def writelines(self, list_of_data):
+    def writelines(self, list_of_data: Iterable[AnyStr]) -> None:
         """Write a list of data bytes on this pipe"""
 
         self._chan.writelines(list_of_data, self._datatype)
 
-    def write_eof(self):
+    def write_eof(self) -> None:
         """Write EOF on this pipe"""
 
         self._chan.write_eof()
 
 
-class SSHSubprocessProtocol:
+class SSHSubprocessProtocol(Generic[AnyStr]):
     """SSH subprocess protocol
 
        This class conforms to :class:`asyncio.SubprocessProtocol`, but with
@@ -116,7 +130,8 @@ class SSHSubprocessProtocol:
 
     """
 
-    def connection_made(self, transport):
+    def connection_made(self,
+                        transport: 'SSHSubprocessTransport[AnyStr]') -> None:
         """Called when a remote process is successfully started
 
            This method is called when a a remote process is successfully
@@ -129,7 +144,7 @@ class SSHSubprocessProtocol:
 
         """
 
-    def pipe_data_received(self, fd, data):
+    def pipe_data_received(self, fd: int, data: AnyStr) -> None:
         """Called when data is received from the remote process
 
            This method is called when data is received from the remote
@@ -148,7 +163,7 @@ class SSHSubprocessProtocol:
 
         """
 
-    def pipe_connection_lost(self, fd, exc):
+    def pipe_connection_lost(self, fd: int, exc: Optional[Exception]) -> None:
         """Called when the pipe to a remote process is closed
 
            This method is called when a pipe to a remote process is
@@ -167,7 +182,7 @@ class SSHSubprocessProtocol:
 
         """
 
-    def process_exited(self):
+    def process_exited(self) -> None:
         """Called when a remote process has exited
 
            This method is called when the remote process has exited.
@@ -178,7 +193,7 @@ class SSHSubprocessProtocol:
         """
 
 
-class SSHSubprocessTransport(SSHClientProcess):
+class SSHSubprocessTransport(SSHClientProcess[AnyStr]):
     """SSH subprocess transport
 
        This class conforms to :class:`asyncio.SubprocessTransport`, but with
@@ -198,40 +213,44 @@ class SSHSubprocessTransport(SSHClientProcess):
 
     """
 
-    def __init__(self, protocol_factory):
+    _chan: 'SSHClientChannel[AnyStr]'
+
+    def __init__(self, protocol_factory: SubprocessFactory):
         super().__init__()
 
-        self._pipes = {}
-        self._protocol = protocol_factory()
+        self._pipes: Dict[int, SSHSubprocessPipe[AnyStr]] = {}
+        self._protocol: SSHSubprocessProtocol[AnyStr] = protocol_factory()
 
-    def get_protocol(self):
+    def get_protocol(self) -> SSHSubprocessProtocol[AnyStr]:
         """Return the subprocess protocol associated with this transport"""
 
         return self._protocol
 
-    def connection_made(self, chan):
+    def connection_made(self, chan: 'SSHChannel[AnyStr]') -> None:
         """Handle a newly opened channel"""
 
         super().connection_made(chan)
 
         self._protocol.connection_made(self)
 
-        self._pipes = {0: SSHSubprocessWritePipe(chan),
-                       1: SSHSubprocessReadPipe(chan),
-                       2: SSHSubprocessReadPipe(chan, EXTENDED_DATA_STDERR)}
+        self._pipes = {
+            0: SSHSubprocessWritePipe(self._chan),
+            1: SSHSubprocessReadPipe(self._chan),
+            2: SSHSubprocessReadPipe(self._chan, EXTENDED_DATA_STDERR)
+        }
 
-    def session_started(self):
+    def session_started(self) -> None:
         """Override SSHClientProcess to avoid creating SSHReader/SSHWriter
            streams, since this class uses read/write pipe objects instead"""
 
-    def connection_lost(self, exc):
+    def connection_lost(self, exc: Optional[Exception]) -> None:
         """Handle an incoming channel close"""
 
         self._protocol.pipe_connection_lost(1, exc)
         self._protocol.pipe_connection_lost(2, exc)
         super().connection_lost(exc)
 
-    def data_received(self, data, datatype):
+    def data_received(self, data: AnyStr, datatype: DataType) -> None:
         """Handle incoming data from the remote process"""
 
         writer = self._writers.get(datatype)
@@ -242,19 +261,20 @@ class SSHSubprocessTransport(SSHClientProcess):
             fd = 2 if datatype == EXTENDED_DATA_STDERR else 1
             self._protocol.pipe_data_received(fd, data)
 
-    def exit_status_received(self, status):
+    def exit_status_received(self, status: int) -> None:
         """Handle exit status for the remote process"""
 
         super().exit_status_received(status)
         self._protocol.process_exited()
 
-    def exit_signal_received(self, signal, core_dumped, msg, lang):
+    def exit_signal_received(self, signal: str, core_dumped: bool,
+                             msg: str, lang: str) -> None:
         """Handle exit signal for the remote process"""
 
         super().exit_signal_received(signal, core_dumped, msg, lang)
         self._protocol.process_exited()
 
-    def get_pid(self):
+    def get_pid(self) -> Optional[int]:
         """Return the PID of the remote process
 
            This method always returns `None`, since SSH doesn't report
@@ -266,7 +286,8 @@ class SSHSubprocessTransport(SSHClientProcess):
 
         return None
 
-    def get_pipe_transport(self, fd):
+    def get_pipe_transport(self, fd: int) -> \
+            Optional[SSHSubprocessPipe[AnyStr]]:
         """Return a transport for the requested stream
 
            :param fd:
@@ -281,7 +302,7 @@ class SSHSubprocessTransport(SSHClientProcess):
 
         return self._pipes.get(fd)
 
-    def get_returncode(self):
+    def get_returncode(self) -> Optional[int]:
         """Return the exit status or signal for the remote process
 
            This method returns the exit status of the session if one has

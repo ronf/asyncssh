@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2018 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2021 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -31,6 +31,7 @@
 # pylint: disable=deprecated-module
 import stringprep
 # pylint: enable=deprecated-module
+from typing import Callable, Sequence
 import unicodedata
 
 
@@ -38,7 +39,7 @@ class SASLPrepError(ValueError):
     """Invalid data provided to saslprep"""
 
 
-def _check_bidi(s):
+def _check_bidi(s: str) -> None:
     """Enforce bidirectional character check from RFC 3454 (stringprep)"""
 
     r_and_al_cat = False
@@ -59,11 +60,10 @@ def _check_bidi(s):
         raise SASLPrepError('RandALCat character not at both start and end')
 
 
-def _stringprep(s, check_unassigned, mapping, normalization, prohibited, bidi):
+def _stringprep(s: str, check_unassigned: bool, mapping: Callable[[str], str],
+                normalization: str, prohibited: Sequence[Callable[[str], bool]],
+                bidi: bool) -> str:
     """Implement a stringprep profile as defined in RFC 3454"""
-
-    if not isinstance(s, str):
-        raise TypeError('argument 0 must be str, not %s' % type(s).__name__)
 
     if check_unassigned: # pragma: no branch
         for c in s:
@@ -88,7 +88,7 @@ def _stringprep(s, check_unassigned, mapping, normalization, prohibited, bidi):
     return s
 
 
-def _map_saslprep(s):
+def _map_saslprep(s: str) -> str:
     """Map stringprep table B.1 to nothing and C.1.2 to ASCII space"""
 
     r = []
@@ -102,7 +102,7 @@ def _map_saslprep(s):
     return ''.join(r)
 
 
-def saslprep(s):
+def saslprep(s: str) -> str:
     """Implement SASLprep profile defined in RFC 4013"""
 
     prohibited = (stringprep.in_table_c12, stringprep.in_table_c21_c22,

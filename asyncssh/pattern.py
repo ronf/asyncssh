@@ -1,4 +1,4 @@
-# Copyright (c) 2015-2019 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2015-2021 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -21,49 +21,60 @@
 """Pattern matching for principal and host names"""
 
 from fnmatch import fnmatch
+from typing import Union
 
-from .misc import ip_network
+from .misc import IPAddress, ip_network
 
 
-class WildcardPattern:
-    """A pattern matcher for '*' and '?' wildcards"""
+_HostPattern = Union['WildcardHostPattern', 'CIDRHostPattern']
+_AnyPattern = Union['WildcardPattern', _HostPattern]
 
-    def __init__(self, pattern):
+
+class _BaseWildcardPattern:
+    """A base class for matching '*' and '?' wildcards"""
+
+    def __init__(self, pattern: str):
         # We need to escape square brackets in host patterns if we
         # want to use Python's fnmatch.
         self._pattern = ''.join('[[]' if ch == '[' else
                                 '[]]' if ch == ']' else
                                 ch for ch in pattern)
 
-    def matches(self, value):
+    def _matches(self, value: str) -> bool:
         """Return whether a wild card pattern matches a value"""
 
         return fnmatch(value, self._pattern)
 
 
-class WildcardHostPattern(WildcardPattern):
+class WildcardPattern(_BaseWildcardPattern):
+    """A pattern matcher for '*' and '?' wildcards"""
+
+    def matches(self, value: str) -> bool:
+        """Return whether a wild card pattern matches a value"""
+
+        return super()._matches(value)
+
+
+class WildcardHostPattern(_BaseWildcardPattern):
     """Match a host name or address against a wildcard pattern"""
 
-    def matches(self, host, addr, _ip):
+    def matches(self, host: str, addr: str, _ip: IPAddress) -> bool:
         """Return whether a host or address matches a wild card host pattern"""
 
-        # Arguments vary by class, but inheritance is still needed here
-        # pylint: disable=arguments-differ
-
-        return (host and super().matches(host)) or \
-               (addr and super().matches(addr))
+        return (bool(host) and super()._matches(host)) or \
+               (bool(addr) and super()._matches(addr))
 
 
 class CIDRHostPattern:
     """Match IPv4/v6 address against CIDR-style subnet pattern"""
 
-    def __init__(self, pattern):
+    def __init__(self, pattern: str):
         self._network = ip_network(pattern)
 
-    def matches(self, _host, _addr, ip):
+    def matches(self, _host: str, _addr: str, ip: IPAddress) -> bool:
         """Return whether an IP address matches a CIDR address pattern"""
 
-        return ip and ip in self._network
+        return bool(ip) and ip in self._network
 
 
 class _PatternList:
@@ -81,7 +92,7 @@ class _PatternList:
 
     """
 
-    def __init__(self, patterns):
+    def __init__(self, patterns: str):
         self._pos_patterns = []
         self._neg_patterns = []
 
@@ -99,12 +110,12 @@ class _PatternList:
             else:
                 self._pos_patterns.append(matcher)
 
-    def build_pattern(self, pattern):
+    def build_pattern(self, pattern: str) -> _AnyPattern:
         """Abstract method to build a pattern object"""
 
         raise NotImplementedError
 
-    def matches(self, *args):
+    def matches(self, *args) -> bool:
         """Match a set of values against positive & negative pattern lists"""
 
         pos_match = any(p.matches(*args) for p in self._pos_patterns)
@@ -116,7 +127,7 @@ class _PatternList:
 class WildcardPatternList(_PatternList):
     """Match names against wildcard patterns"""
 
-    def build_pattern(self, pattern):
+    def build_pattern(self, pattern: str) -> WildcardPattern:
         """Build a wild card pattern"""
 
         return WildcardPattern(pattern)
@@ -125,7 +136,7 @@ class WildcardPatternList(_PatternList):
 class HostPatternList(_PatternList):
     """Match host names & addresses against wildcard and CIDR patterns"""
 
-    def build_pattern(self, pattern):
+    def build_pattern(self, pattern: str) -> _HostPattern:
         """Build a CIDR address or wild card host pattern"""
 
         try:

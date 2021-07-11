@@ -20,43 +20,52 @@
 
 """Symmetric key encryption handlers"""
 
+from typing import Dict, List, Optional, Tuple, Type
+
 from .crypto import BasicCipher, GCMCipher, ChachaCipher, get_cipher_params
-from .mac import get_mac_params, get_mac
+from .mac import MAC, get_mac_params, get_mac
 from .packet import UInt64
 
 
-_enc_algs = []
-_default_enc_algs = []
+_EncParams = Tuple[int, int, int, int, int, bool]
+_EncParamsMap = Dict[bytes, Tuple[Type['Encryption'], str]]
 
-_enc_params = {}
+
+_enc_algs: List[bytes] = []
+_default_enc_algs: List[bytes] = []
+_enc_params: _EncParamsMap = {}
 
 
 class Encryption:
     """Parent class for SSH packet encryption objects"""
 
     @classmethod
-    def new(cls, cipher_name, key, iv, mac_alg=b'', mac_key=b'', etm=False):
+    def new(cls, cipher_name: str, key: bytes, iv: bytes, mac_alg: bytes = b'',
+            mac_key: bytes = b'', etm: bool = False) -> 'Encryption':
         """Construct a new SSH packet encryption object"""
 
         raise NotImplementedError
 
     @classmethod
-    def get_mac_params(cls, mac_alg):
+    def get_mac_params(cls, mac_alg: bytes) -> Tuple[int, int, bool]:
         """Get paramaters of the MAC algorithm used with this encryption"""
 
         return get_mac_params(mac_alg)
 
-    def encrypt_packet(self, seq, header, packet):
+    def encrypt_packet(self, seq: int, header: bytes,
+                       packet: bytes) -> Tuple[bytes, bytes]:
         """Encrypt and sign an SSH packet"""
 
         raise NotImplementedError
 
-    def decrypt_header(self, seq, first_block, header_len):
+    def decrypt_header(self, seq: int, first_block: bytes,
+                       header_len: int) -> Tuple[bytes, bytes]:
         """Decrypt an SSH packet header"""
 
         raise NotImplementedError
 
-    def decrypt_packet(self, seq, first, rest, header_len, mac):
+    def decrypt_packet(self, seq: int, first: bytes, rest: bytes,
+                       header_len: int, mac: bytes) -> Optional[bytes]:
         """Verify the signature of and decrypt an SSH packet"""
 
         raise NotImplementedError
@@ -65,12 +74,13 @@ class Encryption:
 class BasicEncryption(Encryption):
     """Shim for basic encryption"""
 
-    def __init__(self, cipher, mac):
+    def __init__(self, cipher: BasicCipher, mac: MAC):
         self._cipher = cipher
         self._mac = mac
 
     @classmethod
-    def new(cls, cipher_name, key, iv, mac_alg=b'', mac_key=b'', etm=False):
+    def new(cls, cipher_name: str, key: bytes, iv: bytes, mac_alg: bytes = b'',
+            mac_key: bytes = b'', etm: bool = False) -> 'BasicEncryption':
         """Construct a new SSH packet encryption object for basic ciphers"""
 
         cipher = BasicCipher(cipher_name, key, iv)
@@ -81,7 +91,8 @@ class BasicEncryption(Encryption):
         else:
             return cls(cipher, mac)
 
-    def encrypt_packet(self, seq, header, packet):
+    def encrypt_packet(self, seq: int, header: bytes,
+                       packet: bytes) -> Tuple[bytes, bytes]:
         """Encrypt and sign an SSH packet"""
 
         packet = header + packet
@@ -89,14 +100,16 @@ class BasicEncryption(Encryption):
 
         return self._cipher.encrypt(packet), mac
 
-    def decrypt_header(self, seq, first_block, header_len):
+    def decrypt_header(self, seq: int, first_block: bytes,
+                       header_len: int) -> Tuple[bytes, bytes]:
         """Decrypt an SSH packet header"""
 
         first_block = self._cipher.decrypt(first_block)
 
         return first_block, first_block[:header_len]
 
-    def decrypt_packet(self, seq, first, rest, header_len, mac):
+    def decrypt_packet(self, seq: int, first: bytes, rest: bytes,
+                       header_len: int, mac: bytes) -> Optional[bytes]:
         """Verify the signature of and decrypt an SSH packet"""
 
         packet = first + self._cipher.decrypt(rest)
@@ -110,18 +123,21 @@ class BasicEncryption(Encryption):
 class ETMEncryption(BasicEncryption):
     """Shim for encrypt-then-mac encryption"""
 
-    def encrypt_packet(self, seq, header, packet):
+    def encrypt_packet(self, seq: int, header: bytes,
+                       packet: bytes) -> Tuple[bytes, bytes]:
         """Encrypt and sign an SSH packet"""
 
         packet = header + self._cipher.encrypt(packet)
         return packet, self._mac.sign(seq, packet)
 
-    def decrypt_header(self, seq, first_block, header_len):
+    def decrypt_header(self, seq: int, first_block: bytes,
+                       header_len: int) -> Tuple[bytes, bytes]:
         """Decrypt an SSH packet header"""
 
         return first_block, first_block[:header_len]
 
-    def decrypt_packet(self, seq, first, rest, header_len, mac):
+    def decrypt_packet(self, seq: int, first: bytes, rest: bytes,
+                       header_len: int, mac: bytes) -> Optional[bytes]:
         """Verify the signature of and decrypt an SSH packet"""
 
         packet = first + rest
@@ -135,32 +151,36 @@ class ETMEncryption(BasicEncryption):
 class GCMEncryption(Encryption):
     """Shim for GCM encryption"""
 
-    def __init__(self, cipher):
+    def __init__(self, cipher: GCMCipher):
         self._cipher = cipher
 
     @classmethod
-    def new(cls, cipher_name, key, iv, mac_alg=b'', mac_key=b'', etm=False):
+    def new(cls, cipher_name: str, key: bytes, iv: bytes, mac_alg: bytes = b'',
+            mac_key: bytes = b'', etm: bool = False) -> 'GCMEncryption':
         """Construct a new SSH packet encryption object for GCM ciphers"""
 
         return cls(GCMCipher(cipher_name, key, iv))
 
     @classmethod
-    def get_mac_params(cls, mac_alg):
+    def get_mac_params(cls, mac_alg: bytes) -> Tuple[int, int, bool]:
         """Get paramaters of the MAC algorithm used with this encryption"""
 
         return 0, 16, True
 
-    def encrypt_packet(self, seq, header, packet):
+    def encrypt_packet(self, seq: int, header: bytes,
+                       packet: bytes) -> Tuple[bytes, bytes]:
         """Encrypt and sign an SSH packet"""
 
         return self._cipher.encrypt_and_sign(header, packet)
 
-    def decrypt_header(self, seq, first_block, header_len):
+    def decrypt_header(self, seq: int, first_block: bytes,
+                       header_len: int) -> Tuple[bytes, bytes]:
         """Decrypt an SSH packet header"""
 
         return first_block, first_block[:header_len]
 
-    def decrypt_packet(self, seq, first, rest, header_len, mac):
+    def decrypt_packet(self, seq: int, first: bytes, rest: bytes,
+                       header_len: int, mac: bytes) -> Optional[bytes]:
         """Verify the signature of and decrypt an SSH packet"""
 
         return self._cipher.verify_and_decrypt(first[:header_len],
@@ -170,34 +190,38 @@ class GCMEncryption(Encryption):
 class ChachaEncryption(Encryption):
     """Shim for chacha20-poly1305 encryption"""
 
-    def __init__(self, cipher):
+    def __init__(self, cipher: ChachaCipher):
         self._cipher = cipher
 
     @classmethod
-    def new(cls, cipher_name, key, iv, mac_alg=b'', mac_key=b'', etm=False):
+    def new(cls, cipher_name: str, key: bytes, iv: bytes, mac_alg: bytes = b'',
+            mac_key: bytes = b'', etm: bool = False) -> 'ChachaEncryption':
         """Construct a new SSH packet encryption object for Chacha ciphers"""
 
         return cls(ChachaCipher(key))
 
     @classmethod
-    def get_mac_params(cls, mac_alg):
+    def get_mac_params(cls, mac_alg: bytes) -> Tuple[int, int, bool]:
         """Get paramaters of the MAC algorithm used with this encryption"""
 
         return 0, 16, True
 
-    def encrypt_packet(self, seq, header, packet):
+    def encrypt_packet(self, seq: int, header: bytes,
+                       packet: bytes) -> Tuple[bytes, bytes]:
         """Encrypt and sign an SSH packet"""
 
         return self._cipher.encrypt_and_sign(header, packet, UInt64(seq))
 
-    def decrypt_header(self, seq, first_block, header_len):
+    def decrypt_header(self, seq: int, first_block: bytes,
+                       header_len: int) -> Tuple[bytes, bytes]:
         """Decrypt an SSH packet header"""
 
         return (first_block,
                 self._cipher.decrypt_header(first_block[:header_len],
                                             UInt64(seq)))
 
-    def decrypt_packet(self, seq, first, rest, header_len, mac):
+    def decrypt_packet(self, seq: int, first: bytes, rest: bytes,
+                       header_len: int, mac: bytes) -> Optional[bytes]:
         """Verify the signature of and decrypt an SSH packet"""
 
         return self._cipher.verify_and_decrypt(first[:header_len],
@@ -205,7 +229,8 @@ class ChachaEncryption(Encryption):
                                                UInt64(seq), mac)
 
 
-def register_encryption_alg(enc_alg, encryption, cipher_name, default):
+def register_encryption_alg(enc_alg: bytes, encryption: Type[Encryption],
+                            cipher_name: str, default: bool) -> None:
     """Register an encryption algorithm"""
 
     try:
@@ -221,19 +246,20 @@ def register_encryption_alg(enc_alg, encryption, cipher_name, default):
         _enc_params[enc_alg] = (encryption, cipher_name)
 
 
-def get_encryption_algs():
+def get_encryption_algs() -> List[bytes]:
     """Return supported encryption algorithms"""
 
     return _enc_algs
 
 
-def get_default_encryption_algs():
+def get_default_encryption_algs() -> List[bytes]:
     """Return default encryption algorithms"""
 
     return _default_enc_algs
 
 
-def get_encryption_params(enc_alg, mac_alg=b''):
+def get_encryption_params(enc_alg: bytes,
+                          mac_alg: bytes = b'') -> _EncParams:
     """Get parameters of an encryption and MAC algorithm"""
 
     encryption, cipher_name = _enc_params[enc_alg]
@@ -244,7 +270,8 @@ def get_encryption_params(enc_alg, mac_alg=b''):
             mac_keysize, mac_hashsize, etm)
 
 
-def get_encryption(enc_alg, key, iv, mac_alg=b'', mac_key=b'', etm=False):
+def get_encryption(enc_alg: bytes, key: bytes, iv: bytes, mac_alg: bytes = b'',
+                   mac_key: bytes = b'', etm: bool = False) -> Encryption:
     """Return an object which can encrypt and decrypt SSH packets"""
 
     encryption, cipher_name = _enc_params[enc_alg]

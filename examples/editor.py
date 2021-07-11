@@ -1,6 +1,6 @@
 #!/usr/bin/env python3.6
 #
-# Copyright (c) 2013-2018 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2021 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -28,16 +28,19 @@
 # the certificate authority which can sign valid client certificates.
 
 import asyncio, asyncssh, sys
+from typing import cast
 
-async def handle_client(process):
+async def handle_client(process: asyncssh.SSHServerProcess):
+    channel = cast(asyncssh.SSHLineEditorChannel, process.channel)
+
     process.stdout.write('Welcome to my SSH server, %s!\n\n' %
                          process.get_extra_info('username'))
 
-    process.channel.set_echo(False)
+    channel.set_echo(False)
     process.stdout.write('Tell me a secret: ')
     secret = await process.stdin.readline()
 
-    process.stdin.channel.set_line_mode(False)
+    channel.set_line_mode(False)
     process.stdout.write('\nYour secret is safe with me! '
                          'Press any key to exit...')
     await process.stdin.read(1)
@@ -45,7 +48,7 @@ async def handle_client(process):
     process.stdout.write('\n')
     process.exit(0)
 
-async def start_server():
+async def start_server() -> None:
     await asyncssh.listen('', 8022, server_host_keys=['ssh_host_key'],
                           authorized_client_keys='ssh_user_ca',
                           process_factory=handle_client)

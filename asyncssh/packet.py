@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2018 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2021 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -20,38 +20,45 @@
 
 """SSH packet encoding and decoding functions"""
 
+from typing import Any, Callable, Iterable, Mapping, Optional, Sequence, Union
+
+from .logging import SSHLogger
 from .misc import plural
+
+
+_LoggedPacket = Union[bytes, 'SSHPacket']
+_PacketHandler = Callable[[Any, int, int, 'SSHPacket'], None]
 
 
 class PacketDecodeError(ValueError):
     """Packet decoding error"""
 
 
-def Byte(value):
+def Byte(value: int) -> bytes:
     """Encode a single byte"""
 
     return bytes((value,))
 
 
-def Boolean(value):
+def Boolean(value: bool) -> bytes:
     """Encode a boolean value"""
 
     return Byte(bool(value))
 
 
-def UInt32(value):
+def UInt32(value: int) -> bytes:
     """Encode a 32-bit integer value"""
 
     return value.to_bytes(4, 'big')
 
 
-def UInt64(value):
+def UInt64(value: int) -> bytes:
     """Encode a 64-bit integer value"""
 
     return value.to_bytes(8, 'big')
 
 
-def String(value):
+def String(value: Union[bytes, str]) -> bytes:
     """Encode a byte string or UTF-8 string value"""
 
     if isinstance(value, str):
@@ -60,7 +67,7 @@ def String(value):
     return len(value).to_bytes(4, 'big') + value
 
 
-def MPInt(value):
+def MPInt(value: int) -> bytes:
     """Encode a multiple precision integer value"""
 
     l = value.bit_length()
@@ -70,7 +77,7 @@ def MPInt(value):
     return l.to_bytes(4, 'big') + value.to_bytes(l, 'big', signed=True)
 
 
-def NameList(value):
+def NameList(value: Iterable[bytes]) -> bytes:
     """Encode a comma-separated list of byte strings"""
 
     return String(b','.join(value))
@@ -79,36 +86,36 @@ def NameList(value):
 class SSHPacket:
     """Decoder class for SSH packets"""
 
-    def __init__(self, packet):
+    def __init__(self, packet: bytes):
         self._packet = packet
         self._idx = 0
         self._len = len(packet)
 
-    def __bool__(self):
+    def __bool__(self) -> bool:
         return self._idx != self._len
 
-    def check_end(self):
+    def check_end(self) -> None:
         """Confirm that all of the data in the packet has been consumed"""
 
         if self:
             raise PacketDecodeError('Unexpected data at end of packet')
 
-    def get_consumed_payload(self):
+    def get_consumed_payload(self) -> bytes:
         """Return the portion of the packet consumed so far"""
 
         return self._packet[:self._idx]
 
-    def get_remaining_payload(self):
+    def get_remaining_payload(self) -> bytes:
         """Return the portion of the packet not yet consumed"""
 
         return self._packet[self._idx:]
 
-    def get_full_payload(self):
+    def get_full_payload(self) -> bytes:
         """Return the full packet"""
 
         return self._packet
 
-    def get_bytes(self, size):
+    def get_bytes(self, size: int) -> bytes:
         """Extract the requested number of bytes from the packet"""
 
         if self._idx + size > self._len:
@@ -118,37 +125,37 @@ class SSHPacket:
         self._idx += size
         return value
 
-    def get_byte(self):
+    def get_byte(self) -> int:
         """Extract a single byte from the packet"""
 
         return self.get_bytes(1)[0]
 
-    def get_boolean(self):
+    def get_boolean(self) -> bool:
         """Extract a boolean from the packet"""
 
         return bool(self.get_byte())
 
-    def get_uint32(self):
+    def get_uint32(self) -> int:
         """Extract a 32-bit integer from the packet"""
 
         return int.from_bytes(self.get_bytes(4), 'big')
 
-    def get_uint64(self):
+    def get_uint64(self) -> int:
         """Extract a 64-bit integer from the packet"""
 
         return int.from_bytes(self.get_bytes(8), 'big')
 
-    def get_string(self):
+    def get_string(self) -> bytes:
         """Extract a UTF-8 string from the packet"""
 
         return self.get_bytes(self.get_uint32())
 
-    def get_mpint(self):
+    def get_mpint(self) -> int:
         """Extract a multiple precision integer from the packet"""
 
         return int.from_bytes(self.get_string(), 'big', signed=True)
 
-    def get_namelist(self):
+    def get_namelist(self) -> Sequence[bytes]:
         """Extract a comma-separated list of byte strings from the packet"""
 
         namelist = self.get_string()
@@ -158,15 +165,16 @@ class SSHPacket:
 class SSHPacketLogger:
     """Parent class for SSH packet loggers"""
 
-    _handler_names = {}
+    _handler_names: Mapping[int, str] = {}
 
     @property
-    def logger(self):
+    def logger(self) -> SSHLogger:
         """The logger to use for packet logging"""
 
         raise NotImplementedError
 
-    def _log_packet(self, msg, pkttype, pktid, packet, note):
+    def _log_packet(self, msg: str, pkttype: int, pktid: Optional[int],
+                    packet: _LoggedPacket, note: str) -> None:
         """Log a sent/received packet"""
 
         if isinstance(packet, SSHPacket):
@@ -185,13 +193,15 @@ class SSHPacketLogger:
         self.logger.packet(pktid, packet, '%s %s, %s%s',
                            msg, name, count, note)
 
-    def log_sent_packet(self, pkttype, pktid, packet, note=''):
+    def log_sent_packet(self, pkttype: int, pktid: Optional[int],
+                        packet: _LoggedPacket, note: str = '') -> None:
         """Log a sent packet"""
 
         self._log_packet('Sent', pkttype, pktid, packet, note)
 
 
-    def log_received_packet(self, pkttype, pktid, packet, note=''):
+    def log_received_packet(self, pkttype: int, pktid: Optional[int],
+                            packet: _LoggedPacket, note: str = '') -> None:
         """Log a received packet"""
 
         self._log_packet('Received', pkttype, pktid, packet, note)
@@ -200,15 +210,16 @@ class SSHPacketLogger:
 class SSHPacketHandler(SSHPacketLogger):
     """Parent class for SSH packet handlers"""
 
-    _packet_handlers = {}
+    _packet_handlers: Mapping[int, _PacketHandler] = {}
 
     @property
-    def logger(self):
+    def logger(self) -> SSHLogger:
         """The logger associated with this packet handler"""
 
         raise NotImplementedError
 
-    def process_packet(self, pkttype, pktid, packet):
+    def process_packet(self, pkttype: int, pktid: int,
+                       packet: SSHPacket) -> bool:
         """Log and process a received packet"""
 
         if pkttype in self._packet_handlers:

@@ -187,7 +187,7 @@ class _TestAgent(AsyncTestCase):
             agent_keys = await agent.get_keys()
 
             for agent_key in agent_keys:
-                sig = await agent_key.sign(b'test')
+                sig = await agent_key.sign_async(b'test')
                 self.assertTrue(pubkey.verify(b'test', sig))
 
             await agent.remove_keys(agent_keys)
@@ -230,7 +230,7 @@ class _TestAgent(AsyncTestCase):
             agent_keys = await agent.get_keys()
 
         for agent_key in agent_keys:
-            sig = await agent_key.sign(b'test')
+            sig = await agent_key.sign_async(b'test')
             self.assertTrue(pubkey.verify(b'test', sig))
 
     @agent_test
@@ -267,8 +267,21 @@ class _TestAgent(AsyncTestCase):
         self.assertEqual(len(agent_keys), 0)
 
     @agent_test
+    async def test_add_nonlocal(self, agent):
+        """Test failure when adding a non-local key to an agent"""
+
+        key = asyncssh.generate_private_key('ssh-rsa')
+
+        async with agent:
+            await agent.add_keys([key])
+            agent_keys = await agent.get_keys()
+
+            with self.assertRaises(asyncssh.KeyImportError):
+                await agent.add_keys(agent_keys)
+
+    @agent_test
     async def test_add_keys_failure(self, agent):
-        """Test getting keys from the agent"""
+        """Test failure adding keys to the agent"""
 
         os.mkdir('.ssh', 0o700)
         key = asyncssh.generate_private_key('ssh-rsa')
@@ -371,12 +384,12 @@ class _TestAgent(AsyncTestCase):
 
         for agent_key in agent_keys:
             with self.assertRaises(ValueError):
-                sig = await agent_key.sign(b'test')
+                sig = await agent_key.sign_async(b'test')
 
         self.set_askpass(0)
 
         for agent_key in agent_keys:
-            sig = await agent_key.sign(b'test')
+            sig = await agent_key.sign_async(b'test')
             self.assertTrue(pubkey.verify(b'test', sig))
 
     @agent_test
@@ -393,12 +406,12 @@ class _TestAgent(AsyncTestCase):
 
         for agent_key in agent_keys:
             with self.assertRaises(ValueError):
-                await agent_key.sign(b'test')
+                await agent_key.sign_async(b'test')
 
         await agent.unlock('passphrase')
 
         for agent_key in agent_keys:
-            sig = await agent_key.sign(b'test')
+            sig = await agent_key.sign_async(b'test')
             self.assertTrue(pubkey.verify(b'test', sig))
 
     @asynctest

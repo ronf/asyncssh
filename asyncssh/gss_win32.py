@@ -23,6 +23,8 @@
 # Some of the imports below won't be found when running pylint on UNIX
 # pylint: disable=import-error
 
+from typing import Optional, Sequence, Union
+
 from sspi import ClientAuth, ServerAuth
 from sspi import error as SSPIError
 
@@ -38,68 +40,82 @@ from .asn1 import ObjectIdentifier, der_encode
 _krb5_oid = der_encode(ObjectIdentifier('1.2.840.113554.1.2.2'))
 
 
-class _GSSBase:
+class GSSBase:
     """GSS base class"""
 
     # Overridden in child classes
     _mutual_auth_flag = 0
     _integrity_flag = 0
 
-    def __init__(self, host):
+    def __init__(self, host: str):
         if '@' in host:
             self._host = host
         else:
             self._host = 'host/' + host
 
-        self._ctx = None
-        self._init_token = None
+        self._ctx: Optional[Union[ClientAuth, ServerAuth]] = None
+        self._init_token: Optional[bytes] = None
 
     @property
-    def mechs(self):
+    def mechs(self) -> Sequence[bytes]:
         """Return GSS mechanisms available for this host"""
 
         return [_krb5_oid]
 
     @property
-    def complete(self):
+    def complete(self) -> bool:
         """Return whether or not GSS negotiation is complete"""
+
+        assert self._ctx is not None
 
         return self._ctx.authenticated
 
     @property
-    def provides_mutual_auth(self):
+    def provides_mutual_auth(self) -> bool:
         """Return whether or not this context provides mutual authentication"""
 
-        return self._ctx.ctxt_attr & self._mutual_auth_flag
+        assert self._ctx is not None
+
+        return bool(self._ctx.ctxt_attr & self._mutual_auth_flag)
 
     @property
-    def provides_integrity(self):
+    def provides_integrity(self) -> bool:
         """Return whether or not this context provides integrity protection"""
 
-        return self._ctx.ctxt_attr & self._integrity_flag
+        assert self._ctx is not None
+
+        return bool(self._ctx.ctxt_attr & self._integrity_flag)
 
     @property
-    def user(self):
+    def user(self) -> str:
         """Return user principal associated with this context"""
+
+        assert self._ctx is not None
 
         names = self._ctx.ctxt.QueryContextAttributes(SECPKG_ATTR_NATIVE_NAMES)
         return names[0]
 
     @property
-    def host(self):
+    def host(self) -> str:
         """Return host principal associated with this context"""
+
+        assert self._ctx is not None
 
         names = self._ctx.ctxt.QueryContextAttributes(SECPKG_ATTR_NATIVE_NAMES)
         return names[1]
 
-    def reset(self):
+    def reset(self) -> None:
         """Reset GSS security context"""
+
+        assert self._ctx is not None
 
         if self._ctx.authenticated:
             self._ctx.reset()
 
-    def step(self, token=None):
+    def step(self, token: Optional[bytes] = None) -> Optional[bytes]:
         """Perform next step in GSS security exchange"""
+
+        assert self._ctx is not None
 
         if self._init_token:
             token = self._init_token
@@ -112,16 +128,20 @@ class _GSSBase:
         except SSPIError as exc:
             raise GSSError(details=exc.strerror) from None
 
-    def sign(self, data):
+    def sign(self, data: bytes) -> bytes:
         """Sign a block of data"""
+
+        assert self._ctx is not None
 
         try:
             return self._ctx.sign(data)
         except SSPIError as exc:
             raise GSSError(details=exc.strerror) from None
 
-    def verify(self, data, sig):
+    def verify(self, data: bytes, sig: bytes) -> bool:
         """Verify a signature for a block of data"""
+
+        assert self._ctx is not None
 
         try:
             self._ctx.verify(data, sig)
@@ -130,13 +150,13 @@ class _GSSBase:
             return False
 
 
-class GSSClient(_GSSBase):
+class GSSClient(GSSBase):
     """GSS client"""
 
     _mutual_auth_flag = ISC_RET_MUTUAL_AUTH
     _integrity_flag = ISC_RET_INTEGRITY
 
-    def __init__(self, host, delegate_creds):
+    def __init__(self, host: str, delegate_creds: bool):
         super().__init__(host)
 
         flags = ISC_REQ_MUTUAL_AUTH | ISC_REQ_INTEGRITY
@@ -153,13 +173,13 @@ class GSSClient(_GSSBase):
         self._init_token = self.step(None)
 
 
-class GSSServer(_GSSBase):
+class GSSServer(GSSBase):
     """GSS server"""
 
     _mutual_auth_flag = ASC_RET_MUTUAL_AUTH
     _integrity_flag = ASC_RET_INTEGRITY
 
-    def __init__(self, host):
+    def __init__(self, host: str):
         super().__init__(host)
 
         flags = ASC_REQ_MUTUAL_AUTH | ASC_REQ_INTEGRITY
@@ -171,9 +191,10 @@ class GSSServer(_GSSBase):
 
 
 class GSSError(Exception):
-    """Stub class for reporting that GSS is not available"""
+    """Class for reporting GSS errors"""
 
-    def __init__(self, maj_code=0, min_code=0, token=None, details=''):
+    def __init__(self, maj_code: int = 0, min_code: int = 0,
+                 token: bytes = None, details: str = ''):
         super().__init__(details)
 
         self.maj_code = maj_code

@@ -20,15 +20,32 @@
 
 """SSH authentication handlers"""
 
+from typing import TYPE_CHECKING, Awaitable, Dict, List, Optional
+from typing import Sequence, Tuple, Type, Union, cast
+
 from .constants import DEFAULT_LANG
-
-from .gss import GSSError
-
+from .gss import GSSBase, GSSError
+from .logging import SSHLogger
 from .misc import ProtocolError, PasswordChangeRequired, get_symbol_names
-
-from .packet import Boolean, String, UInt32, SSHPacketHandler
-
+from .packet import Boolean, String, UInt32, SSHPacket, SSHPacketHandler
+from .public_key import SigningKey
 from .saslprep import saslprep, SASLPrepError
+
+
+if TYPE_CHECKING:
+    import asyncio
+
+    # pylint: disable=cyclic-import
+    from .connection import SSHConnection, SSHClientConnection
+    from .connection import SSHServerConnection
+
+
+KbdIntPrompts = Sequence[Tuple[str, bool]]
+KbdIntNewChallenge = Tuple[str, str, str, KbdIntPrompts]
+KbdIntChallenge = Union[bool, KbdIntNewChallenge]
+KbdIntResponse = Sequence[str]
+
+PasswordChangeResponse = Tuple[str, str]
 
 
 # SSH message values for GSS auth
@@ -49,38 +66,39 @@ MSG_USERAUTH_INFO_RESPONSE            = 61
 # SSH message values for password auth
 MSG_USERAUTH_PASSWD_CHANGEREQ         = 60
 
-_auth_methods = []
-_client_auth_handlers = {}
-_server_auth_handlers = {}
+_auth_methods: List[bytes] = []
+_client_auth_handlers: Dict[bytes, Type['ClientAuth']] = {}
+_server_auth_handlers: Dict[bytes, Type['ServerAuth']] = {}
 
 
-class _Auth(SSHPacketHandler):
+class Auth(SSHPacketHandler):
     """Parent class for authentication"""
 
-    def __init__(self, conn, coro):
+    def __init__(self, conn: 'SSHConnection', coro: Awaitable[None]):
         self._conn = conn
         self._logger = conn.logger
-        self._coro = conn.create_task(coro)
+        self._coro: Optional['asyncio.Task[None]'] = conn.create_task(coro)
 
-    def send_packet(self, pkttype, *args, trivial=True):
+    def send_packet(self, pkttype: int, *args: bytes,
+                    trivial: bool = True) -> None:
         """Send an auth packet"""
 
         self._conn.send_userauth_packet(pkttype, *args, handler=self,
                                         trivial=trivial)
 
     @property
-    def logger(self):
+    def logger(self) -> SSHLogger:
         """A logger associated with this authentication handler"""
 
         return self._logger
 
-    def create_task(self, coro):
+    def create_task(self, coro: Awaitable[None]) -> None:
         """Create an asynchronous auth task"""
 
         self.cancel()
         self._coro = self._conn.create_task(coro)
 
-    def cancel(self):
+    def cancel(self) -> None:
         """Cancel any authentication in progress"""
 
         if self._coro: # pragma: no branch
@@ -88,46 +106,50 @@ class _Auth(SSHPacketHandler):
             self._coro = None
 
 
-class _ClientAuth(_Auth):
+class ClientAuth(Auth):
     """Parent class for client authentication"""
 
-    def __init__(self, conn, method):
+    _conn: 'SSHClientConnection'
+
+    def __init__(self, conn: 'SSHClientConnection', method: bytes):
         self._method = method
 
         super().__init__(conn, self._start())
 
-    async def _start(self):
+    async def _start(self) -> None:
         """Abstract method for starting client authentication"""
 
         # Provided by subclass
         raise NotImplementedError
 
-    def auth_succeeded(self):
+    def auth_succeeded(self) -> None:
         """Callback when auth succeeds"""
 
-    def auth_failed(self):
+    def auth_failed(self) -> None:
         """Callback when auth fails"""
 
-    async def send_request(self, *args, key=None, trivial=True):
+    async def send_request(self, *args: bytes,
+                           key: Optional[SigningKey] = None,
+                           trivial: bool = True) -> None:
         """Send a user authentication request"""
 
         await self._conn.send_userauth_request(self._method, *args, key=key,
                                                trivial=trivial)
 
 
-class _ClientNullAuth(_ClientAuth):
+class _ClientNullAuth(ClientAuth):
     """Client side implementation of null auth"""
 
-    async def _start(self):
+    async def _start(self) -> None:
         """Start client null authentication"""
 
         await self.send_request()
 
 
-class _ClientGSSKexAuth(_ClientAuth):
+class _ClientGSSKexAuth(ClientAuth):
     """Client side implementation of GSS key exchange auth"""
 
-    async def _start(self):
+    async def _start(self) -> None:
         """Start client GSS key exchange authentication"""
 
         if self._conn.gss_kex_auth_requested():
@@ -139,18 +161,18 @@ class _ClientGSSKexAuth(_ClientAuth):
             self._conn.try_next_auth()
 
 
-class _ClientGSSMICAuth(_ClientAuth):
+class _ClientGSSMICAuth(ClientAuth):
     """Client side implementation of GSS MIC auth"""
 
     _handler_names = get_symbol_names(globals(), 'MSG_USERAUTH_GSSAPI_')
 
-    def __init__(self, conn, method):
+    def __init__(self, conn: 'SSHClientConnection', method: bytes):
         super().__init__(conn, method)
 
-        self._gss = None
+        self._gss: Optional[GSSBase] = None
         self._got_error = False
 
-    async def _start(self):
+    async def _start(self) -> None:
         """Start client GSS MIC authentication"""
 
         if self._conn.gss_mic_auth_requested():
@@ -163,8 +185,10 @@ class _ClientGSSMICAuth(_ClientAuth):
         else:
             self._conn.try_next_auth()
 
-    def _finish(self):
+    def _finish(self) -> None:
         """Finish client GSS MIC authentication"""
+
+        assert self._gss is not None
 
         if self._gss.provides_integrity:
             data = self._conn.get_userauth_request_data(self._method)
@@ -175,17 +199,21 @@ class _ClientGSSMICAuth(_ClientAuth):
         else:
             self.send_packet(MSG_USERAUTH_GSSAPI_EXCHANGE_COMPLETE)
 
-    def _process_response(self, _pkttype, _pktid, packet):
+    def _process_response(self, _pkttype: int, _pktid: int,
+                          packet: SSHPacket) -> None:
         """Process a GSS response from the server"""
 
         mech = packet.get_string()
         packet.check_end()
+
+        assert self._gss is not None
 
         if mech not in self._gss.mechs:
             raise ProtocolError('Mechanism mismatch')
 
         try:
             token = self._gss.step()
+            assert token is not None
 
             self.send_packet(MSG_USERAUTH_GSSAPI_TOKEN, String(token))
 
@@ -197,13 +225,14 @@ class _ClientGSSMICAuth(_ClientAuth):
 
             self._conn.try_next_auth()
 
-        return True
-
-    def _process_token(self, _pkttype, _pktid, packet):
+    def _process_token(self, _pkttype: int, _pktid: int,
+                       packet: SSHPacket) -> None:
         """Process a GSS token from the server"""
 
-        token = packet.get_string()
+        token: Optional[bytes] = packet.get_string()
         packet.check_end()
+
+        assert self._gss is not None
 
         try:
             token = self._gss.step(token)
@@ -219,9 +248,8 @@ class _ClientGSSMICAuth(_ClientAuth):
 
             self._conn.try_next_auth()
 
-        return True
-
-    def _process_error(self, _pkttype, _pktid, packet):
+    def _process_error(self, _pkttype: int, _pktid: int,
+                       packet: SSHPacket) -> None:
         """Process a GSS error from the server"""
 
         _ = packet.get_uint32()         # major_status
@@ -233,21 +261,20 @@ class _ClientGSSMICAuth(_ClientAuth):
         self.logger.debug1('GSS error from server: %s', msg)
         self._got_error = True
 
-        return True
-
-    def _process_error_token(self, _pkttype, _pktid, packet):
+    def _process_error_token(self, _pkttype: int, _pktid: int,
+                             packet: SSHPacket) -> None:
         """Process a GSS error token from the server"""
 
         token = packet.get_string()
         packet.check_end()
+
+        assert self._gss is not None
 
         try:
             self._gss.step(token)
         except GSSError as exc:
             if not self._got_error: # pragma: no cover
                 self.logger.debug1('GSS error from server: %s', str(exc))
-
-        return True
 
     _packet_handlers = {
         MSG_USERAUTH_GSSAPI_RESPONSE: _process_response,
@@ -257,10 +284,10 @@ class _ClientGSSMICAuth(_ClientAuth):
     }
 
 
-class _ClientHostBasedAuth(_ClientAuth):
+class _ClientHostBasedAuth(ClientAuth):
     """Client side implementation of host based auth"""
 
-    async def _start(self):
+    async def _start(self) -> None:
         """Start client host based authentication"""
 
         keypair, client_host, client_username = \
@@ -280,16 +307,16 @@ class _ClientHostBasedAuth(_ClientAuth):
                                     String(client_host),
                                     String(client_username), key=keypair)
         except ValueError as exc:
-            self.logger.debug1('Host based auth failed: %s', exc)
+            self.logger.debug1('Host based auth failed: %s', str(exc))
             self._conn.try_next_auth()
 
 
-class _ClientPublicKeyAuth(_ClientAuth):
+class _ClientPublicKeyAuth(ClientAuth):
     """Client side implementation of public key auth"""
 
     _handler_names = get_symbol_names(globals(), 'MSG_USERAUTH_PK_')
 
-    async def _start(self):
+    async def _start(self) -> None:
         """Start client public key authentication"""
 
         self._keypair = await self._conn.public_key_auth_requested()
@@ -305,8 +332,10 @@ class _ClientPublicKeyAuth(_ClientAuth):
                                 String(self._keypair.algorithm),
                                 String(self._keypair.public_data))
 
-    async def _send_signed_request(self):
+    async def _send_signed_request(self) -> None:
         """Send signed public key request"""
+
+        assert self._keypair is not None
 
         self.logger.debug1('Signing request with %s key',
                            self._keypair.algorithm)
@@ -316,31 +345,33 @@ class _ClientPublicKeyAuth(_ClientAuth):
                                 String(self._keypair.public_data),
                                 key=self._keypair, trivial=False)
 
-    def _process_public_key_ok(self, _pkttype, _pktid, packet):
+    def _process_public_key_ok(self, _pkttype: int, _pktid: int,
+                               packet: SSHPacket) -> None:
         """Process a public key ok response"""
 
         algorithm = packet.get_string()
         key_data = packet.get_string()
         packet.check_end()
 
+        assert self._keypair is not None
+
         if (algorithm != self._keypair.algorithm or
                 key_data != self._keypair.public_data):
             raise ProtocolError('Key mismatch')
 
         self.create_task(self._send_signed_request())
-        return True
 
     _packet_handlers = {
         MSG_USERAUTH_PK_OK: _process_public_key_ok
     }
 
 
-class _ClientKbdIntAuth(_ClientAuth):
+class _ClientKbdIntAuth(ClientAuth):
     """Client side implementation of keyboard-interactive auth"""
 
     _handler_names = get_symbol_names(globals(), 'MSG_USERAUTH_INFO_')
 
-    async def _start(self):
+    async def _start(self) -> None:
         """Start client keyboard interactive authentication"""
 
         submethods = await self._conn.kbdint_auth_requested()
@@ -353,7 +384,8 @@ class _ClientKbdIntAuth(_ClientAuth):
 
         await self.send_request(String(''), String(submethods))
 
-    async def _receive_challenge(self, name, instruction, lang, prompts):
+    async def _receive_challenge(self, name: str, instruction: str, lang: str,
+                                 prompts: KbdIntPrompts) -> None:
         """Receive and respond to a keyboard interactive challenge"""
 
         responses = \
@@ -368,17 +400,18 @@ class _ClientKbdIntAuth(_ClientAuth):
                          b''.join(String(r) for r in responses),
                          trivial=not responses)
 
-    def _process_info_request(self, _pkttype, _pktid, packet):
+    def _process_info_request(self, _pkttype: int, _pktid: int,
+                              packet: SSHPacket) -> None:
         """Process a keyboard interactive authentication request"""
 
-        name = packet.get_string()
-        instruction = packet.get_string()
-        lang = packet.get_string()
+        name_bytes = packet.get_string()
+        instruction_bytes = packet.get_string()
+        lang_bytes = packet.get_string()
 
         try:
-            name = name.decode('utf-8')
-            instruction = instruction.decode('utf-8')
-            lang = lang.decode('ascii')
+            name = name_bytes.decode('utf-8')
+            instruction = instruction_bytes.decode('utf-8')
+            lang = lang_bytes.decode('ascii')
         except UnicodeDecodeError:
             raise ProtocolError('Invalid keyboard interactive '
                                 'info request') from None
@@ -386,11 +419,11 @@ class _ClientKbdIntAuth(_ClientAuth):
         num_prompts = packet.get_uint32()
         prompts = []
         for _ in range(num_prompts):
-            prompt = packet.get_string()
+            prompt_bytes = packet.get_string()
             echo = packet.get_boolean()
 
             try:
-                prompt = prompt.decode('utf-8')
+                prompt = prompt_bytes.decode('utf-8')
             except UnicodeDecodeError:
                 raise ProtocolError('Invalid keyboard interactive '
                                     'info request') from None
@@ -400,24 +433,22 @@ class _ClientKbdIntAuth(_ClientAuth):
         self.create_task(self._receive_challenge(name, instruction,
                                                  lang, prompts))
 
-        return True
-
     _packet_handlers = {
         MSG_USERAUTH_INFO_REQUEST: _process_info_request
     }
 
 
-class _ClientPasswordAuth(_ClientAuth):
+class _ClientPasswordAuth(ClientAuth):
     """Client side implementation of password auth"""
 
     _handler_names = get_symbol_names(globals(), 'MSG_USERAUTH_PASSWD_')
 
-    def __init__(self, conn, method):
+    def __init__(self, conn: 'SSHClientConnection', method: bytes):
         super().__init__(conn, method)
 
         self._password_change = False
 
-    async def _start(self):
+    async def _start(self) -> None:
         """Start client password authentication"""
 
         password = await self._conn.password_auth_requested()
@@ -431,7 +462,7 @@ class _ClientPasswordAuth(_ClientAuth):
         await self.send_request(Boolean(False), String(password),
                                 trivial=False)
 
-    async def _change_password(self, prompt, lang):
+    async def _change_password(self, prompt: str, lang: str) -> None:
         """Start password change"""
 
         result = await self._conn.password_change_requested(prompt, lang)
@@ -443,7 +474,7 @@ class _ClientPasswordAuth(_ClientAuth):
 
         self.logger.debug1('Trying to chsnge password')
 
-        old_password, new_password = result
+        old_password, new_password = cast(PasswordChangeResponse, result)
 
         self._password_change = True
 
@@ -452,92 +483,101 @@ class _ClientPasswordAuth(_ClientAuth):
                                 String(new_password.encode('utf-8')),
                                 trivial=False)
 
-    def auth_succeeded(self):
+    def auth_succeeded(self) -> None:
         if self._password_change:
             self._password_change = False
             self._conn.password_changed()
 
-    def auth_failed(self):
+    def auth_failed(self) -> None:
         if self._password_change:
             self._password_change = False
             self._conn.password_change_failed()
 
-    def _process_password_change(self, _pkttype, _pktid, packet):
+    def _process_password_change(self, _pkttype: int, _pktid: int,
+                                 packet: SSHPacket) -> None:
         """Process a password change request"""
 
-        prompt = packet.get_string()
-        lang = packet.get_string()
+        prompt_bytes = packet.get_string()
+        lang_bytes = packet.get_string()
 
         try:
-            prompt = prompt.decode('utf-8')
-            lang = lang.decode('ascii')
+            prompt = prompt_bytes.decode('utf-8')
+            lang = lang_bytes.decode('ascii')
         except UnicodeDecodeError:
             raise ProtocolError('Invalid password change request') from None
 
         self.auth_failed()
         self.create_task(self._change_password(prompt, lang))
 
-        return True
-
     _packet_handlers = {
         MSG_USERAUTH_PASSWD_CHANGEREQ: _process_password_change
     }
 
 
-class _ServerAuth(_Auth):
+class ServerAuth(Auth):
     """Parent class for server authentication"""
 
-    def __init__(self, conn, username, method, packet):
+    _conn: 'SSHServerConnection'
+
+    def __init__(self, conn: 'SSHServerConnection', username: str,
+                 method: bytes, packet: SSHPacket):
         self._username = username
         self._method = method
 
         super().__init__(conn, self._start(packet))
 
-    async def _start(self, packet):
+    @classmethod
+    def supported(cls, conn: 'SSHServerConnection') -> bool:
+        """Return whether this authentication method is supported"""
+
+        raise NotImplementedError
+
+    async def _start(self, packet: SSHPacket) -> None:
         """Abstract method for starting server authentication"""
 
         # Provided by subclass
         raise NotImplementedError
 
-    def send_failure(self, partial_success=False):
+    def send_failure(self, partial_success: bool = False) -> None:
         """Send a user authentication failure response"""
 
         self._conn.send_userauth_failure(partial_success)
 
-    def send_success(self):
+    def send_success(self) -> None:
         """Send a user authentication success response"""
 
         self._conn.send_userauth_success()
 
 
-class _ServerNullAuth(_ServerAuth):
+class _ServerNullAuth(ServerAuth):
     """Server side implementation of null auth"""
 
     @classmethod
-    def supported(cls, _conn):
+    def supported(cls, conn: 'SSHServerConnection') -> bool:
         """Return that null authentication is never a supported auth mode"""
 
         return False
 
-    async def _start(self, packet):
+    async def _start(self, packet: SSHPacket) -> None:
         """Supported always returns false, so we never get here"""
 
 
-class _ServerGSSKexAuth(_ServerAuth):
+class _ServerGSSKexAuth(ServerAuth):
     """Server side implementation of GSS key exchange auth"""
 
-    def __init__(self, conn, username, method, packet):
+    def __init__(self, conn: 'SSHServerConnection', username: str,
+                 method: bytes, packet: SSHPacket):
         super().__init__(conn, username, method, packet)
 
         self._gss = conn.get_gss_context()
 
     @classmethod
-    def supported(cls, conn):
+    def supported(cls, conn: 'SSHServerConnection') -> bool:
         """Return whether GSS key exchange authentication is supported"""
 
         return conn.gss_kex_auth_supported()
 
-    async def _start(self, packet):
+    async def _start(self, packet: SSHPacket) -> None:
         """Start server GSS key exchange authentication"""
 
         mic = packet.get_string()
@@ -556,23 +596,24 @@ class _ServerGSSKexAuth(_ServerAuth):
             self.send_failure()
 
 
-class _ServerGSSMICAuth(_ServerAuth):
+class _ServerGSSMICAuth(ServerAuth):
     """Server side implementation of GSS MIC auth"""
 
     _handler_names = get_symbol_names(globals(), 'MSG_USERAUTH_GSSAPI_')
 
-    def __init__(self, conn, username, method, packet):
+    def __init__(self, conn: 'SSHServerConnection', username: str,
+                 method: bytes, packet: SSHPacket) -> None:
         super().__init__(conn, username, method, packet)
 
         self._gss = conn.get_gss_context()
 
     @classmethod
-    def supported(cls, conn):
+    def supported(cls, conn: 'SSHServerConnection') -> bool:
         """Return whether GSS MIC authentication is supported"""
 
         return conn.gss_mic_auth_supported()
 
-    async def _start(self, packet):
+    async def _start(self, packet: SSHPacket) -> None:
         """Start server GSS MIC authentication"""
 
         mechs = set()
@@ -597,7 +638,7 @@ class _ServerGSSMICAuth(_ServerAuth):
 
         self.send_packet(MSG_USERAUTH_GSSAPI_RESPONSE, String(match))
 
-    async def _finish(self):
+    async def _finish(self) -> None:
         """Finish server GSS MIC authentication"""
 
         if (await self._conn.validate_gss_principal(self._username,
@@ -607,10 +648,11 @@ class _ServerGSSMICAuth(_ServerAuth):
         else:
             self.send_failure()
 
-    def _process_token(self, _pkttype, _pktid, packet):
+    def _process_token(self, _pkttype: int, _pktid: int,
+                       packet: SSHPacket) -> None:
         """Process a GSS token from the client"""
 
-        token = packet.get_string()
+        token: Optional[bytes] = packet.get_string()
         packet.check_end()
 
         try:
@@ -628,9 +670,8 @@ class _ServerGSSMICAuth(_ServerAuth):
 
             self.send_failure()
 
-        return True
-
-    def _process_exchange_complete(self, _pkttype, _pktid, packet):
+    def _process_exchange_complete(self, _pkttype: int, _pktid: int,
+                                   packet: SSHPacket) -> None:
         """Process a GSS exchange complete message from the client"""
 
         packet.check_end()
@@ -640,9 +681,8 @@ class _ServerGSSMICAuth(_ServerAuth):
         else:
             self.send_failure()
 
-        return True
-
-    def _process_error_token(self, _pkttype, _pktid, packet):
+    def _process_error_token(self, _pkttype: int, _pktid: int,
+                             packet: SSHPacket) -> None:
         """Process a GSS error token from the client"""
 
         token = packet.get_string()
@@ -653,9 +693,8 @@ class _ServerGSSMICAuth(_ServerAuth):
         except GSSError as exc:
             self.logger.debug1('GSS error from client: %s', str(exc))
 
-        return True
-
-    def _process_mic(self, _pkttype, _pktid, packet):
+    def _process_mic(self, _pkttype: int, _pktid: int,
+                     packet: SSHPacket) -> None:
         """Process a GSS MIC from the client"""
 
         mic = packet.get_string()
@@ -669,8 +708,6 @@ class _ServerGSSMICAuth(_ServerAuth):
         else:
             self.send_failure()
 
-        return True
-
     _packet_handlers = {
         MSG_USERAUTH_GSSAPI_TOKEN:             _process_token,
         MSG_USERAUTH_GSSAPI_EXCHANGE_COMPLETE: _process_exchange_complete,
@@ -679,30 +716,30 @@ class _ServerGSSMICAuth(_ServerAuth):
     }
 
 
-class _ServerHostBasedAuth(_ServerAuth):
+class _ServerHostBasedAuth(ServerAuth):
     """Server side implementation of host based auth"""
 
     @classmethod
-    def supported(cls, conn):
+    def supported(cls, conn: 'SSHServerConnection') -> bool:
         """Return whether host based authentication is supported"""
 
         return conn.host_based_auth_supported()
 
-    async def _start(self, packet):
+    async def _start(self, packet: SSHPacket) -> None:
         """Start server host based authentication"""
 
         algorithm = packet.get_string()
         key_data = packet.get_string()
-        client_host = packet.get_string()
-        client_username = packet.get_string()
+        client_host_bytes = packet.get_string()
+        client_username_bytes = packet.get_string()
         msg = packet.get_consumed_payload()
         signature = packet.get_string()
 
         packet.check_end()
 
         try:
-            client_host = client_host.decode('utf-8')
-            client_username = saslprep(client_username.decode('utf-8'))
+            client_host = client_host_bytes.decode('utf-8')
+            client_username = saslprep(client_username_bytes.decode('utf-8'))
         except (UnicodeDecodeError, SASLPrepError):
             raise ProtocolError('Invalid host-based auth request') from None
 
@@ -719,16 +756,16 @@ class _ServerHostBasedAuth(_ServerAuth):
             self.send_failure()
 
 
-class _ServerPublicKeyAuth(_ServerAuth):
+class _ServerPublicKeyAuth(ServerAuth):
     """Server side implementation of public key auth"""
 
     @classmethod
-    def supported(cls, conn):
+    def supported(cls, conn: 'SSHServerConnection') -> bool:
         """Return whether public key authentication is supported"""
 
         return conn.public_key_auth_supported()
 
-    async def _start(self, packet):
+    async def _start(self, packet: SSHPacket) -> None:
         """Start server public key authentication"""
 
         sig_present = packet.get_boolean()
@@ -739,8 +776,8 @@ class _ServerPublicKeyAuth(_ServerAuth):
             msg = packet.get_consumed_payload()
             signature = packet.get_string()
         else:
-            msg = None
-            signature = None
+            msg = b''
+            signature = b''
 
         packet.check_end()
 
@@ -760,27 +797,27 @@ class _ServerPublicKeyAuth(_ServerAuth):
             self.send_failure()
 
 
-class _ServerKbdIntAuth(_ServerAuth):
+class _ServerKbdIntAuth(ServerAuth):
     """Server side implementation of keyboard-interactive auth"""
 
     _handler_names = get_symbol_names(globals(), 'MSG_USERAUTH_INFO_')
 
     @classmethod
-    def supported(cls, conn):
+    def supported(cls, conn: 'SSHServerConnection') -> bool:
         """Return whether keyboard interactive authentication is supported"""
 
         return conn.kbdint_auth_supported()
 
-    async def _start(self, packet):
+    async def _start(self, packet: SSHPacket) -> None:
         """Start server keyboard interactive authentication"""
 
-        lang = packet.get_string()
-        submethods = packet.get_string()
+        lang_bytes = packet.get_string()
+        submethods_bytes = packet.get_string()
         packet.check_end()
 
         try:
-            lang = lang.decode('ascii')
-            submethods = submethods.decode('utf-8')
+            lang = lang_bytes.decode('ascii')
+            submethods = submethods_bytes.decode('utf-8')
         except UnicodeDecodeError:
             raise ProtocolError('Invalid keyboard interactive '
                                 'auth request') from None
@@ -791,41 +828,42 @@ class _ServerKbdIntAuth(_ServerAuth):
                                                           lang, submethods)
         self._send_challenge(challenge)
 
-    def _send_challenge(self, challenge):
+    def _send_challenge(self, challenge: KbdIntChallenge) -> None:
         """Send a keyboard interactive authentication request"""
 
         if isinstance(challenge, (tuple, list)):
             name, instruction, lang, prompts = challenge
 
             num_prompts = len(prompts)
-            prompts = (String(prompt) + Boolean(echo)
-                       for prompt, echo in prompts)
+            prompts_bytes = (String(prompt) + Boolean(echo)
+                             for prompt, echo in prompts)
 
             self.send_packet(MSG_USERAUTH_INFO_REQUEST, String(name),
                              String(instruction), String(lang),
-                             UInt32(num_prompts), *prompts)
+                             UInt32(num_prompts), *prompts_bytes)
         elif challenge:
             self.send_success()
         else:
             self.send_failure()
 
-    async def _validate_response(self, responses):
+    async def _validate_response(self, responses: KbdIntResponse) -> None:
         """Validate a keyboard interactive authentication response"""
 
         next_challenge = \
             await self._conn.validate_kbdint_response(self._username, responses)
         self._send_challenge(next_challenge)
 
-    def _process_info_response(self, _pkttype, _pktid, packet):
+    def _process_info_response(self, _pkttype: int, _pktid: int,
+                               packet: SSHPacket) -> None:
         """Process a keyboard interactive authentication response"""
 
         num_responses = packet.get_uint32()
         responses = []
         for _ in range(num_responses):
-            response = packet.get_string()
+            response_bytes = packet.get_string()
 
             try:
-                response = response.decode('utf-8')
+                response = response_bytes.decode('utf-8')
             except UnicodeDecodeError:
                 raise ProtocolError('Invalid keyboard interactive '
                                     'info response') from None
@@ -835,33 +873,32 @@ class _ServerKbdIntAuth(_ServerAuth):
         packet.check_end()
 
         self.create_task(self._validate_response(responses))
-        return True
 
     _packet_handlers = {
         MSG_USERAUTH_INFO_RESPONSE: _process_info_response
     }
 
 
-class _ServerPasswordAuth(_ServerAuth):
+class _ServerPasswordAuth(ServerAuth):
     """Server side implementation of password auth"""
 
     @classmethod
-    def supported(cls, conn):
+    def supported(cls, conn: 'SSHServerConnection') -> bool:
         """Return whether password authentication is supported"""
 
         return conn.password_auth_supported()
 
-    async def _start(self, packet):
+    async def _start(self, packet: SSHPacket) -> None:
         """Start server password authentication"""
 
         password_change = packet.get_boolean()
-        password = packet.get_string()
-        new_password = packet.get_string() if password_change else b''
+        password_bytes = packet.get_string()
+        new_password_bytes = packet.get_string() if password_change else b''
         packet.check_end()
 
         try:
-            password = saslprep(password.decode('utf-8'))
-            new_password = saslprep(new_password.decode('utf-8'))
+            password = saslprep(password_bytes.decode('utf-8'))
+            new_password = saslprep(new_password_bytes.decode('utf-8'))
         except (UnicodeDecodeError, SASLPrepError):
             raise ProtocolError('Invalid password auth request') from None
 
@@ -887,7 +924,8 @@ class _ServerPasswordAuth(_ServerAuth):
                              String(exc.prompt), String(exc.lang))
 
 
-def register_auth_method(alg, client_handler, server_handler):
+def register_auth_method(alg: bytes, client_handler: Type[ClientAuth],
+        server_handler: Type[ServerAuth]) -> None:
     """Register an authentication method"""
 
     _auth_methods.append(alg)
@@ -895,14 +933,15 @@ def register_auth_method(alg, client_handler, server_handler):
     _server_auth_handlers[alg] = server_handler
 
 
-def get_client_auth_methods():
+def get_client_auth_methods() -> Sequence[bytes]:
     """Return a list of supported client auth methods"""
 
     return [method for method in _client_auth_handlers
             if method != b'none']
 
 
-def lookup_client_auth(conn, method):
+def lookup_client_auth(conn: 'SSHClientConnection',
+                       method: bytes) -> Optional[ClientAuth]:
     """Look up the client authentication method to use"""
 
     if method in _auth_methods:
@@ -911,7 +950,7 @@ def lookup_client_auth(conn, method):
         return None
 
 
-def get_server_auth_methods(conn):
+def get_server_auth_methods(conn: 'SSHServerConnection') -> Sequence[bytes]:
     """Return a list of supported server auth methods"""
 
     auth_methods = []
@@ -923,7 +962,9 @@ def get_server_auth_methods(conn):
     return auth_methods
 
 
-def lookup_server_auth(conn, username, method, packet):
+def lookup_server_auth(conn: 'SSHServerConnection', username: str,
+                       method: bytes, packet: SSHPacket) -> \
+        Optional[ServerAuth]:
     """Look up the server authentication method to use"""
 
     handler = _server_auth_handlers.get(method)

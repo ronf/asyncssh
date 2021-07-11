@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2019 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2021 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -20,13 +20,32 @@
 
 """SSH session handlers"""
 
+from typing import TYPE_CHECKING, Any, AnyStr, Callable, Generic
+from typing import Mapping, Optional, Tuple, Union
 
-class SSHSession:
+
+if TYPE_CHECKING:
+    # pylint: disable=cyclic-import
+    from .channel import SSHClientChannel, SSHServerChannel
+    from .channel import SSHTCPChannel, SSHUNIXChannel
+
+DataType = Optional[int]
+
+TermModes = Mapping[int, int]
+TermModesArg = Optional[TermModes]
+TermSize = Tuple[int, int, int, int]
+TermSizeArg = Union[None, Tuple[int, int], TermSize]
+
+
+class SSHSession(Generic[AnyStr]):
     """SSH session handler"""
 
     # pylint: disable=no-self-use,unused-argument
 
-    def connection_lost(self, exc):
+    def connection_made(self, chan: Any) -> None:
+        """Called when a channel is opened successfully"""
+
+    def connection_lost(self, exc: Optional[Exception]) -> None:
         """Called when a channel is closed
 
            This method is called when a channel is closed. If the channel
@@ -40,7 +59,7 @@ class SSHSession:
 
         """
 
-    def session_started(self):
+    def session_started(self) -> None:
         """Called when the session is started
 
            This method is called when a session has started up. For
@@ -51,7 +70,7 @@ class SSHSession:
 
         """
 
-    def data_received(self, data, datatype):
+    def data_received(self, data: AnyStr, datatype: DataType) -> None:
         """Called when data is received on the channel
 
            This method is called when data is received on the channel.
@@ -69,7 +88,7 @@ class SSHSession:
 
         """
 
-    def eof_received(self):
+    def eof_received(self) -> bool:
         """Called when EOF is received on the channel
 
            This method is called when an end-of-file indication is received
@@ -87,7 +106,7 @@ class SSHSession:
 
         return False # pragma: no cover
 
-    def pause_writing(self):
+    def pause_writing(self) -> None:
         """Called when the write buffer becomes full
 
            This method is called when the channel's write buffer becomes
@@ -98,7 +117,7 @@ class SSHSession:
 
         """
 
-    def resume_writing(self):
+    def resume_writing(self) -> None:
         """Called when the write buffer has sufficiently drained
 
            This method is called when the channel's send window reopens
@@ -108,7 +127,7 @@ class SSHSession:
         """
 
 
-class SSHClientSession(SSHSession):
+class SSHClientSession(SSHSession[AnyStr]):
     """SSH client session handler
 
        Applications should subclass this when implementing an SSH client
@@ -128,7 +147,7 @@ class SSHClientSession(SSHSession):
 
     # pylint: disable=no-self-use,unused-argument
 
-    def connection_made(self, chan):
+    def connection_made(self, chan: 'SSHClientChannel[AnyStr]') -> None:
         """Called when a channel is opened successfully
 
            This method is called when a channel is opened successfully. The
@@ -140,7 +159,7 @@ class SSHClientSession(SSHSession):
 
         """
 
-    def xon_xoff_requested(self, client_can_do):
+    def xon_xoff_requested(self, client_can_do: bool) -> None:
         """XON/XOFF flow control has been enabled or disabled
 
            This method is called to notify the client whether or not
@@ -161,7 +180,7 @@ class SSHClientSession(SSHSession):
 
         """
 
-    def exit_status_received(self, status):
+    def exit_status_received(self, status: int) -> None:
         """A remote exit status has been received for this session
 
            This method is called when the shell, command, or subsystem
@@ -178,7 +197,8 @@ class SSHClientSession(SSHSession):
 
         """
 
-    def exit_signal_received(self, signal, core_dumped, msg, lang):
+    def exit_signal_received(self, signal: str, core_dumped: bool,
+                             msg: str, lang: str) -> None:
         """A remote exit signal has been received for this session
 
            This method is called when the shell, command, or subsystem
@@ -205,7 +225,7 @@ class SSHClientSession(SSHSession):
         """
 
 
-class SSHServerSession(SSHSession):
+class SSHServerSession(SSHSession[AnyStr]):
     """SSH server session handler
 
        Applications should subclass this when implementing an SSH server
@@ -227,7 +247,7 @@ class SSHServerSession(SSHSession):
 
     # pylint: disable=no-self-use,unused-argument
 
-    def connection_made(self, chan):
+    def connection_made(self, chan: 'SSHServerChannel[AnyStr]') -> None:
         """Called when a channel is opened successfully
 
            This method is called when a channel is opened successfully. The
@@ -239,7 +259,9 @@ class SSHServerSession(SSHSession):
 
         """
 
-    def pty_requested(self, term_type, term_size, term_modes):
+    def pty_requested(self, term_type: str,
+                      term_size: Tuple[int, int, int, int],
+                      term_modes: Mapping[int, int]) -> bool:
         """A psuedo-terminal has been requested
 
            This method is called when the client sends a request to allocate
@@ -280,7 +302,8 @@ class SSHServerSession(SSHSession):
 
         return True # pragma: no cover
 
-    def terminal_size_changed(self, width, height, pixwidth, pixheight):
+    def terminal_size_changed(self, width: int, height: int,
+                              pixwidth: int, pixheight: int) -> None:
         """The terminal size has changed
 
            This method is called when a client requests a
@@ -306,7 +329,7 @@ class SSHServerSession(SSHSession):
 
         """
 
-    def shell_requested(self):
+    def shell_requested(self) -> bool:
         """The client has requested a shell
 
            This method should be implemented by the application to
@@ -327,7 +350,7 @@ class SSHServerSession(SSHSession):
 
         return False # pragma: no cover
 
-    def exec_requested(self, command):
+    def exec_requested(self, command: str) -> bool:
         """The client has requested to execute a command
 
            This method should be implemented by the application to
@@ -352,7 +375,7 @@ class SSHServerSession(SSHSession):
 
         return False # pragma: no cover
 
-    def subsystem_requested(self, subsystem):
+    def subsystem_requested(self, subsystem: str) -> bool:
         """The client has requested to start a subsystem
 
            This method should be implemented by the application to
@@ -377,7 +400,7 @@ class SSHServerSession(SSHSession):
 
         return False # pragma: no cover
 
-    def break_received(self, msec):
+    def break_received(self, msec: int) -> bool:
         """The client has sent a break
 
            This method is called when the client requests that the
@@ -399,7 +422,7 @@ class SSHServerSession(SSHSession):
 
         return False # pragma: no cover
 
-    def signal_received(self, signal):
+    def signal_received(self, signal: str) -> None:
         """The client has sent a signal
 
            This method is called when the client delivers a signal
@@ -407,10 +430,26 @@ class SSHServerSession(SSHSession):
 
            By default, signals from the client are ignored.
 
+           :param signal:
+               The name of the signal received
+           :type signal: `str`
+
+        """
+
+    def soft_eof_received(self) -> None:
+        """The client has sent a soft EOF
+
+           This method is called by the line editor when the client
+           send a soft EOF (Ctrl-D on an empty input line).
+
+           By default, soft EOF will trigger an EOF to an outstanding
+           read call but still allow additional input to be received
+           from the client after that.
+
         """
 
 
-class SSHTCPSession(SSHSession):
+class SSHTCPSession(SSHSession[AnyStr]):
     """SSH TCP session handler
 
        Applications should subclass this when implementing a handler for
@@ -440,7 +479,7 @@ class SSHTCPSession(SSHSession):
 
     """
 
-    def connection_made(self, chan):
+    def connection_made(self, chan: 'SSHTCPChannel[AnyStr]') -> None:
         """Called when a channel is opened successfully
 
            This method is called when a channel is opened successfully. The
@@ -453,7 +492,7 @@ class SSHTCPSession(SSHSession):
         """
 
 
-class SSHUNIXSession(SSHSession):
+class SSHUNIXSession(SSHSession[AnyStr]):
     """SSH UNIX domain socket session handler
 
        Applications should subclass this when implementing a handler for
@@ -485,7 +524,7 @@ class SSHUNIXSession(SSHSession):
 
     """
 
-    def connection_made(self, chan):
+    def connection_made(self, chan: 'SSHUNIXChannel[AnyStr]') -> None:
         """Called when a channel is opened successfully
 
            This method is called when a channel is opened successfully. The
@@ -496,3 +535,9 @@ class SSHUNIXSession(SSHSession):
            :type chan: :class:`SSHUNIXChannel`
 
         """
+
+
+SSHSessionFactory = Callable[[], SSHSession[AnyStr]]
+SSHClientSessionFactory = Callable[[], SSHClientSession[AnyStr]]
+SSHTCPSessionFactory = Callable[[], SSHTCPSession[AnyStr]]
+SSHUNIXSessionFactory = Callable[[], SSHUNIXSession[AnyStr]]

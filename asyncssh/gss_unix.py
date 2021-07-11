@@ -1,4 +1,4 @@
-# Copyright (c) 2017-2018 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2017-2021 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -20,24 +20,26 @@
 
 """GSSAPI wrapper for UNIX"""
 
-from gssapi import Credentials, Name, NameType
+from typing import Optional, Sequence
+
+from gssapi import Credentials, Name, NameType, OID
 from gssapi import RequirementFlag, SecurityContext
 from gssapi.exceptions import GSSError
 
 from .asn1 import OBJECT_IDENTIFIER
 
 
-def _mech_to_oid(mech):
+def _mech_to_oid(mech: OID) -> bytes:
     """Return a DER-encoded OID corresponding to the requested GSS mechanism"""
 
-    mech = bytes(mech)
-    return bytes((OBJECT_IDENTIFIER, len(mech))) + mech
+    mech_bytes = bytes(mech)
+    return bytes((OBJECT_IDENTIFIER, len(mech_bytes))) + mech_bytes
 
 
-class _GSSBase:
+class GSSBase:
     """GSS base class"""
 
-    def __init__(self, host, usage):
+    def __init__(self, host: str, usage: str):
         if '@' in host:
             self._host = Name(host)
         else:
@@ -49,70 +51,84 @@ class _GSSBase:
             self._creds = Credentials(name=self._host, usage=usage)
 
         self._mechs = [_mech_to_oid(mech) for mech in self._creds.mechs]
-        self._ctx = None
+        self._ctx: Optional[SecurityContext] = None
 
-    def _init_context(self):
+    def _init_context(self) -> None:
         """Abstract method to construct GSS security context"""
 
         raise NotImplementedError
 
     @property
-    def mechs(self):
+    def mechs(self) -> Sequence[bytes]:
         """Return GSS mechanisms available for this host"""
 
         return self._mechs
 
     @property
-    def complete(self):
+    def complete(self) -> bool:
         """Return whether or not GSS negotiation is complete"""
 
-        return self._ctx and self._ctx.complete
+        return self._ctx.complete if self._ctx else False
 
     @property
-    def provides_mutual_auth(self):
+    def provides_mutual_auth(self) -> bool:
         """Return whether or not this context provides mutual authentication"""
+
+        assert self._ctx is not None
 
         return (RequirementFlag.mutual_authentication in
                 self._ctx.actual_flags)
 
     @property
-    def provides_integrity(self):
+    def provides_integrity(self) -> bool:
         """Return whether or not this context provides integrity protection"""
+
+        assert self._ctx is not None
 
         return RequirementFlag.integrity in self._ctx.actual_flags
 
     @property
-    def user(self):
+    def user(self) -> str:
         """Return user principal associated with this context"""
+
+        assert self._ctx is not None
 
         return str(self._ctx.initiator_name)
 
     @property
-    def host(self):
+    def host(self) -> str:
         """Return host principal associated with this context"""
+
+        assert self._ctx is not None
 
         return str(self._ctx.target_name)
 
-    def reset(self):
+    def reset(self) -> None:
         """Reset GSS security context"""
 
         self._ctx = None
 
-    def step(self, token=None):
+    def step(self, token: Optional[bytes] = None) -> Optional[bytes]:
         """Perform next step in GSS security exchange"""
 
         if not self._ctx:
             self._init_context()
 
+        assert self._ctx is not None
+
         return self._ctx.step(token)
 
-    def sign(self, data):
+    def sign(self, data: bytes) -> bytes:
         """Sign a block of data"""
+
+        assert self._ctx is not None
 
         return self._ctx.get_signature(data)
 
-    def verify(self, data, sig):
+    def verify(self, data: bytes, sig: bytes) -> bool:
         """Verify a signature for a block of data"""
+
+        assert self._ctx is not None
 
         try:
             self._ctx.verify_signature(data, sig)
@@ -121,10 +137,10 @@ class _GSSBase:
             return False
 
 
-class GSSClient(_GSSBase):
+class GSSClient(GSSBase):
     """GSS client"""
 
-    def __init__(self, host, delegate_creds):
+    def __init__(self, host: str, delegate_creds: bool):
         super().__init__(host, 'initiate')
 
         flags = set((RequirementFlag.mutual_authentication,
@@ -135,20 +151,20 @@ class GSSClient(_GSSBase):
 
         self._flags = flags
 
-    def _init_context(self):
+    def _init_context(self) -> None:
         """Construct GSS client security context"""
 
         self._ctx = SecurityContext(name=self._host, creds=self._creds,
                                     flags=self._flags)
 
 
-class GSSServer(_GSSBase):
+class GSSServer(GSSBase):
     """GSS server"""
 
-    def __init__(self, host):
+    def __init__(self, host: str):
         super().__init__(host, 'accept')
 
-    def _init_context(self):
+    def _init_context(self) -> None:
         """Construct GSS server security context"""
 
         self._ctx = SecurityContext(creds=self._creds)

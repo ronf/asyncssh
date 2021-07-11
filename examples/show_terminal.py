@@ -1,6 +1,6 @@
 #!/usr/bin/env python3.6
 #
-# Copyright (c) 2013-2018 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2021 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -29,7 +29,7 @@
 
 import asyncio, asyncssh, sys
 
-async def handle_client(process):
+async def handle_client(process: asyncssh.SSHServerProcess) -> None:
     width, height, pixwidth, pixheight = process.term_size
 
     process.stdout.write('Terminal type: %s, size: %sx%s' %
@@ -49,7 +49,7 @@ async def handle_client(process):
                                      (exc.pixwidth, exc.pixheight))
             process.stdout.write('\n')
 
-async def start_server():
+async def start_server() -> None:
     await asyncssh.listen('', 8022, server_host_keys=['ssh_host_key'],
                           authorized_client_keys='ssh_user_ca',
                           process_factory=handle_client)

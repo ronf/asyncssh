@@ -1,6 +1,6 @@
 #!/usr/bin/env python3.6
 #
-# Copyright (c) 2016-2018 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2016-2021 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -22,7 +22,7 @@
 
 import asyncio, asyncssh, sys
 
-async def run_client():
+async def run_client() -> None:
     async with asyncssh.connect('localhost') as conn:
         async with conn.create_process('bc') as process:
             for op in ['2+2', '1*2*3*4', '2^32']:

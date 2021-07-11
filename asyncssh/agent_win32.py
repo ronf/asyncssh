@@ -1,4 +1,4 @@
-# Copyright (c) 2016-2020 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2016-2021 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -27,8 +27,15 @@ import asyncio
 import ctypes
 import ctypes.wintypes
 import errno
+from typing import TYPE_CHECKING, Optional, Tuple, Union, cast
 
 from .misc import open_file
+
+
+if TYPE_CHECKING:
+    # pylint: disable=cyclic-import
+    from .agent import AgentReader, AgentWriter
+
 
 try:
     import mmapfile
@@ -47,7 +54,7 @@ _AGENT_NAME = 'Pageant'
 _DEFAULT_OPENSSH_PATH = r'\\.\pipe\openssh-ssh-agent'
 
 
-def _find_agent_window():
+def _find_agent_window() -> 'win32ui.PyCWnd':
     """Find and return the Pageant window"""
 
     if _pywin32_available:
@@ -70,11 +77,11 @@ class _CopyDataStruct(ctypes.Structure):
 class _PageantTransport:
     """Transport to connect to Pageant agent on Windows"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._mapname = '%s%08x' % (_AGENT_NAME, win32api.GetCurrentThreadId())
 
         try:
-            self._mapfile = mmapfile.mmapfile(None, self._mapname,
+            self._mapfile = mmapfile.mmapfile('', self._mapname,
                                               _AGENT_MAX_MSGLEN, 0, 0)
         except mmapfile.error as exc:
             raise OSError(errno.EIO, str(exc)) from None
@@ -84,7 +91,7 @@ class _PageantTransport:
 
         self._writing = False
 
-    def write(self, data):
+    def write(self, data: bytes) -> None:
         """Write request data to Pageant agent"""
 
         if not self._writing:
@@ -96,13 +103,14 @@ class _PageantTransport:
         except ValueError as exc:
             raise OSError(errno.EIO, str(exc)) from None
 
-    async def readexactly(self, n):
+    async def readexactly(self, n: int) -> bytes:
         """Read response data from Pageant agent"""
 
         if self._writing:
             cwnd = _find_agent_window()
 
-            if not cwnd.SendMessage(win32con.WM_COPYDATA, None, self._cds):
+            if not cwnd.SendMessage(win32con.WM_COPYDATA, 0,
+                                    cast(int, self._cds)):
                 raise OSError(errno.EIO, 'Unable to send agent request')
 
             self._writing = False
@@ -115,26 +123,23 @@ class _PageantTransport:
 
         return result
 
-    def close(self):
+    def close(self) -> None:
         """Close the connection to Pageant"""
 
         if self._mapfile:
             self._mapfile.close()
-            self._mapfile = None
+
+    async def wait_closed(self) -> None:
+        """Wait for the transport to close"""
 
 
 class _W10OpenSSHTransport:
     """Transport to connect to OpenSSH agent on Windows 10"""
 
-    def __init__(self, agent_path):
+    def __init__(self, agent_path: str):
         self._agentfile = open_file(agent_path, 'r+b')
 
-    def write(self, data):
-        """Write request data to OpenSSH agent"""
-
-        self._agentfile.write(data)
-
-    async def readexactly(self, n):
+    async def readexactly(self, n: int) -> bytes:
         """Read response data from OpenSSH agent"""
 
         result = self._agentfile.read(n)
@@ -144,18 +149,26 @@ class _W10OpenSSHTransport:
 
         return result
 
-    def close(self):
+    def write(self, data: bytes) -> None:
+        """Write request data to OpenSSH agent"""
+
+        self._agentfile.write(data)
+
+    def close(self) -> None:
         """Close the connection to OpenSSH"""
 
         if self._agentfile:
             self._agentfile.close()
-            self._agentfile = None
+
+    async def wait_closed(self) -> None:
+        """Wait for the transport to close"""
 
 
-async def open_agent(agent_path):
+async def open_agent(agent_path: Optional[str]) -> \
+        Tuple['AgentReader', 'AgentWriter']:
     """Open a connection to the Pageant or Windows 10 OpenSSH agent"""
 
-    transport = None
+    transport: Union[None, _PageantTransport, _W10OpenSSHTransport] = None
 
     if not agent_path:
         try:
@@ -165,6 +178,7 @@ async def open_agent(agent_path):
             agent_path = _DEFAULT_OPENSSH_PATH
 
     if not transport:
+        assert agent_path is not None
         transport = _W10OpenSSHTransport(agent_path)
 
     return transport, transport

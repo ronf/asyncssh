@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2020 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2021 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -22,23 +22,35 @@
 
 import binascii
 from hashlib import md5
+from typing import TYPE_CHECKING, Dict, List, Sequence, Tuple, Type
 
+from .logging import SSHLogger
+from .misc import HashType
 from .packet import MPInt, SSHPacketHandler
 
 
-_kex_algs = []
-_default_kex_algs = []
-_kex_handlers = {}
+if TYPE_CHECKING:
+    # pylint: disable=cyclic-import
+    from .connection import SSHConnection
 
-_gss_kex_algs = []
-_default_gss_kex_algs = []
-_gss_kex_handlers = {}
+
+_KexAlgList = List[bytes]
+_KexAlgMap = Dict[bytes, Tuple[Type['Kex'], HashType, object]]
+
+
+_kex_algs: _KexAlgList = []
+_default_kex_algs:_KexAlgList = []
+_kex_handlers: _KexAlgMap = {}
+
+_gss_kex_algs: _KexAlgList = []
+_default_gss_kex_algs: _KexAlgList = []
+_gss_kex_handlers: _KexAlgMap = {}
 
 
 class Kex(SSHPacketHandler):
     """Parent class for key exchange handlers"""
 
-    def __init__(self, alg, conn, hash_alg):
+    def __init__(self, alg: bytes, conn: 'SSHConnection', hash_alg: HashType):
         self.algorithm = alg
 
         self._conn = conn
@@ -46,18 +58,24 @@ class Kex(SSHPacketHandler):
         self._hash_alg = hash_alg
 
 
-    def send_packet(self, pkttype, *args):
+    def start(self) -> None:
+        """Start key exchange"""
+
+        raise NotImplementedError
+
+    def send_packet(self, pkttype: int, *args: bytes) -> None:
         """Send a kex packet"""
 
         self._conn.send_packet(pkttype, *args, handler=self)
 
     @property
-    def logger(self):
+    def logger(self) -> SSHLogger:
         """A logger associated with this connection"""
 
         return self._logger
 
-    def compute_key(self, k, h, x, session_id, keylen):
+    def compute_key(self, k: int, h: bytes, x: bytes,
+                    session_id: bytes, keylen: int) -> bytes:
         """Compute keys from output of key exchange"""
 
         key = b''
@@ -71,7 +89,8 @@ class Kex(SSHPacketHandler):
         return key[:keylen]
 
 
-def register_kex_alg(alg, handler, hash_alg, args, default):
+def register_kex_alg(alg: bytes, handler: Type[Kex], hash_alg: HashType,
+                     args: Tuple, default: bool) -> None:
     """Register a key exchange algorithm"""
 
     _kex_algs.append(alg)
@@ -79,11 +98,11 @@ def register_kex_alg(alg, handler, hash_alg, args, default):
     if default:
         _default_kex_algs.append(alg)
 
-
     _kex_handlers[alg] = (handler, hash_alg, args)
 
 
-def register_gss_kex_alg(alg, handler, hash_alg, args, default):
+def register_gss_kex_alg(alg: bytes, handler: Type[Kex], hash_alg: HashType,
+                         args: Tuple, default: bool) -> None:
     """Register a GSSAPI key exchange algorithm"""
 
     _gss_kex_algs.append(alg)
@@ -94,22 +113,23 @@ def register_gss_kex_alg(alg, handler, hash_alg, args, default):
     _gss_kex_handlers[alg] = (handler, hash_alg, args)
 
 
-def get_kex_algs():
+def get_kex_algs() -> List[bytes]:
     """Return supported key exchange algorithms"""
 
     return _gss_kex_algs + _kex_algs
 
 
-def get_default_kex_algs():
+def get_default_kex_algs() -> List[bytes]:
     """Return default key exchange algorithms"""
 
     return _default_gss_kex_algs + _default_kex_algs
 
 
-def expand_kex_algs(kex_algs, mechs, host_key_available):
+def expand_kex_algs(kex_algs: Sequence[bytes], mechs: Sequence[bytes],
+                    host_key_available: bool) -> List[bytes]:
     """Add mechanisms to GSS entries in key exchange algorithm list"""
 
-    expanded_kex_algs = []
+    expanded_kex_algs: List[bytes] = []
 
     for alg in kex_algs:
         if alg.startswith(b'gss-'):
@@ -122,7 +142,7 @@ def expand_kex_algs(kex_algs, mechs, host_key_available):
     return expanded_kex_algs
 
 
-def get_kex(conn, alg):
+def get_kex(conn: 'SSHConnection', alg: bytes) -> Kex:
     """Return a key exchange handler
 
        The function looks up a key exchange algorithm and returns a

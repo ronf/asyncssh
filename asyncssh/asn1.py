@@ -32,6 +32,14 @@
 
 """
 
+from typing import Dict, FrozenSet, Sequence, Set, Tuple, Type, TypeVar, Union
+from typing import cast
+
+
+_DERClass = Type['DERType']
+_DERClassVar = TypeVar('_DERClassVar', bound='_DERClass')
+
+
 # ASN.1 object classes
 UNIVERSAL         = 0x00
 APPLICATION       = 0x01
@@ -53,11 +61,11 @@ IA5_STRING        = 0x16
 
 _asn1_class = ('Universal', 'Application', 'Context-specific', 'Private')
 
-_der_class_by_tag = {}
-_der_class_by_type = {}
+_der_class_by_tag: Dict[int, _DERClass] = {}
+_der_class_by_type: Dict[Union[object, _DERClass], _DERClass] = {}
 
 
-def _encode_identifier(asn1_class, constructed, tag):
+def _encode_identifier(asn1_class: int, constructed: bool, tag: int) -> bytes:
     """Encode a DER object's identifier"""
 
     if asn1_class not in (UNIVERSAL, APPLICATION, CONTEXT_SPECIFIC, PRIVATE):
@@ -91,6 +99,24 @@ class ASN1DecodeError(ASN1Error):
     """ASN.1 DER decoding error"""
 
 
+class DERType:
+    """Parent class for classes which use DERTag decorator"""
+
+    identifier: bytes = b''
+
+    @staticmethod
+    def encode(value: object) -> bytes:
+        """Encode value as a DER byte string"""
+
+        raise NotImplementedError
+
+    @classmethod
+    def decode(cls, constructed: bool, content: bytes) -> object:
+        """Decode a DER byte string into an object"""
+
+        raise NotImplementedError
+
+
 class DERTag:
     """A decorator used by classes which convert values to/from DER
 
@@ -107,12 +133,13 @@ class DERTag:
 
     """
 
-    def __init__(self, tag, types=(), constructed=False):
+    def __init__(self, tag: int, types: Sequence[object] = (),
+                 constructed: bool = False):
         self._tag = tag
         self._types = types
         self._identifier = _encode_identifier(UNIVERSAL, constructed, tag)
 
-    def __call__(self, cls):
+    def __call__(self, cls: _DERClassVar) -> _DERClassVar:
         cls.identifier = self._identifier
 
         _der_class_by_tag[self._tag] = cls
@@ -136,32 +163,35 @@ class RawDERObject:
 
     """
 
-    def __init__(self, tag, content, asn1_class):
+    def __init__(self, tag: int, content: bytes, asn1_class: int):
         self.asn1_class = asn1_class
         self.tag = tag
         self.content = content
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return ('RawDERObject(%s, %s, %r)' %
                 (_asn1_class[self.asn1_class], self.tag, self.content))
 
-    def __eq__(self, other):
-        return (isinstance(other, type(self)) and
-                self.asn1_class == other.asn1_class and
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, RawDERObject): # pragma: no cover
+            return NotImplemented
+
+        return (self.asn1_class == other.asn1_class and
                 self.tag == other.tag and self.content == other.content)
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         return hash((self.asn1_class, self.tag, self.content))
 
-    def encode_identifier(self):
+    def encode_identifier(self) -> bytes:
         """Encode the DER identifier for this object as a byte string"""
 
         return _encode_identifier(self.asn1_class, False, self.tag)
 
-    def encode(self):
+    @staticmethod
+    def encode(value: object) -> bytes:
         """Encode the content for this object as a DER byte string"""
 
-        return self.content
+        return cast('RawDERObject', value).content
 
 
 class TaggedDERObject:
@@ -175,49 +205,55 @@ class TaggedDERObject:
 
     """
 
-    def __init__(self, tag, value, asn1_class=CONTEXT_SPECIFIC):
+    def __init__(self, tag: int, value: object,
+                 asn1_class: int = CONTEXT_SPECIFIC):
         self.asn1_class = asn1_class
         self.tag = tag
         self.value = value
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         if self.asn1_class == CONTEXT_SPECIFIC:
             return 'TaggedDERObject(%s, %r)' % (self.tag, self.value)
         else:
             return ('TaggedDERObject(%s, %s, %r)' %
                     (_asn1_class[self.asn1_class], self.tag, self.value))
 
-    def __eq__(self, other):
-        return (isinstance(other, type(self)) and
-                self.asn1_class == other.asn1_class and
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, TaggedDERObject): # pragma: no cover
+            return NotImplemented
+
+        return (self.asn1_class == other.asn1_class and
                 self.tag == other.tag and self.value == other.value)
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         return hash((self.asn1_class, self.tag, self.value))
 
-    def encode_identifier(self):
+    def encode_identifier(self) -> bytes:
         """Encode the DER identifier for this object as a byte string"""
 
         return _encode_identifier(self.asn1_class, True, self.tag)
 
-    def encode(self):
+    @staticmethod
+    def encode(value: object) -> bytes:
         """Encode the content for this object as a DER byte string"""
 
-        return der_encode(self.value)
+        return der_encode(cast('TaggedDERObject', value).value)
 
 
 @DERTag(NULL, (type(None),))
-class _Null:
+class _Null(DERType):
     """A null value"""
 
     @staticmethod
-    def encode(_value):
+    def encode(value: object) -> bytes:
         """Encode a DER null value"""
+
+        # pylint: disable=unused-argument
 
         return b''
 
     @classmethod
-    def decode(cls, constructed, content):
+    def decode(cls, constructed: bool, content: bytes) -> None:
         """Decode a DER null value"""
 
         if constructed:
@@ -230,17 +266,17 @@ class _Null:
 
 
 @DERTag(BOOLEAN, (bool,))
-class _Boolean:
+class _Boolean(DERType):
     """A boolean value"""
 
     @staticmethod
-    def encode(value):
+    def encode(value: object) -> bytes:
         """Encode a DER boolean value"""
 
         return b'\xff' if value else b'\0'
 
     @classmethod
-    def decode(cls, constructed, content):
+    def decode(cls, constructed: bool, content: bytes) -> bool:
         """Decode a DER boolean value"""
 
         if constructed:
@@ -253,20 +289,21 @@ class _Boolean:
 
 
 @DERTag(INTEGER, (int,))
-class _Integer:
+class _Integer(DERType):
     """An integer value"""
 
     @staticmethod
-    def encode(value):
+    def encode(value: object) -> bytes:
         """Encode a DER integer value"""
 
-        l = value.bit_length()
+        i = cast(int, value)
+        l = i.bit_length()
         l = l // 8 + 1 if l % 8 == 0 else (l + 7) // 8
-        result = value.to_bytes(l, 'big', signed=True)
+        result = i.to_bytes(l, 'big', signed=True)
         return result[1:] if result.startswith(b'\xff\x80') else result
 
     @classmethod
-    def decode(cls, constructed, content):
+    def decode(cls, constructed: bool, content: bytes) -> int:
         """Decode a DER integer value"""
 
         if constructed:
@@ -276,17 +313,17 @@ class _Integer:
 
 
 @DERTag(OCTET_STRING, (bytes, bytearray))
-class _OctetString:
+class _OctetString(DERType):
     """An octet string value"""
 
     @staticmethod
-    def encode(value):
+    def encode(value: object) -> bytes:
         """Encode a DER octet string"""
 
-        return value
+        return cast(bytes, value)
 
     @classmethod
-    def decode(cls, constructed, content):
+    def decode(cls, constructed: bool, content: bytes) -> bytes:
         """Decode a DER octet string"""
 
         if constructed:
@@ -296,17 +333,17 @@ class _OctetString:
 
 
 @DERTag(UTF8_STRING, (str,))
-class _UTF8String:
+class _UTF8String(DERType):
     """A UTF-8 string value"""
 
     @staticmethod
-    def encode(value):
+    def encode(value: object) -> bytes:
         """Encode a DER UTF-8 string"""
 
-        return value.encode('utf-8')
+        return cast(str, value).encode('utf-8')
 
     @classmethod
-    def decode(cls, constructed, content):
+    def decode(cls, constructed: bool, content: bytes) -> str:
         """Decode a DER UTF-8 string"""
 
         if constructed:
@@ -316,17 +353,18 @@ class _UTF8String:
 
 
 @DERTag(SEQUENCE, (list, tuple), constructed=True)
-class _Sequence:
+class _Sequence(DERType):
     """A sequence of values"""
 
     @staticmethod
-    def encode(value):
+    def encode(value: object) -> bytes:
         """Encode a sequence of DER values"""
 
-        return b''.join(der_encode(item) for item in value)
+        seq_value = cast(Sequence[object], value)
+        return b''.join(der_encode(item) for item in seq_value)
 
     @classmethod
-    def decode(cls, constructed, content):
+    def decode(cls, constructed: bool, content: bytes) -> Sequence[object]:
         """Decode a sequence of DER values"""
 
         if not constructed:
@@ -337,7 +375,7 @@ class _Sequence:
 
         value = []
         while offset < length:
-            item, consumed = der_decode(content[offset:], partial_ok=True)
+            item, consumed = der_decode_partial(content[offset:])
             value.append(item)
             offset += consumed
 
@@ -345,17 +383,18 @@ class _Sequence:
 
 
 @DERTag(SET, (set, frozenset), constructed=True)
-class _Set:
+class _Set(DERType):
     """A set of DER values"""
 
     @staticmethod
-    def encode(value):
+    def encode(value: object) -> bytes:
         """Encode a set of DER values"""
 
-        return b''.join(sorted(der_encode(item) for item in value))
+        set_value = cast(Union[FrozenSet[object], Set[object]], value)
+        return b''.join(sorted(der_encode(item) for item in set_value))
 
     @classmethod
-    def decode(cls, constructed, content):
+    def decode(cls, constructed: bool, content: bytes) -> FrozenSet[object]:
         """Decode a set of DER values"""
 
         if not constructed:
@@ -366,7 +405,7 @@ class _Set:
 
         value = set()
         while offset < length:
-            item, consumed = der_decode(content[offset:], partial_ok=True)
+            item, consumed = der_decode_partial(content[offset:])
             value.add(item)
             offset += consumed
 
@@ -374,7 +413,7 @@ class _Set:
 
 
 @DERTag(BIT_STRING)
-class BitString:
+class BitString(DERType):
     """A string of bits
 
        This object can be initialized either with a byte string and an
@@ -388,7 +427,7 @@ class BitString:
 
     """
 
-    def __init__(self, value, unused=0, named=False):
+    def __init__(self, value: object, unused: int = 0, named: bool = False):
         if unused < 0 or unused > 7:
             raise ASN1EncodeError('Unused bit count must be between 0 and 7')
 
@@ -423,29 +462,33 @@ class BitString:
         self.value = value
         self.unused = unused
 
-    def __str__(self):
+    def __str__(self) -> str:
         result = ''.join(bin(b)[2:].zfill(8) for b in self.value)
         if self.unused:
             result = result[:-self.unused]
         return result
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return "BitString('%s')" % self
 
-    def __eq__(self, other):
-        return (isinstance(other, type(self)) and
-                self.value == other.value and self.unused == other.unused)
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, BitString): # pragma: no cover
+            return NotImplemented
 
-    def __hash__(self):
+        return self.value == other.value and self.unused == other.unused
+
+    def __hash__(self) -> int:
         return hash((self.value, self.unused))
 
-    def encode(self):
+    @staticmethod
+    def encode(value: object) -> bytes:
         """Encode a DER bit string"""
 
-        return bytes((self.unused,)) + self.value
+        bitstr_value = cast('BitString', value)
+        return bytes((bitstr_value.unused,)) + bitstr_value.value
 
     @classmethod
-    def decode(cls, constructed, content):
+    def decode(cls, constructed: bool, content: bytes) -> 'BitString':
         """Decode a DER bit string"""
 
         if constructed:
@@ -458,25 +501,29 @@ class BitString:
 
 
 @DERTag(IA5_STRING)
-class IA5String:
+class IA5String(DERType):
     """An ASCII string value"""
 
-    def __init__(self, value):
+    def __init__(self, value: Union[bytes, bytearray]):
         self.value = value
 
-    def __str__(self):
-        return '%s' % self.value
+    def __str__(self) -> str:
+        return '%s' % self.value.decode('ascii')
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return 'IA5String(%r)' % self.value
 
-    def __eq__(self, other):
-        return isinstance(other, type(self)) and self.value == other.value
+    def __eq__(self, other: object) -> bool: # pragma: no cover
+        if not isinstance(other, IA5String):
+            return NotImplemented
 
-    def __hash__(self):
+        return self.value == other.value
+
+    def __hash__(self) -> int:
         return hash(self.value)
 
-    def encode(self):
+    @staticmethod
+    def encode(value: object) -> bytes:
         """Encode a DER IA5 string"""
 
         # ASN.1 defines this type as only containing ASCII characters, but
@@ -485,10 +532,10 @@ class IA5String:
         # string which has already done the appropriate encoding of any
         # non-ASCII characters.
 
-        return self.value
+        return cast('IA5String', value).value
 
     @classmethod
-    def decode(cls, constructed, content):
+    def decode(cls, constructed: bool, content: bytes) -> 'IA5String':
         """Decode a DER IA5 string"""
 
         if constructed:
@@ -502,7 +549,7 @@ class IA5String:
 
 
 @DERTag(OBJECT_IDENTIFIER)
-class ObjectIdentifier:
+class ObjectIdentifier(DERType):
     """An object identifier (OID) value
 
        This object can be initialized from a string of dot-separated
@@ -515,25 +562,29 @@ class ObjectIdentifier:
 
     """
 
-    def __init__(self, value):
+    def __init__(self, value: str):
         self.value = value
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.value
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return "ObjectIdentifier('%s')" % self.value
 
-    def __eq__(self, other):
-        return isinstance(other, type(self)) and self.value == other.value
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, ObjectIdentifier): # pragma: no cover
+            return NotImplemented
 
-    def __hash__(self):
+        return self.value == other.value
+
+    def __hash__(self) -> int:
         return hash(self.value)
 
-    def encode(self):
+    @staticmethod
+    def encode(value: object) -> bytes:
         """Encode a DER object identifier"""
 
-        def _bytes(component):
+        def _bytes(component: int) -> bytes:
             """Convert a single element of an OID to a DER byte string"""
 
             if component < 0:
@@ -547,8 +598,10 @@ class ObjectIdentifier:
 
             return bytes(result[::-1])
 
+        oid_value = cast('ObjectIdentifier', value)
+
         try:
-            components = [int(c) for c in self.value.split('.')]
+            components = [int(c) for c in oid_value.value.split('.')]
         except ValueError:
             raise ASN1EncodeError('Component values must be '
                                   'integers') from None
@@ -567,7 +620,7 @@ class ObjectIdentifier:
         return b''.join(_bytes(c) for c in components)
 
     @classmethod
-    def decode(cls, constructed, content):
+    def decode(cls, constructed: bool, content: bytes) -> 'ObjectIdentifier':
         """Decode a DER object identifier"""
 
         if constructed:
@@ -597,7 +650,7 @@ class ObjectIdentifier:
         return cls('.'.join(str(c) for c in components))
 
 
-def der_encode(value):
+def der_encode(value: object) -> bytes:
     """Encode a value in DER format
 
        This function takes a Python value and encodes it in DER format.
@@ -624,8 +677,9 @@ def der_encode(value):
 
     t = type(value)
     if t in (RawDERObject, TaggedDERObject):
+        value = cast(Union[RawDERObject, TaggedDERObject], value)
         identifier = value.encode_identifier()
-        content = value.encode()
+        content = value.encode(value)
     elif t in _der_class_by_type:
         cls = _der_class_by_type[t]
         identifier = cls.identifier
@@ -643,34 +697,8 @@ def der_encode(value):
     return identifier + len_bytes + content
 
 
-def der_decode(data, partial_ok=False):
-    """Decode a value in DER format
-
-       This function takes a byte string in DER format and converts it
-       to a corresponding set of Python objects. The following mapping
-       of ASN.1 tags to Python types is used:
-
-       NULL              -> NoneType
-       BOOLEAN           -> bool
-       INTEGER           -> int
-       OCTET STRING      -> bytes
-       UTF8 STRING       -> str
-       SEQUENCE          -> tuple
-       SET               -> frozenset
-       BIT_STRING        -> BitString
-       OBJECT IDENTIFIER -> ObjectIdentifier
-
-       Explicitly tagged objects are returned as type TaggedDERObject,
-       with fields holding the object class, tag, and tagged value.
-
-       Other object tags are returned as type RawDERObject, with fields
-       holding the object class, tag, and raw content octets.
-
-       If partial_ok is True, this function returns a tuple of the decoded
-       value and number of bytes consumed. Otherwise, all data bytes must
-       be consumed and only the decoded value is returned.
-
-    """
+def der_decode_partial(data: bytes) -> Tuple[object, int]:
+    """Decode a value in DER format and return the number of bytes consumed"""
 
     if len(data) < 2:
         raise ASN1DecodeError('Incomplete data')
@@ -704,22 +732,55 @@ def der_decode(data, partial_ok=False):
     elif length == 0x80:
         raise ASN1DecodeError('Indefinite length not allowed')
 
-    if offset+length > len(data):
-        raise ASN1DecodeError('Incomplete data')
+    end = offset + length
+    content = data[offset:end]
 
-    if not partial_ok and offset+length < len(data):
-        raise ASN1DecodeError('Data contains unexpected bytes at end')
+    if end > len(data):
+        raise ASN1DecodeError('Incomplete data')
 
     if asn1_class == UNIVERSAL and tag in _der_class_by_tag:
         cls = _der_class_by_tag[tag]
-        value = cls.decode(constructed, data[offset:offset+length])
+        value = cls.decode(constructed, content)
     elif constructed:
-        value = TaggedDERObject(tag, der_decode(data[offset:offset+length]),
-                                asn1_class)
+        value = TaggedDERObject(tag, der_decode(content), asn1_class)
     else:
-        value = RawDERObject(tag, data[offset:offset+length], asn1_class)
+        value = RawDERObject(tag, content, asn1_class)
 
-    if partial_ok:
-        return value, offset+length
-    else:
-        return value
+    return value, end
+
+
+def der_decode(data: bytes) -> object:
+    """Decode a value in DER format
+
+       This function takes a byte string in DER format and converts it
+       to a corresponding set of Python objects. The following mapping
+       of ASN.1 tags to Python types is used:
+
+       NULL              -> NoneType
+       BOOLEAN           -> bool
+       INTEGER           -> int
+       OCTET STRING      -> bytes
+       UTF8 STRING       -> str
+       SEQUENCE          -> tuple
+       SET               -> frozenset
+       BIT_STRING        -> BitString
+       OBJECT IDENTIFIER -> ObjectIdentifier
+
+       Explicitly tagged objects are returned as type TaggedDERObject,
+       with fields holding the object class, tag, and tagged value.
+
+       Other object tags are returned as type RawDERObject, with fields
+       holding the object class, tag, and raw content octets.
+
+       If partial_ok is True, this function returns a tuple of the decoded
+       value and number of bytes consumed. Otherwise, all data bytes must
+       be consumed and only the decoded value is returned.
+
+    """
+
+    value, end = der_decode_partial(data)
+
+    if end < len(data):
+        raise ASN1DecodeError('Data contains unexpected bytes at end')
+
+    return value

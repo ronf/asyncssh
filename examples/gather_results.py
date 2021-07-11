@@ -1,6 +1,6 @@
 #!/usr/bin/env python3.6
 #
-# Copyright (c) 2016-2018 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2016-2021 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -22,11 +22,11 @@
 
 import asyncio, asyncssh
 
-async def run_client(host, command):
+async def run_client(host, command: str) -> asyncssh.SSHCompletedProcess:
     async with asyncssh.connect(host) as conn:
         return await conn.run(command)
 
-async def run_multiple_clients():
+async def run_multiple_clients() -> None:
     # Put your lists of hosts here
     hosts = 5 * ['localhost']
 

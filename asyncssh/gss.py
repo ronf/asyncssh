@@ -1,4 +1,4 @@
-# Copyright (c) 2017-2019 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2017-2021 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -26,34 +26,36 @@ try:
     # pylint: disable=unused-import
 
     if sys.platform == 'win32': # pragma: no cover
-        from .gss_win32 import GSSError, GSSClient, GSSServer
+        from .gss_win32 import GSSBase, GSSClient, GSSServer, GSSError
     else:
-        from .gss_unix import GSSError, GSSClient, GSSServer
+        from .gss_unix import GSSBase, GSSClient, GSSServer, GSSError
 
     gss_available = True
 except ImportError: # pragma: no cover
     gss_available = False
 
-    class GSSError(ValueError):
+    class GSSError(ValueError): # type: ignore
         """Stub class for reporting that GSS is not available"""
 
-        def __init__(self, maj_code=0, min_code=0, token=None):
+        def __init__(self, maj_code: int = 0, min_code: int = 0,
+                     token: bytes = None):
             super().__init__('GSS not available')
 
             self.maj_code = maj_code
             self.min_code = min_code
             self.token = token
 
+    class GSSBase: # type: ignore
+        """Base class for reporting that GSS is not available"""
 
-    class GSSClient:
+    class GSSClient(GSSBase): # type: ignore
         """Stub client class for reporting that GSS is not available"""
 
-        def __init__(self, _host, _delegate_creds):
+        def __init__(self, _host: str, _delegate_creds: bool):
             raise GSSError()
 
-
-    class GSSServer:
+    class GSSServer(GSSBase): # type: ignore
         """Stub client class for reporting that GSS is not available"""
 
-        def __init__(self, _host):
+        def __init__(self, _host: str):
             raise GSSError()

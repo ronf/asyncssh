@@ -1,4 +1,4 @@
-# Copyright (c) 2016-2018 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2016-2021 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -24,27 +24,37 @@ import binascii
 import ctypes
 import ctypes.util
 import sys
+from typing import TYPE_CHECKING, Callable, Optional
+
+
+if TYPE_CHECKING:
+    _ByteArray = ctypes.Array[ctypes.c_char]
+    _SetKey = Callable[[_ByteArray, bytes], None]
+    _SetNonce = Callable[[_ByteArray, ctypes.c_size_t, bytes], None]
+    _Update = Callable[[_ByteArray, ctypes.c_size_t, bytes], None]
+    _Digest = Callable[[_ByteArray, ctypes.c_size_t, _ByteArray], None]
+    _New = Callable[[bytes, Optional[bytes], Optional[bytes]], object]
 
 
 _UMAC_BLOCK_SIZE = 1024
 _UMAC_DEFAULT_CTX_SIZE = 4096
 
 
-def __build_umac(size):
+def _build_umac(size: int) -> '_New':
     """Function to build UMAC wrapper for a specific digest size"""
 
     _name = 'umac%d' % size
     _prefix = 'nettle_%s_' % _name
 
     try:
-        _context_size = getattr(_nettle, _prefix + '_ctx_size')()
+        _context_size: int = getattr(_nettle, _prefix + '_ctx_size')()
     except AttributeError:
         _context_size = _UMAC_DEFAULT_CTX_SIZE
 
-    _set_key = getattr(_nettle, _prefix + 'set_key')
-    _set_nonce = getattr(_nettle, _prefix + 'set_nonce')
-    _update = getattr(_nettle, _prefix + 'update')
-    _digest = getattr(_nettle, _prefix + 'digest')
+    _set_key: _SetKey = getattr(_nettle, _prefix + 'set_key')
+    _set_nonce: _SetNonce = getattr(_nettle, _prefix + 'set_nonce')
+    _update: _Update = getattr(_nettle, _prefix + 'update')
+    _digest: _Digest = getattr(_nettle, _prefix + 'digest')
 
 
     class _UMAC:
@@ -58,7 +68,8 @@ def __build_umac(size):
         block_size = _UMAC_BLOCK_SIZE
         digest_size = size // 8
 
-        def __init__(self, ctx, nonce=None, msg=None):
+        def __init__(self, ctx: '_ByteArray', nonce: Optional[bytes] = None,
+                     msg: Optional[bytes] = None):
             self._ctx = ctx
 
             if nonce:
@@ -68,7 +79,8 @@ def __build_umac(size):
                 self.update(msg)
 
         @classmethod
-        def new(cls, key, msg=None, nonce=None):
+        def new(cls, key: bytes, msg: Optional[bytes] = None,
+                nonce: Optional[bytes] = None) -> '_UMAC':
             """Construct a new UMAC hash object"""
 
             ctx = ctypes.create_string_buffer(_context_size)
@@ -76,23 +88,23 @@ def __build_umac(size):
 
             return cls(ctx, nonce, msg)
 
-        def copy(self):
+        def copy(self) -> '_UMAC':
             """Return a new hash object with this object's state"""
 
             ctx = ctypes.create_string_buffer(self._ctx.raw)
             return self.__class__(ctx)
 
-        def set_nonce(self, nonce):
+        def set_nonce(self, nonce: bytes) -> None:
             """Reset the nonce associated with this object"""
 
             _set_nonce(self._ctx, ctypes.c_size_t(len(nonce)), nonce)
 
-        def update(self, msg):
+        def update(self, msg: bytes) -> None:
             """Add the data in msg to the hash"""
 
             _update(self._ctx, ctypes.c_size_t(len(msg)), msg)
 
-        def digest(self):
+        def digest(self) -> bytes:
             """Return the hash and increment nonce to begin a new message
 
                .. note:: The hash is reset and the nonce is incremented
@@ -105,19 +117,19 @@ def __build_umac(size):
             _digest(self._ctx, ctypes.c_size_t(self.digest_size), result)
             return result.raw
 
-        def hexdigest(self):
+        def hexdigest(self) -> str:
             """Return the digest as a string of hexadecimal digits"""
 
             return binascii.b2a_hex(self.digest()).decode('ascii')
 
 
-    globals()[_name] = _UMAC.new
+    return _UMAC.new
 
 
 _nettle_lib = 'libnettle-6' if sys.platform == 'win32' \
                             else ctypes.util.find_library('nettle')
 
-_nettle = ctypes.cdll.LoadLibrary(_nettle_lib)
+if _nettle_lib: # pragma: no branch
+    _nettle = ctypes.cdll.LoadLibrary(_nettle_lib)
 
-for _size in (32, 64, 96, 128):
-    __build_umac(_size)
+    umac32, umac64, umac96, umac128 = map(_build_umac, (32, 64, 96, 128))

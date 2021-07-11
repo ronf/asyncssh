@@ -1,4 +1,4 @@
-# Copyright (c) 2014-2019 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2014-2021 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -34,6 +34,8 @@ from .ec_params import lookup_ec_curve_by_params
 
 from .kdf import pbkdf2_hmac
 
+from .misc import CryptoKey, PyCAKey
+
 from .rsa import RSAPrivateKey, RSAPublicKey
 
 # Import chacha20-poly1305 cipher if available
@@ -47,7 +49,7 @@ except (ImportError, AttributeError, OSError): # pragma: no cover
 
 # Import X.509 certificate support if available
 try:
-    from .x509 import X509Name, X509NamePattern
+    from .x509 import X509Certificate, X509Name, X509NamePattern
     from .x509 import generate_x509_certificate, import_x509_certificate
 except ImportError: # pragma: no cover
     pass

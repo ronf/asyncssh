@@ -1,4 +1,4 @@
-# Copyright (c) 2015-2020 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2015-2021 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -25,9 +25,10 @@
 """Parser for SSH known_hosts files"""
 
 import binascii
-import hmac
-
 from hashlib import sha1
+import hmac
+from typing import Callable, Dict, List, Optional
+from typing import Sequence, Tuple, Union, cast
 
 try:
     from .crypto import X509NamePattern
@@ -35,14 +36,33 @@ try:
 except ImportError: # pragma: no cover
     _x509_available = False
 
-from .misc import ip_address, read_file
+from .misc import IPAddress, ip_address, read_file
 from .pattern import HostPatternList
-from .public_key import KeyImportError, import_public_key
-from .public_key import import_certificate, import_certificate_subject
+from .public_key import KeyImportError
+from .public_key import SSHKey, SSHCertificate, SSHX509Certificate
+from .public_key import import_public_key, import_certificate
+from .public_key import import_certificate_subject
 from .public_key import load_public_keys, load_certificates
 
 
-def _load_subject_names(names):
+_HostPattern = Union['_PlainHost', '_HashedHost']
+_HostEntry = Tuple[Optional[str], Optional[SSHKey],
+                   Optional[SSHX509Certificate], Optional['X509NamePattern']]
+
+_KnownHostsKeys = Sequence[SSHKey]
+_KnownHostsCerts = Sequence[SSHX509Certificate]
+_KnownHostsNames = Sequence['X509NamePattern']
+_KnownHostsResult = Tuple[_KnownHostsKeys, _KnownHostsKeys, _KnownHostsKeys,
+                          _KnownHostsCerts, _KnownHostsCerts,
+                          _KnownHostsNames, _KnownHostsNames]
+
+_KnownHostsCallable = Callable[[str, str, Optional[int]], Sequence[str]]
+_KnownHostsListArg = Union[str, Sequence[str], 'X509NamePattern']
+KnownHostsArg = Union[None, str, bytes, _KnownHostsCallable, 'SSHKnownHosts',
+                      _KnownHostsResult, Sequence[_KnownHostsListArg]]
+
+
+def _load_subject_names(names: Sequence[str]) -> Sequence['X509NamePattern']:
     """Load a list of X.509 subject name patterns"""
 
     if not _x509_available: # pragma: no cover
@@ -54,10 +74,10 @@ def _load_subject_names(names):
 class _PlainHost:
     """A plain host entry in a known_hosts file"""
 
-    def __init__(self, pattern):
+    def __init__(self, pattern: str):
         self._pattern = HostPatternList(pattern)
 
-    def matches(self, host, addr, ip):
+    def matches(self, host: str, addr: str, ip: Optional[IPAddress]) -> bool:
         """Return whether a host or address matches this host pattern list"""
 
         return self._pattern.matches(host, addr, ip)
@@ -68,7 +88,7 @@ class _HashedHost:
 
     _HMAC_SHA1_MAGIC = '1'
 
-    def __init__(self, pattern):
+    def __init__(self, pattern: str):
         try:
             magic, salt, hosthash = pattern[1:].split('|')
             self._salt = binascii.a2b_base64(salt)
@@ -82,35 +102,37 @@ class _HashedHost:
             raise ValueError('Invalid known hosts hash type: %s' %
                              magic) from None
 
-    def _match(self, value):
+    def _match(self, value: str) -> bool:
         """Return whether this host hash matches a value"""
 
         hosthash = hmac.new(self._salt, value.encode(), sha1).digest()
         return hosthash == self._hosthash
 
-    def matches(self, host, addr, _ip):
+    def matches(self, host: str, addr: str, _ip: Optional[IPAddress]) -> bool:
         """Return whether a host or address matches this host hash"""
 
-        return (host and self._match(host)) or (addr and self._match(addr))
+        return self._match(host) or self._match(addr)
 
 
 class SSHKnownHosts:
     """An SSH known hosts list"""
 
-    def __init__(self, known_hosts=None):
-        self._exact_entries = {}
-        self._pattern_entries = []
+    def __init__(self, known_hosts: Optional[str] = None):
+        self._exact_entries: Dict[Optional[str], List[_HostEntry]] = {}
+        self._pattern_entries: List[Tuple[_HostPattern, _HostEntry]] = []
 
         if known_hosts:
             self.load(known_hosts)
 
-    def load(self, known_hosts):
+    def load(self, known_hosts: str) -> None:
         """Load known hosts data into this object"""
 
         for line in known_hosts.splitlines():
             line = line.strip()
             if not line or line.startswith('#'):
                 continue
+
+            marker: Optional[str]
 
             try:
                 if line.startswith('@'):
@@ -126,9 +148,9 @@ class SSHKnownHosts:
                 raise ValueError('Invalid known hosts marker: %s' %
                                  marker) from None
 
-            key = None
-            cert = None
-            subject = None
+            key: Optional[SSHKey] = None
+            cert: Optional[SSHCertificate] = None
+            subject: Optional['X509NamePattern'] = None
 
             try:
                 key = import_public_key(data)
@@ -140,42 +162,45 @@ class SSHKnownHosts:
                         continue
 
                     try:
-                        subject = import_certificate_subject(data)
+                        subject_text = import_certificate_subject(data)
                     except KeyImportError:
                         # Ignore keys in the file that we're unable to parse
                         continue
 
-                    subject = X509NamePattern(subject)
+                    subject = X509NamePattern(subject_text)
+
+            entry = (marker, key, cast(SSHX509Certificate, cert), subject)
 
             if any(c in pattern for c in '*?|/!'):
-                self._add_pattern(marker, pattern, key, cert, subject)
+                self._add_pattern(pattern, entry)
             else:
-                self._add_exact(marker, pattern, key, cert, subject)
+                self._add_exact(pattern, entry)
 
-    def _add_exact(self, marker, pattern, key, cert, subject):
+    def _add_exact(self, pattern: str, entry: _HostEntry) -> None:
         """Add an exact match entry"""
 
-        for entry in pattern.split(','):
-            if entry not in self._exact_entries:
-                self._exact_entries[entry] = []
+        for host_pat in pattern.split(','):
+            if host_pat not in self._exact_entries:
+                self._exact_entries[host_pat] = []
 
-            self._exact_entries[entry].append((marker, key, cert, subject))
+            self._exact_entries[host_pat].append(entry)
 
-    def _add_pattern(self, marker, pattern, key, cert, subject):
+    def _add_pattern(self, pattern: str, entry: _HostEntry) -> None:
         """Add a pattern match entry"""
 
         if pattern.startswith('|'):
-            entry = _HashedHost(pattern)
+            host_pat: _HostPattern = _HashedHost(pattern)
         else:
-            entry = _PlainHost(pattern)
+            host_pat = _PlainHost(pattern)
 
-        self._pattern_entries.append((entry, (marker, key, cert, subject)))
+        self._pattern_entries.append((host_pat, entry))
 
-    def _match(self, host, addr, port=None):
+    def _match(self, host: str, addr: str,
+               port: Optional[int] = None) -> _KnownHostsResult:
         """Find host keys matching specified host, address, and port"""
 
         if addr:
-            ip = ip_address(addr)
+            ip: Optional[IPAddress] = ip_address(addr)
         else:
             try:
                 ip = ip_address(host)
@@ -183,8 +208,8 @@ class SSHKnownHosts:
                 ip = None
 
         if port:
-            host = '[{}]:{}'.format(host, port) if host else None
-            addr = '[{}]:{}'.format(addr, port) if addr else None
+            host = '[{}]:{}'.format(host, port) if host else ''
+            addr = '[{}]:{}'.format(addr, port) if addr else ''
 
         matches = []
         matches += self._exact_entries.get(host, [])
@@ -192,13 +217,13 @@ class SSHKnownHosts:
         matches += (match for (entry, match) in self._pattern_entries
                     if entry.matches(host, addr, ip))
 
-        host_keys = []
-        ca_keys = []
-        revoked_keys = []
-        x509_certs = []
-        revoked_certs = []
-        x509_subjects = []
-        revoked_subjects = []
+        host_keys: List[SSHKey] = []
+        ca_keys: List[SSHKey] = []
+        revoked_keys: List[SSHKey] = []
+        x509_certs: List[SSHX509Certificate] = []
+        revoked_certs: List[SSHX509Certificate] = []
+        x509_subjects: List['X509NamePattern'] = []
+        revoked_subjects: List['X509NamePattern'] = []
 
         for marker, key, cert, subject in matches:
             if key:
@@ -214,6 +239,8 @@ class SSHKnownHosts:
                 else:
                     x509_certs.append(cert)
             else:
+                assert subject is not None
+
                 if marker == 'revoked':
                     revoked_subjects.append(subject)
                 else:
@@ -222,7 +249,8 @@ class SSHKnownHosts:
         return (host_keys, ca_keys, revoked_keys, x509_certs, revoked_certs,
                 x509_subjects, revoked_subjects)
 
-    def match(self, host, addr, port):
+    def match(self, host: str, addr: str,
+              port: Optional[int]) -> _KnownHostsResult:
         """Match a host, IP address, and port against known_hosts patterns
 
            If the port is not the default port and no match is found
@@ -254,7 +282,7 @@ class SSHKnownHosts:
                 x509_subjects, revoked_subjects)
 
 
-def import_known_hosts(data):
+def import_known_hosts(data: str) -> SSHKnownHosts:
     """Import SSH known hosts
 
        This function imports known host patterns and keys in
@@ -271,7 +299,7 @@ def import_known_hosts(data):
     return SSHKnownHosts(data)
 
 
-def read_known_hosts(filelist):
+def read_known_hosts(filelist: Union[str, Sequence[str]]) -> SSHKnownHosts:
     """Read SSH known hosts from a file or list of files
 
        This function reads known host patterns and keys in
@@ -296,7 +324,8 @@ def read_known_hosts(filelist):
     return known_hosts
 
 
-def match_known_hosts(known_hosts, host, addr, port):
+def match_known_hosts(known_hosts: KnownHostsArg, host: str,
+                      addr: str, port: Optional[int]) -> _KnownHostsResult:
     """Match a host, IP address, and port against a known_hosts list
 
        This function looks up a host, IP address, and port in a list of
@@ -347,12 +376,21 @@ def match_known_hosts(known_hosts, host, addr, port):
         if callable(known_hosts):
             known_hosts = known_hosts(host, addr, port)
 
-        known_hosts = (tuple(map(load_public_keys, known_hosts[:3])) +
-                       tuple(map(load_certificates, known_hosts[3:5])) +
-                       tuple(map(_load_subject_names, known_hosts[5:])))
+        result = cast(Sequence[str], known_hosts)
 
-        if len(known_hosts) == 3:
+        result = (tuple(map(load_public_keys, result[:3])) +
+                  tuple(map(load_certificates, result[3:5])) +
+                  tuple(map(_load_subject_names, result[5:7])))
+
+        if len(result) == 3:
             # Provide backward compatibility for pre-X.509 releases
-            known_hosts = tuple(known_hosts) + ((), (), (), ())
+            result += ((), (), (), ())
+
+        known_hosts = cast(_KnownHostsResult, result)
+
+    for cert in list(known_hosts[3]) + list(known_hosts[4]):
+        if not cert.is_x509:
+            raise ValueError('OpenSSH certificates not '
+                             'allowed in known hosts') from None
 
     return known_hosts

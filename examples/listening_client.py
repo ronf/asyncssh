@@ -1,6 +1,6 @@
 #!/usr/bin/env python3.6
 #
-# Copyright (c) 2013-2018 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2021 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -23,17 +23,18 @@
 import asyncio, asyncssh, sys
 
 class MySSHTCPSession(asyncssh.SSHTCPSession):
-    def connection_made(self, chan):
+    def connection_made(self, chan: asyncssh.SSHTCPChannel) -> None:
         self._chan = chan
 
-    def data_received(self, data, datatype):
+    def data_received(self, data: bytes, datatype: asyncssh.DataType):
         self._chan.write(data)
 
-def connection_requested(orig_host, orig_port):
+def connection_requested(orig_host: str,
+                         orig_port: int) -> asyncssh.SSHTCPSession:
     print('Connection received from %s, port %s' % (orig_host, orig_port))
     return MySSHTCPSession()
 
-async def run_client():
+async def run_client() -> None:
     async with asyncssh.connect('localhost') as conn:
         server = await conn.create_server(connection_requested, '', 8888,
                                           encoding='utf-8')
@@ -41,7 +42,7 @@ async def run_client():
         if server:
             await server.wait_closed()
         else:
-            print('Listener couldn''t be opened.', file=sys.stderr)
+            print('Listener couldn\'t be opened.', file=sys.stderr)
 
 try:
     asyncio.get_event_loop().run_until_complete(run_client())

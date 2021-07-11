@@ -1,6 +1,6 @@
 #!/usr/bin/env python3.6
 #
-# Copyright (c) 2016-2018 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2016-2021 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -30,12 +30,12 @@
 import asyncio, asyncssh, os, sys
 
 class MySFTPServer(asyncssh.SFTPServer):
-    def __init__(self, chan):
+    def __init__(self, chan: asyncssh.SSHServerChannel):
         root = '/tmp/sftp/' + chan.get_extra_info('username')
         os.makedirs(root, exist_ok=True)
         super().__init__(chan, chroot=root)
 
-async def start_server():
+async def start_server() -> None:
     await asyncssh.listen('', 8022, server_host_keys=['ssh_host_key'],
                           authorized_client_keys='ssh_user_ca',
                           sftp_factory=MySFTPServer)

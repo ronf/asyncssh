@@ -21,11 +21,10 @@
 """A shim around PyCA and PyOpenSSL for X.509 certificates"""
 
 from datetime import datetime, timezone
-from ipaddress import ip_address
 import re
 import sys
+from typing import Iterable, List, Optional, Sequence, Set, Union, cast
 
-from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.serialization import Encoding
 from cryptography.hazmat.primitives.serialization import PublicFormat
 from cryptography import x509
@@ -33,7 +32,17 @@ from cryptography import x509
 from OpenSSL import crypto
 
 from ..asn1 import IA5String, der_decode, der_encode
-from .misc import hashes
+from ..misc import ip_address
+
+from .misc import PyCAKey, PyCAPrivateKey, PyCAPublicKey, hashes
+
+
+_Comment = Union[None, bytes, str]
+_Principals = Union[str, Sequence[str]]
+_Purposes = Union[None, str, Sequence[str]]
+_PurposeOIDs = Union[None, Set[x509.ObjectIdentifier]]
+_GeneralNameList = List[x509.GeneralName]
+_NameInit = Union[str, x509.Name, Iterable[x509.RelativeDistinguishedName]]
 
 
 _purpose_to_oid = {
@@ -59,7 +68,7 @@ else:
     _datetime_max = datetime.max.replace(tzinfo=timezone.utc)
 
 
-def _to_generalized_time(t):
+def _to_generalized_time(t: int) -> datetime:
     """Convert a timestamp value to a datetime"""
 
     if t <= 0:
@@ -77,7 +86,7 @@ def _to_generalized_time(t):
                 return _datetime_32bit_max
 
 
-def _to_purpose_oids(purposes):
+def _to_purpose_oids(purposes: _Purposes) -> _PurposeOIDs:
     """Convert a list of purposes to purpose OIDs"""
 
     if isinstance(purposes, str):
@@ -92,7 +101,7 @@ def _to_purpose_oids(purposes):
     return purpose_oids
 
 
-def _encode_user_principals(principals):
+def _encode_user_principals(principals: _Principals) -> _GeneralNameList:
     """Encode user principals as e-mail addresses"""
 
     if isinstance(principals, str):
@@ -101,7 +110,7 @@ def _encode_user_principals(principals):
     return [x509.RFC822Name(name) for name in principals]
 
 
-def _encode_host_principals(principals):
+def _encode_host_principals(principals: _Principals) -> _GeneralNameList:
     """Encode host principals as DNS names or IP addresses"""
 
     def _encode_host(name: str) -> x509.GeneralName:
@@ -138,7 +147,7 @@ class X509Name(x509.Name):
     _to_oid = dict((k, v) for k, v in _attrs)
     _from_oid = dict((v, k) for k, v in _attrs)
 
-    def __init__(self, name):
+    def __init__(self, name: _NameInit):
         if isinstance(name, str):
             rdns = self._parse_name(name)
         elif isinstance(name, x509.Name):
@@ -148,32 +157,33 @@ class X509Name(x509.Name):
 
         super().__init__(rdns)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return ','.join(self._format_rdn(rdn) for rdn in self.rdns)
 
-    def _format_rdn(self, rdn):
+    def _format_rdn(self, rdn: x509.RelativeDistinguishedName) -> str:
         """Format an X.509 RelativeDistinguishedName as a string"""
 
         return '+'.join(sorted(self._format_attr(nameattr) for nameattr in rdn))
 
-    def _format_attr(self, nameattr):
+    def _format_attr(self, nameattr: x509.NameAttribute) -> str:
         """Format an X.509 NameAttribute as a string"""
 
         attr = self._from_oid.get(nameattr.oid) or nameattr.oid.dotted_string
         return attr + '=' + self._escape.sub(r'\\\1', nameattr.value)
 
-    def _parse_name(self, name):
+    def _parse_name(self, name: str) -> \
+            Iterable[x509.RelativeDistinguishedName]:
         """Parse an X.509 distinguished name"""
 
-        return (self._parse_rdn(rdn) for rdn in self._split_name.findall(name))
+        return [self._parse_rdn(rdn) for rdn in self._split_name.findall(name)]
 
-    def _parse_rdn(self, rdn):
+    def _parse_rdn(self, rdn: str) -> x509.RelativeDistinguishedName:
         """Parse an X.509 relative distinguished name"""
 
         return x509.RelativeDistinguishedName(
             self._parse_nameattr(av) for av in self._split_rdn.findall(rdn))
 
-    def _parse_nameattr(self, av):
+    def _parse_nameattr(self, av: str) -> x509.NameAttribute:
         """Parse an X.509 name attribute/value pair"""
 
         try:
@@ -193,26 +203,28 @@ class X509Name(x509.Name):
 class X509NamePattern:
     """Match X.509 distinguished names"""
 
-    def __init__(self, pattern):
+    def __init__(self, pattern: str):
         if pattern.endswith(',*'):
             self._pattern = X509Name(pattern[:-2])
-            self._prefix_len = len(self._pattern.rdns)
+            self._prefix_len: Optional[int] = len(self._pattern.rdns)
         else:
             self._pattern = X509Name(pattern)
             self._prefix_len = None
 
-    def __eq__(self, other):
+    def __eq__(self, other: object) -> bool:
         # This isn't protected access - both objects are _RSAKey instances
         # pylint: disable=protected-access
 
-        return (isinstance(other, type(self)) and
-                self._pattern == other._pattern and
+        if not isinstance(other, X509NamePattern): # pragma: no cover
+            return NotImplemented
+
+        return (self._pattern == other._pattern and
                 self._prefix_len == other._prefix_len)
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         return hash((self._pattern, self._prefix_len))
 
-    def matches(self, name):
+    def matches(self, name: X509Name) -> bool:
         """Return whether an X.509 name matches this pattern"""
 
         return self._pattern.rdns == name.rdns[:self._prefix_len]
@@ -221,7 +233,7 @@ class X509NamePattern:
 class X509Certificate:
     """A shim around PyCA and PyOpenSSL for X.509 certificates"""
 
-    def __init__(self, cert, data):
+    def __init__(self, cert: x509.Certificate, data: bytes):
         self.data = data
 
         self.subject = X509Name(cert.subject)
@@ -234,8 +246,9 @@ class X509Certificate:
         self.issuer_hash = hex(self.openssl_cert.get_issuer().hash())[2:]
 
         try:
-            self.purposes = set(cert.extensions.get_extension_for_class(
-                x509.ExtendedKeyUsage).value)
+            self.purposes: Optional[Set[bytes]] = \
+                set(cert.extensions.get_extension_for_class(
+                    x509.ExtendedKeyUsage).value)
         except x509.ExtensionNotFound:
             self.purposes = None
 
@@ -255,18 +268,24 @@ class X509Certificate:
 
         try:
             comment = cert.extensions.get_extension_for_oid(_nscomment_oid)
-            comment_der = comment.value.value
-            self.comment = der_decode(comment_der).value
+            comment_der = cast(x509.UnrecognizedExtension, comment.value).value
+            self.comment: Optional[bytes] = \
+                cast(IA5String, der_decode(comment_der)).value
         except x509.ExtensionNotFound:
             self.comment = None
 
-    def __eq__(self, other):
-        return isinstance(other, type(self)) and self.data == other.data
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, X509Certificate): # pragma: no cover
+            return NotImplemented
 
-    def __hash__(self):
+        return self.data == other.data
+
+    def __hash__(self) -> int:
         return hash(self.data)
 
-    def validate(self, trust_store, purposes, user_principal, host_principal):
+    def validate(self, trust_store: Sequence['X509Certificate'],
+                 purposes: _Purposes, user_principal: str,
+                 host_principal: str) -> None:
         """Validate an X.509 certificate"""
 
         purpose_oids = _to_purpose_oids(purposes)
@@ -286,16 +305,22 @@ class X509Certificate:
             x509_store.add_cert(c.openssl_cert)
 
         try:
-            x509_ctx = crypto.X509StoreContext(x509_store, self.openssl_cert)
+            x509_ctx = crypto.X509StoreContext(x509_store, self.openssl_cert,
+                                               None)
             x509_ctx.verify_certificate()
         except crypto.X509StoreContextError as exc:
             raise ValueError(str(exc)) from None
 
 
-def generate_x509_certificate(signing_key, key, subject, issuer, serial,
-                              valid_after, valid_before, ca, ca_path_len,
-                              purposes, user_principals, host_principals,
-                              hash_alg, comment):
+def generate_x509_certificate(signing_key: PyCAKey, key: PyCAKey,
+                              subject: _NameInit, issuer: Optional[_NameInit],
+                              serial: Optional[int], valid_after: int,
+                              valid_before: int, ca: bool,
+                              ca_path_len: Optional[int], purposes: _Purposes,
+                              user_principals: _Principals,
+                              host_principals: _Principals,
+                              hash_name: str,
+                              comment: _Comment) -> X509Certificate:
     """Generate a new X.509 certificate"""
 
     builder = x509.CertificateBuilder()
@@ -315,7 +340,7 @@ def generate_x509_certificate(signing_key, key, subject, issuer, serial,
     builder = builder.not_valid_before(_to_generalized_time(valid_after))
     builder = builder.not_valid_after(_to_generalized_time(valid_before))
 
-    builder = builder.public_key(key.pyca_key)
+    builder = builder.public_key(cast(PyCAPublicKey, key))
 
     if ca:
         basic_constraints = x509.BasicConstraints(ca=True,
@@ -348,11 +373,12 @@ def generate_x509_certificate(signing_key, key, subject, issuer, serial,
         builder = builder.add_extension(x509.ExtendedKeyUsage(purpose_oids),
                                         critical=False)
 
-    skid = x509.SubjectKeyIdentifier.from_public_key(key.pyca_key)
+    skid = x509.SubjectKeyIdentifier.from_public_key(cast(PyCAPublicKey, key))
+
     builder = builder.add_extension(skid, critical=False)
 
     if not self_signed:
-        issuer_pk = signing_key.convert_to_public().pyca_key
+        issuer_pk = cast(PyCAPrivateKey, signing_key).public_key()
         akid = x509.AuthorityKeyIdentifier.from_issuer_public_key(issuer_pk)
         builder = builder.add_extension(akid, critical=False)
 
@@ -365,25 +391,28 @@ def generate_x509_certificate(signing_key, key, subject, issuer, serial,
 
     if comment:
         if isinstance(comment, str):
-            comment = comment.encode('utf-8')
+            comment_bytes = comment.encode('utf-8')
+        else:
+            comment_bytes = comment
 
-        comment = der_encode(IA5String(comment))
+        comment_bytes = der_encode(IA5String(comment_bytes))
         builder = builder.add_extension(
-            x509.UnrecognizedExtension(_nscomment_oid, comment), critical=False)
+            x509.UnrecognizedExtension(_nscomment_oid, comment_bytes),
+            critical=False)
 
     try:
-        hash_alg = hashes[hash_alg]() if hash_alg else None
+        hash_alg = hashes[hash_name]() if hash_name else None
     except KeyError:
         raise ValueError('Unknown hash algorithm') from None
 
-    cert = builder.sign(signing_key.pyca_key, hash_alg, default_backend())
+    cert = builder.sign(cast(PyCAPrivateKey, signing_key), hash_alg)
     data = cert.public_bytes(Encoding.DER)
 
     return X509Certificate(cert, data)
 
 
-def import_x509_certificate(data):
+def import_x509_certificate(data: bytes) -> X509Certificate:
     """Construct an X.509 certificate from DER data"""
 
-    cert = x509.load_der_x509_certificate(data, default_backend())
+    cert = x509.load_der_x509_certificate(data)
     return X509Certificate(cert, data)

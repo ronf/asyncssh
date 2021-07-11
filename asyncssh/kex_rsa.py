@@ -21,12 +21,22 @@
 """RSA key exchange handler"""
 
 from hashlib import sha1, sha256
+from typing import TYPE_CHECKING, Optional, cast
 
 from .kex import Kex, register_kex_alg
-from .misc import KeyExchangeFailed, ProtocolError, get_symbol_names, randrange
+from .misc import HashType, KeyExchangeFailed, ProtocolError
+from .misc import get_symbol_names, randrange
 from .packet import MPInt, String, SSHPacket
-from .public_key import KeyImportError
+from .public_key import KeyImportError, SSHKey
 from .public_key import decode_ssh_public_key, generate_private_key
+from .rsa import RSAKey
+
+
+if TYPE_CHECKING:
+    # pylint: disable=cyclic-import
+    from .connection import SSHConnection, SSHClientConnection
+    from .connection import SSHServerConnection
+
 
 # SSH KEXRSA message values
 MSG_KEXRSA_PUBKEY  = 30
@@ -39,34 +49,38 @@ class _KexRSA(Kex):
 
     _handler_names = get_symbol_names(globals(), 'MSG_KEXRSA')
 
-    def __init__(self, alg, conn, hash_alg, key_size, hash_size):
+    def __init__(self, alg: bytes, conn: 'SSHConnection', hash_alg: HashType,
+                 key_size: int, hash_size: int):
         super().__init__(alg, conn, hash_alg)
 
         self._key_size = key_size
         self._k_limit = 1 << (key_size - 2*hash_size - 49)
 
-        self._host_key_data = None
+        self._host_key_data = b''
 
-        self._trans_key = None
-        self._trans_key_data = None
+        self._trans_key: Optional[SSHKey] = None
+        self._trans_key_data = b''
 
-        self._k = None
-        self._encrypted_k = None
+        self._k = 0
+        self._encrypted_k = b''
 
-    def start(self):
+    def start(self) -> None:
         """Start RSA key exchange"""
 
         if self._conn.is_server():
-            host_key = self._conn.get_server_host_key()
+            server_conn = cast('SSHServerConnection', self._conn)
+            host_key = server_conn.get_server_host_key()
+            assert host_key is not None
             self._host_key_data = host_key.public_data
 
-            self._trans_key = generate_private_key('ssh-rsa', self._key_size)
+            self._trans_key = generate_private_key(
+                'ssh-rsa', key_size=self._key_size)
             self._trans_key_data = self._trans_key.public_data
 
             self.send_packet(MSG_KEXRSA_PUBKEY, String(self._host_key_data),
                              String(self._trans_key_data))
 
-    def _compute_hash(self):
+    def _compute_hash(self) -> bytes:
         """Compute a hash of key information associated with the connection"""
 
         hash_obj = self._hash_alg()
@@ -77,7 +91,8 @@ class _KexRSA(Kex):
         hash_obj.update(MPInt(self._k))
         return hash_obj.digest()
 
-    def _process_pubkey(self, _pkttype, _pktid, packet):
+    def _process_pubkey(self, _pkttype: int, _pktid: int,
+                        packet: SSHPacket) -> None:
         """Process a KEXRSA pubkey message"""
 
         if self._conn.is_server():
@@ -88,16 +103,19 @@ class _KexRSA(Kex):
         packet.check_end()
 
         try:
-            trans_key = decode_ssh_public_key(self._trans_key_data)
+            pubkey = decode_ssh_public_key(self._trans_key_data)
         except KeyImportError:
             raise ProtocolError('Invalid KEXRSA pubkey msg') from None
 
+        trans_key = cast(RSAKey, pubkey)
         self._k = randrange(self._k_limit)
-        self._encrypted_k = trans_key.encrypt(MPInt(self._k), self.algorithm)
+        self._encrypted_k = \
+            cast(bytes, trans_key.encrypt(MPInt(self._k), self.algorithm))
 
         self.send_packet(MSG_KEXRSA_SECRET, String(self._encrypted_k))
 
-    def _process_secret(self, _pkttype, _pktid, packet):
+    def _process_secret(self, _pkttype: int, _pktid: int,
+                        packet: SSHPacket) -> None:
         """Process a KEXRSA secret message"""
 
         if self._conn.is_client():
@@ -106,7 +124,8 @@ class _KexRSA(Kex):
         self._encrypted_k = packet.get_string()
         packet.check_end()
 
-        decrypted_k = self._trans_key.decrypt(self._encrypted_k, self.algorithm)
+        trans_key = cast(RSAKey, self._trans_key)
+        decrypted_k = trans_key.decrypt(self._encrypted_k, self.algorithm)
         if not decrypted_k:
             raise KeyExchangeFailed('Key exchange decryption failed')
 
@@ -114,7 +133,9 @@ class _KexRSA(Kex):
         self._k = packet.get_mpint()
         packet.check_end()
 
-        host_key = self._conn.get_server_host_key()
+        server_conn = cast('SSHServerConnection', self._conn)
+        host_key = server_conn.get_server_host_key()
+        assert host_key is not None
 
         h = self._compute_hash()
         sig = host_key.sign(h)
@@ -123,7 +144,8 @@ class _KexRSA(Kex):
 
         self._conn.send_newkeys(self._k, h)
 
-    def _process_done(self, _pkttype, _pktid, packet):
+    def _process_done(self, _pkttype: int, _pktid: int,
+                      packet: SSHPacket) -> None:
         """Process a KEXRSA done message"""
 
         if self._conn.is_server():
@@ -132,7 +154,8 @@ class _KexRSA(Kex):
         sig = packet.get_string()
         packet.check_end()
 
-        host_key = self._conn.validate_server_host_key(self._host_key_data)
+        client_conn = cast('SSHClientConnection', self._conn)
+        host_key = client_conn.validate_server_host_key(self._host_key_data)
 
         h = self._compute_hash()
         if not host_key.verify(h, sig):

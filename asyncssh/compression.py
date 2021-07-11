@@ -20,11 +20,11 @@
 
 """SSH compression handlers"""
 
+from typing import Callable, List, Optional
 import zlib
 
-
-_cmp_algs = []
-_default_cmp_algs = []
+_cmp_algs: List[bytes] = []
+_default_cmp_algs: List[bytes] = []
 
 _cmp_params = {}
 
@@ -32,19 +32,41 @@ _cmp_compressors = {}
 _cmp_decompressors = {}
 
 
-def _none():
-    """Compressor/decompressor for no compression."""
+class Compressor:
+    """Base class for data compressor"""
+
+    def compress(self, data: bytes) -> Optional[bytes]:
+        """Compress data"""
+
+        raise NotImplementedError
+
+
+class Decompressor:
+    """Base class for data decompressor"""
+
+    def decompress(self, data: bytes) -> Optional[bytes]:
+        """Decompress data"""
+
+        raise NotImplementedError
+
+
+_CompressorType = Callable[[], Optional[Compressor]]
+_DecompressorType = Callable[[], Optional[Decompressor]]
+
+
+def _none() -> None:
+    """Compressor/decompressor for no compression"""
 
     return None
 
 
-class _ZLibCompress:
+class _ZLibCompress(Compressor):
     """Wrapper class to force a sync flush and handle exceptions"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._comp = zlib.compressobj()
 
-    def compress(self, data):
+    def compress(self, data: bytes) -> Optional[bytes]:
         """Compress data using zlib compression with sync flush"""
 
         try:
@@ -54,13 +76,13 @@ class _ZLibCompress:
             return None
 
 
-class _ZLibDecompress:
+class _ZLibDecompress(Decompressor):
     """Wrapper class to handle exceptions"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._decomp = zlib.decompressobj()
 
-    def decompress(self, data):
+    def decompress(self, data: bytes) -> Optional[bytes]:
         """Decompress data using zlib compression"""
 
         try:
@@ -69,8 +91,9 @@ class _ZLibDecompress:
             return None
 
 
-def register_compression_alg(alg, compressor, decompressor,
-                             after_auth, default):
+def register_compression_alg(alg: bytes, compressor: _CompressorType,
+                             decompressor: _DecompressorType,
+                             after_auth: bool, default: bool) -> None:
     """Register a compression algorithm"""
 
     _cmp_algs.append(alg)
@@ -84,19 +107,19 @@ def register_compression_alg(alg, compressor, decompressor,
     _cmp_decompressors[alg] = decompressor
 
 
-def get_compression_algs():
+def get_compression_algs() -> List[bytes]:
     """Return supported compression algorithms"""
 
     return _cmp_algs
 
 
-def get_default_compression_algs():
+def get_default_compression_algs() -> List[bytes]:
     """Return default compression algorithms"""
 
     return _default_cmp_algs
 
 
-def get_compression_params(alg):
+def get_compression_params(alg: bytes) -> bool:
     """Get parameters of a compression algorithm
 
        This function returns whether or not a compression algorithm should
@@ -107,7 +130,7 @@ def get_compression_params(alg):
     return _cmp_params[alg]
 
 
-def get_compressor(alg):
+def get_compressor(alg: bytes) -> Optional[Compressor]:
     """Return an instance of a compressor
 
        This function returns an object that can be used for data compression.
@@ -117,7 +140,7 @@ def get_compressor(alg):
     return _cmp_compressors[alg]()
 
 
-def get_decompressor(alg):
+def get_decompressor(alg: bytes) -> Optional[Decompressor]:
     """Return an instance of a decompressor
 
        This function returns an object that can be used for data decompression.

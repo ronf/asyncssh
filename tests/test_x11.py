@@ -238,6 +238,12 @@ class _X11Server(Server):
                     result = None
 
                 stdin.channel.exit(bool(result))
+            elif action == 'invalid':
+                try:
+                    result = await self._conn.create_x11_connection(
+                        None, b'\xff')
+                except asyncssh.ChannelOpenError:
+                    pass
             elif action == 'sleep':
                 await asyncio.sleep(0.1)
             else:
@@ -594,6 +600,14 @@ class _TestX11(ServerTestCase):
         async with self.connect() as conn:
             result = await conn.run('open')
             self.assertEqual(result.exit_status, 0)
+
+    @asynctest
+    async def test_open_invalid_unicode(self):
+        """Test opening X11 connection with invalid unicode in original host"""
+
+        async with self.connect() as conn:
+            result = await conn.run('invalid')
+            self.assertEqual(result.exit_status, None)
 
     @asynctest
     async def test_forwarding_not_allowed(self):

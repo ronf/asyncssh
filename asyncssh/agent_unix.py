@@ -1,4 +1,4 @@
-# Copyright (c) 2016-2019 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2016-2021 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -22,9 +22,16 @@
 
 import asyncio
 import errno
+from typing import TYPE_CHECKING, Optional, Tuple
 
 
-async def open_agent(agent_path):
+if TYPE_CHECKING:
+    # pylint: disable=cyclic-import
+    from .agent import AgentReader, AgentWriter
+
+
+async def open_agent(agent_path: Optional[str]) -> \
+        Tuple['AgentReader', 'AgentWriter']:
     """Open a connection to ssh-agent"""
 
     if not agent_path:

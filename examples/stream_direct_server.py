@@ -1,6 +1,6 @@
 #!/usr/bin/env python3.6
 #
-# Copyright (c) 2013-2018 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2021 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -29,7 +29,8 @@
 
 import asyncio, asyncssh, sys
 
-async def handle_connection(reader, writer):
+async def handle_connection(reader: asyncssh.SSHReader,
+                            writer: asyncssh.SSHWriter) -> None:
     while not reader.at_eof():
         data = await reader.read(8192)
 
@@ -41,7 +42,9 @@ async def handle_connection(reader, writer):
     writer.close()
 
 class MySSHServer(asyncssh.SSHServer):
-    def connection_requested(self, dest_host, dest_port, orig_host, orig_port):
+    def connection_requested(self, dest_host: str, dest_port: int,
+                             orig_host: str, orig_port: int) -> \
+            asyncssh.SSHSocketSessionFactory:
         if dest_port == 7:
             return handle_connection
         else:
@@ -49,7 +52,7 @@ class MySSHServer(asyncssh.SSHServer):
                       asyncssh.OPEN_ADMINISTRATIVELY_PROHIBITED,
                       'Only echo connections allowed')
 
-async def start_server():
+async def start_server() -> None:
     await asyncssh.create_server(MySSHServer, '', 8022,
                                  server_host_keys=['ssh_host_key'],
                                  authorized_client_keys='ssh_user_ca')

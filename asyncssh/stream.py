@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2020 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2021 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -23,45 +23,80 @@
 import asyncio
 import inspect
 import re
+from typing import TYPE_CHECKING, Any, AnyStr, AsyncIterator
+from typing import Callable, Dict, Generic, Iterable
+from typing import List, Optional, Set, Tuple, Union, cast
 
 from .constants import EXTENDED_DATA_STDERR
-from .misc import BreakReceived, SignalReceived
+from .logging import SSHLogger
+from .misc import MaybeAwait, BreakReceived, SignalReceived
 from .misc import SoftEOFReceived, TerminalSizeChanged
-from .session import SSHClientSession, SSHServerSession
+from .session import DataType, SSHClientSession, SSHServerSession
 from .session import SSHTCPSession, SSHUNIXSession
-from .sftp import run_sftp_server
+from .sftp import SFTPServer, run_sftp_server
 from .scp import run_scp_server
+
+
+if TYPE_CHECKING:
+    # pylint: disable=cyclic-import
+    from .channel import SSHChannel
+    from .connection import SSHConnection
+
+
+if TYPE_CHECKING:
+    _WaiterFuture = asyncio.Future[None]
+else:
+    _WaiterFuture = asyncio.Future
+
+_RecvBuf = List[Union[AnyStr, Exception]]
+_RecvBufMap = Dict[DataType, _RecvBuf[AnyStr]]
+_ReadLocks = Dict[DataType, asyncio.Lock]
+_ReadWaiters = Dict[DataType, Optional[_WaiterFuture]]
+_DrainWaiters = Dict[DataType, Set[_WaiterFuture]]
+
+SSHSocketSessionFactory = Callable[['SSHReader', 'SSHWriter'],
+                                    MaybeAwait[None]]
+_OptSocketSessionFactory = Optional[SSHSocketSessionFactory]
+
+SSHServerSessionFactory = Callable[['SSHReader', 'SSHWriter',
+                                    'SSHWriter'], MaybeAwait[None]]
+_OptServerSessionFactory = Optional[SSHServerSessionFactory]
+
+SFTPServerFactory = Callable[['SSHChannel[bytes]'], SFTPServer]
+_OptSFTPServerFactory = Optional[SFTPServerFactory]
+
 
 _NEWLINE = object()
 
 
-class SSHReader:
+class SSHReader(Generic[AnyStr]):
     """SSH read stream handler"""
 
-    def __init__(self, session, chan, datatype=None):
-        self._session = session
-        self._chan = chan
+    def __init__(self, session: 'SSHStreamSession[AnyStr]',
+                 chan: 'SSHChannel[AnyStr]', datatype: DataType = None):
+        self._session: 'SSHStreamSession[AnyStr]' = session
+        self._chan: 'SSHChannel[AnyStr]' = chan
         self._datatype = datatype
 
-    async def __aiter__(self):
+    async def __aiter__(self) -> AsyncIterator[AnyStr]:
         """Allow SSHReader to be an async iterator"""
 
         while not self.at_eof():
             yield await self.readline()
 
     @property
-    def channel(self):
+    def channel(self) -> 'SSHChannel[AnyStr]':
         """The SSH channel associated with this stream"""
 
         return self._chan
 
     @property
-    def logger(self):
+    def logger(self) -> SSHLogger:
         """The SSH logger associated with this stream"""
 
         return self._chan.logger
 
-    def get_extra_info(self, name, default=None):
+    def get_extra_info(self, name: str, default: Any = None) -> Any:
         """Return additional information about this stream
 
            This method returns extra information about the channel
@@ -73,7 +108,7 @@ class SSHReader:
 
         return self._chan.get_extra_info(name, default)
 
-    def feed_data(self, data):
+    def feed_data(self, data: AnyStr) -> None:
         """Feed data to the associated session
 
            This method feeds data to the SSH session associated with
@@ -86,7 +121,7 @@ class SSHReader:
 
         self._session.data_received(data, self._datatype)
 
-    def feed_eof(self):
+    def feed_eof(self) -> None:
         """Feed EOF to the associated session
 
            This method feeds an end-of-file indication to the SSH session
@@ -99,7 +134,7 @@ class SSHReader:
 
         self._session.eof_received()
 
-    async def read(self, n=-1):
+    async def read(self, n: int = -1) -> AnyStr:
         """Read data from the stream
 
            This method is a coroutine which reads up to `n` bytes
@@ -121,7 +156,7 @@ class SSHReader:
 
         return await self._session.read(n, self._datatype, exact=False)
 
-    async def readline(self):
+    async def readline(self) -> AnyStr:
         """Read one line from the stream
 
            This method is a coroutine which reads one line, ending in
@@ -143,9 +178,9 @@ class SSHReader:
         try:
             return await self.readuntil(_NEWLINE)
         except asyncio.IncompleteReadError as exc:
-            return exc.partial
+            return cast(AnyStr, exc.partial)
 
-    async def readuntil(self, separator):
+    async def readuntil(self, separator: object) -> AnyStr:
         """Read data from the stream until `separator` is seen
 
            This method is a coroutine which reads from the stream until
@@ -169,7 +204,7 @@ class SSHReader:
 
         return await self._session.readuntil(separator, self._datatype)
 
-    async def readexactly(self, n):
+    async def readexactly(self, n: int) -> AnyStr:
         """Read an exact amount of data from the stream
 
            This method is a coroutine which reads exactly n bytes or
@@ -187,7 +222,7 @@ class SSHReader:
 
         return await self._session.read(n, self._datatype, exact=True)
 
-    def at_eof(self):
+    def at_eof(self) -> bool:
         """Return whether the stream is at EOF
 
            This method returns `True` when EOF has been received and
@@ -197,33 +232,34 @@ class SSHReader:
 
         return self._session.at_eof(self._datatype)
 
-    def get_redirect_info(self):
+    def get_redirect_info(self) -> Tuple['SSHStreamSession[AnyStr]', DataType]:
         """Get information needed to redirect from this SSHReader"""
 
         return self._session, self._datatype
 
 
-class SSHWriter:
+class SSHWriter(Generic[AnyStr]):
     """SSH write stream handler"""
 
-    def __init__(self, session, chan, datatype=None):
-        self._session = session
-        self._chan = chan
+    def __init__(self, session: 'SSHStreamSession[AnyStr]',
+                 chan: 'SSHChannel[AnyStr]', datatype: DataType = None):
+        self._session: 'SSHStreamSession[AnyStr]' = session
+        self._chan: 'SSHChannel[AnyStr]' = chan
         self._datatype = datatype
 
     @property
-    def channel(self):
+    def channel(self) -> 'SSHChannel[AnyStr]':
         """The SSH channel associated with this stream"""
 
         return self._chan
 
     @property
-    def logger(self):
+    def logger(self) -> SSHLogger:
         """The SSH logger associated with this stream"""
 
         return self._chan.logger
 
-    def get_extra_info(self, name, default=None):
+    def get_extra_info(self, name: str, default: Any = None) -> Any:
         """Return additional information about this stream
 
            This method returns extra information about the channel
@@ -235,12 +271,12 @@ class SSHWriter:
 
         return self._chan.get_extra_info(name, default)
 
-    def can_write_eof(self):
+    def can_write_eof(self) -> bool:
         """Return whether the stream supports :meth:`write_eof`"""
 
         return self._chan.can_write_eof()
 
-    def close(self):
+    def close(self) -> None:
         """Close the channel
 
            .. note:: After this is called, no data can be read or written
@@ -250,12 +286,12 @@ class SSHWriter:
 
         return self._chan.close()
 
-    def is_closing(self):
+    def is_closing(self) -> bool:
         """Return if the stream is closing or is closed"""
 
         return self._chan.is_closing()
 
-    async def wait_closed(self):
+    async def wait_closed(self) -> None:
         """Wait until the stream is closed
 
            This should be called after :meth:`close` to wait until
@@ -265,7 +301,7 @@ class SSHWriter:
 
         await self._chan.wait_closed()
 
-    async def drain(self):
+    async def drain(self) -> None:
         """Wait until the write buffer on the channel is flushed
 
            This method is a coroutine which blocks the caller if the
@@ -276,9 +312,9 @@ class SSHWriter:
 
         """
 
-        return await self._session.drain(self._datatype)
+        await self._session.drain(self._datatype)
 
-    def write(self, data):
+    def write(self, data: AnyStr) -> None:
         """Write data to the stream
 
            This method writes bytes or characters to the stream.
@@ -292,12 +328,12 @@ class SSHWriter:
 
         return self._chan.write(data, self._datatype)
 
-    def writelines(self, list_of_data):
+    def writelines(self, list_of_data: Iterable[AnyStr]) -> None:
         """Write a collection of data to the stream"""
 
         return self._chan.writelines(list_of_data, self._datatype)
 
-    def write_eof(self):
+    def write_eof(self) -> None:
         """Write EOF on the channel
 
            This method sends an end-of-file indication on the channel,
@@ -312,56 +348,59 @@ class SSHWriter:
 
         return self._chan.write_eof()
 
-    def get_redirect_info(self):
+    def get_redirect_info(self) -> Tuple['SSHStreamSession[AnyStr]', DataType]:
         """Get information needed to redirect to this SSHWriter"""
 
         return self._session, self._datatype
 
 
-class SSHStreamSession:
+class SSHStreamSession(Generic[AnyStr]):
     """SSH stream session handler"""
 
-    def __init__(self):
-        self._chan = None
-        self._conn = None
-        self._encoding = None
+    def __init__(self) -> None:
+        self._chan: Optional['SSHChannel[AnyStr]'] = None
+        self._conn: Optional['SSHConnection'] = None
+        self._encoding: Optional[str] = None
         self._errors = 'strict'
-        self._loop = None
-        self._limit = None
-        self._exception = None
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
+        self._limit = 0
+        self._exception: Optional[Exception] = None
         self._eof_received = False
         self._connection_lost = False
-        self._recv_buf = {None: []}
-        self._recv_buf_len = 0
-        self._read_locks = {None: asyncio.Lock()}
-        self._read_waiters = {None: None}
         self._read_paused = False
         self._write_paused = False
-        self._drain_waiters = {None: set()}
+        self._recv_buf_len = 0
+        self._recv_buf: _RecvBufMap[AnyStr] = {None: []}
+        self._read_locks: _ReadLocks = {None: asyncio.Lock()}
+        self._read_waiters: _ReadWaiters = {None: None}
+        self._drain_waiters: _DrainWaiters = {None: set()}
 
-    async def _block_read(self, datatype):
+    async def _block_read(self, datatype: DataType) -> None:
         """Wait for more data to arrive on the stream"""
 
         try:
-            waiter = self._loop.create_future()
+            assert self._loop is not None
+            waiter: _WaiterFuture = self._loop.create_future()
             self._read_waiters[datatype] = waiter
             await waiter
         finally:
             self._read_waiters[datatype] = None
 
-    def _unblock_read(self, datatype):
+    def _unblock_read(self, datatype: DataType) -> None:
         """Signal that more data has arrived on the stream"""
 
         waiter = self._read_waiters[datatype]
         if waiter and not waiter.done():
             waiter.set_result(None)
 
-    def _should_block_drain(self, _datatype):
+    def _should_block_drain(self, datatype: DataType) -> bool:
         """Return whether output is still being written to the channel"""
+
+        # pylint: disable=unused-argument
 
         return self._write_paused and not self._connection_lost
 
-    def _unblock_drain(self, datatype):
+    def _unblock_drain(self, datatype: DataType) -> None:
         """Signal that more data can be written on the stream"""
 
         if not self._should_block_drain(datatype):
@@ -369,32 +408,34 @@ class SSHStreamSession:
                 if not waiter.done(): # pragma: no branch
                     waiter.set_result(None)
 
-    def _should_pause_reading(self):
+    def _should_pause_reading(self) -> bool:
         """Return whether to pause reading from the channel"""
 
-        return self._limit and self._recv_buf_len >= self._limit
+        return bool(self._limit) and self._recv_buf_len >= self._limit
 
-    def _maybe_pause_reading(self):
+    def _maybe_pause_reading(self) -> bool:
         """Pause reading if necessary"""
 
         if not self._read_paused and self._should_pause_reading():
+            assert self._chan is not None
             self._read_paused = True
             self._chan.pause_reading()
             return True
         else:
             return False
 
-    def _maybe_resume_reading(self):
+    def _maybe_resume_reading(self) -> bool:
         """Resume reading if necessary"""
 
         if self._read_paused and not self._should_pause_reading():
+            assert self._chan is not None
             self._read_paused = False
             self._chan.resume_reading()
             return True
         else:
             return False
 
-    def connection_made(self, chan):
+    def connection_made(self, chan: 'SSHChannel[AnyStr]') -> None:
         """Handle a newly opened channel"""
 
         self._chan = chan
@@ -411,7 +452,7 @@ class SSHStreamSession:
         for datatype in chan.get_write_datatypes():
             self._drain_waiters[datatype] = set()
 
-    def connection_lost(self, exc):
+    def connection_lost(self, exc: Optional[Exception]) -> None:
         """Handle an incoming channel close"""
 
         self._connection_lost = True
@@ -427,7 +468,7 @@ class SSHStreamSession:
         for datatype in self._drain_waiters:
             self._unblock_drain(datatype)
 
-    def data_received(self, data, datatype):
+    def data_received(self, data: AnyStr, datatype: DataType) -> None:
         """Handle incoming data on the channel"""
 
         self._recv_buf[datatype].append(data)
@@ -435,7 +476,7 @@ class SSHStreamSession:
         self._unblock_read(datatype)
         self._maybe_pause_reading()
 
-    def eof_received(self):
+    def eof_received(self) -> bool:
         """Handle an incoming end of file on the channel"""
 
         self._eof_received = True
@@ -445,17 +486,17 @@ class SSHStreamSession:
 
         return True
 
-    def at_eof(self, datatype):
+    def at_eof(self, datatype: DataType) -> bool:
         """Return whether end of file has been received on the channel"""
 
         return self._eof_received and not self._recv_buf[datatype]
 
-    def pause_writing(self):
+    def pause_writing(self) -> None:
         """Handle a request to pause writing on the channel"""
 
         self._write_paused = True
 
-    def resume_writing(self):
+    def resume_writing(self) -> None:
         """Handle a request to resume writing on the channel"""
 
         self._write_paused = False
@@ -463,12 +504,11 @@ class SSHStreamSession:
         for datatype in self._drain_waiters:
             self._unblock_drain(datatype)
 
-    async def read(self, n, datatype, exact):
+    async def read(self, n: int, datatype: DataType, exact: bool) -> AnyStr:
         """Read data from the channel"""
 
         recv_buf = self._recv_buf[datatype]
-        buf = '' if self._encoding else b''
-        data = []
+        data: List[AnyStr] = []
 
         async with self._read_locks[datatype]:
             while True:
@@ -477,7 +517,7 @@ class SSHStreamSession:
                         if data:
                             break
                         else:
-                            exc = recv_buf.pop(0)
+                            exc = cast(Exception, recv_buf.pop(0))
 
                             if isinstance(exc, SoftEOFReceived):
                                 n = 0
@@ -486,6 +526,7 @@ class SSHStreamSession:
                                 raise exc
 
                     l = len(recv_buf[0])
+
                     if l > n > 0:
                         data.append(recv_buf[0][:n])
                         recv_buf[0] = recv_buf[0][n:]
@@ -493,7 +534,7 @@ class SSHStreamSession:
                         n = 0
                         break
 
-                    data.append(recv_buf.pop(0))
+                    data.append(cast(AnyStr, recv_buf.pop(0)))
                     self._recv_buf_len -= l
                     n -= l
 
@@ -506,30 +547,36 @@ class SSHStreamSession:
 
                 await self._block_read(datatype)
 
-        buf = buf.join(data)
+        result = cast(AnyStr, '' if self._encoding else b'').join(data)
+
         if n > 0 and exact:
-            raise asyncio.IncompleteReadError(buf, len(buf) + n)
+            raise asyncio.IncompleteReadError(cast(bytes, result),
+                                              len(result) + n)
 
-        return buf
+        return result
 
-    async def readuntil(self, separator, datatype):
+    async def readuntil(self, separator: object, datatype: DataType) -> AnyStr:
         """Read data from the channel until a separator is seen"""
 
-        if separator is _NEWLINE:
-            separator = '\n' if self._encoding else b'\n'
-        elif not separator:
+        if not separator:
             raise ValueError('Separator cannot be empty')
 
-        if isinstance(separator, (str, bytes)):
-            separators = [separator]
-        else:
-            separators = list(separator)
-
-        seplen = max(len(sep) for sep in separators)
-        bar = '|' if self._encoding else b'|'
-        pat = re.compile(bar.join(map(re.escape, separators)))
+        buf = cast(AnyStr, '' if self._encoding else b'')
         recv_buf = self._recv_buf[datatype]
-        buf = '' if self._encoding else b''
+
+        if separator is _NEWLINE:
+            seplen = 1
+            separators = cast(AnyStr, '\n' if self._encoding else b'\n')
+        elif isinstance(separator, (bytes, str)):
+            seplen = len(separator)
+            separators = cast(AnyStr, separator)
+        else:
+            bar = cast(AnyStr, '|' if self._encoding else b'|')
+            seplist = list(cast(Iterable[AnyStr], separator))
+            seplen = max(len(sep) for sep in seplist)
+            separators = bar.join(re.escape(sep) for sep in seplist)
+
+        pat = re.compile(separators)
         curbuf = 0
         buflen = 0
 
@@ -540,16 +587,18 @@ class SSHStreamSession:
                         if buf:
                             recv_buf[:curbuf] = []
                             self._recv_buf_len -= buflen
-                            raise asyncio.IncompleteReadError(buf, None)
+                            raise asyncio.IncompleteReadError(
+                                cast(bytes, buf), None)
                         else:
                             exc = recv_buf.pop(0)
 
                             if isinstance(exc, SoftEOFReceived):
                                 return buf
                             else:
-                                raise exc
+                                raise cast(Exception, exc)
 
-                    buf += recv_buf[curbuf]
+                    newbuf = cast(AnyStr, recv_buf[curbuf])
+                    buf += newbuf
                     start = max(buflen + 1 - seplen, 0)
 
                     match = pat.search(buf, start)
@@ -566,23 +615,24 @@ class SSHStreamSession:
                         self._maybe_resume_reading()
                         return buf
 
-                    buflen += len(recv_buf[curbuf])
+                    buflen += len(newbuf)
                     curbuf += 1
 
                 if self._read_paused or self._eof_received:
                     recv_buf[:curbuf] = []
                     self._recv_buf_len -= buflen
                     self._maybe_resume_reading()
-                    raise asyncio.IncompleteReadError(buf, None)
+                    raise asyncio.IncompleteReadError(cast(bytes, buf), None)
 
                 await self._block_read(datatype)
 
-    async def drain(self, datatype):
+    async def drain(self, datatype: DataType) -> None:
         """Wait for data written to the channel to drain"""
 
         while self._should_block_drain(datatype):
             try:
-                waiter = self._loop.create_future()
+                assert self._loop is not None
+                waiter: _WaiterFuture = self._loop.create_future()
                 self._drain_waiters[datatype].add(waiter)
                 await waiter
             finally:
@@ -598,34 +648,40 @@ class SSHStreamSession:
                 raise exc
 
 
-class SSHClientStreamSession(SSHStreamSession, SSHClientSession):
+class SSHClientStreamSession(SSHStreamSession[AnyStr],
+                             SSHClientSession[AnyStr]):
     """SSH client stream session handler"""
 
 
-class SSHServerStreamSession(SSHStreamSession, SSHServerSession):
+class SSHServerStreamSession(SSHStreamSession[AnyStr],
+                             SSHServerSession[AnyStr]):
     """SSH server stream session handler"""
 
-    def __init__(self, session_factory, sftp_factory, allow_scp):
+    def __init__(self, session_factory: _OptServerSessionFactory,
+                 sftp_factory: _OptSFTPServerFactory, allow_scp: bool):
         super().__init__()
 
         self._session_factory = session_factory
         self._sftp_factory = sftp_factory
         self._allow_scp = allow_scp and bool(sftp_factory)
 
-    def _init_sftp_server(self):
+    def _init_sftp_server(self) -> SFTPServer:
         """Initialize an SFTP server for this stream to use"""
+
+        assert self._chan is not None
 
         self._chan.set_encoding(None)
         self._encoding = None
 
-        return self._sftp_factory(self._chan)
+        assert self._sftp_factory is not None
+        return self._sftp_factory(cast('SSHChannel[bytes]', self._chan))
 
-    def shell_requested(self):
+    def shell_requested(self) -> bool:
         """Return whether a shell can be requested"""
 
         return bool(self._session_factory)
 
-    def exec_requested(self, command):
+    def exec_requested(self, command: str) -> bool:
         """Return whether execution of a command can be requested"""
 
         # Avoid incorrect pylint suggestion to use ternary
@@ -634,7 +690,7 @@ class SSHServerStreamSession(SSHStreamSession, SSHServerSession):
         return ((self._allow_scp and command.startswith('scp ')) or
                 bool(self._session_factory))
 
-    def subsystem_requested(self, subsystem):
+    def subsystem_requested(self, subsystem: str) -> bool:
         """Return whether starting a subsystem can be requested"""
 
         if subsystem == 'sftp':
@@ -642,46 +698,62 @@ class SSHServerStreamSession(SSHStreamSession, SSHServerSession):
         else:
             return bool(self._session_factory)
 
-    def session_started(self):
+    def session_started(self) -> None:
         """Start a session for this newly opened server channel"""
+
+        assert self._chan is not None
 
         command = self._chan.get_command()
 
-        stdin = SSHReader(self, self._chan)
-        stdout = SSHWriter(self, self._chan)
-        stderr = SSHWriter(self, self._chan, EXTENDED_DATA_STDERR)
+        stdin = SSHReader[AnyStr](self, self._chan)
+        stdout = SSHWriter[AnyStr](self, self._chan)
+        stderr = SSHWriter[AnyStr](self, self._chan, EXTENDED_DATA_STDERR)
+
+        handler: MaybeAwait[None]
 
         if self._chan.get_subsystem() == 'sftp':
-            handler = run_sftp_server(self._init_sftp_server(), stdin, stdout)
+            stdin_bytes = cast(SSHReader[bytes], stdin)
+            stdout_bytes = cast(SSHWriter[bytes], stdout)
+
+            handler = run_sftp_server(self._init_sftp_server(),
+                                      stdin_bytes, stdout_bytes)
         elif self._allow_scp and command and command.startswith('scp '):
+            stdin_bytes = cast(SSHReader[bytes], stdin)
+            stdout_bytes = cast(SSHWriter[bytes], stdout)
+            stderr_bytes = cast(SSHWriter[bytes], stderr)
+
             handler = run_scp_server(self._init_sftp_server(), command,
-                                     stdin, stdout, stderr)
+                                     stdin_bytes, stdout_bytes, stderr_bytes)
         else:
+            assert self._session_factory is not None
             handler = self._session_factory(stdin, stdout, stderr)
 
         if inspect.isawaitable(handler):
+            assert self._conn is not None
+            assert handler is not None
             self._conn.create_task(handler, stdin.logger)
 
-    def break_received(self, msec):
+    def break_received(self, msec: int) -> bool:
         """Handle an incoming break on the channel"""
 
         self._recv_buf[None].append(BreakReceived(msec))
         self._unblock_read(None)
         return True
 
-    def signal_received(self, signal):
+    def signal_received(self, signal: str) -> None:
         """Handle an incoming signal on the channel"""
 
         self._recv_buf[None].append(SignalReceived(signal))
         self._unblock_read(None)
 
-    def soft_eof_received(self):
+    def soft_eof_received(self) -> None:
         """Handle an incoming soft EOF on the channel"""
 
         self._recv_buf[None].append(SoftEOFReceived())
         self._unblock_read(None)
 
-    def terminal_size_changed(self, width, height, pixwidth, pixheight):
+    def terminal_size_changed(self, width: int, height: int,
+                              pixwidth: int, pixheight: int) -> None:
         """Handle an incoming terminal size change on the channel"""
 
         self._recv_buf[None].append(TerminalSizeChanged(width, height,
@@ -689,30 +761,35 @@ class SSHServerStreamSession(SSHStreamSession, SSHServerSession):
         self._unblock_read(None)
 
 
-class SSHSocketStreamSession(SSHStreamSession):
+class SSHSocketStreamSession(SSHStreamSession[AnyStr]):
     """Socket stream session handler"""
 
-    def __init__(self, handler_factory=None):
+    def __init__(self, session_factory: _OptSocketSessionFactory = None):
         super().__init__()
 
-        self._handler_factory = handler_factory
+        self._session_factory = session_factory
 
-    def session_started(self):
+    def session_started(self) -> None:
         """Start a session for this newly opened socket channel"""
 
-        if self._handler_factory:
-            reader = SSHReader(self, self._chan)
-            writer = SSHWriter(self, self._chan)
+        if self._session_factory:
+            assert self._chan is not None
+            reader = SSHReader[AnyStr](self, self._chan)
+            writer = SSHWriter[AnyStr](self, self._chan)
 
-            handler = self._handler_factory(reader, writer)
+            handler = self._session_factory(reader, writer)
 
             if inspect.isawaitable(handler):
+                assert self._conn is not None
+                assert handler is not None
                 self._conn.create_task(handler, reader.logger)
 
 
-class SSHTCPStreamSession(SSHSocketStreamSession, SSHTCPSession):
+class SSHTCPStreamSession(SSHSocketStreamSession[AnyStr],
+                          SSHTCPSession[AnyStr]):
     """TCP stream session handler"""
 
 
-class SSHUNIXStreamSession(SSHSocketStreamSession, SSHUNIXSession):
+class SSHUNIXStreamSession(SSHSocketStreamSession[AnyStr],
+                           SSHUNIXSession[AnyStr]):
     """UNIX stream session handler"""

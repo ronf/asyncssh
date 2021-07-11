@@ -1,6 +1,6 @@
 #!/usr/bin/env python3.6
 #
-# Copyright (c) 2013-2018 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2021 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -34,16 +34,16 @@ class MySSHServerSession(asyncssh.SSHServerSession):
         self._input = ''
         self._total = 0
 
-    def connection_made(self, chan):
+    def connection_made(self, chan: asyncssh.SSHServerChannel):
         self._chan = chan
 
-    def shell_requested(self):
+    def shell_requested(self) -> bool:
         return True
 
-    def session_started(self):
+    def session_started(self) -> None:
         self._chan.write('Enter numbers one per line, or EOF when done:\n')
 
-    def data_received(self, data, datatype):
+    def data_received(self, data: str, datatype: asyncssh.DataType) -> None:
         self._input += data
 
         lines = self._input.split('\n')
@@ -56,18 +56,19 @@ class MySSHServerSession(asyncssh.SSHServerSession):
 
         self._input = lines[-1]
 
-    def eof_received(self):
+    def eof_received(self) -> bool:
         self._chan.write('Total = %s\n' % self._total)
         self._chan.exit(0)
+        return False
 
-    def break_received(self, msec):
-        self.eof_received()
+    def break_received(self, msec: int) -> bool:
+        return self.eof_received()
 
 class MySSHServer(asyncssh.SSHServer):
-    def session_requested(self):
+    def session_requested(self) -> asyncssh.SSHServerSession:
         return MySSHServerSession()
 
-async def start_server():
+async def start_server() -> None:
     await asyncssh.create_server(MySSHServer, '', 8022,
                                  server_host_keys=['ssh_host_key'],
                                  authorized_client_keys='ssh_user_ca')

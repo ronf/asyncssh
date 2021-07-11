@@ -1,4 +1,4 @@
-# Copyright (c) 2017-2020 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2017-2021 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -20,14 +20,14 @@
 
 """A shim around PyCA for key derivation functions"""
 
-from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
 from .misc import hashes
 
 
-def pbkdf2_hmac(hash_name, passphrase, salt, count, key_size):
+def pbkdf2_hmac(hash_name: str, passphrase: bytes, salt: bytes,
+                count: int, key_size: int) -> bytes:
     """A shim around PyCA for PBKDF2 HMAC key derivation"""
 
-    return PBKDF2HMAC(hashes[hash_name](), key_size, salt, count,
-                      default_backend()).derive(passphrase)
+    return PBKDF2HMAC(hashes[hash_name](), key_size, salt,
+                      count).derive(passphrase)

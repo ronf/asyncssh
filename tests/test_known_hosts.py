@@ -186,9 +186,9 @@ class _TestKnownHosts(TempDirTestCase):
         """Test match without providing addr"""
 
         self.check_hosts((['host'], [], [], [], [], [], []),
-                         ([0], [], [], [], [], [], []), addr=None)
+                         ([0], [], [], [], [], [], []), addr='')
         self.check_hosts((['1.2.3.4'], [], [], [], [], [], []),
-                         ([], [], [], [], [], [], []), addr=None)
+                         ([], [], [], [], [], [], []), addr='')
 
     def test_no_port(self):
         """Test match without providing port"""

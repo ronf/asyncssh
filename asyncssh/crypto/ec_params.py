@@ -26,7 +26,8 @@ _curve_param_map = {}
 # pylint: disable=invalid-name
 
 
-def register_prime_curve(curve_id, p, a, b, point, n):
+def register_prime_curve(curve_id: bytes, p: int, a: int, b: int,
+                         point: bytes, n: int) -> None:
     """Register an elliptic curve prime domain
 
        This function registers an elliptic curve prime domain by
@@ -40,7 +41,8 @@ def register_prime_curve(curve_id, p, a, b, point, n):
     _curve_param_map[p, a % p, b % p, point, n] = curve_id
 
 
-def lookup_ec_curve_by_params(p, a, b, point, n):
+def lookup_ec_curve_by_params(p: int, a: int, b: int,
+                              point: bytes, n: int) -> bytes:
     """Look up an elliptic curve by its parameters
 
        This function looks up an elliptic curve by its parameters

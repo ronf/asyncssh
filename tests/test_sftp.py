@@ -1689,6 +1689,12 @@ class _TestSFTP(_CheckSFTP):
 
             await f.close()
 
+            f = await sftp.open('file', 'a+')
+            await f.seek(-4, SEEK_CUR)
+            self.assertEqual((await f.read()), 'zyyy')
+
+            await f.close()
+
             with open('file') as localf:
                 self.assertEqual(localf.read(), 'xxxzzyyy')
         finally:

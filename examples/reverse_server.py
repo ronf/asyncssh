@@ -1,6 +1,6 @@
 #!/usr/bin/env python3.8
 #
-# Copyright (c) 2013-2018 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2021 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -32,7 +32,7 @@
 
 import asyncio, asyncssh, sys
 
-async def run_commands(conn):
+async def run_commands(conn: asyncssh.SSHClientConnection) -> None:
     """Run a series of commands on the client which connected to us"""
 
     commands = ('ls', 'sleep 30 && date', 'sleep 5 && cat /proc/cpuinfo')
@@ -50,7 +50,7 @@ async def run_commands(conn):
             print(result.stderr, end='')
             print(75*'-')
 
-async def start_reverse_server():
+async def start_reverse_server() -> None:
     """Accept inbound connections and then become an SSH client on them"""
 
     await asyncssh.listen_reverse(port=8022, client_keys=['server_key'],

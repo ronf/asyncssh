@@ -1,4 +1,4 @@
-# Copyright (c) 2019-2020 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2019-2021 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -21,6 +21,7 @@
 """U2F ECDSA public key encryption handler"""
 
 from hashlib import sha256
+from typing import Optional, Tuple, cast
 
 from .asn1 import der_encode, der_decode
 from .crypto import ECDSAPublicKey
@@ -31,13 +32,20 @@ from .public_key import register_sk_alg
 from .sk import SSH_SK_ECDSA, SSH_SK_USER_PRESENCE_REQD, sk_enroll, sk_sign
 
 
+_PrivateKeyArgs = Tuple[bytes, bytes, bytes, int, bytes, bytes]
+_PublicKeyArgs = Tuple[bytes, bytes, bytes]
+
+
 class _SKECDSAKey(SSHKey):
     """Handler for elliptic curve public key encryption"""
 
+    _key: ECDSAPublicKey
+
     use_executor = True
 
-    def __init__(self, curve_id, public_value, application, flags=None,
-                 key_handle=None, reserved=None):
+    def __init__(self, curve_id: bytes, public_value: bytes,
+                 application: bytes, flags: int = 0,
+                 key_handle: bytes = None, reserved: bytes = b''):
         super().__init__(ECDSAPublicKey.construct(curve_id, public_value))
 
         self.algorithm = b'sk-ecdsa-sha2-' + curve_id + b'@openssh.com'
@@ -49,7 +57,7 @@ class _SKECDSAKey(SSHKey):
         self._key_handle = key_handle
         self._reserved = reserved
 
-    def __eq__(self, other):
+    def __eq__(self, other: object) -> bool:
         # This isn't protected access - both objects are _SKECDSAKey instances
         # pylint: disable=protected-access
 
@@ -61,15 +69,19 @@ class _SKECDSAKey(SSHKey):
                 self._key_handle == other._key_handle and
                 self._reserved == other._reserved)
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         return hash((self._key.curve_id, self._key.public_value,
                      self._application, self._flags, self._key_handle,
                      self._reserved))
 
     @classmethod
-    def generate(cls, algorithm, application='ssh:', user='AsyncSSH',
-                 pin=None, resident=False, touch_required=True):
+    def generate(cls, algorithm: bytes, *, # type: ignore
+                 application: str = 'ssh:', user: str = 'AsyncSSH',
+                 pin: Optional[str] = None, resident: bool = False,
+                 touch_required: bool = True) -> '_SKECDSAKey':
         """Generate a new SK ECDSA private key"""
+
+        # pylint: disable=arguments-differ
 
         application = application.encode('utf-8')
         flags = SSH_SK_USER_PRESENCE_REQD if touch_required else 0
@@ -82,21 +94,25 @@ class _SKECDSAKey(SSHKey):
                    flags, key_handle, b'')
 
     @classmethod
-    def make_private(cls, curve_id, public_value, application,
-                     flags, key_handle, reserved):
+    def make_private(cls, key_params: object) -> SSHKey:
         """Construct a U2F ECDSA private key"""
+
+        curve_id, public_value, application, flags, key_handle, reserved = \
+            cast(_PrivateKeyArgs, key_params)
 
         return cls(curve_id, public_value, application,
                    flags, key_handle, reserved)
 
     @classmethod
-    def make_public(cls, curve_id, public_value, application):
+    def make_public(cls, key_params: object) -> SSHKey:
         """Construct a U2F ECDSA public key"""
+
+        curve_id, public_value, application = cast(_PublicKeyArgs, key_params)
 
         return cls(curve_id, public_value, application)
 
     @classmethod
-    def decode_ssh_private(cls, packet):
+    def decode_ssh_private(cls, packet: SSHPacket) -> _PrivateKeyArgs:
         """Decode an SSH format SK ECDSA private key"""
 
         curve_id = packet.get_string()
@@ -109,7 +125,7 @@ class _SKECDSAKey(SSHKey):
         return curve_id, public_value, application, flags, key_handle, reserved
 
     @classmethod
-    def decode_ssh_public(cls, packet):
+    def decode_ssh_public(cls, packet: SSHPacket) -> _PublicKeyArgs:
         """Decode an SSH format SK ECDSA public key"""
 
         curve_id = packet.get_string()
@@ -118,7 +134,7 @@ class _SKECDSAKey(SSHKey):
 
         return curve_id, public_value, application
 
-    def encode_ssh_private(self):
+    def encode_ssh_private(self) -> bytes:
         """Encode an SSH format SK ECDSA private key"""
 
         if self._key_handle is None:
@@ -129,14 +145,14 @@ class _SKECDSAKey(SSHKey):
                          String(self._application), Byte(self._flags),
                          String(self._key_handle), String(self._reserved)))
 
-    def encode_ssh_public(self):
+    def encode_ssh_public(self) -> bytes:
         """Encode an SSH format SK ECDSA public key"""
 
         return b''.join((String(self._key.curve_id),
                          String(self._key.public_value),
                          String(self._application)))
 
-    def encode_agent_cert_private(self):
+    def encode_agent_cert_private(self) -> bytes:
         """Encode U2F ECDSA certificate private key data for agent"""
 
         if self._key_handle is None:
@@ -145,7 +161,7 @@ class _SKECDSAKey(SSHKey):
         return b''.join((String(self._application), Byte(self._flags),
                          String(self._key_handle), String(self._reserved)))
 
-    def sign_ssh(self, data, sig_algorithm):
+    def sign_ssh(self, data: bytes, sig_algorithm: bytes) -> bytes:
         """Compute an SSH-encoded signature of the specified data"""
 
         # pylint: disable=unused-argument
@@ -156,11 +172,12 @@ class _SKECDSAKey(SSHKey):
         flags, counter, sig = sk_sign(sha256(data).digest(), self._application,
                                       self._key_handle, self._flags)
 
-        r, s = der_decode(sig)
+        r, s = cast(Tuple[int, int], der_decode(sig))
 
         return String(MPInt(r) + MPInt(s)) + Byte(flags) + UInt32(counter)
 
-    def verify_ssh(self, data, sig_algorithm, packet):
+    def verify_ssh(self, data: bytes, sig_algorithm: bytes,
+                   packet: SSHPacket) -> bool:
         """Verify an SSH-encoded signature of the specified data"""
 
         # pylint: disable=unused-argument

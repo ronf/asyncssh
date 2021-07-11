@@ -1,4 +1,4 @@
-# Copyright (c) 2016-2020 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2016-2021 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -1799,6 +1799,29 @@ class _TestServerX509Chain(ServerTestCase):
         with self.assertRaises(asyncssh.HostKeyNotVerifiable):
             await self.connect(known_hosts=([], [], [], ['root_ca_cert.pem'],
                                             ['int_ca_cert.pem'], [], []))
+
+    @asynctest
+    async def test_connect_x509_openssh_known_hosts_trusted(self):
+        """Test connecting with OpenSSH cert in known hosts trusted list"""
+
+        with self.assertRaises(ValueError):
+            await self.connect(known_hosts=[[], [], [], 'skey-cert.pub',
+                                            [], [], []])
+
+    @asynctest
+    async def test_connect_x509_openssh_known_hosts_revoked(self):
+        """Test connecting with OpenSSH cert in known hosts revoked list"""
+
+        with self.assertRaises(ValueError):
+            await self.connect(known_hosts=[[], [], [], [], 'skey-cert.pub',
+                                            [], []])
+
+    @asynctest
+    async def test_connect_x509_openssh_x509_trusted(self):
+        """Test connecting with OpenSSH cert in X.509 trusted certs list"""
+
+        with self.assertRaises(ValueError):
+            await self.connect(x509_trusted_certs='skey-cert.pub')
 
     @asynctest
     async def test_invalid_x509_path(self):

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3.6
 #
-# Copyright (c) 2013-2018 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2021 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -22,8 +22,10 @@
 
 import asyncio, asyncssh, sys
 from functools import partial
+from typing import Awaitable
 
-def connection_requested(conn, orig_host, orig_port):
+def connection_requested(conn: asyncssh.SSHServerConnection, orig_host: str,
+                         orig_port: int) -> Awaitable[asyncssh.SSHForwarder]:
     if orig_host in ('127.0.0.1', '::1'):
         return conn.forward_connection('localhost', 80)
     else:
@@ -31,7 +33,7 @@ def connection_requested(conn, orig_host, orig_port):
             asyncssh.OPEN_ADMINISTRATIVELY_PROHIBITED,
             'Connections only allowed from localhost')
 
-async def run_client():
+async def run_client() -> None:
     async with asyncssh.connect('localhost') as conn:
         listener = await conn.create_server(
             partial(connection_requested, conn), '', 8080)

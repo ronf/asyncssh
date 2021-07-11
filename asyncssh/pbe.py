@@ -20,12 +20,25 @@
 
 """Asymmetric key password based encryption functions"""
 
-import os
-
 from hashlib import md5, sha1
+import os
+from typing import Callable, Dict, Sequence, Tuple, Union
 
 from .asn1 import ASN1DecodeError, ObjectIdentifier, der_encode, der_decode
 from .crypto import BasicCipher, get_cipher_params, pbkdf2_hmac
+from .misc import BytesOrStr, HashType
+
+
+_Cipher = Union[BasicCipher, '_RFC1423Pad']
+
+_PKCS8CipherHandler = Callable[[object, BytesOrStr, Callable, str], _Cipher]
+_PKCS8Cipher = Tuple[_PKCS8CipherHandler, Callable, str]
+
+_PBES2CipherHandler = Callable[[Sequence, str, bytes], _Cipher]
+_PBES2Cipher = Tuple[_PBES2CipherHandler, str]
+
+_PBES2KDFHandler = Callable[[Sequence, BytesOrStr, int], bytes]
+_PBES2KDF = Tuple[_PBES2KDFHandler, Tuple[object, ...]]
 
 
 _ES1_MD5_DES    = ObjectIdentifier('1.2.840.113549.1.5.3')
@@ -54,20 +67,20 @@ _ES2_SHA256     = ObjectIdentifier('1.2.840.113549.2.9')
 _ES2_SHA384     = ObjectIdentifier('1.2.840.113549.2.10')
 _ES2_SHA512     = ObjectIdentifier('1.2.840.113549.2.11')
 
-_pkcs1_cipher = {}
-_pkcs1_dek_name = {}
+_pkcs1_cipher: Dict[bytes, str] = {}
+_pkcs1_dek_name: Dict[str, bytes] = {}
 
-_pkcs8_handler = {}
-_pkcs8_cipher_oid = {}
+_pkcs8_handler: Dict[ObjectIdentifier, _PKCS8Cipher] = {}
+_pkcs8_cipher_oid: Dict[Tuple[str, str], ObjectIdentifier] = {}
 
-_pbes2_cipher = {}
-_pbes2_cipher_oid = {}
+_pbes2_cipher: Dict[ObjectIdentifier, _PBES2Cipher] = {}
+_pbes2_cipher_oid: Dict[str, ObjectIdentifier] = {}
 
-_pbes2_kdf = {}
-_pbes2_kdf_oid = {}
+_pbes2_kdf: Dict[ObjectIdentifier, _PBES2KDF] = {}
+_pbes2_kdf_oid: Dict[str, ObjectIdentifier] = {}
 
-_pbes2_prf = {}
-_pbes2_prf_oid = {}
+_pbes2_prf: Dict[ObjectIdentifier, str] = {}
+_pbes2_prf_oid: Dict[str, ObjectIdentifier] = {}
 
 
 class KeyEncryptionError(ValueError):
@@ -89,18 +102,19 @@ class _RFC1423Pad:
 
     """
 
-    def __init__(self, cipher_name, block_size, key, iv):
+    def __init__(self, cipher_name: str, block_size: int,
+                 key: bytes, iv: bytes):
         self._cipher = BasicCipher(cipher_name, key, iv)
         self._block_size = block_size
 
-    def encrypt(self, data):
+    def encrypt(self, data: bytes) -> bytes:
         """Pad data before encrypting it"""
 
         pad = self._block_size - (len(data) % self._block_size)
         data += pad * bytes((pad,))
         return self._cipher.encrypt(data)
 
-    def decrypt(self, data):
+    def decrypt(self, data: bytes) -> bytes:
         """Remove padding from data after decrypting it"""
 
         data = self._cipher.decrypt(data)
@@ -114,7 +128,8 @@ class _RFC1423Pad:
         raise KeyEncryptionError('Unable to decrypt key')
 
 
-def _pbkdf1(hash_alg, passphrase, salt, count, key_size):
+def _pbkdf1(hash_alg: HashType, passphrase: BytesOrStr, salt: bytes,
+            count: int, key_size: int) -> bytes:
     """PKCS#5 v1.5 key derivation function for password-based encryption
 
        This function implements the PKCS#5 v1.5 algorithm for deriving
@@ -141,7 +156,8 @@ def _pbkdf1(hash_alg, passphrase, salt, count, key_size):
         return key[:key_size]
 
 
-def _pbkdf_p12(hash_alg, passphrase, salt, count, key_size, idx):
+def _pbkdf_p12(hash_alg: HashType, passphrase: BytesOrStr, salt: bytes,
+               count: int, key_size: int, idx: int) -> bytes:
     """PKCS#12 key derivation function for password-based encryption
 
        This function implements the PKCS#12 algorithm for deriving an
@@ -149,7 +165,7 @@ def _pbkdf_p12(hash_alg, passphrase, salt, count, key_size, idx):
 
     """
 
-    def _make_block(data, v):
+    def _make_block(data: bytes, v: int) -> bytes:
         """Make a block a multiple of v bytes long by repeating data"""
 
         l = len(data)
@@ -180,7 +196,8 @@ def _pbkdf_p12(hash_alg, passphrase, salt, count, key_size, idx):
     return key[:key_size]
 
 
-def _pbes1(params, passphrase, hash_alg, cipher_name):
+def _pbes1(params: object, passphrase: BytesOrStr, hash_alg: HashType,
+           cipher_name: str) -> _Cipher:
     """PKCS#5 v1.5 cipher selection function for password-based encryption
 
        This function implements the PKCS#5 v1.5 algorithm for password-based
@@ -204,7 +221,8 @@ def _pbes1(params, passphrase, hash_alg, cipher_name):
     return _RFC1423Pad(cipher_name, block_size, key, iv)
 
 
-def _pbe_p12(params, passphrase, hash_alg, cipher_name):
+def _pbe_p12(params: object, passphrase: BytesOrStr, hash_alg: HashType,
+             cipher_name: str) -> _Cipher:
     """PKCS#12 cipher selection function for password-based encryption
 
        This function implements the PKCS#12 algorithm for password-based
@@ -225,7 +243,7 @@ def _pbe_p12(params, passphrase, hash_alg, cipher_name):
     key = _pbkdf_p12(hash_alg, passphrase, salt, count, key_size, 1)
 
     if block_size == 1:
-        cipher = BasicCipher(cipher_name, key, b'')
+        cipher: _Cipher = BasicCipher(cipher_name, key, b'')
     else:
         iv = _pbkdf_p12(hash_alg, passphrase, salt, count, iv_size, 2)
         cipher = _RFC1423Pad(cipher_name, block_size, key, iv)
@@ -233,7 +251,7 @@ def _pbe_p12(params, passphrase, hash_alg, cipher_name):
     return cipher
 
 
-def _pbes2_iv(enc_params, cipher_name, key):
+def _pbes2_iv(enc_params: Sequence, cipher_name: str, key: bytes) -> _Cipher:
     """PKCS#5 v2.0 handler for PBES2 ciphers with an IV as a parameter
 
        This function returns the appropriate cipher object to use for
@@ -253,7 +271,8 @@ def _pbes2_iv(enc_params, cipher_name, key):
     return _RFC1423Pad(cipher_name, block_size, key, enc_params[0])
 
 
-def _pbes2_pbkdf2(kdf_params, passphrase, default_key_size):
+def _pbes2_pbkdf2(kdf_params: Sequence, passphrase: BytesOrStr,
+                  default_key_size: int) -> bytes:
     """PKCS#5 v2.0 handler for PBKDF2 key derivation
 
        This function parses the PBKDF2 arguments from a PKCS#8 encrypted key
@@ -300,7 +319,7 @@ def _pbes2_pbkdf2(kdf_params, passphrase, default_key_size):
     return pbkdf2_hmac(hash_name, passphrase, salt, count, key_size)
 
 
-def _pbes2(params, passphrase):
+def _pbes2(params: object, passphrase: BytesOrStr) -> _Cipher:
     """PKCS#5 v2.0 cipher selection function for password-based encryption
 
        This function implements the PKCS#5 v2.0 algorithm for password-based
@@ -335,44 +354,51 @@ def _pbes2(params, passphrase):
     return enc_handler(enc_params, cipher_name, key)
 
 
-def register_pkcs1_cipher(pkcs1_cipher_name, pkcs1_dek_name, cipher_name):
+def register_pkcs1_cipher(pkcs1_cipher_name: str, pkcs1_dek_name: bytes,
+                          cipher_name: str) -> None:
     """Register a cipher used for PKCS#1 private key encryption"""
 
     _pkcs1_cipher[pkcs1_dek_name] = cipher_name
     _pkcs1_dek_name[pkcs1_cipher_name] = pkcs1_dek_name
 
 
-def register_pkcs8_cipher(pkcs8_cipher_name, hash_name, pkcs8_cipher_oid,
-                          handler, hash_alg, cipher_name):
+def register_pkcs8_cipher(pkcs8_cipher_name: str, hash_name: str,
+                          pkcs8_cipher_oid: ObjectIdentifier,
+                          handler: _PKCS8CipherHandler, hash_alg: HashType,
+                          cipher_name: str) -> None:
     """Register a cipher used for PKCS#8 private key encryption"""
 
     _pkcs8_handler[pkcs8_cipher_oid] = (handler, hash_alg, cipher_name)
     _pkcs8_cipher_oid[pkcs8_cipher_name, hash_name] = pkcs8_cipher_oid
 
 
-def register_pbes2_cipher(pbes2_cipher_name, pbes2_cipher_oid,
-                          handler, cipher_name):
+def register_pbes2_cipher(pbes2_cipher_name: str,
+                          pbes2_cipher_oid: ObjectIdentifier,
+                          handler: _PBES2CipherHandler,
+                          cipher_name: str) -> None:
     """Register a PBES2 encryption algorithm"""
 
     _pbes2_cipher[pbes2_cipher_oid] = (handler, cipher_name)
     _pbes2_cipher_oid[pbes2_cipher_name] = pbes2_cipher_oid
 
 
-def register_pbes2_kdf(kdf_name, kdf_oid, handler, *args):
+def register_pbes2_kdf(kdf_name: str, kdf_oid: ObjectIdentifier,
+                       handler: _PBES2KDFHandler, *args: object) -> None:
     """Register a PBES2 key derivation function"""
 
     _pbes2_kdf[kdf_oid] = (handler, args)
     _pbes2_kdf_oid[kdf_name] = kdf_oid
 
 
-def register_pbes2_prf(hash_name, prf_oid):
+def register_pbes2_prf(hash_name: str, prf_oid: ObjectIdentifier) -> None:
     """Register a PBES2 pseudo-random function"""
 
     _pbes2_prf[prf_oid] = hash_name
     _pbes2_prf_oid[hash_name] = prf_oid
 
 
-def pkcs1_encrypt(data, pkcs1_cipher_name, passphrase):
+def pkcs1_encrypt(data: bytes, pkcs1_cipher_name: str,
+                  passphrase: BytesOrStr) -> Tuple[bytes, bytes, bytes]:
     """Encrypt PKCS#1 key data
 
        This function encrypts PKCS#1 key data using the specified cipher
@@ -396,7 +422,8 @@ def pkcs1_encrypt(data, pkcs1_cipher_name, passphrase):
         raise KeyEncryptionError('Unknown PKCS#1 encryption algorithm')
 
 
-def pkcs1_decrypt(data, pkcs1_dek_name, iv, passphrase):
+def pkcs1_decrypt(data: bytes, pkcs1_dek_name: bytes, iv: bytes,
+                  passphrase: BytesOrStr) -> bytes:
     """Decrypt PKCS#1 key data
 
        This function decrypts PKCS#1 key data using the specified algorithm,
@@ -416,7 +443,8 @@ def pkcs1_decrypt(data, pkcs1_dek_name, iv, passphrase):
         raise KeyEncryptionError('Unknown PKCS#1 encryption algorithm')
 
 
-def pkcs8_encrypt(data, pkcs8_cipher_name, hash_name, version, passphrase):
+def pkcs8_encrypt(data: bytes, pkcs8_cipher_name: str, hash_name: str,
+                  version: int, passphrase: BytesOrStr) -> bytes:
     """Encrypt PKCS#8 key data
 
        This function encrypts PKCS#8 key data using the specified cipher,
@@ -442,7 +470,7 @@ def pkcs8_encrypt(data, pkcs8_cipher_name, hash_name, version, passphrase):
         handler, hash_alg, cipher_name = _pkcs8_handler[pkcs8_cipher_oid]
 
         alg = pkcs8_cipher_oid
-        params = (os.urandom(8), 2048)
+        params: object = (os.urandom(8), 2048)
         cipher = handler(params, passphrase, hash_alg, cipher_name)
     elif version == 2 and pkcs8_cipher_name in _pbes2_cipher_oid:
         pbes2_cipher_oid = _pbes2_cipher_oid[pkcs8_cipher_name]
@@ -468,7 +496,7 @@ def pkcs8_encrypt(data, pkcs8_cipher_name, hash_name, version, passphrase):
     return der_encode(((alg, params), cipher.encrypt(data)))
 
 
-def pkcs8_decrypt(key_data, passphrase):
+def pkcs8_decrypt(key_data: object, passphrase: BytesOrStr) -> object:
     """Decrypt PKCS#8 key data
 
        This function decrypts key data in PKCS#8 EncryptedPrivateKeyInfo

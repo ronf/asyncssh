@@ -1,6 +1,6 @@
 #!/usr/bin/env python3.6
 #
-# Copyright (c) 2013-2018 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2021 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -30,10 +30,10 @@
 import asyncio, asyncssh, sys
 
 class MySSHServer(asyncssh.SSHServer):
-    def server_requested(self, listen_host, listen_port):
+    def server_requested(self, listen_host: str, listen_port: int) -> bool:
         return listen_port == 8080
 
-async def start_server():
+async def start_server() -> None:
     await asyncssh.create_server(MySSHServer, '', 8022,
                                  server_host_keys=['ssh_host_key'],
                                  authorized_client_keys='ssh_user_ca')

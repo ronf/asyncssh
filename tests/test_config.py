@@ -1,4 +1,4 @@
-# Copyright (c) 2020 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2020-2021 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -125,7 +125,7 @@ class _TestConfig(TempDirTestCase):
                          'none,zlib@openssh.com,zlib')
 
         config = self._parse_config('')
-        self.assertEqual(config.get_compression_algs('default'), 'default')
+        self.assertEqual(config.get_compression_algs(), ())
 
     def test_include(self):
         """Test include config option"""

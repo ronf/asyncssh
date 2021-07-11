@@ -33,7 +33,11 @@ import posixpath
 import stat
 import sys
 import time
-from typing import Optional, Sequence, Tuple
+from types import TracebackType
+from typing import TYPE_CHECKING, AnyStr, AsyncIterator, Awaitable, Callable
+from typing import Dict, Generic, IO, Iterable, List, Mapping, Optional
+from typing import Sequence, Set, Tuple, Type, TypeVar, Union, cast, overload
+from typing_extensions import Literal, Protocol
 
 from .constants import DEFAULT_LANG
 
@@ -56,17 +60,49 @@ from .constants import FX_OK, FX_EOF, FX_NO_SUCH_FILE, FX_PERMISSION_DENIED
 from .constants import FX_FAILURE, FX_BAD_MESSAGE, FX_NO_CONNECTION
 from .constants import FX_CONNECTION_LOST, FX_OP_UNSUPPORTED
 
-from .misc import BytesOrStr, Error, Record, async_context_manager
-from .misc import get_symbol_names, hide_empty, plural, to_hex
+from .logging import SSHLogger
+
+from .misc import BytesOrStr, Error, FilePath, MaybeAwait, OptExcInfo, Record
+from .misc import async_context_manager, get_symbol_names, hide_empty, plural
 
 from .packet import Byte, String, UInt32, UInt64, PacketDecodeError
 from .packet import SSHPacket, SSHPacketLogger
+
+
+if TYPE_CHECKING:
+    # pylint: disable=cyclic-import
+    from .channel import SSHServerChannel
+    from .connection import SSHClientConnection, SSHServerConnection
+    from .stream import SSHReader, SSHWriter
+
+
+if TYPE_CHECKING:
+    _RequestWaiter = asyncio.Future[Tuple[int, SSHPacket]]
+else:
+    _RequestWaiter = asyncio.Future
+
+_SFTPFileObj = IO[bytes]
+_SFTPPath = Union[bytes, FilePath]
+_SFTPStatFunc = Callable[[_SFTPPath], Awaitable['SFTPAttrs']]
+
+_SFTPOSAttrs = Union[os.stat_result, 'SFTPAttrs']
+_SFTPOSVFSAttrs = Union[os.statvfs_result, 'SFTPVFSAttrs']
+
+_SFTPOnErrorHandler = Callable[[Callable, bytes, OptExcInfo], None]
+_SFTPPacketHandler = Callable[['SFTPServerHandler', SSHPacket],
+                              Awaitable[object]]
+
+SFTPErrorHandler = Union[None, Literal[False], Callable[[Exception], None]]
+SFTPProgressHandler = Optional[Callable[[bytes, bytes, int, int], None]]
+
 
 SFTP_BLOCK_SIZE = 16384
 
 _SFTP_VERSION = 3
 _MAX_SFTP_REQUESTS = 128
 _MAX_READDIR_NAMES = 128
+
+_T = TypeVar('_T')
 
 _open_modes = {
     'r':  FXF_READ,
@@ -81,7 +117,94 @@ _open_modes = {
 }
 
 
-def _mode_to_pflags(mode):
+class _SupportsEncode(Protocol):
+    """Protocol for applying encoding to path names"""
+
+    def encode(self) -> bytes:
+        """Encode result as bytes in an SSH packet"""
+
+
+class _SFTPGlobProtocol(Protocol):
+    """Protocol for getting files to perform glob matching against"""
+
+    async def stat(self, path: bytes) -> 'SFTPAttrs':
+        """Get attributes of a file"""
+
+    async def listdir(self, path: bytes) -> Sequence[bytes]:
+        """List the contents of a directory"""
+
+
+class SFTPFileProtocol(Protocol):
+    """Protocol for accessing a file via an SFTP server"""
+
+    async def __aenter__(self) -> 'SFTPFileProtocol':
+        """Allow SFTPFileProtocol to be used as an async context manager"""
+
+    async def __aexit__(self, _exc_type: Type[BaseException],
+                        _exc_value: BaseException,
+                        _traceback: TracebackType) -> bool:
+        """Wait for file close when used as an async context manager"""
+
+    async def read(self, size: int, offset: int) -> bytes:
+        """Read data from the local file"""
+
+    async def write(self, data: bytes, offset: int) -> int:
+        """Write data to the local file"""
+
+    async def close(self) -> None:
+        """Close the local file"""
+
+
+class SFTPFSProtocol(Protocol):
+    """Protocol for accessing a filesystem via an SFTP server"""
+
+    @staticmethod
+    def basename(path: bytes) -> bytes:
+        """Return the final component of a POSIX-style path"""
+
+    def encode(self, path: _SFTPPath) -> bytes:
+        """Encode path name using configured path encoding"""
+
+    def decode(self, path: bytes, want_string: bool = ...) -> BytesOrStr:
+        """Decode path name using configured path encoding"""
+
+    def compose_path(self, path: bytes,
+                     parent: Optional[bytes] = None) -> bytes:
+        """Compose a path"""
+
+    async def stat(self, path: bytes) -> 'SFTPAttrs':
+        """Get attributes of a file or directory, following symlinks"""
+
+    async def lstat(self, path: bytes) -> 'SFTPAttrs':
+        """Get attributes of a file or directory"""
+
+    async def setstat(self, path: bytes, attrs: 'SFTPAttrs') -> None:
+        """Set attributes of a file or directory"""
+
+    async def exists(self, path: bytes) -> bool:
+        """Return if a path exists"""
+
+    async def isdir(self, path: bytes) -> bool:
+        """Return if the path refers to a directory"""
+
+    async def listdir(self, path: bytes) -> Sequence[bytes]:
+        """List the contents of a directory"""
+
+    async def mkdir(self, path: bytes) -> None:
+        """Create a directory"""
+
+    async def readlink(self, path: bytes) -> bytes:
+        """Return the target of a symbolic link"""
+
+    async def symlink(self, oldpath: bytes, newpath: bytes) -> None:
+        """Create a symbolic link"""
+
+    @async_context_manager
+    async def open(self, path: bytes, mode: str) -> SFTPFileProtocol:
+        """Open a file"""
+
+
+def _mode_to_pflags(mode: str) -> Tuple[int, bool]:
     """Convert open mode to SFTP open flags"""
 
     if 'b' in mode:
@@ -98,7 +221,7 @@ def _mode_to_pflags(mode):
     return pflags, binary
 
 
-def _from_local_path(path):
+def _from_local_path(path: _SFTPPath) -> bytes:
     """Convert local path to SFTP path"""
 
     path = os.fsencode(path)
@@ -112,24 +235,21 @@ def _from_local_path(path):
     return path
 
 
-def _to_local_path(path):
+def _to_local_path(path: _SFTPPath) -> bytes:
     """Convert SFTP path to local path"""
 
-    if isinstance(path, PurePath): # pragma: no branch
-        path = str(path)
+    path = os.fsencode(path)
 
     if sys.platform == 'win32': # pragma: no cover
-        path = os.fsdecode(path)
-
-        if path[:1] == '/' and path[2:3] == ':':
+        if path[:1] == b'/' and path[2:3] == b':':
             path = path[1:]
 
-        path = path.replace('/', '\\')
+        path = path.replace(b'/', b'\\')
 
     return path
 
 
-def _setstat(path, attrs):
+def _setstat(path: Union[int, _SFTPPath], attrs: 'SFTPAttrs') -> None:
     """Utility function to set file attributes"""
 
     if attrs.size is not None:
@@ -148,10 +268,13 @@ def _setstat(path, attrs):
         os.utime(path, times=(attrs.atime, attrs.mtime))
 
 
-def _split_path_by_globs(pattern):
+def _split_path_by_globs(pattern: bytes) -> \
+        Tuple[Optional[bytes], Sequence[object]]:
     """Split path grouping parts without glob pattern"""
 
-    basedir, patlist, plain = None, [], []
+    basedir: Optional[bytes] = None
+    patlist: List[object] = []
+    plain: List[bytes] = []
 
     for current in pattern.split(b'/'):
         if any(c in current for c in b'*?[]'):
@@ -173,7 +296,8 @@ def _split_path_by_globs(pattern):
     return basedir, patlist
 
 
-async def _glob(fs, basedir, patlist, result):
+async def _glob(fs: _SFTPGlobProtocol, basedir: Optional[bytes],
+                patlist: Sequence[object], result: List[bytes]) -> None:
     """Recursively match a glob pattern"""
 
     pattern, newpatlist = patlist[0], patlist[1:]
@@ -182,7 +306,7 @@ async def _glob(fs, basedir, patlist, result):
 
     if isinstance(pattern, list):
         if len(pattern) == 1 and not pattern[0] and not newpatlist:
-            result.append(basedir)
+            result.append(basedir or b'.')
             return
 
         for name in names:
@@ -203,7 +327,7 @@ async def _glob(fs, basedir, patlist, result):
             if name in (b'.', b'..'):
                 continue
 
-            if fnmatch(name, pattern):
+            if fnmatch(name, cast(bytes, pattern)):
                 newbase = posixpath.join(basedir or b'', name)
 
                 if not newpatlist or (len(newpatlist) == 1 and
@@ -212,17 +336,18 @@ async def _glob(fs, basedir, patlist, result):
                 else:
                     attrs = await fs.stat(newbase)
 
-                    if stat.S_ISDIR(attrs.permissions):
+                    if stat.S_ISDIR(attrs.permissions or 0):
                         if pattern == b'**':
                             await _glob(fs, newbase, patlist, result)
                         else:
                             await _glob(fs, newbase, newpatlist, result)
 
 
-async def match_glob(fs, pattern, error_handler=None):
+async def match_glob(fs: _SFTPGlobProtocol, pattern: bytes,
+                     error_handler: SFTPErrorHandler = None) -> Sequence[bytes]:
     """Match a glob pattern"""
 
-    names = []
+    names: List[bytes] = []
 
     try:
         if any(c in pattern for c in b'*?[]'):
@@ -235,8 +360,7 @@ async def match_glob(fs, pattern, error_handler=None):
             await fs.stat(pattern)
             names.append(pattern)
     except (OSError, SFTPError) as exc:
-        # pylint: disable=attribute-defined-outside-init
-        exc.srcpath = pattern
+        setattr(exc, 'srcpath', pattern)
 
         if error_handler:
             error_handler(exc)
@@ -246,151 +370,22 @@ async def match_glob(fs, pattern, error_handler=None):
     return names
 
 
-class LocalFile:
-    """A coroutine wrapper around local file I/O"""
-
-    def __init__(self, f):
-        self._file = f
-
-    @classmethod
-    def basename(cls, path):
-        """Return the final component of a local file path"""
-
-        return os.path.basename(path)
-
-    @classmethod
-    def encode(cls, path):
-        """Encode path name using filesystem native encoding
-
-           This method has no effect if the path is already bytes.
-
-        """
-
-        if isinstance(path, PurePath): # pragma: no branch
-            path = str(path)
-
-        return os.fsencode(path)
-
-    @classmethod
-    def decode(cls, path):
-        """Decode path name using filesystem native encoding
-
-           This method has no effect if the path is already a string.
-
-        """
-
-        return os.fsdecode(path)
-
-    @classmethod
-    def compose_path(cls, path, parent=None):
-        """Compose a path
-
-           If parent is not specified, just encode the path.
-
-        """
-
-        return posixpath.join(parent, path) if parent else path
-
-    @classmethod
-    async def open(cls, path, *args, block_size=None):
-        """Open a local file"""
-
-        # pylint: disable=unused-argument
-
-        return cls(open(_to_local_path(path), *args))
-
-    @classmethod
-    async def stat(cls, path):
-        """Get attributes of a local file or directory, following symlinks"""
-
-        return SFTPAttrs.from_local(os.stat(_to_local_path(path)))
-
-    @classmethod
-    async def lstat(cls, path):
-        """Get attributes of a local file, directory, or symlink"""
-
-        return SFTPAttrs.from_local(os.lstat(_to_local_path(path)))
-
-    @classmethod
-    async def setstat(cls, path, attrs):
-        """Set attributes of a local file or directory"""
-
-        _setstat(_to_local_path(path), attrs)
-
-    @classmethod
-    async def exists(cls, path):
-        """Return if the local path exists and isn't a broken symbolic link"""
-
-        return os.path.exists(_to_local_path(path))
-
-    @classmethod
-    async def isdir(cls, path):
-        """Return if the local path refers to a directory"""
-
-        return os.path.isdir(_to_local_path(path))
-
-    @classmethod
-    async def listdir(cls, path):
-        """Read the names of the files in a local directory"""
-
-        files = os.listdir(_to_local_path(path))
-
-        if sys.platform == 'win32': # pragma: no cover
-            files = [os.fsencode(f) for f in files]
-
-        return files
-
-    @classmethod
-    async def mkdir(cls, path):
-        """Create a local directory with the specified attributes"""
-
-        os.mkdir(_to_local_path(path))
-
-    @classmethod
-    async def readlink(cls, path):
-        """Return the target of a local symbolic link"""
-
-        return _from_local_path(os.readlink(_to_local_path(path)))
-
-    @classmethod
-    async def symlink(cls, oldpath, newpath):
-        """Create a local symbolic link"""
-
-        os.symlink(_to_local_path(oldpath), _to_local_path(newpath))
-
-    async def read(self, size, offset):
-        """Read data from the local file"""
-
-        self._file.seek(offset)
-        return self._file.read(size)
-
-    async def write(self, data, offset):
-        """Write data to the local file"""
-
-        self._file.seek(offset)
-        return self._file.write(data)
-
-    async def close(self):
-        """Close the local file"""
-
-        self._file.close()
-
-
-class _SFTPParallelIO:
+class _SFTPParallelIO(Generic[_T]):
     """Parallelize I/O requests on files
 
        This class issues parallel read and wite requests on files.
 
     """
 
-    def __init__(self, block_size, max_requests, offset, size):
+    def __init__(self, block_size: int, max_requests: int,
+                 offset: int, size: int):
         self._block_size = block_size
         self._max_requests = max_requests
         self._offset = offset
         self._bytes_left = size
-        self._pending = set()
+        self._pending: Set['asyncio.Task[None]'] = set()
 
-    def _start_tasks(self):
+    def _start_tasks(self) -> None:
         """Create parallel file I/O tasks"""
 
         while self._bytes_left and len(self._pending) < self._max_requests:
@@ -402,21 +397,21 @@ class _SFTPParallelIO:
             self._offset += size
             self._bytes_left -= size
 
-    async def start(self):
+    async def start(self) -> None:
         """Start parallel I/O"""
 
-    async def run_task(self, offset, size):
+    async def run_task(self, offset: int, size: int) -> None:
         """Perform file I/O on a particular byte range"""
 
         raise NotImplementedError
 
-    async def finish(self):
+    async def finish(self) -> _T:
         """Finish parallel I/O"""
 
-    async def cleanup(self):
+    async def cleanup(self) -> None:
         """Clean up parallel I/O"""
 
-    async def run(self):
+    async def run(self) -> _T:
         """Perform all file I/O and return result or exception"""
 
         try:
@@ -449,10 +444,12 @@ class _SFTPParallelIO:
             await self.cleanup()
 
 
-class _SFTPFileReader(_SFTPParallelIO):
+class _SFTPFileReader(_SFTPParallelIO[bytes]):
     """Parallelized SFTP file reader"""
 
-    def __init__(self, block_size, max_requests, handler, handle, offset, size):
+    def __init__(self, block_size: int, max_requests: int,
+                 handler: 'SFTPClientHandler', handle: bytes,
+                 offset: int, size: int):
         super().__init__(block_size, max_requests, offset, size)
 
         self._handler = handler
@@ -460,7 +457,7 @@ class _SFTPFileReader(_SFTPParallelIO):
         self._start = offset
         self._data = bytearray()
 
-    async def run_task(self, offset, size):
+    async def run_task(self, offset: int, size: int) -> None:
         """Read a block of the file"""
 
         while size:
@@ -478,16 +475,18 @@ class _SFTPFileReader(_SFTPParallelIO):
             offset += datalen
             size -= datalen
 
-    async def finish(self):
+    async def finish(self) -> bytes:
         """Finish parallel read"""
 
         return bytes(self._data)
 
 
-class _SFTPFileWriter(_SFTPParallelIO):
+class _SFTPFileWriter(_SFTPParallelIO[None]):
     """Parallelized SFTP file writer"""
 
-    def __init__(self, block_size, max_requests, handler, handle, offset, data):
+    def __init__(self, block_size: int, max_requests: int,
+                 handler: 'SFTPClientHandler', handle: bytes,
+                 offset: int, data: bytes):
         super().__init__(block_size, max_requests, offset, len(data))
 
         self._handler = handler
@@ -495,7 +494,7 @@ class _SFTPFileWriter(_SFTPParallelIO):
         self._start = offset
         self._data = data
 
-    async def run_task(self, offset, size):
+    async def run_task(self, offset: int, size: int) -> None:
         """Write a block to the file"""
 
         pos = offset - self._start
@@ -511,8 +510,10 @@ class _SFTPFileCopier(_SFTPParallelIO):
 
     """
 
-    def __init__(self, block_size, max_requests, offset, total_bytes,
-                 srcfs, dstfs, srcpath, dstpath, progress_handler):
+    def __init__(self, block_size: int, max_requests: int, offset: int,
+                 total_bytes: int, srcfs: SFTPFSProtocol,
+                 dstfs: SFTPFSProtocol, srcpath: bytes, dstpath: bytes,
+                 progress_handler: SFTPProgressHandler):
         super().__init__(block_size, max_requests, offset, total_bytes)
 
         self._srcfs = srcfs
@@ -521,24 +522,27 @@ class _SFTPFileCopier(_SFTPParallelIO):
         self._srcpath = srcpath
         self._dstpath = dstpath
 
-        self._src = None
-        self._dst = None
+        self._src: Optional[SFTPFileProtocol] = None
+        self._dst: Optional[SFTPFileProtocol] = None
 
         self._bytes_copied = 0
         self._total_bytes = total_bytes
         self._progress_handler = progress_handler
 
-    async def start(self):
+    async def start(self) -> None:
         """Start parallel copy"""
 
-        self._src = await self._srcfs.open(self._srcpath, 'rb', block_size=None)
-        self._dst = await self._dstfs.open(self._dstpath, 'wb', block_size=None)
+        self._src = await self._srcfs.open(self._srcpath, 'rb')
+        self._dst = await self._dstfs.open(self._dstpath, 'wb')
 
         if self._progress_handler and self._total_bytes == 0:
             self._progress_handler(self._srcpath, self._dstpath, 0, 0)
 
-    async def run_task(self, offset, size):
+    async def run_task(self, offset: int, size: int) -> None:
         """Copy the next block of the file"""
+
+        assert self._src is not None
+        assert self._dst is not None
 
         while size:
             data = await self._src.read(size, offset)
@@ -546,9 +550,8 @@ class _SFTPFileCopier(_SFTPParallelIO):
             if not data:
                 exc = SFTPFailure('Unexpected EOF during file copy')
 
-                # pylint: disable=attribute-defined-outside-init
-                exc.filename = self._srcpath
-                exc.offset = offset
+                setattr(exc, 'filename', self._srcpath)
+                setattr(exc, 'offset', offset)
 
                 raise exc
 
@@ -564,7 +567,7 @@ class _SFTPFileCopier(_SFTPParallelIO):
             offset += datalen
             size -= datalen
 
-    async def cleanup(self):
+    async def cleanup(self) -> None:
         """Clean up parallel copy"""
 
         try:
@@ -611,7 +614,7 @@ class SFTPEOFError(SFTPError):
 
     """
 
-    def __init__(self, reason='', lang=DEFAULT_LANG):
+    def __init__(self, reason: str = '', lang: str = DEFAULT_LANG):
         super().__init__(FX_EOF, reason, lang)
 
 
@@ -629,7 +632,7 @@ class SFTPNoSuchFile(SFTPError):
 
     """
 
-    def __init__(self, reason, lang=DEFAULT_LANG):
+    def __init__(self, reason: str, lang: str = DEFAULT_LANG):
         super().__init__(FX_NO_SUCH_FILE, reason, lang)
 
 
@@ -648,7 +651,7 @@ class SFTPPermissionDenied(SFTPError):
 
     """
 
-    def __init__(self, reason, lang=DEFAULT_LANG):
+    def __init__(self, reason: str, lang: str = DEFAULT_LANG):
         super().__init__(FX_PERMISSION_DENIED, reason, lang)
 
 
@@ -666,7 +669,7 @@ class SFTPFailure(SFTPError):
 
     """
 
-    def __init__(self, reason, lang=DEFAULT_LANG):
+    def __init__(self, reason: str, lang: str = DEFAULT_LANG):
         super().__init__(FX_FAILURE, reason, lang)
 
 
@@ -685,7 +688,7 @@ class SFTPBadMessage(SFTPError):
 
     """
 
-    def __init__(self, reason, lang=DEFAULT_LANG):
+    def __init__(self, reason: str, lang: str = DEFAULT_LANG):
         super().__init__(FX_BAD_MESSAGE, reason, lang)
 
 
@@ -704,7 +707,7 @@ class SFTPNoConnection(SFTPError):
 
     """
 
-    def __init__(self, reason, lang=DEFAULT_LANG):
+    def __init__(self, reason: str, lang: str = DEFAULT_LANG):
         super().__init__(FX_NO_CONNECTION, reason, lang)
 
 
@@ -723,7 +726,7 @@ class SFTPConnectionLost(SFTPError):
 
     """
 
-    def __init__(self, reason, lang=DEFAULT_LANG):
+    def __init__(self, reason: str, lang: str = DEFAULT_LANG):
         super().__init__(FX_CONNECTION_LOST, reason, lang)
 
 
@@ -742,11 +745,11 @@ class SFTPOpUnsupported(SFTPError):
 
     """
 
-    def __init__(self, reason, lang=DEFAULT_LANG):
+    def __init__(self, reason: str, lang: str = DEFAULT_LANG):
         super().__init__(FX_OP_UNSUPPORTED, reason, lang)
 
 
-_sftp_error_map = {
+_sftp_error_map: Dict[int, Callable[[str, str], SFTPError]] = {
     FX_EOF: SFTPEOFError,
     FX_NO_SUCH_FILE: SFTPNoSuchFile,
     FX_PERMISSION_DENIED: SFTPPermissionDenied,
@@ -758,7 +761,7 @@ _sftp_error_map = {
 }
 
 
-def _construct_sftp_error(code, reason, lang):
+def _construct_sftp_error(code: int, reason: str, lang: str) -> SFTPError:
     """Map SFTP error code to appropriate SFTPError exception"""
 
     try:
@@ -806,20 +809,20 @@ class SFTPAttrs(Record):
     nlink: Optional[int]
     extended: Sequence[Tuple[bytes, bytes]] = ()
 
-    def _format(self, k, v):
+    def _format(self, k: str, v: object) -> Optional[str]:
         """Convert attributes to more readable values"""
 
         if v is None or k == 'extended' and not v:
             return None
 
         if k == 'permissions':
-            return '{:06o}'.format(v)
+            return '{:06o}'.format(cast(int, v))
         elif k in ('atime', 'mtime'):
-            return time.ctime(v)
+            return time.ctime(cast(int, v))
         else:
-            return str(v)
+            return str(v) or None
 
-    def encode(self):
+    def encode(self) -> bytes:
         """Encode SFTP attributes as bytes in an SSH packet"""
 
         flags = 0
@@ -850,7 +853,7 @@ class SFTPAttrs(Record):
         return UInt32(flags) + b''.join(attrs)
 
     @classmethod
-    def decode(cls, packet):
+    def decode(cls, packet: SSHPacket) -> 'SFTPAttrs':
         """Decode bytes in an SSH packet as SFTP attributes"""
 
         flags = packet.get_uint32()
@@ -885,7 +888,7 @@ class SFTPAttrs(Record):
         return attrs
 
     @classmethod
-    def from_local(cls, result):
+    def from_local(cls, result: os.stat_result) -> 'SFTPAttrs':
         """Convert from local stat attributes"""
 
         return cls(result.st_size, result.st_uid, result.st_gid,
@@ -928,7 +931,7 @@ class SFTPVFSAttrs(Record):
     flags: int = 0
     namemax: int = 0
 
-    def encode(self):
+    def encode(self) -> bytes:
         """Encode SFTP statvfs attributes as bytes in an SSH packet"""
 
         return b''.join((UInt64(self.bsize), UInt64(self.frsize),
@@ -939,7 +942,7 @@ class SFTPVFSAttrs(Record):
                          UInt64(self.namemax)))
 
     @classmethod
-    def decode(cls, packet):
+    def decode(cls, packet: SSHPacket) -> 'SFTPVFSAttrs':
         """Decode bytes in an SSH packet as SFTP statvfs attributes"""
 
         vfsattrs = cls()
@@ -959,7 +962,7 @@ class SFTPVFSAttrs(Record):
         return vfsattrs
 
     @classmethod
-    def from_local(cls, result):
+    def from_local(cls, result: os.statvfs_result) -> 'SFTPVFSAttrs':
         """Convert from local statvfs attributes"""
 
         return cls(result.f_bsize, result.f_frsize, result.f_blocks,
@@ -990,7 +993,7 @@ class SFTPName(Record):
     longname: BytesOrStr = ''
     attrs: SFTPAttrs = SFTPAttrs()
 
-    def _format(self, k, v):
+    def _format(self, k: str, v: object) -> Optional[str]:
         """Convert name fields to more readable values"""
 
         if isinstance(v, bytes):
@@ -998,7 +1001,7 @@ class SFTPName(Record):
 
         return str(v) or None
 
-    def encode(self):
+    def encode(self) -> bytes:
         """Encode an SFTP name as bytes in an SSH packet"""
 
 
@@ -1007,7 +1010,7 @@ class SFTPName(Record):
                 self.attrs.encode())
 
     @classmethod
-    def decode(cls, packet):
+    def decode(cls, packet: SSHPacket) -> 'SFTPName':
         """Decode bytes in an SSH packet as an SFTP name"""
 
 
@@ -1044,19 +1047,18 @@ class SFTPHandler(SSHPacketLogger):
         b'fstatvfs@openssh.com':  FXP_EXTENDED_REPLY
     }
 
-    def __init__(self, reader, writer):
-        self._reader = reader
-        self._writer = writer
-
+    def __init__(self, reader: 'SSHReader[bytes]', writer: 'SSHWriter[bytes]'):
+        self._reader: Optional['SSHReader[bytes]'] = reader
+        self._writer: Optional['SSHWriter[bytes]'] = writer
         self._logger = reader.logger.get_child('sftp')
 
     @property
-    def logger(self):
+    def logger(self) -> SSHLogger:
         """A logger associated with this SFTP handler"""
 
         return self._logger
 
-    async def _cleanup(self, exc):
+    async def _cleanup(self, exc: Optional[Exception]) -> None:
         """Clean up this SFTP session"""
 
         # pylint: disable=unused-argument
@@ -1066,13 +1068,18 @@ class SFTPHandler(SSHPacketLogger):
             self._reader = None
             self._writer = None
 
-    async def _process_packet(self, pkttype, pktid, packet):
+    async def _process_packet(self, pkttype: int, pktid: int,
+                              packet: SSHPacket) -> None:
         """Abstract method for processing SFTP packets"""
 
         raise NotImplementedError
 
-    def send_packet(self, pkttype, pktid, *args):
+    def send_packet(self, pkttype: int, pktid: Optional[int],
+                    *args: bytes) -> None:
         """Send an SFTP packet"""
+
+        if not self._writer:
+            raise SFTPNoConnection('Connection not open')
 
         payload = Byte(pkttype) + b''.join(args)
 
@@ -1083,8 +1090,10 @@ class SFTPHandler(SSHPacketLogger):
 
         self.log_sent_packet(pkttype, pktid, payload)
 
-    async def recv_packet(self):
+    async def recv_packet(self) -> SSHPacket:
         """Receive an SFTP packet"""
+
+        assert self._reader is not None
 
         pktlen = await self._reader.readexactly(4)
         pktlen = int.from_bytes(pktlen, 'big')
@@ -1092,7 +1101,7 @@ class SFTPHandler(SSHPacketLogger):
         packet = await self._reader.readexactly(pktlen)
         return SSHPacket(packet)
 
-    async def recv_packets(self):
+    async def recv_packets(self) -> None:
         """Receive and process SFTP packets"""
 
         try:
@@ -1116,15 +1125,16 @@ class SFTPHandler(SSHPacketLogger):
 class SFTPClientHandler(SFTPHandler):
     """An SFTP client session handler"""
 
-    _extensions = []
+    _extensions: List[Tuple[bytes, bytes]] = []
 
-    def __init__(self, loop, reader, writer):
+    def __init__(self, loop: asyncio.AbstractEventLoop,
+                 reader: 'SSHReader[bytes]', writer: 'SSHWriter[bytes]'):
         super().__init__(reader, writer)
 
         self._loop = loop
-        self._version = None
+        self._version: Optional[int] = None
         self._next_pktid = 0
-        self._requests = {}
+        self._requests: Dict[int, _RequestWaiter] = {}
         self._nonstandard_symlink = False
         self._supports_posix_rename = False
         self._supports_statvfs = False
@@ -1132,7 +1142,7 @@ class SFTPClientHandler(SFTPHandler):
         self._supports_hardlink = False
         self._supports_fsync = False
 
-    async def _cleanup(self, exc):
+    async def _cleanup(self, exc: Optional[Exception]) -> None:
         """Clean up this SFTP client session"""
 
         req_exc = exc or SFTPConnectionLost('Connection closed')
@@ -1147,7 +1157,8 @@ class SFTPClientHandler(SFTPHandler):
 
         await super()._cleanup(exc)
 
-    async def _process_packet(self, pkttype, pktid, packet):
+    async def _process_packet(self, pkttype: int, pktid: int,
+                              packet: SSHPacket) -> None:
         """Process incoming SFTP responses"""
 
         try:
@@ -1158,11 +1169,9 @@ class SFTPClientHandler(SFTPHandler):
             if not waiter.cancelled(): # pragma: no branch
                 waiter.set_result((pkttype, packet))
 
-    def _send_request(self, pkttype, args, waiter):
+    def _send_request(self, pkttype: Union[int, bytes], args: Sequence[bytes],
+                      waiter: _RequestWaiter) -> None:
         """Send an SFTP request"""
-
-        if not self._writer:
-            raise SFTPNoConnection('Connection not open')
 
         pktid = self._next_pktid
         self._next_pktid = (self._next_pktid + 1) & 0xffffffff
@@ -1177,10 +1186,11 @@ class SFTPClientHandler(SFTPHandler):
 
         self.send_packet(pkttype, pktid, hdr, *args)
 
-    async def _make_request(self, pkttype, *args):
+    async def _make_request(self, pkttype: Union[int, bytes],
+                            *args: bytes) -> object:
         """Make an SFTP request and wait for a response"""
 
-        waiter = self._loop.create_future()
+        waiter: _RequestWaiter = self._loop.create_future()
         self._send_request(pkttype, args, waiter)
         resptype, resp = await waiter
 
@@ -1196,7 +1206,7 @@ class SFTPClientHandler(SFTPHandler):
         else:
             raise SFTPBadMessage('Unexpected FX_OK response')
 
-    def _process_status(self, packet):
+    def _process_status(self, packet: SSHPacket) -> None:
         """Process an incoming SFTP status response"""
 
         code = packet.get_uint32()
@@ -1219,21 +1229,20 @@ class SFTPClientHandler(SFTPHandler):
 
         if code == FX_OK:
             self.logger.debug1('Received OK')
-            return None
         else:
             raise _construct_sftp_error(code, reason, lang)
 
-    def _process_handle(self, packet):
+    def _process_handle(self, packet: SSHPacket) -> bytes:
         """Process an incoming SFTP handle response"""
 
         handle = packet.get_string()
         packet.check_end()
 
-        self.logger.debug1('Received handle %s', to_hex(handle))
+        self.logger.debug1('Received handle %s', handle.hex())
 
         return handle
 
-    def _process_data(self, packet):
+    def _process_data(self, packet: SSHPacket) -> bytes:
         """Process an incoming SFTP data response"""
 
         data = packet.get_string()
@@ -1243,7 +1252,7 @@ class SFTPClientHandler(SFTPHandler):
 
         return data
 
-    def _process_name(self, packet):
+    def _process_name(self, packet: SSHPacket) -> Sequence[SFTPName]:
         """Process an incoming SFTP name response"""
 
         count = packet.get_uint32()
@@ -1257,7 +1266,7 @@ class SFTPClientHandler(SFTPHandler):
 
         return names
 
-    def _process_attrs(self, packet):
+    def _process_attrs(self, packet: SSHPacket) -> SFTPAttrs:
         """Process an incoming SFTP attributes response"""
 
         attrs = SFTPAttrs().decode(packet)
@@ -1267,7 +1276,7 @@ class SFTPClientHandler(SFTPHandler):
 
         return attrs
 
-    def _process_extended_reply(self, packet):
+    def _process_extended_reply(self, packet: SSHPacket) -> SSHPacket:
         """Process an incoming SFTP extended reply response"""
 
         # pylint: disable=no-self-use
@@ -1284,8 +1293,10 @@ class SFTPClientHandler(SFTPHandler):
         FXP_EXTENDED_REPLY: _process_extended_reply
     }
 
-    async def start(self):
+    async def start(self) -> None:
         """Start an SFTP client"""
+
+        assert self._reader is not None
 
         self.logger.debug1('Sending init, version=%d%s', _SFTP_VERSION,
                            ', extensions:' if self._extensions else '')
@@ -1293,10 +1304,11 @@ class SFTPClientHandler(SFTPHandler):
         for name, data in self._extensions: # pragma: no cover
             self.logger.debug1('  %s: %s', name, data)
 
-        extensions = (String(name) + String(data)
-                      for name, data in self._extensions)
+        sent_extensions = (String(name) + String(data)
+                           for name, data in self._extensions)
 
-        self.send_packet(FXP_INIT, None, UInt32(_SFTP_VERSION), *extensions)
+        self.send_packet(FXP_INIT, None, UInt32(_SFTP_VERSION),
+                         *sent_extensions)
 
         try:
             resp = await self.recv_packet()
@@ -1315,21 +1327,21 @@ class SFTPClientHandler(SFTPHandler):
 
             self._version = version
 
-            extensions = []
+            rcvd_extensions: List[Tuple[bytes, bytes]] = []
 
             while resp:
                 name = resp.get_string()
                 data = resp.get_string()
-                extensions.append((name, data))
+                rcvd_extensions.append((name, data))
         except PacketDecodeError as exc:
             raise SFTPBadMessage(str(exc)) from None
         except (asyncio.IncompleteReadError, Error) as exc:
             raise SFTPFailure(str(exc)) from None
 
         self.logger.debug1('Received version=%d%s', version,
-                           ', extensions:' if extensions else '')
+                           ', extensions:' if rcvd_extensions else '')
 
-        for name, data in extensions:
+        for name, data in rcvd_extensions:
             self.logger.debug1('  %s: %s', name, data)
 
             if name == b'posix-rename@openssh.com' and data == b'1':
@@ -1346,94 +1358,99 @@ class SFTPClientHandler(SFTPHandler):
         if version == 3:
             # Check if the server has a buggy SYMLINK implementation
 
-            server_version = self._reader.get_extra_info('server_version', '')
+            server_version = cast(str,
+                self._reader.get_extra_info('server_version', ''))
+
             if any(name in server_version
                    for name in self._nonstandard_symlink_impls):
                 self.logger.debug1('Adjusting for non-standard symlink '
                                    'implementation')
                 self._nonstandard_symlink = True
 
-    async def open(self, filename, pflags, attrs):
+    async def open(self, filename: bytes, pflags: int,
+                   attrs: SFTPAttrs) -> bytes:
         """Make an SFTP open request"""
 
         self.logger.debug1('Sending open for %s, mode 0x%02x%s',
                            filename, pflags, hide_empty(attrs))
 
-        return await self._make_request(FXP_OPEN, String(filename),
-                                        UInt32(pflags), attrs.encode())
+        return cast(bytes, await self._make_request(
+            FXP_OPEN, String(filename), UInt32(pflags), attrs.encode()))
 
-    async def close(self, handle):
+    async def close(self, handle: bytes) -> None:
         """Make an SFTP close request"""
 
-        self.logger.debug1('Sending close for handle %s', to_hex(handle))
+        self.logger.debug1('Sending close for handle %s', handle.hex())
 
         if self._writer:
             await self._make_request(FXP_CLOSE, String(handle))
 
-    async def read(self, handle, offset, length):
+    async def read(self, handle: bytes, offset: int, length: int) -> bytes:
         """Make an SFTP read request"""
 
         self.logger.debug1('Sending read for %s at offset %d in handle %s',
-                           plural(length, 'byte'), offset, to_hex(handle))
+                           plural(length, 'byte'), offset, handle.hex())
 
-        return await self._make_request(FXP_READ, String(handle),
-                                        UInt64(offset), UInt32(length))
+        return cast(bytes, await self._make_request(
+            FXP_READ, String(handle), UInt64(offset), UInt32(length)))
 
-    async def write(self, handle, offset, data):
+    async def write(self, handle: bytes, offset: int, data: bytes) -> int:
         """Make an SFTP write request"""
 
         self.logger.debug1('Sending write for %s at offset %d in handle %s',
-                           plural(len(data), 'byte'), offset, to_hex(handle))
+                           plural(len(data), 'byte'), offset, handle.hex())
 
-        return await self._make_request(FXP_WRITE, String(handle),
-                                        UInt64(offset), String(data))
+        return cast(int, await self._make_request(
+            FXP_WRITE, String(handle), UInt64(offset), String(data)))
 
-    async def stat(self, path):
+    async def stat(self, path: bytes) -> SFTPAttrs:
         """Make an SFTP stat request"""
 
         self.logger.debug1('Sending stat for %s', path)
 
-        return await self._make_request(FXP_STAT, String(path))
+        return cast(SFTPAttrs,  await self._make_request(
+            FXP_STAT, String(path)))
 
-    async def lstat(self, path):
+    async def lstat(self, path: bytes) -> SFTPAttrs:
         """Make an SFTP lstat request"""
 
         self.logger.debug1('Sending lstat for %s', path)
 
-        return await self._make_request(FXP_LSTAT, String(path))
+        return cast(SFTPAttrs, await self._make_request(
+            FXP_LSTAT, String(path)))
 
-    async def fstat(self, handle):
+    async def fstat(self, handle: bytes) -> SFTPAttrs:
         """Make an SFTP fstat request"""
 
-        self.logger.debug1('Sending fstat for handle %s', to_hex(handle))
+        self.logger.debug1('Sending fstat for handle %s', handle.hex())
 
-        return await self._make_request(FXP_FSTAT, String(handle))
+        return cast(SFTPAttrs, await self._make_request(
+            FXP_FSTAT, String(handle)))
 
-    async def setstat(self, path, attrs):
+    async def setstat(self, path: bytes, attrs: SFTPAttrs) -> None:
         """Make an SFTP setstat request"""
 
         self.logger.debug1('Sending setstat for %s%s', path, hide_empty(attrs))
 
-        return await self._make_request(FXP_SETSTAT, String(path),
-                                        attrs.encode())
+        await self._make_request(FXP_SETSTAT, String(path), attrs.encode())
 
-    async def fsetstat(self, handle, attrs):
+    async def fsetstat(self, handle: bytes, attrs: SFTPAttrs) -> None:
         """Make an SFTP fsetstat request"""
 
         self.logger.debug1('Sending fsetstat for handle %s%s',
-                           to_hex(handle), hide_empty(attrs))
+                           handle.hex(), hide_empty(attrs))
 
-        return await self._make_request(FXP_FSETSTAT, String(handle),
-                                        attrs.encode())
+        await self._make_request(FXP_FSETSTAT, String(handle), attrs.encode())
 
-    async def statvfs(self, path):
+    async def statvfs(self, path: bytes) -> SFTPVFSAttrs:
         """Make an SFTP statvfs request"""
 
         if self._supports_statvfs:
             self.logger.debug1('Sending statvfs for %s', path)
 
-            packet = await self._make_request(b'statvfs@openssh.com',
-                                              String(path))
+            packet = cast(SSHPacket, await self._make_request(
+                b'statvfs@openssh.com', String(path)))
+
             vfsattrs = SFTPVFSAttrs.decode(packet)
             packet.check_end()
 
@@ -1443,14 +1460,15 @@ class SFTPClientHandler(SFTPHandler):
         else:
             raise SFTPOpUnsupported('statvfs not supported')
 
-    async def fstatvfs(self, handle):
+    async def fstatvfs(self, handle: bytes) -> SFTPVFSAttrs:
         """Make an SFTP fstatvfs request"""
 
         if self._supports_fstatvfs:
-            self.logger.debug1('Sending fstatvfs for handle %s', to_hex(handle))
+            self.logger.debug1('Sending fstatvfs for handle %s', handle.hex())
 
-            packet = await self._make_request(b'fstatvfs@openssh.com',
-                                              String(handle))
+            packet = cast(SSHPacket, await self._make_request(
+                b'fstatvfs@openssh.com', String(handle)))
+
             vfsattrs = SFTPVFSAttrs.decode(packet)
             packet.check_end()
 
@@ -1460,77 +1478,80 @@ class SFTPClientHandler(SFTPHandler):
         else:
             raise SFTPOpUnsupported('fstatvfs not supported')
 
-    async def remove(self, path):
+    async def remove(self, path: bytes) -> None:
         """Make an SFTP remove request"""
 
         self.logger.debug1('Sending remove for %s', path)
 
-        return await self._make_request(FXP_REMOVE, String(path))
+        await self._make_request(FXP_REMOVE, String(path))
 
-    async def rename(self, oldpath, newpath):
+    async def rename(self, oldpath: bytes, newpath: bytes) -> None:
         """Make an SFTP rename request"""
 
         self.logger.debug1('Sending rename request from %s to %s',
                            oldpath, newpath)
 
-        return await self._make_request(FXP_RENAME, String(oldpath),
-                                        String(newpath))
+        await self._make_request(FXP_RENAME, String(oldpath), String(newpath))
 
-    async def posix_rename(self, oldpath, newpath):
+    async def posix_rename(self, oldpath: bytes, newpath: bytes) -> None:
         """Make an SFTP POSIX rename request"""
 
         if self._supports_posix_rename:
             self.logger.debug1('Sending POSIX rename request from %s to %s',
                                oldpath, newpath)
 
-            return await self._make_request(b'posix-rename@openssh.com',
-                                            String(oldpath), String(newpath))
+            await self._make_request(b'posix-rename@openssh.com',
+                                     String(oldpath), String(newpath))
         else:
             raise SFTPOpUnsupported('POSIX rename not supported')
 
-    async def opendir(self, path):
+    async def opendir(self, path: bytes) -> bytes:
         """Make an SFTP opendir request"""
 
         self.logger.debug1('Sending opendir for %s', path)
 
-        return await self._make_request(FXP_OPENDIR, String(path))
+        return cast(bytes, await self._make_request(
+            FXP_OPENDIR, String(path)))
 
-    async def readdir(self, handle):
+    async def readdir(self, handle: bytes) -> Sequence[SFTPName]:
         """Make an SFTP readdir request"""
 
-        self.logger.debug1('Sending readdir for handle %s', to_hex(handle))
+        self.logger.debug1('Sending readdir for handle %s', handle.hex())
 
-        return await self._make_request(FXP_READDIR, String(handle))
+        return cast(Sequence[SFTPName], await self._make_request(
+            FXP_READDIR, String(handle)))
 
-    async def mkdir(self, path, attrs):
+    async def mkdir(self, path: bytes, attrs: SFTPAttrs) -> None:
         """Make an SFTP mkdir request"""
 
         self.logger.debug1('Sending mkdir for %s', path)
 
-        return await self._make_request(FXP_MKDIR, String(path), attrs.encode())
+        await self._make_request(FXP_MKDIR, String(path), attrs.encode())
 
-    async def rmdir(self, path):
+    async def rmdir(self, path: bytes) -> None:
         """Make an SFTP rmdir request"""
 
         self.logger.debug1('Sending rmdir for %s', path)
 
-        return await self._make_request(FXP_RMDIR, String(path))
+        await self._make_request(FXP_RMDIR, String(path))
 
-    async def realpath(self, path):
+    async def realpath(self, path: bytes) -> Sequence[SFTPName]:
         """Make an SFTP realpath request"""
 
         self.logger.debug1('Sending realpath for %s', path)
 
-        return await self._make_request(FXP_REALPATH, String(path))
+        return cast(Sequence[SFTPName], await self._make_request(
+            FXP_REALPATH, String(path)))
 
-    async def readlink(self, path):
+    async def readlink(self, path: bytes) -> Sequence[SFTPName]:
         """Make an SFTP readlink request"""
 
         self.logger.debug1('Sending readlink for %s', path)
 
-        return await self._make_request(FXP_READLINK, String(path))
+        return cast(Sequence[SFTPName], await self._make_request(
+            FXP_READLINK, String(path)))
 
-    async def symlink(self, oldpath, newpath):
+    async def symlink(self, oldpath: bytes, newpath: bytes) -> None:
         """Make an SFTP symlink request"""
 
         self.logger.debug1('Sending symlink request from %s to %s',
@@ -1541,38 +1562,37 @@ class SFTPClientHandler(SFTPHandler):
         else:
             args = String(newpath) + String(oldpath)
 
-        return await self._make_request(FXP_SYMLINK, args)
+        await self._make_request(FXP_SYMLINK, args)
 
-    async def link(self, oldpath, newpath):
+    async def link(self, oldpath: bytes, newpath: bytes) -> None:
         """Make an SFTP link request"""
 
         if self._supports_hardlink:
             self.logger.debug1('Sending hardlink request from %s to %s',
                                oldpath, newpath)
 
-            return await self._make_request(b'hardlink@openssh.com',
-                                            String(oldpath), String(newpath))
+            await self._make_request(
+                b'hardlink@openssh.com', String(oldpath), String(newpath))
         else:
             raise SFTPOpUnsupported('link not supported')
 
-    async def fsync(self, handle):
+    async def fsync(self, handle: bytes) -> None:
         """Make an SFTP fsync request"""
 
         if self._supports_fsync:
-            self.logger.debug1('Sending fsync for handle %s', to_hex(handle))
+            self.logger.debug1('Sending fsync for handle %s', handle.hex())
 
-            return await self._make_request(b'fsync@openssh.com',
-                                            String(handle))
+            await self._make_request(b'fsync@openssh.com', String(handle))
         else:
             raise SFTPOpUnsupported('fsync not supported')
 
-    def exit(self):
+    def exit(self) -> None:
         """Handle a request to close the SFTP session"""
 
         if self._writer:
             self._writer.write_eof()
 
-    async def wait_closed(self):
+    async def wait_closed(self) -> None:
         """Wait for this SFTP session to close"""
 
         if self._writer:
@@ -1589,10 +1609,11 @@ class SFTPClientFile:
 
     """
 
-    def __init__(self, handler, handle, appending, encoding, errors,
-                 block_size, max_requests):
+    def __init__(self, handler: SFTPClientHandler, handle: bytes,
+                 appending: bool, encoding: Optional[str], errors: str,
+                 block_size: int, max_requests: int):
         self._handler = handler
-        self._handle = handle
+        self._handle: Optional[bytes] = handle
         self._appending = appending
         self._encoding = encoding
         self._errors = errors
@@ -1600,23 +1621,27 @@ class SFTPClientFile:
         self._max_requests = max_requests
         self._offset = None if appending else 0
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> 'SFTPClientFile':
         """Allow SFTPClientFile to be used as an async context manager"""
 
         return self
 
-    async def __aexit__(self, *exc_info):
+    async def __aexit__(self, _exc_type: Type[BaseException],
+                        _exc_value: BaseException,
+                        _traceback: TracebackType) -> bool:
         """Wait for file close when used as an async context manager"""
 
         await self.close()
+        return False
 
-    async def _end(self):
+    async def _end(self) -> int:
         """Return the offset of the end of the file"""
 
         attrs = await self.stat()
-        return attrs.size
+        return attrs.size or 0
 
-    async def read(self, size=-1, offset=None):
+    async def read(self, size: int = -1,
+                   offset: Optional[int] = None) -> AnyStr:
         """Read data from the remote file
 
            This method reads and returns up to `size` bytes of data
@@ -1673,16 +1698,17 @@ class SFTPClientFile:
                         self._handle, offset, size).run()
                 else:
                     data = await self._handler.read(self._handle, offset, size)
+
                 self._offset = offset + len(data)
             except SFTPEOFError:
                 pass
 
         if self._encoding:
-            data = data.decode(self._encoding, self._errors)
+            return cast(AnyStr, data.decode(self._encoding, self._errors))
+        else:
+            return cast(AnyStr, data)
 
-        return data
-
-    async def write(self, data, offset=None):
+    async def write(self, data: AnyStr, offset: Optional[int] = None) -> int:
         """Write data to the remote file
 
            This method writes the specified data at the current
@@ -1719,21 +1745,23 @@ class SFTPClientFile:
             offset = self._offset or 0
 
         if self._encoding:
-            data = data.encode(self._encoding, self._errors)
+            data_bytes = cast(str, data).encode(self._encoding, self._errors)
+        else:
+            data_bytes = cast(bytes, data)
 
-        datalen = len(data)
+        datalen = len(data_bytes)
 
         if self._block_size and datalen > self._block_size:
             await _SFTPFileWriter(
                 self._block_size, self._max_requests, self._handler,
-                self._handle, offset, data).run()
+                self._handle, offset, data_bytes).run()
         else:
-            await self._handler.write(self._handle, offset, data)
+            await self._handler.write(self._handle, offset, data_bytes)
 
         self._offset = None if self._appending else offset + datalen
         return datalen
 
-    async def seek(self, offset, from_what=SEEK_SET):
+    async def seek(self, offset: int, from_what: int = SEEK_SET) -> int:
         """Seek to a new position in the remote file
 
            This method changes the position in the remote file. The
@@ -1760,7 +1788,10 @@ class SFTPClientFile:
         if from_what == SEEK_SET:
             self._offset = offset
         elif from_what == SEEK_CUR:
-            self._offset += offset
+            if self._offset is None:
+                self._offset = (await self._end()) + offset
+            else:
+                self._offset += offset
         elif from_what == SEEK_END:
             self._offset = (await self._end()) + offset
         else:
@@ -1768,7 +1799,7 @@ class SFTPClientFile:
 
         return self._offset
 
-    async def tell(self):
+    async def tell(self) -> int:
         """Return the current position in the remote file
 
            This method returns the current position in the remote file.
@@ -1785,7 +1816,7 @@ class SFTPClientFile:
 
         return self._offset
 
-    async def stat(self):
+    async def stat(self) -> SFTPAttrs:
         """Return file attributes of the remote file
 
            This method queries file attributes of the currently open file.
@@ -1801,7 +1832,7 @@ class SFTPClientFile:
 
         return await self._handler.fstat(self._handle)
 
-    async def setstat(self, attrs):
+    async def setstat(self, attrs: SFTPAttrs) -> None:
         """Set attributes of the remote file
 
            This method sets file attributes of the currently open file.
@@ -1819,7 +1850,7 @@ class SFTPClientFile:
 
         await self._handler.fsetstat(self._handle, attrs)
 
-    async def statvfs(self):
+    async def statvfs(self) -> SFTPVFSAttrs:
         """Return file system attributes of the remote file
 
            This method queries attributes of the file system containing
@@ -1838,7 +1869,7 @@ class SFTPClientFile:
 
         return await self._handler.fstatvfs(self._handle)
 
-    async def truncate(self, size=None):
+    async def truncate(self, size: Optional[int] = None) -> None:
         """Truncate the remote file to the specified size
 
            This method changes the remote file's size to the specified
@@ -1858,7 +1889,7 @@ class SFTPClientFile:
 
         await self.setstat(SFTPAttrs(size=size))
 
-    async def chown(self, uid, gid):
+    async def chown(self, uid: int, gid: int) -> None:
         """Change the owner user and group id of the remote file
 
            This method changes the user and group id of the
@@ -1877,7 +1908,7 @@ class SFTPClientFile:
 
         await self.setstat(SFTPAttrs(uid=uid, gid=gid))
 
-    async def chmod(self, mode):
+    async def chmod(self, mode: int) -> None:
         """Change the file permissions of the remote file
 
            This method changes the permissions of the currently
@@ -1893,7 +1924,7 @@ class SFTPClientFile:
 
         await self.setstat(SFTPAttrs(permissions=mode))
 
-    async def utime(self, times=None):
+    async def utime(self, times: Optional[Tuple[float, float]] = None) -> None:
         """Change the access and modify times of the remote file
 
            This method changes the access and modify times of the
@@ -1916,7 +1947,7 @@ class SFTPClientFile:
 
         await self.setstat(SFTPAttrs(atime=atime, mtime=mtime))
 
-    async def fsync(self):
+    async def fsync(self) -> None:
         """Force the remote file data to be written to disk"""
 
         if self._handle is None:
@@ -1924,7 +1955,7 @@ class SFTPClientFile:
 
         await self._handler.fsync(self._handle)
 
-    async def close(self):
+    async def close(self) -> None:
         """Close the remote file"""
 
         if self._handle:
@@ -1942,37 +1973,40 @@ class SFTPClient:
 
     """
 
-    def __init__(self, handler, path_encoding, path_errors):
+    def __init__(self, handler: SFTPClientHandler,
+                 path_encoding: Optional[str], path_errors: str):
         self._handler = handler
         self._path_encoding = path_encoding
         self._path_errors = path_errors
-        self._cwd = None
+        self._cwd: Optional[bytes] = None
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> 'SFTPClient':
         """Allow SFTPClient to be used as an async context manager"""
 
         return self
 
-    async def __aexit__(self, *exc_info):
+    async def __aexit__(self, _exc_type: Type[BaseException],
+                        _exc_value: BaseException,
+                        _traceback: TracebackType) -> bool:
         """Wait for client close when used as an async context manager"""
 
         self.exit()
         await self.wait_closed()
+        return False
 
     @property
-    def logger(self):
+    def logger(self) -> SSHLogger:
         """A logger associated with this SFTP client"""
 
         return self._handler.logger
 
-    def basename(self, path):
+    @staticmethod
+    def basename(path: bytes) -> bytes:
         """Return the final component of a POSIX-style path"""
-
-        # pylint: disable=no-self-use
 
         return posixpath.basename(path)
 
-    def encode(self, path):
+    def encode(self, path: _SFTPPath) -> bytes:
         """Encode path name using configured path encoding
 
            This method has no effect if the path is already bytes.
@@ -1991,7 +2025,7 @@ class SFTPClient:
 
         return path
 
-    def decode(self, path, want_string=True):
+    def decode(self, path: bytes, want_string: bool = True) -> BytesOrStr:
         """Decode path name using configured path encoding
 
            This method has no effect if want_string is set to `False`.
@@ -2000,13 +2034,14 @@ class SFTPClient:
 
         if want_string and self._path_encoding:
             try:
-                path = path.decode(self._path_encoding, self._path_errors)
+                return path.decode(self._path_encoding, self._path_errors)
             except UnicodeDecodeError:
                 raise SFTPBadMessage('Unable to decode name') from None
 
         return path
 
-    def compose_path(self, path, parent=...):
+    def compose_path(self, path: _SFTPPath,
+                     parent: Optional[bytes] = None) -> bytes:
         """Compose a path
 
            If parent is not specified, return a path relative to the
@@ -2014,50 +2049,57 @@ class SFTPClient:
 
         """
 
-        if parent is ...:
+        if parent is None:
             parent = self._cwd
 
         path = self.encode(path)
 
         return posixpath.join(parent, path) if parent else path
 
-    async def _mode(self, path, statfunc=None):
+    async def _mode(self, path: _SFTPPath,
+                    statfunc: Optional[_SFTPStatFunc] = None) -> int:
         """Return the mode of a remote path, or 0 if it can't be accessed"""
 
         if statfunc is None:
             statfunc = self.stat
 
         try:
-            return (await statfunc(path)).permissions
+            return (await statfunc(path)).permissions or 0
         except (SFTPNoSuchFile, SFTPPermissionDenied):
             return 0
 
-    async def _glob(self, fs, patterns, error_handler):
+    async def _glob(self, fs: SFTPFSProtocol,
+                    patterns: Union[_SFTPPath, Sequence[_SFTPPath]],
+                    error_handler: SFTPErrorHandler) -> Sequence[BytesOrStr]:
         """Begin a new glob pattern match"""
 
         # pylint: disable=no-self-use
 
-        if isinstance(patterns, (str, bytes, PurePath)):
+        if isinstance(patterns, (bytes, str, PurePath)):
             patterns = [patterns]
 
-        result = []
+        result: List[BytesOrStr] = []
 
         for pattern in patterns:
             if not pattern:
                 continue
 
-            names = await match_glob(fs, fs.encode(pattern), error_handler)
+            enc_names = await match_glob(fs, fs.encode(pattern), error_handler)
 
             if isinstance(pattern, (str, PurePath)):
-                names = [fs.decode(name) for name in names]
+                names = [fs.decode(name) for name in enc_names]
+            else:
+                names = cast(List[BytesOrStr], enc_names)
 
             result.extend(names)
 
         return result
 
-    async def _copy(self, srcfs, dstfs, srcpath, dstpath, preserve,
-                    recurse, follow_symlinks, block_size, max_requests,
-                    progress_handler, error_handler):
+    async def _copy(self, srcfs: SFTPFSProtocol, dstfs: SFTPFSProtocol,
+                    srcpath: bytes, dstpath: bytes, preserve: bool,
+                    recurse: bool, follow_symlinks: bool, block_size: int,
+                    max_requests: int, progress_handler: SFTPProgressHandler,
+                    error_handler: SFTPErrorHandler) -> None:
         """Copy a file, directory, or symbolic link"""
 
         try:
@@ -2066,7 +2108,9 @@ class SFTPClient:
             else:
                 srcattrs = await srcfs.lstat(srcpath)
 
-            if stat.S_ISDIR(srcattrs.permissions):
+            mode = srcattrs.permissions or 0
+
+            if stat.S_ISDIR(mode):
                 if not recurse:
                     raise SFTPFailure('%s is a directory' %
                                       srcpath.decode('utf-8', errors='replace'))
@@ -2094,7 +2138,7 @@ class SFTPClient:
                 self.logger.info('  Finished copy of directory %s to %s',
                                  srcpath, dstpath)
 
-            elif stat.S_ISLNK(srcattrs.permissions):
+            elif stat.S_ISLNK(mode):
                 targetpath = await srcfs.readlink(srcpath)
 
                 self.logger.info('  Copying symlink %s to %s', srcpath, dstpath)
@@ -2105,8 +2149,8 @@ class SFTPClient:
                 self.logger.info('  Copying file %s to %s', srcpath, dstpath)
 
                 await _SFTPFileCopier(block_size, max_requests, 0,
-                                      srcattrs.size, srcfs, dstfs, srcpath,
-                                      dstpath, progress_handler).run()
+                                      srcattrs.size or 0, srcfs, dstfs,
+                                      srcpath, dstpath, progress_handler).run()
 
             if preserve:
                 attrs = await srcfs.stat(srcpath)
@@ -2118,19 +2162,22 @@ class SFTPClient:
 
                 await dstfs.setstat(dstpath, attrs)
         except (OSError, SFTPError) as exc:
-            # pylint: disable=attribute-defined-outside-init
-            exc.srcpath = srcpath
-            exc.dstpath = dstpath
+            setattr(exc, 'srcpath', srcpath)
+            setattr(exc, 'dstpath', dstpath)
 
             if error_handler:
                 error_handler(exc)
             else:
                 raise
 
-    async def _begin_copy(self, srcfs, dstfs, srcpaths, dstpath, copy_type,
-                          expand_glob, preserve, recurse, follow_symlinks,
-                          block_size, max_requests, progress_handler,
-                          error_handler):
+    async def _begin_copy(self, srcfs: SFTPFSProtocol, dstfs: SFTPFSProtocol,
+                          srcpaths: Sequence[_SFTPPath],
+                          dstpath: Optional[_SFTPPath],
+                          copy_type: str, expand_glob: bool, preserve: bool,
+                          recurse: bool, follow_symlinks: bool,
+                          block_size: int, max_requests: int,
+                          progress_handler: SFTPProgressHandler,
+                          error_handler: SFTPErrorHandler) -> None:
         """Begin a new file upload, download, or copy"""
 
         if isinstance(srcpaths, tuple):
@@ -2142,14 +2189,17 @@ class SFTPClient:
         if expand_glob:
             srcpaths = await self._glob(srcfs, srcpaths, error_handler)
 
-        dst_isdir = dstpath is None or (await dstfs.isdir(dstpath))
-
         if dstpath:
             dstpath = dstfs.encode(dstpath)
 
-        if isinstance(srcpaths, (str, bytes, PurePath)):
+        dstpath: Optional[bytes]
+
+        dst_isdir = dstpath is None or (await dstfs.isdir(dstpath))
+
+        if isinstance(srcpaths, (bytes, str, PurePath)):
             srcpaths = [srcpaths]
         elif not dst_isdir:
+            assert dstpath is not None
             raise SFTPFailure('%s must be a directory' %
                               dstpath.decode('utf-8', errors='replace'))
 
@@ -2168,10 +2218,14 @@ class SFTPClient:
                              recurse, follow_symlinks, block_size,
                              max_requests, progress_handler, error_handler)
 
-    async def get(self, remotepaths, localpath=None, *, preserve=False,
-                  recurse=False, follow_symlinks=False,
-                  block_size=SFTP_BLOCK_SIZE, max_requests=_MAX_SFTP_REQUESTS,
-                  progress_handler=None, error_handler=None):
+    async def get(self, remotepaths: Sequence[_SFTPPath],
+                  localpath: Optional[_SFTPPath] = None, *,
+                  preserve: bool = False, recurse: bool = False,
+                  follow_symlinks: bool = False,
+                  block_size: int = SFTP_BLOCK_SIZE,
+                  max_requests: int = _MAX_SFTP_REQUESTS,
+                  progress_handler: SFTPProgressHandler = None,
+                  error_handler: SFTPErrorHandler = None) -> None:
         """Download remote files
 
            This method downloads one or more files or directories from
@@ -2264,15 +2318,19 @@ class SFTPClient:
 
         """
 
-        await self._begin_copy(self, LocalFile, remotepaths, localpath, 'get',
+        await self._begin_copy(self, local_fs, remotepaths, localpath, 'get',
                                False, preserve, recurse, follow_symlinks,
                                block_size, max_requests, progress_handler,
                                error_handler)
 
-    async def put(self, localpaths, remotepath=None, *, preserve=False,
-                  recurse=False, follow_symlinks=False,
-                  block_size=SFTP_BLOCK_SIZE, max_requests=_MAX_SFTP_REQUESTS,
-                  progress_handler=None, error_handler=None):
+    async def put(self, localpaths: Sequence[_SFTPPath],
+                  remotepath: Optional[_SFTPPath] = None, *,
+                  preserve: bool = False, recurse: bool = False,
+                  follow_symlinks: bool = False,
+                  block_size: int = SFTP_BLOCK_SIZE,
+                  max_requests: int = _MAX_SFTP_REQUESTS,
+                  progress_handler: SFTPProgressHandler = None,
+                  error_handler: SFTPErrorHandler = None) -> None:
         """Upload local files
 
            This method uploads one or more files or directories to the
@@ -2365,15 +2423,19 @@ class SFTPClient:
 
         """
 
-        await self._begin_copy(LocalFile, self, localpaths, remotepath, 'put',
+        await self._begin_copy(local_fs, self, localpaths, remotepath, 'put',
                                False, preserve, recurse, follow_symlinks,
                                block_size, max_requests, progress_handler,
                                error_handler)
 
-    async def copy(self, srcpaths, dstpath=None, *, preserve=False,
-                   recurse=False, follow_symlinks=False,
-                   block_size=SFTP_BLOCK_SIZE, max_requests=_MAX_SFTP_REQUESTS,
-                   progress_handler=None, error_handler=None):
+    async def copy(self, srcpaths: Sequence[_SFTPPath],
+                   dstpath: Optional[_SFTPPath] = None, *,
+                   preserve: bool = False, recurse: bool = False,
+                   follow_symlinks: bool = False,
+                   block_size: int =SFTP_BLOCK_SIZE,
+                   max_requests: int = _MAX_SFTP_REQUESTS,
+                   progress_handler: SFTPProgressHandler = None,
+                   error_handler: SFTPErrorHandler = None) -> None:
         """Copy remote files to a new location
 
            This method copies one or more files or directories on the
@@ -2471,10 +2533,14 @@ class SFTPClient:
                                block_size, max_requests, progress_handler,
                                error_handler)
 
-    async def mget(self, remotepaths, localpath=None, *, preserve=False,
-                   recurse=False, follow_symlinks=False,
-                   block_size=SFTP_BLOCK_SIZE, max_requests=_MAX_SFTP_REQUESTS,
-                   progress_handler=None, error_handler=None):
+    async def mget(self, remotepaths: Sequence[_SFTPPath],
+                   localpath: Optional[_SFTPPath] = None, *,
+                   preserve: bool = False, recurse: bool = False,
+                   follow_symlinks: bool = False,
+                   block_size: int = SFTP_BLOCK_SIZE,
+                   max_requests: int = _MAX_SFTP_REQUESTS,
+                   progress_handler: SFTPProgressHandler = None,
+                   error_handler: SFTPErrorHandler = None) -> None:
         """Download remote files with glob pattern match
 
            This method downloads files and directories from the remote
@@ -2486,15 +2552,19 @@ class SFTPClient:
 
         """
 
-        await self._begin_copy(self, LocalFile, remotepaths, localpath, 'mget',
+        await self._begin_copy(self, local_fs, remotepaths, localpath, 'mget',
                                True, preserve, recurse, follow_symlinks,
                                block_size, max_requests, progress_handler,
                                error_handler)
 
-    async def mput(self, localpaths, remotepath=None, *, preserve=False,
-                   recurse=False, follow_symlinks=False,
-                   block_size=SFTP_BLOCK_SIZE, max_requests=_MAX_SFTP_REQUESTS,
-                   progress_handler=None, error_handler=None):
+    async def mput(self, localpaths: Sequence[_SFTPPath],
+                   remotepath: Optional[_SFTPPath] = None, *,
+                   preserve: bool = False, recurse: bool = False,
+                   follow_symlinks: bool = False,
+                   block_size: int = SFTP_BLOCK_SIZE,
+                   max_requests: int = _MAX_SFTP_REQUESTS,
+                   progress_handler: SFTPProgressHandler = None,
+                   error_handler: SFTPErrorHandler = None) -> None:
         """Upload local files with glob pattern match
 
            This method uploads files and directories to the remote
@@ -2506,15 +2576,19 @@ class SFTPClient:
 
         """
 
-        await self._begin_copy(LocalFile, self, localpaths, remotepath, 'mput',
+        await self._begin_copy(local_fs, self, localpaths, remotepath, 'mput',
                                True, preserve, recurse, follow_symlinks,
                                block_size, max_requests, progress_handler,
                                error_handler)
 
-    async def mcopy(self, srcpaths, dstpath=None, *, preserve=False,
-                    recurse=False, follow_symlinks=False,
-                    block_size=SFTP_BLOCK_SIZE, max_requests=_MAX_SFTP_REQUESTS,
-                    progress_handler=None, error_handler=None):
+    async def mcopy(self, srcpaths: Sequence[_SFTPPath],
+                    dstpath: Optional[_SFTPPath] = None, *,
+                    preserve: bool = False, recurse: bool = False,
+                    follow_symlinks: bool = False,
+                    block_size: int =SFTP_BLOCK_SIZE,
+                    max_requests: int = _MAX_SFTP_REQUESTS,
+                    progress_handler: SFTPProgressHandler = None,
+                    error_handler: SFTPErrorHandler = None) -> None:
         """Download remote files with glob pattern match
 
            This method copies files and directories on the remote
@@ -2531,7 +2605,9 @@ class SFTPClient:
                                block_size, max_requests, progress_handler,
                                error_handler)
 
-    async def glob(self, patterns, error_handler=None):
+    async def glob(self, patterns: Union[_SFTPPath, Sequence[_SFTPPath]],
+                   error_handler: SFTPErrorHandler = None) -> \
+            Sequence[BytesOrStr]:
         """Match remote files against glob patterns
 
            This method matches remote files against one or more glob
@@ -2575,7 +2651,8 @@ class SFTPClient:
 
         return await self._glob(self, patterns, error_handler)
 
-    async def makedirs(self, path, attrs=SFTPAttrs(), exist_ok=False):
+    async def makedirs(self, path: _SFTPPath, attrs: SFTPAttrs = SFTPAttrs(),
+                       exist_ok: bool = False) -> None:
         """Create a remote directory with the specified attributes
 
            This method creates a remote directory at the specified path
@@ -2615,14 +2692,16 @@ class SFTPClient:
                 mode = await self._mode(curpath)
 
                 if not stat.S_ISDIR(mode):
-                    path = curpath.decode('utf-8', errors='replace')
-                    raise SFTPFailure('%s is not a directory' % path) from None
+                    curpath_str = curpath.decode('utf-8', errors='replace')
+                    raise SFTPFailure('%s is not a directory' %
+                                      curpath_str) from None
 
         if exists and not exist_ok:
             raise SFTPFailure('%s already exists' %
                               curpath.decode('utf-8', errors='replace'))
 
-    async def rmtree(self, path, ignore_errors=False, onerror=None):
+    async def rmtree(self, path: _SFTPPath, ignore_errors: bool = False,
+                     onerror: _SFTPOnErrorHandler = None) -> None:
         """Recursively delete a directory tree
 
            This method removes all the files in a directory tree.
@@ -2650,32 +2729,38 @@ class SFTPClient:
 
         """
 
-        async def _unlink(path):
+        async def _unlink(path: bytes) -> None:
             """Internal helper for unlinking non-directories"""
+
+            assert onerror is not None
 
             try:
                 await self.unlink(path)
             except SFTPError:
                 onerror(self.unlink, path, sys.exc_info())
 
-        async def _rmtree(path):
+        async def _rmtree(path: bytes) -> None:
             """Internal helper for rmtree recursion"""
+
+            assert onerror is not None
 
             tasks = []
 
             try:
                 async with sem:
                     async for entry in self.scandir(path):
-                        if entry.filename in (b'.', b'..'):
+                        filename = cast(bytes, entry.filename)
+
+                        if filename in (b'.', b'..'):
                             continue
 
-                        mode = entry.attrs.permissions
-                        entry = posixpath.join(path, entry.filename)
+                        mode = entry.attrs.permissions or 0
+                        filename = posixpath.join(path, filename)
 
                         if stat.S_ISDIR(mode):
-                            task = _rmtree(entry)
+                            task = _rmtree(filename)
                         else:
-                            task = _unlink(entry)
+                            task = _unlink(filename)
 
                         tasks.append(asyncio.ensure_future(task))
             except SFTPError:
@@ -2695,12 +2780,14 @@ class SFTPClient:
 
         # pylint: disable=function-redefined
         if ignore_errors:
-            def onerror(*_args):
+            def onerror(*_args: object) -> None:
                 pass
         elif onerror is None:
-            def onerror(*_args):
+            def onerror(*_args: object) -> None:
                 raise # pylint: disable=misplaced-bare-raise
         # pylint: enable=function-redefined
+
+        assert onerror is not None
 
         path = self.encode(path)
         sem = asyncio.Semaphore(_MAX_SFTP_REQUESTS)
@@ -2716,9 +2803,12 @@ class SFTPClient:
         await _rmtree(path)
 
     @async_context_manager
-    async def open(self, path, pflags_or_mode=FXF_READ, attrs=SFTPAttrs(),
-                   encoding='utf-8', errors='strict',
-                   block_size=SFTP_BLOCK_SIZE, max_requests=_MAX_SFTP_REQUESTS):
+    async def open(self, path: _SFTPPath,
+                   pflags_or_mode: Union[int, str] = FXF_READ,
+                   attrs: SFTPAttrs = SFTPAttrs(),
+                   encoding: Optional[str] = 'utf-8', errors: str = 'strict',
+                   block_size: int = SFTP_BLOCK_SIZE,
+                   max_requests: int = _MAX_SFTP_REQUESTS) -> SFTPFileProtocol:
         """Open a remote file
 
            This method opens a remote file and returns an
@@ -2837,10 +2927,10 @@ class SFTPClient:
         path = self.compose_path(path)
         handle = await self._handler.open(path, pflags, attrs)
 
-        return SFTPClientFile(self._handler, handle, pflags & FXF_APPEND,
+        return SFTPClientFile(self._handler, handle, bool(pflags & FXF_APPEND),
                               encoding, errors, block_size, max_requests)
 
-    async def stat(self, path):
+    async def stat(self, path: _SFTPPath) -> SFTPAttrs:
         """Get attributes of a remote file or directory, following symlinks
 
            This method queries the attributes of a remote file or
@@ -2861,7 +2951,7 @@ class SFTPClient:
         path = self.compose_path(path)
         return await self._handler.stat(path)
 
-    async def lstat(self, path):
+    async def lstat(self, path: _SFTPPath) -> SFTPAttrs:
         """Get attributes of a remote file, directory, or symlink
 
            This method queries the attributes of a remote file,
@@ -2883,7 +2973,7 @@ class SFTPClient:
         path = self.compose_path(path)
         return await self._handler.lstat(path)
 
-    async def setstat(self, path, attrs):
+    async def setstat(self, path: _SFTPPath, attrs: SFTPAttrs) -> None:
         """Set attributes of a remote file or directory
 
            This method sets attributes of a remote file or directory.
@@ -2906,7 +2996,7 @@ class SFTPClient:
         path = self.compose_path(path)
         await self._handler.setstat(path, attrs)
 
-    async def statvfs(self, path):
+    async def statvfs(self, path: _SFTPPath) -> SFTPVFSAttrs:
         """Get attributes of a remote file system
 
            This method queries the attributes of the file system containing
@@ -2927,7 +3017,7 @@ class SFTPClient:
         path = self.compose_path(path)
         return await self._handler.statvfs(path)
 
-    async def truncate(self, path, size):
+    async def truncate(self, path: _SFTPPath, size: int) -> None:
         """Truncate a remote file to the specified size
 
            This method truncates a remote file to the specified size.
@@ -2947,7 +3037,7 @@ class SFTPClient:
 
         await self.setstat(path, SFTPAttrs(size=size))
 
-    async def chown(self, path, uid, gid):
+    async def chown(self, path: _SFTPPath, uid: int, gid: int) -> None:
         """Change the owner user and group id of a remote file or directory
 
            This method changes the user and group id of a remote
@@ -2970,7 +3060,7 @@ class SFTPClient:
 
         await self.setstat(path, SFTPAttrs(uid=uid, gid=gid))
 
-    async def chmod(self, path, mode):
+    async def chmod(self, path: _SFTPPath, mode: int) -> None:
         """Change the file permissions of a remote file or directory
 
            This method changes the permissions of a remote file or
@@ -2990,7 +3080,8 @@ class SFTPClient:
 
         await self.setstat(path, SFTPAttrs(permissions=mode))
 
-    async def utime(self, path, times=None):
+    async def utime(self, path: _SFTPPath,
+                    times: Optional[Tuple[float, float]] = None) -> None:
         """Change the access and modify times of a remote file or directory
 
            This method changes the access and modify times of a
@@ -3018,7 +3109,7 @@ class SFTPClient:
 
         await self.setstat(path, SFTPAttrs(atime=atime, mtime=mtime))
 
-    async def exists(self, path):
+    async def exists(self, path: _SFTPPath) -> bool:
         """Return if the remote path exists and isn't a broken symbolic link
 
            :param path:
@@ -3031,7 +3122,7 @@ class SFTPClient:
 
         return bool((await self._mode(path)))
 
-    async def lexists(self, path):
+    async def lexists(self, path: _SFTPPath) -> bool:
         """Return if the remote path exists, without following symbolic links
 
            :param path:
@@ -3044,7 +3135,7 @@ class SFTPClient:
 
         return bool((await self._mode(path, statfunc=self.lstat)))
 
-    async def getatime(self, path):
+    async def getatime(self, path: _SFTPPath) -> Optional[float]:
         """Return the last access time of a remote file or directory
 
            :param path:
@@ -3057,7 +3148,7 @@ class SFTPClient:
 
         return (await self.stat(path)).atime
 
-    async def getmtime(self, path):
+    async def getmtime(self, path: _SFTPPath) -> Optional[float]:
         """Return the last modification time of a remote file or directory
 
            :param path:
@@ -3070,7 +3161,7 @@ class SFTPClient:
 
         return (await self.stat(path)).mtime
 
-    async def getsize(self, path):
+    async def getsize(self, path: _SFTPPath) -> Optional[int]:
         """Return the size of a remote file or directory
 
            :param path:
@@ -3083,7 +3174,7 @@ class SFTPClient:
 
         return (await self.stat(path)).size
 
-    async def isdir(self, path):
+    async def isdir(self, path: _SFTPPath) -> bool:
         """Return if the remote path refers to a directory
 
            :param path:
@@ -3096,7 +3187,7 @@ class SFTPClient:
 
         return stat.S_ISDIR((await self._mode(path)))
 
-    async def isfile(self, path):
+    async def isfile(self, path: _SFTPPath) -> bool:
         """Return if the remote path refers to a regular file
 
            :param path:
@@ -3109,7 +3200,7 @@ class SFTPClient:
 
         return stat.S_ISREG((await self._mode(path)))
 
-    async def islink(self, path):
+    async def islink(self, path: _SFTPPath) -> bool:
         """Return if the remote path refers to a symbolic link
 
            :param path:
@@ -3122,7 +3213,7 @@ class SFTPClient:
 
         return stat.S_ISLNK((await self._mode(path, statfunc=self.lstat)))
 
-    async def remove(self, path):
+    async def remove(self, path: _SFTPPath) -> None:
         """Remove a remote file
 
            This method removes a remote file or symbolic link.
@@ -3138,12 +3229,12 @@ class SFTPClient:
         path = self.compose_path(path)
         await self._handler.remove(path)
 
-    async def unlink(self, path):
+    async def unlink(self, path: _SFTPPath) -> None:
         """Remove a remote file (see :meth:`remove`)"""
 
         await self.remove(path)
 
-    async def rename(self, oldpath, newpath):
+    async def rename(self, oldpath: _SFTPPath, newpath: _SFTPPath) -> None:
         """Rename a remote file, directory, or link
 
            This method renames a remote file, directory, or link.
@@ -3171,7 +3262,8 @@ class SFTPClient:
         newpath = self.compose_path(newpath)
         await self._handler.rename(oldpath, newpath)
 
-    async def posix_rename(self, oldpath, newpath):
+    async def posix_rename(self, oldpath: _SFTPPath,
+                           newpath: _SFTPPath) -> None:
         """Rename a remote file, directory, or link with POSIX semantics
 
            This method renames a remote file, directory, or link,
@@ -3198,7 +3290,7 @@ class SFTPClient:
         newpath = self.compose_path(newpath)
         await self._handler.posix_rename(oldpath, newpath)
 
-    async def scandir(self, path='.'):
+    async def scandir(self, path: _SFTPPath = '.') -> AsyncIterator[SFTPName]:
         """Return an async iterator of the contents of a remote directory
 
            This method reads the contents of a directory, returning
@@ -3224,8 +3316,10 @@ class SFTPClient:
             while True:
                 for entry in await self._handler.readdir(handle):
                     if isinstance(path, (str, PurePath)):
-                        entry.filename = self.decode(entry.filename)
-                        entry.longname = self.decode(entry.longname)
+                        entry.filename = \
+                            self.decode(cast(bytes, entry.filename))
+                        entry.longname = \
+                            self.decode(cast(bytes, entry.longname))
 
                     yield entry
         except SFTPEOFError:
@@ -3233,7 +3327,7 @@ class SFTPClient:
         finally:
             await self._handler.close(handle)
 
-    async def readdir(self, path='.'):
+    async def readdir(self, path: _SFTPPath = '.') -> Sequence[SFTPName]:
         """Read the contents of a remote directory
 
            This method reads the contents of a directory, returning
@@ -3254,7 +3348,15 @@ class SFTPClient:
 
         return [entry async for entry in self.scandir(path)]
 
-    async def listdir(self, path='.'):
+    @overload
+    async def listdir(self, path: bytes) -> \
+        Sequence[bytes]: ... # pragma: no cover
+
+    @overload
+    async def listdir(self, path: FilePath) -> \
+        Sequence[str]: ... # pragma: no cover
+
+    async def listdir(self, path: _SFTPPath = '.') -> Sequence[BytesOrStr]:
         """Read the names of the files in a remote directory
 
            This method reads the names of files and subdirectories
@@ -3265,8 +3367,8 @@ class SFTPClient:
                The path of the remote directory to read
            :type path: :class:`PurePath <pathlib.PurePath>`, `str`, or `bytes`
 
-           :returns: A list of file/subdirectory names, matching the
-                     type used to pass in the path
+           :returns: A list of file/subdirectory names, as a `str` or `bytes`
+                     matching the type used to pass in the path
 
            :raises: :exc:`SFTPError` if the server returns an error
 
@@ -3275,7 +3377,8 @@ class SFTPClient:
         names = await self.readdir(path)
         return [name.filename for name in names]
 
-    async def mkdir(self, path, attrs=SFTPAttrs()):
+    async def mkdir(self, path: _SFTPPath,
+                    attrs: SFTPAttrs = SFTPAttrs()) -> None:
         """Create a remote directory with the specified attributes
 
            This method creates a new remote directory at the
@@ -3295,7 +3398,7 @@ class SFTPClient:
         path = self.compose_path(path)
         await self._handler.mkdir(path, attrs)
 
-    async def rmdir(self, path):
+    async def rmdir(self, path: _SFTPPath) -> None:
         """Remove a remote directory
 
            This method removes a remote directory. The directory
@@ -3312,7 +3415,13 @@ class SFTPClient:
         path = self.compose_path(path)
         await self._handler.rmdir(path)
 
-    async def realpath(self, path):
+    @overload
+    async def realpath(self, path: bytes) -> bytes: ... # pragma: no cover
+
+    @overload
+    async def realpath(self, path: FilePath) -> str: ... # pragma: no cover
+
+    async def realpath(self, path: _SFTPPath) -> BytesOrStr:
         """Return the canonical version of a remote path
 
            This method returns a canonical version of the requested path.
@@ -3334,9 +3443,10 @@ class SFTPClient:
         if len(names) > 1:
             raise SFTPBadMessage('Too many names returned')
 
-        return self.decode(names[0].filename, isinstance(path, (str, PurePath)))
+        return self.decode(cast(bytes, names[0].filename),
+                           isinstance(path, (str, PurePath)))
 
-    async def getcwd(self):
+    async def getcwd(self) -> BytesOrStr:
         """Return the current remote working directory
 
            :returns: The current remote working directory, decoded using
@@ -3351,7 +3461,7 @@ class SFTPClient:
 
         return self.decode(self._cwd)
 
-    async def chdir(self, path):
+    async def chdir(self, path: _SFTPPath) -> None:
         """Change the current remote working directory
 
            :param path:
@@ -3364,7 +3474,13 @@ class SFTPClient:
 
         self._cwd = await self.realpath(self.encode(path))
 
-    async def readlink(self, path):
+    @overload
+    async def readlink(self, path: bytes) -> bytes: ... # pragma: no cover
+
+    @overload
+    async def readlink(self, path: FilePath) -> str: ... # pragma: no cover
+
+    async def readlink(self, path: _SFTPPath) -> BytesOrStr:
         """Return the target of a remote symbolic link
 
            This method returns the target of a symbolic link.
@@ -3385,9 +3501,10 @@ class SFTPClient:
         if len(names) > 1:
             raise SFTPBadMessage('Too many names returned')
 
-        return self.decode(names[0].filename, isinstance(path, (str, PurePath)))
+        return self.decode(cast(bytes, names[0].filename),
+                           isinstance(path, (str, PurePath)))
 
-    async def symlink(self, oldpath, newpath):
+    async def symlink(self, oldpath: _SFTPPath, newpath: _SFTPPath) -> None:
         """Create a remote symbolic link
 
            This method creates a symbolic link. The argument order here
@@ -3414,7 +3531,7 @@ class SFTPClient:
         newpath = self.encode(newpath)
         await self._handler.symlink(oldpath, newpath)
 
-    async def link(self, oldpath, newpath):
+    async def link(self, oldpath: _SFTPPath, newpath: _SFTPPath) -> None:
         """Create a remote hard link
 
            This method creates a hard link to the remote file specified
@@ -3440,7 +3557,7 @@ class SFTPClient:
         newpath = self.compose_path(newpath)
         await self._handler.link(oldpath, newpath)
 
-    def exit(self):
+    def exit(self) -> None:
         """Exit the SFTP client session
 
            This method exits the SFTP client session, closing the
@@ -3450,7 +3567,7 @@ class SFTPClient:
 
         self._handler.exit()
 
-    async def wait_closed(self):
+    async def wait_closed(self) -> None:
         """Wait for this SFTP client session to close"""
 
         await self._handler.wait_closed()
@@ -3459,25 +3576,27 @@ class SFTPClient:
 class SFTPServerHandler(SFTPHandler):
     """An SFTP server session handler"""
 
-    _extensions = [(b'posix-rename@openssh.com', b'1'),
-                   (b'hardlink@openssh.com', b'1'),
-                   (b'fsync@openssh.com', b'1')]
+    _extensions: List[Tuple[bytes, bytes]] = [
+        (b'posix-rename@openssh.com', b'1'),
+        (b'hardlink@openssh.com', b'1'),
+        (b'fsync@openssh.com', b'1')]
 
     if hasattr(os, 'statvfs'): # pragma: no branch
         _extensions += [(b'statvfs@openssh.com', b'2'),
                         (b'fstatvfs@openssh.com', b'2')]
 
-    def __init__(self, server, reader, writer):
+    def __init__(self, server: 'SFTPServer', reader: 'SSHReader[bytes]',
+                 writer: 'SSHWriter[bytes]'):
         super().__init__(reader, writer)
 
         self._server = server
         self._version = None
         self._nonstandard_symlink = False
         self._next_handle = 0
-        self._file_handles = {}
-        self._dir_handles = {}
+        self._file_handles: Dict[bytes, object] = {}
+        self._dir_handles: Dict[bytes, List[SFTPName]] = {}
 
-    async def _cleanup(self, exc):
+    async def _cleanup(self, exc: Optional[Exception]) -> None:
         """Clean up this SFTP server session"""
 
         if self._server: # pragma: no branch
@@ -3485,19 +3604,19 @@ class SFTPServerHandler(SFTPHandler):
                 result = self._server.close(file_obj)
 
                 if inspect.isawaitable(result):
+                    assert result is not None
                     await result
 
             self._server.exit()
 
-            self._server = None
-            self._file_handles = []
-            self._dir_handles = []
+            self._file_handles = {}
+            self._dir_handles = {}
 
         self.logger.info('SFTP server exited%s', ': ' + str(exc) if exc else '')
 
         await super()._cleanup(exc)
 
-    def _get_next_handle(self):
+    def _get_next_handle(self) -> bytes:
         """Get the next available unique file handle number"""
 
         while True:
@@ -3508,62 +3627,72 @@ class SFTPServerHandler(SFTPHandler):
                     handle not in self._dir_handles):
                 return handle
 
-    async def _process_packet(self, pkttype, pktid, packet):
+    async def _process_packet(self, pkttype: int, pktid: int,
+                              packet: SSHPacket) -> None:
         """Process incoming SFTP requests"""
 
         # pylint: disable=broad-except
         try:
             if pkttype == FXP_EXTENDED:
-                pkttype = packet.get_string()
+                handler_type: Union[int, bytes] = packet.get_string()
+            else:
+                handler_type = pkttype
 
-            handler = self._packet_handlers.get(pkttype)
+            handler = self._packet_handlers.get(handler_type)
             if not handler:
                 raise SFTPOpUnsupported('Unsupported request type: %s' %
                                         pkttype)
 
-            return_type = self._return_types.get(pkttype, FXP_STATUS)
+            return_type = self._return_types.get(handler_type, FXP_STATUS)
             result = await handler(self, packet)
 
             if return_type == FXP_STATUS:
                 self.logger.debug1('Sending OK')
 
-                result = UInt32(FX_OK) + String('') + String('')
+                response = UInt32(FX_OK) + String('') + String('')
             elif return_type == FXP_HANDLE:
-                self.logger.debug1('Sending handle %s', to_hex(result))
+                handle = cast(bytes, result)
 
-                result = String(result)
+                self.logger.debug1('Sending handle %s', handle.hex())
+
+                response = String(handle)
             elif return_type == FXP_DATA:
-                self.logger.debug1('Sending %s', plural(len(result),
+                data = cast(bytes, result)
+
+                self.logger.debug1('Sending %s', plural(len(data),
                                                         'data byte'))
 
-                result = String(result)
+                response = String(data)
             elif return_type == FXP_NAME:
-                self.logger.debug1('Sending %s', plural(len(result), 'name'))
+                names = cast(Sequence[SFTPName], result)
 
-                for name in result:
+                self.logger.debug1('Sending %s', plural(len(names), 'name'))
+
+                for name in names:
                     self.logger.debug1('  %s', name)
 
-                result = (UInt32(len(result)) +
-                          b''.join(name.encode() for name in result))
+                response = (UInt32(len(names)) +
+                            b''.join(name.encode() for name in names))
             else:
+                attrs: _SupportsEncode
+
                 if isinstance(result, os.stat_result):
-                    result = SFTPAttrs.from_local(result)
+                    attrs = SFTPAttrs.from_local(cast(os.stat_result, result))
                 elif isinstance(result, os.statvfs_result):
-                    result = SFTPVFSAttrs.from_local(result)
+                    attrs = SFTPVFSAttrs.from_local(cast(os.statvfs_result,
+                                                         result))
+                else:
+                    attrs = cast(_SupportsEncode, result)
 
-                if isinstance(result, SFTPAttrs):
-                    self.logger.debug1('Sending %s', result)
-                elif isinstance(result, SFTPVFSAttrs): # pragma: no branch
-                    self.logger.debug1('Sending %s', result)
-
-                result = result.encode()
+                self.logger.debug1('Sending %s', attrs)
+                response = attrs.encode()
         except PacketDecodeError as exc:
             return_type = FXP_STATUS
 
             self.logger.debug1('Sending bad message error: %s', str(exc))
 
-            result = (UInt32(FX_BAD_MESSAGE) + String(str(exc)) +
-                      String(DEFAULT_LANG))
+            response = (UInt32(FX_BAD_MESSAGE) + String(str(exc)) +
+                        String(DEFAULT_LANG))
         except SFTPError as exc:
             return_type = FXP_STATUS
 
@@ -3572,16 +3701,18 @@ class SFTPServerHandler(SFTPHandler):
             else:
                 self.logger.debug1('Sending error: %s', str(exc.reason))
 
-            result = UInt32(exc.code) + String(exc.reason) + String(exc.lang)
+            response = UInt32(exc.code) + String(exc.reason) + String(exc.lang)
         except NotImplementedError as exc:
+            assert handler is not None
+
             return_type = FXP_STATUS
-            name = handler.__name__[9:]
+            op_name = handler.__name__[9:]
 
-            self.logger.debug1('Sending operation not supported: %s', name)
+            self.logger.debug1('Sending operation not supported: %s', op_name)
 
-            result = (UInt32(FX_OP_UNSUPPORTED) +
-                      String('Operation not supported: %s' % name) +
-                      String(DEFAULT_LANG))
+            response = (UInt32(FX_OP_UNSUPPORTED) +
+                        String('Operation not supported: %s' % op_name) +
+                        String(DEFAULT_LANG))
         except OSError as exc:
             return_type = FXP_STATUS
             reason = exc.strerror or str(exc)
@@ -3599,18 +3730,19 @@ class SFTPServerHandler(SFTPHandler):
 
                 code = FX_FAILURE
 
-            result = UInt32(code) + String(reason) + String(DEFAULT_LANG)
+            response = UInt32(code) + String(reason) + String(DEFAULT_LANG)
         except Exception as exc: # pragma: no cover
             return_type = FXP_STATUS
             reason = 'Uncaught exception: %s' % str(exc)
 
             self.logger.debug1('Sending failure: %s', reason)
 
-            result = UInt32(FX_FAILURE) + String(reason) + String(DEFAULT_LANG)
+            response = (UInt32(FX_FAILURE) + String(reason) +
+                        String(DEFAULT_LANG))
 
-        self.send_packet(return_type, pktid, UInt32(pktid), result)
+        self.send_packet(return_type, pktid, UInt32(pktid), response)
 
-    async def _process_open(self, packet):
+    async def _process_open(self, packet: SSHPacket) -> bytes:
         """Process an incoming SFTP open request"""
 
         path = packet.get_string()
@@ -3624,25 +3756,26 @@ class SFTPServerHandler(SFTPHandler):
         result = self._server.open(path, pflags, attrs)
 
         if inspect.isawaitable(result):
-            result = await result
+            result = await cast(Awaitable[object], result)
 
         handle = self._get_next_handle()
         self._file_handles[handle] = result
         return handle
 
-    async def _process_close(self, packet):
+    async def _process_close(self, packet: SSHPacket) -> None:
         """Process an incoming SFTP close request"""
 
         handle = packet.get_string()
         packet.check_end()
 
-        self.logger.debug1('Received close for handle %s', to_hex(handle))
+        self.logger.debug1('Received close for handle %s', handle.hex())
 
         file_obj = self._file_handles.pop(handle, None)
         if file_obj:
             result = self._server.close(file_obj)
 
             if inspect.isawaitable(result):
+                assert result is not None
                 await result
 
             return
@@ -3652,7 +3785,7 @@ class SFTPServerHandler(SFTPHandler):
 
         raise SFTPFailure('Invalid file handle')
 
-    async def _process_read(self, packet):
+    async def _process_read(self, packet: SSHPacket) -> bytes:
         """Process an incoming SFTP read request"""
 
         handle = packet.get_string()
@@ -3661,7 +3794,7 @@ class SFTPServerHandler(SFTPHandler):
         packet.check_end()
 
         self.logger.debug1('Received read for %s at offset %d in handle %s',
-                           plural(length, 'byte'), offset, to_hex(handle))
+                           plural(length, 'byte'), offset, handle.hex())
 
         file_obj = self._file_handles.get(handle)
 
@@ -3669,16 +3802,16 @@ class SFTPServerHandler(SFTPHandler):
             result = self._server.read(file_obj, offset, length)
 
             if inspect.isawaitable(result):
-                result = await result
+                result = await cast(Awaitable[bytes], result)
 
             if result:
-                return result
+                return cast(bytes, result)
             else:
                 raise SFTPEOFError
         else:
             raise SFTPFailure('Invalid file handle')
 
-    async def _process_write(self, packet):
+    async def _process_write(self, packet: SSHPacket) -> int:
         """Process an incoming SFTP write request"""
 
         handle = packet.get_string()
@@ -3687,7 +3820,7 @@ class SFTPServerHandler(SFTPHandler):
         packet.check_end()
 
         self.logger.debug1('Received write for %s at offset %d in handle %s',
-                           plural(len(data), 'byte'), offset, to_hex(handle))
+                           plural(len(data), 'byte'), offset, handle.hex())
 
         file_obj = self._file_handles.get(handle)
 
@@ -3695,13 +3828,13 @@ class SFTPServerHandler(SFTPHandler):
             result = self._server.write(file_obj, offset, data)
 
             if inspect.isawaitable(result):
-                result = await result
+                result = await cast(Awaitable[int], result)
 
-            return result
+            return cast(int, result)
         else:
             raise SFTPFailure('Invalid file handle')
 
-    async def _process_lstat(self, packet):
+    async def _process_lstat(self, packet: SSHPacket) -> SFTPAttrs:
         """Process an incoming SFTP lstat request"""
 
         path = packet.get_string()
@@ -3712,17 +3845,17 @@ class SFTPServerHandler(SFTPHandler):
         result = self._server.lstat(path)
 
         if inspect.isawaitable(result):
-            result = await result
+            result = await cast(Awaitable[SFTPAttrs], result)
 
-        return result
+        return cast(SFTPAttrs, result)
 
-    async def _process_fstat(self, packet):
+    async def _process_fstat(self, packet: SSHPacket) -> SFTPAttrs:
         """Process an incoming SFTP fstat request"""
 
         handle = packet.get_string()
         packet.check_end()
 
-        self.logger.debug1('Received fstat for handle %s', to_hex(handle))
+        self.logger.debug1('Received fstat for handle %s', handle.hex())
 
         file_obj = self._file_handles.get(handle)
 
@@ -3730,13 +3863,13 @@ class SFTPServerHandler(SFTPHandler):
             result = self._server.fstat(file_obj)
 
             if inspect.isawaitable(result):
-                result = await result
+                result = await cast(Awaitable[SFTPAttrs], result)
 
-            return result
+            return cast(SFTPAttrs, result)
         else:
             raise SFTPFailure('Invalid file handle')
 
-    async def _process_setstat(self, packet):
+    async def _process_setstat(self, packet: SSHPacket) -> None:
         """Process an incoming SFTP setstat request"""
 
         path = packet.get_string()
@@ -3748,11 +3881,10 @@ class SFTPServerHandler(SFTPHandler):
         result = self._server.setstat(path, attrs)
 
         if inspect.isawaitable(result):
-            result = await result
+            assert result is not None
+            await result
 
-        return result
-
-    async def _process_fsetstat(self, packet):
+    async def _process_fsetstat(self, packet: SSHPacket) -> None:
         """Process an incoming SFTP fsetstat request"""
 
         handle = packet.get_string()
@@ -3760,7 +3892,7 @@ class SFTPServerHandler(SFTPHandler):
         packet.check_end()
 
         self.logger.debug1('Received fsetstat for handle %s%s',
-                           to_hex(handle), hide_empty(attrs))
+                           handle.hex(), hide_empty(attrs))
 
         file_obj = self._file_handles.get(handle)
 
@@ -3768,13 +3900,12 @@ class SFTPServerHandler(SFTPHandler):
             result = self._server.fsetstat(file_obj, attrs)
 
             if inspect.isawaitable(result):
-                result = await result
-
-            return result
+                assert result is not None
+                await result
         else:
             raise SFTPFailure('Invalid file handle')
 
-    async def _process_opendir(self, packet):
+    async def _process_opendir(self, packet: SSHPacket) -> bytes:
         """Process an incoming SFTP opendir request"""
 
         path = packet.get_string()
@@ -3785,43 +3916,53 @@ class SFTPServerHandler(SFTPHandler):
         listdir_result = self._server.listdir(path)
 
         if inspect.isawaitable(listdir_result):
-            listdir_result = await listdir_result
+            listdir_result = await cast(Awaitable[Sequence[bytes]],
+                                        listdir_result)
 
-        for i, name in enumerate(listdir_result):
-            if isinstance(name, bytes):
-                name = SFTPName(name)
-                listdir_result[i] = name
+        listdir_result: Sequence[Union[bytes, SFTPName]]
+        entries = list(listdir_result)
 
-                # pylint: disable=no-member
-                filename = os.path.join(path, name.filename)
+        for i, entry in enumerate(entries):
+            if isinstance(entry, bytes):
+                name = SFTPName(entry)
+                entries[i] = entry = name
+
+                filename = os.path.join(path, cast(bytes, name.filename))
                 attr_result = self._server.lstat(filename)
 
                 if inspect.isawaitable(attr_result):
-                    attr_result = await attr_result
+                    attr_result = await cast(Awaitable[_SFTPOSAttrs],
+                                             attr_result)
+
+                attr_result: _SFTPOSAttrs
 
                 if isinstance(attr_result, os.stat_result):
                     attr_result = SFTPAttrs.from_local(attr_result)
 
-                # pylint: disable=attribute-defined-outside-init
+                attr_result: SFTPAttrs
+
                 name.attrs = attr_result
 
-            if not name.longname:
-                longname_result = self._server.format_longname(name)
+            if not entry.longname:
+                longname_result = self._server.format_longname(entry)
 
                 if inspect.isawaitable(longname_result):
+                    assert longname_result is not None
                     await longname_result
 
+        entries: List[SFTPName]
+
         handle = self._get_next_handle()
-        self._dir_handles[handle] = listdir_result
+        self._dir_handles[handle] = entries
         return handle
 
-    async def _process_readdir(self, packet):
+    async def _process_readdir(self, packet: SSHPacket) -> Sequence[SFTPName]:
         """Process an incoming SFTP readdir request"""
 
         handle = packet.get_string()
         packet.check_end()
 
-        self.logger.debug1('Received readdir for handle %s', to_hex(handle))
+        self.logger.debug1('Received readdir for handle %s', handle.hex())
 
         names = self._dir_handles.get(handle)
         if names:
@@ -3831,7 +3972,7 @@ class SFTPServerHandler(SFTPHandler):
         else:
             raise SFTPEOFError
 
-    async def _process_remove(self, packet):
+    async def _process_remove(self, packet: SSHPacket) -> None:
         """Process an incoming SFTP remove request"""
 
         path = packet.get_string()
@@ -3842,11 +3983,10 @@ class SFTPServerHandler(SFTPHandler):
         result = self._server.remove(path)
 
         if inspect.isawaitable(result):
-            result = await result
+            assert result is not None
+            await result
 
-        return result
-
-    async def _process_mkdir(self, packet):
+    async def _process_mkdir(self, packet: SSHPacket) -> None:
         """Process an incoming SFTP mkdir request"""
 
         path = packet.get_string()
@@ -3858,11 +3998,10 @@ class SFTPServerHandler(SFTPHandler):
         result = self._server.mkdir(path, attrs)
 
         if inspect.isawaitable(result):
-            result = await result
+            assert result is not None
+            await result
 
-        return result
-
-    async def _process_rmdir(self, packet):
+    async def _process_rmdir(self, packet: SSHPacket) -> None:
         """Process an incoming SFTP rmdir request"""
 
         path = packet.get_string()
@@ -3873,11 +4012,10 @@ class SFTPServerHandler(SFTPHandler):
         result = self._server.rmdir(path)
 
         if inspect.isawaitable(result):
-            result = await result
+            assert result is not None
+            await result
 
-        return result
-
-    async def _process_realpath(self, packet):
+    async def _process_realpath(self, packet: SSHPacket) -> Sequence[SFTPName]:
         """Process an incoming SFTP realpath request"""
 
         path = packet.get_string()
@@ -3888,11 +4026,11 @@ class SFTPServerHandler(SFTPHandler):
         result = self._server.realpath(path)
 
         if inspect.isawaitable(result):
-            result = await result
+            result = await cast(Awaitable[bytes], result)
 
         return [SFTPName(result)]
 
-    async def _process_stat(self, packet):
+    async def _process_stat(self, packet: SSHPacket) -> _SFTPOSAttrs:
         """Process an incoming SFTP stat request"""
 
         path = packet.get_string()
@@ -3903,11 +4041,13 @@ class SFTPServerHandler(SFTPHandler):
         result = self._server.stat(path)
 
         if inspect.isawaitable(result):
-            result = await result
+            result = await cast(Awaitable[_SFTPOSAttrs], result)
+
+        result: _SFTPOSAttrs
 
         return result
 
-    async def _process_rename(self, packet):
+    async def _process_rename(self, packet: SSHPacket) -> None:
         """Process an incoming SFTP rename request"""
 
         oldpath = packet.get_string()
@@ -3920,11 +4060,10 @@ class SFTPServerHandler(SFTPHandler):
         result = self._server.rename(oldpath, newpath)
 
         if inspect.isawaitable(result):
-            result = await result
+            assert result is not None
+            await result
 
-        return result
-
-    async def _process_readlink(self, packet):
+    async def _process_readlink(self, packet: SSHPacket) -> Sequence[SFTPName]:
         """Process an incoming SFTP readlink request"""
 
         path = packet.get_string()
@@ -3935,11 +4074,13 @@ class SFTPServerHandler(SFTPHandler):
         result = self._server.readlink(path)
 
         if inspect.isawaitable(result):
-            result = await result
+            result = await cast(Awaitable[bytes], result)
+
+        result: bytes
 
         return [SFTPName(result)]
 
-    async def _process_symlink(self, packet):
+    async def _process_symlink(self, packet: SSHPacket) -> None:
         """Process an incoming SFTP symlink request"""
 
         if self._nonstandard_symlink:
@@ -3957,11 +4098,10 @@ class SFTPServerHandler(SFTPHandler):
         result = self._server.symlink(oldpath, newpath)
 
         if inspect.isawaitable(result):
-            result = await result
+            assert result is not None
+            await result
 
-        return result
-
-    async def _process_posix_rename(self, packet):
+    async def _process_posix_rename(self, packet: SSHPacket) -> None:
         """Process an incoming SFTP POSIX rename request"""
 
         oldpath = packet.get_string()
@@ -3974,11 +4114,10 @@ class SFTPServerHandler(SFTPHandler):
         result = self._server.posix_rename(oldpath, newpath)
 
         if inspect.isawaitable(result):
-            result = await result
+            assert result is not None
+            await result
 
-        return result
-
-    async def _process_statvfs(self, packet):
+    async def _process_statvfs(self, packet: SSHPacket) -> _SFTPOSVFSAttrs:
         """Process an incoming SFTP statvfs request"""
 
         path = packet.get_string()
@@ -3989,17 +4128,19 @@ class SFTPServerHandler(SFTPHandler):
         result = self._server.statvfs(path)
 
         if inspect.isawaitable(result):
-            result = await result
+            result = await cast(Awaitable[_SFTPOSVFSAttrs], result)
+
+        result: _SFTPOSVFSAttrs
 
         return result
 
-    async def _process_fstatvfs(self, packet):
+    async def _process_fstatvfs(self, packet: SSHPacket) -> _SFTPOSVFSAttrs:
         """Process an incoming SFTP fstatvfs request"""
 
         handle = packet.get_string()
         packet.check_end()
 
-        self.logger.debug1('Received fstatvfs for handle %s', to_hex(handle))
+        self.logger.debug1('Received fstatvfs for handle %s', handle.hex())
 
         file_obj = self._file_handles.get(handle)
 
@@ -4007,13 +4148,15 @@ class SFTPServerHandler(SFTPHandler):
             result = self._server.fstatvfs(file_obj)
 
             if inspect.isawaitable(result):
-                result = await result
+                result = await cast(Awaitable[_SFTPOSVFSAttrs], result)
+
+            result: _SFTPOSVFSAttrs
 
             return result
         else:
             raise SFTPFailure('Invalid file handle')
 
-    async def _process_link(self, packet):
+    async def _process_link(self, packet: SSHPacket) -> None:
         """Process an incoming SFTP hard link request"""
 
         oldpath = packet.get_string()
@@ -4026,17 +4169,16 @@ class SFTPServerHandler(SFTPHandler):
         result = self._server.link(oldpath, newpath)
 
         if inspect.isawaitable(result):
-            result = await result
+            assert result is not None
+            await result
 
-        return result
-
-    async def _process_fsync(self, packet):
+    async def _process_fsync(self, packet: SSHPacket) -> None:
         """Process an incoming SFTP fsync request"""
 
         handle = packet.get_string()
         packet.check_end()
 
-        self.logger.debug1('Received fsync for handle %s', to_hex(handle))
+        self.logger.debug1('Received fsync for handle %s', handle.hex())
 
         file_obj = self._file_handles.get(handle)
 
@@ -4044,13 +4186,12 @@ class SFTPServerHandler(SFTPHandler):
             result = self._server.fsync(file_obj)
 
             if inspect.isawaitable(result):
-                result = await result
-
-            return result
+                assert result is not None
+                await result
         else:
             raise SFTPFailure('Invalid file handle')
 
-    _packet_handlers = {
+    _packet_handlers: Dict[Union[int, bytes], _SFTPPacketHandler] = {
         FXP_OPEN:                     _process_open,
         FXP_CLOSE:                    _process_close,
         FXP_READ:                     _process_read,
@@ -4076,24 +4217,22 @@ class SFTPServerHandler(SFTPHandler):
         b'fsync@openssh.com':         _process_fsync
     }
 
-    async def run(self):
+    async def run(self) -> None:
         """Run an SFTP server"""
+
+        assert self._reader is not None
 
         try:
             packet = await self.recv_packet()
-
             pkttype = packet.get_byte()
-
             self.log_received_packet(pkttype, None, packet)
-
             version = packet.get_uint32()
-
-            extensions = []
+            rcvd_extensions: List[Tuple[bytes, bytes]] = []
 
             while packet:
                 name = packet.get_string()
                 data = packet.get_string()
-                extensions.append((name, data))
+                rcvd_extensions.append((name, data))
         except PacketDecodeError as exc:
             await self._cleanup(SFTPBadMessage(str(exc)))
             return
@@ -4106,9 +4245,9 @@ class SFTPServerHandler(SFTPHandler):
             return
 
         self.logger.debug1('Received init, version=%d%s', version,
-                           ', extensions:' if extensions else '')
+                           ', extensions:' if rcvd_extensions else '')
 
-        for name, data in extensions:
+        for name, data in rcvd_extensions:
             self.logger.debug1('  %s: %s', name, data)
 
         reply_version = min(version, _SFTP_VERSION)
@@ -4119,12 +4258,12 @@ class SFTPServerHandler(SFTPHandler):
         for name, data in self._extensions:
             self.logger.debug1('  %s: %s', name, data)
 
-        extensions = (String(name) + String(data)
-                      for name, data in self._extensions)
+        sent_extensions: Iterable[bytes] = \
+            (String(name) + String(data) for name, data in self._extensions)
 
         try:
             self.send_packet(FXP_VERSION, None, UInt32(reply_version),
-                             *extensions)
+                             *sent_extensions)
         except SFTPError as exc:
             await self._cleanup(exc)
             return
@@ -4132,7 +4271,9 @@ class SFTPServerHandler(SFTPHandler):
         if reply_version == 3:
             # Check if the server has a buggy SYMLINK implementation
 
-            client_version = self._reader.get_extra_info('client_version', '')
+            client_version = cast(str,
+                self._reader.get_extra_info('client_version', ''))
+
             if any(name in client_version
                    for name in self._nonstandard_symlink_impls):
                 self.logger.debug1('Adjusting for non-standard symlink '
@@ -4179,10 +4320,11 @@ class SFTPServer:
     # The default implementation of a number of these methods don't need self
     # pylint: disable=no-self-use
 
-    def __init__(self, chan, chroot=None):
-        # pylint: disable=unused-argument
-
+    def __init__(self, chan: 'SSHServerChannel',
+                 chroot: Optional[bytes] = None):
         self._chan = chan
+
+        self._chroot: Optional[bytes]
 
         if chroot:
             self._chroot = _from_local_path(os.path.realpath(chroot))
@@ -4190,19 +4332,19 @@ class SFTPServer:
             self._chroot = None
 
     @property
-    def channel(self):
+    def channel(self) -> 'SSHServerChannel':
         """The channel associated with this SFTP server session"""
 
         return self._chan
 
     @property
-    def connection(self):
+    def connection(self) -> 'SSHServerConnection':
         """The channel associated with this SFTP server session"""
 
-        return self._chan.get_connection()
+        return cast('SSHServerConnection', self._chan.get_connection())
 
     @property
-    def env(self):
+    def env(self) -> Mapping[str, str]:
         """The environment associated with this SFTP server session
 
            This method returns the environment set by the client
@@ -4213,16 +4355,15 @@ class SFTPServer:
 
         """
 
-
         return self._chan.get_environment()
 
     @property
-    def logger(self):
+    def logger(self) -> SSHLogger:
         """A logger associated with this SFTP server"""
 
         return self._chan.logger
 
-    def format_user(self, uid):
+    def format_user(self, uid: Optional[int]) -> str:
         """Return the user name associated with a uid
 
            This method returns a user name string to insert into
@@ -4253,8 +4394,7 @@ class SFTPServer:
 
         return user
 
-
-    def format_group(self, gid):
+    def format_group(self, gid: Optional[int]) -> str:
         """Return the group name associated with a gid
 
            This method returns a group name string to insert into
@@ -4285,8 +4425,7 @@ class SFTPServer:
 
         return group
 
-
-    def format_longname(self, name):
+    def format_longname(self, name: SFTPName) -> MaybeAwait[None]:
         """Format the long name associated with an SFTP name
 
            This method fills in the `longname` field of a
@@ -4333,9 +4472,11 @@ class SFTPServer:
         detail = '{:10s} {:>4s} {:8s} {:8s} {:>8s} {:12s} '.format(
             mode, nlink, user, group, size, modtime)
 
-        name.longname = detail.encode('utf-8') + name.filename
+        name.longname = detail.encode('utf-8') + cast(bytes, name.filename)
 
-    def map_path(self, path):
+        return None
+
+    def map_path(self, path: bytes) -> bytes:
         """Map the path requested by the client to a local path
 
            This method can be overridden to provide a custom mapping
@@ -4360,7 +4501,7 @@ class SFTPServer:
         else:
             return path
 
-    def reverse_map_path(self, path):
+    def reverse_map_path(self, path: bytes) -> bytes:
         """Reverse map a local path into the path reported to the client
 
            This method can be overridden to provide a custom reverse
@@ -4386,7 +4527,8 @@ class SFTPServer:
         else:
             return path
 
-    def open(self, path, pflags, attrs):
+    def open(self, path: bytes, pflags: int, attrs: SFTPAttrs) -> \
+            MaybeAwait[object]:
         """Open a file to serve to a remote client
 
            This method returns a file object which can be used to read
@@ -4459,13 +4601,16 @@ class SFTPServer:
         if pflags & FXF_EXCL:
             flags |= os.O_EXCL
 
-        flags |= getattr(os, 'O_BINARY', 0)
+        try:
+            flags |= os.O_BINARY
+        except AttributeError: # pragma: no cover
+            pass
 
         perms = 0o666 if attrs.permissions is None else attrs.permissions
         return open(_to_local_path(self.map_path(path)), mode, buffering=0,
                     opener=lambda path, _: os.open(path, flags, perms))
 
-    def close(self, file_obj):
+    def close(self, file_obj: object) -> MaybeAwait[None]:
         """Close an open file or directory
 
            :param file_obj:
@@ -4476,9 +4621,12 @@ class SFTPServer:
 
         """
 
+        file_obj = cast(_SFTPFileObj, file_obj)
         file_obj.close()
+        return None
 
-    def read(self, file_obj, offset, size):
+    def read(self, file_obj: object, offset: int, size: int) -> \
+            MaybeAwait[bytes]:
         """Read data from an open file
 
            :param file_obj:
@@ -4497,10 +4645,12 @@ class SFTPServer:
 
         """
 
+        file_obj = cast(_SFTPFileObj, file_obj)
         file_obj.seek(offset)
         return file_obj.read(size)
 
-    def write(self, file_obj, offset, data):
+    def write(self, file_obj: object, offset: int, data: bytes) -> \
+            MaybeAwait[int]:
         """Write data to an open file
 
            :param file_obj:
@@ -4519,10 +4669,11 @@ class SFTPServer:
 
         """
 
+        file_obj = cast(_SFTPFileObj, file_obj)
         file_obj.seek(offset)
         return file_obj.write(data)
 
-    def lstat(self, path):
+    def lstat(self, path: bytes) -> MaybeAwait[_SFTPOSAttrs]:
         """Get attributes of a file, directory, or symlink
 
            This method queries the attributes of a file, directory,
@@ -4543,7 +4694,7 @@ class SFTPServer:
 
         return os.lstat(_to_local_path(self.map_path(path)))
 
-    def fstat(self, file_obj):
+    def fstat(self, file_obj: object) -> MaybeAwait[_SFTPOSAttrs]:
         """Get attributes of an open file
 
            :param file_obj:
@@ -4557,10 +4708,11 @@ class SFTPServer:
 
         """
 
+        file_obj = cast(_SFTPFileObj, file_obj)
         file_obj.flush()
         return os.fstat(file_obj.fileno())
 
-    def setstat(self, path, attrs):
+    def setstat(self, path: bytes, attrs: SFTPAttrs) -> MaybeAwait[None]:
         """Set attributes of a file or directory
 
            This method sets attributes of a file or directory. If
@@ -4581,8 +4733,9 @@ class SFTPServer:
         """
 
         _setstat(_to_local_path(self.map_path(path)), attrs)
+        return None
 
-    def fsetstat(self, file_obj, attrs):
+    def fsetstat(self, file_obj: object, attrs: SFTPAttrs) -> MaybeAwait[None]:
         """Set attributes of an open file
 
            :param file_obj:
@@ -4596,6 +4749,7 @@ class SFTPServer:
 
         """
 
+        file_obj = cast(_SFTPFileObj, file_obj)
         file_obj.flush()
 
         if sys.platform == 'win32': # pragma: no cover
@@ -4603,7 +4757,9 @@ class SFTPServer:
         else:
             _setstat(file_obj.fileno(), attrs)
 
-    def listdir(self, path):
+        return None
+
+    def listdir(self, path: bytes) -> MaybeAwait[Sequence[bytes]]:
         """List the contents of a directory
 
            :param path:
@@ -4621,9 +4777,11 @@ class SFTPServer:
         if sys.platform == 'win32': # pragma: no cover
             files = [os.fsencode(f) for f in files]
 
+        files: List[bytes]
+
         return [b'.', b'..'] + files
 
-    def remove(self, path):
+    def remove(self, path: bytes) -> MaybeAwait[None]:
         """Remove a file or symbolic link
 
            :param path:
@@ -4635,8 +4793,9 @@ class SFTPServer:
         """
 
         os.remove(_to_local_path(self.map_path(path)))
+        return None
 
-    def mkdir(self, path, attrs):
+    def mkdir(self, path: bytes, attrs: SFTPAttrs) -> MaybeAwait[None]:
         """Create a directory with the specified attributes
 
            :param path:
@@ -4652,8 +4811,9 @@ class SFTPServer:
 
         mode = 0o777 if attrs.permissions is None else attrs.permissions
         os.mkdir(_to_local_path(self.map_path(path)), mode)
+        return None
 
-    def rmdir(self, path):
+    def rmdir(self, path: bytes) -> MaybeAwait[None]:
         """Remove a directory
 
            :param path:
@@ -4665,8 +4825,9 @@ class SFTPServer:
         """
 
         os.rmdir(_to_local_path(self.map_path(path)))
+        return None
 
-    def realpath(self, path):
+    def realpath(self, path: bytes) -> MaybeAwait[bytes]:
         """Return the canonical version of a path
 
            :param path:
@@ -4682,7 +4843,7 @@ class SFTPServer:
         path = os.path.realpath(_to_local_path(self.map_path(path)))
         return self.reverse_map_path(_from_local_path(path))
 
-    def stat(self, path):
+    def stat(self, path: bytes) -> MaybeAwait[_SFTPOSAttrs]:
         """Get attributes of a file or directory, following symlinks
 
            This method queries the attributes of a file or directory.
@@ -4702,7 +4863,7 @@ class SFTPServer:
 
         return os.stat(_to_local_path(self.map_path(path)))
 
-    def rename(self, oldpath, newpath):
+    def rename(self, oldpath: bytes, newpath: bytes) -> MaybeAwait[None]:
         """Rename a file, directory, or link
 
            This method renames a file, directory, or link.
@@ -4732,8 +4893,9 @@ class SFTPServer:
             raise SFTPFailure('File already exists')
 
         os.rename(oldpath, newpath)
+        return None
 
-    def readlink(self, path):
+    def readlink(self, path: bytes) -> MaybeAwait[bytes]:
         """Return the target of a symbolic link
 
            :param path:
@@ -4749,7 +4911,7 @@ class SFTPServer:
         path = os.readlink(_to_local_path(self.map_path(path)))
         return self.reverse_map_path(_from_local_path(path))
 
-    def symlink(self, oldpath, newpath):
+    def symlink(self, oldpath: bytes, newpath: bytes) -> MaybeAwait[None]:
         """Create a symbolic link
 
            :param oldpath:
@@ -4779,8 +4941,9 @@ class SFTPServer:
         newpath = self.map_path(newpath)
 
         os.symlink(_to_local_path(oldpath), _to_local_path(newpath))
+        return None
 
-    def posix_rename(self, oldpath, newpath):
+    def posix_rename(self, oldpath: bytes, newpath: bytes) -> MaybeAwait[None]:
         """Rename a file, directory, or link with POSIX semantics
 
            This method renames a file, directory, or link, removing
@@ -4801,8 +4964,9 @@ class SFTPServer:
         newpath = _to_local_path(self.map_path(newpath))
 
         os.replace(oldpath, newpath)
+        return None
 
-    def statvfs(self, path):
+    def statvfs(self, path: bytes) -> MaybeAwait[_SFTPOSVFSAttrs]:
         """Get attributes of the file system containing a file
 
            :param path:
@@ -4821,7 +4985,7 @@ class SFTPServer:
         except AttributeError: # pragma: no cover
             raise SFTPOpUnsupported('statvfs not supported') from None
 
-    def fstatvfs(self, file_obj):
+    def fstatvfs(self, file_obj: object) -> MaybeAwait[_SFTPOSVFSAttrs]:
         """Return attributes of the file system containing an open file
 
            :param file_obj:
@@ -4835,12 +4999,14 @@ class SFTPServer:
 
         """
 
+        file_obj = cast(_SFTPFileObj, file_obj)
+
         try:
             return os.statvfs(file_obj.fileno())
         except AttributeError: # pragma: no cover
             raise SFTPOpUnsupported('fstatvfs not supported') from None
 
-    def link(self, oldpath, newpath):
+    def link(self, oldpath: bytes, newpath: bytes) -> MaybeAwait[None]:
         """Create a hard link
 
            :param oldpath:
@@ -4858,8 +5024,9 @@ class SFTPServer:
         newpath = _to_local_path(self.map_path(newpath))
 
         os.link(oldpath, newpath)
+        return None
 
-    def fsync(self, file_obj):
+    def fsync(self, file_obj: object) -> MaybeAwait[None]:
         """Force file data to be written to disk
 
            :param file_obj:
@@ -4870,51 +5037,261 @@ class SFTPServer:
 
         """
 
+        file_obj = cast(_SFTPFileObj, file_obj)
         os.fsync(file_obj.fileno())
+        return None
 
-    def exit(self):
+    def exit(self) -> MaybeAwait[None]:
         """Shut down this SFTP server"""
+
+        return None
+
+class LocalFile:
+    """An async wrapper around local file I/O"""
+
+    def __init__(self, file: _SFTPFileObj):
+        self._file = file
+
+    async def __aenter__(self) -> 'SFTPFileProtocol':
+        """Allow LocalFile to be used as an async context manager"""
+
+    async def __aexit__(self, _exc_type: Type[BaseException],
+                        _exc_value: BaseException,
+                        _traceback: TracebackType) -> bool:
+        """Wait for file close when used as an async context manager"""
+
+    async def read(self, size: int, offset: int) -> bytes:
+        """Read data from the local file"""
+
+        self._file.seek(offset)
+        return self._file.read(size)
+
+    async def write(self, data: bytes, offset: int) -> int:
+        """Write data to the local file"""
+
+        self._file.seek(offset)
+        return self._file.write(data)
+
+    async def close(self) -> None:
+        """Close the local file"""
+
+        self._file.close()
+
+
+class LocalFS:
+    """An async wrapper around local filesystem access"""
+
+    @staticmethod
+    def basename(path: bytes) -> bytes:
+        """Return the final component of a local file path"""
+
+        return os.path.basename(path)
+
+    def encode(self, path: _SFTPPath) -> bytes:
+        """Encode path name using filesystem native encoding
+
+           This method has no effect if the path is already bytes.
+
+        """
+
+        # pylint: disable=no-self-use
+
+        return os.fsencode(path)
+
+    def decode(self, path: bytes, want_string: bool = True) -> BytesOrStr:
+        """Decode path name using filesystem native encoding
+
+           This method has no effect if the path is already a string.
+
+        """
+
+        # pylint: disable=no-self-use
+
+        return os.fsdecode(path) if want_string else path
+
+    def compose_path(self, path: _SFTPPath,
+                     parent: Optional[bytes] = None) -> bytes:
+        """Compose a path
+
+           If parent is not specified, just encode the path.
+
+        """
+
+        # pylint: disable=no-self-use
+
+        path = self.encode(path)
+
+        return posixpath.join(parent, path) if parent else path
+
+    async def stat(self, path: _SFTPPath) -> 'SFTPAttrs':
+        """Get attributes of a local file or directory, following symlinks"""
+
+        return SFTPAttrs.from_local(os.stat(_to_local_path(path)))
+
+    async def lstat(self, path: _SFTPPath) -> 'SFTPAttrs':
+        """Get attributes of a local file, directory, or symlink"""
+
+        return SFTPAttrs.from_local(os.lstat(_to_local_path(path)))
+
+    async def setstat(self, path: _SFTPPath, attrs: 'SFTPAttrs') -> None:
+        """Set attributes of a local file or directory"""
+
+        _setstat(_to_local_path(path), attrs)
+
+    async def exists(self, path: _SFTPPath) -> bool:
+        """Return if the local path exists and isn't a broken symbolic link"""
+
+        return os.path.exists(_to_local_path(path))
+
+    async def isdir(self, path: _SFTPPath) -> bool:
+        """Return if the local path refers to a directory"""
+
+        return os.path.isdir(_to_local_path(path))
+
+    @overload
+    async def listdir(self, path: bytes) -> \
+        Sequence[bytes]: ... # pragma: no cover
+
+    @overload
+    async def listdir(self, path: FilePath) -> \
+        Sequence[str]: ... # pragma: no cover
+
+    async def listdir(self, path: _SFTPPath) -> Sequence[BytesOrStr]:
+        """Read the names of the files in a local directory"""
+
+        files = os.listdir(_to_local_path(path))
+
+        if sys.platform == 'win32': # pragma: no cover
+            files = [os.fsencode(f) for f in files]
+
+        return files
+
+    async def mkdir(self, path: _SFTPPath) -> None:
+        """Create a local directory with the specified attributes"""
+
+        os.mkdir(_to_local_path(path))
+
+    @overload
+    async def readlink(self, path: bytes) -> bytes: ... # pragma: no cover
+
+    @overload
+    async def readlink(self, path: FilePath) -> str: ... # pragma: no cover
+
+    async def readlink(self, path: _SFTPPath) -> BytesOrStr:
+        """Return the target of a local symbolic link"""
+
+        return _from_local_path(os.readlink(_to_local_path(path)))
+
+    async def symlink(self, oldpath: _SFTPPath, newpath: _SFTPPath) -> None:
+        """Create a local symbolic link"""
+
+        os.symlink(_to_local_path(oldpath), _to_local_path(newpath))
+
+    @async_context_manager
+    async def open(self, path: _SFTPPath, mode: str) -> SFTPFileProtocol:
+        """Open a local file"""
+
+        # pylint: disable=unused-argument
+
+        return LocalFile(open(_to_local_path(path), mode))
+
+local_fs = LocalFS()
 
 
 class SFTPServerFile:
     """A wrapper around SFTPServer used to access files it manages"""
 
-    def __init__(self, server):
+    def __init__(self, server: SFTPServer, file_obj: object):
         self._server = server
-        self._file_obj = None
+        self._file_obj = file_obj
 
-    @classmethod
-    def basename(cls, path):
+    async def __aenter__(self) -> 'SFTPServerFile': # pragma: no cover
+        """Allow SFTPServerFile to be used as an async context manager"""
+
+        return self
+
+    async def __aexit__(self, _exc_type: Type[BaseException],
+                        _exc_value: BaseException,
+                        _traceback: TracebackType) -> bool: # pragma: no cover
+        """Wait for client close when used as an async context manager"""
+
+        return False
+
+    async def read(self, size: int, offset: int) -> bytes:
+        """Read bytes from the file"""
+
+        data = self._server.read(self._file_obj, offset, size)
+
+        if inspect.isawaitable(data):
+            data = await cast(Awaitable[bytes], data)
+
+        data: bytes
+
+        return data
+
+    async def write(self, data: bytes, offset: int) -> int:
+        """Write bytes to the file"""
+
+        size = self._server.write(self._file_obj, offset, data)
+
+        if inspect.isawaitable(size):
+            size = await cast(Awaitable[int], size)
+
+        size: int
+
+        return size
+
+    async def close(self) -> None:
+        """Close a file managed by the associated SFTPServer"""
+
+        result = self._server.close(self._file_obj)
+
+        if inspect.isawaitable(result):
+            assert result is not None
+            await result
+
+
+class SFTPServerFS:
+    """A wrapper around SFTPServer used to access its filesystem"""
+
+    def __init__(self, server: SFTPServer):
+        self._server = server
+
+    @staticmethod
+    def basename(path: bytes) -> bytes:
         """Return the final component of a POSIX-style path"""
 
         return posixpath.basename(path)
 
-    async def stat(self, path):
-        """Get attributes of a file"""
+    async def stat(self, path: bytes) -> SFTPAttrs:
+        """Get attributes of a file or directory, following symlinks"""
 
         attrs = self._server.stat(path)
 
         if inspect.isawaitable(attrs):
-            attrs = await attrs
+            attrs = await cast(Awaitable[_SFTPOSAttrs], attrs)
+
+        attrs: _SFTPOSAttrs
 
         if isinstance(attrs, os.stat_result):
             attrs = SFTPAttrs.from_local(attrs)
 
         return attrs
 
-    async def setstat(self, path, attrs):
+    async def setstat(self, path: bytes, attrs: SFTPAttrs) -> None:
         """Set attributes of a file or directory"""
 
         result = self._server.setstat(path, attrs)
 
         if inspect.isawaitable(result):
-            attrs = await result
+            assert result is not None
+            await result
 
-    async def _mode(self, path):
+    async def _mode(self, path: bytes) -> int:
         """Return the file mode of a path, or 0 if it can't be accessed"""
 
         try:
-            return (await self.stat(path)).permissions
+            return (await self.stat(path)).permissions or 0
         except OSError as exc:
             if exc.errno in (errno.ENOENT, errno.EACCES):
                 return 0
@@ -4923,77 +5300,56 @@ class SFTPServerFile:
         except (SFTPNoSuchFile, SFTPPermissionDenied):
             return 0
 
-    async def exists(self, path):
+    async def exists(self, path: bytes) -> bool:
         """Return if a path exists"""
 
         return (await self._mode(path)) != 0
 
-    async def isdir(self, path):
+    async def isdir(self, path: bytes) -> bool:
         """Return if the path refers to a directory"""
 
         return stat.S_ISDIR((await self._mode(path)))
 
-    async def mkdir(self, path):
-        """Create a directory"""
-
-        result = self._server.mkdir(path, SFTPAttrs())
-
-        if inspect.isawaitable(result):
-            await result
-
-    async def listdir(self, path):
+    async def listdir(self, path: bytes) -> Sequence[bytes]:
         """List the contents of a directory"""
 
         files = self._server.listdir(path)
 
         if inspect.isawaitable(files):
-            files = await files
+            files = await cast(Awaitable[Sequence[bytes]], files)
+
+        files: Sequence[bytes]
 
         return files
 
-    async def open(self, path, mode='rb'):
+    async def mkdir(self, path: bytes) -> None:
+        """Create a directory"""
+
+        result = self._server.mkdir(path, SFTPAttrs())
+
+        if inspect.isawaitable(result):
+            assert result is not None
+            await result
+
+    @async_context_manager
+    async def open(self, path: bytes, mode: str) -> SFTPFileProtocol:
         """Open a file"""
 
         pflags, _ = _mode_to_pflags(mode)
         file_obj = self._server.open(path, pflags, SFTPAttrs())
 
         if inspect.isawaitable(file_obj):
-            file_obj = await file_obj
+            file_obj = await cast(Awaitable[object], file_obj)
 
-        self._file_obj = file_obj
-        return self
-
-    async def read(self, size, offset):
-        """Read bytes from the file"""
-
-        data = self._server.read(self._file_obj, offset, size)
-
-        if inspect.isawaitable(data):
-            data = await data
-
-        return data
-
-    async def write(self, data, offset):
-        """Write bytes to the file"""
-
-        size = self._server.write(self._file_obj, offset, data)
-
-        if inspect.isawaitable(size):
-            size = await size
-
-        return size
-
-    async def close(self):
-        """Close a file managed by the associated SFTPServer"""
-
-        result = self._server.close(self._file_obj)
-
-        if inspect.isawaitable(result):
-            await result
+        return SFTPServerFile(self._server, file_obj)
 
 
-async def start_sftp_client(conn, loop, reader, writer,
-                            path_encoding, path_errors):
+async def start_sftp_client(conn: 'SSHClientConnection',
+                            loop: asyncio.AbstractEventLoop,
+                            reader: 'SSHReader[bytes]',
+                            writer: 'SSHWriter[bytes]',
+                            path_encoding: Optional[str],
+                            path_errors: str) -> SFTPClient:
     """Start an SFTP client"""
 
     handler = SFTPClientHandler(loop, reader, writer)
@@ -5007,7 +5363,8 @@ async def start_sftp_client(conn, loop, reader, writer,
     return SFTPClient(handler, path_encoding, path_errors)
 
 
-def run_sftp_server(sftp_server, reader, writer):
+def run_sftp_server(sftp_server: SFTPServer, reader: 'SSHReader[bytes]',
+                    writer: 'SSHWriter[bytes]') -> Awaitable[None]:
     """Return a handler for an SFTP server session"""
 
     handler = SFTPServerHandler(sftp_server, reader, writer)

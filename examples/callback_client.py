@@ -1,6 +1,6 @@
 #!/usr/bin/env python3.6
 #
-# Copyright (c) 2013-2018 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2021 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -21,23 +21,24 @@
 #     Ron Frederick - initial implementation, API, and documentation
 
 import asyncio, asyncssh, sys
+from typing import Optional
 
 class MySSHClientSession(asyncssh.SSHClientSession):
-    def data_received(self, data, datatype):
+    def data_received(self, data: str, datatype: asyncssh.DataType) -> None:
         print(data, end='')
 
-    def connection_lost(self, exc):
+    def connection_lost(self, exc: Optional[Exception]) -> None:
         if exc:
             print('SSH session error: ' + str(exc), file=sys.stderr)
 
 class MySSHClient(asyncssh.SSHClient):
-    def connection_made(self, conn):
+    def connection_made(self, conn: asyncssh.SSHClientConnection) -> None:
         print('Connection made to %s.' % conn.get_extra_info('peername')[0])
 
-    def auth_completed(self):
+    def auth_completed(self) -> None:
         print('Authentication successful.')
 
-async def run_client():
+async def run_client() -> None:
     conn, client = await asyncssh.create_connection(MySSHClient, 'localhost')
 
     async with conn:

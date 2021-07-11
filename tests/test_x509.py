@@ -55,7 +55,8 @@ class _TestX509(unittest.TestCase):
                              hash_alg='sha256', comment=None):
         """Generate and check an X.509 certificate"""
 
-        cert = generate_x509_certificate(self._privkey, self._pubkey,
+        cert = generate_x509_certificate(self._privkey.pyca_key,
+                                         self._pubkey.pyca_key,
                                          subject, issuer, serial,
                                          valid_after, valid_before,
                                          ca, ca_path_len, purposes,

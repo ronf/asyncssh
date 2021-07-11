@@ -20,19 +20,28 @@
 
 """PKCS#11 smart card handler"""
 
-import codecs
+from types import TracebackType
+from typing import Dict, List, Optional, Sequence, Tuple, Type, Union, cast
 
 try:
     import pkcs11
     from pkcs11 import Attribute, KeyType, Mechanism, ObjectClass
+    from pkcs11 import PrivateKey, Token
     from pkcs11.util.rsa import encode_rsa_public_key
     from pkcs11.util.ec import encode_ec_public_key
     pkcs11_available = True
 except (ImportError, ModuleNotFoundError): # pragma: no cover
     pkcs11_available = False
 
+from .misc import BytesOrStr
 from .packet import MPInt, String
-from .public_key import SSHKeyPair, import_certificate_chain, import_public_key
+from .public_key import SSHCertificate, SSHKey, SSHKeyPair
+from .public_key import import_certificate_chain, import_public_key
+
+
+_AttrDict = Dict[Attribute, Union[bool, bytes, str, ObjectClass]]
+_TokenID = Tuple[str, bytes]
+_SessionMap = Dict[_TokenID, 'SSHPKCS11Session']
 
 
 if pkcs11_available:
@@ -58,19 +67,20 @@ if pkcs11_available:
 
         _key_type = 'pkcs11'
 
-        def __init__(self, session, key, pubkey, cert=None):
+        def __init__(self, session: 'SSHPKCS11Session', privkey: PrivateKey,
+                     pubkey: SSHKey, cert: SSHCertificate = None):
             super().__init__(pubkey.algorithm, pubkey.algorithm,
                              pubkey.sig_algorithms, pubkey.sig_algorithms,
-                             pubkey.public_data, key.label, cert,
+                             pubkey.public_data, privkey.label, cert,
                              use_executor=True)
 
             self._session = session
-            self._key = key
+            self._privkey = privkey
 
-        def __del__(self):
+        def __del__(self) -> None:
             self._session.close()
 
-        def sign(self, data):
+        def sign(self, data: bytes) -> bytes:
             """Sign a block of data with this private key"""
 
             sig_algorithm = self.sig_algorithm
@@ -78,9 +88,9 @@ if pkcs11_available:
             if sig_algorithm.startswith(b'x509v3-'):
                 sig_algorithm = sig_algorithm[7:]
 
-            sig = self._key.sign(data, mechanism=mechanisms[sig_algorithm])
+            sig = self._privkey.sign(data, mechanism=mechanisms[sig_algorithm])
 
-            if self._key.key_type == KeyType.EC:
+            if self._privkey.key_type == KeyType.EC:
                 length = len(sig) // 2
                 r = int.from_bytes(sig[:length], 'big')
                 s = int.from_bytes(sig[length:], 'big')
@@ -92,25 +102,28 @@ if pkcs11_available:
     class SSHPKCS11Session:
         """Work around PKCS#11 sesssions not supporting simultaneous opens"""
 
-        _sessions = {}
+        _sessions: _SessionMap = {}
 
-        def __init__(self, token_id, token, pin):
+        def __init__(self, token_id: _TokenID, token: Token,
+                     pin: Optional[str]):
             self._token_id = token_id
             self._session = token.open(user_pin=pin)
             self._refcount = 0
 
-        def __enter__(self):
+        def __enter__(self) -> 'SSHPKCS11Session':
             """Allow SSHPKCS11Session to be used as a context manager"""
 
             return self
 
-        def __exit__(self, *exc_info):
+        def __exit__(self, _exc_type: Type[BaseException],
+                     _exc_value: BaseException,
+                     _traceback: TracebackType) -> None:
             """Drop one reference to the session when exiting"""
 
             self.close()
 
         @classmethod
-        def open(cls, token, pin):
+        def open(cls, token: Token, pin: Optional[str]) -> 'SSHPKCS11Session':
             """Open a new session, or return an already-open one"""
 
             token_id = (token.manufacturer_id, token.serial)
@@ -124,7 +137,7 @@ if pkcs11_available:
             session._refcount += 1
             return session
 
-        def close(self):
+        def close(self) -> None:
             """Drop one reference to an open session"""
 
             self._refcount -= 1
@@ -133,14 +146,16 @@ if pkcs11_available:
                 self._session.close()
                 del self._sessions[self._token_id]
 
-        def get_keys(self, load_certs, key_label, key_id):
+        def get_keys(self, load_certs: bool, key_label: Optional[str],
+                     key_id: Optional[BytesOrStr]) -> \
+                Sequence[SSHPKCS11KeyPair]:
             """Return the private keys found on this token"""
 
             if isinstance(key_id, str):
-                key_id = codecs.decode(key_id, 'hex')
+                key_id = bytes.fromhex(key_id)
 
-            key_attrs = {Attribute.CLASS: ObjectClass.PRIVATE_KEY,
-                         Attribute.SIGN: True}
+            key_attrs: _AttrDict = {Attribute.CLASS: ObjectClass.PRIVATE_KEY,
+                                    Attribute.SIGN: True}
 
             if key_label is not None:
                 key_attrs[Attribute.LABEL] = key_label
@@ -148,40 +163,47 @@ if pkcs11_available:
             if key_id is not None:
                 key_attrs[Attribute.OBJECT_ID] = key_id
 
-            cert_attrs = {Attribute.CLASS: ObjectClass.CERTIFICATE}
+            cert_attrs: _AttrDict = {Attribute.CLASS: ObjectClass.CERTIFICATE}
 
             if load_certs:
-                certs = [import_certificate_chain(cert[Attribute.VALUE])
+                certs = [import_certificate_chain(
+                         cast(bytes, cert[Attribute.VALUE]))
                          for cert in self._session.get_objects(cert_attrs)]
 
                 certdict = {cert.key.public_data: cert for cert in certs
-                            if 'Attest' not in str(cert.subject)}
+                            if cert and 'Attest' not in str(cert.subject)}
             else:
                 certdict = {}
 
             keys = []
 
             for key in self._session.get_objects(key_attrs):
-                encoder = encoders.get(key.key_type)
+                privkey = cast(PrivateKey, key)
+                encoder = encoders.get(privkey.key_type)
 
                 if encoder:
-                    pubkey = import_public_key(encoder(key))
+                    pubkey = import_public_key(encoder(privkey))
 
                     cert = certdict.get(pubkey.public_data)
 
                     if cert:
-                        keys.append(SSHPKCS11KeyPair(self, key, pubkey, cert))
+                        keys.append(SSHPKCS11KeyPair(self, privkey,
+                                                     pubkey, cert))
 
-                    keys.append(SSHPKCS11KeyPair(self, key, pubkey))
+                    keys.append(SSHPKCS11KeyPair(self, privkey, pubkey))
 
             self._refcount += len(keys)
 
             return keys
 
 
-    def load_pkcs11_keys(provider, pin=None, *, load_certs=True,
-                         token_label=None, token_serial=None,
-                         key_label=None, key_id=None):
+    def load_pkcs11_keys(provider: str, pin: str = None, *,
+                         load_certs: bool = True,
+                         token_label: str = None,
+                         token_serial: BytesOrStr = None,
+                         key_label: str = None,
+                         key_id: BytesOrStr = None) -> \
+            Sequence[SSHPKCS11KeyPair]:
         """Load PIV keys and X.509 certificates from a PKCS#11 token
 
            This function loads a list of SSH keypairs with optional X.509
@@ -238,11 +260,13 @@ if pkcs11_available:
            :type key_label: `str`
            :type key_id: `bytes` or `str`
 
+           :returns: list of class:`SSHKeyPair`
+
         """
 
         lib = pkcs11.lib(provider)
 
-        keys = []
+        keys: List[SSHPKCS11KeyPair] = []
 
         if isinstance(token_serial, str):
             token_serial = token_serial.encode('utf-8')
@@ -254,7 +278,13 @@ if pkcs11_available:
 
         return keys
 else: # pragma: no cover
-    def load_pkcs11_keys(*args, **kwargs):
+    def load_pkcs11_keys(provider: str, pin: str = None, *,
+                         load_certs: bool = True,
+                         token_label: str = None,
+                         token_serial: BytesOrStr = None,
+                         key_label: str = None,
+                         key_id: BytesOrStr = None) -> \
+            Sequence[SSHPKCS11KeyPair]:
         """Report that PKCS#11 support is not available"""
 
         raise ValueError('PKCS#11 support not available') from None

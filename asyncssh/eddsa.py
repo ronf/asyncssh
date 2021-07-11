@@ -1,4 +1,4 @@
-# Copyright (c) 2019-2020 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2019-2021 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -20,22 +20,30 @@
 
 """EdDSA public key encryption handler"""
 
+from typing import Optional, Tuple, Union, cast
+
 from .asn1 import ASN1DecodeError, ObjectIdentifier, der_encode, der_decode
 from .crypto import EdDSAPrivateKey, EdDSAPublicKey
 from .crypto import ed25519_available, ed448_available
-from .packet import String
+from .packet import String, SSHPacket
 from .public_key import OMIT, SSHKey, SSHOpenSSHCertificateV01
 from .public_key import KeyImportError, KeyExportError
 from .public_key import register_public_key_alg, register_certificate_alg
 from .public_key import register_x509_certificate_alg
 
 
+_PrivateKeyArgs = Tuple[bytes]
+_PublicKeyArgs = Tuple[bytes]
+
+
 class _EdKey(SSHKey):
     """Handler for EdDSA public key encryption"""
 
+    _key: Union[EdDSAPrivateKey, EdDSAPublicKey]
+
     algorithm = b''
 
-    def __eq__(self, other):
+    def __eq__(self, other: object) -> bool:
         # This isn't protected access - both objects are _EdKey instances
         # pylint: disable=protected-access
 
@@ -43,57 +51,65 @@ class _EdKey(SSHKey):
                 self._key.public_value == other._key.public_value and
                 self._key.private_value == other._key.private_value)
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         return hash((self._key.public_value, self._key.private_value))
 
     @classmethod
-    def generate(cls, algorithm):
+    def generate(cls, algorithm: bytes) -> '_EdKey': # type: ignore
         """Generate a new EdDSA private key"""
+
+        # pylint: disable=arguments-differ
 
         # Strip 'ssh-' prefix of algorithm to get curve_id
         return cls(EdDSAPrivateKey.generate(algorithm[4:]))
 
     @classmethod
-    def make_private(cls, private_value):
+    def make_private(cls, key_params: object) -> SSHKey:
         """Construct an EdDSA private key"""
 
         try:
+            private_value, = cast(_PrivateKeyArgs, key_params)
+
             return cls(EdDSAPrivateKey.construct(cls.algorithm[4:],
                                                  private_value))
         except (TypeError, ValueError):
             raise KeyImportError('Invalid EdDSA private key') from None
 
     @classmethod
-    def make_public(cls, public_value):
+    def make_public(cls, key_params: object) -> SSHKey:
         """Construct an EdDSA public key"""
 
         try:
+            public_value, = cast(_PublicKeyArgs, key_params)
+
             return cls(EdDSAPublicKey.construct(cls.algorithm[4:],
                                                 public_value))
         except (TypeError, ValueError):
             raise KeyImportError('Invalid EdDSA public key') from None
 
     @classmethod
-    def decode_pkcs8_private(cls, alg_params, data):
+    def decode_pkcs8_private(cls, alg_params: object,
+                             data: bytes) -> Optional[_PrivateKeyArgs]:
         """Decode a PKCS#8 format EdDSA private key"""
 
         # pylint: disable=unused-argument
 
         try:
-            return (der_decode(data),)
+            return (cast(bytes, der_decode(data)),)
         except ASN1DecodeError:
             return None
 
     @classmethod
-    def decode_pkcs8_public(cls, alg_params, key_data):
+    def decode_pkcs8_public(cls, alg_params: object,
+                            data: bytes) -> Optional[_PublicKeyArgs]:
         """Decode a PKCS#8 format EdDSA public key"""
 
         # pylint: disable=unused-argument
 
-        return (key_data,)
+        return (data,)
 
     @classmethod
-    def decode_ssh_private(cls, packet):
+    def decode_ssh_private(cls, packet: SSHPacket) -> _PrivateKeyArgs:
         """Decode an SSH format EdDSA private key"""
 
         public_value = packet.get_string()
@@ -102,14 +118,14 @@ class _EdKey(SSHKey):
         return (private_value[:-len(public_value)],)
 
     @classmethod
-    def decode_ssh_public(cls, packet):
+    def decode_ssh_public(cls, packet: SSHPacket) -> _PublicKeyArgs:
         """Decode an SSH format EdDSA public key"""
 
         public_value = packet.get_string()
 
         return (public_value,)
 
-    def encode_pkcs8_private(self):
+    def encode_pkcs8_private(self) -> Tuple[object, object]:
         """Encode a PKCS#8 format EdDSA private key"""
 
         if not self._key.private_value:
@@ -117,12 +133,12 @@ class _EdKey(SSHKey):
 
         return OMIT, der_encode(self._key.private_value)
 
-    def encode_pkcs8_public(self):
+    def encode_pkcs8_public(self) -> Tuple[object, object]:
         """Encode a PKCS#8 format EdDSA public key"""
 
         return OMIT, self._key.public_value
 
-    def encode_ssh_private(self):
+    def encode_ssh_private(self) -> bytes:
         """Encode an SSH format EdDSA private key"""
 
         if self._key.private_value is None:
@@ -132,17 +148,17 @@ class _EdKey(SSHKey):
                          String(self._key.private_value +
                                 self._key.public_value)))
 
-    def encode_ssh_public(self):
+    def encode_ssh_public(self) -> bytes:
         """Encode an SSH format EdDSA public key"""
 
         return String(self._key.public_value)
 
-    def encode_agent_cert_private(self):
+    def encode_agent_cert_private(self) -> bytes:
         """Encode EdDSA certificate private key data for agent"""
 
         return self.encode_ssh_private()
 
-    def sign_ssh(self, data, sig_algorithm):
+    def sign_ssh(self, data: bytes, sig_algorithm: bytes) -> bytes:
         """Compute an SSH-encoded signature of the specified data"""
 
         # pylint: disable=unused-argument
@@ -152,7 +168,8 @@ class _EdKey(SSHKey):
 
         return String(self._key.sign(data))
 
-    def verify_ssh(self, data, sig_algorithm, packet):
+    def verify_ssh(self, data: bytes, sig_algorithm: bytes,
+                   packet: SSHPacket) -> bool:
         """Verify an SSH-encoded signature of the specified data"""
 
         # pylint: disable=unused-argument

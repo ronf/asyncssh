@@ -1,4 +1,4 @@
-# Copyright (c) 2015-2020 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2015-2021 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -20,25 +20,33 @@
 
 """Parser for SSH authorized_keys files"""
 
+from typing import Dict, List, Mapping, Optional, Sequence
+from typing import Set, Tuple, Union, cast
+
 try:
-    from .crypto import X509NamePattern
+    # pylint: disable=unused-import
+    from .crypto import X509Name, X509NamePattern
     _x509_available = True
 except ImportError: # pragma: no cover
     _x509_available = False
 
 from .misc import ip_address, read_file
 from .pattern import HostPatternList, WildcardPatternList
-from .public_key import KeyImportError, import_public_key
-from .public_key import import_certificate, import_certificate_subject
+from .public_key import KeyImportError, SSHKey
+from .public_key import SSHX509Certificate, SSHX509CertificateChain
+from .public_key import import_public_key, import_certificate
+from .public_key import import_certificate_subject
 
+
+_EntryOptions = Mapping[str, object]
 
 class _SSHAuthorizedKeyEntry:
     """An entry in an SSH authorized_keys list"""
 
-    def __init__(self, line):
-        self.key = None
-        self.cert = None
-        self.options = {}
+    def __init__(self, line: str):
+        self.key: Optional[SSHKey] = None
+        self.cert: Optional[SSHX509Certificate] = None
+        self.options: Dict[str, object] = {}
 
         try:
             self._import_key_or_cert(line)
@@ -49,7 +57,7 @@ class _SSHAuthorizedKeyEntry:
         line = self._parse_options(line)
         self._import_key_or_cert(line)
 
-    def _import_key_or_cert(self, line):
+    def _import_key_or_cert(self, line: str) -> None:
         """Import key or certificate in this entry"""
 
         try:
@@ -59,7 +67,7 @@ class _SSHAuthorizedKeyEntry:
             pass
 
         try:
-            self.cert = import_certificate(line)
+            self.cert = cast(SSHX509Certificate, import_certificate(line))
 
             if ('cert-authority' in self.options and
                     self.cert.subject != self.cert.issuer):
@@ -81,50 +89,58 @@ class _SSHAuthorizedKeyEntry:
 
         raise KeyImportError('Unrecognized key, certificate, or subject')
 
-    def _set_string(self, option, value):
+    def _set_string(self, option: str, value: str) -> None:
         """Set an option with a string value"""
 
         self.options[option] = value
 
-    def _add_environment(self, option, value):
+    def _add_environment(self, option: str, value: str) -> None:
         """Add an environment key/value pair"""
 
         if value.startswith('=') or '=' not in value:
             raise ValueError('Invalid environment entry in authorized_keys')
 
         name, value = value.split('=', 1)
-        self.options.setdefault(option, {})[name] = value
+        cast(Dict[str, str], self.options.setdefault(option, {}))[name] = value
 
-    def _add_from(self, option, value):
+    def _add_from(self, option: str, value: str) -> None:
         """Add a from host pattern"""
 
-        self.options.setdefault(option, []).append(HostPatternList(value))
+        from_patterns = cast(List[HostPatternList],
+                             self.options.setdefault(option, []))
+        from_patterns.append(HostPatternList(value))
 
-    def _add_permitopen(self, option, value):
+    def _add_permitopen(self, option: str, value: str) -> None:
         """Add a permitopen host/port pair"""
 
         try:
-            host, port = value.rsplit(':', 1)
+            host, port_str = value.rsplit(':', 1)
 
             if host.startswith('[') and host.endswith(']'):
                 host = host[1:-1]
 
-            port = None if port == '*' else int(port)
+            port = None if port_str == '*' else int(port_str)
         except:
             raise ValueError('Illegal permitopen value: %s' % value) from None
 
-        self.options.setdefault(option, set()).add((host, port))
+        permitted_opens = cast(Set[Tuple[str, Optional[int]]],
+                               self.options.setdefault(option, set()))
+        permitted_opens.add((host, port))
 
-    def _add_principals(self, option, value):
+    def _add_principals(self, option: str, value: str) -> None:
         """Add a principals wildcard pattern list"""
 
-        self.options.setdefault(option, []).append(WildcardPatternList(value))
+        principal_patterns = cast(List[WildcardPatternList],
+                                  self.options.setdefault(option, []))
+        principal_patterns.append(WildcardPatternList(value))
 
-    def _add_subject(self, option, value):
+    def _add_subject(self, option: str, value: str) -> None:
         """Add an X.509 subject pattern"""
 
         if _x509_available: # pragma: no branch
-            self.options.setdefault(option, []).append(X509NamePattern(value))
+            subject_patterns = cast(List[X509NamePattern],
+                                    self.options.setdefault(option, []))
+            subject_patterns.append(X509NamePattern(value))
 
     _handlers = {
         'command':     _set_string,
@@ -135,7 +151,7 @@ class _SSHAuthorizedKeyEntry:
         'subject':     _add_subject
     }
 
-    def _add_option(self):
+    def _add_option(self) -> None:
         """Add an option value"""
 
         if self._option.startswith('='):
@@ -148,11 +164,12 @@ class _SSHAuthorizedKeyEntry:
             if handler:
                 handler(self, option, value)
             else:
-                self.options.setdefault(option, []).append(value)
+                values = cast(List[str], self.options.setdefault(option, []))
+                values.append(value)
         else:
             self.options[self._option] = True
 
-    def _parse_options(self, line):
+    def _parse_options(self, line: str) -> str:
         """Parse options in this entry"""
 
         self._option = ''
@@ -188,11 +205,12 @@ class _SSHAuthorizedKeyEntry:
 
         return line[idx:].strip()
 
-    def match_options(self, client_host, client_addr,
-                      cert_principals, cert_subject=None):
+    def match_options(self, client_host: str, client_addr: str,
+                      cert_principals: Optional[Sequence[str]],
+                      cert_subject: Optional['X509Name'] = None) -> bool:
         """Match "from", "principals" and "subject" options in entry"""
 
-        from_patterns = self.options.get('from')
+        from_patterns = cast(List[HostPatternList], self.options.get('from'))
 
         if from_patterns:
             client_ip = ip_address(client_addr)
@@ -201,7 +219,8 @@ class _SSHAuthorizedKeyEntry:
                        for pattern in from_patterns):
                 return False
 
-        principal_patterns = self.options.get('principals')
+        principal_patterns = cast(List[WildcardPatternList],
+                                  self.options.get('principals'))
 
         if cert_principals is not None and principal_patterns is not None:
             if not all(any(pattern.matches(principal)
@@ -209,7 +228,8 @@ class _SSHAuthorizedKeyEntry:
                        for pattern in principal_patterns):
                 return False
 
-        subject_patterns = self.options.get('subject')
+        subject_patterns = cast(List['X509NamePattern'],
+                                self.options.get('subject'))
 
         if cert_subject is not None and subject_patterns is not None:
             if not all(pattern.matches(cert_subject)
@@ -222,15 +242,15 @@ class _SSHAuthorizedKeyEntry:
 class SSHAuthorizedKeys:
     """An SSH authorized keys list"""
 
-    def __init__(self, authorized_keys=None):
-        self._user_entries = []
-        self._ca_entries = []
-        self._x509_entries = []
+    def __init__(self, authorized_keys: Optional[str] = None):
+        self._user_entries: List[_SSHAuthorizedKeyEntry] = []
+        self._ca_entries: List[_SSHAuthorizedKeyEntry] = []
+        self._x509_entries: List[_SSHAuthorizedKeyEntry] = []
 
         if authorized_keys:
             self.load(authorized_keys)
 
-    def load(self, authorized_keys):
+    def load(self, authorized_keys: str) -> None:
         """Load authorized keys data into this object"""
 
         for line in authorized_keys.splitlines():
@@ -255,8 +275,9 @@ class SSHAuthorizedKeys:
                 not self._x509_entries):
             raise ValueError('No valid entries found')
 
-    def validate(self, key, client_host, client_addr,
-                 cert_principals=None, ca=False):
+    def validate(self, key: SSHKey, client_host: str, client_addr: str,
+                 cert_principals: Optional[Sequence[str]] = None,
+                 ca: bool = False) -> Optional[Mapping[str, object]]:
         """Return whether a public key or CA is valid for authentication"""
 
         for entry in self._ca_entries if ca else self._user_entries:
@@ -267,7 +288,9 @@ class SSHAuthorizedKeys:
 
         return None
 
-    def validate_x509(self, cert, client_host, client_addr):
+    def validate_x509(self, cert: SSHX509CertificateChain, client_host: str,
+                      client_addr: str) -> Tuple[Optional[_EntryOptions],
+                                                 Optional[SSHX509Certificate]]:
         """Return whether an X.509 certificate is valid for authentication"""
 
         for entry in self._x509_entries:
@@ -282,7 +305,7 @@ class SSHAuthorizedKeys:
 
         return None, None
 
-def import_authorized_keys(data):
+def import_authorized_keys(data: str) -> SSHAuthorizedKeys:
     """Import SSH authorized keys
 
        This function imports public keys and associated options in
@@ -299,7 +322,8 @@ def import_authorized_keys(data):
     return SSHAuthorizedKeys(data)
 
 
-def read_authorized_keys(filelist):
+def read_authorized_keys(filelist: Union[str, Sequence[str]]) -> \
+        SSHAuthorizedKeys:
     """Read SSH authorized keys from a file or list of files
 
        This function reads public keys and associated options in
@@ -316,9 +340,11 @@ def read_authorized_keys(filelist):
     authorized_keys = SSHAuthorizedKeys()
 
     if isinstance(filelist, str):
-        filelist = [filelist]
+        files: Sequence[str] = [filelist]
+    else:
+        files = filelist
 
-    for filename in filelist:
+    for filename in files:
         authorized_keys.load(read_file(filename, 'r'))
 
     return authorized_keys

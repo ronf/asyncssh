@@ -1,6 +1,6 @@
 #!/usr/bin/env python3.6
 #
-# Copyright (c) 2013-2018 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2021 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -21,17 +21,18 @@
 #     Ron Frederick - initial implementation, API, and documentation
 
 import asyncio, asyncssh, sys
+from typing import Optional
 
 class MySSHTCPSession(asyncssh.SSHTCPSession):
-    def data_received(self, data, datatype):
+    def data_received(self, data: bytes, datatype: asyncssh.DataType) -> None:
         # We use sys.stdout.buffer here because we're writing bytes
         sys.stdout.buffer.write(data)
 
-    def connection_lost(self, exc):
+    def connection_lost(self, exc: Optional[Exception]) -> None:
         if exc:
             print('Direct connection error:', str(exc), file=sys.stderr)
 
-async def run_client():
+async def run_client() -> None:
     async with asyncssh.connect('localhost') as conn:
         chan, session = await conn.create_connection(MySSHTCPSession,
                                                      'www.google.com', 80)

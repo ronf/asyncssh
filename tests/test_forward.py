@@ -1,4 +1,4 @@
-# Copyright (c) 2016-2020 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2016-2021 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -197,6 +197,18 @@ class _UNIXConnectionServer(Server):
             return False
 
     def unix_server_requested(self, listen_path):
+        """Handle a request to create a new UNIX domain listener"""
+
+        if listen_path == 'open':
+            return _EchoPathListener(self._conn)
+        else:
+            return listen_path != 'fail'
+
+
+class _UNIXAsyncConnectionServer(_UNIXConnectionServer):
+    """Server for testing async direct and forwarded UNIX connections"""
+
+    async def unix_server_requested(self, listen_path):
         """Handle a request to create a new UNIX domain listener"""
 
         if listen_path == 'open':
@@ -999,6 +1011,18 @@ class _TestUNIXForwarding(_CheckForwarding):
                     b'cancel-streamlocal-forward@openssh.com', String(b'\xff'))
 
                 self.assertEqual(pkttype, asyncssh.MSG_REQUEST_FAILURE)
+
+
+class _TestAsyncUNIXForwarding(_TestUNIXForwarding):
+    """Unit tests for AsyncSSH UNIX connection forwarding with async return"""
+
+    @classmethod
+    async def start_server(cls):
+        """Start an SSH server which supports UNIX connection forwarding"""
+
+        return await cls.create_server(
+            _UNIXAsyncConnectionServer,
+            authorized_client_keys='authorized_keys')
 
 
 class _TestSOCKSForwarding(_CheckForwarding):

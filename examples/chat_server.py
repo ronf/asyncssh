@@ -1,6 +1,6 @@
 #!/usr/bin/env python3.6
 #
-# Copyright (c) 2016-2018 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2016-2021 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -28,30 +28,34 @@
 # the certificate authority which can sign valid client certificates.
 
 import asyncio, asyncssh, sys
+from typing import List, cast
 
 class ChatClient:
-    _clients = []
+    _clients: List['ChatClient'] = []
 
-    def __init__(self, process):
+    def __init__(self, process: asyncssh.SSHServerProcess):
         self._process = process
 
     @classmethod
-    async def handle_client(cls, process):
+    async def handle_client(cls, process: asyncssh.SSHServerProcess):
         await cls(process).run()
 
-    def write(self, msg):
+    async def readline(self) -> str:
+        return cast(str, self._process.stdin.readline())
+
+    def write(self, msg: str) -> None:
         self._process.stdout.write(msg)
 
-    def broadcast(self, msg):
+    def broadcast(self, msg: str) -> None:
         for client in self._clients:
             if client != self:
                 client.write(msg)
 
-    async def run(self):
+    async def run(self) -> None:
         self.write('Welcome to chat!\n\n')
 
         self.write('Enter your name: ')
-        name = (await self._process.stdin.readline()).rstrip('\n')
+        name = (await self.readline()).rstrip('\n')
 
         self.write('\n%d other users are connected.\n\n' % len(self._clients))
 
@@ -67,7 +71,7 @@ class ChatClient:
         self.broadcast('*** %s has left chat ***\n' % name)
         self._clients.remove(self)
 
-async def start_server():
+async def start_server() -> None:
     await asyncssh.listen('', 8022, server_host_keys=['ssh_host_key'],
                           authorized_client_keys='ssh_user_ca',
                           process_factory=ChatClient.handle_client)

@@ -1,4 +1,4 @@
-# Copyright (c) 2018-2019 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2018-2021 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -23,9 +23,15 @@
 import asyncio
 from pathlib import Path
 import subprocess
+from typing import Iterable, Sequence, Union, cast
 
+from .misc import FilePath
 from .packet import Byte, String, UInt32, PacketDecodeError, SSHPacket
-from .public_key import SSHKeyPair
+from .public_key import SSHKey, SSHKeyPair, SSHCertificate
+
+
+_KeySignKey = Union[SSHKey, SSHCertificate]
+KeySignPath = Union[None, bool, FilePath]
 
 
 KEYSIGN_VERSION = 2
@@ -38,7 +44,8 @@ _DEFAULT_KEYSIGN_DIRS = ('/opt/local/libexec', '/usr/local/libexec',
 class SSHKeySignKeyPair(SSHKeyPair):
     """Surrogate for a key where signing is done via ssh-keysign"""
 
-    def __init__(self, keysign_path, sock_fd, key_or_cert):
+    def __init__(self, keysign_path: str, sock_fd: int,
+                 key_or_cert: _KeySignKey):
         algorithm = key_or_cert.algorithm
         sig_algorithms = key_or_cert.sig_algorithms[:1]
         public_data = key_or_cert.public_data
@@ -50,7 +57,7 @@ class SSHKeySignKeyPair(SSHKeyPair):
         self._keysign_path = keysign_path
         self._sock_fd = sock_fd
 
-    async def sign(self, data):
+    async def sign_async(self, data: bytes) -> bytes:
         """Use ssh-keysign to sign a block of data with this key"""
 
         proc = await asyncio.create_subprocess_exec(
@@ -83,7 +90,7 @@ class SSHKeySignKeyPair(SSHKeyPair):
             raise ValueError('invalid response') from None
 
 
-def find_keysign(path):
+def find_keysign(path: KeySignPath) -> str:
     """Return path to ssh-keysign executable"""
 
     if path is True:
@@ -94,13 +101,15 @@ def find_keysign(path):
         else:
             raise ValueError('Keysign not found')
     else:
-        if not Path(path).exists():
+        if not path or not Path(cast(FilePath, path)).exists():
             raise ValueError('Keysign not found')
 
     return str(path)
 
 
-def get_keysign_keys(keysign_path, sock_fd, keys):
+def get_keysign_keys(keysign_path: str, sock_fd: int,
+                     keys: Iterable[_KeySignKey]) -> \
+        Sequence[SSHKeySignKeyPair]:
     """Return keypair objects which invoke ssh-keysign"""
 
     return [SSHKeySignKeyPair(keysign_path, sock_fd, key) for key in keys]

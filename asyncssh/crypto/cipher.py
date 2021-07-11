@@ -20,109 +20,114 @@
 
 """A shim around PyCA for accessing symmetric ciphers needed by AsyncSSH"""
 
+from typing import Any, MutableMapping, Optional, Tuple
+
 from cryptography.exceptions import InvalidTag
-from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives.ciphers import Cipher
+from cryptography.hazmat.primitives.ciphers import Cipher, CipherContext
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.ciphers.algorithms import AES, ARC4
 from cryptography.hazmat.primitives.ciphers.algorithms import Blowfish, CAST5
 from cryptography.hazmat.primitives.ciphers.algorithms import SEED, TripleDES
 
-from cryptography.hazmat.primitives.ciphers.modes import CBC, CTR, GCM
+from cryptography.hazmat.primitives.ciphers.modes import CBC, CTR
 
-_cipher_algs = {}
-_cipher_params = {}
+
+_CipherAlgs = Tuple[Any, Any, int]
+_CipherParams = Tuple[int, int, int]
+
+
+_GCM_MAC_SIZE = 16
+
+_cipher_algs: MutableMapping[str, _CipherAlgs] = {}
+_cipher_params: MutableMapping[str, _CipherParams] = {}
 
 
 class BasicCipher:
     """Shim for basic ciphers"""
 
-    def __init__(self, cipher_name, key, iv):
+    def __init__(self, cipher_name: str, key: bytes, iv: bytes):
         cipher, mode, initial_bytes = _cipher_algs[cipher_name]
 
-        self._cipher = Cipher(cipher(key), mode(iv) if mode else None,
-                              default_backend())
+        self._cipher = Cipher(cipher(key), mode(iv) if mode else None)
         self._initial_bytes = initial_bytes
-        self._encryptor = None
-        self._decryptor = None
+        self._encryptor: Optional[CipherContext] = None
+        self._decryptor: Optional[CipherContext] = None
 
-    def encrypt(self, data):
+    def encrypt(self, data: bytes) -> bytes:
         """Encrypt a block of data"""
 
         if not self._encryptor:
             self._encryptor = self._cipher.encryptor()
 
             if self._initial_bytes:
+                assert self._encryptor is not None
                 self._encryptor.update(self._initial_bytes * b'\0')
 
+        assert self._encryptor is not None
         return self._encryptor.update(data)
 
-    def decrypt(self, data):
+    def decrypt(self, data: bytes) -> bytes:
         """Decrypt a block of data"""
 
         if not self._decryptor:
             self._decryptor = self._cipher.decryptor()
 
             if self._initial_bytes:
+                assert self._decryptor is not None
                 self._decryptor.update(self._initial_bytes * b'\0')
 
+        assert self._decryptor is not None
         return self._decryptor.update(data)
 
 
 class GCMCipher:
     """Shim for GCM ciphers"""
 
-    def __init__(self, cipher_name, key, iv):
+    def __init__(self, cipher_name: str, key: bytes, iv: bytes):
         self._cipher = _cipher_algs[cipher_name][0]
         self._key = key
         self._iv = iv
 
-    def _update_iv(self):
+    def _update_iv(self) -> None:
         """Update the IV after each encrypt/decrypt operation"""
 
         invocation = int.from_bytes(self._iv[4:], 'big')
         invocation = (invocation + 1) & 0xffffffffffffffff
         self._iv = self._iv[:4] + invocation.to_bytes(8, 'big')
 
-    def encrypt_and_sign(self, header, data):
+    def encrypt_and_sign(self, header: bytes,
+                         data: bytes) -> Tuple[bytes, bytes]:
         """Encrypt and sign a block of data"""
 
-        encryptor = Cipher(self._cipher(self._key), GCM(self._iv),
-                           default_backend()).encryptor()
-
-        if header:
-            encryptor.authenticate_additional_data(header)
-
-        data = encryptor.update(data) + encryptor.finalize()
+        data = AESGCM(self._key).encrypt(self._iv, data, header)
 
         self._update_iv()
 
-        return header + data, encryptor.tag
+        return header + data[:-_GCM_MAC_SIZE], data[-_GCM_MAC_SIZE:]
 
-    def verify_and_decrypt(self, header, data, mac):
+    def verify_and_decrypt(self, header: bytes, data: bytes,
+                           mac: bytes) -> Optional[bytes]:
         """Verify the signature of and decrypt a block of data"""
 
-        decryptor = Cipher(self._cipher(self._key), GCM(self._iv, mac),
-                           default_backend()).decryptor()
-
-        decryptor.authenticate_additional_data(header)
-
         try:
-            data = decryptor.update(data) + decryptor.finalize()
+            decrypted_data: Optional[bytes] = \
+                AESGCM(self._key).decrypt(self._iv, data + mac, header)
         except InvalidTag:
-            data = None
+            decrypted_data = None
 
         self._update_iv()
 
-        return data
+        return decrypted_data
 
 
-def register_cipher(cipher_name, key_size, iv_size, block_size):
+def register_cipher(cipher_name: str, key_size: int,
+                    iv_size: int, block_size: int) -> None:
     """Register a symmetric cipher"""
 
     _cipher_params[cipher_name] = (key_size, iv_size, block_size)
 
 
-def get_cipher_params(cipher_name):
+def get_cipher_params(cipher_name: str) -> _CipherParams:
     """Get parameters of a symmetric cipher"""
 
     return _cipher_params[cipher_name]
@@ -135,8 +140,8 @@ _cipher_alg_list = (
     ('aes128-ctr',   AES,       CTR,     0, 16, 16, 16),
     ('aes192-ctr',   AES,       CTR,     0, 24, 16, 16),
     ('aes256-ctr',   AES,       CTR,     0, 32, 16, 16),
-    ('aes128-gcm',   AES,       GCM,     0, 16, 12, 16),
-    ('aes256-gcm',   AES,       GCM,     0, 32, 12, 16),
+    ('aes128-gcm',   None,      None,    0, 16, 12, 16),
+    ('aes256-gcm',   None,      None,    0, 32, 12, 16),
     ('arcfour',      ARC4,      None,    0, 16,  1,  1),
     ('arcfour40',    ARC4,      None,    0,  5,  1,  1),
     ('arcfour128',   ARC4,      None, 1536, 16,  1,  1),

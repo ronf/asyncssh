@@ -3,6 +3,7 @@ branch = True
 
 [report]
 exclude_lines =
+    if TYPE_CHECKING:
     pragma: no cover
     raise NotImplementedError
 partial_branches =

@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2020 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2021 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -19,6 +19,33 @@
 #     Ron Frederick - initial implementation, API, and documentation
 
 """SSH server protocol handler"""
+
+from typing import TYPE_CHECKING, Optional, Tuple, Union
+
+from .auth import KbdIntChallenge, KbdIntResponse
+from .listener import SSHListener
+from .misc import MaybeAwait
+from .public_key import SSHKey
+from .stream import SSHSocketSessionFactory, SSHServerSessionFactory
+
+
+if TYPE_CHECKING:
+    # pylint: disable=cyclic-import
+    from .connection import SSHServerConnection
+    from .channel import SSHServerChannel, SSHTCPChannel, SSHUNIXChannel
+    from .session import SSHServerSession, SSHTCPSession, SSHUNIXSession
+
+
+_NewSession = Union[bool, 'SSHServerSession', SSHServerSessionFactory,
+                    Tuple['SSHServerChannel', 'SSHServerSession'],
+                    Tuple['SSHServerChannel', SSHServerSessionFactory]]
+_NewTCPSession = Union[bool, 'SSHTCPSession', SSHSocketSessionFactory,
+                       Tuple['SSHTCPChannel', 'SSHTCPSession'],
+                       Tuple['SSHTCPChannel', SSHSocketSessionFactory]]
+_NewUNIXSession = Union[bool, 'SSHUNIXSession', SSHSocketSessionFactory,
+                        Tuple['SSHUNIXChannel', 'SSHUNIXSession'],
+                        Tuple['SSHUNIXChannel', SSHSocketSessionFactory]]
+_NewListener = Union[bool, SSHListener]
 
 
 class SSHServer:
@@ -49,7 +76,7 @@ class SSHServer:
 
     # pylint: disable=no-self-use,unused-argument
 
-    def connection_made(self, conn):
+    def connection_made(self, conn: 'SSHServerConnection') -> None:
         """Called when a connection is made
 
            This method is called when a new TCP connection is accepted. The
@@ -61,7 +88,7 @@ class SSHServer:
 
         """
 
-    def connection_lost(self, exc):
+    def connection_lost(self, exc: Optional[Exception]) -> None:
         """Called when a connection is lost or closed
 
            This method is called when a connection is closed. If the
@@ -71,7 +98,8 @@ class SSHServer:
 
         """
 
-    def debug_msg_received(self, msg, lang, always_display):
+    def debug_msg_received(self, msg: str, lang: str,
+                           always_display: bool) -> None:
         """A debug message was received on this connection
 
            This method is called when the other end of the connection sends
@@ -90,7 +118,7 @@ class SSHServer:
 
         """
 
-    def begin_auth(self, username):
+    def begin_auth(self, username: str) -> MaybeAwait[bool]:
         """Authentication has been requested by the client
 
            This method will be called when authentication is attempted for
@@ -116,7 +144,7 @@ class SSHServer:
 
         return True # pragma: no cover
 
-    def auth_completed(self):
+    def auth_completed(self) -> None:
         """Authentication was completed successfully
 
            This method is called when authentication has completed
@@ -128,8 +156,8 @@ class SSHServer:
 
         """
 
-    def validate_gss_principal(self, username, user_principal,
-                               host_principal):
+    def validate_gss_principal(self, username: str, user_principal: str,
+                               host_principal: str) -> MaybeAwait[bool]:
         """Return whether a GSS principal is valid for this user
 
            This method should return `True` if the specified user
@@ -164,7 +192,7 @@ class SSHServer:
         host_domain = host_principal.rsplit('@')[-1]
         return user_principal == username + '@' + host_domain
 
-    def host_based_auth_supported(self):
+    def host_based_auth_supported(self) -> bool:
         """Return whether or not host-based authentication is supported
 
            This method should return `True` if client host-based
@@ -184,8 +212,8 @@ class SSHServer:
 
         return False # pragma: no cover
 
-    def validate_host_public_key(self, client_host, client_addr,
-                                 client_port, key):
+    def validate_host_public_key(self, client_host: str, client_addr: str,
+                                 client_port: int, key: SSHKey) -> bool:
         """Return whether key is an authorized host key for this client host
 
            Host key based client authentication can be supported by
@@ -230,8 +258,8 @@ class SSHServer:
 
         return False # pragma: no cover
 
-    def validate_host_ca_key(self, client_host, client_addr,
-                             client_port, key):
+    def validate_host_ca_key(self, client_host: str, client_addr: str,
+                             client_port: int, key: SSHKey) -> bool:
         """Return whether key is an authorized CA key for this client host
 
            Certificate based client host authentication can be
@@ -280,7 +308,8 @@ class SSHServer:
 
         return False # pragma: no cover
 
-    def validate_host_based_user(self, username, client_host, client_username):
+    def validate_host_based_user(self, username: str, client_host: str,
+                                 client_username: str) -> MaybeAwait[bool]:
         """Return whether remote host and user is authorized for this user
 
            This method should return `True` if the specified client host
@@ -313,7 +342,7 @@ class SSHServer:
 
         return username == client_username
 
-    def public_key_auth_supported(self):
+    def public_key_auth_supported(self) -> bool:
         """Return whether or not public key authentication is supported
 
            This method should return `True` if client public key
@@ -333,7 +362,8 @@ class SSHServer:
 
         return False # pragma: no cover
 
-    def validate_public_key(self, username, key):
+    def validate_public_key(self, username: str, key: SSHKey) -> \
+            MaybeAwait[bool]:
         """Return whether key is an authorized client key for this user
 
            Key based client authentication can be supported by
@@ -378,7 +408,7 @@ class SSHServer:
 
         return False # pragma: no cover
 
-    def validate_ca_key(self, username, key):
+    def validate_ca_key(self, username: str, key: SSHKey) -> MaybeAwait[bool]:
         """Return whether key is an authorized CA key for this user
 
            Certificate based client authentication can be supported by
@@ -427,7 +457,7 @@ class SSHServer:
 
         return False # pragma: no cover
 
-    def password_auth_supported(self):
+    def password_auth_supported(self) -> bool:
         """Return whether or not password authentication is supported
 
            This method should return `True` if password authentication
@@ -446,7 +476,8 @@ class SSHServer:
 
         return False # pragma: no cover
 
-    def validate_password(self, username, password):
+    def validate_password(self, username: str, password: str) -> \
+            MaybeAwait[bool]:
         """Return whether password is valid for this user
 
            This method should return `True` if the specified password
@@ -491,7 +522,8 @@ class SSHServer:
 
         return False # pragma: no cover
 
-    def change_password(self, username, old_password, new_password):
+    def change_password(self, username: str, old_password: str,
+                        new_password: str) -> MaybeAwait[bool]:
         """Handle a request to change a user's password
 
            This method is called when a user makes a request to
@@ -535,7 +567,7 @@ class SSHServer:
 
         return False # pragma: no cover
 
-    def kbdint_auth_supported(self):
+    def kbdint_auth_supported(self) -> bool:
         """Return whether or not keyboard-interactive authentication
            is supported
 
@@ -560,7 +592,8 @@ class SSHServer:
 
         return NotImplemented # pragma: no cover
 
-    def get_kbdint_challenge(self, username, lang, submethods):
+    def get_kbdint_challenge(self, username: str, lang: str,
+                             submethods: str) -> MaybeAwait[KbdIntChallenge]:
         """Return a keyboard-interactive auth challenge
 
            This method should return `True` if authentication should
@@ -591,7 +624,9 @@ class SSHServer:
 
         return False # pragma: no cover
 
-    def validate_kbdint_response(self, username, responses):
+    def validate_kbdint_response(
+            self, username: str, responses: KbdIntResponse) -> \
+                MaybeAwait[KbdIntChallenge]:
         """Return whether the keyboard-interactive response is valid
            for this user
 
@@ -623,7 +658,7 @@ class SSHServer:
 
         return False # pragma: no cover
 
-    def session_requested(self):
+    def session_requested(self) -> MaybeAwait[_NewSession]:
         """Handle an incoming session request
 
            This method is called when a session open request is received
@@ -677,7 +712,8 @@ class SSHServer:
 
         return False # pragma: no cover
 
-    def connection_requested(self, dest_host, dest_port, orig_host, orig_port):
+    def connection_requested(self, dest_host: str, dest_port: int,
+                             orig_host: str, orig_port: int) -> _NewTCPSession:
         """Handle a direct TCP/IP connection request
 
            This method is called when a direct TCP/IP connection
@@ -745,7 +781,8 @@ class SSHServer:
 
         return False # pragma: no cover
 
-    def server_requested(self, listen_host, listen_port):
+    def server_requested(self, listen_host: str,
+                         listen_port: int) -> MaybeAwait[_NewListener]:
         """Handle a request to listen on a TCP/IP address and port
 
            This method is called when a client makes a request to
@@ -792,7 +829,7 @@ class SSHServer:
 
         return False # pragma: no cover
 
-    def unix_connection_requested(self, dest_path):
+    def unix_connection_requested(self, dest_path: str) -> _NewUNIXSession:
         """Handle a direct UNIX domain socket connection request
 
            This method is called when a direct UNIX domain socket connection
@@ -850,7 +887,8 @@ class SSHServer:
 
         return False # pragma: no cover
 
-    def unix_server_requested(self, listen_path):
+    def unix_server_requested(self, listen_path: str) -> \
+            MaybeAwait[_NewListener]:
         """Handle a request to listen on a UNIX domain socket
 
            This method is called when a client makes a request to

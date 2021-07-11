@@ -1,4 +1,4 @@
-# Copyright (c) 2014-2020 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2014-2021 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -20,21 +20,23 @@
 
 """A shim around PyCA for DSA public and private keys"""
 
+from typing import Optional, cast
+
 from cryptography.exceptions import InvalidSignature
-from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import dsa
 
-from .misc import PyCAKey, hashes
+from .misc import CryptoKey, PyCAKey, hashes
 
 
 # Short variable names are used here, matching names in the spec
 # pylint: disable=invalid-name
 
 
-class _DSAKey(PyCAKey):
+class _DSAKey(CryptoKey):
     """Base class for shim around PyCA for DSA keys"""
 
-    def __init__(self, pyca_key, params, pub, priv=None):
+    def __init__(self, pyca_key: PyCAKey, params: dsa.DSAParameterNumbers,
+                 pub: dsa.DSAPublicNumbers, priv: dsa.DSAPrivateNumbers = None):
         super().__init__(pyca_key)
 
         self._params = params
@@ -42,31 +44,31 @@ class _DSAKey(PyCAKey):
         self._priv = priv
 
     @property
-    def p(self):
+    def p(self) -> int:
         """Return the DSA public modulus"""
 
         return self._params.p
 
     @property
-    def q(self):
+    def q(self) -> int:
         """Return the DSA sub-group order"""
 
         return self._params.q
 
     @property
-    def g(self):
+    def g(self) -> int:
         """Return the DSA generator"""
 
         return self._params.g
 
     @property
-    def y(self):
+    def y(self) -> int:
         """Return the DSA public value"""
 
         return self._pub.y
 
     @property
-    def x(self):
+    def x(self) -> Optional[int]:
         """Return the DSA private value"""
 
         return self._priv.x if self._priv else None
@@ -76,53 +78,54 @@ class DSAPrivateKey(_DSAKey):
     """A shim around PyCA for DSA private keys"""
 
     @classmethod
-    def construct(cls, p, q, g, y, x):
+    def construct(cls, p: int, q: int, g: int,
+                  y: int, x: int) -> 'DSAPrivateKey':
         """Construct a DSA private key"""
 
         params = dsa.DSAParameterNumbers(p, q, g)
         pub = dsa.DSAPublicNumbers(y, params)
         priv = dsa.DSAPrivateNumbers(x, pub)
-        priv_key = priv.private_key(default_backend())
+        priv_key = priv.private_key()
 
         return cls(priv_key, params, pub, priv)
 
     @classmethod
-    def generate(cls, key_size):
+    def generate(cls, key_size: int) -> 'DSAPrivateKey':
         """Generate a new DSA private key"""
 
-        priv_key = dsa.generate_private_key(key_size, default_backend())
+        priv_key = dsa.generate_private_key(key_size)
         priv = priv_key.private_numbers()
         pub = priv.public_numbers
         params = pub.parameter_numbers
 
         return cls(priv_key, params, pub, priv)
 
-    def sign(self, data, hash_alg):
+    def sign(self, data: bytes, hash_name: str = '') -> bytes:
         """Sign a block of data"""
 
-        priv_key = self.pyca_key
-        return priv_key.sign(data, hashes[hash_alg]())
+        priv_key = cast('dsa.DSAPrivateKey', self.pyca_key)
+        return priv_key.sign(data, hashes[hash_name]())
 
 
 class DSAPublicKey(_DSAKey):
     """A shim around PyCA for DSA public keys"""
 
     @classmethod
-    def construct(cls, p, q, g, y):
+    def construct(cls, p: int, q: int, g: int, y: int) -> 'DSAPublicKey':
         """Construct a DSA public key"""
 
         params = dsa.DSAParameterNumbers(p, q, g)
         pub = dsa.DSAPublicNumbers(y, params)
-        pub_key = pub.public_key(default_backend())
+        pub_key = pub.public_key()
 
         return cls(pub_key, params, pub)
 
-    def verify(self, data, sig, hash_alg):
+    def verify(self, data: bytes, sig: bytes, hash_name: str = '') -> bool:
         """Verify the signature on a block of data"""
 
         try:
-            pub_key = self.pyca_key
-            pub_key.verify(sig, data, hashes[hash_alg]())
+            pub_key = cast('dsa.DSAPublicKey', self.pyca_key)
+            pub_key.verify(sig, data, hashes[hash_name]())
             return True
         except InvalidSignature:
             return False

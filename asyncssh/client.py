@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2018 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2021 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -19,6 +19,17 @@
 #     Ron Frederick - initial implementation, API, and documentation
 
 """SSH client protocol handler"""
+
+from typing import TYPE_CHECKING, Optional
+
+from .auth import KbdIntPrompts, KbdIntResponse, PasswordChangeResponse
+from .misc import MaybeAwait
+from .public_key import KeyPairListArg, SSHKey
+
+
+if TYPE_CHECKING:
+    # pylint: disable=cyclic-import
+    from .connection import SSHClientConnection
 
 
 class SSHClient:
@@ -55,7 +66,7 @@ class SSHClient:
 
     # pylint: disable=no-self-use,unused-argument
 
-    def connection_made(self, conn):
+    def connection_made(self, conn: 'SSHClientConnection') -> None:
         """Called when a connection is made
 
            This method is called as soon as the TCP connection completes.
@@ -67,7 +78,7 @@ class SSHClient:
 
         """
 
-    def connection_lost(self, exc):
+    def connection_lost(self, exc: Optional[Exception]) -> None:
         """Called when a connection is lost or closed
 
            This method is called when a connection is closed. If the
@@ -82,7 +93,8 @@ class SSHClient:
 
         """
 
-    def debug_msg_received(self, msg, lang, always_display):
+    def debug_msg_received(self, msg: str, lang: str,
+                           always_display: bool) -> None:
         """A debug message was received on this connection
 
            This method is called when the other end of the connection sends
@@ -101,7 +113,8 @@ class SSHClient:
 
         """
 
-    def validate_host_public_key(self, host, addr, port, key):
+    def validate_host_public_key(self, host: str, addr: str,
+                                 port: int, key: SSHKey) -> bool:
         """Return whether key is an authorized key for this host
 
            Server host key validation can be supported by passing known
@@ -140,7 +153,8 @@ class SSHClient:
 
         return False # pragma: no cover
 
-    def validate_host_ca_key(self, host, addr, port, key):
+    def validate_host_ca_key(self, host: str, addr: str,
+                             port: int, key: SSHKey) -> bool:
         """Return whether key is an authorized CA key for this host
 
            Server host certificate validation can be supported by passing
@@ -182,7 +196,7 @@ class SSHClient:
 
         return False # pragma: no cover
 
-    def auth_banner_received(self, msg, lang):
+    def auth_banner_received(self, msg: str, lang: str) -> None:
         """An incoming authentication banner was received
 
            This method is called when the server sends a banner to display
@@ -198,7 +212,7 @@ class SSHClient:
 
         """
 
-    def auth_completed(self):
+    def auth_completed(self) -> None:
         """Authentication was completed successfully
 
            This method is called when authentication has completed
@@ -213,7 +227,8 @@ class SSHClient:
 
         """
 
-    def public_key_auth_requested(self):
+    def public_key_auth_requested(self) -> \
+            MaybeAwait[Optional[KeyPairListArg]]:
         """Public key authentication has been requested
 
            This method should return a private key corresponding to
@@ -239,7 +254,7 @@ class SSHClient:
 
         return None # pragma: no cover
 
-    def password_auth_requested(self):
+    def password_auth_requested(self) -> MaybeAwait[Optional[str]]:
         """Password authentication has been requested
 
            This method should return a string containing the password
@@ -266,7 +281,8 @@ class SSHClient:
 
         return None # pragma: no cover
 
-    def password_change_requested(self, prompt, lang):
+    def password_change_requested(self, prompt: str, lang: str) -> \
+            MaybeAwait[PasswordChangeResponse]:
         """A password change has been requested
 
            This method is called when password authentication was
@@ -296,7 +312,7 @@ class SSHClient:
 
         return NotImplemented # pragma: no cover
 
-    def password_changed(self):
+    def password_changed(self) -> None:
         """The requested password change was successful
 
            This method is called to indicate that a requested password
@@ -306,7 +322,7 @@ class SSHClient:
 
         """
 
-    def password_change_failed(self):
+    def password_change_failed(self) -> None:
         """The requested password change has failed
 
            This method is called to indicate that a requested password
@@ -317,7 +333,7 @@ class SSHClient:
 
         """
 
-    def kbdint_auth_requested(self):
+    def kbdint_auth_requested(self) -> MaybeAwait[Optional[str]]:
         """Keyboard-interactive authentication has been requested
 
            This method should return a string containing a comma-separated
@@ -346,7 +362,9 @@ class SSHClient:
 
         return NotImplemented # pragma: no cover
 
-    def kbdint_challenge_received(self, name, instructions, lang, prompts):
+    def kbdint_challenge_received(self, name: str, instructions: str,
+                                  lang: str, prompts: KbdIntPrompts) -> \
+            MaybeAwait[Optional[KbdIntResponse]]:
         """A keyboard-interactive auth challenge has been received
 
            This method is called when the server sends a keyboard-interactive

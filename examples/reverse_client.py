@@ -1,6 +1,6 @@
 #!/usr/bin/env python3.8
 #
-# Copyright (c) 2013-2018 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2021 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -33,8 +33,10 @@
 import asyncio, asyncssh, sys
 from asyncio.subprocess import PIPE
 
-async def handle_request(process):
+async def handle_request(process: asyncssh.SSHServerProcess) -> None:
     """Run a command on the client, piping I/O over an SSH session"""
+
+    assert process.command is not None
 
     local_proc = await asyncio.create_subprocess_shell(
         process.command, stdin=PIPE, stdout=PIPE, stderr=PIPE)
@@ -45,7 +47,7 @@ async def handle_request(process):
     process.exit(await local_proc.wait())
     await process.wait_closed()
 
-async def run_reverse_client():
+async def run_reverse_client() -> None:
     """Make an outbound connection and then become an SSH server on it"""
 
     conn = await asyncssh.connect_reverse(
