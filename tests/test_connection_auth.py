@@ -63,6 +63,15 @@ class _AsyncGSSServer(asyncssh.SSHServer):
                                               host_principal)
 
 
+class _NullServer(Server):
+    """Server for testing disabled auth"""
+
+    async def begin_auth(self, username):
+        """Handle client authentication request"""
+
+        return False
+
+
 class _HostBasedServer(Server):
     """Server for testing host-based authentication"""
 
@@ -361,7 +370,9 @@ class _KbdintServer(Server):
         """Return a password challenge after the instructions"""
 
         if self._kbdint_round == 0:
-            if username == 'pw':
+            if username == 'none':
+                result = ('', '', '', [])
+            elif username == 'pw':
                 result = ('', '', '', [('Password:', False)])
             elif username == 'pc':
                 result = ('', '', '', [('Passcode:', False)])
@@ -370,7 +381,7 @@ class _KbdintServer(Server):
             else:
                 result = ('', '', '', [('Other Challenge:', False)])
         else:
-            if responses in (['kbdint'], ['1', '2']):
+            if responses in ([], ['kbdint'], ['1', '2']):
                 result = True
             else:
                 result = ('', '', '', [('Second Challenge:', True)])
@@ -404,6 +415,30 @@ class _UnknownAuthClientConnection(asyncssh.connection.SSHClientConnection):
 
         self._auth_methods = [b'unknown'] + self._auth_methods
         super().try_next_auth()
+
+
+class _TestNullAuth(ServerTestCase):
+    """Unit tests for testing disabled authentication"""
+
+    @classmethod
+    async def start_server(cls):
+        """Start an SSH server which supports disabled authentication"""
+
+        return await cls.create_server(_NullServer)
+
+    @asynctest
+    async def test_disabled_auth(self):
+        """Test disabled authentication"""
+
+        async with self.connect(username='user'):
+            pass
+
+    @asynctest
+    async def test_disabled_trivial_auth(self):
+        """Test disabling trivial auth with no authentication"""
+
+        with self.assertRaises(asyncssh.PermissionDenied):
+            await self.connect(username='user', disable_trivial_auth=True)
 
 
 @unittest.skipUnless(gss_available, 'GSS not available')
@@ -469,6 +504,24 @@ class _TestGSSAuth(ServerTestCase):
 
         with self.assertRaises(asyncssh.PermissionDenied):
             await self.connect(gss_host='1,init_error', username='user')
+
+    @asynctest
+    async def test_disabled_trivial_gss_kex_auth(self):
+        """Test disabling trivial auth with GSS key exchange authentication"""
+
+        async with self.connect(kex_algs=['gss-gex-sha256'],
+                                username='user', gss_host='1',
+                                disable_trivial_auth=True):
+            pass
+
+    @asynctest
+    async def test_disabled_trivial_gss_mic_auth(self):
+        """Test disabling trivial auth with GSS MIC authentication"""
+
+        async with self.connect(kex_algs=['ecdh-sha2-nistp256'],
+                                username='user', gss_host='1',
+                                disable_trivial_auth=True):
+            pass
 
 
 @unittest.skipUnless(gss_available, 'GSS not available')
@@ -724,6 +777,15 @@ class _TestHostBasedAuth(ServerTestCase):
         with self.assertRaises(asyncssh.PermissionDenied):
             await self.connect(username='user', client_host_keys=[(ckey, cert)],
                                client_username='user')
+
+    @asynctest
+    async def test_disabled_trivial_client_host_auth(self):
+        """Test disabling trivial auth with host-based authentication"""
+
+        async with self.connect(username='user', client_host_keys='skey',
+                                client_username='user',
+                                disable_trivial_auth=True):
+            pass
 
 
 @patch_getnameinfo
@@ -1301,6 +1363,14 @@ class _TestPublicKeyAuth(ServerTestCase):
                                     agent_path=None):
                 pass
 
+    @asynctest
+    async def test_disabled_trivial_public_key_auth(self):
+        """Test disabling trivial auth with public key authentication"""
+
+        async with self.connect(username='ckey', agent_path=None,
+                                disable_trivial_auth=True):
+            pass
+
 
 class _TestPublicKeyAsyncServerAuth(_TestPublicKeyAuth):
     """Unit tests for public key authentication with async server callbacks"""
@@ -1493,6 +1563,16 @@ class _TestX509Auth(ServerTestCase):
         with self.assertRaises(asyncssh.PermissionDenied):
             await self.connect(username='ckey', client_keys=['skey_x509_chain'])
 
+    @asynctest
+    async def test_disabled_trivial_x509_auth(self):
+        """Test disabling trivial auth with X.509 certificate authentication"""
+
+        async with self.connect(username='ckey',
+                                client_keys=['ckey_x509_self'],
+                                disable_trivial_auth=True):
+            pass
+
+
 @unittest.skipUnless(x509_available, 'X.509 not available')
 class _TestX509AuthDisabled(ServerTestCase):
     """Unit tests for disabled X.509 certificate authentication"""
@@ -1593,7 +1673,8 @@ class _TestPasswordAuth(ServerTestCase):
 
     @async_context_manager
     async def _connect_password(self, username, password, old_password='',
-                                new_password='', test_async=False):
+                                new_password='', disable_trivial_auth=False,
+                                test_async=False):
         """Open a connection to test password authentication"""
 
         def client_factory():
@@ -1602,9 +1683,9 @@ class _TestPasswordAuth(ServerTestCase):
             cls = _AsyncPasswordClient if test_async else _PasswordClient
             return cls(password, old_password, new_password)
 
-        conn, _ = await self.create_connection(client_factory,
-                                               username=username,
-                                               client_keys=None)
+        conn, _ = await self.create_connection(
+            client_factory, username=username, client_keys=None,
+            disable_trivial_auth=disable_trivial_auth)
 
         return conn
 
@@ -1660,6 +1741,22 @@ class _TestPasswordAuth(ServerTestCase):
         with self.assertRaises(asyncssh.PermissionDenied):
             await self._connect_password('pw', 'oldpw', 'badpw', 'pw')
 
+    @asynctest
+    async def test_disabled_trivial_password_auth(self):
+        """Test disabling trivial auth with password authentication"""
+
+        async with self.connect(username='pw', password='pw',
+                                client_keys=None, disable_trivial_auth=True):
+            pass
+
+    @asynctest
+    async def test_disabled_trivial_password_change(self):
+        """Test disabling trivial aith with password change"""
+
+        async with self._connect_password('pw', 'oldpw', 'oldpw', 'pw',
+                                          disable_trivial_auth=True):
+            pass
+
 
 class _TestPasswordAsyncServerAuth(_TestPasswordAuth):
     """Unit tests for password authentication with async server callbacks"""
@@ -1695,6 +1792,14 @@ class _TestKbdintAuth(ServerTestCase):
                                                client_keys=None)
 
         return conn
+
+    @asynctest
+    async def test_kbdint_auth_no_prompts(self):
+        """Test keyboard-interactive authentication with no prompts"""
+
+        async with self.connect(username='none', password='kbdint',
+                                client_keys=None):
+            pass
 
     @asynctest
     async def test_kbdint_auth_password(self):
@@ -1764,6 +1869,22 @@ class _TestKbdintAuth(ServerTestCase):
 
         with self.assertRaises(asyncssh.PermissionDenied):
             await self._connect_kbdint('kbdint', ['badpw'])
+
+    @asynctest
+    async def test_disabled_trivial_kbdint_auth(self):
+        """Test disabled trivial auth with keyboard-interactive auth"""
+
+        async with self.connect(username='pw', password='kbdint',
+                                client_keys=None, disable_trivial_auth=True):
+            pass
+
+    @asynctest
+    async def test_disabled_trivial_kbdint_no_prompts(self):
+        """Test disabled trivial with with no keyboard-interactive prompts"""
+
+        with self.assertRaises(asyncssh.PermissionDenied):
+            await self.connect(username='none', password='kbdint',
+                               client_keys=None, disable_trivial_auth=True)
 
 
 class _TestKbdintAsyncServerAuth(_TestKbdintAuth):

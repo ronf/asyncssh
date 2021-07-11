@@ -31,7 +31,7 @@ from asyncssh.auth import MSG_USERAUTH_GSSAPI_RESPONSE
 from asyncssh.constants import MSG_USERAUTH_REQUEST, MSG_USERAUTH_FAILURE
 from asyncssh.constants import MSG_USERAUTH_SUCCESS
 from asyncssh.gss import GSSClient, GSSServer
-from asyncssh.packet import SSHPacket, Boolean, NameList, String
+from asyncssh.packet import SSHPacket, Boolean, Byte, NameList, String
 
 from .util import asynctest, gss_available, patch_gss
 from .util import AsyncTestCase, ConnectionStub
@@ -55,13 +55,21 @@ class _AuthConnectionStub(ConnectionStub):
 
         # pylint: disable=no-self-use
 
-        return b''.join((String('user'), String('service'),
-                         String(method)) + args)
+        return b''.join((Byte(MSG_USERAUTH_REQUEST), String('user'),
+                         String('service'), String(method)) + args)
 
     def get_userauth_request_data(self, method, *args):
         """Get signature data for a user authentication request"""
 
         return String('') + self._get_userauth_request_packet(method, args)
+
+    def send_userauth_packet(self, pkttype, *args, handler=None,
+                             trivial=True):
+        """Send a user authentication packet"""
+
+        # pylint: disable=unused-argument
+
+        self.send_packet(pkttype, *args, handler=handler)
 
 
 class _AuthClientStub(_AuthConnectionStub):
@@ -161,15 +169,19 @@ class _AuthClientStub(_AuthConnectionStub):
         self._auth = None
         self._auth_waiter = None
 
-    async def send_userauth_request(self, method, *args, key=None):
+    async def send_userauth_request(self, method, *args, key=None,
+                                    trivial=False):
         """Send a user authentication request"""
+
+        # pylint: disable=unused-argument
 
         packet = self._get_userauth_request_packet(method, args)
 
         if key:
             packet += String(key.sign(String('') + packet))
 
-        self.send_packet(MSG_USERAUTH_REQUEST, packet)
+        self.send_userauth_packet(MSG_USERAUTH_REQUEST, packet[1:],
+                                  trivial=trivial)
 
     def get_gss_context(self):
         """Return the GSS context associated with this connection"""
@@ -290,10 +302,11 @@ class _AuthServerStub(_AuthConnectionStub):
                 self._auth.cancel()
 
             if self._override_gss_mech:
-                self.send_packet(MSG_USERAUTH_GSSAPI_RESPONSE,
-                                 String('mismatch'))
+                self.send_userauth_packet(MSG_USERAUTH_GSSAPI_RESPONSE,
+                                          String('mismatch'))
             elif self._override_pk_ok:
-                self.send_packet(MSG_USERAUTH_PK_OK, String(''), String(''))
+                self.send_userauth_packet(MSG_USERAUTH_PK_OK, String(''),
+                                          String(''))
             else:
                 self._auth = lookup_server_auth(self, 'user', method, packet)
         else:
@@ -303,14 +316,14 @@ class _AuthServerStub(_AuthConnectionStub):
         """Send a user authentication failure response"""
 
         self._auth = None
-        self.send_packet(MSG_USERAUTH_FAILURE, NameList([]),
-                         Boolean(partial_success))
+        self.send_userauth_packet(MSG_USERAUTH_FAILURE, NameList([]),
+                                  Boolean(partial_success))
 
     def send_userauth_success(self):
         """Send a user authentication success response"""
 
         self._auth = None
-        self.send_packet(MSG_USERAUTH_SUCCESS)
+        self.send_userauth_packet(MSG_USERAUTH_SUCCESS)
 
     def get_gss_context(self):
         """Return the GSS context associated with this connection"""

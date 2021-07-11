@@ -62,10 +62,11 @@ class _Auth(SSHPacketHandler):
         self._logger = conn.logger
         self._coro = conn.create_task(coro)
 
-    def send_packet(self, pkttype, *args):
+    def send_packet(self, pkttype, *args, trivial=True):
         """Send an auth packet"""
 
-        self._conn.send_packet(pkttype, *args, handler=self)
+        self._conn.send_userauth_packet(pkttype, *args, handler=self,
+                                        trivial=trivial)
 
     @property
     def logger(self):
@@ -107,10 +108,11 @@ class _ClientAuth(_Auth):
     def auth_failed(self):
         """Callback when auth fails"""
 
-    async def send_request(self, *args, key=None):
+    async def send_request(self, *args, key=None, trivial=True):
         """Send a user authentication request"""
 
-        await self._conn.send_userauth_request(self._method, *args, key=key)
+        await self._conn.send_userauth_request(self._method, *args, key=key,
+                                               trivial=trivial)
 
 
 class _ClientNullAuth(_ClientAuth):
@@ -131,7 +133,8 @@ class _ClientGSSKexAuth(_ClientAuth):
         if self._conn.gss_kex_auth_requested():
             self.logger.debug1('Trying GSS key exchange auth')
 
-            await self.send_request(key=self._conn.get_gss_context())
+            await self.send_request(key=self._conn.get_gss_context(),
+                                    trivial=False)
         else:
             self._conn.try_next_auth()
 
@@ -167,7 +170,8 @@ class _ClientGSSMICAuth(_ClientAuth):
             data = self._conn.get_userauth_request_data(self._method)
 
             self.send_packet(MSG_USERAUTH_GSSAPI_MIC,
-                             String(self._gss.sign(data)))
+                             String(self._gss.sign(data)),
+                             trivial=False)
         else:
             self.send_packet(MSG_USERAUTH_GSSAPI_EXCHANGE_COMPLETE)
 
@@ -274,7 +278,8 @@ class _ClientHostBasedAuth(_ClientAuth):
             await self.send_request(String(keypair.algorithm),
                                     String(keypair.public_data),
                                     String(client_host),
-                                    String(client_username), key=keypair)
+                                    String(client_username), key=keypair,
+                                    trivial=False)
         except ValueError as exc:
             self.logger.debug1('Host based auth failed: %s', exc)
             self._conn.try_next_auth()
@@ -310,7 +315,7 @@ class _ClientPublicKeyAuth(_ClientAuth):
         await self.send_request(Boolean(True),
                                 String(self._keypair.algorithm),
                                 String(self._keypair.public_data),
-                                key=self._keypair)
+                                key=self._keypair, trivial=False)
 
     def _process_public_key_ok(self, _pkttype, _pktid, packet):
         """Process a public key ok response"""
@@ -361,7 +366,8 @@ class _ClientKbdIntAuth(_ClientAuth):
             return
 
         self.send_packet(MSG_USERAUTH_INFO_RESPONSE, UInt32(len(responses)),
-                         b''.join(String(r) for r in responses))
+                         b''.join(String(r) for r in responses),
+                         trivial=not responses)
 
     def _process_info_request(self, _pkttype, _pktid, packet):
         """Process a keyboard interactive authentication request"""
@@ -423,7 +429,8 @@ class _ClientPasswordAuth(_ClientAuth):
 
         self.logger.debug1('Trying password auth')
 
-        await self.send_request(Boolean(False), String(password))
+        await self.send_request(Boolean(False), String(password),
+                                trivial=False)
 
     async def _change_password(self, prompt, lang):
         """Start password change"""
@@ -443,7 +450,8 @@ class _ClientPasswordAuth(_ClientAuth):
 
         await self.send_request(Boolean(True),
                                 String(old_password.encode('utf-8')),
-                                String(new_password.encode('utf-8')))
+                                String(new_password.encode('utf-8')),
+                                trivial=False)
 
     def auth_succeeded(self):
         if self._password_change:

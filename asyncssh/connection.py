@@ -667,6 +667,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         self._auth_in_progress = False
         self._auth_complete = False
         self._auth_methods = [b'none']
+        self._auth_was_trivial = True
         self._username = None
 
         self._channels = {}
@@ -691,6 +692,8 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
                 options.login_timeout, self._login_timer_callback)
         else:
             self._login_timer = None
+
+        self._disable_trivial_auth = False
 
     async def __aenter__(self):
         """Allow SSHConnection to be used as an async context manager"""
@@ -1570,7 +1573,15 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         return (String(self._session_id) +
                 self._get_userauth_request_packet(method, args))
 
-    async def send_userauth_request(self, method, *args, key=None):
+    def send_userauth_packet(self, pkttype, *args, handler=None,
+                             trivial=True):
+        """Send a user authentication packet"""
+
+        self._auth_was_trivial &= trivial
+        self.send_packet(pkttype, *args, handler=handler)
+
+    async def send_userauth_request(self, method, *args, key=None,
+                                    trivial=True):
         """Send a user authentication request"""
 
         packet = self._get_userauth_request_packet(method, args)
@@ -1588,7 +1599,8 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
             packet += String(sig)
 
-        self.send_packet(MSG_USERAUTH_REQUEST, packet[1:])
+        self.send_userauth_packet(MSG_USERAUTH_REQUEST, packet[1:],
+                                  trivial=trivial)
 
     def send_userauth_failure(self, partial_success):
         """Send a user authentication failure response"""
@@ -2016,6 +2028,9 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         packet.check_end()
 
         if self.is_client() and self._auth:
+            if self._auth_was_trivial and self._disable_trivial_auth:
+                raise PermissionDenied('Trivial auth disabled')
+
             self.logger.info('Auth for user %s succeeded', self._username)
 
             self._auth.auth_succeeded()
@@ -2713,6 +2728,8 @@ class SSHClientConnection(SSHConnection):
                                     options.preferred_auth]
         else:
             self._preferred_auth = get_client_auth_methods()
+
+        self._disable_trivial_auth = options.disable_trivial_auth
 
         if options.agent_path is not None:
             self._agent = SSHAgentClient(options.agent_path)
@@ -5861,6 +5878,13 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
            keyboard-interactive, and then password. This list may be
            limited by which auth methods are implemented by the client
            and which methods the server accepts.
+       :param disable_trivial_auth: (optional)
+           Whether or not to allow "trivial" forms of auth where the
+           client is not actually challenged for credentials. Setting
+           this will cause the connection to fail if a server does not
+           perform some non-trivial form of auth during the initial
+           SSH handshake. If not specified, all forms of auth supported
+           by the server are allowed, including none.
        :param agent_path: (optional)
            The path of a UNIX domain socket to use to contact an ssh-agent
            process which will perform the operations needed for client
@@ -6051,6 +6075,7 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
        :type gss_auth: `bool`
        :type gss_delegate_creds: `bool`
        :type preferred_auth: `str` or `list` of `str`
+       :type disable_trivial_auth: `bool`
        :type agent_path: `str` or :class:`SSHServerConnection`
        :type agent_identities:
            *see* :ref:`SpecifyingPublicKeys` and :ref:`SpecifyingCertificates`
@@ -6105,10 +6130,10 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
                 client_host_certs=(), client_host=None, client_username=(),
                 client_keys=(), client_certs=(), passphrase=None, gss_host=(),
                 gss_kex=(), gss_auth=(), gss_delegate_creds=(),
-                preferred_auth=(), agent_path=(), agent_identities=(),
-                agent_forwarding=(), pkcs11_provider=(), pkcs11_pin=None,
-                command=(), subsystem=None, env=(), send_env=(),
-                request_pty=(), term_type=None, term_size=None,
+                preferred_auth=(), disable_trivial_auth=False, agent_path=(),
+                agent_identities=(), agent_forwarding=(), pkcs11_provider=(),
+                pkcs11_pin=None, command=(), subsystem=None, env=(),
+                send_env=(), request_pty=(), term_type=None, term_size=None,
                 term_modes=None, x11_forwarding=(), x11_display=None,
                 x11_auth_path=None, x11_single_connection=False,
                 encoding='utf-8', errors='strict', window=_DEFAULT_WINDOW,
@@ -6226,6 +6251,8 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
             preferred_auth = preferred_auth.split(',')
 
         self.preferred_auth = preferred_auth
+
+        self.disable_trivial_auth = disable_trivial_auth
 
         if agent_path == ():
             agent_path = config.get('IdentityAgent', ())
