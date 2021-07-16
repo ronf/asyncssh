@@ -111,7 +111,7 @@ class SSHConfig:
         # pylint: disable=unused-argument
 
         for pattern in args:
-            path = Path(pattern)
+            path = Path(pattern).expanduser()
 
             if path.anchor:
                 pattern = str(Path(*path.parts[1:]))
