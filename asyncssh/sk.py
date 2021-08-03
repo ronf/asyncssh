@@ -97,6 +97,7 @@ def _ctap2_enroll(dev, alg, application, user, pin, resident):
                                  pin_uv_protocol=pin_protocol)
     cdata = cred.auth_data.credential_data
 
+    # pylint: disable=no-member
     return _decode_public_key(alg, cdata.public_key), cdata.credential_id
 
 

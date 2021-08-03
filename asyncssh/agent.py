@@ -35,8 +35,8 @@ try:
         from .agent_win32 import open_agent
     else:
         from .agent_unix import open_agent
-except ImportError as exc: # pragma: no cover
-    async def open_agent(_agent_path, reason=str(exc)):
+except ImportError as _exc: # pragma: no cover
+    async def open_agent(_agent_path, reason=str(_exc)):
         """Dummy function if we're unable to import agent support"""
 
         raise OSError(errno.ENOENT, 'Agent support unavailable: %s' % reason)
