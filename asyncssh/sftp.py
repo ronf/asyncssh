@@ -866,7 +866,7 @@ class SFTPAttrs(Record):
             attrs.gid = packet.get_uint32()
 
         if flags & FILEXFER_ATTR_PERMISSIONS:
-            attrs.permissions = packet.get_uint32()
+            attrs.permissions = packet.get_uint32() & 0xffff
 
         if flags & FILEXFER_ATTR_ACMODTIME:
             attrs.atime = packet.get_uint32()
