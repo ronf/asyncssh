@@ -174,7 +174,7 @@ class _ExtInfoServerConnection(asyncssh.SSHServerConnection):
     def _send_ext_info(self):
         """Send extension information"""
 
-        self._extensions_sent['xxx'] = b''
+        self._extensions_to_send['xxx'] = b''
         super()._send_ext_info()
 
 

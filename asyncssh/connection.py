@@ -656,7 +656,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         self._cmp_alg_sc = None
 
         self._can_send_ext_info = False
-        self._extensions_sent = OrderedDict()
+        self._extensions_to_send = OrderedDict()
 
         self._server_sig_algs = ()
 
@@ -1396,6 +1396,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         kex_algs = expand_kex_algs(self._kex_algs, gss_mechs,
                                    bool(self._server_host_key_algs))
 
+        kex_algs += self._get_ext_info_kex_alg()
         host_key_algs = self._server_host_key_algs or [b'null']
 
         self.logger.debug1('Requesting key exchange')
@@ -1406,7 +1407,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         self.logger.debug2('  Compression algs: %s', self._cmp_algs)
 
         cookie = os.urandom(16)
-        kex_algs = NameList(kex_algs + self._get_ext_info_kex_alg())
+        kex_algs = NameList(kex_algs)
         host_key_algs = NameList(host_key_algs)
         enc_algs = NameList(self._enc_algs)
         mac_algs = NameList(self._mac_algs)
@@ -1427,11 +1428,11 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
     def _send_ext_info(self):
         """Send extension information"""
 
-        packet = UInt32(len(self._extensions_sent))
+        packet = UInt32(len(self._extensions_to_send))
 
         self.logger.debug2('Sending extension info')
 
-        for name, value in self._extensions_sent.items():
+        for name, value in self._extensions_to_send.items():
             packet += String(name) + String(value)
 
             self.logger.debug2('  %s: %s', name, value)
@@ -1494,6 +1495,8 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         self.send_packet(MSG_NEWKEYS)
 
+        self._extensions_to_send[b'global-requests-ok'] = ''
+
         if self.is_client():
             self._send_encryption = next_enc_cs
             self._send_enchdrlen = 1 if etm_cs else 5
@@ -1545,10 +1548,11 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
             if first_kex:
                 self._next_service = _USERAUTH_SERVICE
 
-                if self._can_send_ext_info:
-                    self._extensions_sent[b'server-sig-algs'] = \
-                        b','.join(self._sig_algs)
-                    self._send_ext_info()
+                self._extensions_to_send[b'server-sig-algs'] = \
+                    b','.join(self._sig_algs)
+
+        if self._can_send_ext_info:
+            self._send_ext_info()
 
         self._kex_complete = True
         self._send_deferred_packets()
@@ -2047,10 +2051,6 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
             self._send_deferred_packets()
             self._set_keepalive_timer()
             self._owner.auth_completed()
-
-            if self._can_send_ext_info:
-                self._extensions_sent[b'global-requests-ok'] = b''
-                self._send_ext_info()
 
             if self._acceptor:
                 result = self._acceptor(self)
