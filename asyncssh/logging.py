@@ -70,7 +70,10 @@ class _SSHLogger(logging.LoggerAdapter):
                 else:
                     return 'port %d' % port if port else 'dynamic port'
             elif isinstance(arg, bytes):
-                arg = arg.decode('ascii', errors='replace')
+                arg = arg.decode('ascii', errors='backslashreplace')
+
+                if not arg.isprintable():
+                    arg = repr(arg)[1:-1]
 
             return arg
 
