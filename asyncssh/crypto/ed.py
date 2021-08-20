@@ -1,4 +1,4 @@
-# Copyright (c) 2019-2020 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2019-2021 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -41,7 +41,7 @@ curve25519_available = backend.x25519_supported()
 curve448_available = backend.x448_supported()
 
 
-if ed25519_available: # pragma: no branch
+if ed25519_available or ed448_available: # pragma: no branch
     class _EdKey(PyCAKey):
         """Base class for shim around PyCA for Ed25519/Ed448 keys"""
 
@@ -67,8 +67,13 @@ if ed25519_available: # pragma: no branch
     class EdDSAPrivateKey(_EdKey):
         """A shim around PyCA for EdDSA private keys"""
 
-        _priv_classes = {b'ed25519': ed25519.Ed25519PrivateKey,
-                         b'ed448': ed448.Ed448PrivateKey}
+        _priv_classes = {}
+
+        if ed25519_available: # pragma: no branch
+            _priv_classes[b'ed25519'] = ed25519.Ed25519PrivateKey
+
+        if ed448_available: # pragma: no branch
+            _priv_classes[b'ed448'] = ed448.Ed448PrivateKey
 
         @classmethod
         def construct(cls, curve_id, priv):
