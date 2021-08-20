@@ -29,6 +29,9 @@ from datetime import datetime
 from hashlib import md5, sha1, sha256, sha384, sha512
 from pathlib import Path, PurePath
 
+from .crypto import ed25519_available, ed448_available
+from .sk import sk_available
+
 try:
     from .crypto import generate_x509_certificate, import_x509_certificate
     _x509_available = True
@@ -51,8 +54,15 @@ from .pbe import pkcs1_decrypt, pkcs8_decrypt
 from .sk import SSH_SK_USER_PRESENCE_REQD, sk_get_resident
 
 # Default file names in .ssh directory to read private keys from
-_DEFAULT_KEY_FILES = ('id_ed25519_sk', 'id_ecdsa_sk', 'id_ed448',
-                      'id_ed25519', 'id_ecdsa', 'id_rsa', 'id_dsa')
+_DEFAULT_KEY_FILES = (
+    ('id_ed25519_sk', ed25519_available and sk_available),
+    ('id_ecdsa_sk', sk_available),
+    ('id_ed448', ed448_available),
+    ('id_ed25519', ed25519_available),
+    ('id_ecdsa', True),
+    ('id_rsa', True),
+    ('id_dsa', True)
+)
 
 # Default directories and file names to read host keys from
 _DEFAULT_HOST_KEY_DIRS = ('/opt/local/etc', '/opt/local/etc/ssh',
@@ -3071,7 +3081,8 @@ def read_certificate_list(filename):
     return _decode_list(read_file(filename), _decode_certificate)
 
 
-def load_keypairs(keylist, passphrase=None, certlist=(), skip_public=False):
+def load_keypairs(keylist, passphrase=None, certlist=(),
+                  skip_public=False, ignore_encrypted=False):
     """Load SSH private keys and optional matching certificates
 
        This function loads a list of SSH keys and optional matching
@@ -3151,8 +3162,9 @@ def load_keypairs(keylist, passphrase=None, certlist=(), skip_public=False):
                     key, certs = import_private_key_and_certs(key, passphrase)
                 else:
                     key = import_private_key(key, passphrase)
-        except KeyImportError:
-            if skip_public:
+        except KeyImportError as exc:
+            if skip_public or \
+                    (ignore_encrypted and str(exc).startswith('Passphrase')):
                 continue
 
             raise
@@ -3220,18 +3232,14 @@ def load_default_keypairs(passphrase=None, certlist=()):
 
     result = []
 
-    for file in _DEFAULT_KEY_FILES:
-        try:
-            file = Path('~', '.ssh', file).expanduser()
-            result.extend(load_keypairs(file, passphrase, certlist))
-        except KeyImportError as exc:
-            # Ignore encrypted default keys if a passphrase isn't provided
-            # and unknown key types that might not be supported
-            if (not str(exc).startswith('Passphrase') and
-                    str(exc) != 'Unknown OpenSSH private key algorithm'):
-                raise
-        except OSError:
-            pass
+    for file, condition in _DEFAULT_KEY_FILES:
+        if condition: # pragma: no branch
+            try:
+                file = Path('~', '.ssh', file).expanduser()
+                result.extend(load_keypairs(file, passphrase, certlist,
+                                            ignore_encrypted=True))
+            except OSError:
+                pass
 
     return result
 
@@ -3360,20 +3368,21 @@ def load_default_identities():
 
     result = []
 
-    for file in _DEFAULT_KEY_FILES:
-        try:
-            cert = read_certificate(Path('~', '.ssh', file + '-cert.pub'))
-        except (OSError, KeyImportError):
-            pass
-        else:
-            result.append(cert.public_data)
+    for file, condition in _DEFAULT_KEY_FILES:
+        if condition: # pragma: no branch
+            try:
+                cert = read_certificate(Path('~', '.ssh', file + '-cert.pub'))
+            except (OSError, KeyImportError):
+                pass
+            else:
+                result.append(cert.public_data)
 
-        try:
-            key = read_public_key(Path('~', '.ssh', file + '.pub'))
-        except (OSError, KeyImportError):
-            pass
-        else:
-            result.append(key.public_data)
+            try:
+                key = read_public_key(Path('~', '.ssh', file + '.pub'))
+            except (OSError, KeyImportError):
+                pass
+            else:
+                result.append(key.public_data)
 
     return result
 

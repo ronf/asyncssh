@@ -5834,13 +5834,13 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
            if they are encrypted. If this is not specified, only unencrypted
            client keys can be loaded. If the keys passed into client_keys
            are already loaded, this argument is ignored.
-       :param agent_identities: (optional)
-           A list of identities used to restrict which SSH agent keys may
-           be used. These may be specified as byte strings in binary SSH
-           format or as public keys or certificates (*see*
-           :ref:`SpecifyingPublicKeys` and :ref:`SpecifyingCertificates`).
-           If set to `None`, all keys loaded into the SSH agent will be
-           made available for use. This is the default.
+       :param ignore_encrypted: (optional)
+           Whether or not to ignore encrypted keys when no passphrase is
+           provided. This is intended to allow encrypted keys specified via
+           the IdentityFile config option to be ignored if a passphrase
+           is not specified, loading only unencrypted local keys. Note
+           that encrypted keys loaded into an SSH agent can still be used
+           when this option is set.
        :param host_based_auth: (optional)
            Whether or not to allow host-based authentication. By default,
            host-based authentication is enabled if client host keys are
@@ -5895,6 +5895,13 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
            set, its value will be used as the path. If `client_keys`
            is specified or this argument is explicitly set to `None`,
            an ssh-agent will not be used.
+       :param agent_identities: (optional)
+           A list of identities used to restrict which SSH agent keys may
+           be used. These may be specified as byte strings in binary SSH
+           format or as public keys or certificates (*see*
+           :ref:`SpecifyingPublicKeys` and :ref:`SpecifyingCertificates`).
+           If set to `None`, all keys loaded into the SSH agent will be
+           made available for use. This is the default.
        :param agent_forwarding: (optional)
            Whether or not to allow forwarding of ssh-agent requests from
            processes running on the server. By default, ssh-agent forwarding
@@ -6067,6 +6074,7 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
        :type client_keys: *see* :ref:`SpecifyingPrivateKeys`
        :type client_certs: *see* :ref:`SpecifyingCertificates`
        :type passphrase: `str`
+       :type ignore_encrypted: `bool`
        :type host_based_auth: `bool`
        :type public_key_auth: `bool`
        :type kbdint_auth: `bool`
@@ -6129,9 +6137,10 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
                 server_host_key_algs=(), username=(), password=None,
                 client_host_keysign=(), client_host_keys=None,
                 client_host_certs=(), client_host=None, client_username=(),
-                client_keys=(), client_certs=(), passphrase=None, gss_host=(),
-                gss_kex=(), gss_auth=(), gss_delegate_creds=(),
-                preferred_auth=(), disable_trivial_auth=False, agent_path=(),
+                client_keys=(), client_certs=(), passphrase=None,
+                ignore_encrypted=False, gss_host=(), gss_kex=(), gss_auth=(),
+                gss_delegate_creds=(), preferred_auth=(),
+                disable_trivial_auth=False, agent_path=(),
                 agent_identities=(), agent_forwarding=(), pkcs11_provider=(),
                 pkcs11_pin=None, command=(), subsystem=None, env=(),
                 send_env=(), request_pty=(), term_type=None, term_size=None,
@@ -6295,7 +6304,8 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
 
         if client_keys:
             self.client_keys = load_keypairs(client_keys, passphrase,
-                                             client_certs, identities_only)
+                                             client_certs, identities_only,
+                                             ignore_encrypted)
         else:
             if client_keys == ():
                 client_keys = load_default_keypairs(passphrase, client_certs)
