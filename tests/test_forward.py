@@ -34,7 +34,7 @@ from asyncssh.misc import maybe_wait_closed
 from asyncssh.packet import String, UInt32
 from asyncssh.public_key import CERT_TYPE_USER
 from asyncssh.socks import SOCKS5, SOCKS5_AUTH_NONE
-from asyncssh.socks import SOCKS4_OK_RESPONSE, SOCKS5_OK_RESPONSE
+from asyncssh.socks import SOCKS4_OK_RESPONSE, SOCKS5_OK_RESPONSE_HDR
 
 from .server import Server, ServerTestCase
 from .util import asynctest, echo, make_certificate
@@ -987,7 +987,8 @@ class _TestSOCKSForwarding(_CheckForwarding):
         else:
             self.assertEqual((await reader.read()), b'')
 
-    async def _check_socks5_connect(self, reader, writer, data, result):
+    async def _check_socks5_connect(self, reader, writer, data,
+                                    addrtype, addrlen, result):
         """Check SOCKSv5 connect_requests"""
 
         writer.write(bytes((SOCKS5, 1, SOCKS5_AUTH_NONE)))
@@ -998,15 +999,19 @@ class _TestSOCKSForwarding(_CheckForwarding):
         await asyncio.sleep(0.1)
         writer.write(data[20:])
 
-        response = await reader.readexactly(len(SOCKS5_OK_RESPONSE))
-        self.assertEqual(response, SOCKS5_OK_RESPONSE)
+        expected = SOCKS5_OK_RESPONSE_HDR + bytes((addrtype,)) + \
+                   (addrlen + 2) * b'\0'
+
+        response = await reader.readexactly(len(expected))
+        self.assertEqual(response, expected)
 
         if result:
             await self._check_echo_line(reader, writer)
         else:
             self.assertEqual((await reader.read()), b'')
 
-    async def _check_socks(self, handler, listen_port, msg, data, *args):
+    async def _check_socks(self, handler, listen_port, msg,
+                           data, *args):
         """Unit test SOCKS dynamic port forwarding"""
 
         with self.subTest(msg=msg, data=data):
@@ -1045,10 +1050,10 @@ class _TestSOCKSForwarding(_CheckForwarding):
         ]
 
         _socks5_connects = [
-            ('IPv4',        '050100017f0000010007',             True),
-            ('Hostname',    '05010003096c6f63616c686f73740007', True),
-            ('IPv6',        '05010004' + 15*'00' + '010007',    True),
-            ('Rejected',    '05010003000001',                   False)
+            ('IPv4',     '050100017f0000010007',             1,  4, True),
+            ('Hostname', '05010003096c6f63616c686f73740007', 1,  4, True),
+            ('IPv6',     '05010004' + 15*'00' + '010007',    4, 16, True),
+            ('Rejected', '05010003000001',                   1,  4, False)
         ]
 
         async with self.connect() as conn:
@@ -1067,9 +1072,10 @@ class _TestSOCKSForwarding(_CheckForwarding):
                     await self._check_socks(self._check_socks4_connect,
                                             listen_port, msg, data, result)
 
-                for msg, data, result in _socks5_connects:
+                for msg, data, addrtype, addrlen, result in _socks5_connects:
                     await self._check_socks(self._check_socks5_connect,
-                                            listen_port, msg, data, result)
+                                            listen_port, msg, data,
+                                            addrtype, addrlen, result)
 
     @asynctest
     async def test_forward_socks_specific_port(self):

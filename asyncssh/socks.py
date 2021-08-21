@@ -39,8 +39,7 @@ SOCKS5_ADDR_HOSTNAME    = 0x03
 SOCKS5_ADDR_IPV6        = 0x04
 
 SOCKS4_OK_RESPONSE      = bytes((0, SOCKS4_OK, 0, 0, 0, 0, 0, 0))
-SOCKS5_OK_RESPONSE      = bytes((SOCKS5, SOCKS5_OK, 0,
-                                 SOCKS5_ADDR_HOSTNAME, 0, 0, 0))
+SOCKS5_OK_RESPONSE_HDR  = bytes((SOCKS5, SOCKS5_OK, 0))
 
 _socks5_addr_len = { SOCKS5_ADDR_IPV4: 4, SOCKS5_ADDR_IPV6: 16 }
 
@@ -54,6 +53,7 @@ class SSHSOCKSForwarder(SSHLocalForwarder):
         self._inpbuf = b''
         self._bytes_needed = 2
         self._recv_handler = self._recv_version
+        self._addrtype = 0
         self._host = ''
         self._port = 0
 
@@ -73,7 +73,11 @@ class SSHSOCKSForwarder(SSHLocalForwarder):
     def _send_socks5_ok(self):
         """Send SOCKS5 success response"""
 
-        self._transport.write(SOCKS5_OK_RESPONSE)
+        addrlen = _socks5_addr_len[self._addrtype] + 2
+
+        self._transport.write(SOCKS5_OK_RESPONSE_HDR +
+                              bytes((self._addrtype,)) +
+                              addrlen * b'\0')
 
     def _recv_version(self, data):
         """Parse SOCKS version"""
@@ -144,12 +148,14 @@ class SSHSOCKSForwarder(SSHLocalForwarder):
             if data[3] == SOCKS5_ADDR_HOSTNAME:
                 self._bytes_needed = 1
                 self._recv_handler = self._recv_socks5_hostlen
+                self._addrtype = SOCKS5_ADDR_IPV4
             else:
                 addrlen = _socks5_addr_len.get(data[3])
 
                 if addrlen:
                     self._bytes_needed = addrlen
                     self._recv_handler = self._recv_socks5_addr
+                    self._addrtype = data[3]
                 else:
                     self.close()
         else:
