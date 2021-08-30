@@ -192,6 +192,7 @@ def run(cmd):
         return subprocess.check_output(cmd, shell=True,
                                        stderr=subprocess.STDOUT)
     except subprocess.CalledProcessError as exc: # pragma: no cover
+        print('command failed: %s' % cmd)
         print(exc.output.decode())
         raise
 
