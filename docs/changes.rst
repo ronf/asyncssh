@@ -3,6 +3,52 @@
 Change Log
 ==========
 
+Release 2.7.1 (6 Sep 2021)
+--------------------------
+
+* Added an option to allow encrypted keys to be ignored when no passphrase
+  is set. This behavior previously happened by default when loading keys
+  from default locations, but now this option to load_keypairs() can be
+  specified when loading any set of keys.
+
+* Changed loading of default keys to automatically skip key types which
+  aren't supported due to missing dependencies.
+
+* Added the ability to specify "default" for server_host_key_algs, as
+  a way for a client to request that its full set of default algorithms
+  be advertised to the server, rather than just the algorithms matching
+  keys in the client's known hosts list. Thanks go to Manfred Kaiser
+  for suggesting this improvement.
+
+* Added support for tilde-expansion in the config file "include"
+  directive. Thanks go to Zack Cerza for reporting this and suggesting
+  a fix.
+
+* Improved interoperatbility of AsyncSSH SOCKS listener by sending a zero
+  address rather than an empty hostname in the SOCKS CONNECT response.
+  Thanks go to Github user juouy for reporting this and suggesting a fix.
+
+* Fixed a couple of issues related to sending SSH_EXT_INFO messages.
+
+* Fixed an issue with using SSHAcceptor as an async context manager.
+  Thanks go to Paulo Costa for reporing this.
+
+* Fixed an issue where a tunnel wasn't always cleaned up properly when
+  creating a remote listener.
+
+* Improved handling of connection drops, avoiding exceptions from being
+  raised in some cases when the transport is abruptly closed.
+
+* Made AsyncSSH SFTP support more tolerant of file permission values with
+  undefined bits set. Thanks go to GitHub user ccwufu for reporting this.
+
+* Added some missing key exchange algorithms in the AsyncSSH documentation.
+  Thanks go to Jeremy Norris for noticing and reporting this.
+
+* Added support for running AsyncSSH unit tests on systems with OpenSSL
+  3.0 installed. Thanks go to Ken Dreyer for raising this issue and
+  pointing out the new OpenSSL "provider" support for legacy algorithms.
+
 Release 2.7.0 (19 Jun 2021)
 ---------------------------
 
