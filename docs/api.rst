@@ -2144,6 +2144,9 @@ disabled by default:
 
   | gss-gex-sha1
   | gss-group1-sha1
+  | diffie-hellman-group-exchange-sha224\@ssh.com
+  | diffie-hellman-group-exchange-sha384\@ssh.com
+  | diffie-hellman-group-exchange-sha512\@ssh.com
   | diffie-hellman-group-exchange-sha1
   | diffie-hellman-group14-sha224\@ssh.com
   | diffie-hellman-group15-sha256\@ssh.com
