@@ -445,7 +445,7 @@ def _select_algs(alg_type, algs, possible_algs, default_algs,
         raise ValueError('No %s algorithms selected' % alg_type)
 
 
-def _select_host_key_algs(algs, config_algs, default_algs=()):
+def _select_host_key_algs(algs, config_algs, default_algs):
     """Select a set of allowed host key algorithms"""
 
     possible_algs = (get_x509_certificate_algs() + get_certificate_algs() +
@@ -6210,7 +6210,7 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
         # Just validate the input here -- the actual server host key
         # selection is done later, after the known_hosts lookup is done.
         _select_host_key_algs(server_host_key_algs,
-                              config.get('HostKeyAlgorithms', ()))
+                              config.get('HostKeyAlgorithms', ()), [])
 
         if username == ():
             username = config.get('User', local_username)
