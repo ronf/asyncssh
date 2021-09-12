@@ -987,13 +987,10 @@ class SFTPName(Record):
     def _format(self, k, v):
         """Convert name fields to more readable values"""
 
-        if not v:
-            return None
+        if isinstance(v, bytes):
+            v = v.decode('utf-8', errors='replace')
 
-        if k == 'attrs':
-            return str(v) or None
-        else:
-            return v.decode('utf-8', errors='replace') or None
+        return str(v) or None
 
     def encode(self):
         """Encode an SFTP name as bytes in an SSH packet"""
