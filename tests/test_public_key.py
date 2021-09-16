@@ -79,7 +79,7 @@ _openssl_supports_pkey = _openssl_version >= b'OpenSSL 1.1.1'
 
 if _openssl_version >= b'OpenSSL 3':
     _openssl_legacy = '-provider default -provider legacy '
-else:
+else: # pragma: no cover
     _openssl_legacy = ''
 
 try:
