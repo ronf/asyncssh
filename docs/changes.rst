@@ -3,6 +3,17 @@
 Change Log
 ==========
 
+Release 2.7.2 (15 Sep 2021)
+---------------------------
+
+* Fixed a regression related to server host key selection when attempting
+  to use a leading '+' to add algorithms to the front of the default list.
+
+* Fixed logging to properly handle SFTPName objects with string filenames.
+
+* Fixed SSH_EXT_INFO to only be sent after the first key exchange.
+
+
 Release 2.7.1 (6 Sep 2021)
 --------------------------
 
