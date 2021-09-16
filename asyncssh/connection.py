@@ -1553,6 +1553,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         if self._can_send_ext_info:
             self._send_ext_info()
+            self._can_send_ext_info = False
 
         self._kex_complete = True
         self._send_deferred_packets()
