@@ -23,7 +23,6 @@
 """SFTP handlers"""
 
 import asyncio
-from collections import OrderedDict
 import errno
 from fnmatch import fnmatch
 import inspect
@@ -34,6 +33,7 @@ import posixpath
 import stat
 import sys
 import time
+from typing import Optional, Sequence, Tuple
 
 from .constants import DEFAULT_LANG
 
@@ -56,8 +56,8 @@ from .constants import FX_OK, FX_EOF, FX_NO_SUCH_FILE, FX_PERMISSION_DENIED
 from .constants import FX_FAILURE, FX_BAD_MESSAGE, FX_NO_CONNECTION
 from .constants import FX_CONNECTION_LOST, FX_OP_UNSUPPORTED
 
-from .misc import Error, Record, async_context_manager, get_symbol_names
-from .misc import hide_empty, plural, to_hex
+from .misc import BytesOrStr, Error, Record, async_context_manager
+from .misc import get_symbol_names, hide_empty, plural, to_hex
 
 from .packet import Byte, String, UInt32, UInt64, PacketDecodeError
 from .packet import SSHPacket, SSHPacketLogger
@@ -797,13 +797,14 @@ class SFTPAttrs(Record):
 
     """
 
-    # Unfortunately, pylint can't handle attributes defined with setattr
-    # pylint: disable=attribute-defined-outside-init
-
-    __slots__ = OrderedDict((('size', None), ('uid', None), ('gid', None),
-                             ('permissions', None), ('atime', None),
-                             ('mtime', None), ('nlink', None),
-                             ('extended', [])))
+    size: Optional[int]
+    uid: Optional[int]
+    gid: Optional[int]
+    permissions: Optional[int]
+    atime: Optional[int]
+    mtime: Optional[int]
+    nlink: Optional[int]
+    extended: Sequence[Tuple[bytes, bytes]] = ()
 
     def _format(self, k, v):
         """Convert attributes to more readable values"""
@@ -915,13 +916,17 @@ class SFTPVFSAttrs(Record):
 
     """
 
-    # Unfortunately, pylint can't handle attributes defined with setattr
-    # pylint: disable=attribute-defined-outside-init
-
-    __slots__ = OrderedDict((('bsize', 0), ('frsize', 0), ('blocks', 0),
-                             ('bfree', 0), ('bavail', 0), ('files', 0),
-                             ('ffree', 0), ('favail', 0), ('fsid', 0),
-                             ('flags', 0), ('namemax', 0)))
+    bsize: int = 0
+    frsize: int = 0
+    blocks: int = 0
+    bfree: int = 0
+    bavail: int = 0
+    files: int = 0
+    ffree: int = 0
+    favail: int = 0
+    fsid: int = 0
+    flags: int = 0
+    namemax: int = 0
 
     def encode(self):
         """Encode SFTP statvfs attributes as bytes in an SSH packet"""
@@ -981,8 +986,9 @@ class SFTPName(Record):
 
     """
 
-    __slots__ = OrderedDict((('filename', ''), ('longname', ''),
-                             ('attrs', SFTPAttrs())))
+    filename: BytesOrStr = ''
+    longname: BytesOrStr = ''
+    attrs: SFTPAttrs = SFTPAttrs()
 
     def _format(self, k, v):
         """Convert name fields to more readable values"""

@@ -23,16 +23,16 @@
 import asyncio
 from asyncio.subprocess import DEVNULL, PIPE, STDOUT
 import codecs
-from collections import OrderedDict
 import inspect
 import io
 import os
 from pathlib import PurePath
 import socket
 import stat
+from typing import Mapping, Optional, Tuple
 
 from .constants import DEFAULT_LANG, EXTENDED_DATA_STDERR
-from .misc import Error, ProtocolError, Record, open_file
+from .misc import BytesOrStr, Error, ProtocolError, Record, open_file
 from .stream import SSHClientStreamSession, SSHServerStreamSession
 from .stream import SSHReader, SSHWriter
 
@@ -525,7 +525,7 @@ class SSHCompletedProcess(Record):
          ============ ======================================= =================
          Field        Description                             Type
          ============ ======================================= =================
-         env          The environment the client requested    `str` or `None`
+         env          The environment the client requested    `dict` or `None`
                       to be set for the process
          command      The command the client requested the    `str` or `None`
                       process to execute (if any)
@@ -550,10 +550,14 @@ class SSHCompletedProcess(Record):
 
     """
 
-    __slots__ = OrderedDict((('env', None), ('command', None),
-                             ('subsystem', None), ('exit_status', None),
-                             ('exit_signal', None), ('returncode', None),
-                             ('stdout', None), ('stderr', None)))
+    env: Optional[Mapping[str, str]]
+    command: Optional[str]
+    subsystem: Optional[str]
+    exit_status: Optional[int]
+    exit_signal: Optional[Tuple[str, bool, str, str]]
+    returncode: Optional[int]
+    stdout: Optional[BytesOrStr]
+    stderr: Optional[BytesOrStr]
 
 
 class SSHProcess:

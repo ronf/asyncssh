@@ -26,9 +26,9 @@ import ipaddress
 import re
 import socket
 
-from collections import OrderedDict
 from pathlib import Path
 from random import SystemRandom
+from typing import Union
 
 from .constants import DEFAULT_LANG
 from .constants import DISC_COMPRESSION_ERROR, DISC_CONNECTION_LOST
@@ -37,6 +37,9 @@ from .constants import DISC_KEY_EXCHANGE_FAILED, DISC_MAC_ERROR
 from .constants import DISC_NO_MORE_AUTH_METHODS_AVAILABLE
 from .constants import DISC_PROTOCOL_ERROR, DISC_PROTOCOL_VERSION_NOT_SUPPORTED
 from .constants import DISC_SERVICE_NOT_AVAILABLE
+
+
+BytesOrStr = Union[bytes, str]
 
 
 # Define a version of randrange which is based on SystemRandom(), so that
@@ -277,10 +280,24 @@ class Options:
         self.prepare(**self.kwargs)
 
 
-class Record:
+class _RecordMeta(type):
+    """Metaclass for general-purpose record type"""
+
+    def __new__(mcs, name, bases, ns):
+        if name != 'Record':
+            fields = ns.get('__annotations__', {}).keys()
+            defaults = {k: ns.get(k) for k in fields}
+
+            ns = {k: v for k, v in ns.items() if k not in fields}
+            ns['__slots__'] = defaults
+
+        return super().__new__(mcs, name, bases, ns)
+
+
+class Record(metaclass=_RecordMeta):
     """General-purpose record type with fixed set of fields"""
 
-    __slots__ = OrderedDict()
+    __slots__ = {}
 
     def __init__(self, *args, **kwargs):
         for k, v in self.__slots__.items():
