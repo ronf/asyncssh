@@ -176,10 +176,10 @@ class SSHLocalPortForwarder(SSHLocalForwarder):
 
         super().connection_made(transport)
 
-        peername = transport.get_extra_info('peername')[:2]
+        peername = transport.get_extra_info('peername')
 
         if peername: # pragma: no branch
-            orig_host, orig_port = peername
+            orig_host, orig_port = peername[:2]
 
         self.forward(orig_host, orig_port)
 
