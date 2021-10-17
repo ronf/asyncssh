@@ -76,7 +76,8 @@ class SSHForwarder:
         self._transport = transport
 
         sock = transport.get_extra_info('socket')
-        if sock.family in {socket.AF_INET, socket.AF_INET6}:
+
+        if sock and sock.family in {socket.AF_INET, socket.AF_INET6}:
             sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 
     def connection_lost(self, _exc):
@@ -175,7 +176,11 @@ class SSHLocalPortForwarder(SSHLocalForwarder):
 
         super().connection_made(transport)
 
-        orig_host, orig_port = transport.get_extra_info('peername')[:2]
+        peername = transport.get_extra_info('peername')[:2]
+
+        if peername: # pragma: no branch
+            orig_host, orig_port = peername
+
         self.forward(orig_host, orig_port)
 
 
