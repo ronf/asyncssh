@@ -240,7 +240,7 @@ async def _open_proxy(loop, command, conn_factory):
     return tunnel.get_owner()
 
 
-async def _open_tunnel(tunnel):
+async def _open_tunnel(tunnel, passphrase):
     """Parse and open connection to tunnel over"""
 
     if isinstance(tunnel, str):
@@ -255,12 +255,13 @@ async def _open_tunnel(tunnel):
         else:
             port = ()
 
-        return await connect(host, port, username=username)
+        return await connect(host, port, username=username,
+                             passphrase=passphrase)
     else:
         return None
 
 
-async def _connect(options, loop, flags, conn_factory, msg):
+async def _connect(options, passphrase, loop, flags, conn_factory, msg):
     """Make outbound TCP or SSH tunneled connection"""
 
     host = options.host
@@ -271,7 +272,7 @@ async def _connect(options, loop, flags, conn_factory, msg):
     proxy_command = options.proxy_command
     free_conn = True
 
-    new_tunnel = await _open_tunnel(tunnel)
+    new_tunnel = await _open_tunnel(tunnel, passphrase)
 
     if new_tunnel:
         new_tunnel.logger.info('%s %s via %s', msg, (host, port), tunnel)
@@ -313,8 +314,8 @@ async def _connect(options, loop, flags, conn_factory, msg):
             await conn.wait_closed()
 
 
-async def _listen(options, loop, flags, backlog, reuse_address,
-                  reuse_port, conn_factory, msg):
+async def _listen(options, passphrase, loop, flags, backlog,
+                  reuse_address, reuse_port, conn_factory, msg):
     """Make inbound TCP or SSH tunneled listener"""
 
     def tunnel_factory(_orig_host, _orig_port):
@@ -327,7 +328,7 @@ async def _listen(options, loop, flags, backlog, reuse_address,
     tunnel = options.tunnel
     family = options.family
 
-    new_tunnel = await _open_tunnel(tunnel)
+    new_tunnel = await _open_tunnel(tunnel, passphrase)
 
     if new_tunnel:
         new_tunnel.logger.info('%s %s via %s', msg, (host, port), tunnel)
@@ -6766,7 +6767,8 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
 
 @async_context_manager
 async def connect(host, port=(), *, tunnel=(), family=(), flags=0,
-                  local_addr=None, config=(), options=None, **kwargs):
+                  local_addr=None, config=(), options=None,
+                  passphrase=None, **kwargs):
     """Make an SSH client connection
 
        This function is a coroutine which can be run to create an outbound SSH
@@ -6852,13 +6854,14 @@ async def connect(host, port=(), *, tunnel=(), family=(), flags=0,
                                          family=family, local_addr=local_addr,
                                          **kwargs)
 
-    return await _connect(options, loop, flags, conn_factory,
+    return await _connect(options, passphrase, loop, flags, conn_factory,
                           'Opening SSH connection to')
 
 
 @async_context_manager
 async def connect_reverse(host, port=(), *, tunnel=(), family=(), flags=0,
-                          local_addr=None, config=(), options=None, **kwargs):
+                          local_addr=None, config=(), options=None,
+                          passphrase=None, **kwargs):
     """Create a reverse direction SSH connection
 
        This function is a coroutine which behaves similar to :func:`connect`,
@@ -6928,7 +6931,7 @@ async def connect_reverse(host, port=(), *, tunnel=(), family=(), flags=0,
                                          family=family, local_addr=local_addr,
                                          **kwargs)
 
-    return await _connect(options, loop, flags, conn_factory,
+    return await _connect(options, passphrase, loop, flags, conn_factory,
                           'Opening reverse SSH connection to')
 
 
@@ -6936,7 +6939,7 @@ async def connect_reverse(host, port=(), *, tunnel=(), family=(), flags=0,
 async def listen(host='', port=(), tunnel=(), family=(),
                  flags=socket.AI_PASSIVE, backlog=100, reuse_address=None,
                  reuse_port=None, acceptor=None, error_handler=None,
-                 config=(), options=None, **kwargs):
+                 config=(), options=None, passphrase=None, **kwargs):
     """Start an SSH server
 
        This function is a coroutine which can be run to create an SSH server
@@ -7026,8 +7029,9 @@ async def listen(host='', port=(), tunnel=(), family=(),
     # pylint: disable=attribute-defined-outside-init
     options.proxy_command = None
 
-    return await _listen(options, loop, flags, backlog, reuse_address,
-                         reuse_port, conn_factory, 'Creating SSH listener on')
+    return await _listen(options, passphrase, loop, flags, backlog,
+                         reuse_address, reuse_port, conn_factory,
+                         'Creating SSH listener on')
 
 
 @async_context_manager
@@ -7035,7 +7039,7 @@ async def listen_reverse(host='', port=(), *, tunnel=(), family=(),
                          flags=socket.AI_PASSIVE, backlog=100,
                          reuse_address=None, reuse_port=None,
                          acceptor=None, error_handler=None, config=(),
-                         options=None, **kwargs):
+                         options=None, passphrase=None, **kwargs):
     """Create a reverse-direction SSH listener
 
        This function is a coroutine which behaves similar to :func:`listen`,
@@ -7137,8 +7141,8 @@ async def listen_reverse(host='', port=(), *, tunnel=(), family=(),
     # pylint: disable=attribute-defined-outside-init
     options.proxy_command = None
 
-    return await _listen(options, loop, flags, backlog, reuse_address,
-                         reuse_port, conn_factory,
+    return await _listen(options, passphrase, loop, flags, backlog,
+                         reuse_address, reuse_port, conn_factory,
                          'Creating reverse direction SSH listener on')
 
 
@@ -7183,7 +7187,7 @@ async def get_server_host_key(host, port=(), *, tunnel=(), proxy_command=(),
                               family=(), flags=0, local_addr=None,
                               client_version=(), kex_algs=(),
                               server_host_key_algs=(), config=(),
-                              options=None):
+                              options=None, passphrase=None):
     """Retrieve an SSH server's host key
 
        This is a coroutine which can be run to connect to an SSH server and
@@ -7283,7 +7287,7 @@ async def get_server_host_key(host, port=(), *, tunnel=(), proxy_command=(),
         x509_purposes='any', gss_host=None, kex_algs=kex_algs,
         client_version=client_version)
 
-    conn = await _connect(options, loop, flags, conn_factory,
+    conn = await _connect(options, passphrase, loop, flags, conn_factory,
                           'Fetching server host key from')
 
     server_host_key = conn.get_server_host_key()
