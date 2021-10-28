@@ -5956,8 +5956,9 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
            renegotiated. This defaults to 1 hour.
        :param login_timeout: (optional)
            The maximum time in seconds allowed for authentication to
-           complete, defaulting to 2 minutes. Setting this to 0 will
-           disable the login timeout.
+           complete, defaulting to 2 minutes. Only enforced after TCP 
+           connection succeeds. Setting this to 0 will disable the login 
+           timeout.
        :param keepalive_interval: (optional)
            The time in seconds to wait before sending a keepalive message
            if no data has been received from the server. This defaults to
@@ -6551,8 +6552,9 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
            renegotiated, defaulting to 1 hour
        :param login_timeout: (optional)
            The maximum time in seconds allowed for authentication to
-           complete, defaulting to 2 minutes. Setting this to 0
-           will disable the login timeout.
+           complete, defaulting to 2 minutes. Only enforced after TCP 
+           connection succeeds. Setting this to 0 will disable the login 
+           timeout.
        :param keepalive_interval: (optional)
            The time in seconds to wait before sending a keepalive message
            if no data has been received from the client. This defaults to
