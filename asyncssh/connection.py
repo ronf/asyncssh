@@ -299,7 +299,6 @@ async def _connect(options, passphrase, loop, flags, conn_factory, msg):
                                                family=family, flags=flags,
                                                local_addr=local_addr)
 
-    # pylint: disable=broad-except
     try:
         await conn.wait_established()
         free_conn = False
@@ -5602,8 +5601,8 @@ class SSHConnectionOptions(Options):
                 encryption_algs, mac_algs, compression_algs, signature_algs,
                 host_based_auth, public_key_auth, kbdint_auth, password_auth,
                 x509_trusted_certs, x509_trusted_cert_paths, x509_purposes,
-                rekey_bytes, rekey_seconds, login_timeout, keepalive_interval,
-                keepalive_count_max):
+                rekey_bytes, rekey_seconds, connect_timeout, login_timeout,
+                keepalive_interval, keepalive_count_max):
         """Prepare common connection configuration options"""
 
         self.config = config
@@ -5689,6 +5688,12 @@ class SSHConnectionOptions(Options):
         if rekey_seconds and rekey_seconds <= 0:
             raise ValueError('Rekey seconds cannot be negative or zero')
 
+        if isinstance(connect_timeout, str):
+            connect_timeout = parse_time_interval(connect_timeout)
+
+        if connect_timeout and connect_timeout < 0:
+            raise ValueError('Connect timeout cannot be negative')
+
         if isinstance(login_timeout, str):
             login_timeout = parse_time_interval(login_timeout)
 
@@ -5706,6 +5711,7 @@ class SSHConnectionOptions(Options):
 
         self.rekey_bytes = int(rekey_bytes)
         self.rekey_seconds = rekey_seconds
+        self.connect_timeout = connect_timeout or None
         self.login_timeout = login_timeout
         self.keepalive_interval = keepalive_interval
         self.keepalive_count_max = keepalive_count_max
@@ -5955,10 +5961,22 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
        :param rekey_seconds: (optional)
            The maximum time in seconds before the SSH session key is
            renegotiated. This defaults to 1 hour.
+       :param connect_timeout: (optional)
+           The maximum time in seconds allowed to complete an outbound
+           SSH connection. This includes the time to establish the TCP
+           connection and the time to perform the initial SSH protocol
+           handshake, key exchange, and authentication. This is disabled
+           by default, relying on the system's default TCP connect timeout
+           and AsyncSSH's login timeout.
        :param login_timeout: (optional)
            The maximum time in seconds allowed for authentication to
            complete, defaulting to 2 minutes. Setting this to 0 will
            disable the login timeout.
+
+               .. note:: This timeout only applies after the SSH TCP
+                         connection is established. To set a timeout
+                         which includes establishing the TCP connection,
+                         use the `connect_timeout` argument above.
        :param keepalive_interval: (optional)
            The time in seconds to wait before sending a keepalive message
            if no data has been received from the server. This defaults to
@@ -6101,6 +6119,7 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
        :type signature_algs: `str` or `list` of `str`
        :type rekey_bytes: *see* :ref:`SpecifyingByteCounts`
        :type rekey_seconds: *see* :ref:`SpecifyingTimeIntervals`
+       :type connect_timeout: *see* :ref:`SpecifyingTimeIntervals`
        :type login_timeout: *see* :ref:`SpecifyingTimeIntervals`
        :type keepalive_interval: *see* :ref:`SpecifyingTimeIntervals`
        :type keepalive_count_max: `int`
@@ -6134,7 +6153,8 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
                 public_key_auth=(), kbdint_auth=(), password_auth=(),
                 x509_trusted_certs=(), x509_trusted_cert_paths=(),
                 x509_purposes='secureShellServer', rekey_bytes=(),
-                rekey_seconds=(), login_timeout=(), keepalive_interval=(),
+                rekey_seconds=(), connect_timeout=(),
+                login_timeout=_DEFAULT_LOGIN_TIMEOUT, keepalive_interval=(),
                 keepalive_count_max=(), known_hosts=(), host_key_alias=None,
                 server_host_key_algs=(), username=(), password=None,
                 client_host_keysign=(), client_host_keys=None,
@@ -6179,9 +6199,8 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
             if default_x509_cert_path.is_dir():
                 x509_trusted_cert_paths = [str(default_x509_cert_path)]
 
-        if login_timeout == ():
-            login_timeout = config.get('ConnectTimeout',
-                                       _DEFAULT_LOGIN_TIMEOUT)
+        if connect_timeout == ():
+            connect_timeout = config.get('ConnectTimeout', None)
 
         if keepalive_interval == ():
             keepalive_interval = config.get('ServerAliveInterval',
@@ -6198,7 +6217,8 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
                         public_key_auth, kbdint_auth, password_auth,
                         x509_trusted_certs, x509_trusted_cert_paths,
                         x509_purposes, rekey_bytes, rekey_seconds,
-                        login_timeout, keepalive_interval, keepalive_count_max)
+                        connect_timeout, login_timeout, keepalive_interval,
+                        keepalive_count_max)
 
         if known_hosts == ():
             known_hosts = (config.get('UserKnownHostsFile', []) + \
@@ -6550,10 +6570,22 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
        :param rekey_seconds: (optional)
            The maximum time in seconds before the SSH session key is
            renegotiated, defaulting to 1 hour
+       :param connect_timeout: (optional)
+           The maximum time in seconds allowed to complete an outbound
+           SSH connection. This includes the time to establish the TCP
+           connection and the time to perform the initial SSH protocol
+           handshake, key exchange, and authentication. This is disabled
+           by default, relying on the system's default TCP connect timeout
+           and AsyncSSH's login timeout.
        :param login_timeout: (optional)
            The maximum time in seconds allowed for authentication to
            complete, defaulting to 2 minutes. Setting this to 0
            will disable the login timeout.
+
+               .. note:: This timeout only applies after the SSH TCP
+                         connection is established. To set a timeout
+                         which includes establishing the TCP connection,
+                         use the `connect_timeout` argument above.
        :param keepalive_interval: (optional)
            The time in seconds to wait before sending a keepalive message
            if no data has been received from the client. This defaults to
@@ -6631,6 +6663,7 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
        :type signature_algs: `str` or `list` of `str`
        :type rekey_bytes: *see* :ref:`SpecifyingByteCounts`
        :type rekey_seconds: *see* :ref:`SpecifyingTimeIntervals`
+       :type connect_timeout: *see* :ref:`SpecifyingTimeIntervals`
        :type login_timeout: *see* :ref:`SpecifyingTimeIntervals`
        :type keepalive_interval: *see* :ref:`SpecifyingTimeIntervals`
        :type keepalive_count_max: `int`
@@ -6649,9 +6682,10 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
                 signature_algs=(), host_based_auth=(), public_key_auth=(),
                 kbdint_auth=(), password_auth=(), x509_trusted_certs=(),
                 x509_trusted_cert_paths=(), x509_purposes='secureShellClient',
-                rekey_bytes=(), rekey_seconds=(), login_timeout=(),
-                keepalive_interval=(), keepalive_count_max=(),
-                server_host_keys=(), server_host_certs=(), passphrase=None,
+                rekey_bytes=(), rekey_seconds=(), connect_timeout=None,
+                login_timeout=(), keepalive_interval=(),
+                keepalive_count_max=(), server_host_keys=(),
+                server_host_certs=(), passphrase=None,
                 known_client_hosts=None, trust_client_host=False,
                 authorized_client_keys=(), gss_host=(), gss_kex=(),
                 gss_auth=(), allow_pty=(), line_editor=True,
@@ -6686,7 +6720,8 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
                         public_key_auth, kbdint_auth, password_auth,
                         x509_trusted_certs, x509_trusted_cert_paths,
                         x509_purposes, rekey_bytes, rekey_seconds,
-                        login_timeout, keepalive_interval, keepalive_count_max)
+                        connect_timeout, login_timeout, keepalive_interval,
+                        keepalive_count_max)
 
         if server_host_keys == ():
             server_host_keys = config.get('HostKey')
@@ -6854,8 +6889,10 @@ async def connect(host, port=(), *, tunnel=(), family=(), flags=0,
                                          family=family, local_addr=local_addr,
                                          **kwargs)
 
-    return await _connect(options, passphrase, loop, flags, conn_factory,
-                          'Opening SSH connection to')
+    return await asyncio.wait_for(
+        _connect(options, passphrase, loop, flags, conn_factory,
+                 'Opening SSH connection to'),
+        timeout=options.connect_timeout)
 
 
 @async_context_manager
@@ -6931,8 +6968,10 @@ async def connect_reverse(host, port=(), *, tunnel=(), family=(), flags=0,
                                          family=family, local_addr=local_addr,
                                          **kwargs)
 
-    return await _connect(options, passphrase, loop, flags, conn_factory,
-                          'Opening reverse SSH connection to')
+    return await asyncio.wait_for(
+        _connect(options, passphrase, loop, flags, conn_factory,
+                 'Opening reverse SSH connection to'),
+        timeout=options.connect_timeout)
 
 
 @async_context_manager
@@ -7029,9 +7068,10 @@ async def listen(host='', port=(), tunnel=(), family=(),
     # pylint: disable=attribute-defined-outside-init
     options.proxy_command = None
 
-    return await _listen(options, passphrase, loop, flags, backlog,
-                         reuse_address, reuse_port, conn_factory,
-                         'Creating SSH listener on')
+    return await asyncio.wait_for(
+        _listen(options, passphrase, loop, flags, backlog, reuse_address,
+                reuse_port, conn_factory, 'Creating SSH listener on'),
+        timeout=options.connect_timeout)
 
 
 @async_context_manager
@@ -7141,9 +7181,11 @@ async def listen_reverse(host='', port=(), *, tunnel=(), family=(),
     # pylint: disable=attribute-defined-outside-init
     options.proxy_command = None
 
-    return await _listen(options, passphrase, loop, flags, backlog,
-                         reuse_address, reuse_port, conn_factory,
-                         'Creating reverse direction SSH listener on')
+    return await asyncio.wait_for(
+        _listen(options, passphrase, loop, flags, backlog,
+                reuse_address, reuse_port, conn_factory,
+                'Creating reverse direction SSH listener on'),
+        timeout=options.connect_timeout)
 
 
 async def create_connection(client_factory, host, port=(), **kwargs):
@@ -7287,8 +7329,10 @@ async def get_server_host_key(host, port=(), *, tunnel=(), proxy_command=(),
         x509_purposes='any', gss_host=None, kex_algs=kex_algs,
         client_version=client_version)
 
-    conn = await _connect(options, passphrase, loop, flags, conn_factory,
-                          'Fetching server host key from')
+    conn = await asyncio.wait_for(
+        _connect(options, passphrase, loop, flags, conn_factory,
+                 'Fetching server host key from'),
+        timeout=options.connect_timeout)
 
     server_host_key = conn.get_server_host_key()
 
