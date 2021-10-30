@@ -3310,11 +3310,11 @@ class SSHClientConnection(SSHConnection):
                values passed in here will be converted to Unicode strings
                encoded as UTF-8 (ISO 10646) for transmission.
 
-               .. note:: Many SSH servers restrict which environment
-                         variables a client is allowed to set. The
-                         server's configuration may need to be edited
-                         before environment variables can be
-                         successfully set in the remote environment.
+                   .. note:: Many SSH servers restrict which environment
+                             variables a client is allowed to set. The
+                             server's configuration may need to be edited
+                             before environment variables can be
+                             successfully set in the remote environment.
            :param send_env: (optional)
                A list of environment variable names to pull from
                `os.environ` and set for this session. Wildcards patterns
@@ -4293,11 +4293,11 @@ class SSHClientConnection(SSHConnection):
                and values passed in here will be converted to Unicode
                strings encoded as UTF-8 (ISO 10646) for transmission.
 
-               .. note:: Many SSH servers restrict which environment
-                         variables a client is allowed to set. The
-                         server's configuration may need to be edited
-                         before environment variables can be
-                         successfully set in the remote environment.
+                   .. note:: Many SSH servers restrict which environment
+                             variables a client is allowed to set. The
+                             server's configuration may need to be edited
+                             before environment variables can be
+                             successfully set in the remote environment.
            :param send_env: (optional)
                A list of environment variable names to pull from
                `os.environ` and set for this SFTP session. Wildcards
@@ -5997,11 +5997,11 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
            Keys and values passed in here will be converted to Unicode
            strings encoded as UTF-8 (ISO 10646) for transmission.
 
-           .. note:: Many SSH servers restrict which environment
-                     variables a client is allowed to set. The
-                     server's configuration may need to be edited
-                     before environment variables can be
-                     successfully set in the remote environment.
+               .. note:: Many SSH servers restrict which environment
+                         variables a client is allowed to set. The
+                         server's configuration may need to be edited
+                         before environment variables can be
+                         successfully set in the remote environment.
        :param send_env: (optional)
            A list of environment variable names to pull from
            `os.environ` and set by default for client sessions. Wildcards
