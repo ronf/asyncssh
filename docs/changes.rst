@@ -3,6 +3,31 @@
 Change Log
 ==========
 
+Release 2.8.0 (3 Nov 2021)
+--------------------------
+
+* Added new connect_timeout option to set a timeout which includes the
+  time taken to open an outbound TCP connection, allowing connections
+  to be aborted without waiting for the default socket connect timeout.
+  The existing login_timeout option only applies after the TCP connection
+  was established, so it could not be used for this.. The support for the
+  ConnectTimeout config file option has also been updated to use this new
+  capability, making it more consistent with OpenSSH's behavior.
+
+* Added the ability to use the passphrase argument specified in a connect
+  call to be used to decrypt keys used to connect to bastion hosts.
+  Previously, this argument was only applied when making a connection
+  to the main host and encrypted keys could only be used when they
+  were loaded separately.
+
+* Updated AsyncSSH's "Record" class to make it more IDE-friendly when
+  it comes to things like auto-completion. This class is used as a base
+  class for SSHCompletedProcess and various SFTP attribute classes.
+  Thanks go to Github user zentarim for suggesting this improvement.
+
+* Fixed a potential uncaught exception when handling forwarded connections
+  which are immediately closed by a peer.
+
 Release 2.7.2 (15 Sep 2021)
 ---------------------------
 
