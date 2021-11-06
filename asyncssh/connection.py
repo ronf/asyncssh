@@ -261,7 +261,7 @@ async def _open_tunnel(tunnel, passphrase):
         return None
 
 
-async def _connect(options, passphrase, loop, flags, conn_factory, msg):
+async def _connect(options, loop, flags, conn_factory, msg):
     """Make outbound TCP or SSH tunneled connection"""
 
     host = options.host
@@ -272,7 +272,7 @@ async def _connect(options, passphrase, loop, flags, conn_factory, msg):
     proxy_command = options.proxy_command
     free_conn = True
 
-    new_tunnel = await _open_tunnel(tunnel, passphrase)
+    new_tunnel = await _open_tunnel(tunnel, options.passphrase)
 
     if new_tunnel:
         new_tunnel.logger.info('%s %s via %s', msg, (host, port), tunnel)
@@ -313,8 +313,8 @@ async def _connect(options, passphrase, loop, flags, conn_factory, msg):
             await conn.wait_closed()
 
 
-async def _listen(options, passphrase, loop, flags, backlog,
-                  reuse_address, reuse_port, conn_factory, msg):
+async def _listen(options, loop, flags, backlog, reuse_address,
+                  reuse_port, conn_factory, msg):
     """Make inbound TCP or SSH tunneled listener"""
 
     def tunnel_factory(_orig_host, _orig_port):
@@ -327,7 +327,7 @@ async def _listen(options, passphrase, loop, flags, backlog,
     tunnel = options.tunnel
     family = options.family
 
-    new_tunnel = await _open_tunnel(tunnel, passphrase)
+    new_tunnel = await _open_tunnel(tunnel, options.passphrase)
 
     if new_tunnel:
         new_tunnel.logger.info('%s %s via %s', msg, (host, port), tunnel)
@@ -5597,12 +5597,12 @@ class SSHConnectionOptions(Options):
 
     # pylint: disable=arguments-differ
     def prepare(self, config, protocol_factory, version, host, port, tunnel,
-                proxy_command, family, local_addr, tcp_keepalive, kex_algs,
-                encryption_algs, mac_algs, compression_algs, signature_algs,
-                host_based_auth, public_key_auth, kbdint_auth, password_auth,
-                x509_trusted_certs, x509_trusted_cert_paths, x509_purposes,
-                rekey_bytes, rekey_seconds, connect_timeout, login_timeout,
-                keepalive_interval, keepalive_count_max):
+                passphrase, proxy_command, family, local_addr, tcp_keepalive,
+                kex_algs, encryption_algs, mac_algs, compression_algs,
+                signature_algs, host_based_auth, public_key_auth, kbdint_auth,
+                password_auth, x509_trusted_certs, x509_trusted_cert_paths,
+                x509_purposes, rekey_bytes, rekey_seconds, connect_timeout,
+                login_timeout, keepalive_interval, keepalive_count_max):
         """Prepare common connection configuration options"""
 
         self.config = config
@@ -5613,6 +5613,7 @@ class SSHConnectionOptions(Options):
         self.port = port if port != () else config.get('Port', DEFAULT_PORT)
 
         self.tunnel = tunnel if tunnel != () else config.get('ProxyJump')
+        self.passphrase = passphrase
 
         if isinstance(proxy_command, str):
             proxy_command = shlex.split(proxy_command)
@@ -6211,14 +6212,14 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
                                              _DEFAULT_KEEPALIVE_COUNT_MAX)
 
         super().prepare(config, client_factory or SSHClient, client_version,
-                        host, port, tunnel, proxy_command, family, local_addr,
-                        tcp_keepalive, kex_algs, encryption_algs, mac_algs,
-                        compression_algs, signature_algs, host_based_auth,
-                        public_key_auth, kbdint_auth, password_auth,
-                        x509_trusted_certs, x509_trusted_cert_paths,
-                        x509_purposes, rekey_bytes, rekey_seconds,
-                        connect_timeout, login_timeout, keepalive_interval,
-                        keepalive_count_max)
+                        host, port, tunnel, passphrase, proxy_command, family,
+                        local_addr, tcp_keepalive, kex_algs, encryption_algs,
+                        mac_algs, compression_algs, signature_algs,
+                        host_based_auth, public_key_auth, kbdint_auth,
+                        password_auth, x509_trusted_certs,
+                        x509_trusted_cert_paths, x509_purposes, rekey_bytes,
+                        rekey_seconds, connect_timeout, login_timeout,
+                        keepalive_interval, keepalive_count_max)
 
         if known_hosts == ():
             known_hosts = (config.get('UserKnownHostsFile', []) + \
@@ -6714,14 +6715,14 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
                                              _DEFAULT_KEEPALIVE_COUNT_MAX)
 
         super().prepare(config, server_factory or SSHServer, server_version,
-                        host, port, tunnel, proxy_command, family, local_addr,
-                        tcp_keepalive, kex_algs, encryption_algs, mac_algs,
-                        compression_algs, signature_algs, host_based_auth,
-                        public_key_auth, kbdint_auth, password_auth,
-                        x509_trusted_certs, x509_trusted_cert_paths,
-                        x509_purposes, rekey_bytes, rekey_seconds,
-                        connect_timeout, login_timeout, keepalive_interval,
-                        keepalive_count_max)
+                        host, port, tunnel, passphrase, proxy_command, family,
+                        local_addr, tcp_keepalive, kex_algs, encryption_algs,
+                        mac_algs, compression_algs, signature_algs,
+                        host_based_auth, public_key_auth, kbdint_auth,
+                        password_auth, x509_trusted_certs,
+                        x509_trusted_cert_paths, x509_purposes,
+                        rekey_bytes, rekey_seconds, connect_timeout,
+                        login_timeout, keepalive_interval, keepalive_count_max)
 
         if server_host_keys == ():
             server_host_keys = config.get('HostKey')
@@ -6802,8 +6803,7 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
 
 @async_context_manager
 async def connect(host, port=(), *, tunnel=(), family=(), flags=0,
-                  local_addr=None, config=(), options=None,
-                  passphrase=None, **kwargs):
+                  local_addr=None, config=(), options=None, **kwargs):
     """Make an SSH client connection
 
        This function is a coroutine which can be run to create an outbound SSH
@@ -6890,15 +6890,14 @@ async def connect(host, port=(), *, tunnel=(), family=(), flags=0,
                                          **kwargs)
 
     return await asyncio.wait_for(
-        _connect(options, passphrase, loop, flags, conn_factory,
+        _connect(options, loop, flags, conn_factory,
                  'Opening SSH connection to'),
         timeout=options.connect_timeout)
 
 
 @async_context_manager
 async def connect_reverse(host, port=(), *, tunnel=(), family=(), flags=0,
-                          local_addr=None, config=(), options=None,
-                          passphrase=None, **kwargs):
+                          local_addr=None, config=(), options=None, **kwargs):
     """Create a reverse direction SSH connection
 
        This function is a coroutine which behaves similar to :func:`connect`,
@@ -6969,7 +6968,7 @@ async def connect_reverse(host, port=(), *, tunnel=(), family=(), flags=0,
                                          **kwargs)
 
     return await asyncio.wait_for(
-        _connect(options, passphrase, loop, flags, conn_factory,
+        _connect(options, loop, flags, conn_factory,
                  'Opening reverse SSH connection to'),
         timeout=options.connect_timeout)
 
@@ -6978,7 +6977,7 @@ async def connect_reverse(host, port=(), *, tunnel=(), family=(), flags=0,
 async def listen(host='', port=(), tunnel=(), family=(),
                  flags=socket.AI_PASSIVE, backlog=100, reuse_address=None,
                  reuse_port=None, acceptor=None, error_handler=None,
-                 config=(), options=None, passphrase=None, **kwargs):
+                 config=(), options=None, **kwargs):
     """Start an SSH server
 
        This function is a coroutine which can be run to create an SSH server
@@ -7069,7 +7068,7 @@ async def listen(host='', port=(), tunnel=(), family=(),
     options.proxy_command = None
 
     return await asyncio.wait_for(
-        _listen(options, passphrase, loop, flags, backlog, reuse_address,
+        _listen(options, loop, flags, backlog, reuse_address,
                 reuse_port, conn_factory, 'Creating SSH listener on'),
         timeout=options.connect_timeout)
 
@@ -7079,7 +7078,7 @@ async def listen_reverse(host='', port=(), *, tunnel=(), family=(),
                          flags=socket.AI_PASSIVE, backlog=100,
                          reuse_address=None, reuse_port=None,
                          acceptor=None, error_handler=None, config=(),
-                         options=None, passphrase=None, **kwargs):
+                         options=None, **kwargs):
     """Create a reverse-direction SSH listener
 
        This function is a coroutine which behaves similar to :func:`listen`,
@@ -7182,7 +7181,7 @@ async def listen_reverse(host='', port=(), *, tunnel=(), family=(),
     options.proxy_command = None
 
     return await asyncio.wait_for(
-        _listen(options, passphrase, loop, flags, backlog,
+        _listen(options, loop, flags, backlog,
                 reuse_address, reuse_port, conn_factory,
                 'Creating reverse direction SSH listener on'),
         timeout=options.connect_timeout)
@@ -7229,7 +7228,7 @@ async def get_server_host_key(host, port=(), *, tunnel=(), proxy_command=(),
                               family=(), flags=0, local_addr=None,
                               client_version=(), kex_algs=(),
                               server_host_key_algs=(), config=(),
-                              options=None, passphrase=None):
+                              options=None):
     """Retrieve an SSH server's host key
 
        This is a coroutine which can be run to connect to an SSH server and
@@ -7330,7 +7329,7 @@ async def get_server_host_key(host, port=(), *, tunnel=(), proxy_command=(),
         client_version=client_version)
 
     conn = await asyncio.wait_for(
-        _connect(options, passphrase, loop, flags, conn_factory,
+        _connect(options, loop, flags, conn_factory,
                  'Fetching server host key from'),
         timeout=options.connect_timeout)
 

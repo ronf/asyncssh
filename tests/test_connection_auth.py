@@ -1011,6 +1011,29 @@ class _TestPublicKeyAuth(ServerTestCase):
         return conn
 
     @asynctest
+    async def test_encrypted_client_key(self):
+        """Test public key auth with encrypted client key"""
+
+        async with self.connect(username='ckey', client_keys='ckey_encrypted',
+                                passphrase='passphrase'):
+            pass
+
+    @asynctest
+    async def test_encrypted_client_key_bad_passphrase(self):
+        """Test wrong passphrase for encrypted client key"""
+
+        with self.assertRaises(asyncssh.KeyEncryptionError):
+            await self.connect(username='ckey', client_keys='ckey_encrypted',
+                               passphrase='xxx')
+
+    @asynctest
+    async def test_encrypted_client_key_missing_passphrase(self):
+        """Test missing passphrase for encrypted client key"""
+
+        with self.assertRaises(asyncssh.KeyImportError):
+            await self.connect(username='ckey', client_keys='ckey_encrypted')
+
+    @asynctest
     async def test_client_certs(self):
         """Test trusted client certificate via client_certs"""
 

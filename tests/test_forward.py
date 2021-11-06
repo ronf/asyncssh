@@ -30,7 +30,7 @@ import unittest
 from unittest.mock import patch
 
 import asyncssh
-from asyncssh.misc import maybe_wait_closed
+from asyncssh.misc import maybe_wait_closed, write_file
 from asyncssh.packet import String, UInt32
 from asyncssh.public_key import CERT_TYPE_USER
 from asyncssh.socks import SOCKS5, SOCKS5_AUTH_NONE
@@ -309,6 +309,61 @@ class _TestTCPForwarding(_CheckForwarding):
             await asyncssh.connect('0.0.0.1',
                                    tunnel='%s:%d' % (self._server_addr,
                                                      self._server_port))
+
+    @asynctest
+    async def test_proxy_jump(self):
+        """Test connecting a tunnneled SSH connection using ProxyJump"""
+
+        write_file('.ssh/config', 'Host target\n'
+                   '  Hostname localhost\n'
+                   f'  Port {self._server_port}\n'
+                   f'  ProxyJump localhost:{self._server_port}\n'
+                   'IdentityFile ckey\n', 'w')
+
+        try:
+            async with self.connect(host='target', username='ckey'):
+                pass
+        finally:
+            os.remove('.ssh/config')
+
+    @asynctest
+    async def test_proxy_jump_encrypted_key(self):
+        """Test ProxyJump with encrypted client key"""
+
+        write_file('.ssh/config', 'Host *\n'
+                   '  User ckey\n'
+                   'Host target\n'
+                   '  Hostname localhost\n'
+                   f'  Port {self._server_port}\n'
+                   f'  ProxyJump localhost:{self._server_port}\n'
+                   '  IdentityFile ckey_encrypted\n', 'w')
+
+        try:
+            async with self.connect(host='target', username='ckey',
+                                    client_keys='ckey_encrypted',
+                                    passphrase='passphrase'):
+                pass
+        finally:
+            os.remove('.ssh/config')
+
+    @asynctest
+    async def test_proxy_jump_encrypted_key_missing_passphrase(self):
+        """Test ProxyJump with encrypted client key and missing passphrase"""
+
+        write_file('.ssh/config', 'Host *\n'
+                   '  User ckey\n'
+                   'Host target\n'
+                   '  Hostname localhost\n'
+                   f'  Port {self._server_port}\n'
+                   f'  ProxyJump localhost:{self._server_port}\n'
+                   '  IdentityFile ckey_encrypted\n', 'w')
+
+        try:
+            with self.assertRaises(asyncssh.KeyImportError):
+                await self.connect(host='target', username='ckey',
+                                   client_keys='ckey_encrypted')
+        finally:
+            os.remove('.ssh/config')
 
     @asynctest
     async def test_ssh_connect_reverse_tunnel(self):
