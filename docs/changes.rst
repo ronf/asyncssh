@@ -3,6 +3,12 @@
 Change Log
 ==========
 
+Release 2.8.1 (8 Nov 2021)
+--------------------------
+
+* Fixed a regression in handling of the passphrase argument used to
+  decrypt private keys.
+
 Release 2.8.0 (3 Nov 2021)
 --------------------------
 
