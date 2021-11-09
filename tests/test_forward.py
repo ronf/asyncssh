@@ -281,7 +281,7 @@ class _TestTCPForwarding(_CheckForwarding):
     async def _check_local_connection(self, listen_port, delay=None):
         """Open a local connection and test if an input line is echoed back"""
 
-        reader, writer = await asyncio.open_connection(None, listen_port)
+        reader, writer = await asyncio.open_connection('', listen_port)
 
         await self._check_echo_line(reader, writer, delay=delay)
 
@@ -385,7 +385,7 @@ class _TestTCPForwarding(_CheckForwarding):
         listen_port = server2.sockets[0].getsockname()[1]
 
         async with self.connect() as conn:
-            async with conn.connect_reverse_ssh('127.0.0.1', listen_port,
+            async with conn.connect_reverse_ssh('', listen_port,
                                                 server_factory=Server,
                                                 server_host_keys=['skey']):
                 pass
@@ -402,7 +402,7 @@ class _TestTCPForwarding(_CheckForwarding):
                                        server_host_keys=['skey']) as server2:
                 listen_port = server2.get_port()
 
-                async with asyncssh.connect('127.0.0.1', listen_port,
+                async with asyncssh.connect('', listen_port,
                                             known_hosts=(['skey.pub'], [], [])):
                     pass
 
@@ -416,7 +416,7 @@ class _TestTCPForwarding(_CheckForwarding):
                                server_host_keys=['skey']) as server:
             listen_port = server.get_port()
 
-            async with asyncssh.connect('127.0.0.1', listen_port,
+            async with asyncssh.connect('', listen_port,
                                         known_hosts=(['skey.pub'], [], [])):
                 pass
 
@@ -440,7 +440,7 @@ class _TestTCPForwarding(_CheckForwarding):
                                    server_host_keys=['skey']) as server:
                 listen_port = server.get_port()
 
-                async with asyncssh.connect('127.0.0.1', listen_port,
+                async with asyncssh.connect('', listen_port,
                                             known_hosts=(['skey.pub'], [], [])):
                     pass
 
@@ -454,7 +454,7 @@ class _TestTCPForwarding(_CheckForwarding):
                                                             [], [])) as server2:
                 listen_port = server2.get_port()
 
-                async with asyncssh.connect_reverse('127.0.0.1', listen_port,
+                async with asyncssh.connect_reverse('', listen_port,
                                                     server_factory=Server,
                                                     server_host_keys=['skey']):
                     pass
@@ -591,8 +591,7 @@ class _TestTCPForwarding(_CheckForwarding):
             async with conn.forward_local_port('', 0, '', 8) as listener:
                 listen_port = listener.get_port()
 
-                reader, writer = await asyncio.open_connection(None,
-                                                               listen_port)
+                reader, writer = await asyncio.open_connection('', listen_port)
 
                 writer.write(4*1024*1024*b'\0')
                 writer.write_eof()
@@ -610,8 +609,7 @@ class _TestTCPForwarding(_CheckForwarding):
             async with conn.forward_local_port('', 0, '', 65535) as listener:
                 listen_port = listener.get_port()
 
-                reader, writer = await asyncio.open_connection(None,
-                                                               listen_port)
+                reader, writer = await asyncio.open_connection('', listen_port)
 
                 self.assertEqual((await reader.read()), b'')
 
@@ -627,7 +625,7 @@ class _TestTCPForwarding(_CheckForwarding):
         async with self.connect() as conn:
             async with conn.forward_local_port('0.0.0.0', 0, '', 7) as listener:
                 with self.assertRaises(OSError):
-                    await conn.forward_local_port(None, listener.get_port(),
+                    await conn.forward_local_port('', listener.get_port(),
                                                   '', 7)
 
     @unittest.skipIf(sys.platform == 'win32',
@@ -639,7 +637,7 @@ class _TestTCPForwarding(_CheckForwarding):
         async with self.connect() as conn:
             async with conn.forward_local_port('::', 0, '', 7) as listener:
                 with self.assertRaises(OSError):
-                    await conn.forward_local_port(None, listener.get_port(),
+                    await conn.forward_local_port('', listener.get_port(),
                                                   '', 7)
 
     @asynctest
@@ -650,9 +648,7 @@ class _TestTCPForwarding(_CheckForwarding):
             async with conn.forward_local_port('', 0, '', 1) as listener:
                 listen_port = listener.get_port()
 
-                reader, writer = await asyncio.open_connection(None,
-                                                               listen_port)
-
+                reader, writer = await asyncio.open_connection('', listen_port)
                 self.assertEqual((await reader.read()), b'')
 
                 writer.close()
@@ -666,7 +662,7 @@ class _TestTCPForwarding(_CheckForwarding):
             async with conn.forward_local_port('', 0, '', 7) as listener:
                 listen_port = listener.get_port()
 
-                _, writer = await asyncio.open_connection(None, listen_port)
+                _, writer = await asyncio.open_connection('', listen_port)
 
                 writer.close()
                 await maybe_wait_closed(writer)
@@ -676,7 +672,7 @@ class _TestTCPForwarding(_CheckForwarding):
     async def test_forward_remote_port(self):
         """Test forwarding of a remote port"""
 
-        server = await asyncio.start_server(echo, None, 0,
+        server = await asyncio.start_server(echo, '', 0,
                                             family=socket.AF_INET)
         server_port = server.sockets[0].getsockname()[1]
 
@@ -692,7 +688,7 @@ class _TestTCPForwarding(_CheckForwarding):
     async def test_forward_remote_specific_port(self):
         """Test forwarding of a specific remote port"""
 
-        server = await asyncio.start_server(echo, None, 0,
+        server = await asyncio.start_server(echo, '', 0,
                                             family=socket.AF_INET)
         server_port = server.sockets[0].getsockname()[1]
 
@@ -1096,7 +1092,7 @@ class _TestSOCKSForwarding(_CheckForwarding):
         with self.subTest(msg=msg, data=data):
             data = codecs.decode(data, 'hex')
 
-            reader, writer = await asyncio.open_connection(None, listen_port)
+            reader, writer = await asyncio.open_connection('', listen_port)
 
             try:
                 await handler(reader, writer, data, *args)
@@ -1166,7 +1162,7 @@ class _TestSOCKSForwarding(_CheckForwarding):
         sock.close()
 
         async with self.connect() as conn:
-            async with conn.forward_socks(None, listen_port):
+            async with conn.forward_socks('', listen_port):
                 pass
 
     @unittest.skipIf(sys.platform == 'win32',
@@ -1176,6 +1172,6 @@ class _TestSOCKSForwarding(_CheckForwarding):
         """Test error binding a local dynamic forwarding port"""
 
         async with self.connect() as conn:
-            async with conn.forward_socks(None, 0) as listener:
+            async with conn.forward_socks('', 0) as listener:
                 with self.assertRaises(OSError):
-                    await conn.forward_socks(None, listener.get_port())
+                    await conn.forward_socks('', listener.get_port())
