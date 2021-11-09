@@ -39,7 +39,7 @@ from .public_key import SSHCertificate, SSHKey, SSHKeyPair
 from .public_key import import_certificate_chain, import_public_key
 
 
-_AttrDict = Dict[Attribute, Union[bool, bytes, str, ObjectClass]]
+_AttrDict = Dict['Attribute', Union[bool, bytes, str, 'ObjectClass']]
 _TokenID = Tuple[str, bytes]
 _SessionMap = Dict[_TokenID, 'SSHPKCS11Session']
 
@@ -284,7 +284,7 @@ else: # pragma: no cover
                          token_serial: BytesOrStr = None,
                          key_label: str = None,
                          key_id: BytesOrStr = None) -> \
-            Sequence[SSHPKCS11KeyPair]:
+            Sequence['SSHPKCS11KeyPair']:
         """Report that PKCS#11 support is not available"""
 
         raise ValueError('PKCS#11 support not available') from None
