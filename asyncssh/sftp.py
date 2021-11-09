@@ -81,6 +81,11 @@ if TYPE_CHECKING:
 else:
     _RequestWaiter = asyncio.Future
 
+if sys.platform == 'win32':
+    _LocalPath = str
+else:
+    _LocalPath = bytes
+
 _SFTPFileObj = IO[bytes]
 _SFTPPath = Union[bytes, FilePath]
 _SFTPStatFunc = Callable[[_SFTPPath], Awaitable['SFTPAttrs']]
@@ -235,16 +240,21 @@ def _from_local_path(path: _SFTPPath) -> bytes:
     return path
 
 
-def _to_local_path(path: _SFTPPath) -> bytes:
+def _to_local_path(path: _SFTPPath) -> _LocalPath:
     """Convert SFTP path to local path"""
 
-    path = os.fsencode(path)
+    if isinstance(path, PurePath): # pragma: no branch
+        path = str(path)
 
     if sys.platform == 'win32': # pragma: no cover
-        if path[:1] == b'/' and path[2:3] == b':':
+        path = os.fsdecode(path)
+
+        if path[:1] == '/' and path[2:3] == ':':
             path = path[1:]
 
-        path = path.replace(b'/', b'\\')
+        path = path.replace('/', '\\')
+    else:
+        path = os.fsencode(path)
 
     return path
 
