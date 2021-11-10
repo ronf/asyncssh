@@ -271,7 +271,7 @@ async def create_tcp_local_listener(
         listen_port: int) -> 'SSHForwardListener':
     """Create a listener to forward traffic from a local TCP port over SSH"""
 
-    addrinfo = await loop.getaddrinfo(listen_host, listen_port,
+    addrinfo = await loop.getaddrinfo(listen_host or None, listen_port,
                                       family=socket.AF_UNSPEC,
                                       type=socket.SOCK_STREAM,
                                       flags=socket.AI_PASSIVE)
@@ -322,7 +322,7 @@ async def create_tcp_local_listener(
         server = await loop.create_server(protocol_factory, sock=sock)
         servers.append(server)
 
-    listen_key = listen_host, listen_port
+    listen_key = listen_host or '', listen_port
     return SSHForwardListener(conn, servers, listen_key, listen_port)
 
 
