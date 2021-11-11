@@ -1,3 +1,2 @@
 cryptography==2.8
-typing_extensions==3.6
 sphinx==4.2.0
