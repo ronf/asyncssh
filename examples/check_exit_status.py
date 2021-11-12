@@ -30,7 +30,7 @@ async def run_client() -> None:
             print(result.stdout, end='')
         else:
             print(result.stderr, end='', file=sys.stderr)
-            print('Program exited with status %d' % result.exit_status,
+            print(f'Program exited with status {result.exit_status}',
                   file=sys.stderr)
 
 try:
