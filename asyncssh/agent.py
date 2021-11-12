@@ -191,9 +191,9 @@ class SSHAgentClient:
 
         return self
 
-    async def __aexit__(self, exc_type: Type[BaseException],
-                        exc_value: BaseException,
-                        traceback: TracebackType) -> bool:
+    async def __aexit__(self, exc_type: Optional[Type[BaseException]],
+                        exc_value: Optional[BaseException],
+                        traceback: Optional[TracebackType]) -> bool:
         """Wait for connection close when used as an async context manager"""
 
         await self._cleanup()

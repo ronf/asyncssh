@@ -57,27 +57,6 @@ _SCPPath = Union[bytes, FilePath]
 _SCPConnPath = Union[Tuple[_SCPConn, _SCPPath], _SCPConn, _SCPPath]
 
 
-class _SCPFileProtocol(Protocol):
-    """Protocol for accessing a file during an SCP copy"""
-
-    async def __aenter__(self) -> 'SFTPFileProtocol':
-        """Allow _SCPFileProtocol to be used as an async context manager"""
-
-    async def __aexit__(self, _exc_type: Type[BaseException],
-                        _exc_value: BaseException,
-                        _traceback: TracebackType) -> bool:
-        """Wait for file close when used as an async context manager"""
-
-    async def read(self, size: int, offset: int) -> bytes:
-        """Read data from the local file"""
-
-    async def write(self, data: bytes, offset: int) -> int:
-        """Write data to the local file"""
-
-    async def close(self) -> None:
-        """Close the local file"""
-
-
 class _SCPFSProtocol(Protocol):
     """Protocol for accessing a filesystem during an SCP copy"""
 
@@ -266,9 +245,10 @@ class _SCPHandler:
 
         return self
 
-    async def __aexit__(self, _exc_type: Type[BaseException],
-                        _exc_value: BaseException,
-                        _traceback: TracebackType) -> bool: # pragma: no cover
+    async def __aexit__(self, _exc_type: Optional[Type[BaseException]],
+                        _exc_value: Optional[BaseException],
+                        _traceback: Optional[TracebackType]) -> \
+            bool: # pragma: no cover
         """Wait for file close when used as an async context manager"""
 
         await self.close()

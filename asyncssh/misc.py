@@ -267,7 +267,7 @@ class _ACMWrapper(Generic[_ACM]):
         self._coro = coro
         self._coro_result: Optional[_ACM] = None
 
-    def __await__(self) -> Generator[Any, None, Optional[_ACM]]:
+    def __await__(self) -> Generator[Any, None, _ACM]:
         return self._coro.__await__()
 
     async def __aenter__(self) -> _ACM:
@@ -275,9 +275,9 @@ class _ACMWrapper(Generic[_ACM]):
 
         return await self._coro_result.__aenter__()
 
-    async def __aexit__(self, exc_type: Type[BaseException],
-                        exc_value: BaseException,
-                        traceback: TracebackType) -> Optional[bool]:
+    async def __aexit__(self, exc_type: Optional[Type[BaseException]],
+                        exc_value: Optional[BaseException],
+                        traceback: Optional[TracebackType]) -> Optional[bool]:
         assert self._coro_result is not None
 
         exit_result = await self._coro_result.__aexit__(
@@ -288,9 +288,10 @@ class _ACMWrapper(Generic[_ACM]):
         return exit_result
 
 
+_ACMCoro = Callable[..., Awaitable[_ACM]]
 _ACMWrapperFunc = Callable[..., _ACMWrapper[_ACM]]
 
-def async_context_manager(coro):
+def async_context_manager(coro: _ACMCoro[_ACM]) -> _ACMWrapperFunc[_ACM]:
     """Decorator for functions returning asynchronous context managers
 
        This decorator can be used on functions which return objects
@@ -309,7 +310,7 @@ def async_context_manager(coro):
 
         return _ACMWrapper(coro(*args, **kwargs))
 
-    return cast(_ACMWrapperFunc[_ACM], context_wrapper)
+    return context_wrapper
 
 
 async def maybe_wait_closed(writer: '_SupportsWaitClosed') -> None:

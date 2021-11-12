@@ -657,9 +657,9 @@ class SSHAcceptor:
     async def __aenter__(self) -> 'SSHAcceptor':
         return self
 
-    async def __aexit__(self, _exc_type: Type[BaseException],
-                        _exc_value: BaseException,
-                        _traceback: TracebackType) -> bool:
+    async def __aexit__(self, _exc_type: Optional[Type[BaseException]],
+                        _exc_value: Optional[BaseException],
+                        _traceback: Optional[TracebackType]) -> bool:
         self.close()
         await self.wait_closed()
         return False
@@ -872,9 +872,9 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         return self
 
-    async def __aexit__(self, _exc_type: Type[BaseException],
-                        _exc_value: BaseException,
-                        _traceback: TracebackType) -> bool:
+    async def __aexit__(self, _exc_type: Optional[Type[BaseException]],
+                        _exc_value: Optional[BaseException],
+                        _traceback: Optional[TracebackType]) -> bool:
         """Wait for connection close when used as an async context manager"""
 
         if not self._loop.is_closed(): # pragma: no branch

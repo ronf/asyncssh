@@ -1062,9 +1062,9 @@ class SSHClientProcess(SSHProcess[AnyStr], SSHClientStreamSession[AnyStr]):
 
         return self
 
-    async def __aexit__(self, _exc_type: Type[BaseException],
-                        _exc_value: BaseException,
-                        _traceback: TracebackType) -> bool:
+    async def __aexit__(self, _exc_type: Optional[Type[BaseException]],
+                        _exc_value: Optional[BaseException],
+                        _traceback: Optional[TracebackType]) -> bool:
         """Wait for a full channel close when exiting the async context"""
 
         self.close()
@@ -1418,9 +1418,9 @@ class SSHServerProcess(SSHProcess[AnyStr], SSHServerStreamSession[AnyStr]):
 
         return self
 
-    async def __aexit__(self, _exc_type: Type[BaseException],
-                        _exc_value: BaseException,
-                        _traceback: TracebackType) -> bool:
+    async def __aexit__(self, _exc_type: Optional[Type[BaseException]],
+                        _exc_value: Optional[BaseException],
+                        _traceback: Optional[TracebackType]) -> bool:
         """Wait for a full channel close when exiting the async context"""
 
         self.close()
