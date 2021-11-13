@@ -728,10 +728,11 @@ class _TestSFTP(_CheckSFTP):
         for method in ('mget', 'mput', 'mcopy'):
             with self.subTest(method=method):
                 try:
-                    self._create_file('src')
+                    self._create_file('src1')
+                    self._create_file('src2')
 
                     with self.assertRaises(SFTPError):
-                        await getattr(sftp, method)('src', 'dst')
+                        await getattr(sftp, method)('src*', 'dst')
                 finally:
                     remove('src')
 

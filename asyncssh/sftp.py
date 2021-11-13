@@ -170,9 +170,6 @@ class SFTPFSProtocol(Protocol):
     def encode(self, path: _SFTPPath) -> bytes:
         """Encode path name using configured path encoding"""
 
-    def decode(self, path: bytes, want_string: bool = ...) -> BytesOrStr:
-        """Decode path name using configured path encoding"""
-
     def compose_path(self, path: bytes,
                      parent: Optional[bytes] = None) -> bytes:
         """Compose a path"""
@@ -2078,33 +2075,6 @@ class SFTPClient:
         except (SFTPNoSuchFile, SFTPPermissionDenied):
             return 0
 
-    async def _glob(self, fs: SFTPFSProtocol,
-                    patterns: Union[_SFTPPath, Sequence[_SFTPPath]],
-                    error_handler: SFTPErrorHandler) -> Sequence[BytesOrStr]:
-        """Begin a new glob pattern match"""
-
-        # pylint: disable=no-self-use
-
-        if isinstance(patterns, (bytes, str, PurePath)):
-            patterns = [patterns]
-
-        result: List[BytesOrStr] = []
-
-        for pattern in patterns:
-            if not pattern:
-                continue
-
-            enc_names = await match_glob(fs, fs.encode(pattern), error_handler)
-
-            if isinstance(pattern, (str, PurePath)):
-                names = [fs.decode(name) for name in enc_names]
-            else:
-                names = cast(List[BytesOrStr], enc_names)
-
-            result.extend(names)
-
-        return result
-
     async def _copy(self, srcfs: SFTPFSProtocol, dstfs: SFTPFSProtocol,
                     srcpath: bytes, dstpath: bytes, preserve: bool,
                     recurse: bool, follow_symlinks: bool, block_size: int,
@@ -2196,8 +2166,22 @@ class SFTPClient:
         self.logger.info('Starting SFTP %s of %s to %s',
                          copy_type, srcpaths, dstpath)
 
+        if isinstance(srcpaths, (bytes, str, PurePath)):
+            srcpaths = [srcpaths]
+
+        exppaths: List[bytes]
+
         if expand_glob:
-            srcpaths = await self._glob(srcfs, srcpaths, error_handler)
+            exppaths = []
+
+            for pattern in srcpaths:
+                if not pattern:
+                    continue
+
+                exppaths.extend(await match_glob(srcfs, srcfs.encode(pattern),
+                                                 error_handler))
+        else:
+            exppaths = [srcfs.encode(srcfile) for srcfile in srcpaths]
 
         if dstpath:
             dstpath = dstfs.encode(dstpath)
@@ -2206,15 +2190,12 @@ class SFTPClient:
 
         dst_isdir = dstpath is None or (await dstfs.isdir(dstpath))
 
-        if isinstance(srcpaths, (bytes, str, PurePath)):
-            srcpaths = [srcpaths]
-        elif not dst_isdir:
+        if len(exppaths) > 1 and not dst_isdir:
             assert dstpath is not None
             raise SFTPFailure('%s must be a directory' %
                               dstpath.decode('utf-8', errors='replace'))
 
-        for srcfile in srcpaths:
-            srcfile = srcfs.encode(srcfile)
+        for srcfile in exppaths:
             filename = srcfs.basename(srcfile)
 
             if dstpath is None:
@@ -2659,7 +2640,27 @@ class SFTPClient:
 
         """
 
-        return await self._glob(self, patterns, error_handler)
+        if isinstance(patterns, (bytes, str, PurePath)):
+            patterns = [patterns]
+
+        result: List[BytesOrStr] = []
+
+        for pattern in patterns:
+            if not pattern:
+                continue
+
+            enc_names = await match_glob(self, self.encode(pattern),
+                                         error_handler)
+
+            if isinstance(pattern, (str, PurePath)):
+                names = [self.decode(name) for name in enc_names]
+            else:
+                names = cast(List[BytesOrStr], enc_names)
+
+            result.extend(names)
+
+        return result
+
 
     async def makedirs(self, path: _SFTPPath, attrs: SFTPAttrs = SFTPAttrs(),
                        exist_ok: bool = False) -> None:
@@ -5108,17 +5109,6 @@ class LocalFS:
 
         return os.fsencode(path)
 
-    def decode(self, path: bytes, want_string: bool = True) -> BytesOrStr:
-        """Decode path name using filesystem native encoding
-
-           This method has no effect if the path is already a string.
-
-        """
-
-        # pylint: disable=no-self-use
-
-        return os.fsdecode(path) if want_string else path
-
     def compose_path(self, path: _SFTPPath,
                      parent: Optional[bytes] = None) -> bytes:
         """Compose a path
@@ -5126,8 +5116,6 @@ class LocalFS:
            If parent is not specified, just encode the path.
 
         """
-
-        # pylint: disable=no-self-use
 
         path = self.encode(path)
 
