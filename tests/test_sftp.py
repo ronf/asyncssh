@@ -678,7 +678,7 @@ class _TestSFTP(_CheckSFTP):
                     self._create_file('src2', 'yyy')
                     os.mkdir('dst')
 
-                    await getattr(sftp, method)('src*', 'dst')
+                    await getattr(sftp, method)(['', 'src*'], 'dst')
 
                     self._check_file('src1', 'dst/src1')
                     self._check_file('src2', 'dst/src2')
