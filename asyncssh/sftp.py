@@ -81,7 +81,7 @@ if TYPE_CHECKING:
 else:
     _RequestWaiter = asyncio.Future
 
-if sys.platform == 'win32':
+if sys.platform == 'win32': # pragma: no cover
     _LocalPath = str
 else:
     _LocalPath = bytes
@@ -160,7 +160,7 @@ class SFTPFileProtocol(Protocol):
         """Close the local file"""
 
 
-class SFTPFSProtocol(Protocol):
+class _SFTPFSProtocol(Protocol):
     """Protocol for accessing a filesystem via an SFTP server"""
 
     @staticmethod
@@ -237,11 +237,8 @@ def _from_local_path(path: _SFTPPath) -> bytes:
     return path
 
 
-def _to_local_path(path: _SFTPPath) -> _LocalPath:
+def _to_local_path(path: bytes) -> _LocalPath:
     """Convert SFTP path to local path"""
-
-    if isinstance(path, PurePath): # pragma: no branch
-        path = str(path)
 
     if sys.platform == 'win32': # pragma: no cover
         path = os.fsdecode(path)
@@ -518,8 +515,8 @@ class _SFTPFileCopier(_SFTPParallelIO):
     """
 
     def __init__(self, block_size: int, max_requests: int, offset: int,
-                 total_bytes: int, srcfs: SFTPFSProtocol,
-                 dstfs: SFTPFSProtocol, srcpath: bytes, dstpath: bytes,
+                 total_bytes: int, srcfs: _SFTPFSProtocol,
+                 dstfs: _SFTPFSProtocol, srcpath: bytes, dstpath: bytes,
                  progress_handler: SFTPProgressHandler):
         super().__init__(block_size, max_requests, offset, total_bytes)
 
@@ -2020,7 +2017,7 @@ class SFTPClient:
 
         """
 
-        if isinstance(path, PurePath): # pragma: no branch
+        if isinstance(path, PurePath):
             path = str(path)
 
         if isinstance(path, str):
@@ -2075,7 +2072,7 @@ class SFTPClient:
         except (SFTPNoSuchFile, SFTPPermissionDenied):
             return 0
 
-    async def _copy(self, srcfs: SFTPFSProtocol, dstfs: SFTPFSProtocol,
+    async def _copy(self, srcfs: _SFTPFSProtocol, dstfs: _SFTPFSProtocol,
                     srcpath: bytes, dstpath: bytes, preserve: bool,
                     recurse: bool, follow_symlinks: bool, block_size: int,
                     max_requests: int, progress_handler: SFTPProgressHandler,
@@ -2150,7 +2147,7 @@ class SFTPClient:
             else:
                 raise
 
-    async def _begin_copy(self, srcfs: SFTPFSProtocol, dstfs: SFTPFSProtocol,
+    async def _begin_copy(self, srcfs: _SFTPFSProtocol, dstfs: _SFTPFSProtocol,
                           srcpaths: Sequence[_SFTPPath],
                           dstpath: Optional[_SFTPPath],
                           copy_type: str, expand_glob: bool, preserve: bool,
@@ -5109,7 +5106,7 @@ class LocalFS:
 
         return os.fsencode(path)
 
-    def compose_path(self, path: _SFTPPath,
+    def compose_path(self, path: bytes,
                      parent: Optional[bytes] = None) -> bytes:
         """Compose a path
 
@@ -5121,40 +5118,32 @@ class LocalFS:
 
         return posixpath.join(parent, path) if parent else path
 
-    async def stat(self, path: _SFTPPath) -> 'SFTPAttrs':
+    async def stat(self, path: bytes) -> 'SFTPAttrs':
         """Get attributes of a local file or directory, following symlinks"""
 
         return SFTPAttrs.from_local(os.stat(_to_local_path(path)))
 
-    async def lstat(self, path: _SFTPPath) -> 'SFTPAttrs':
+    async def lstat(self, path: bytes) -> 'SFTPAttrs':
         """Get attributes of a local file, directory, or symlink"""
 
         return SFTPAttrs.from_local(os.lstat(_to_local_path(path)))
 
-    async def setstat(self, path: _SFTPPath, attrs: 'SFTPAttrs') -> None:
+    async def setstat(self, path: bytes, attrs: 'SFTPAttrs') -> None:
         """Set attributes of a local file or directory"""
 
         _setstat(_to_local_path(path), attrs)
 
-    async def exists(self, path: _SFTPPath) -> bool:
+    async def exists(self, path: bytes) -> bool:
         """Return if the local path exists and isn't a broken symbolic link"""
 
         return os.path.exists(_to_local_path(path))
 
-    async def isdir(self, path: _SFTPPath) -> bool:
+    async def isdir(self, path: bytes) -> bool:
         """Return if the local path refers to a directory"""
 
         return os.path.isdir(_to_local_path(path))
 
-    @overload
-    async def listdir(self, path: bytes) -> \
-        Sequence[bytes]: ... # pragma: no cover
-
-    @overload
-    async def listdir(self, path: FilePath) -> \
-        Sequence[str]: ... # pragma: no cover
-
-    async def listdir(self, path: _SFTPPath) -> Sequence[BytesOrStr]:
+    async def listdir(self, path: bytes) -> Sequence[bytes]:
         """Read the names of the files in a local directory"""
 
         files = os.listdir(_to_local_path(path))
@@ -5164,29 +5153,23 @@ class LocalFS:
 
         return files
 
-    async def mkdir(self, path: _SFTPPath) -> None:
+    async def mkdir(self, path: bytes) -> None:
         """Create a local directory with the specified attributes"""
 
         os.mkdir(_to_local_path(path))
 
-    @overload
-    async def readlink(self, path: bytes) -> bytes: ... # pragma: no cover
-
-    @overload
-    async def readlink(self, path: FilePath) -> str: ... # pragma: no cover
-
-    async def readlink(self, path: _SFTPPath) -> BytesOrStr:
+    async def readlink(self, path: bytes) -> bytes:
         """Return the target of a local symbolic link"""
 
         return _from_local_path(os.readlink(_to_local_path(path)))
 
-    async def symlink(self, oldpath: _SFTPPath, newpath: _SFTPPath) -> None:
+    async def symlink(self, oldpath: bytes, newpath: bytes) -> None:
         """Create a local symbolic link"""
 
         os.symlink(_to_local_path(oldpath), _to_local_path(newpath))
 
     @async_context_manager
-    async def open(self, path: _SFTPPath, mode: str) -> SFTPFileProtocol:
+    async def open(self, path: bytes, mode: str) -> SFTPFileProtocol:
         """Open a local file"""
 
         # pylint: disable=unused-argument
