@@ -59,19 +59,25 @@ def tuple_to_nsec(sec, nsec):
 def lookup_user(uid):
     """Return the user name associated with a uid"""
 
-    # pylint: disable=import-outside-toplevel
-    import pwd
+    try:
+        # pylint: disable=import-outside-toplevel
+        import pwd
 
-    return pwd.getpwuid(uid).pw_name
+        return pwd.getpwuid(uid).pw_name
+    except ImportError:
+        return ''
 
 
 def lookup_group(gid):
     """Return the group name associated with a gid"""
 
-    # pylint: disable=import-outside-toplevel
-    import grp
+    try:
+        # pylint: disable=import-outside-toplevel
+        import grp
 
-    return grp.getgrgid(gid).gr_name
+        return grp.getgrgid(gid).gr_name
+    except ImportError:
+        return ''
 
 
 def remove(files):

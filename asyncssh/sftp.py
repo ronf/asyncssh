@@ -1292,10 +1292,10 @@ class SFTPAttrs(Record):
             filetype = FILEXFER_TYPE_UNKNOWN
 
         if sys.platform == 'win32': # pragma: no cover
-            uid = None
-            gid = None
-            owner = None
-            group = None
+            uid = 0
+            gid = 0
+            owner = ''
+            group = ''
         else:
             uid = result.st_uid
             gid = result.st_gid
