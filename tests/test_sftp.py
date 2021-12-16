@@ -64,7 +64,7 @@ def lookup_user(uid):
         import pwd
 
         return pwd.getpwuid(uid).pw_name
-    except ImportError:
+    except ImportError: # pragma: no cover
         return ''
 
 
@@ -76,7 +76,7 @@ def lookup_group(gid):
         import grp
 
         return grp.getgrgid(gid).gr_name
-    except ImportError:
+    except ImportError: # pragma: no cover
         return ''
 
 
