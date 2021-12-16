@@ -54,11 +54,22 @@ from .constants import FXF_CREAT, FXF_TRUNC, FXF_EXCL
 
 from .constants import FILEXFER_ATTR_SIZE, FILEXFER_ATTR_UIDGID
 from .constants import FILEXFER_ATTR_PERMISSIONS, FILEXFER_ATTR_ACMODTIME
-from .constants import FILEXFER_ATTR_EXTENDED, FILEXFER_ATTR_UNDEFINED
+from .constants import FILEXFER_ATTR_EXTENDED, FILEXFER_ATTR_UNDEFINED_V3
+
+from .constants import FILEXFER_ATTR_ACCESSTIME, FILEXFER_ATTR_CREATETIME
+from .constants import FILEXFER_ATTR_MODIFYTIME, FILEXFER_ATTR_ACL
+from .constants import FILEXFER_ATTR_OWNERGROUP, FILEXFER_ATTR_SUBSECOND_TIMES
+from .constants import FILEXFER_ATTR_DEFINED_V4, FILEXFER_ATTR_UNDEFINED_V4
 
 from .constants import FX_OK, FX_EOF, FX_NO_SUCH_FILE, FX_PERMISSION_DENIED
 from .constants import FX_FAILURE, FX_BAD_MESSAGE, FX_NO_CONNECTION
-from .constants import FX_CONNECTION_LOST, FX_OP_UNSUPPORTED
+from .constants import FX_CONNECTION_LOST, FX_OP_UNSUPPORTED, FX_INVALID_HANDLE
+from .constants import FX_NO_SUCH_PATH, FX_FILE_ALREADY_EXISTS
+from .constants import FX_WRITE_PROTECT, FX_NO_MEDIA
+
+from .constants import FILEXFER_TYPE_REGULAR, FILEXFER_TYPE_DIRECTORY
+from .constants import FILEXFER_TYPE_SYMLINK, FILEXFER_TYPE_SPECIAL
+from .constants import FILEXFER_TYPE_UNKNOWN
 
 from .logging import SSHLogger
 
@@ -101,11 +112,15 @@ SFTPErrorHandler = Union[None, Literal[False], Callable[[Exception], None]]
 SFTPProgressHandler = Optional[Callable[[bytes, bytes, int, int], None]]
 
 
+MIN_SFTP_VERSION = 3
+MAX_SFTP_VERSION = 4
+
 SFTP_BLOCK_SIZE = 16384
 
-_SFTP_VERSION = 3
 _MAX_SFTP_REQUESTS = 128
 _MAX_READDIR_NAMES = 128
+
+_NSECS_IN_SEC = 1_000_000_000
 
 _T = TypeVar('_T')
 
@@ -121,11 +136,17 @@ _open_modes = {
     'x+': FXF_READ | FXF_WRITE | FXF_CREAT | FXF_EXCL
 }
 
+_file_types = {FILEXFER_TYPE_REGULAR:   'regular',
+               FILEXFER_TYPE_DIRECTORY: 'directory',
+               FILEXFER_TYPE_SYMLINK:   'symlink',
+               FILEXFER_TYPE_SPECIAL:   'special',
+               FILEXFER_TYPE_UNKNOWN:   'unknown'}
+
 
 class _SupportsEncode(Protocol):
     """Protocol for applying encoding to path names"""
 
-    def encode(self) -> bytes:
+    def encode(self, sftp_version: int) -> bytes:
         """Encode result as bytes in an SSH packet"""
 
 
@@ -206,6 +227,122 @@ class _SFTPFSProtocol(Protocol):
         """Open a file"""
 
 
+def _nsec_to_tuple(nsec: int) -> Tuple[int, int]:
+    """Convert nanoseconds since epoch to seconds & remainder"""
+
+    return divmod(nsec, _NSECS_IN_SEC)
+
+
+def _float_sec_to_tuple(sec: float) -> Tuple[int, int]:
+    """Convert float seconds since epoch to seconds & remainder"""
+
+    return (int(sec), int((sec % 1) * _NSECS_IN_SEC))
+
+
+def _tuple_to_float_sec(sec: int, nsec: Optional[int]) -> float:
+    """Convert seconds and remainder to float seconds since epoch"""
+
+    return sec + float(nsec or 0) / _NSECS_IN_SEC
+
+
+def _tuple_to_nsec(sec: int, nsec: Optional[int]) -> int:
+    """Convert seconds and remainder to nanoseconds since epoch"""
+
+    return sec * _NSECS_IN_SEC + (nsec or 0)
+
+
+def _utime_to_attrs(times: Optional[Tuple[float, float]] = None,
+                    ns: Optional[Tuple[int, int]] = None) -> 'SFTPAttrs':
+    """Convert utime arguments to SFTPAttrs"""
+
+    if ns:
+        atime, atime_ns = _nsec_to_tuple(ns[0])
+        mtime, mtime_ns = _nsec_to_tuple(ns[1])
+    elif times:
+        atime, atime_ns = _float_sec_to_tuple(times[0])
+        mtime, mtime_ns = _float_sec_to_tuple(times[1])
+    else:
+        if hasattr(time, 'time_ns'):
+            atime, atime_ns = _nsec_to_tuple(time.time_ns())
+        else:
+            atime, atime_ns = _float_sec_to_tuple(time.time())
+
+        mtime, mtime_ns = atime, atime_ns
+
+    return SFTPAttrs(atime=atime, atime_ns=atime_ns,
+                     mtime=mtime, mtime_ns=mtime_ns)
+
+
+def _lookup_uid(user: Optional[str]) -> Optional[int]:
+    """Return the uid associated with a user name"""
+
+    if user is not None:
+        try:
+            # pylint: disable=import-outside-toplevel
+            import pwd
+            uid = pwd.getpwnam(user).pw_uid
+        except (ImportError, KeyError):
+            try:
+                uid = int(user)
+            except ValueError:
+                uid = None
+    else:
+        uid = None
+
+    return uid
+
+
+def _lookup_gid(group: Optional[str]) -> Optional[int]:
+    """Return the gid associated with a group name"""
+
+    if group is not None:
+        try:
+            # pylint: disable=import-outside-toplevel
+            import grp
+            gid = grp.getgrnam(group).gr_gid
+        except (ImportError, KeyError):
+            try:
+                gid = int(group)
+            except ValueError:
+                gid = None
+    else:
+        gid = None
+
+    return gid
+
+
+def _lookup_user(uid: Optional[int]) -> str:
+    """Return the user name associated with a uid"""
+
+    if uid is not None:
+        try:
+            # pylint: disable=import-outside-toplevel
+            import pwd
+            user = pwd.getpwuid(uid).pw_name
+        except (ImportError, KeyError):
+            user = str(uid)
+    else:
+        user = ''
+
+    return user
+
+
+def _lookup_group(gid: Optional[int]) -> str:
+    """Return the group name associated with a gid"""
+
+    if gid is not None:
+        try:
+            # pylint: disable=import-outside-toplevel
+            import grp
+            group = grp.getgrgid(gid).gr_name
+        except (ImportError, KeyError):
+            group = str(gid)
+    else:
+        group = ''
+
+    return group
+
+
 def _mode_to_pflags(mode: str) -> Tuple[int, bool]:
     """Convert open mode to SFTP open flags"""
 
@@ -259,17 +396,44 @@ def _setstat(path: Union[int, _SFTPPath], attrs: 'SFTPAttrs') -> None:
     if attrs.size is not None:
         os.truncate(path, attrs.size)
 
-    if attrs.uid is not None and attrs.gid is not None:
+    uid = _lookup_uid(attrs.owner) if attrs.uid is None else attrs.uid
+    gid = _lookup_gid(attrs.group) if attrs.gid is None else attrs.gid
+
+    atime_ns = _tuple_to_nsec(attrs.atime, attrs.atime_ns) \
+        if attrs.atime is not None else None
+
+    mtime_ns = _tuple_to_nsec(attrs.mtime, attrs.mtime_ns) \
+        if attrs.mtime is not None else None
+
+    if ((uid is None and gid is not None) or
+            (uid is not None and gid is None) or
+            (atime_ns is None and mtime_ns is not None) or
+            (atime_ns is not None and mtime_ns is None)):
+        stat_result = os.stat(path)
+
+        if uid is None and gid is not None:
+            uid = stat_result.st_uid
+
+        if uid is not None and gid is None:
+            gid = stat_result.st_gid
+
+        if atime_ns is None and mtime_ns is not None:
+            atime_ns = stat_result.st_atime_ns
+
+        if atime_ns is not None and mtime_ns is None:
+            mtime_ns = stat_result.st_mtime_ns
+
+    if uid is not None and gid is not None:
         try:
-            os.chown(path, attrs.uid, attrs.gid)
+            os.chown(path, uid, gid)
         except AttributeError: # pragma: no cover
             raise NotImplementedError from None
 
     if attrs.permissions is not None:
         os.chmod(path, stat.S_IMODE(attrs.permissions))
 
-    if attrs.atime is not None and attrs.mtime is not None:
-        os.utime(path, times=(attrs.atime, attrs.mtime))
+    if atime_ns is not None and mtime_ns is not None:
+        os.utime(path, ns=(atime_ns, mtime_ns))
 
 
 def _split_path_by_globs(pattern: bytes) -> \
@@ -348,7 +512,8 @@ async def _glob(fs: _SFTPGlobProtocol, basedir: Optional[bytes],
 
 
 async def match_glob(fs: _SFTPGlobProtocol, pattern: bytes,
-                     error_handler: SFTPErrorHandler = None) -> Sequence[bytes]:
+                     error_handler: SFTPErrorHandler = None,
+                     sftp_version = MIN_SFTP_VERSION) -> Sequence[bytes]:
     """Match a glob pattern"""
 
     names: List[bytes] = []
@@ -359,7 +524,8 @@ async def match_glob(fs: _SFTPGlobProtocol, pattern: bytes,
             await _glob(fs, basedir, patlist, names)
 
             if not names:
-                raise SFTPNoSuchFile('No matches found')
+                exc = SFTPNoSuchPath if sftp_version >= 4 else SFTPNoSuchFile
+                raise exc('No matches found')
         else:
             await fs.stat(pattern)
             names.append(pattern)
@@ -753,6 +919,98 @@ class SFTPOpUnsupported(SFTPError):
         super().__init__(FX_OP_UNSUPPORTED, reason, lang)
 
 
+class SFTPInvalidHandle(SFTPError):
+    """SFTP invalid handle
+
+       This exception is raised when the handle provided is invalid.
+
+       :param reason:
+           Details about the invalid handle
+       :param lang: (optional)
+           The language the reason is in
+       :type reason: `str`
+       :type lang: `str`
+
+    """
+
+    def __init__(self, reason: str, lang: str = DEFAULT_LANG):
+        super().__init__(FX_INVALID_HANDLE, reason, lang)
+
+
+class SFTPNoSuchPath(SFTPError):
+    """SFTP no such path
+
+       This exception is raised when the requested path is not found.
+
+       :param reason:
+           Details about the missing path
+       :param lang: (optional)
+           The language the reason is in
+       :type reason: `str`
+       :type lang: `str`
+
+    """
+
+    def __init__(self, reason: str, lang: str = DEFAULT_LANG):
+        super().__init__(FX_NO_SUCH_PATH, reason, lang)
+
+
+class SFTPFileAlreadyExists(SFTPError):
+    """SFTP file already exists
+
+       This exception is raised when the requested file already exists.
+
+       :param reason:
+           Details about the existing file
+       :param lang: (optional)
+           The language the reason is in
+       :type reason: `str`
+       :type lang: `str`
+
+    """
+
+    def __init__(self, reason: str, lang: str = DEFAULT_LANG):
+        super().__init__(FX_FILE_ALREADY_EXISTS, reason, lang)
+
+
+class SFTPWriteProtect(SFTPError):
+    """SFTP write protect
+
+       This exception is raised when a write is attempted to a file
+       on read-only or write protected media.
+
+       :param reason:
+           Details about the requested file
+       :param lang: (optional)
+           The language the reason is in
+       :type reason: `str`
+       :type lang: `str`
+
+    """
+
+    def __init__(self, reason: str, lang: str = DEFAULT_LANG):
+        super().__init__(FX_WRITE_PROTECT, reason, lang)
+
+
+class SFTPNoMedia(SFTPError):
+    """SFTP no media
+
+       This exception is raised when there is no media in the
+       requested drive.
+
+       :param reason:
+           Details about the requested drive
+       :param lang: (optional)
+           The language the reason is in
+       :type reason: `str`
+       :type lang: `str`
+
+    """
+
+    def __init__(self, reason: str, lang: str = DEFAULT_LANG):
+        super().__init__(FX_NO_MEDIA, reason, lang)
+
+
 _sftp_error_map: Dict[int, Callable[[str, str], SFTPError]] = {
     FX_EOF: SFTPEOFError,
     FX_NO_SUCH_FILE: SFTPNoSuchFile,
@@ -761,7 +1019,13 @@ _sftp_error_map: Dict[int, Callable[[str, str], SFTPError]] = {
     FX_BAD_MESSAGE: SFTPBadMessage,
     FX_NO_CONNECTION: SFTPNoConnection,
     FX_CONNECTION_LOST: SFTPConnectionLost,
-    FX_OP_UNSUPPORTED: SFTPOpUnsupported
+    FX_OP_UNSUPPORTED: SFTPOpUnsupported,
+    FX_INVALID_HANDLE: SFTPInvalidHandle,
+    FX_NO_SUCH_PATH: SFTPNoSuchPath,
+    FX_FILE_ALREADY_EXISTS: SFTPFileAlreadyExists,
+    FX_WRITE_PROTECT: SFTPWriteProtect,
+    FX_NO_MEDIA: SFTPNoMedia
+
 }
 
 
@@ -779,16 +1043,23 @@ class SFTPAttrs(Record):
 
        SFTPAttrs is a simple record class with the following fields:
 
-         ============ =========================================== ======
-         Field        Description                                 Type
-         ============ =========================================== ======
-         size         File size in bytes                          uint64
-         uid          User id of file owner                       uint32
-         gid          Group id of file owner                      uint32
-         permissions  Bit mask of POSIX file permissions,         uint32
-         atime        Last access time, UNIX epoch seconds        uint32
-         mtime        Last modification time, UNIX epoch seconds  uint32
-         ============ =========================================== ======
+         ============ ================================================= ======
+         Field        Description                                       Type
+         ============ ================================================= ======
+         type         File type (SFTPv4 only)                           byte
+         size         File size in bytes                                uint64
+         uid          User id of file owner                             uint32
+         gid          Group id of file owner                            uint32
+         owner        User name of file owner                           string
+         group        Group name of file owner                          string
+         permissions  Bit mask of POSIX file permissions                uint32
+         atime        Last access time, UNIX epoch seconds              uint64
+         atime_ns     Last access time nanoseconds (SFTPv4 only)        uint32
+         mtime        Last modify time, UNIX epoch seconds              uint64
+         mtime_ns     Last modify time nanoseconds (SFTPv4 only)        uint32
+         crtime       Creation time, UNIX epoch seconds (SFTPv4 only)   uint64
+         crtime_ns    Creation time nanoseconds (SFTPv4 only)           uint32
+         ============ ================================================= ======
 
        In addition to the above, an `nlink` field is provided which
        stores the number of links to this file, but it is not encoded
@@ -797,21 +1068,40 @@ class SFTPAttrs(Record):
        objects.
 
        Extended attributes can also be added via a field named
-       `extended` which is a list of string name/value pairs.
+       `extended` which is a list of bytes name/value pairs.
 
        When setting attributes using an :class:`SFTPAttrs`, only fields
        which have been initialized will be changed on the selected file.
 
     """
 
+    type: int = FILEXFER_TYPE_UNKNOWN
     size: Optional[int]
     uid: Optional[int]
     gid: Optional[int]
+    owner: Optional[str]
+    group: Optional[str]
     permissions: Optional[int]
     atime: Optional[int]
+    atime_ns: Optional[int]
+    crtime: Optional[int]
+    crtime_ns: Optional[int]
     mtime: Optional[int]
+    mtime_ns: Optional[int]
+    acl: Optional[bytes]
     nlink: Optional[int]
     extended: Sequence[Tuple[bytes, bytes]] = ()
+
+    def _format_ns(self, k: str):
+        """Convert epoch seconds & nanoseconds to a string date & time"""
+
+        result = time.ctime(getattr(self, k))
+        nsec = getattr(self, k + '_ns')
+
+        if result and nsec:
+            result = result[:19] + f'.{nsec:09d}' + result[19:]
+
+        return result
 
     def _format(self, k: str, v: object) -> Optional[str]:
         """Convert attributes to more readable values"""
@@ -819,34 +1109,85 @@ class SFTPAttrs(Record):
         if v is None or k == 'extended' and not v:
             return None
 
-        if k == 'permissions':
-            return '{:06o}'.format(cast(int, v))
-        elif k in ('atime', 'mtime'):
-            return time.ctime(cast(int, v))
+        if k == 'type':
+            return _file_types.get(cast(int, v), str(v)) \
+                if v != FILEXFER_TYPE_UNKNOWN else None
+        elif k == 'permissions':
+            return '{:04o}'.format(cast(int, v))
+        elif k in ('atime', 'crtime', 'mtime'):
+            return self._format_ns(k)
+        elif k in ('atime_ns', 'crtime_ns', 'mtime_ns'):
+            return None
         else:
             return str(v) or None
 
-    def encode(self) -> bytes:
+    def encode(self, sftp_version: int) -> bytes:
         """Encode SFTP attributes as bytes in an SSH packet"""
 
         flags = 0
         attrs = []
 
+        if sftp_version >= 4:
+            attrs.append(Byte(self.type))
+
         if self.size is not None:
             flags |= FILEXFER_ATTR_SIZE
             attrs.append(UInt64(self.size))
 
-        if self.uid is not None and self.gid is not None:
-            flags |= FILEXFER_ATTR_UIDGID
-            attrs.append(UInt32(self.uid) + UInt32(self.gid))
+        if sftp_version == 3:
+            if self.uid is not None and self.gid is not None:
+                flags |= FILEXFER_ATTR_UIDGID
+                attrs.append(UInt32(self.uid) + UInt32(self.gid))
+            elif self.owner is not None and self.group is not None:
+                raise ValueError('Setting owner and group requires SFTPv4')
+        else:
+            if self.owner is not None and self.group is not None:
+                flags |= FILEXFER_ATTR_OWNERGROUP
+                attrs.append(String(self.owner) + String(self.group))
+            elif self.uid is not None and self.gid is not None:
+                flags |= FILEXFER_ATTR_OWNERGROUP
+                attrs.append(String(str(self.uid)) + String(str(self.gid)))
 
         if self.permissions is not None:
             flags |= FILEXFER_ATTR_PERMISSIONS
             attrs.append(UInt32(self.permissions))
 
-        if self.atime is not None and self.mtime is not None:
-            flags |= FILEXFER_ATTR_ACMODTIME
-            attrs.append(UInt32(int(self.atime)) + UInt32(int(self.mtime)))
+        if sftp_version == 3:
+            if self.atime is not None and self.mtime is not None:
+                flags |= FILEXFER_ATTR_ACMODTIME
+                attrs.append(UInt32(int(self.atime)) + UInt32(int(self.mtime)))
+        else:
+            subsecond = (self.atime_ns is not None or
+                         self.crtime_ns is not None or
+                         self.mtime_ns is not None)
+
+            if subsecond:
+                flags |= FILEXFER_ATTR_SUBSECOND_TIMES
+
+            if self.atime is not None:
+                flags |= FILEXFER_ATTR_ACCESSTIME
+                attrs.append(UInt64(int(self.atime)))
+
+                if subsecond:
+                    attrs.append(UInt32(self.atime_ns or 0))
+
+            if self.crtime is not None:
+                flags |= FILEXFER_ATTR_CREATETIME
+                attrs.append(UInt64(int(self.crtime)))
+
+                if subsecond:
+                    attrs.append(UInt32(self.crtime_ns or 0))
+
+            if self.mtime is not None:
+                flags |= FILEXFER_ATTR_MODIFYTIME
+                attrs.append(UInt64(int(self.mtime)))
+
+                if subsecond:
+                    attrs.append(UInt32(self.mtime_ns or 0))
+
+            if self.acl is not None:
+                flags |= FILEXFER_ATTR_ACL
+                attrs.append(String(self.acl))
 
         if self.extended:
             flags |= FILEXFER_ATTR_EXTENDED
@@ -857,28 +1198,70 @@ class SFTPAttrs(Record):
         return UInt32(flags) + b''.join(attrs)
 
     @classmethod
-    def decode(cls, packet: SSHPacket) -> 'SFTPAttrs':
+    def decode(cls, packet: SSHPacket, sftp_version: int) -> 'SFTPAttrs':
         """Decode bytes in an SSH packet as SFTP attributes"""
 
         flags = packet.get_uint32()
         attrs = cls()
 
-        if flags & FILEXFER_ATTR_UNDEFINED:
+        undefined = FILEXFER_ATTR_UNDEFINED_V3 if sftp_version == 3 \
+                        else FILEXFER_ATTR_UNDEFINED_V4
+
+        if flags & undefined:
             raise SFTPBadMessage('Unsupported attribute flags')
+
+        if sftp_version >= 4:
+            attrs.type = packet.get_byte()
 
         if flags & FILEXFER_ATTR_SIZE:
             attrs.size = packet.get_uint64()
 
-        if flags & FILEXFER_ATTR_UIDGID:
-            attrs.uid = packet.get_uint32()
-            attrs.gid = packet.get_uint32()
+        if sftp_version == 3:
+            if flags & FILEXFER_ATTR_UIDGID:
+                attrs.uid = packet.get_uint32()
+                attrs.gid = packet.get_uint32()
+        else:
+            if flags & FILEXFER_ATTR_OWNERGROUP:
+                try:
+                    attrs.owner = packet.get_string().decode('utf-8')
+                except UnicodeDecodeError:
+                    raise SFTPBadMessage('Invalid owner name') from None
+
+                try:
+                    attrs.group = packet.get_string().decode('utf-8')
+                except UnicodeDecodeError:
+                    raise SFTPBadMessage('Invalid group name') from None
 
         if flags & FILEXFER_ATTR_PERMISSIONS:
-            attrs.permissions = packet.get_uint32() & 0xffff
+            mask = 0xffff if sftp_version == 3 else 0xfff
+            attrs.permissions = packet.get_uint32() & mask
 
-        if flags & FILEXFER_ATTR_ACMODTIME:
-            attrs.atime = packet.get_uint32()
-            attrs.mtime = packet.get_uint32()
+        if sftp_version == 3:
+            if flags & FILEXFER_ATTR_ACMODTIME:
+                attrs.atime = packet.get_uint32()
+                attrs.mtime = packet.get_uint32()
+        else:
+            if flags & FILEXFER_ATTR_ACCESSTIME:
+                attrs.atime = packet.get_uint64()
+
+                if flags & FILEXFER_ATTR_SUBSECOND_TIMES:
+                    attrs.atime_ns = packet.get_uint32()
+
+            if flags & FILEXFER_ATTR_CREATETIME:
+                attrs.crtime = packet.get_uint64()
+
+                if flags & FILEXFER_ATTR_SUBSECOND_TIMES:
+                    attrs.crtime_ns = packet.get_uint32()
+
+            if flags & FILEXFER_ATTR_MODIFYTIME:
+                attrs.mtime = packet.get_uint64()
+
+                if flags & FILEXFER_ATTR_SUBSECOND_TIMES:
+                    attrs.mtime_ns = packet.get_uint32()
+
+        if sftp_version >= 4 and flags & FILEXFER_ATTR_ACL:
+            # Ignore ACL data for now
+            attrs.acl = packet.get_string()
 
         if flags & FILEXFER_ATTR_EXTENDED:
             count = packet.get_uint32()
@@ -895,9 +1278,43 @@ class SFTPAttrs(Record):
     def from_local(cls, result: os.stat_result) -> 'SFTPAttrs':
         """Convert from local stat attributes"""
 
-        return cls(result.st_size, result.st_uid, result.st_gid,
-                   result.st_mode, result.st_atime, result.st_mtime,
-                   result.st_nlink)
+        mode = result.st_mode
+
+        if stat.S_ISREG(mode):
+            filetype = FILEXFER_TYPE_REGULAR
+        elif stat.S_ISDIR(mode):
+            filetype = FILEXFER_TYPE_DIRECTORY
+        elif stat.S_ISLNK(mode):
+            filetype = FILEXFER_TYPE_SYMLINK
+        elif stat.S_IFMT(mode) != 0: # pragma: no branch
+            filetype = FILEXFER_TYPE_SPECIAL
+        else: # pragma: no cover
+            filetype = FILEXFER_TYPE_UNKNOWN
+
+        if sys.platform == 'win32': # pragma: no cover
+            uid = None
+            gid = None
+            owner = None
+            group = None
+        else:
+            uid = result.st_uid
+            gid = result.st_gid
+            owner = _lookup_user(uid)
+            group = _lookup_group(gid)
+
+        atime, atime_ns = _nsec_to_tuple(result.st_atime_ns)
+        mtime, mtime_ns = _nsec_to_tuple(result.st_mtime_ns)
+
+        if sys.platform == 'win32': # pragma: no cover
+            crtime, crtime_ns = _nsec_to_tuple(result.st_ctime_ns)
+        elif hasattr(result, 'st_birthtime'): # pragma: no cover
+            crtime, crtime_ns = _float_sec_to_tuple(result.st_birthtime)
+        else: # pragma: no cover
+            crtime, crtime_ns = mtime, mtime_ns
+
+        return cls(filetype, result.st_size, uid, gid, owner, group,
+                   mode, atime, atime_ns, crtime, crtime_ns, mtime, mtime_ns,
+                   None, result.st_nlink)
 
 
 class SFTPVFSAttrs(Record):
@@ -935,8 +1352,10 @@ class SFTPVFSAttrs(Record):
     flags: int = 0
     namemax: int = 0
 
-    def encode(self) -> bytes:
+    def encode(self, sftp_version: int) -> bytes:
         """Encode SFTP statvfs attributes as bytes in an SSH packet"""
+
+        # pylint: disable=unused-argument
 
         return b''.join((UInt64(self.bsize), UInt64(self.frsize),
                          UInt64(self.blocks), UInt64(self.bfree),
@@ -946,8 +1365,10 @@ class SFTPVFSAttrs(Record):
                          UInt64(self.namemax)))
 
     @classmethod
-    def decode(cls, packet: SSHPacket) -> 'SFTPVFSAttrs':
+    def decode(cls, packet: SSHPacket, sftp_version: int) -> 'SFTPVFSAttrs':
         """Decode bytes in an SSH packet as SFTP statvfs attributes"""
+
+        # pylint: disable=unused-argument
 
         vfsattrs = cls()
 
@@ -1000,27 +1421,29 @@ class SFTPName(Record):
     def _format(self, k: str, v: object) -> Optional[str]:
         """Convert name fields to more readable values"""
 
+        if k == 'longname' and not v:
+            return None
+
         if isinstance(v, bytes):
             v = v.decode('utf-8', errors='replace')
 
         return str(v) or None
 
-    def encode(self) -> bytes:
+    def encode(self, sftp_version: int) -> bytes:
         """Encode an SFTP name as bytes in an SSH packet"""
 
+        longname = String(self.longname) if sftp_version == 3 else b''
 
-        # pylint: disable=no-member
-        return (String(self.filename) + String(self.longname) +
-                self.attrs.encode())
+        return (String(self.filename) + longname +
+                self.attrs.encode(sftp_version))
 
     @classmethod
-    def decode(cls, packet: SSHPacket) -> 'SFTPName':
+    def decode(cls, packet: SSHPacket, sftp_version: int) -> 'SFTPName':
         """Decode bytes in an SSH packet as an SFTP name"""
 
-
         filename = packet.get_string()
-        longname = packet.get_string()
-        attrs = SFTPAttrs.decode(packet)
+        longname = packet.get_string() if sftp_version == 3 else None
+        attrs = SFTPAttrs.decode(packet, sftp_version)
 
         return cls(filename, longname, attrs)
 
@@ -1132,11 +1555,12 @@ class SFTPClientHandler(SFTPHandler):
     _extensions: List[Tuple[bytes, bytes]] = []
 
     def __init__(self, loop: asyncio.AbstractEventLoop,
-                 reader: 'SSHReader[bytes]', writer: 'SSHWriter[bytes]'):
+                 reader: 'SSHReader[bytes]', writer: 'SSHWriter[bytes]',
+                 sftp_version: int):
         super().__init__(reader, writer)
 
         self._loop = loop
-        self._version: Optional[int] = None
+        self._version = sftp_version
         self._next_pktid = 0
         self._requests: Dict[int, _RequestWaiter] = {}
         self._nonstandard_symlink = False
@@ -1260,7 +1684,7 @@ class SFTPClientHandler(SFTPHandler):
         """Process an incoming SFTP name response"""
 
         count = packet.get_uint32()
-        names = [SFTPName.decode(packet) for i in range(count)]
+        names = [SFTPName.decode(packet, self._version) for i in range(count)]
         packet.check_end()
 
         self.logger.debug1('Received %s', plural(len(names), 'name'))
@@ -1273,7 +1697,7 @@ class SFTPClientHandler(SFTPHandler):
     def _process_attrs(self, packet: SSHPacket) -> SFTPAttrs:
         """Process an incoming SFTP attributes response"""
 
-        attrs = SFTPAttrs().decode(packet)
+        attrs = SFTPAttrs().decode(packet, self._version)
         packet.check_end()
 
         self.logger.debug1('Received %s', attrs)
@@ -1302,7 +1726,7 @@ class SFTPClientHandler(SFTPHandler):
 
         assert self._reader is not None
 
-        self.logger.debug1('Sending init, version=%d%s', _SFTP_VERSION,
+        self.logger.debug1('Sending init, version=%d%s', self._version,
                            ', extensions:' if self._extensions else '')
 
         for name, data in self._extensions: # pragma: no cover
@@ -1311,7 +1735,7 @@ class SFTPClientHandler(SFTPHandler):
         sent_extensions = (String(name) + String(data)
                            for name, data in self._extensions)
 
-        self.send_packet(FXP_INIT, None, UInt32(_SFTP_VERSION),
+        self.send_packet(FXP_INIT, None, UInt32(self._version),
                          *sent_extensions)
 
         try:
@@ -1326,7 +1750,7 @@ class SFTPClientHandler(SFTPHandler):
 
             version = resp.get_uint32()
 
-            if version != _SFTP_VERSION:
+            if not MIN_SFTP_VERSION <= version <= MAX_SFTP_VERSION:
                 raise SFTPBadMessage('Unsupported version: %d' % version)
 
             self._version = version
@@ -1379,7 +1803,8 @@ class SFTPClientHandler(SFTPHandler):
                            filename, pflags, hide_empty(attrs))
 
         return cast(bytes, await self._make_request(
-            FXP_OPEN, String(filename), UInt32(pflags), attrs.encode()))
+            FXP_OPEN, String(filename), UInt32(pflags),
+            attrs.encode(self._version)))
 
     async def close(self, handle: bytes) -> None:
         """Make an SFTP close request"""
@@ -1407,36 +1832,62 @@ class SFTPClientHandler(SFTPHandler):
         return cast(int, await self._make_request(
             FXP_WRITE, String(handle), UInt64(offset), String(data)))
 
-    async def stat(self, path: bytes) -> SFTPAttrs:
+    async def stat(self, path: bytes,
+                   flags = FILEXFER_ATTR_DEFINED_V4) -> SFTPAttrs:
         """Make an SFTP stat request"""
 
-        self.logger.debug1('Sending stat for %s', path)
+        if self._version >= 4:
+            flag_bytes = UInt32(flags)
+            flag_text = ', flags 0x%08x' % flags
+        else:
+            flag_bytes = b''
+            flag_text = ''
+
+        self.logger.debug1('Sending stat for %s%s', path, flag_text)
 
         return cast(SFTPAttrs,  await self._make_request(
-            FXP_STAT, String(path)))
+            FXP_STAT, String(path), flag_bytes))
 
-    async def lstat(self, path: bytes) -> SFTPAttrs:
+    async def lstat(self, path: bytes,
+                    flags = FILEXFER_ATTR_DEFINED_V4) -> SFTPAttrs:
         """Make an SFTP lstat request"""
 
-        self.logger.debug1('Sending lstat for %s', path)
+        if self._version >= 4:
+            flag_bytes = UInt32(flags)
+            flag_text = ', flags 0x%08x' % flags
+        else:
+            flag_bytes = b''
+            flag_text = ''
+
+        self.logger.debug1('Sending lstat for %s%s', path, flag_text)
 
         return cast(SFTPAttrs, await self._make_request(
-            FXP_LSTAT, String(path)))
+            FXP_LSTAT, String(path), flag_bytes))
 
-    async def fstat(self, handle: bytes) -> SFTPAttrs:
+    async def fstat(self, handle: bytes,
+                    flags = FILEXFER_ATTR_DEFINED_V4) -> SFTPAttrs:
         """Make an SFTP fstat request"""
 
-        self.logger.debug1('Sending fstat for handle %s', handle.hex())
+        if self._version >= 4:
+            flag_bytes = UInt32(flags)
+            flag_text = ', flags 0x%08x' % flags
+        else:
+            flag_bytes = b''
+            flag_text = ''
+
+        self.logger.debug1('Sending fstat for handle %s%s',
+                           handle.hex(), flag_text)
 
         return cast(SFTPAttrs, await self._make_request(
-            FXP_FSTAT, String(handle)))
+            FXP_FSTAT, String(handle), flag_bytes))
 
     async def setstat(self, path: bytes, attrs: SFTPAttrs) -> None:
         """Make an SFTP setstat request"""
 
         self.logger.debug1('Sending setstat for %s%s', path, hide_empty(attrs))
 
-        await self._make_request(FXP_SETSTAT, String(path), attrs.encode())
+        await self._make_request(FXP_SETSTAT, String(path),
+                                 attrs.encode(self._version))
 
     async def fsetstat(self, handle: bytes, attrs: SFTPAttrs) -> None:
         """Make an SFTP fsetstat request"""
@@ -1444,7 +1895,8 @@ class SFTPClientHandler(SFTPHandler):
         self.logger.debug1('Sending fsetstat for handle %s%s',
                            handle.hex(), hide_empty(attrs))
 
-        await self._make_request(FXP_FSETSTAT, String(handle), attrs.encode())
+        await self._make_request(FXP_FSETSTAT, String(handle),
+                                 attrs.encode(self._version))
 
     async def statvfs(self, path: bytes) -> SFTPVFSAttrs:
         """Make an SFTP statvfs request"""
@@ -1455,7 +1907,7 @@ class SFTPClientHandler(SFTPHandler):
             packet = cast(SSHPacket, await self._make_request(
                 b'statvfs@openssh.com', String(path)))
 
-            vfsattrs = SFTPVFSAttrs.decode(packet)
+            vfsattrs = SFTPVFSAttrs.decode(packet, self._version)
             packet.check_end()
 
             self.logger.debug1('Received %s', vfsattrs)
@@ -1473,7 +1925,7 @@ class SFTPClientHandler(SFTPHandler):
             packet = cast(SSHPacket, await self._make_request(
                 b'fstatvfs@openssh.com', String(handle)))
 
-            vfsattrs = SFTPVFSAttrs.decode(packet)
+            vfsattrs = SFTPVFSAttrs.decode(packet, self._version)
             packet.check_end()
 
             self.logger.debug1('Received %s', vfsattrs)
@@ -1530,7 +1982,8 @@ class SFTPClientHandler(SFTPHandler):
 
         self.logger.debug1('Sending mkdir for %s', path)
 
-        await self._make_request(FXP_MKDIR, String(path), attrs.encode())
+        await self._make_request(FXP_MKDIR, String(path),
+                                 attrs.encode(self._version))
 
     async def rmdir(self, path: bytes) -> None:
         """Make an SFTP rmdir request"""
@@ -1820,10 +2273,14 @@ class SFTPClientFile:
 
         return self._offset
 
-    async def stat(self) -> SFTPAttrs:
+    async def stat(self, flags = FILEXFER_ATTR_DEFINED_V4) -> SFTPAttrs:
         """Return file attributes of the remote file
 
            This method queries file attributes of the currently open file.
+
+           :param flags: (optional)
+               Flags indicating attributes of interest (SFTPv4 only)
+           :type flags: `int`
 
            :returns: An :class:`SFTPAttrs` containing the file attributes
 
@@ -1834,7 +2291,7 @@ class SFTPClientFile:
         if self._handle is None:
             raise ValueError('I/O operation on closed file')
 
-        return await self._handler.fstat(self._handle)
+        return await self._handler.fstat(self._handle, flags)
 
     async def setstat(self, attrs: SFTPAttrs) -> None:
         """Set attributes of the remote file
@@ -1893,24 +2350,48 @@ class SFTPClientFile:
 
         await self.setstat(SFTPAttrs(size=size))
 
-    async def chown(self, uid: int, gid: int) -> None:
-        """Change the owner user and group id of the remote file
+    @overload
+    async def chown(self, uid: int, gid: int) -> None: ... # pragma: no cover
 
-           This method changes the user and group id of the
-           currently open file.
+    @overload
+    async def chown(self, owner: str,
+                    group: str) -> None: ... # pragma: no cover
+
+    async def chown(self, uid_or_owner = None, gid_or_group = None,
+                    uid = None, gid = None, owner = None, group = None):
+        """Change the owner user and group of the remote file
+
+           This method changes the user and group of the currently open file.
 
            :param uid:
                The new user id to assign to the file
            :param gid:
                The new group id to assign to the file
+           :param owner:
+               The new owner to assign to the file (SFTPv4 only)
+           :param group:
+               The new group to assign to the file (SFTPv4 only)
            :type uid: `int`
            :type gid: `int`
+           :type owner: `str`
+           :type group: `str`
 
            :raises: :exc:`SFTPError` if the server returns an error
 
         """
 
-        await self.setstat(SFTPAttrs(uid=uid, gid=gid))
+        if isinstance(uid_or_owner, int):
+            uid = uid_or_owner
+        elif isinstance(uid_or_owner, str):
+            owner = uid_or_owner
+
+        if isinstance(gid_or_group, int):
+            gid = gid_or_group
+        elif isinstance(gid_or_group, str):
+            group = gid_or_group
+
+        await self.setstat(SFTPAttrs(uid=uid, gid=gid,
+                                     owner=owner, group=group))
 
     async def chmod(self, mode: int) -> None:
         """Change the file permissions of the remote file
@@ -1928,7 +2409,8 @@ class SFTPClientFile:
 
         await self.setstat(SFTPAttrs(permissions=mode))
 
-    async def utime(self, times: Optional[Tuple[float, float]] = None) -> None:
+    async def utime(self, times: Optional[Tuple[float, float]] = None,
+                    ns: Optional[Tuple[int, int]] = None) -> None:
         """Change the access and modify times of the remote file
 
            This method changes the access and modify times of the
@@ -1938,18 +2420,17 @@ class SFTPClientFile:
            :param times: (optional)
                The new access and modify times, as seconds relative to
                the UNIX epoch
+           :param ns: (optional)
+               The new access and modify times, as nanoseconds relative to
+               the UNIX epoch
            :type times: tuple of two `int` or `float` values
+           :type ns: tuple of two `int` values
 
            :raises: :exc:`SFTPError` if the server returns an error
 
         """
 
-        if times is None:
-            atime = mtime = time.time()
-        else:
-            atime, mtime = times
-
-        await self.setstat(SFTPAttrs(atime=atime, mtime=mtime))
+        await self.setstat(_utime_to_attrs(times, ns))
 
     async def fsync(self) -> None:
         """Force the remote file data to be written to disk"""
@@ -1978,10 +2459,12 @@ class SFTPClient:
     """
 
     def __init__(self, handler: SFTPClientHandler,
-                 path_encoding: Optional[str], path_errors: str):
+                 path_encoding: Optional[str], path_errors: str,
+                 sftp_version: int):
         self._handler = handler
         self._path_encoding = path_encoding
         self._path_errors = path_errors
+        self._version = sftp_version
         self._cwd: Optional[bytes] = None
 
     async def __aenter__(self) -> 'SFTPClient':
@@ -2069,7 +2552,7 @@ class SFTPClient:
 
         try:
             return (await statfunc(path)).permissions or 0
-        except (SFTPNoSuchFile, SFTPPermissionDenied):
+        except (SFTPNoSuchFile, SFTPNoSuchPath, SFTPPermissionDenied):
             return 0
 
     async def _copy(self, srcfs: _SFTPFSProtocol, dstfs: _SFTPFSProtocol,
@@ -2133,7 +2616,8 @@ class SFTPClient:
                 attrs = await srcfs.stat(srcpath)
 
                 attrs = SFTPAttrs(permissions=attrs.permissions,
-                                  atime=attrs.atime, mtime=attrs.mtime)
+                                  atime=attrs.atime, atime_ns=attrs.atime_ns,
+                                  mtime=attrs.mtime, mtime_ns=attrs.mtime_ns)
 
                 self.logger.info('    Preserving attrs: %s', attrs)
 
@@ -2176,7 +2660,7 @@ class SFTPClient:
                     continue
 
                 exppaths.extend(await match_glob(srcfs, srcfs.encode(pattern),
-                                                 error_handler))
+                                                 error_handler, self._version))
         else:
             exppaths = [srcfs.encode(srcfile) for srcfile in srcpaths]
 
@@ -2647,7 +3131,7 @@ class SFTPClient:
                 continue
 
             enc_names = await match_glob(self, self.encode(pattern),
-                                         error_handler)
+                                         error_handler, self._version)
 
             if isinstance(pattern, (str, PurePath)):
                 names = [self.decode(name) for name in enc_names]
@@ -2938,7 +3422,8 @@ class SFTPClient:
         return SFTPClientFile(self._handler, handle, bool(pflags & FXF_APPEND),
                               encoding, errors, block_size, max_requests)
 
-    async def stat(self, path: _SFTPPath) -> SFTPAttrs:
+    async def stat(self, path: _SFTPPath,
+                   flags = FILEXFER_ATTR_DEFINED_V4) -> SFTPAttrs:
         """Get attributes of a remote file or directory, following symlinks
 
            This method queries the attributes of a remote file or
@@ -2948,7 +3433,10 @@ class SFTPClient:
 
            :param path:
                The path of the remote file or directory to get attributes for
+           :param flags: (optional)
+               Flags indicating attributes of interest (SFTPv4 only)
            :type path: :class:`PurePath <pathlib.PurePath>`, `str`, or `bytes`
+           :type flags: `int`
 
            :returns: An :class:`SFTPAttrs` containing the file attributes
 
@@ -2957,9 +3445,10 @@ class SFTPClient:
         """
 
         path = self.compose_path(path)
-        return await self._handler.stat(path)
+        return await self._handler.stat(path, flags)
 
-    async def lstat(self, path: _SFTPPath) -> SFTPAttrs:
+    async def lstat(self, path: _SFTPPath,
+                    flags = FILEXFER_ATTR_DEFINED_V4) -> SFTPAttrs:
         """Get attributes of a remote file, directory, or symlink
 
            This method queries the attributes of a remote file,
@@ -2970,7 +3459,10 @@ class SFTPClient:
            :param path:
                The path of the remote file, directory, or link to get
                attributes for
+           :param flags: (optional)
+               Flags indicating attributes of interest (SFTPv4 only)
            :type path: :class:`PurePath <pathlib.PurePath>`, `str`, or `bytes`
+           :type flags: `int`
 
            :returns: An :class:`SFTPAttrs` containing the file attributes
 
@@ -2979,7 +3471,7 @@ class SFTPClient:
         """
 
         path = self.compose_path(path)
-        return await self._handler.lstat(path)
+        return await self._handler.lstat(path, flags)
 
     async def setstat(self, path: _SFTPPath, attrs: SFTPAttrs) -> None:
         """Set attributes of a remote file or directory
@@ -3045,7 +3537,16 @@ class SFTPClient:
 
         await self.setstat(path, SFTPAttrs(size=size))
 
-    async def chown(self, path: _SFTPPath, uid: int, gid: int) -> None:
+    @overload
+    async def chown(self, path: _SFTPPath,
+                    uid: int, gid: int) -> None: ... # pragma: no cover
+
+    @overload
+    async def chown(self, path: _SFTPPath,
+                    owner: str, group: str) -> None: ... # pragma: no cover
+
+    async def chown(self, path, uid_or_owner = None, gid_or_group = None,
+                    uid = None, gid = None, owner = None, group = None):
         """Change the owner user and group id of a remote file or directory
 
            This method changes the user and group id of a remote
@@ -3058,15 +3559,32 @@ class SFTPClient:
                The new user id to assign to the file
            :param gid:
                The new group id to assign to the file
+           :param owner:
+               The new owner to assign to the file (SFTPv4 only)
+           :param group:
+               The new group to assign to the file (SFTPv4 only)
            :type path: :class:`PurePath <pathlib.PurePath>`, `str`, or `bytes`
            :type uid: `int`
            :type gid: `int`
+           :type owner: `str`
+           :type group: `str`
 
            :raises: :exc:`SFTPError` if the server returns an error
 
         """
 
-        await self.setstat(path, SFTPAttrs(uid=uid, gid=gid))
+        if isinstance(uid_or_owner, int):
+            uid = uid_or_owner
+        elif isinstance(uid_or_owner, str):
+            owner = uid_or_owner
+
+        if isinstance(gid_or_group, int):
+            gid = gid_or_group
+        elif isinstance(gid_or_group, str):
+            group = gid_or_group
+
+        await self.setstat(path, SFTPAttrs(uid=uid, gid=gid,
+                                           owner=owner, group=group))
 
     async def chmod(self, path: _SFTPPath, mode: int) -> None:
         """Change the file permissions of a remote file or directory
@@ -3089,33 +3607,34 @@ class SFTPClient:
         await self.setstat(path, SFTPAttrs(permissions=mode))
 
     async def utime(self, path: _SFTPPath,
-                    times: Optional[Tuple[float, float]] = None) -> None:
+                    times: Optional[Tuple[float, float]] = None,
+                    ns: Optional[Tuple[int, int]] = None) -> None:
         """Change the access and modify times of a remote file or directory
 
            This method changes the access and modify times of a
-           remote file or directory. If `times` is not provided,
-           the times will be changed to the current time. If the
-           path provided is a symbolic link, the target of the link
-           will be changed.
+           remote file or directory. If neither `times` nor '`ns` is
+           provided, the times will be changed to the current time.
+
+           If the path provided is a symbolic link, the target of the
+           link will be changed.
 
            :param path:
                The path of the remote file to change
            :param times: (optional)
                The new access and modify times, as seconds relative to
                the UNIX epoch
+           :param ns: (optional)
+               The new access and modify times, as nanoseconds relative to
+               the UNIX epoch
            :type path: :class:`PurePath <pathlib.PurePath>`, `str`, or `bytes`
            :type times: tuple of two `int` or `float` values
+           :type ns: tuple of two `int` values
 
            :raises: :exc:`SFTPError` if the server returns an error
 
         """
 
-        if times is None:
-            atime = mtime = time.time()
-        else:
-            atime, mtime = times
-
-        await self.setstat(path, SFTPAttrs(atime=atime, mtime=mtime))
+        await self.setstat(path, _utime_to_attrs(times, ns))
 
     async def exists(self, path: _SFTPPath) -> bool:
         """Return if the remote path exists and isn't a broken symbolic link
@@ -3154,7 +3673,62 @@ class SFTPClient:
 
         """
 
-        return (await self.stat(path)).atime
+        attrs = await self.stat(path)
+
+        return _tuple_to_float_sec(attrs.atime, attrs.atime_ns) \
+            if attrs.atime is not None else None
+
+    async def getatime_ns(self, path: _SFTPPath) -> Optional[int]:
+        """Return the last access time of a remote file or directory
+
+           The time returned is nanoseconds since the epoch.
+
+           :param path:
+               The remote path to check
+           :type path: :class:`PurePath <pathlib.PurePath>`, `str`, or `bytes`
+
+           :raises: :exc:`SFTPError` if the server returns an error
+
+        """
+
+        attrs = await self.stat(path)
+
+        return _tuple_to_nsec(attrs.atime, attrs.atime_ns) \
+            if attrs.atime is not None else None
+
+    async def getcrtime(self, path: _SFTPPath) -> Optional[float]:
+        """Return the creation time of a remote file or directory (SFTPv4 only)
+
+           :param path:
+               The remote path to check
+           :type path: :class:`PurePath <pathlib.PurePath>`, `str`, or `bytes`
+
+           :raises: :exc:`SFTPError` if the server returns an error
+
+        """
+
+        attrs = await self.stat(path)
+
+        return _tuple_to_float_sec(attrs.crtime, attrs.crtime_ns) \
+            if attrs.crtime is not None else None
+
+    async def getcrtime_ns(self, path: _SFTPPath) -> Optional[int]:
+        """Return the creation time of a remote file or directory
+
+           The time returned is nanoseconds since the epoch.
+
+           :param path:
+               The remote path to check
+           :type path: :class:`PurePath <pathlib.PurePath>`, `str`, or `bytes`
+
+           :raises: :exc:`SFTPError` if the server returns an error
+
+        """
+
+        attrs = await self.stat(path)
+
+        return _tuple_to_nsec(attrs.crtime, attrs.crtime_ns) \
+            if attrs.crtime is not None else None
 
     async def getmtime(self, path: _SFTPPath) -> Optional[float]:
         """Return the last modification time of a remote file or directory
@@ -3167,7 +3741,28 @@ class SFTPClient:
 
         """
 
-        return (await self.stat(path)).mtime
+        attrs = await self.stat(path)
+
+        return _tuple_to_float_sec(attrs.mtime, attrs.mtime_ns) \
+            if attrs.mtime is not None else None
+
+    async def getmtime_ns(self, path: _SFTPPath) -> Optional[int]:
+        """Return the last modification time of a remote file or directory
+
+           The time returned is nanoseconds since the epoch.
+
+           :param path:
+               The remote path to check
+           :type path: :class:`PurePath <pathlib.PurePath>`, `str`, or `bytes`
+
+           :raises: :exc:`SFTPError` if the server returns an error
+
+        """
+
+        attrs = await self.stat(path)
+
+        return _tuple_to_nsec(attrs.mtime, attrs.mtime_ns) \
+            if attrs.mtime is not None else None
 
     async def getsize(self, path: _SFTPPath) -> Optional[int]:
         """Return the size of a remote file or directory
@@ -3326,8 +3921,10 @@ class SFTPClient:
                     if isinstance(path, (str, PurePath)):
                         entry.filename = \
                             self.decode(cast(bytes, entry.filename))
-                        entry.longname = \
-                            self.decode(cast(bytes, entry.longname))
+
+                        if entry.longname is not None:
+                            entry.longname = \
+                                self.decode(cast(bytes, entry.longname))
 
                     yield entry
         except SFTPEOFError:
@@ -3594,11 +4191,11 @@ class SFTPServerHandler(SFTPHandler):
                         (b'fstatvfs@openssh.com', b'2')]
 
     def __init__(self, server: 'SFTPServer', reader: 'SSHReader[bytes]',
-                 writer: 'SSHWriter[bytes]'):
+                 writer: 'SSHWriter[bytes]', sftp_version: int):
         super().__init__(reader, writer)
 
         self._server = server
-        self._version = None
+        self._version = sftp_version
         self._nonstandard_symlink = False
         self._next_handle = 0
         self._file_handles: Dict[bytes, object] = {}
@@ -3680,7 +4277,8 @@ class SFTPServerHandler(SFTPHandler):
                     self.logger.debug1('  %s', name)
 
                 response = (UInt32(len(names)) +
-                            b''.join(name.encode() for name in names))
+                            b''.join(name.encode(self._version)
+                                     for name in names))
             else:
                 attrs: _SupportsEncode
 
@@ -3693,7 +4291,7 @@ class SFTPServerHandler(SFTPHandler):
                     attrs = cast(_SupportsEncode, result)
 
                 self.logger.debug1('Sending %s', attrs)
-                response = attrs.encode()
+                response = attrs.encode(self._version)
         except PacketDecodeError as exc:
             return_type = FXP_STATUS
 
@@ -3733,6 +4331,16 @@ class SFTPServerHandler(SFTPHandler):
                 self.logger.debug1('Sending permission denied: %s', reason)
 
                 code = FX_PERMISSION_DENIED
+            elif exc.errno == errno.EEXIST:
+                self.logger.debug1('Sending file already exists: %s', reason)
+
+                code = FX_FILE_ALREADY_EXISTS if self._version >= 4 \
+                           else FX_FAILURE
+            elif exc.errno == errno.EROFS:
+                self.logger.debug1('Sending write protect: %s', reason)
+
+                code = FX_WRITE_PROTECT if self._version >= 4 \
+                           else FX_FAILURE
             else:
                 self.logger.debug1('Sending failure: %s', reason)
 
@@ -3743,7 +4351,8 @@ class SFTPServerHandler(SFTPHandler):
             return_type = FXP_STATUS
             reason = 'Uncaught exception: %s' % str(exc)
 
-            self.logger.debug1('Sending failure: %s', reason)
+            self.logger.debug1('Sending failure: %s', reason,
+                               exc_info=sys.exc_info)
 
             response = (UInt32(FX_FAILURE) + String(reason) +
                         String(DEFAULT_LANG))
@@ -3755,7 +4364,7 @@ class SFTPServerHandler(SFTPHandler):
 
         path = packet.get_string()
         pflags = packet.get_uint32()
-        attrs = SFTPAttrs.decode(packet)
+        attrs = SFTPAttrs.decode(packet, self._version)
         packet.check_end()
 
         self.logger.debug1('Received open request for %s, mode 0x%02x%s',
@@ -3791,7 +4400,8 @@ class SFTPServerHandler(SFTPHandler):
         if self._dir_handles.pop(handle, None) is not None:
             return
 
-        raise SFTPFailure('Invalid file handle')
+        exc = SFTPInvalidHandle if self._version >= 4 else SFTPFailure
+        raise exc('Invalid file handle')
 
     async def _process_read(self, packet: SSHPacket) -> bytes:
         """Process an incoming SFTP read request"""
@@ -3817,7 +4427,8 @@ class SFTPServerHandler(SFTPHandler):
             else:
                 raise SFTPEOFError
         else:
-            raise SFTPFailure('Invalid file handle')
+            exc = SFTPInvalidHandle if self._version >= 4 else SFTPFailure
+            raise exc('Invalid file handle')
 
     async def _process_write(self, packet: SSHPacket) -> int:
         """Process an incoming SFTP write request"""
@@ -3840,12 +4451,18 @@ class SFTPServerHandler(SFTPHandler):
 
             return cast(int, result)
         else:
-            raise SFTPFailure('Invalid file handle')
+            exc = SFTPInvalidHandle if self._version >= 4 else SFTPFailure
+            raise exc('Invalid file handle')
 
     async def _process_lstat(self, packet: SSHPacket) -> SFTPAttrs:
         """Process an incoming SFTP lstat request"""
 
         path = packet.get_string()
+
+        if self._version >= 4:
+            # Ignore flags field for now
+            packet.get_uint32()
+
         packet.check_end()
 
         self.logger.debug1('Received lstat for %s', path)
@@ -3861,6 +4478,11 @@ class SFTPServerHandler(SFTPHandler):
         """Process an incoming SFTP fstat request"""
 
         handle = packet.get_string()
+
+        if self._version >= 4:
+            # Ignore flags field for now
+            packet.get_uint32()
+
         packet.check_end()
 
         self.logger.debug1('Received fstat for handle %s', handle.hex())
@@ -3875,13 +4497,14 @@ class SFTPServerHandler(SFTPHandler):
 
             return cast(SFTPAttrs, result)
         else:
-            raise SFTPFailure('Invalid file handle')
+            exc = SFTPInvalidHandle if self._version >= 4 else SFTPFailure
+            raise exc('Invalid file handle')
 
     async def _process_setstat(self, packet: SSHPacket) -> None:
         """Process an incoming SFTP setstat request"""
 
         path = packet.get_string()
-        attrs = SFTPAttrs.decode(packet)
+        attrs = SFTPAttrs.decode(packet, self._version)
         packet.check_end()
 
         self.logger.debug1('Received setstat for %s%s', path, hide_empty(attrs))
@@ -3896,7 +4519,7 @@ class SFTPServerHandler(SFTPHandler):
         """Process an incoming SFTP fsetstat request"""
 
         handle = packet.get_string()
-        attrs = SFTPAttrs.decode(packet)
+        attrs = SFTPAttrs.decode(packet, self._version)
         packet.check_end()
 
         self.logger.debug1('Received fsetstat for handle %s%s',
@@ -3911,7 +4534,8 @@ class SFTPServerHandler(SFTPHandler):
                 assert result is not None
                 await result
         else:
-            raise SFTPFailure('Invalid file handle')
+            exc = SFTPInvalidHandle if self._version >= 4 else SFTPFailure
+            raise exc('Invalid file handle')
 
     async def _process_opendir(self, packet: SSHPacket) -> bytes:
         """Process an incoming SFTP opendir request"""
@@ -3977,8 +4601,11 @@ class SFTPServerHandler(SFTPHandler):
             result = names[:_MAX_READDIR_NAMES]
             del names[:_MAX_READDIR_NAMES]
             return result
-        else:
+        elif names is not None:
             raise SFTPEOFError
+        else:
+            exc = SFTPInvalidHandle if self._version >= 4 else SFTPFailure
+            raise exc('Invalid file handle')
 
     async def _process_remove(self, packet: SSHPacket) -> None:
         """Process an incoming SFTP remove request"""
@@ -3998,7 +4625,7 @@ class SFTPServerHandler(SFTPHandler):
         """Process an incoming SFTP mkdir request"""
 
         path = packet.get_string()
-        attrs = SFTPAttrs.decode(packet)
+        attrs = SFTPAttrs.decode(packet, self._version)
         packet.check_end()
 
         self.logger.debug1('Received mkdir for %s', path)
@@ -4042,6 +4669,11 @@ class SFTPServerHandler(SFTPHandler):
         """Process an incoming SFTP stat request"""
 
         path = packet.get_string()
+
+        if self._version >= 4:
+            # Ignore flags field for now
+            packet.get_uint32()
+
         packet.check_end()
 
         self.logger.debug1('Received stat for %s', path)
@@ -4162,7 +4794,8 @@ class SFTPServerHandler(SFTPHandler):
 
             return result
         else:
-            raise SFTPFailure('Invalid file handle')
+            exc = SFTPInvalidHandle if self._version >= 4 else SFTPFailure
+            raise exc('Invalid file handle')
 
     async def _process_link(self, packet: SSHPacket) -> None:
         """Process an incoming SFTP hard link request"""
@@ -4197,7 +4830,8 @@ class SFTPServerHandler(SFTPHandler):
                 assert result is not None
                 await result
         else:
-            raise SFTPFailure('Invalid file handle')
+            exc = SFTPInvalidHandle if self._version >= 4 else SFTPFailure
+            raise exc('Invalid file handle')
 
     _packet_handlers: Dict[Union[int, bytes], _SFTPPacketHandler] = {
         FXP_OPEN:                     _process_open,
@@ -4258,9 +4892,9 @@ class SFTPServerHandler(SFTPHandler):
         for name, data in rcvd_extensions:
             self.logger.debug1('  %s: %s', name, data)
 
-        reply_version = min(version, _SFTP_VERSION)
+        self._version = min(version, self._version)
 
-        self.logger.debug1('Sending version=%d%s', reply_version,
+        self.logger.debug1('Sending version=%d%s', self._version,
                            ', extensions:' if self._extensions else '')
 
         for name, data in self._extensions:
@@ -4270,14 +4904,14 @@ class SFTPServerHandler(SFTPHandler):
             (String(name) + String(data) for name, data in self._extensions)
 
         try:
-            self.send_packet(FXP_VERSION, None, UInt32(reply_version),
+            self.send_packet(FXP_VERSION, None, UInt32(self._version),
                              *sent_extensions)
         except SFTPError as exc:
             await self._cleanup(exc)
             return
 
-        if reply_version == 3:
-            # Check if the server has a buggy SYMLINK implementation
+        if self._version == 3:
+            # Check if the client has a buggy SYMLINK implementation
 
             client_version = cast(str,
                 self._reader.get_extra_info('client_version', ''))
@@ -4390,17 +5024,7 @@ class SFTPServer:
 
         """
 
-        if uid is not None:
-            try:
-                # pylint: disable=import-outside-toplevel
-                import pwd
-                user = pwd.getpwuid(uid).pw_name
-            except (ImportError, KeyError):
-                user = str(uid)
-        else:
-            user = ''
-
-        return user
+        return _lookup_user(uid)
 
     def format_group(self, gid: Optional[int]) -> str:
         """Return the group name associated with a gid
@@ -4421,17 +5045,7 @@ class SFTPServer:
 
         """
 
-        if gid is not None:
-            try:
-                # pylint: disable=import-outside-toplevel
-                import grp
-                group = grp.getgrgid(gid).gr_name
-            except (ImportError, KeyError):
-                group = str(gid)
-        else:
-            group = ''
-
-        return group
+        return _lookup_group(gid)
 
     def format_longname(self, name: SFTPName) -> MaybeAwait[None]:
         """Format the long name associated with an SFTP name
@@ -5279,7 +5893,7 @@ class SFTPServerFS:
                 return 0
             else:
                 raise
-        except (SFTPNoSuchFile, SFTPPermissionDenied):
+        except (SFTPNoSuchFile, SFTPNoSuchPath, SFTPPermissionDenied):
             return 0
 
     async def exists(self, path: bytes) -> bool:
@@ -5331,10 +5945,10 @@ async def start_sftp_client(conn: 'SSHClientConnection',
                             reader: 'SSHReader[bytes]',
                             writer: 'SSHWriter[bytes]',
                             path_encoding: Optional[str],
-                            path_errors: str) -> SFTPClient:
+                            path_errors: str, sftp_version: int) -> SFTPClient:
     """Start an SFTP client"""
 
-    handler = SFTPClientHandler(loop, reader, writer)
+    handler = SFTPClientHandler(loop, reader, writer, sftp_version)
 
     handler.logger.info('Starting SFTP client')
 
@@ -5342,14 +5956,15 @@ async def start_sftp_client(conn: 'SSHClientConnection',
 
     conn.create_task(handler.recv_packets(), handler.logger)
 
-    return SFTPClient(handler, path_encoding, path_errors)
+    return SFTPClient(handler, path_encoding, path_errors, sftp_version)
 
 
 def run_sftp_server(sftp_server: SFTPServer, reader: 'SSHReader[bytes]',
-                    writer: 'SSHWriter[bytes]') -> Awaitable[None]:
+                    writer: 'SSHWriter[bytes]',
+                    sftp_version: int) -> Awaitable[None]:
     """Return a handler for an SFTP server session"""
 
-    handler = SFTPServerHandler(sftp_server, reader, writer)
+    handler = SFTPServerHandler(sftp_server, reader, writer, sftp_version)
 
     handler.logger.info('Starting SFTP server')
 

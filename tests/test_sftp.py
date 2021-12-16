@@ -34,20 +34,44 @@ from unittest.mock import patch
 
 import asyncssh
 
-from asyncssh import SFTPError, SFTPFailure, SFTPNoSuchFile
+from asyncssh import SFTPError, SFTPFailure, SFTPNoSuchFile, SFTPNoMedia
 from asyncssh import SFTPPermissionDenied
 from asyncssh import SFTPAttrs, SFTPVFSAttrs, SFTPName, SFTPServer
 from asyncssh import SEEK_CUR, SEEK_END
 from asyncssh import FXP_INIT, FXP_VERSION, FXP_OPEN, FXP_READ
 from asyncssh import FXP_WRITE, FXP_STATUS, FXP_HANDLE, FXP_DATA
-from asyncssh import FILEXFER_ATTR_UNDEFINED, FX_OK
-from asyncssh import scp
+from asyncssh import FILEXFER_ATTR_UNDEFINED_V3, FILEXFER_ATTR_UNDEFINED_V4
+from asyncssh import FILEXFER_TYPE_REGULAR, FX_OK, scp
 
 from asyncssh.packet import SSHPacket, String, UInt32
 from asyncssh.sftp import LocalFile, SFTPHandler, SFTPServerHandler
 
 from .server import ServerTestCase
 from .util import asynctest
+
+
+def tuple_to_nsec(sec, nsec):
+    """Convert seconds and remainder to nanoseconds since epoch"""
+
+    return sec * 1_000_000_000 + (nsec or 0)
+
+
+def lookup_user(uid):
+    """Return the user name associated with a uid"""
+
+    # pylint: disable=import-outside-toplevel
+    import pwd
+
+    return pwd.getpwuid(uid).pw_name
+
+
+def lookup_group(gid):
+    """Return the group name associated with a gid"""
+
+    # pylint: disable=import-outside-toplevel
+    import grp
+
+    return grp.getgrgid(gid).gr_name
 
 
 def remove(files):
@@ -73,6 +97,21 @@ def sftp_test(func):
 
         async with self.connect() as conn:
             async with conn.start_sftp_client() as sftp:
+                await func(self, sftp)
+
+    return sftp_wrapper
+
+
+def sftp_test_4(func):
+    """Decorator for running SFTPv4 tests"""
+
+    @asynctest
+    @functools.wraps(func)
+    async def sftp_wrapper(self):
+        """Run a test after opening an SFTP client"""
+
+        async with self.connect() as conn:
+            async with conn.start_sftp_client(sftp_version=4) as sftp:
                 await func(self, sftp)
 
     return sftp_wrapper
@@ -257,7 +296,8 @@ class _ChownSFTPServer(SFTPServer):
     def setstat(self, path, attrs):
         """Set attributes of a file or directory"""
 
-        self._ownership[self.map_path(path)] = (attrs.uid, attrs.gid)
+        self._ownership[self.map_path(path)] = \
+            (attrs.uid, attrs.gid, attrs.owner, attrs.group)
 
     def stat(self, path):
         """Get attributes of a file or directory, following symlinks"""
@@ -266,7 +306,8 @@ class _ChownSFTPServer(SFTPServer):
         attrs = SFTPAttrs.from_local(os.stat(path))
 
         if path in self._ownership: # pragma: no branch
-            attrs.uid, attrs.gid = self._ownership[path]
+            attrs.uid, attrs.gid, attrs.owner, attrs.group = \
+                self._ownership[path]
 
         return attrs
 
@@ -486,6 +527,19 @@ class _CheckSFTP(ServerTestCase):
         self.assertEqual(sftp_stat.atime, int(local_stat.st_atime))
         self.assertEqual(sftp_stat.mtime, int(local_stat.st_mtime))
 
+    def _check_stat_v4(self, sftp_stat, local_stat):
+        """Check if file attributes are equal"""
+
+        self.assertEqual(sftp_stat.size, local_stat.st_size)
+        self.assertEqual(sftp_stat.owner, lookup_user(local_stat.st_uid))
+        self.assertEqual(sftp_stat.group, lookup_group(local_stat.st_gid))
+        self.assertEqual(sftp_stat.permissions,
+                         stat.S_IMODE(local_stat.st_mode))
+        self.assertEqual(tuple_to_nsec(sftp_stat.atime, sftp_stat.atime_ns),
+                         local_stat.st_atime_ns)
+        self.assertEqual(tuple_to_nsec(sftp_stat.mtime, sftp_stat.mtime_ns),
+                         local_stat.st_mtime_ns)
+
     def _check_link(self, link, target):
         """Check if a symlink points to the right target"""
 
@@ -495,13 +549,11 @@ class _CheckSFTP(ServerTestCase):
 class _TestSFTP(_CheckSFTP):
     """Unit tests for AsyncSSH SFTP client and server"""
 
-    # pylint: disable=too-many-public-methods
-
     @classmethod
     async def start_server(cls):
         """Start an SFTP server for the tests to use"""
 
-        return await cls.create_server(sftp_factory=True)
+        return await cls.create_server(sftp_factory=True, sftp_version=4)
 
     @sftp_test
     async def _dummy_sftp_client(self, sftp):
@@ -821,6 +873,13 @@ class _TestSFTP(_CheckSFTP):
         with self.assertRaises(SFTPError):
             await sftp.glob('file*')
 
+    @sftp_test_4
+    async def test_glob_error_v4(self, sftp):
+        """Test a glob pattern match error over SFTP"""
+
+        with self.assertRaises(SFTPError):
+            await sftp.glob('file*')
+
     @sftp_test
     async def test_glob_error_handler(self, sftp):
         """Test a glob pattern match with error handler over SFTP"""
@@ -903,6 +962,19 @@ class _TestSFTP(_CheckSFTP):
         finally:
             remove('link')
 
+    @sftp_test_4
+    async def test_lstat_v4(self, sftp):
+        """Test getting attributes on a link with SFTPv4"""
+
+        if not self._symlink_supported: # pragma: no cover
+            raise unittest.SkipTest('symlink not available')
+
+        try:
+            os.symlink('file', 'link')
+            self._check_stat_v4((await sftp.lstat('link')), os.lstat('link'))
+        finally:
+            remove('link')
+
     @sftp_test
     async def test_setstat(self, sftp):
         """Test setting attributes on a file"""
@@ -911,6 +983,29 @@ class _TestSFTP(_CheckSFTP):
             self._create_file('file')
             await sftp.setstat('file', SFTPAttrs(permissions=0o666))
             self.assertEqual(stat.S_IMODE(os.stat('file').st_mode), 0o666)
+
+            with self.assertRaises(ValueError):
+                await sftp.setstat('file', SFTPAttrs(owner='root',
+                                                     group='wheel'))
+        finally:
+            remove('file')
+
+    @sftp_test_4
+    async def test_setstat_v4(self, sftp):
+        """Test setting attributes on a file"""
+
+        try:
+            self._create_file('file')
+
+            await sftp.setstat('file', SFTPAttrs(atime=1))
+
+            stat_result = os.stat('file')
+            self.assertEqual(stat_result.st_atime, 1)
+
+            await sftp.setstat('file', SFTPAttrs(mtime=2))
+
+            stat_result = os.stat('file')
+            self.assertEqual(stat_result.st_mtime, 2)
         finally:
             remove('file')
 
@@ -957,13 +1052,64 @@ class _TestSFTP(_CheckSFTP):
 
         try:
             self._create_file('file')
-            attrs = os.stat('file')
+            stat_result = os.stat('file')
 
-            await sftp.chown('file', attrs.st_uid, attrs.st_gid)
+            await sftp.chown('file', stat_result.st_uid, stat_result.st_gid)
 
-            new_attrs = os.stat('file')
-            self.assertEqual(new_attrs.st_uid, attrs.st_uid)
-            self.assertEqual(new_attrs.st_gid, attrs.st_gid)
+            new_stat_result = os.stat('file')
+            self.assertEqual(new_stat_result.st_uid, stat_result.st_uid)
+            self.assertEqual(new_stat_result.st_gid, stat_result.st_gid)
+        finally:
+            remove('file')
+
+    @unittest.skipIf(sys.platform == 'win32', 'skip chown tests on Windows')
+    @sftp_test_4
+    async def test_chown_v4(self, sftp):
+        """Test changing ownership of a file
+
+           We can't change to a different user/group here if we're not
+           root, so just change to the same user/group. See the separate
+           _TestSFTPChown class for a more complete test, but this is
+           left in for code coverage purposes.
+
+        """
+
+        try:
+            self._create_file('file')
+            stat_result = os.stat('file')
+
+            owner = lookup_user(stat_result.st_uid)
+            group = lookup_group(stat_result.st_gid)
+
+            await sftp.chown('file', owner, group)
+
+            new_stat_result = os.stat('file')
+            self.assertEqual(new_stat_result.st_uid, stat_result.st_uid)
+            self.assertEqual(new_stat_result.st_gid, stat_result.st_gid)
+
+            await sftp.chown('file', str(stat_result.st_uid), group)
+
+            new_stat_result = os.stat('file')
+            self.assertEqual(new_stat_result.st_uid, stat_result.st_uid)
+            self.assertEqual(new_stat_result.st_gid, stat_result.st_gid)
+
+            await sftp.chown('file', owner, str(stat_result.st_gid))
+
+            new_stat_result = os.stat('file')
+            self.assertEqual(new_stat_result.st_uid, stat_result.st_uid)
+            self.assertEqual(new_stat_result.st_gid, stat_result.st_gid)
+
+            await sftp.chown('file', '', group)
+
+            new_stat_result = os.stat('file')
+            self.assertEqual(new_stat_result.st_uid, stat_result.st_uid)
+            self.assertEqual(new_stat_result.st_gid, stat_result.st_gid)
+
+            await sftp.chown('file', owner, '')
+
+            new_stat_result = os.stat('file')
+            self.assertEqual(new_stat_result.st_uid, stat_result.st_uid)
+            self.assertEqual(new_stat_result.st_gid, stat_result.st_gid)
         finally:
             remove('file')
 
@@ -989,11 +1135,49 @@ class _TestSFTP(_CheckSFTP):
             await sftp.utime('file')
             await sftp.utime('file', (1, 2))
 
-            attrs = os.stat('file')
-            self.assertEqual(attrs.st_atime, 1)
-            self.assertEqual(attrs.st_mtime, 2)
+            stat_result = os.stat('file')
+            self.assertEqual(stat_result.st_atime, 1)
+            self.assertEqual(stat_result.st_mtime, 2)
             self.assertEqual((await sftp.getatime('file')), 1)
             self.assertEqual((await sftp.getmtime('file')), 2)
+        finally:
+            remove('file')
+
+    @sftp_test_4
+    async def test_utime_v4(self, sftp):
+        """Test changing access and modify times on a file with SFTPv4"""
+
+        try:
+            self._create_file('file')
+
+            await sftp.utime('file')
+            await sftp.utime('file', (1.0, 2.25))
+
+            stat_result = os.stat('file')
+            self.assertEqual(stat_result.st_atime, 1.0)
+            self.assertEqual(stat_result.st_atime_ns, 1000000000)
+            self.assertEqual(stat_result.st_mtime, 2.25)
+            self.assertEqual(stat_result.st_mtime_ns, 2250000000)
+            self.assertEqual((await sftp.getatime('file')), 1.0)
+            self.assertEqual((await sftp.getatime_ns('file')), 1000000000)
+            self.assertIsNotNone((await sftp.getcrtime('file')))
+            self.assertIsNotNone((await sftp.getcrtime_ns('file')))
+            self.assertEqual((await sftp.getmtime('file')), 2.25)
+            self.assertEqual((await sftp.getmtime_ns('file')), 2250000000)
+
+            await sftp.utime('file', ns=(3500000000, 4750000000))
+
+            stat_result = os.stat('file')
+            self.assertEqual(stat_result.st_atime, 3.5)
+            self.assertEqual(stat_result.st_atime_ns, 3500000000)
+            self.assertEqual(stat_result.st_mtime, 4.75)
+            self.assertEqual(stat_result.st_mtime_ns, 4750000000)
+            self.assertEqual((await sftp.getatime('file')), 3.5)
+            self.assertEqual((await sftp.getatime_ns('file')), 3500000000)
+            self.assertIsNotNone((await sftp.getcrtime('file')))
+            self.assertIsNotNone((await sftp.getcrtime_ns('file')))
+            self.assertEqual((await sftp.getmtime('file')), 4.75)
+            self.assertEqual((await sftp.getmtime_ns('file')), 4750000000)
         finally:
             remove('file')
 
@@ -1103,16 +1287,31 @@ class _TestSFTP(_CheckSFTP):
         finally:
             remove('dir')
 
-    @sftp_test
+    @sftp_test_4
+    async def test_listdir_v4(self, sftp):
+        """Test listing files in a directory with SFTPv4"""
+
+        try:
+            os.mkdir('dir')
+            self._create_file('dir/file1')
+            self._create_file('dir/file2')
+            self.assertEqual(sorted((await sftp.listdir('dir'))),
+                             ['.', '..', 'file1', 'file2'])
+        finally:
+            remove('dir')
+
+    @sftp_test_4
     async def test_listdir_error(self, sftp):
         """Test error while listing contents of a directory"""
+
+        orig_readdir = asyncssh.sftp.SFTPClientHandler.readdir
 
         async def _readdir_error(self, handle):
             """Return an error on an SFTP readdir request"""
 
             # pylint: disable=unused-argument
 
-            raise SFTPFailure('I/O error')
+            return await orig_readdir(self, b'\xff\xff\xff\xff')
 
         try:
             os.mkdir('dir')
@@ -1310,6 +1509,25 @@ class _TestSFTP(_CheckSFTP):
         try:
             await sftp.symlink('file', 'link')
             self._check_link('link', 'file')
+
+            with self.assertRaises(SFTPError):
+                await sftp.symlink('file', 'link')
+        finally:
+            remove('file link')
+
+    @sftp_test_4
+    async def test_symlink_v4(self, sftp):
+        """Test creating a symlink with SFTPv4"""
+
+        if not self._symlink_supported: # pragma: no cover
+            raise unittest.SkipTest('symlink not available')
+
+        try:
+            await sftp.symlink('file', 'link')
+            self._check_link('link', 'file')
+
+            with self.assertRaises(SFTPError):
+                await sftp.symlink('file', 'link')
         finally:
             remove('file link')
 
@@ -1711,10 +1929,23 @@ class _TestSFTP(_CheckSFTP):
         f = None
 
         try:
-            self._create_file('file')
-
-            f = await sftp.open('file')
+            f = await sftp.open('file', 'w')
             self._check_stat((await f.stat()), os.stat('file'))
+        finally:
+            if f: # pragma: no branch
+                await f.close()
+
+            remove('file')
+
+    @sftp_test_4
+    async def test_file_stat_v4(self, sftp):
+        """Test getting attributes on an open file with SFTPv4"""
+
+        f = None
+
+        try:
+            f = await sftp.open('file', 'w')
+            self._check_stat_v4((await f.stat()), os.stat('file'))
         finally:
             if f: # pragma: no branch
                 await f.close()
@@ -1728,14 +1959,83 @@ class _TestSFTP(_CheckSFTP):
         f = None
 
         try:
-            self._create_file('file')
-            attrs = SFTPAttrs(permissions=0o666)
-
-            f = await sftp.open('file')
-            await f.setstat(attrs)
-            await f.close()
+            f = await sftp.open('file', 'w')
+            await f.setstat(SFTPAttrs(permissions=0o666))
 
             self.assertEqual(stat.S_IMODE(os.stat('file').st_mode), 0o666)
+        finally:
+            if f: # pragma: no branch
+                await f.close()
+
+            remove('file')
+
+    @unittest.skipIf(sys.platform == 'win32', 'skip chown tests on Windows')
+    @sftp_test
+    async def test_file_chown(self, sftp):
+        """Test changing ownership of an open file
+
+           We can't change to a different user/group here if we're not
+           root, so just change to the same user/group. See the separate
+           _TestSFTPChown class for a more complete test, but this is
+           left in for code coverage purposes.
+
+        """
+
+        f = None
+
+        try:
+            f = await sftp.open('file', 'w')
+            stat_result = os.stat('file')
+
+            await f.chown(stat_result.st_uid, stat_result.st_gid)
+
+            new_stat_result = os.stat('file')
+            self.assertEqual(new_stat_result.st_uid, stat_result.st_uid)
+            self.assertEqual(new_stat_result.st_gid, stat_result.st_gid)
+
+            await f.chown(uid=stat_result.st_uid, gid=stat_result.st_gid)
+
+            new_stat_result = os.stat('file')
+            self.assertEqual(new_stat_result.st_uid, stat_result.st_uid)
+            self.assertEqual(new_stat_result.st_gid, stat_result.st_gid)
+        finally:
+            if f: # pragma: no branch
+                await f.close()
+
+            remove('file')
+
+    @unittest.skipIf(sys.platform == 'win32', 'skip chown tests on Windows')
+    @sftp_test_4
+    async def test_file_chown_v4(self, sftp):
+        """Test changing ownership of an open file
+
+           We can't change to a different user/group here if we're not
+           root, so just change to the same user/group. See the separate
+           _TestSFTPChown class for a more complete test, but this is
+           left in for code coverage purposes.
+
+        """
+
+        f = None
+
+        try:
+            f = await sftp.open('file', 'w')
+            stat_result = os.stat('file')
+
+            owner = lookup_user(stat_result.st_uid)
+            group = lookup_group(stat_result.st_gid)
+
+            await f.chown(owner, group)
+
+            new_stat_result = os.stat('file')
+            self.assertEqual(new_stat_result.st_uid, stat_result.st_uid)
+            self.assertEqual(new_stat_result.st_gid, stat_result.st_gid)
+
+            await f.chown(owner=owner, group=group)
+
+            new_stat_result = os.stat('file')
+            self.assertEqual(new_stat_result.st_uid, stat_result.st_uid)
+            self.assertEqual(new_stat_result.st_gid, stat_result.st_gid)
         finally:
             if f: # pragma: no branch
                 await f.close()
@@ -1769,16 +2069,55 @@ class _TestSFTP(_CheckSFTP):
         f = None
 
         try:
-            self._create_file('file')
-
-            f = await sftp.open('file')
+            f = await sftp.open('file', 'w')
             await f.utime()
             await f.utime((1, 2))
-            await f.close()
 
-            attrs = os.stat('file')
-            self.assertEqual(attrs.st_atime, 1)
-            self.assertEqual(attrs.st_mtime, 2)
+            stat_result = os.stat('file')
+            self.assertEqual(stat_result.st_atime, 1)
+            self.assertEqual(stat_result.st_mtime, 2)
+        finally:
+            if f: # pragma: no branch
+                await f.close()
+
+            remove('file')
+
+    @sftp_test_4
+    async def test_file_utime_v4(self, sftp):
+        """Test changing access and modify times on an open file with SFTPv4"""
+
+        f = None
+
+        try:
+            f = await sftp.open('file', 'w')
+            await f.utime()
+            await f.utime((1.0, 2.25))
+
+            stat_result = os.stat('file')
+            self.assertEqual(stat_result.st_atime, 1.0)
+            self.assertEqual(stat_result.st_atime_ns, 1000000000)
+            self.assertEqual(stat_result.st_mtime, 2.25)
+            self.assertEqual(stat_result.st_mtime_ns, 2250000000)
+            self.assertEqual((await sftp.getatime('file')), 1.0)
+            self.assertEqual((await sftp.getatime_ns('file')), 1000000000)
+            self.assertIsNotNone((await sftp.getcrtime('file')))
+            self.assertIsNotNone((await sftp.getcrtime_ns('file')))
+            self.assertEqual((await sftp.getmtime('file')), 2.25)
+            self.assertEqual((await sftp.getmtime_ns('file')), 2250000000)
+
+            await f.utime('file', ns=(3500000000, 4750000000))
+
+            stat_result = os.stat('file')
+            self.assertEqual(stat_result.st_atime, 3.5)
+            self.assertEqual(stat_result.st_atime_ns, 3500000000)
+            self.assertEqual(stat_result.st_mtime, 4.75)
+            self.assertEqual(stat_result.st_mtime_ns, 4750000000)
+            self.assertEqual((await sftp.getatime('file')), 3.5)
+            self.assertEqual((await sftp.getatime_ns('file')), 3500000000)
+            self.assertIsNotNone((await sftp.getcrtime('file')))
+            self.assertIsNotNone((await sftp.getcrtime_ns('file')))
+            self.assertEqual((await sftp.getmtime('file')), 4.75)
+            self.assertEqual((await sftp.getmtime_ns('file')), 4750000000)
         finally:
             if f: # pragma: no branch
                 await f.close()
@@ -1800,9 +2139,7 @@ class _TestSFTP(_CheckSFTP):
         f = None
 
         try:
-            self._create_file('file')
-
-            f = await sftp.open('file')
+            f = await sftp.open('file', 'w')
             self.assertIsInstance((await f.statvfs()), SFTPVFSAttrs)
         finally:
             if f: # pragma: no branch
@@ -1846,9 +2183,7 @@ class _TestSFTP(_CheckSFTP):
         """Test cleanup of open file handles on exit"""
 
         try:
-            self._create_file('file')
-
-            await sftp.open('file')
+            await sftp.open('file', 'w')
         finally:
             sftp.exit()
             await sftp.wait_closed()
@@ -2040,7 +2375,7 @@ class _TestSFTP(_CheckSFTP):
     def test_nonstandard_version(self):
         """Test sending init with non-standard version"""
 
-        with patch('asyncssh.sftp._SFTP_VERSION', 4):
+        with patch('asyncssh.sftp.MIN_SFTP_VERSION', 2):
             # pylint: disable=no-value-for-parameter
             self._dummy_sftp_client()
 
@@ -2067,7 +2402,7 @@ class _TestSFTP(_CheckSFTP):
             """Send an unsupported version in response to init"""
 
             packet = await SFTPHandler.recv_packet(self)
-            self.send_packet(FXP_VERSION, None, UInt32(4))
+            self.send_packet(FXP_VERSION, None, UInt32(99))
             return packet
 
         with patch('asyncssh.sftp.SFTPServerHandler.recv_packet',
@@ -2353,6 +2688,40 @@ class _TestSFTP(_CheckSFTP):
         with patch('asyncssh.sftp.SFTPServerHandler', _WriteCloseServerHandler):
             # pylint: disable=no-value-for-parameter
             _write_close(self)
+
+    @sftp_test_4
+    async def test_write_protect_v4(self, sftp):
+        """Test write protect error in SFTPv4"""
+
+        def _write_error(self, file_obj, offset, data):
+            """Return read-only FS error when writing to a file"""
+
+            raise OSError(errno.EROFS, 'Read-only filesystem')
+
+        try:
+            with patch('asyncssh.sftp.SFTPServer.write', _write_error):
+                with self.assertRaises(SFTPError):
+                    async with sftp.open('file', 'wb') as f:
+                        await f.write(b'\0')
+        finally:
+            remove('file')
+
+    @sftp_test_4
+    async def test_no_media_v4(self, sftp):
+        """Test no media error in SFTPv4"""
+
+        def _write_error(self, file_obj, offset, data):
+            """Return read-only FS error when writing to a file"""
+
+            raise SFTPNoMedia('No media in requested drive')
+
+        try:
+            with patch('asyncssh.sftp.SFTPServer.write', _write_error):
+                with self.assertRaises(SFTPError):
+                    async with sftp.open('file', 'wb') as f:
+                        await f.write(b'\0')
+        finally:
+            remove('file')
 
     @sftp_test
     async def test_log_formatting(self, sftp):
@@ -2826,7 +3195,8 @@ class _TestSFTPChown(_CheckSFTP):
     async def start_server(cls):
         """Start an SFTP server which simulates file ownership changes"""
 
-        return await cls.create_server(sftp_factory=_ChownSFTPServer)
+        return await cls.create_server(sftp_factory=_ChownSFTPServer,
+                                       sftp_version=4)
 
     @sftp_test
     async def test_chown(self, sftp):
@@ -2838,6 +3208,19 @@ class _TestSFTPChown(_CheckSFTP):
             attrs = await sftp.stat('file')
             self.assertEqual(attrs.uid, 1)
             self.assertEqual(attrs.gid, 2)
+        finally:
+            remove('file')
+
+    @sftp_test_4
+    async def test_chown_v4(self, sftp):
+        """Test changing ownership of a file with SFTPv4"""
+
+        try:
+            self._create_file('file')
+            await sftp.chown('file', owner='root', group='wheel')
+            attrs = await sftp.stat('file')
+            self.assertEqual(attrs.owner, 'root')
+            self.assertEqual(attrs.group, 'wheel')
         finally:
             remove('file')
 
@@ -2854,14 +3237,43 @@ class _TestSFTPAttrs(unittest.TestCase):
                        {'atime': 1, 'mtime': 2},
                        {'extended': [(b'a1', b'v1'), (b'a2', b'v2')]}):
             attrs = SFTPAttrs(**kwargs)
-            packet = SSHPacket(attrs.encode())
-            self.assertEqual(repr(SFTPAttrs.decode(packet)), repr(attrs))
+            packet = SSHPacket(attrs.encode(3))
+            self.assertEqual(repr(SFTPAttrs.decode(packet, 3)), repr(attrs))
+
+        for kwargs in ({'type': FILEXFER_TYPE_REGULAR},
+                       {'size': 1234},
+                       {'owner': 'a', 'group': 'b'},
+                       {'permissions': 0o7777},
+                       {'atime': 1, 'atime_ns': 2},
+                       {'crtime': 3, 'crtime_ns': 4},
+                       {'mtime': 5, 'mtime_ns': 6},
+                       {'atime': 7, 'crtime': 8, 'mtime': 9},
+                       {'acl': b''},
+                       {'extended': [(b'a1', b'v1'), (b'a2', b'v2')]}):
+            attrs = SFTPAttrs(**kwargs)
+            packet = SSHPacket(attrs.encode(4))
+            self.assertEqual(repr(SFTPAttrs.decode(packet, 4)), repr(attrs))
+
+            packet = SSHPacket(SFTPAttrs(uid=1, gid=2).encode(4))
+            self.assertEqual(repr(SFTPAttrs.decode(packet, 4)),
+                             repr(SFTPAttrs(owner='1', group='2')))
 
     def test_illegal_attrs(self):
         """Test decoding illegal SFTP attributes value"""
 
         with self.assertRaises(SFTPError):
-            SFTPAttrs.decode(SSHPacket(UInt32(FILEXFER_ATTR_UNDEFINED)))
+            SFTPAttrs.decode(SSHPacket(UInt32(FILEXFER_ATTR_UNDEFINED_V3)), 3)
+
+        with self.assertRaises(SFTPError):
+            SFTPAttrs.decode(SSHPacket(UInt32(FILEXFER_ATTR_UNDEFINED_V4)), 4)
+
+        with self.assertRaises(SFTPError):
+            SFTPAttrs.decode(SSHPacket(SFTPAttrs(owner=b'\xff',
+                                                 group='').encode(4)), 4)
+
+        with self.assertRaises(SFTPError):
+            SFTPAttrs.decode(SSHPacket(SFTPAttrs(owner='',
+                                                 group=b'\xff').encode(4)), 4)
 
 
 class _TestSFTPNonstandardSymlink(_CheckSFTP):
@@ -2897,7 +3309,8 @@ class _TestSFTPAsync(_TestSFTP):
     async def start_server(cls):
         """Start an SFTP server with async callbacks"""
 
-        return await cls.create_server(sftp_factory=_AsyncSFTPServer)
+        return await cls.create_server(sftp_factory=_AsyncSFTPServer,
+                                       sftp_version=4)
 
     @sftp_test
     async def test_async_realpath(self, sftp):

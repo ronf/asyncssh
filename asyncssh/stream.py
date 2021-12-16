@@ -658,11 +658,13 @@ class SSHServerStreamSession(SSHStreamSession[AnyStr],
     """SSH server stream session handler"""
 
     def __init__(self, session_factory: _OptServerSessionFactory,
-                 sftp_factory: _OptSFTPServerFactory, allow_scp: bool):
+                 sftp_factory: _OptSFTPServerFactory = None,
+                 sftp_version = 0, allow_scp = False):
         super().__init__()
 
         self._session_factory = session_factory
         self._sftp_factory = sftp_factory
+        self._sftp_version = sftp_version
         self._allow_scp = allow_scp and bool(sftp_factory)
 
     def _init_sftp_server(self) -> SFTPServer:
@@ -716,7 +718,8 @@ class SSHServerStreamSession(SSHStreamSession[AnyStr],
             stdout_bytes = cast(SSHWriter[bytes], stdout)
 
             handler = run_sftp_server(self._init_sftp_server(),
-                                      stdin_bytes, stdout_bytes)
+                                      stdin_bytes, stdout_bytes,
+                                      self._sftp_version)
         elif self._allow_scp and command and command.startswith('scp '):
             stdin_bytes = cast(SSHReader[bytes], stdin)
             stdout_bytes = cast(SSHWriter[bytes], stdout)

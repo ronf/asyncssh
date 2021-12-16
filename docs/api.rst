@@ -1103,25 +1103,29 @@ SFTPClient
    .. automethod:: realpath
    ============================================================================================================================== =
 
-   ============================= =
+   ======================================================= =
    File attribute access methods
-   ============================= =
+   ======================================================= =
    .. automethod:: stat
    .. automethod:: lstat
    .. automethod:: setstat
    .. automethod:: statvfs
-   .. automethod:: chown
+   .. automethod:: chown(path, uid or owner, gid or group)
    .. automethod:: chmod
    .. automethod:: utime
    .. automethod:: exists
    .. automethod:: lexists
    .. automethod:: getatime
+   .. automethod:: getatime_ns
    .. automethod:: getmtime
+   .. automethod:: getcrtime_ns
+   .. automethod:: getcrtime
+   .. automethod:: getmtime_ns
    .. automethod:: getsize
    .. automethod:: isdir
    .. automethod:: isfile
    .. automethod:: islink
-   ============================= =
+   ======================================================= =
 
    ================================================= =
    Directory access methods
@@ -1150,7 +1154,7 @@ SFTPClientFile
 
 .. autoclass:: SFTPClientFile()
 
-   ================================================ =
+   ================================================= =
    .. automethod:: read
    .. automethod:: write
    .. automethod:: seek(offset, from_what=SEEK_SET)
@@ -1159,12 +1163,12 @@ SFTPClientFile
    .. automethod:: setstat
    .. automethod:: statvfs
    .. automethod:: truncate
-   .. automethod:: chown
+   .. automethod:: chown(uid or owner, gid or group)
    .. automethod:: chmod
    .. automethod:: utime
    .. automethod:: fsync
    .. automethod:: close
-   ================================================ =
+   ================================================= =
 
 SFTPServer
 ----------

@@ -95,6 +95,8 @@ from .server import SSHServer
 from .sftp import SFTPClient, SFTPClientFile, SFTPServer, SFTPError
 from .sftp import SFTPEOFError, SFTPNoSuchFile, SFTPPermissionDenied
 from .sftp import SFTPFailure, SFTPBadMessage, SFTPNoConnection
+from .sftp import SFTPInvalidHandle, SFTPNoSuchPath, SFTPFileAlreadyExists
+from .sftp import SFTPWriteProtect, SFTPNoMedia
 from .sftp import SFTPConnectionLost, SFTPOpUnsupported
 from .sftp import SFTPAttrs, SFTPVFSAttrs, SFTPName
 from .sftp import SEEK_SET, SEEK_CUR, SEEK_END

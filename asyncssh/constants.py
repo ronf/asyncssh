@@ -101,7 +101,7 @@ OPEN_REQUEST_X11_FORWARDING_FAILED  = 0xfffffffd
 OPEN_REQUEST_PTY_FAILED             = 0xfffffffe
 OPEN_REQUEST_SESSION_FAILED         = 0xffffffff
 
-# SSH file transfer packet types
+# SFTP packet types
 FXP_INIT                            = 1
 FXP_VERSION                         = 2
 FXP_OPEN                            = 3
@@ -130,7 +130,7 @@ FXP_ATTRS                           = 105
 FXP_EXTENDED                        = 200
 FXP_EXTENDED_REPLY                  = 201
 
-# SSH file transfer open flags
+# SFTP open flags
 FXF_READ                            = 0x00000001
 FXF_WRITE                           = 0x00000002
 FXF_APPEND                          = 0x00000004
@@ -138,19 +138,37 @@ FXF_CREAT                           = 0x00000008
 FXF_TRUNC                           = 0x00000010
 FXF_EXCL                            = 0x00000020
 
-# SSH file transfer attribute flags
+# SFTPv3 attribute flags
 FILEXFER_ATTR_SIZE                  = 0x00000001
 FILEXFER_ATTR_UIDGID                = 0x00000002
 FILEXFER_ATTR_PERMISSIONS           = 0x00000004
 FILEXFER_ATTR_ACMODTIME             = 0x00000008
 FILEXFER_ATTR_EXTENDED              = 0x80000000
-FILEXFER_ATTR_UNDEFINED             = 0x7ffffff0
+FILEXFER_ATTR_DEFINED_V3            = 0x8000000f
+FILEXFER_ATTR_UNDEFINED_V3          = FILEXFER_ATTR_DEFINED_V3 ^ 0xffffffff
+
+# SFTPv4 attribute flags
+FILEXFER_ATTR_ACCESSTIME            = 0x00000008
+FILEXFER_ATTR_CREATETIME            = 0x00000010
+FILEXFER_ATTR_MODIFYTIME            = 0x00000020
+FILEXFER_ATTR_ACL                   = 0x00000040
+FILEXFER_ATTR_OWNERGROUP            = 0x00000080
+FILEXFER_ATTR_SUBSECOND_TIMES       = 0x00000100
+FILEXFER_ATTR_DEFINED_V4            = 0x800001fd
+FILEXFER_ATTR_UNDEFINED_V4          = FILEXFER_ATTR_DEFINED_V4 ^ 0xffffffff
+
+# SFTPv4 file types
+FILEXFER_TYPE_REGULAR               = 1
+FILEXFER_TYPE_DIRECTORY             = 2
+FILEXFER_TYPE_SYMLINK               = 3
+FILEXFER_TYPE_SPECIAL               = 4
+FILEXFER_TYPE_UNKNOWN               = 5
 
 # OpenSSH statvfs attribute flags
 FXE_STATVFS_ST_RDONLY               = 0x1
 FXE_STATVFS_ST_NOSUID               = 0x2
 
-# SSH file transfer error codes
+# SFTPv3 error codes
 FX_OK                               = 0
 FX_EOF                              = 1
 FX_NO_SUCH_FILE                     = 2
@@ -160,6 +178,13 @@ FX_BAD_MESSAGE                      = 5
 FX_NO_CONNECTION                    = 6
 FX_CONNECTION_LOST                  = 7
 FX_OP_UNSUPPORTED                   = 8
+
+# SFTPv4 error codes
+FX_INVALID_HANDLE                   = 9
+FX_NO_SUCH_PATH                     = 10
+FX_FILE_ALREADY_EXISTS              = 11
+FX_WRITE_PROTECT                    = 12
+FX_NO_MEDIA                         = 13
 
 # SSH channel data type codes
 EXTENDED_DATA_STDERR                = 1

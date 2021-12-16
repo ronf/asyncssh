@@ -151,7 +151,8 @@ from .session import SSHTCPSession, SSHUNIXSession
 from .session import SSHClientSessionFactory, SSHTCPSessionFactory
 from .session import SSHUNIXSessionFactory
 
-from .sftp import SFTPClient, SFTPServer, start_sftp_client
+from .sftp import MIN_SFTP_VERSION, SFTPClient, SFTPServer
+from .sftp import start_sftp_client
 
 from .stream import SSHReader, SSHWriter, SFTPServerFactory
 from .stream import SSHSocketSessionFactory, SSHServerSessionFactory
@@ -4702,7 +4703,8 @@ class SSHClientConnection(SSHConnection):
     async def start_sftp_client(self, env: DefTuple[_Env] = (),
                                 send_env: DefTuple[_SendEnv] = (),
                                 path_encoding: Optional[str] = 'utf-8',
-                                path_errors: str = 'strict') -> SFTPClient:
+                                path_errors = 'strict',
+                                sftp_version = MIN_SFTP_VERSION) -> SFTPClient:
         """Start an SFTP client
 
            This method is a coroutine which attempts to start a secure
@@ -4738,10 +4740,14 @@ class SSHClientConnection(SSHConnection):
                remote pathnames
            :param path_errors:
                The error handling strategy to apply on encode/decode errors
+           :param sftp_version: (optional)
+               The maximum version of the SFTP protocol to support, currently
+               either 3 or 4, defaulting to 3.
            :type env: `dict` with `str` keys and values
            :type send_env: `list` of `str`
            :type path_encoding: `str`
            :type path_errors: `str`
+           :type sftp_version: `int`
 
            :returns: :class:`SFTPClient`
 
@@ -4754,7 +4760,8 @@ class SSHClientConnection(SSHConnection):
                                                     encoding=None)
 
         return await start_sftp_client(self, self._loop, reader, writer,
-                                       path_encoding, path_errors)
+                                       path_encoding, path_errors,
+                                       sftp_version)
 
 
 class SSHServerConnection(SSHConnection):
@@ -4823,6 +4830,7 @@ class SSHServerConnection(SSHConnection):
         self._encoding = options.encoding
         self._errors = options.errors
         self._sftp_factory = options.sftp_factory
+        self._sftp_version = options.sftp_version
         self._allow_scp = options.allow_scp
         self._window = options.window
         self._max_pktsize = options.max_pktsize
@@ -5282,10 +5290,12 @@ class SSHServerConnection(SSHConnection):
             if self._process_factory:
                 session = SSHServerProcess(self._process_factory,
                                            self._sftp_factory,
+                                           self._sftp_version,
                                            self._allow_scp)
             else:
                 session = SSHServerStreamSession(self._session_factory,
                                                  self._sftp_factory,
+                                                 self._sftp_version,
                                                  self._allow_scp)
         else:
             result = self._owner.session_requested()
@@ -5301,7 +5311,7 @@ class SSHServerConnection(SSHConnection):
                                                   self._max_pktsize)
 
             if callable(result):
-                session = SSHServerStreamSession(result, None, False)
+                session = SSHServerStreamSession(result)
             else:
                 session = cast(SSHServerSession, result)
 
@@ -7195,6 +7205,9 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
            client, or `True` to use the base :class:`SFTPServer` class
            to handle SFTP requests. If not specified, SFTP sessions are
            rejected by default.
+       :param sftp_version: (optional)
+           The maximum version of the SFTP protocol to support, currently
+           either 3 or 4, defaulting to 3.
        :param allow_scp: (optional)
            Whether or not to allow incoming scp requests to be accepted.
            This option can only be used in conjunction with `sftp_factory`.
@@ -7312,6 +7325,7 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
        :type encoding: `str`
        :type errors: `str`
        :type sftp_factory: `callable`
+       :type sftp_version: `int`
        :type allow_scp: `bool`
        :type window: `int`
        :type max_pktsize: `int`
@@ -7355,6 +7369,7 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
     encoding: Optional[str]
     errors: str
     sftp_factory: Optional[SFTPServerFactory]
+    sftp_version: int
     allow_scp: bool
     window: int
     max_pktsize: int
@@ -7407,6 +7422,7 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
                 session_factory: Optional[SSHServerSessionFactory] = None,
                 encoding: Optional[str] = 'utf-8', errors: str = 'strict',
                 sftp_factory: Optional[SFTPServerFactory] = None,
+                sftp_version: int = MIN_SFTP_VERSION,
                 allow_scp: bool = False, window: int = _DEFAULT_WINDOW,
                 max_pktsize: int = _DEFAULT_MAX_PKTSIZE) -> None:
         """Prepare server connection configuration options"""
@@ -7520,6 +7536,7 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
         self.encoding = encoding
         self.errors = errors
         self.sftp_factory = SFTPServer if sftp_factory is True else sftp_factory
+        self.sftp_version = sftp_version
         self.allow_scp = allow_scp
         self.window = window
         self.max_pktsize = max_pktsize

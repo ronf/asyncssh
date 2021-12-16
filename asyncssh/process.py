@@ -1404,8 +1404,10 @@ class SSHServerProcess(SSHProcess[AnyStr], SSHServerStreamSession[AnyStr]):
     channel: SSHServerChannel[AnyStr]
 
     def __init__(self, process_factory: SSHServerProcessFactory,
-                 sftp_factory: Optional[SFTPServerFactory], allow_scp: bool):
-        super().__init__(self._start_process, sftp_factory, allow_scp)
+                 sftp_factory: Optional[SFTPServerFactory],
+                 sftp_version: int, allow_scp: bool):
+        super().__init__(self._start_process, sftp_factory,
+                         sftp_version, allow_scp)
 
         self._process_factory = process_factory
 
