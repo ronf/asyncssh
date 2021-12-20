@@ -27,6 +27,7 @@ import io
 import os
 import shlex
 import socket
+import ssl
 import sys
 import tempfile
 import time
@@ -194,6 +195,49 @@ class _TunnelConnectorProtocol(_TunnelProtocol, Protocol):
             remote_host: str, remote_port: int) -> \
                 Tuple[SSHTCPChannel[bytes], SSHTCPSession[bytes]]:
         """Create an outbound tunnel connection"""
+
+class HTTPConnectorProtocol:
+     """Protocol to open a HTTP Connect session to tunnel an SSH connection over"""
+
+    def __init__(
+        self, proxy_host: str, proxy_port: int, ssl_context: Optional[ssl.SSLContext] = None
+    ) -> None:
+        self._proxy_host = proxy_host
+        self._proxy_port = proxy_port
+        self._ssl_context = ssl_context
+
+    async def create_connection(
+        self, session_factory: SSHTCPSessionFactory[bytes],
+        remote_host: str, remote_port: int) -> \
+            Tuple[SSHTCPChannel[bytes], SSHTCPSession[bytes]]:
+
+        # making an ssl connection to proxy host
+        reader, writer = await asyncio.open_connection(
+            self._proxy_host,
+            self._proxy_port,
+            ssl=self._ssl_context,
+        )
+
+        # HTTP Connect request to the target host
+        cmd_connect = f"CONNECT {remote_host}:{remote_port} HTTP/1.1\r\n\r\n".encode("ASCII")
+        writer.write(cmd_connect)
+
+        line = await reader.readline()
+        if not line.startswith(b"HTTP/1.1 200 "):
+            raise ChannelOpenError(
+                OPEN_CONNECT_FAILED,
+                f"Unexpected response: {line.decode('utf-8', errors='ignore')}"
+            )
+
+        async for line in reader:
+            if line == b"\r\n":
+                break
+        transport = writer.transport
+        protocol = protocol_factory()
+        transport.set_protocol(protocol)
+        protocol.connection_made(transport)
+        return transport, protocol
+
 
 class _TunnelListenerProtocol(_TunnelProtocol, Protocol):
     """Protocol to open a listener to tunnel SSH connections over"""
