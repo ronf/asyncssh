@@ -197,7 +197,7 @@ class _TunnelConnectorProtocol(_TunnelProtocol, Protocol):
         """Create an outbound tunnel connection"""
 
 class HTTPConnectorTunnel:
-     """Protocol to open a HTTP Connect session to tunnel an SSH connection over"""
+    """Protocol to open a HTTP Connect session to tunnel an SSH connection over"""
 
     def __init__(
         self, proxy_host: str, proxy_port: int, ssl_context: Optional[ssl.SSLContext] = None
