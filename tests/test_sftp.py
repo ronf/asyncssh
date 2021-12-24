@@ -2417,11 +2417,17 @@ class _TestSFTP(_CheckSFTP):
                 # pylint: disable=no-value-for-parameter
                 self._dummy_sftp_client()
 
-    def test_unknown_extension_request(self):
-        """Test sending an unknown extension in init request"""
+    def test_extension_in_init(self):
+        """Test sending an extension in version 3 init request"""
 
-        with patch('asyncssh.sftp.SFTPClientHandler._extensions',
-                   [(b'xxx', b'1')]):
+        async def _init_extension_start(self):
+            """Send an init request with missing version"""
+
+            self.send_packet(FXP_INIT, None, UInt32(3), String(b'xxx'),
+                             String(b'1'))
+
+        with patch('asyncssh.sftp.SFTPClientHandler.start',
+                   _init_extension_start):
             # pylint: disable=no-value-for-parameter
             self._dummy_sftp_client()
 

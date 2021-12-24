@@ -1552,8 +1552,6 @@ class SFTPHandler(SSHPacketLogger):
 class SFTPClientHandler(SFTPHandler):
     """An SFTP client session handler"""
 
-    _extensions: List[Tuple[bytes, bytes]] = []
-
     def __init__(self, loop: asyncio.AbstractEventLoop,
                  reader: 'SSHReader[bytes]', writer: 'SSHWriter[bytes]',
                  sftp_version: int):
@@ -1726,17 +1724,9 @@ class SFTPClientHandler(SFTPHandler):
 
         assert self._reader is not None
 
-        self.logger.debug1('Sending init, version=%d%s', self._version,
-                           ', extensions:' if self._extensions else '')
+        self.logger.debug1('Sending init, version=%d', self._version)
 
-        for name, data in self._extensions: # pragma: no cover
-            self.logger.debug1('  %s: %s', name, data)
-
-        sent_extensions = (String(name) + String(data)
-                           for name, data in self._extensions)
-
-        self.send_packet(FXP_INIT, None, UInt32(self._version),
-                         *sent_extensions)
+        self.send_packet(FXP_INIT, None, UInt32(self._version))
 
         try:
             resp = await self.recv_packet()
@@ -4868,22 +4858,26 @@ class SFTPServerHandler(SFTPHandler):
             packet = await self.recv_packet()
             pkttype = packet.get_byte()
             self.log_received_packet(pkttype, None, packet)
+
+            if pkttype != FXP_INIT:
+                await self._cleanup(SFTPBadMessage('Expected init message'))
+                return
+
             version = packet.get_uint32()
             rcvd_extensions: List[Tuple[bytes, bytes]] = []
 
-            while packet:
-                name = packet.get_string()
-                data = packet.get_string()
-                rcvd_extensions.append((name, data))
+            if version == 3:
+                while packet:
+                    name = packet.get_string()
+                    data = packet.get_string()
+                    rcvd_extensions.append((name, data))
+            else:
+                packet.check_end()
         except PacketDecodeError as exc:
             await self._cleanup(SFTPBadMessage(str(exc)))
             return
         except Error as exc:
             await self._cleanup(exc)
-            return
-
-        if pkttype != FXP_INIT:
-            await self._cleanup(SFTPBadMessage('Expected init message'))
             return
 
         self.logger.debug1('Received init, version=%d%s', version,
