@@ -101,7 +101,7 @@ OPEN_REQUEST_X11_FORWARDING_FAILED  = 0xfffffffd
 OPEN_REQUEST_PTY_FAILED             = 0xfffffffe
 OPEN_REQUEST_SESSION_FAILED         = 0xffffffff
 
-# SFTP packet types
+# SFTPv3-v5 packet types
 FXP_INIT                            = 1
 FXP_VERSION                         = 2
 FXP_OPEN                            = 3
@@ -130,13 +130,51 @@ FXP_ATTRS                           = 105
 FXP_EXTENDED                        = 200
 FXP_EXTENDED_REPLY                  = 201
 
-# SFTP open flags
+# SFTPv6 packet types
+FXP_LINK                            = 21
+FXP_BLOCK                           = 22
+FXP_UNBLOCK                         = 23
+
+# SFTPv3 open flags
 FXF_READ                            = 0x00000001
 FXF_WRITE                           = 0x00000002
 FXF_APPEND                          = 0x00000004
 FXF_CREAT                           = 0x00000008
 FXF_TRUNC                           = 0x00000010
 FXF_EXCL                            = 0x00000020
+
+# SFTPv4 open flags
+FXF_TEXT                            = 0x00000040
+
+# SFTPv5 open flags
+FXF_ACCESS_DISPOSITION              = 0x00000007
+FXF_CREATE_NEW                      = 0x00000000
+FXF_CREATE_TRUNCATE                 = 0x00000001
+FXF_OPEN_EXISTING                   = 0x00000002
+FXF_OPEN_OR_CREATE                  = 0x00000003
+FXF_TRUNCATE_EXISTING               = 0x00000004
+FXF_APPEND_DATA                     = 0x00000008
+FXF_APPEND_DATA_ATOMIC              = 0x00000010
+FXF_TEXT_MODE                       = 0x00000020
+FXF_BLOCK_READ                      = 0x00000040
+FXF_BLOCK_WRITE                     = 0x00000080
+FXF_BLOCK_DELETE                    = 0x00000100
+
+# SFTPv6 open flags
+FXF_BLOCK_ADVISORY                  = 0x00000200
+FXF_NOFOLLOW                        = 0x00000400
+FXF_DELETE_ON_CLOSE                 = 0x00000800
+FXF_ACCESS_AUDIT_ALARM_INFO         = 0x00001000
+FXF_ACCESS_BACKUP                   = 0x00002000
+FXF_BACKUP_STREAM                   = 0x00004000
+FXF_OVERRIDE_OWNER                  = 0x00008000
+
+# SFTPv5-v6 ACE mask values used in desired-access
+ACE4_READ_DATA                      = 0x00000001
+ACE4_WRITE_DATA                     = 0x00000002
+ACE4_APPEND_DATA                    = 0x00000004
+ACE4_READ_ATTRIBUTES                = 0x00000080
+ACE4_WRITE_ATTRIBUTES               = 0x00000100
 
 # SFTPv3 attribute flags
 FILEXFER_ATTR_SIZE                  = 0x00000001
@@ -145,7 +183,6 @@ FILEXFER_ATTR_PERMISSIONS           = 0x00000004
 FILEXFER_ATTR_ACMODTIME             = 0x00000008
 FILEXFER_ATTR_EXTENDED              = 0x80000000
 FILEXFER_ATTR_DEFINED_V3            = 0x8000000f
-FILEXFER_ATTR_UNDEFINED_V3          = FILEXFER_ATTR_DEFINED_V3 ^ 0xffffffff
 
 # SFTPv4 attribute flags
 FILEXFER_ATTR_ACCESSTIME            = 0x00000008
@@ -155,7 +192,19 @@ FILEXFER_ATTR_ACL                   = 0x00000040
 FILEXFER_ATTR_OWNERGROUP            = 0x00000080
 FILEXFER_ATTR_SUBSECOND_TIMES       = 0x00000100
 FILEXFER_ATTR_DEFINED_V4            = 0x800001fd
-FILEXFER_ATTR_UNDEFINED_V4          = FILEXFER_ATTR_DEFINED_V4 ^ 0xffffffff
+
+# SFTPv5 attribute flags
+FILEXFER_ATTR_BITS                  = 0x00000200
+FILEXFER_ATTR_DEFINED_V5            = 0x800003fd
+
+# SFTPv6 attribute flags
+FILEXFER_ATTR_ALLOCATION_SIZE       = 0x00000400
+FILEXFER_ATTR_TEXT_HINT             = 0x00000800
+FILEXFER_ATTR_MIME_TYPE             = 0x00001000
+FILEXFER_ATTR_LINK_COUNT            = 0x00002000
+FILEXFER_ATTR_UNTRANSLATED_NAME     = 0x00004000
+FILEXFER_ATTR_CTIME                 = 0x00008000
+FILEXFER_ATTR_DEFINED_V6            = 0x8000fffd
 
 # SFTPv4 file types
 FILEXFER_TYPE_REGULAR               = 1
@@ -163,6 +212,44 @@ FILEXFER_TYPE_DIRECTORY             = 2
 FILEXFER_TYPE_SYMLINK               = 3
 FILEXFER_TYPE_SPECIAL               = 4
 FILEXFER_TYPE_UNKNOWN               = 5
+
+# SFTPv5 file types
+FILEXFER_TYPE_SOCKET                = 6
+FILEXFER_TYPE_CHAR_DEVICE           = 7
+FILEXFER_TYPE_BLOCK_DEVICE          = 8
+FILEXFER_TYPE_FIFO                  = 9
+
+# SFTPv5 attrib bits
+FILEXFER_ATTR_BITS_READONLY         = 0x00000001
+FILEXFER_ATTR_BITS_SYSTEM           = 0x00000002
+FILEXFER_ATTR_BITS_HIDDEN           = 0x00000004
+FILEXFER_ATTR_BITS_CASE_INSENSITIVE = 0x00000008
+FILEXFER_ATTR_BITS_ARCHIVE          = 0x00000010
+FILEXFER_ATTR_BITS_ENCRYPTED        = 0x00000020
+FILEXFER_ATTR_BITS_COMPRESSED       = 0x00000040
+FILEXFER_ATTR_BITS_SPARSE           = 0x00000080
+FILEXFER_ATTR_BITS_APPEND_ONLY      = 0x00000100
+FILEXFER_ATTR_BITS_IMMUTABLE        = 0x00000200
+FILEXFER_ATTR_BITS_SYNC             = 0x00000400
+
+# SFTPv6 attrib bits
+FILEXFER_ATTR_BITS_TRANSLATION_ERR  = 0x00000800
+
+# SFTPv6 text hint flags
+FILEXFER_ATTR_KNOWN_TEXT            = 0
+FILEXFER_ATTR_GUESSED_TEXT          = 1
+FILEXFER_ATTR_KNOWN_BINARY          = 2
+FILEXFER_ATTR_GUESSED_BINARY        = 3
+
+# SFTPv5 rename flags
+FXR_OVERWRITE                       = 0x00000001
+FXR_ATOMIC                          = 0x00000002
+FXR_NATIVE                          = 0x00000004
+
+# SFTPv6 realpath control byte
+FXRP_NO_CHECK                       = 1
+FXRP_STAT_IF_EXISTS                 = 2
+FXRP_STAT_ALWAYS                    = 3
 
 # OpenSSH statvfs attribute flags
 FXE_STATVFS_ST_RDONLY               = 0x1
@@ -178,6 +265,7 @@ FX_BAD_MESSAGE                      = 5
 FX_NO_CONNECTION                    = 6
 FX_CONNECTION_LOST                  = 7
 FX_OP_UNSUPPORTED                   = 8
+FX_V3_END                           = FX_OP_UNSUPPORTED
 
 # SFTPv4 error codes
 FX_INVALID_HANDLE                   = 9
@@ -185,6 +273,31 @@ FX_NO_SUCH_PATH                     = 10
 FX_FILE_ALREADY_EXISTS              = 11
 FX_WRITE_PROTECT                    = 12
 FX_NO_MEDIA                         = 13
+FX_V4_END                           = FX_NO_MEDIA
+
+# SFTPv5 error codes
+FX_NO_SPACE_ON_FILESYSTEM           = 14
+FX_QUOTA_EXCEEDED                   = 15
+FX_UNKNOWN_PRINCIPAL                = 16
+FX_LOCK_CONFLICT                    = 17
+FX_V5_END                           = FX_LOCK_CONFLICT
+
+# SFTPv6 error codes
+FX_DIR_NOT_EMPTY                    = 18
+FX_NOT_A_DIRECTORY                  = 19
+FX_INVALID_FILENAME                 = 20
+FX_LINK_LOOP                        = 21
+FX_CANNOT_DELETE                    = 22
+FX_INVALID_PARAMETER                = 23
+FX_FILE_IS_A_DIRECTORY              = 24
+FX_BYTE_RANGE_LOCK_CONFLICT         = 25
+FX_BYTE_RANGE_LOCK_REFUSED          = 26
+FX_DELETE_PENDING                   = 27
+FX_FILE_CORRUPT                     = 28
+FX_OWNER_INVALID                    = 29
+FX_GROUP_INVALID                    = 30
+FX_NO_MATCHING_BYTE_RANGE_LOCK      = 31
+FX_V6_END                           = FX_NO_MATCHING_BYTE_RANGE_LOCK
 
 # SSH channel data type codes
 EXTENDED_DATA_STDERR                = 1

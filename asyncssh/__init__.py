@@ -96,7 +96,14 @@ from .sftp import SFTPClient, SFTPClientFile, SFTPServer, SFTPError
 from .sftp import SFTPEOFError, SFTPNoSuchFile, SFTPPermissionDenied
 from .sftp import SFTPFailure, SFTPBadMessage, SFTPNoConnection
 from .sftp import SFTPInvalidHandle, SFTPNoSuchPath, SFTPFileAlreadyExists
-from .sftp import SFTPWriteProtect, SFTPNoMedia
+from .sftp import SFTPWriteProtect, SFTPNoMedia, SFTPNoSpaceOnFilesystem
+from .sftp import SFTPQuotaExceeded, SFTPUnknownPrincipal, SFTPLockConflict
+from .sftp import SFTPDirNotEmpty, SFTPNotADirectory, SFTPInvalidFilename
+from .sftp import SFTPLinkLoop, SFTPCannotDelete, SFTPInvalidParameter
+from .sftp import SFTPFileIsADirectory, SFTPByteRangeLockConflict
+from .sftp import SFTPByteRangeLockRefused, SFTPDeletePending
+from .sftp import SFTPFileCorrupt, SFTPOwnerInvalid, SFTPGroupInvalid
+from .sftp import SFTPNoMatchingByteRangeLock
 from .sftp import SFTPConnectionLost, SFTPOpUnsupported
 from .sftp import SFTPAttrs, SFTPVFSAttrs, SFTPName
 from .sftp import SEEK_SET, SEEK_CUR, SEEK_END

@@ -46,6 +46,12 @@ def Boolean(value: bool) -> bytes:
     return Byte(bool(value))
 
 
+def UInt16(value: int) -> bytes:
+    """Encode a 16-bit integer value"""
+
+    return value.to_bytes(2, 'big')
+
+
 def UInt32(value: int) -> bytes:
     """Encode a 32-bit integer value"""
 
@@ -134,6 +140,11 @@ class SSHPacket:
         """Extract a boolean from the packet"""
 
         return bool(self.get_byte())
+
+    def get_uint16(self) -> int:
+        """Extract a 16-bit integer from the packet"""
+
+        return int.from_bytes(self.get_bytes(2), 'big')
 
     def get_uint32(self) -> int:
         """Extract a 32-bit integer from the packet"""
