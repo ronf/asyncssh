@@ -1448,25 +1448,6 @@ class _TestSFTP(_CheckSFTP):
 
             self.assertTrue((await sftp.exists('file1')))
             self.assertFalse((await sftp.exists('file2')))
-
-            with self.assertRaises(SFTPFailure):
-                await sftp.exists(256*'a')
-        finally:
-            remove('file1')
-
-    @sftp_test_v6
-    async def test_exists_v6(self, sftp):
-        """Test checking whether a file exists with SFTPv6"""
-
-        try:
-            self._create_file('file1')
-
-            self.assertTrue((await sftp.exists('file1')))
-            self.assertFalse((await sftp.exists('file2')))
-
-            with self.assertRaises((SFTPInvalidParameter,
-                                    SFTPInvalidFilename)):
-                await sftp.exists(256*'a')
         finally:
             remove('file1')
 
@@ -3978,6 +3959,9 @@ class _TestSFTPOpenError(_CheckSFTP):
     @sftp_test_v6
     async def test_open_error_v6(self, sftp):
         """Test error when opening a file on an SFTP server"""
+
+        with self.assertRaises(SFTPInvalidFilename):
+            await sftp.open('ENAMETOOLONG')
 
         with self.assertRaises(SFTPInvalidParameter):
             await sftp.open('EINVAL')
