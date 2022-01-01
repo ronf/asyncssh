@@ -1655,7 +1655,7 @@ class SFTPAttrs(Record):
          attrib_valid Valid attribute bits for file (SFTPv5+)           uint32
          text_hint    Text/binary hint for file (SFTPv6+)               byte
          mime_type    MIME type for file (SFTPv6+)                      string
-         link_count   Link count for file (SFTPv6+)                     uint32
+         nlink        Link count for file (SFTPv6+)                     uint32
          untrans_name Untranslated name for file (SFTPv6+)              bytes
          ============ ================================================= ======
 
@@ -1688,7 +1688,7 @@ class SFTPAttrs(Record):
     attrib_valid: Optional[int]
     text_hint: Optional[int]
     mime_type: Optional[str]
-    link_count: Optional[int]
+    nlink: Optional[int]
     untrans_name: Optional[bytes]
     extended: Sequence[Tuple[bytes, bytes]] = ()
 
@@ -1822,9 +1822,9 @@ class SFTPAttrs(Record):
                 flags |= FILEXFER_ATTR_MIME_TYPE
                 attrs.append(String(self.mime_type))
 
-            if self.link_count is not None:
+            if self.nlink is not None:
                 flags |= FILEXFER_ATTR_LINK_COUNT
-                attrs.append(UInt32(self.link_count))
+                attrs.append(UInt32(self.nlink))
 
             if self.untrans_name is not None:
                 flags |= FILEXFER_ATTR_UNTRANSLATED_NAME
@@ -1937,7 +1937,7 @@ class SFTPAttrs(Record):
                 raise SFTPBadMessage('Invalid MIME type') from None
 
         if flags & FILEXFER_ATTR_LINK_COUNT:
-            attrs.link_count = packet.get_uint32()
+            attrs.nlink = packet.get_uint32()
 
         if flags & FILEXFER_ATTR_UNTRANSLATED_NAME:
             attrs.untrans_name = packet.get_string()
@@ -6323,7 +6323,7 @@ class SFTPServer:
         else:
             mode = ''
 
-        nlink = str(name.attrs.link_count) if name.attrs.link_count else ''
+        nlink = str(name.attrs.nlink) if name.attrs.nlink else ''
 
         user = self.format_user(name.attrs.uid)
         group = self.format_group(name.attrs.gid)
