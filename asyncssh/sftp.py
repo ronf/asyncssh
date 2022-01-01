@@ -135,6 +135,7 @@ _SFTPFileObj = IO[bytes]
 _SFTPPath = Union[bytes, FilePath]
 _SFTPStatFunc = Callable[[_SFTPPath], Awaitable['SFTPAttrs']]
 
+_SFTPNames = Tuple[Sequence['SFTPName'], bool]
 _SFTPOSAttrs = Union[os.stat_result, 'SFTPAttrs']
 _SFTPOSVFSAttrs = Union[os.statvfs_result, 'SFTPVFSAttrs']
 
@@ -2403,25 +2404,23 @@ class SFTPClientHandler(SFTPHandler):
 
         return data
 
-    def _process_name(self, packet: SSHPacket) -> Sequence[SFTPName]:
+    def _process_name(self, packet: SSHPacket) -> _SFTPNames:
         """Process an incoming SFTP name response"""
 
         count = packet.get_uint32()
         names = [SFTPName.decode(packet, self._version) for _ in range(count)]
-
-        eof = packet.get_boolean() if packet and self._version >= 6 else False
+        at_end = packet.get_boolean() if packet and self._version >= 6 \
+            else False
 
         packet.check_end()
 
         self.logger.debug1('Received %s%s', plural(len(names), 'name'),
-                           ' (EOF)' if eof else '')
-
-        # Ignore eof for now
+                           ' (at end)' if at_end else '')
 
         for name in names:
             self.logger.debug1('  %s', name)
 
-        return names
+        return names, at_end
 
     def _process_attrs(self, packet: SSHPacket) -> SFTPAttrs:
         """Process an incoming SFTP attributes response"""
@@ -2740,12 +2739,12 @@ class SFTPClientHandler(SFTPHandler):
         return cast(bytes, await self._make_request(
             FXP_OPENDIR, String(path)))
 
-    async def readdir(self, handle: bytes) -> Sequence[SFTPName]:
+    async def readdir(self, handle: bytes) -> _SFTPNames:
         """Make an SFTP readdir request"""
 
         self.logger.debug1('Sending readdir for handle %s', handle.hex())
 
-        return cast(Sequence[SFTPName], await self._make_request(
+        return  cast(_SFTPNames, await self._make_request(
             FXP_READDIR, String(handle)))
 
     async def mkdir(self, path: bytes, attrs: SFTPAttrs) -> None:
@@ -2764,7 +2763,7 @@ class SFTPClientHandler(SFTPHandler):
         await self._make_request(FXP_RMDIR, String(path))
 
     async def realpath(self, path: bytes, *compose_paths: bytes,
-                       check: int = FXRP_NO_CHECK) -> Sequence[SFTPName]:
+                       check: int = FXRP_NO_CHECK) -> _SFTPNames:
         """Make an SFTP realpath request"""
 
         if check == FXRP_NO_CHECK:
@@ -2780,19 +2779,19 @@ class SFTPClientHandler(SFTPHandler):
                            if compose_paths else b'', checkmsg)
 
         if self._version >= 6:
-            return cast(Sequence[SFTPName], await self._make_request(
+            return cast(_SFTPNames, await self._make_request(
                 FXP_REALPATH, String(path), Byte(check),
                 *map(String, compose_paths)))
         else:
-            return cast(Sequence[SFTPName], await self._make_request(
+            return cast(_SFTPNames, await self._make_request(
                 FXP_REALPATH, String(path)))
 
-    async def readlink(self, path: bytes) -> Sequence[SFTPName]:
+    async def readlink(self, path: bytes) -> _SFTPNames:
         """Make an SFTP readlink request"""
 
         self.logger.debug1('Sending readlink for %s', path)
 
-        return cast(Sequence[SFTPName], await self._make_request(
+        return cast(_SFTPNames, await self._make_request(
             FXP_READLINK, String(path)))
 
     async def symlink(self, oldpath: bytes, newpath: bytes) -> None:
@@ -4883,10 +4882,13 @@ class SFTPClient:
 
         dirpath = self.compose_path(path)
         handle = await self._handler.opendir(dirpath)
+        at_end = False
 
         try:
-            while True:
-                for entry in await self._handler.readdir(handle):
+            while not at_end:
+                names, at_end = await self._handler.readdir(handle)
+
+                for entry in names:
                     if isinstance(path, (str, PurePath)):
                         entry.filename = \
                             self.decode(cast(bytes, entry.filename))
@@ -5045,13 +5047,13 @@ class SFTPClient:
         path_bytes = self.compose_path(path)
 
         if self.version >= 6:
-            names = await self._handler.realpath(
+            names, _ = await self._handler.realpath(
                 path_bytes, *map(self.encode, compose_paths), check=check)
         else:
             for cpath in compose_paths:
                 path_bytes = self.compose_path(cpath, path_bytes)
 
-            names = await self._handler.realpath(path_bytes)
+            names, _ = await self._handler.realpath(path_bytes)
 
         if len(names) > 1:
             raise SFTPBadMessage('Too many names returned')
@@ -5123,7 +5125,7 @@ class SFTPClient:
         """
 
         linkpath = self.compose_path(path)
-        names = await self._handler.readlink(linkpath)
+        names, _ = await self._handler.readlink(linkpath)
 
         if len(names) > 1:
             raise SFTPBadMessage('Too many names returned')
@@ -5320,16 +5322,18 @@ class SFTPServerHandler(SFTPHandler):
 
                 response = String(data)
             elif return_type == FXP_NAME:
-                names = cast(Sequence[SFTPName], result)
+                names, at_end = cast(_SFTPNames, result)
 
                 self.logger.debug1('Sending %s', plural(len(names), 'name'))
 
                 for name in names:
                     self.logger.debug1('  %s', name)
 
+                end = Boolean(at_end) if at_end and self._version >= 6 else b''
+
                 response = (UInt32(len(names)) +
                             b''.join(name.encode(self._version)
-                                     for name in names))
+                                     for name in names) + end)
             else:
                 attrs: _SupportsEncode
 
@@ -5680,7 +5684,7 @@ class SFTPServerHandler(SFTPHandler):
         self._dir_handles[handle] = entries
         return handle
 
-    async def _process_readdir(self, packet: SSHPacket) -> Sequence[SFTPName]:
+    async def _process_readdir(self, packet: SSHPacket) -> _SFTPNames:
         """Process an incoming SFTP readdir request"""
 
         handle = packet.get_string()
@@ -5692,7 +5696,7 @@ class SFTPServerHandler(SFTPHandler):
         if names:
             result = names[:_MAX_READDIR_NAMES]
             del names[:_MAX_READDIR_NAMES]
-            return result
+            return result, not names
         elif names is not None:
             raise SFTPEOFError
         else:
@@ -5741,7 +5745,7 @@ class SFTPServerHandler(SFTPHandler):
             assert result is not None
             await result
 
-    async def _process_realpath(self, packet: SSHPacket) -> Sequence[SFTPName]:
+    async def _process_realpath(self, packet: SSHPacket) -> _SFTPNames:
         """Process an incoming SFTP realpath request"""
 
         path = packet.get_string()
@@ -5794,7 +5798,7 @@ class SFTPServerHandler(SFTPHandler):
                 if check == FXRP_STAT_ALWAYS:
                     raise
 
-        return [SFTPName(result, attrs=attrs)]
+        return [SFTPName(result, attrs=attrs)], False
 
     async def _process_stat(self, packet: SSHPacket) -> _SFTPOSAttrs:
         """Process an incoming SFTP stat request"""
@@ -5845,7 +5849,7 @@ class SFTPServerHandler(SFTPHandler):
             assert result is not None
             await result
 
-    async def _process_readlink(self, packet: SSHPacket) -> Sequence[SFTPName]:
+    async def _process_readlink(self, packet: SSHPacket) -> _SFTPNames:
         """Process an incoming SFTP readlink request"""
 
         path = packet.get_string()
@@ -5860,7 +5864,7 @@ class SFTPServerHandler(SFTPHandler):
 
         result: bytes
 
-        return [SFTPName(result)]
+        return [SFTPName(result)], False
 
     async def _process_symlink(self, packet: SSHPacket) -> None:
         """Process an incoming SFTP symlink request"""

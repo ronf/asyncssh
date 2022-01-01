@@ -1818,7 +1818,7 @@ class _TestSFTP(_CheckSFTP):
 
             # pylint: disable=unused-argument
 
-            return [SFTPName(b'\xff')]
+            return [SFTPName(b'\xff')], False
 
         with patch('asyncssh.sftp.SFTPClientHandler.readlink',
                    _readlink_error):
@@ -3364,7 +3364,7 @@ class _TestSFTP(_CheckSFTP):
 
             # pylint: disable=unused-argument
 
-            return [SFTPName(''), SFTPName('')]
+            return [SFTPName(''), SFTPName('')], False
 
         with patch('asyncssh.sftp.SFTPClientHandler.realpath',
                    _malformed_realpath):
@@ -3380,7 +3380,7 @@ class _TestSFTP(_CheckSFTP):
 
             # pylint: disable=unused-argument
 
-            return [SFTPName(''), SFTPName('')]
+            return [SFTPName(''), SFTPName('')], False
 
         with patch('asyncssh.sftp.SFTPClientHandler.readlink',
                    _malformed_readlink):
