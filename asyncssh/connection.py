@@ -6479,9 +6479,8 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
            public key authentication, or the :class:`SSHServerConnection`
            to use to forward ssh-agent requests over. If this is not
            specified and the environment variable `SSH_AUTH_SOCK` is
-           set, its value will be used as the path. If `client_keys`
-           is specified or this argument is explicitly set to `None`,
-           an ssh-agent will not be used.
+           set, its value will be used as the path. If this argument is
+           explicitly set to `None`, an ssh-agent will not be used.
        :param agent_identities: (optional)
            A list of identities used to restrict which SSH agent keys may
            be used. These may be specified as byte strings in binary SSH
