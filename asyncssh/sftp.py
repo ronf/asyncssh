@@ -1,4 +1,4 @@
-# Copyright (c) 2015-2021 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2015-2022 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -797,7 +797,7 @@ class _SFTPFileReader(_SFTPParallelIO[bytes]):
         """Read a block of the file"""
 
         while size:
-            data = await self._handler.read(self._handle, offset, size)
+            data, _ = await self._handler.read(self._handle, offset, size)
 
             pos = offset - self._start
             pad = pos - len(self._data)
@@ -2394,15 +2394,19 @@ class SFTPClientHandler(SFTPHandler):
 
         return handle
 
-    def _process_data(self, packet: SSHPacket) -> bytes:
+    def _process_data(self, packet: SSHPacket) -> Tuple[bytes, bool]:
         """Process an incoming SFTP data response"""
 
         data = packet.get_string()
+        at_end = packet.get_boolean() if packet and self._version >= 6 \
+            else False
+
         packet.check_end()
 
-        self.logger.debug1('Received %s', plural(len(data), 'data byte'))
+        self.logger.debug1('Received %s%s', plural(len(data), 'data byte'),
+                           ' (at end)' if at_end else '')
 
-        return data
+        return data, at_end
 
     def _process_name(self, packet: SSHPacket) -> _SFTPNames:
         """Process an incoming SFTP name response"""
@@ -2564,13 +2568,14 @@ class SFTPClientHandler(SFTPHandler):
         if self._writer:
             await self._make_request(FXP_CLOSE, String(handle))
 
-    async def read(self, handle: bytes, offset: int, length: int) -> bytes:
+    async def read(self, handle: bytes, offset: int,
+                   length: int) -> Tuple[bytes, bool]:
         """Make an SFTP read request"""
 
         self.logger.debug1('Sending read for %s at offset %d in handle %s',
                            plural(length, 'byte'), offset, handle.hex())
 
-        return cast(bytes, await self._make_request(
+        return cast(Tuple[bytes, bool], await self._make_request(
             FXP_READ, String(handle), UInt64(offset), UInt32(length)))
 
     async def write(self, handle: bytes, offset: int, data: bytes) -> int:
@@ -2977,7 +2982,8 @@ class SFTPClientFile:
                         self._block_size, self._max_requests, self._handler,
                         self._handle, offset, size).run()
                 else:
-                    data = await self._handler.read(self._handle, offset, size)
+                    data, _ = await self._handler.read(self._handle,
+                                                       offset, size)
 
                 self._offset = offset + len(data)
             except SFTPEOFError:
@@ -5315,16 +5321,20 @@ class SFTPServerHandler(SFTPHandler):
 
                 response = String(handle)
             elif return_type == FXP_DATA:
-                data = cast(bytes, result)
+                data, at_end = cast(Tuple[bytes, bool], result)
 
-                self.logger.debug1('Sending %s', plural(len(data),
-                                                        'data byte'))
+                self.logger.debug1('Sending %s%s',
+                                   plural(len(data), 'data byte'),
+                                   ' (at end)' if at_end else '')
 
-                response = String(data)
+                end = Boolean(at_end) if at_end and self._version >= 6 else b''
+
+                response = String(data) + end
             elif return_type == FXP_NAME:
                 names, at_end = cast(_SFTPNames, result)
 
-                self.logger.debug1('Sending %s', plural(len(names), 'name'))
+                self.logger.debug1('Sending %s%s', plural(len(names), 'name'),
+                                   ' (at end)' if at_end else '')
 
                 for name in names:
                     self.logger.debug1('  %s', name)
@@ -5441,10 +5451,10 @@ class SFTPServerHandler(SFTPHandler):
         if self._version >= 5:
             desired_access = packet.get_uint32()
             flags = packet.get_uint32()
-            flagmsg = ' access=0x%04x, flags=0x%04x' % (desired_access, flags)
+            flagmsg = 'access=0x%04x, flags=0x%04x' % (desired_access, flags)
         else:
             pflags = packet.get_uint32()
-            flagmsg = ' pflags=0x%02x' % pflags
+            flagmsg = 'pflags=0x%02x' % pflags
 
         attrs = SFTPAttrs.decode(packet, self._version)
         packet.check_end()
@@ -5499,7 +5509,7 @@ class SFTPServerHandler(SFTPHandler):
 
         raise SFTPInvalidHandle('Invalid file handle')
 
-    async def _process_read(self, packet: SSHPacket) -> bytes:
+    async def _process_read(self, packet: SSHPacket) -> Tuple[bytes, bool]:
         """Process an incoming SFTP read request"""
 
         handle = packet.get_string()
@@ -5518,8 +5528,26 @@ class SFTPServerHandler(SFTPHandler):
             if inspect.isawaitable(result):
                 result = await cast(Awaitable[bytes], result)
 
+            result: bytes
+
+            if self._version >= 6:
+                attr_result = self._server.fstat(file_obj)
+
+                if inspect.isawaitable(attr_result):
+                    attr_result = await cast(Awaitable[_SFTPOSAttrs],
+                                             attr_result)
+
+                if isinstance(attr_result, os.stat_result):
+                    attrs = SFTPAttrs.from_local(attr_result)
+                else:
+                    attrs = cast(SFTPAttrs, attr_result)
+
+                at_end = offset + len(result) == attrs.size
+            else:
+                at_end = False
+
             if result:
-                return cast(bytes, result)
+                return cast(bytes, result), at_end
             else:
                 raise SFTPEOFError
         else:

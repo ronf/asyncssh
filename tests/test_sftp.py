@@ -1,4 +1,4 @@
-# Copyright (c) 2015-2021 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2015-2022 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -457,6 +457,11 @@ class _SFTPAttrsSFTPServer(SFTPServer):
                 raise SFTPPermissionDenied(exc.strerror) from None
             else:
                 raise SFTPError(99, exc.strerror) from None
+
+    async def fstat(self, file_obj):
+        """Get attributes of an open file"""
+
+        return SFTPAttrs.from_local(super().fstat(file_obj))
 
 
 class _AsyncSFTPServer(SFTPServer):
@@ -3924,6 +3929,28 @@ class _TestSFTPChroot(_CheckSFTP):
                 await sftp.makedirs('file/dir')
         finally:
             remove('chroot/dir')
+
+
+class _TestSFTPReadEOFWithAttrs(_CheckSFTP):
+    """Unit test for SFTP server read EOF flags with SFTPAttrs from fstat"""
+
+    @classmethod
+    async def start_server(cls):
+        """Start an SFTP server which returns SFTPAttrs on fstat"""
+
+        return await cls.create_server(sftp_factory=_SFTPAttrsSFTPServer,
+                                       sftp_version=6)
+
+    @sftp_test_v6
+    async def test_get(self, sftp):
+        """Test copying a file over SFTP"""
+
+        try:
+            self._create_file('src')
+            await sftp.get('src', 'dst')
+            self._check_file('src', 'dst')
+        finally:
+            remove('src dst')
 
 
 class _TestSFTPUnknownError(_CheckSFTP):
