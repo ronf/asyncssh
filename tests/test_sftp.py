@@ -1813,6 +1813,20 @@ class _TestSFTP(_CheckSFTP):
         finally:
             remove('link')
 
+    @sftp_test_v6
+    async def test_readlink_v6(self, sftp):
+        """Test reading a symlink with SFTPv6"""
+
+        if not self._symlink_supported: # pragma: no cover
+            raise unittest.SkipTest('symlink not available')
+
+        try:
+            os.symlink('/file', 'link')
+            self.assertEqual((await sftp.readlink('link')), '/file')
+            self.assertEqual((await sftp.readlink(b'link')), b'/file')
+        finally:
+            remove('link')
+
     @sftp_test
     async def test_readlink_decode_error(self, sftp):
         """Test unicode decode error while reading a symlink"""
@@ -2592,9 +2606,41 @@ class _TestSFTP(_CheckSFTP):
 
             remove('file')
 
+    @sftp_test_v6
+    async def test_file_stat_v6(self, sftp):
+        """Test getting attributes on an open file with SFTPv6"""
+
+        f = None
+
+        try:
+            f = await sftp.open('file', 'w')
+            self._check_stat_v4((await f.stat()), os.stat('file'))
+        finally:
+            if f: # pragma: no branch
+                await f.close()
+
+            remove('file')
+
     @sftp_test
     async def test_file_setstat(self, sftp):
         """Test setting attributes on an open file"""
+
+        f = None
+
+        try:
+            f = await sftp.open('file', 'w')
+            await f.setstat(SFTPAttrs(permissions=0o666))
+
+            self.assertEqual(stat.S_IMODE(os.stat('file').st_mode), 0o666)
+        finally:
+            if f: # pragma: no branch
+                await f.close()
+
+            remove('file')
+
+    @sftp_test_v6
+    async def test_file_setstat_v6(self, sftp):
+        """Test setting attributes on an open file with SFTPv6"""
 
         f = None
 

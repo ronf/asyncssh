@@ -986,7 +986,7 @@ class SFTPError(Error):
         # pylint: disable=no-self-use
 
         # By default, expect no error-specific data
-        packet.check_end()
+
 
 class SFTPEOFError(SFTPError):
     """SFTP EOF error
@@ -2379,6 +2379,9 @@ class SFTPClientHandler(SFTPHandler):
 
         exc = SFTPError.construct(packet)
 
+        if self._version < 6:
+            packet.check_end()
+
         if exc:
             raise exc
         else:
@@ -2388,7 +2391,9 @@ class SFTPClientHandler(SFTPHandler):
         """Process an incoming SFTP handle response"""
 
         handle = packet.get_string()
-        packet.check_end()
+
+        if self._version < 6:
+            packet.check_end()
 
         self.logger.debug1('Received handle %s', handle.hex())
 
@@ -2401,7 +2406,8 @@ class SFTPClientHandler(SFTPHandler):
         at_end = packet.get_boolean() if packet and self._version >= 6 \
             else False
 
-        packet.check_end()
+        if self._version < 6:
+            packet.check_end()
 
         self.logger.debug1('Received %s%s', plural(len(data), 'data byte'),
                            ' (at end)' if at_end else '')
@@ -2416,7 +2422,8 @@ class SFTPClientHandler(SFTPHandler):
         at_end = packet.get_boolean() if packet and self._version >= 6 \
             else False
 
-        packet.check_end()
+        if self._version < 6:
+            packet.check_end()
 
         self.logger.debug1('Received %s%s', plural(len(names), 'name'),
                            ' (at end)' if at_end else '')
@@ -2430,7 +2437,9 @@ class SFTPClientHandler(SFTPHandler):
         """Process an incoming SFTP attributes response"""
 
         attrs = SFTPAttrs().decode(packet, self._version)
-        packet.check_end()
+
+        if self._version < 6:
+            packet.check_end()
 
         self.logger.debug1('Received %s', attrs)
 
@@ -5457,7 +5466,9 @@ class SFTPServerHandler(SFTPHandler):
             flagmsg = 'pflags=0x%02x' % pflags
 
         attrs = SFTPAttrs.decode(packet, self._version)
-        packet.check_end()
+
+        if self._version < 6:
+            packet.check_end()
 
         self.logger.debug1('Received open request for %s, %s%s',
                            path, flagmsg, hide_empty(attrs))
@@ -5490,7 +5501,9 @@ class SFTPServerHandler(SFTPHandler):
         """Process an incoming SFTP close request"""
 
         handle = packet.get_string()
-        packet.check_end()
+
+        if self._version < 6:
+            packet.check_end()
 
         self.logger.debug1('Received close for handle %s', handle.hex())
 
@@ -5515,7 +5528,9 @@ class SFTPServerHandler(SFTPHandler):
         handle = packet.get_string()
         offset = packet.get_uint64()
         length = packet.get_uint32()
-        packet.check_end()
+
+        if self._version < 6:
+            packet.check_end()
 
         self.logger.debug1('Received read for %s at offset %d in handle %s',
                            plural(length, 'byte'), offset, handle.hex())
@@ -5559,7 +5574,9 @@ class SFTPServerHandler(SFTPHandler):
         handle = packet.get_string()
         offset = packet.get_uint64()
         data = packet.get_string()
-        packet.check_end()
+
+        if self._version < 6:
+            packet.check_end()
 
         self.logger.debug1('Received write for %s at offset %d in handle %s',
                            plural(len(data), 'byte'), offset, handle.hex())
@@ -5583,7 +5600,8 @@ class SFTPServerHandler(SFTPHandler):
 
         flags = packet.get_uint32()if self._version >= 4 else 0
 
-        packet.check_end()
+        if self._version < 6:
+            packet.check_end()
 
         self.logger.debug1('Received lstat for %s%s', path,
                            ', flags=0x%08x' % flags if flags else '')
@@ -5606,7 +5624,8 @@ class SFTPServerHandler(SFTPHandler):
 
         flags = packet.get_uint32() if self._version >= 4 else 0
 
-        packet.check_end()
+        if self._version < 6:
+            packet.check_end()
 
         self.logger.debug1('Received fstat for handle %s%s', handle.hex(),
                            ', flags=0x%08x' % flags if flags else '')
@@ -5631,7 +5650,9 @@ class SFTPServerHandler(SFTPHandler):
 
         path = packet.get_string()
         attrs = SFTPAttrs.decode(packet, self._version)
-        packet.check_end()
+
+        if self._version < 6:
+            packet.check_end()
 
         self.logger.debug1('Received setstat for %s%s', path, hide_empty(attrs))
 
@@ -5646,7 +5667,9 @@ class SFTPServerHandler(SFTPHandler):
 
         handle = packet.get_string()
         attrs = SFTPAttrs.decode(packet, self._version)
-        packet.check_end()
+
+        if self._version < 6:
+            packet.check_end()
 
         self.logger.debug1('Received fsetstat for handle %s%s',
                            handle.hex(), hide_empty(attrs))
@@ -5666,7 +5689,9 @@ class SFTPServerHandler(SFTPHandler):
         """Process an incoming SFTP opendir request"""
 
         path = packet.get_string()
-        packet.check_end()
+
+        if self._version < 6:
+            packet.check_end()
 
         self.logger.debug1('Received opendir for %s', path)
 
@@ -5716,7 +5741,9 @@ class SFTPServerHandler(SFTPHandler):
         """Process an incoming SFTP readdir request"""
 
         handle = packet.get_string()
-        packet.check_end()
+
+        if self._version < 6:
+            packet.check_end()
 
         self.logger.debug1('Received readdir for handle %s', handle.hex())
 
@@ -5734,7 +5761,9 @@ class SFTPServerHandler(SFTPHandler):
         """Process an incoming SFTP remove request"""
 
         path = packet.get_string()
-        packet.check_end()
+
+        if self._version < 6:
+            packet.check_end()
 
         self.logger.debug1('Received remove for %s', path)
 
@@ -5749,7 +5778,9 @@ class SFTPServerHandler(SFTPHandler):
 
         path = packet.get_string()
         attrs = SFTPAttrs.decode(packet, self._version)
-        packet.check_end()
+
+        if self._version < 6:
+            packet.check_end()
 
         self.logger.debug1('Received mkdir for %s', path)
 
@@ -5763,7 +5794,9 @@ class SFTPServerHandler(SFTPHandler):
         """Process an incoming SFTP rmdir request"""
 
         path = packet.get_string()
-        packet.check_end()
+
+        if self._version < 6:
+            packet.check_end()
 
         self.logger.debug1('Received rmdir for %s', path)
 
@@ -5835,7 +5868,8 @@ class SFTPServerHandler(SFTPHandler):
 
         flags = packet.get_uint32() if self._version >= 4 else 0
 
-        packet.check_end()
+        if self._version < 6:
+            packet.check_end()
 
         self.logger.debug1('Received stat for %s%s', path,
                            ', flags=0x%08x' % flags if flags else '')
@@ -5863,7 +5897,8 @@ class SFTPServerHandler(SFTPHandler):
             flags = 0
             flag_text = ''
 
-        packet.check_end()
+        if self._version < 6:
+            packet.check_end()
 
         self.logger.debug1('Received rename request from %s to %s%s',
                            oldpath, newpath, flag_text)
@@ -5881,7 +5916,9 @@ class SFTPServerHandler(SFTPHandler):
         """Process an incoming SFTP readlink request"""
 
         path = packet.get_string()
-        packet.check_end()
+
+        if self._version < 6:
+            packet.check_end()
 
         self.logger.debug1('Received readlink for %s', path)
 
@@ -5921,7 +5958,6 @@ class SFTPServerHandler(SFTPHandler):
         newpath = packet.get_string()
         oldpath = packet.get_string()
         symlink = packet.get_boolean()
-        packet.check_end()
 
         if symlink:
             self.logger.debug1('Received symlink request from %s to %s',
@@ -5937,6 +5973,52 @@ class SFTPServerHandler(SFTPHandler):
         if inspect.isawaitable(result):
             assert result is not None
             await result
+
+    async def _process_lock(self, packet: SSHPacket) -> None:
+        """Process an incoming SFTP byte range lock request"""
+
+        handle = packet.get_string()
+        offset = packet.get_uint64()
+        length = packet.get_uint64()
+        flags = packet.get_uint32()
+
+        self.logger.debug1('Received byte range lock request for '
+                           'handle %s, offset %d, length %d, '
+                           'flags 0x%04x', handle.hex(), offset,
+                           length, flags)
+
+        file_obj = self._file_handles.get(handle)
+
+        if file_obj:
+            result = self._server.lock(file_obj, offset, length, flags)
+
+            if inspect.isawaitable(result): # pragma: no branch
+                assert result is not None
+                await result
+        else:
+            raise SFTPInvalidHandle('Invalid file handle')
+
+    async def _process_unlock(self, packet: SSHPacket) -> None:
+        """Process an incoming SFTP byte range unlock request"""
+
+        handle = packet.get_string()
+        offset = packet.get_uint64()
+        length = packet.get_uint64()
+
+        self.logger.debug1('Received byte range lock request for '
+                           'handle %s, offset %d, length %d',
+                           handle.hex(), offset, length)
+
+        file_obj = self._file_handles.get(handle)
+
+        if file_obj:
+            result = self._server.unlock(file_obj, offset, length)
+
+            if inspect.isawaitable(result): # pragma: no branch
+                assert result is not None
+                await result
+        else:
+            raise SFTPInvalidHandle('Invalid file handle')
 
     async def _process_posix_rename(self, packet: SSHPacket) -> None:
         """Process an incoming SFTP POSIX rename request"""
@@ -6008,54 +6090,6 @@ class SFTPServerHandler(SFTPHandler):
         if inspect.isawaitable(result):
             assert result is not None
             await result
-
-    async def _process_lock(self, packet: SSHPacket) -> None:
-        """Process an incoming SFTP byte range lock request"""
-
-        handle = packet.get_string()
-        offset = packet.get_uint64()
-        length = packet.get_uint64()
-        flags = packet.get_uint32()
-        packet.check_end()
-
-        self.logger.debug1('Received byte range lock request for '
-                           'handle %s, offset %d, length %d, '
-                           'flags 0x%04x', handle.hex(), offset,
-                           length, flags)
-
-        file_obj = self._file_handles.get(handle)
-
-        if file_obj:
-            result = self._server.lock(file_obj, offset, length, flags)
-
-            if inspect.isawaitable(result): # pragma: no branch
-                assert result is not None
-                await result
-        else:
-            raise SFTPInvalidHandle('Invalid file handle')
-
-    async def _process_unlock(self, packet: SSHPacket) -> None:
-        """Process an incoming SFTP byte range unlock request"""
-
-        handle = packet.get_string()
-        offset = packet.get_uint64()
-        length = packet.get_uint64()
-        packet.check_end()
-
-        self.logger.debug1('Received byte range lock request for '
-                           'handle %s, offset %d, length %d',
-                           handle.hex(), offset, length)
-
-        file_obj = self._file_handles.get(handle)
-
-        if file_obj:
-            result = self._server.unlock(file_obj, offset, length)
-
-            if inspect.isawaitable(result): # pragma: no branch
-                assert result is not None
-                await result
-        else:
-            raise SFTPInvalidHandle('Invalid file handle')
 
     async def _process_fsync(self, packet: SSHPacket) -> None:
         """Process an incoming SFTP fsync request"""
@@ -6949,6 +6983,38 @@ class SFTPServer:
         os.symlink(_to_local_path(oldpath), _to_local_path(newpath))
         return None
 
+    def link(self, oldpath: bytes, newpath: bytes) -> MaybeAwait[None]:
+        """Create a hard link
+
+           :param oldpath:
+               The path of the file the hard link should point to
+           :param newpath:
+               The path of where to create the hard link
+           :type oldpath: `bytes`
+           :type newpath: `bytes`
+
+           :raises: :exc:`SFTPError` to return an error to the client
+
+        """
+
+        oldpath = _to_local_path(self.map_path(oldpath))
+        newpath = _to_local_path(self.map_path(newpath))
+
+        os.link(oldpath, newpath)
+        return None
+
+    def lock(self, file_obj: object, offset: int, length: int,
+             flags: int) -> MaybeAwait[None]:
+        """Acquire a byte range lock on an open file"""
+
+        raise SFTPOpUnsupported('Byte range locks not supported')
+
+    def unlock(self, file_obj: object, offset: int,
+               length: int) -> MaybeAwait[None]:
+        """Release a byte range lock on an open file"""
+
+        raise SFTPOpUnsupported('Byte range locks not supported')
+
     def posix_rename(self, oldpath: bytes, newpath: bytes) -> MaybeAwait[None]:
         """Rename a file, directory, or link with POSIX semantics
 
@@ -7011,38 +7077,6 @@ class SFTPServer:
             return os.statvfs(file_obj.fileno())
         except AttributeError: # pragma: no cover
             raise SFTPOpUnsupported('fstatvfs not supported') from None
-
-    def link(self, oldpath: bytes, newpath: bytes) -> MaybeAwait[None]:
-        """Create a hard link
-
-           :param oldpath:
-               The path of the file the hard link should point to
-           :param newpath:
-               The path of where to create the hard link
-           :type oldpath: `bytes`
-           :type newpath: `bytes`
-
-           :raises: :exc:`SFTPError` to return an error to the client
-
-        """
-
-        oldpath = _to_local_path(self.map_path(oldpath))
-        newpath = _to_local_path(self.map_path(newpath))
-
-        os.link(oldpath, newpath)
-        return None
-
-    def lock(self, file_obj: object, offset: int, length: int,
-             flags: int) -> MaybeAwait[None]:
-        """Acquire a byte range lock on an open file"""
-
-        raise SFTPOpUnsupported('Byte range locks not supported')
-
-    def unlock(self, file_obj: object, offset: int,
-               length: int) -> MaybeAwait[None]:
-        """Release a byte range lock on an open file"""
-
-        raise SFTPOpUnsupported('Byte range locks not supported')
 
     def fsync(self, file_obj: object) -> MaybeAwait[None]:
         """Force file data to be written to disk
