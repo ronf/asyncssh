@@ -1137,7 +1137,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         if self._transport:
             if self._transport.is_closing():
-                self._force_close(BrokenPipeError)
+                self._force_close(BrokenPipeError())
             else:
                 self._transport.write(data)
 
