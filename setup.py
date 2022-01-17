@@ -63,6 +63,7 @@ setup(name = 'asyncssh',
           'pywin32':    ['pywin32 >= 227']
       },
       packages = ['asyncssh', 'asyncssh.crypto'],
+      package_data = {"asyncssh": ["py.typed"]},
       scripts = [],
       test_suite = 'tests',
       classifiers = [
