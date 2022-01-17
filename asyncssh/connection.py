@@ -6400,13 +6400,15 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
            logged in user will be used.
        :param client_keys: (optional)
            A list of keys which will be used to authenticate this client
-           via public key authentication. If no client keys are specified,
-           an attempt will be made to get them from an ssh-agent process
-           and/or load them from the files :file:`.ssh/id_ed25519_sk`,
-           :file:`.ssh/id_ecdsa_sk`, :file:`.ssh/id_ed448`,
-           :file:`.ssh/id_ed25519`, :file:`.ssh/id_ecdsa`,
-           :file:`.ssh/id_rsa`, and :file:`.ssh/id_dsa` in the user's
-           home directory, with optional certificates loaded from the files
+           via public key authentication. These keys will be used after
+           trying keys from a PKCS11 provider or an ssh-agent, if either
+           of those are configured. If no client keys are specified,
+           an attempt will be made to load them from the files
+           :file:`.ssh/id_ed25519_sk`, :file:`.ssh/id_ecdsa_sk`,
+           :file:`.ssh/id_ed448`, :file:`.ssh/id_ed25519`,
+           :file:`.ssh/id_ecdsa`, :file:`.ssh/id_rsa`, and
+           :file:`.ssh/id_dsa` in the user's home directory, with
+           optional certificates loaded from the files
            :file:`.ssh/id_ed25519_sk-cert.pub`,
            :file:`.ssh/id_ecdsa_sk-cert.pub`, :file:`.ssh/id_ed448-cert.pub`,
            :file:`.ssh/id_ed25519-cert.pub`, :file:`.ssh/id_ecdsa-cert.pub`,
