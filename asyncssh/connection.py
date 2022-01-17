@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2021 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2022 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -391,44 +391,52 @@ async def _connect(options: 'SSHConnectionOptions',
     proxy_command = options.proxy_command
     free_conn = True
 
+    options.waiter = loop.create_future()
+
     new_tunnel = await _open_tunnel(tunnel, options.passphrase)
     tunnel: _TunnelConnectorProtocol
 
-    if new_tunnel:
-        new_tunnel.logger.info('%s %s via %s', msg, (host, port), tunnel)
+    try:
+        if new_tunnel:
+            new_tunnel.logger.info('%s %s via %s', msg, (host, port), tunnel)
 
-        # pylint: disable=broad-except
-        try:
-            _, tunnel_session = await new_tunnel.create_connection(
-                cast(SSHTCPSessionFactory[bytes], conn_factory), host, port)
-        except Exception:
-            new_tunnel.close()
-            await new_tunnel.wait_closed()
-            raise
-        else:
+            # pylint: disable=broad-except
+            try:
+                _, tunnel_session = await new_tunnel.create_connection(
+                    cast(SSHTCPSessionFactory[bytes], conn_factory),
+                    host, port)
+            except Exception:
+                new_tunnel.close()
+                await new_tunnel.wait_closed()
+                raise
+            else:
+                conn = cast(_Conn, tunnel_session)
+                conn.set_tunnel(new_tunnel)
+        elif tunnel:
+            tunnel_logger = getattr(tunnel, 'logger', logger)
+            tunnel_logger.info('%s %s via SSH tunnel', msg, (host, port))
+
+            _, tunnel_session = await tunnel.create_connection(
+                cast(SSHTCPSessionFactory[bytes], conn_factory),
+                host, port)
+
             conn = cast(_Conn, tunnel_session)
-            conn.set_tunnel(new_tunnel)
-    elif tunnel:
-        tunnel_logger = getattr(tunnel, 'logger', logger)
-        tunnel_logger.info('%s %s via SSH tunnel', msg, (host, port))
+        elif proxy_command:
+            conn = await _open_proxy(loop, proxy_command, conn_factory)
+        else:
+            logger.info('%s %s', msg, (host, port))
 
-        _, tunnel_session = await tunnel.create_connection(
-                cast(SSHTCPSessionFactory[bytes], conn_factory), host, port)
+            _, session = await loop.create_connection(
+                conn_factory, host, port, family=family,
+                flags=flags, local_addr=local_addr)
 
-        conn = cast(_Conn, tunnel_session)
-    elif proxy_command:
-        conn = await _open_proxy(loop, proxy_command, conn_factory)
-    else:
-        logger.info('%s %s', msg, (host, port))
-
-        _, session = await loop.create_connection(
-            conn_factory, host, port, family=family,
-            flags=flags, local_addr=local_addr)
-
-        conn = cast(_Conn, session)
+            conn = cast(_Conn, session)
+    except asyncio.CancelledError:
+        options.waiter.cancel()
+        raise
 
     try:
-        await conn.wait_established()
+        await options.waiter
         free_conn = False
 
         if new_tunnel:
@@ -721,7 +729,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         self._error_handler = error_handler
         self._server = server
         self._wait = wait
-        self._waiter = loop.create_future()
+        self._waiter = options.waiter if wait else None
 
         self._transport: Optional[asyncio.Transport] = None
         self._local_addr = ''
@@ -914,7 +922,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
             self._acceptor = None
             self._error_handler = None
 
-        if self._wait and not self._waiter.cancelled():
+        if self._wait and self._waiter and not self._waiter.cancelled():
             if exc:
                 self._waiter.set_exception(exc)
             else: # pragma: no cover
@@ -1732,7 +1740,8 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
                 recv_compression=self._cmp_alg_sc.decode('ascii'))
 
             if first_kex:
-                if self._wait == 'kex' and not self._waiter.cancelled():
+                if self._wait == 'kex' and self._waiter and \
+                        not self._waiter.cancelled():
                     self._waiter.set_result(None)
                     self._wait = None
                 else:
@@ -1866,7 +1875,8 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
             self._acceptor = None
             self._error_handler = None
 
-        if self._wait == 'auth' and not self._waiter.cancelled():
+        if self._wait == 'auth' and self._waiter and \
+                not self._waiter.cancelled():
             self._waiter.set_result(None)
             self._wait = None
 
@@ -2315,7 +2325,8 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
                 self._acceptor = None
                 self._error_handler = None
 
-            if self._wait == 'auth' and not self._waiter.cancelled():
+            if self._wait == 'auth' and self._waiter and \
+                    not self._waiter.cancelled():
                 self._waiter.set_result(None)
                 self._wait = None
         else:
@@ -2516,11 +2527,6 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         self.logger.info('Closing connection')
 
         self.disconnect(DISC_BY_APPLICATION, 'Disconnected by application')
-
-    async def wait_established(self) -> None:
-        """Wait for connection to be established"""
-
-        await self._waiter
 
     async def wait_closed(self) -> None:
         """Wait for this connection to close
@@ -6112,6 +6118,7 @@ class SSHConnectionOptions(Options):
     """SSH connection options"""
 
     config: SSHConfig
+    waiter: Optional[asyncio.Future]
     protocol_factory: _ProtocolFactory
     version: bytes
     host: str
