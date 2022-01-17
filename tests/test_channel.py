@@ -1,4 +1,4 @@
-# Copyright (c) 2016-2021 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2016-2022 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -691,7 +691,7 @@ class _TestChannel(ServerTestCase):
                 chan, _ = await _create_session(conn)
 
                 result = await chan.make_request(b'keepalive@openssh.com')
-                self.assertTrue(result)
+                self.assertFalse(result)
 
     @asynctest
     async def test_invalid_open_confirmation(self):

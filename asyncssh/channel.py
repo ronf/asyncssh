@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2021 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2022 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -664,7 +664,7 @@ class SSHChannel(Generic[AnyStr], SSHPacketHandler):
         packet.check_end()
 
         self.logger.debug2('Received OpenSSH keepalive channel request')
-        return True
+        return False
 
     _packet_handlers = {
         MSG_CHANNEL_WINDOW_ADJUST:      _process_window_adjust,
