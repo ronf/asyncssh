@@ -37,6 +37,9 @@ Features
   * Dynamic TCP/IP port forwarding via SOCKS
   * X11 forwarding support on both the client and the server
   * SFTP protocol version 3 with OpenSSH extensions
+
+    * Experimental support for SFTP versions 4-6, when requested
+
   * SCP protocol support, including third-party remote to remote copies
 
 * Multiple simultaneous sessions on a single SSH connection
@@ -85,7 +88,7 @@ License
 
 This package is released under the following terms:
 
-  Copyright (c) 2013-2021 by Ron Frederick <ronf@timeheart.net> and others.
+  Copyright (c) 2013-2022 by Ron Frederick <ronf@timeheart.net> and others.
 
   This program and the accompanying materials are made available under
   the terms of the Eclipse Public License v2.0 which accompanies this
