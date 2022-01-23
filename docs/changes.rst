@@ -3,6 +3,34 @@
 Change Log
 ==========
 
+Release 2.9.0 (23 Jan 2022)
+---------------------------
+
+* Added mypy-compatible type annotations to all AsyncSSH modules, and a
+  "py.typed" file to signal that annotations are now available for this
+  package.
+
+* Added experimental support for SFTP versions 4-6. While AsyncSSH still
+  defaults to only advertising version 3 when acting as both a client and
+  a server, applications can explicitly enable support for later versions,
+  which will be used if both ends of the connection agree. Not all features
+  are fully supported, but a number of useful enhancements are now
+  available, including as users and groups specified by name, higher
+  resolution timestamps, and more granular error reporting.
+
+* Updated documentation to make it clear that keys from a PKCS11 provider
+  or ssh-agent will be used even when client_keys is specified, unless
+  those sources are explicitly disabled.
+
+* Improved handling of task cancellation in AsyncSSH to avoid triggering
+  an error of "Future exception was never retrieved". Thanks go to Krzysztof
+  Kotlenga for reporting this issue and providing test code to reliably
+  reproduce it.
+
+* Changed implementation of OpenSSH keepalive handler to improve
+  interoperability with servers which don't expect a "success" response
+  when this message is sent.
+
 Release 2.8.1 (8 Nov 2021)
 --------------------------
 
@@ -16,7 +44,7 @@ Release 2.8.0 (3 Nov 2021)
   time taken to open an outbound TCP connection, allowing connections
   to be aborted without waiting for the default socket connect timeout.
   The existing login_timeout option only applies after the TCP connection
-  was established, so it could not be used for this.. The support for the
+  was established, so it could not be used for this. The support for the
   ConnectTimeout config file option has also been updated to use this new
   capability, making it more consistent with OpenSSH's behavior.
 
