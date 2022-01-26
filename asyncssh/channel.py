@@ -2002,7 +2002,7 @@ class SSHTCPChannel(SSHForwardChannel, Generic[AnyStr]):
                         orig_port: int) -> SSHTCPSession[AnyStr]:
         """Open a TCP channel"""
 
-        self.set_extra_info(peername=(None, None),
+        self.set_extra_info(peername=('', 0),
                             local_peername=(orig_host, orig_port),
                             remote_peername=(host, port))
 
@@ -2032,7 +2032,7 @@ class SSHTCPChannel(SSHForwardChannel, Generic[AnyStr]):
                                orig_host: str, orig_port: int) -> None:
         """Set local and remote peer names for inbound connections"""
 
-        self.set_extra_info(peername=(None, None),
+        self.set_extra_info(peername=('', 0),
                             local_peername=(dest_host, dest_port),
                             remote_peername=(orig_host, orig_port))
 
@@ -2084,7 +2084,7 @@ class SSHX11Channel(SSHForwardChannel[bytes]):
         """Open an SSH X11 channel"""
 
         self.set_extra_info(local_peername=(orig_host, orig_port),
-                            remote_peername=(None, None))
+                            remote_peername=('', 0))
 
         return cast(SSHTCPSession[bytes],
                     await self._open_forward(session_factory, b'x11',
@@ -2094,7 +2094,7 @@ class SSHX11Channel(SSHForwardChannel[bytes]):
     def set_inbound_peer_names(self, orig_host: str, orig_port: int) -> None:
         """Set local and remote peer name for inbound connections"""
 
-        self.set_extra_info(local_peername=(None, None),
+        self.set_extra_info(local_peername=('', 0),
                             remote_peername=(orig_host, orig_port))
 
 
