@@ -4168,7 +4168,7 @@ class SFTPClient:
                    attrs: SFTPAttrs = SFTPAttrs(),
                    encoding: Optional[str] = 'utf-8', errors: str = 'strict',
                    block_size: int = SFTP_BLOCK_SIZE,
-                   max_requests: int = _MAX_SFTP_REQUESTS) -> SFTPFileProtocol:
+                   max_requests: int = _MAX_SFTP_REQUESTS) -> SFTPClientFile:
         """Open a remote file
 
            This method opens a remote file and returns an
@@ -4300,8 +4300,7 @@ class SFTPClient:
                      attrs: SFTPAttrs = SFTPAttrs(),
                      encoding: Optional[str] = 'utf-8', errors: str = 'strict',
                      block_size: int = SFTP_BLOCK_SIZE,
-                     max_requests: int = _MAX_SFTP_REQUESTS) -> \
-            SFTPFileProtocol:
+                     max_requests: int = _MAX_SFTP_REQUESTS) -> SFTPClientFile:
         """Open a remote file using SFTP v5/v6 flags
 
            This method is very similar to :meth:`open`, but the pflags_or_mode

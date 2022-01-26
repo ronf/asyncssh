@@ -258,7 +258,7 @@ def parse_time_interval(value: str) -> float:
     return _parse_units(value, _time_units, 'time interval')
 
 
-_ACM = TypeVar('_ACM', bound=AsyncContextManager)
+_ACM = TypeVar('_ACM', bound=AsyncContextManager, covariant=True)
 
 class _ACMWrapper(Generic[_ACM]):
     """Async context manager wrapper"""
