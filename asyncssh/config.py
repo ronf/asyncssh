@@ -1,4 +1,4 @@
-# Copyright (c) 2020-2021 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2020-2022 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -31,6 +31,7 @@ from typing import Callable, Dict, List, NoReturn, Optional, Sequence
 from typing import Set, Tuple, Union, cast
 
 from .constants import DEFAULT_PORT
+from .logging import logger
 from .misc import DefTuple, FilePath, ip_address
 from .pattern import HostPatternList, WildcardPatternList
 
@@ -108,6 +109,8 @@ class SSHConfig:
 
         # pylint: disable=unused-argument
 
+        old_path = self._path
+
         for pattern in args:
             path = Path(pattern).expanduser()
 
@@ -117,9 +120,15 @@ class SSHConfig:
             else:
                 path = Path(self._path).parent
 
-            for path in path.glob(pattern):
+            paths = list(path.glob(pattern))
+
+            if not paths:
+                self._error('No match to pattern "%s"', pattern)
+
+            for path in paths:
                 self.parse(path)
 
+        self._path = old_path
         args.clear()
 
     def _match(self, option: str, args: List[str]) -> None:
@@ -271,6 +280,8 @@ class SSHConfig:
         self._line_no = 0
         self._matching = True
         self._tokens = {'%': '%'}
+
+        logger.debug1('Reading config from "%s"', path)
 
         with open(path) as file:
             for line in file:

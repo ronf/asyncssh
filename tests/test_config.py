@@ -1,4 +1,4 @@
-# Copyright (c) 2020-2021 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2020-2022 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -136,6 +136,35 @@ class _TestConfig(TempDirTestCase):
         for path in ('include', Path('include').absolute().as_posix()):
             config = self._parse_config('Include %s' % path)
             self.assertEqual(config.get('Port'), 2222)
+
+    def test_missing_include(self):
+        """Test missing include target"""
+
+        with self.assertRaises(asyncssh.ConfigParseError):
+            self._parse_config('Include xxx')
+
+    def test_multiple_include(self):
+        """Test multiple levels of include"""
+
+        os.mkdir('dir1')
+        os.mkdir('dir2')
+
+        with open('include', 'w') as f:
+            f.write('Include dir1/include2\n'
+                    'Include dir2/include4\n')
+
+        with open('dir1/include2', 'w') as f:
+            f.write('Include include3\n')
+
+        with open('dir1/include3', 'w') as f:
+            f.write('AddressFamily inet\n')
+
+        with open('dir2/include4', 'w') as f:
+            f.write('Port 2222\n')
+
+        config = self._parse_config('Include include')
+        self.assertEqual(config.get('AddressFamily'), socket.AF_INET)
+        self.assertEqual(config.get('Port'), 2222)
 
     def test_match_all(self):
         """Test a match block which always matches"""
