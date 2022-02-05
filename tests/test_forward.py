@@ -319,7 +319,7 @@ class _TestTCPForwarding(_CheckForwarding):
         """Test failed connection on a tunneled SSH connection via string"""
 
         with self.assertRaises(asyncssh.ChannelOpenError):
-            await asyncssh.connect('0.0.0.1',
+            await asyncssh.connect('\xff',
                                    tunnel='%s:%d' % (self._server_addr,
                                                      self._server_port))
 
@@ -426,7 +426,7 @@ class _TestTCPForwarding(_CheckForwarding):
         """Test open failure on a tunneled SSH listener via string"""
 
         with self.assertRaises(asyncssh.ChannelListenError):
-            await asyncssh.listen('0.0.0.1',
+            await asyncssh.listen('\xff',
                                   tunnel='%s:%d' % (self._server_addr,
                                                     self._server_port),
                                   server_factory=Server,
