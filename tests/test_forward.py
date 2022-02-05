@@ -682,8 +682,8 @@ class _TestTCPForwarding(_CheckForwarding):
         server_port = server.sockets[0].getsockname()[1]
 
         async with self.connect() as conn:
-            async with conn.forward_remote_port('', 0,
-                                                '', server_port) as listener:
+            async with conn.forward_remote_port(
+                    '', 0, '127.0.0.1', server_port) as listener:
                 await self._check_local_connection(listener.get_port())
 
         server.close()
@@ -703,8 +703,8 @@ class _TestTCPForwarding(_CheckForwarding):
         sock.close()
 
         async with self.connect() as conn:
-            async with conn.forward_remote_port('', remote_port,
-                                                '', server_port) as listener:
+            async with conn.forward_remote_port(
+                    '', remote_port, '127.0.0.1', server_port) as listener:
                 await self._check_local_connection(listener.get_port())
 
         server.close()
