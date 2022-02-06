@@ -63,6 +63,8 @@ class SSHConfig:
         self._options = self._last_options.copy()
         self._tokens: Dict[str, str] = {}
 
+        self.loaded = False
+
     def _error(self, reason: str, *args: object) -> NoReturn:
         """Raise a configuration parsing error"""
 
@@ -365,6 +367,8 @@ class SSHConfig:
 
             for path in paths:
                 config.parse(Path(path))
+
+            config.loaded = True
 
         return config
 

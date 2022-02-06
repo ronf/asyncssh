@@ -6777,7 +6777,7 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
 
     # pylint: disable=arguments-differ
     def prepare(self, last_config: Optional[SSHConfig] = None, # type: ignore
-                config: DefTuple[ConfigPaths] = (), reload: bool = False,
+                config: DefTuple[ConfigPaths] = None, reload: bool = False,
                 client_factory: Optional[_ClientFactory] = None,
                 client_version: _VersionArg = (), host: str = '',
                 port: DefTuple[int] = (), tunnel: object = (),
@@ -6845,7 +6845,7 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
                              'LOGNAME, USER, LNAME, or USERNAME in '
                              'the environment') from None
 
-        if config == () and not last_config:
+        if config == () and (not last_config or not last_config.loaded):
             default_config = Path('~', '.ssh', 'config').expanduser()
             config = [default_config] if os.access(default_config,
                                                    os.R_OK) else []
@@ -7384,7 +7384,7 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
 
     # pylint: disable=arguments-differ
     def prepare(self, last_config: Optional[SSHConfig] = None, # type: ignore
-                config: DefTuple[ConfigPaths] = (), reload: bool = False,
+                config: DefTuple[ConfigPaths] = None, reload: bool = False,
                 accept_addr: str = '', accept_port: int = 0,
                 username: str = '', client_host: str = '',
                 client_addr: str = '',
@@ -7608,10 +7608,13 @@ async def connect(host: str, port: DefTuple[int] = (), *,
            Paths to OpenSSH client configuration files to load. This
            configuration will be used as a fallback to override the
            defaults for settings which are not explcitly specified using
-           AsyncSSH's configuration options. If no paths are specified,
-           an attempt will be made to load the configuration from the file
-           :file:`.ssh/config`. If this argument is explicitly set to
-           `None`, no OpenSSH configuration files will be loaded. See
+           AsyncSSH's configuration options. If no paths are specified and
+           no config paths were set when constructing the `options`
+           argument (if any), an attempt will be made to load the
+           configuration from the file :file:`.ssh/config`. If this
+           argument is explicitly set to `None`, no new configuration
+           files will be loaded, but any configuration loaded when
+           constructing the `options` argument will still apply. See
            :ref:`SupportedClientConfigOptions` for details on what
            configuration options are currently supported.
        :param options: (optional)
@@ -7909,10 +7912,13 @@ async def listen_reverse(host: str = '', port: DefTuple[int] = (), *,
            Paths to OpenSSH client configuration files to load. This
            configuration will be used as a fallback to override the
            defaults for settings which are not explcitly specified using
-           AsyncSSH's configuration options. If no paths are specified,
-           an attempt will be made to load the configuration from the file
-           :file:`.ssh/config`. If this argument is explicitly set to
-           `None`, no OpenSSH configuration files will be loaded. See
+           AsyncSSH's configuration options. If no paths are specified and
+           no config paths were set when constructing the `options`
+           argument (if any), an attempt will be made to load the
+           configuration from the file :file:`.ssh/config`. If this
+           argument is explicitly set to `None`, no new configuration
+           files will be loaded, but any configuration loaded when
+           constructing the `options` argument will still apply. See
            :ref:`SupportedClientConfigOptions` for details on what
            configuration options are currently supported.
        :param options: (optional)
@@ -8065,10 +8071,13 @@ async def get_server_host_key(
            Paths to OpenSSH client configuration files to load. This
            configuration will be used as a fallback to override the
            defaults for settings which are not explcitly specified using
-           AsyncSSH's configuration options. If no paths are specified,
-           an attempt will be made to load the configuration from the file
-           :file:`.ssh/config`. If this argument is explicitly set to
-           `None`, no OpenSSH configuration files will be loaded. See
+           AsyncSSH's configuration options. If no paths are specified and
+           no config paths were set when constructing the `options`
+           argument (if any), an attempt will be made to load the
+           configuration from the file :file:`.ssh/config`. If this
+           argument is explicitly set to `None`, no new configuration
+           files will be loaded, but any configuration loaded when
+           constructing the `options` argument will still apply. See
            :ref:`SupportedClientConfigOptions` for details on what
            configuration options are currently supported.
        :param options: (optional)
