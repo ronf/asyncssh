@@ -9,5 +9,6 @@ exclude_lines =
 partial_branches =
     pragma: no branch
     for .*
-omit =
-    .tox/*
+include =
+    asyncssh/*
+    tests/*
