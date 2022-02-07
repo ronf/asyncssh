@@ -55,7 +55,7 @@ setup(name = 'asyncssh',
       install_requires = ['cryptography >= 2.8', 'typing_extensions >= 3.6'],
       extras_require = {
           'bcrypt':     ['bcrypt >= 3.1.3'],
-          'fido2':      ['fido2 == 0.9.1'],
+          'fido2':      ['fido2 >= 0.9.2'],
           'gssapi':     ['gssapi >= 1.2.0'],
           'libnacl':    ['libnacl >= 1.4.2'],
           'pkcs11':     ['python-pkcs11 >= 0.7.0'],
