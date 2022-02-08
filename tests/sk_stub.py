@@ -195,7 +195,7 @@ class Ctap2(_CtapStub):
         if self.dev.error == 'err':
             raise CtapError(CtapError.ERR.INVALID_CREDENTIAL)
         elif self.dev.error == 'pinreq':
-            raise CtapError(CtapError.ERR.PIN_REQUIRED)
+            raise CtapError(CtapError.ERR.PUAT_REQUIRED)
         elif self.dev.error == 'badpin':
             raise CtapError(CtapError.ERR.PIN_INVALID)
 
