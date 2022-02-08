@@ -1,0 +1,104 @@
+name: Run tests
+on: [push, pull_request]
+
+jobs:
+  run-tests:
+    name: Run tests
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ["3.6", "3.7", "3.8", "3.9", "3.10"]
+        openssl-version: ["default"]
+        include:
+          - os: macos-latest
+            python-version: "3.10"
+            openssl-version: "3"
+        exclude:
+          # test hangs on these combination
+          - os: windows-latest
+            python-version: "3.8"
+          - os: windows-latest
+            python-version: "3.9"
+          - os: windows-latest
+            python-version: "3.10"
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-python@v2
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Determine pip cache path
+        id: pip-cache
+        run: |
+          echo "::set-output name=dir::$(pip cache dir)"
+      - name: Set up pip cache
+        uses: actions/cache@v2
+        with:
+          path: ${{ steps.pip-cache.outputs.dir }}
+          key: pip-${{ runner.os }}-${{ hashFiles('setup.py', 'tox.ini') }}
+          restore-keys: |
+            pip-${{ runner.os }}-
+      - name: Determine vcpkg cache path
+        if: ${{ runner.os == 'Windows' }}
+        id: vcpkg-cache
+        run: |
+          echo "::set-output name=archives-dir::$env:LOCALAPPDATA\vcpkg\archives"
+          echo "::set-output name=downloads-dir::$env:VCPKG_INSTALLATION_ROOT\downloads"
+      - name: Set up vcpkg cache
+        uses: actions/cache@v2
+        if: ${{ runner.os == 'Windows' }}
+        with:
+          path: |
+            ${{ steps.vcpkg-cache.outputs.archives-dir }}
+            ${{ steps.vcpkg-cache.outputs.downloads-dir }}
+          key: vcpkg
+      - name: Install Linux dependencies
+        if: ${{ runner.os == 'Linux' }}
+        run: sudo apt install -y --no-install-recommends libnettle7 libsodium-dev libssl-dev libkrb5-dev ssh
+      - name: Install macOS dependencies
+        if: ${{ runner.os == 'macOS' }}
+        run: brew install nettle libsodium openssl
+      - name: Provide OpenSSL 3
+        if: ${{ matrix.openssl-version == '3' }}
+        run: echo "/usr/local/opt/openssl@3/bin" >> $GITHUB_PATH
+      - name: Install Windows dependencies
+        if: ${{ runner.os == 'Windows' }}
+        run: vcpkg install libsodium nettle openssl --triplet x64-windows
+      - name: Install Python dependencies
+        run: pip install tox
+      - name: Run tests
+        shell: python
+        run: |
+          import os, sys, platform
+          V = sys.version_info
+          p = platform.system().lower()
+          exit(os.system(f"tox -e py{V.major}{V.minor}-{p} -- -ra"))
+      - name: Upload coverage data
+        uses: actions/upload-artifact@v2
+        with:
+          name: coverage
+          path: .coverage.*
+          retention-days: 1
+  report-coverage:
+    name: Report coverage
+    runs-on: ubuntu-latest
+    needs: run-tests
+    if: ${{ always() }}
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-python@v2
+      - uses: actions/download-artifact@v2
+        with:
+          name: coverage
+      - name: Install dependencies
+        run: |
+          sudo apt install -y sqlite3
+          pip install tox
+      - name: Report coverage
+        run: |
+          shopt -s nullglob
+          for f in .coverage.*-windows; do
+            sqlite3 "$f" "update file set path = replace(path, '\\', '/');"
+          done
+          tox -e report
