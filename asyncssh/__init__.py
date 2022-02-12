@@ -46,6 +46,7 @@ from .connection import SSHAcceptor, SSHClientConnection, SSHServerConnection
 from .connection import SSHClientConnectionOptions, SSHServerConnectionOptions
 from .connection import create_connection, create_server, connect, listen
 from .connection import connect_reverse, listen_reverse, get_server_host_key
+from .connection import get_server_auth_methods
 
 from .editor import SSHLineEditorChannel
 

@@ -160,6 +160,11 @@ get_server_host_key
 
 .. autofunction:: get_server_host_key
 
+get_server_auth_methods
+-----------------------
+
+.. autofunction:: get_server_auth_methods
+
 scp
 ---
 

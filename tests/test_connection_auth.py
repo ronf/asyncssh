@@ -427,6 +427,15 @@ class _TestNullAuth(ServerTestCase):
         return await cls.create_server(_NullServer)
 
     @asynctest
+    async def test_get_server_auth_methods(self):
+        """Test getting auth methods from the test server"""
+
+        auth_methods = await asyncssh.get_server_auth_methods(
+            self._server_addr, self._server_port)
+
+        self.assertEqual(auth_methods, ['none'])
+
+    @asynctest
     async def test_disabled_auth(self):
         """Test disabled authentication"""
 
@@ -451,6 +460,15 @@ class _TestGSSAuth(ServerTestCase):
         """Start an SSH server which supports GSS authentication"""
 
         return await cls.create_server(_AsyncGSSServer, gss_host='1')
+
+    @asynctest
+    async def test_get_server_auth_methods(self):
+        """Test getting auth methods from the test server"""
+
+        auth_methods = await asyncssh.get_server_auth_methods(
+            self._server_addr, self._server_port)
+
+        self.assertEqual(auth_methods, ['gssapi-with-mic'])
 
     @asynctest
     async def test_gss_kex_auth(self):
@@ -614,6 +632,15 @@ class _TestHostBasedAuth(ServerTestCase):
 
         return await cls.create_server(
             _HostBasedServer, known_client_hosts='known_hosts')
+
+    @asynctest
+    async def test_get_server_auth_methods(self):
+        """Test getting auth methods from the test server"""
+
+        auth_methods = await asyncssh.get_server_auth_methods(
+            self._server_addr, self._server_port, username='user')
+
+        self.assertEqual(auth_methods, ['hostbased'])
 
     @asynctest
     async def test_client_host_auth(self):
@@ -1009,6 +1036,15 @@ class _TestPublicKeyAuth(ServerTestCase):
                                                client_keys=None)
 
         return conn
+
+    @asynctest
+    async def test_get_server_auth_methods(self):
+        """Test getting auth methods from the test server"""
+
+        auth_methods = await asyncssh.get_server_auth_methods(
+            self._server_addr, self._server_port)
+
+        self.assertEqual(auth_methods, ['publickey'])
 
     @asynctest
     async def test_encrypted_client_key(self):
@@ -1694,6 +1730,15 @@ class _TestPasswordAuth(ServerTestCase):
 
         return await cls.create_server(_PasswordServer)
 
+    @asynctest
+    async def test_get_server_auth_methods(self):
+        """Test getting auth methods from the test server"""
+
+        auth_methods = await asyncssh.get_server_auth_methods(
+            self._server_addr, self._server_port, username='pw')
+
+        self.assertEqual(auth_methods, ['keyboard-interactive', 'password'])
+
     @async_context_manager
     async def _connect_password(self, username, password, old_password='',
                                 new_password='', disable_trivial_auth=False,
@@ -1799,6 +1844,15 @@ class _TestKbdintAuth(ServerTestCase):
         """Start an SSH server which supports keyboard-interactive auth"""
 
         return await cls.create_server(_KbdintServer)
+
+    @asynctest
+    async def test_get_server_auth_methods(self):
+        """Test getting auth methods from the test server"""
+
+        auth_methods = await asyncssh.get_server_auth_methods(
+            self._server_addr, self._server_port, username='none')
+
+        self.assertEqual(auth_methods, ['keyboard-interactive'])
 
     @async_context_manager
     async def _connect_kbdint(self, username, responses, test_async=False):

@@ -26,7 +26,7 @@ import unittest
 import asyncssh
 
 from asyncssh.auth import MSG_USERAUTH_PK_OK, lookup_client_auth
-from asyncssh.auth import get_server_auth_methods, lookup_server_auth
+from asyncssh.auth import get_supported_server_auth_methods, lookup_server_auth
 from asyncssh.auth import MSG_USERAUTH_GSSAPI_RESPONSE
 from asyncssh.constants import MSG_USERAUTH_REQUEST, MSG_USERAUTH_FAILURE
 from asyncssh.constants import MSG_USERAUTH_SUCCESS
@@ -433,24 +433,27 @@ class _TestAuth(AsyncTestCase):
 
         with self.subTest('No auth methods'):
             server_conn = _AuthServerStub()
-            self.assertEqual(get_server_auth_methods(server_conn), [])
+            self.assertEqual(
+                get_supported_server_auth_methods(server_conn), [])
             server_conn.close()
 
         with self.subTest('All auth methods'):
             gss_host = '1' if gss_available else None
-            server_conn = _AuthServerStub(gss_host=gss_host,
-                                          host_based_auth=True,
-                                          public_key_auth=True,
-                                          password_auth=True, kbdint_auth=True)
+            server_conn = _AuthServerStub(
+                gss_host=gss_host, host_based_auth=True, public_key_auth=True,
+                password_auth=True, kbdint_auth=True)
+
             if gss_available: # pragma: no branch
-                self.assertEqual(get_server_auth_methods(server_conn),
-                                 [b'gssapi-keyex', b'gssapi-with-mic',
-                                  b'hostbased', b'publickey',
-                                  b'keyboard-interactive', b'password'])
+                self.assertEqual(
+                    get_supported_server_auth_methods(server_conn),
+                    [b'gssapi-keyex', b'gssapi-with-mic', b'hostbased',
+                     b'publickey', b'keyboard-interactive', b'password'])
             else: # pragma: no cover
-                self.assertEqual(get_server_auth_methods(server_conn),
-                                 [b'hostbased', b'publickey',
-                                  b'keyboard-interactive', b'password'])
+                self.assertEqual(
+                    get_supported_server_auth_methods(server_conn),
+                    [b'hostbased', b'publickey',
+                     b'keyboard-interactive', b'password'])
+
             server_conn.close()
 
         with self.subTest('Unknown auth method'):

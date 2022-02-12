@@ -933,7 +933,7 @@ def register_auth_method(alg: bytes, client_handler: Type[ClientAuth],
     _server_auth_handlers[alg] = server_handler
 
 
-def get_client_auth_methods() -> Sequence[bytes]:
+def get_supported_client_auth_methods() -> Sequence[bytes]:
     """Return a list of supported client auth methods"""
 
     return [method for method in _client_auth_handlers
@@ -950,7 +950,8 @@ def lookup_client_auth(conn: 'SSHClientConnection',
         return None
 
 
-def get_server_auth_methods(conn: 'SSHServerConnection') -> Sequence[bytes]:
+def get_supported_server_auth_methods(conn: 'SSHServerConnection') -> \
+        Sequence[bytes]:
     """Return a list of supported server auth methods"""
 
     auth_methods = []
