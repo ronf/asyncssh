@@ -370,7 +370,7 @@ class _TestConnection(ServerTestCase):
                                         acceptor=acceptor))
 
     async def get_server_host_key(self, **kwargs):
-        """Create a connection to the test server"""
+        """Get host key from the test server"""
 
         return (await asyncssh.get_server_host_key(self._server_addr,
                                                    self._server_port,
