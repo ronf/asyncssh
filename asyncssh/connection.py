@@ -8176,7 +8176,7 @@ async def get_server_auth_methods(
                      successfully before the list of available auth
                      methods can be returned, so be sure to specify any
                      arguments needed to complete the key exchange.
-                     Also, auth mathods may vary by user, so you may
+                     Also, auth methods may vary by user, so you may
                      want to specify the specific user you would like
                      to get auth methods for.
 
