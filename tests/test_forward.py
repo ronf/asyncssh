@@ -602,7 +602,6 @@ class _TestTCPForwarding(_CheckForwarding):
                 writer.close()
                 await maybe_wait_closed(writer)
 
-
     @asynctest
     async def test_forward_local_port_failure(self):
         """Test failure in forwarding a local port"""
