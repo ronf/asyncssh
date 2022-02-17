@@ -476,7 +476,7 @@ class _TestAuth(AsyncTestCase):
         with self.subTest('GSS with MIC auth not available'):
             await self.check_auth(b'gssapi-with-mic', (False, None))
 
-        for steps in range(4):
+        for steps in range(1, 4):
             with self.subTest('GSS with MIC auth available'):
                 await self.check_auth(b'gssapi-with-mic', (True, None),
                                       gss_host=str(steps), success=True)
