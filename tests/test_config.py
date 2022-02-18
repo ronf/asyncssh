@@ -357,13 +357,13 @@ class _TestClientConfig(_TestConfig):
 
             return 'thishost.local'
 
-        def mock_home():
+        def mock_expanduser(_):
             """Return a static local home directory"""
 
             return '/home/user'
 
         with patch('socket.gethostname', mock_gethostname):
-            with patch('pathlib.Path.home', mock_home):
+            with patch('os.path.expanduser', mock_expanduser):
                 config = self._parse_config(
                     'Hostname newhost\n'
                     'User newuser\n'
