@@ -1,4 +1,4 @@
-# Copyright (c) 2017-2019 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2017-2022 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -105,7 +105,7 @@ class SSPIAuth:
 
         if self._error:
             self._error = False
-            raise SSPIError('Token authentication errror')
+            raise SSPIError('Token authentication error')
 
         new_token, complete = step(self._host, token)
 
@@ -114,7 +114,7 @@ class SSPIAuth:
 
         if new_token in (b'error', b'errtok'):
             if token:
-                raise SSPIError('Token authentication errror')
+                raise SSPIError('Token authentication error')
             else:
                 self._error = True
                 return True, [SSPIBuffer(b'')]

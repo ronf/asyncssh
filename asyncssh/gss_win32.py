@@ -1,4 +1,4 @@
-# Copyright (c) 2017-2021 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2017-2022 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -109,8 +109,8 @@ class GSSBase:
 
         assert self._ctx is not None
 
-        if self._ctx.authenticated:
-            self._ctx.reset()
+        self._ctx.reset()
+        self._init_token = None
 
     def step(self, token: Optional[bytes] = None) -> Optional[bytes]:
         """Perform next step in GSS security exchange"""
