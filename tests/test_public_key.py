@@ -71,6 +71,11 @@ except subprocess.CalledProcessError: # pragma: no cover
 
 _openssl_available = _openssl_version != b''
 
+if _openssl_available:
+    _openssl_curves = run('openssl ecparam -list_curves')
+else:
+    _openssl_curves = b''
+
 # The openssl "-v2prf" option is only available in OpenSSL 1.0.2 or later
 _openssl_supports_v2prf = _openssl_version >= b'OpenSSL 1.0.2'
 
@@ -2260,9 +2265,9 @@ class _TestPublicKeyTopLevel(TempDirTestCase):
                         '-param_enc explicit' % curve)
                     asyncssh.read_private_key('priv')
 
-    @unittest.skipIf(b'secp224r1' not in run('openssl ecparam -list_curves'),
-                     "this openssl doesn't support secp224r1")
     @unittest.skipIf(not _openssl_available, "openssl isn't available")
+    @unittest.skipIf(b'secp224r1' not in _openssl_curves,
+                     "this openssl doesn't support secp224r1")
     def test_ec_explicit_unknown(self):
         """Import EC key with unknown explicit parameters"""
 

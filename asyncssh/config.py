@@ -477,7 +477,7 @@ class SSHClientConfig(SSHConfig):
         conn_hash = sha1(conn_info.encode('utf-8')).hexdigest()
 
         self._tokens.update({'C': conn_hash,
-                             'd': str(Path.home()),
+                             'd': str(os.path.expanduser('~')),
                              'h': host,
                              'L': short_local_host,
                              'l': local_host,
