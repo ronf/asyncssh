@@ -71,9 +71,9 @@ except subprocess.CalledProcessError: # pragma: no cover
 
 _openssl_available = _openssl_version != b''
 
-if _openssl_available:
+if _openssl_available: # pragma: no branch
     _openssl_curves = run('openssl ecparam -list_curves')
-else:
+else: # pragma: no cover
     _openssl_curves = b''
 
 # The openssl "-v2prf" option is only available in OpenSSL 1.0.2 or later
