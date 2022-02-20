@@ -9,7 +9,6 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
         python-version: ["3.6", "3.7", "3.8", "3.9", "3.10"]
-        openssl-version: ["default"]
         include:
           - os: macos-latest
             python-version: "3.10"
@@ -60,7 +59,7 @@ jobs:
         if: ${{ runner.os == 'macOS' }}
         run: brew install nettle libsodium openssl
       - name: Provide OpenSSL 3
-        if: ${{ matrix.openssl-version == '3' }}
+        if: ${{ runner.os == 'macOS' && matrix.openssl-version == '3' }}
         run: echo "/usr/local/opt/openssl@3/bin" >> $GITHUB_PATH
       - name: Install Windows dependencies
         if: ${{ runner.os == 'Windows' }}
@@ -102,3 +101,6 @@ jobs:
             sqlite3 "$f" "update file set path = replace(path, '\\', '/');"
           done
           tox -e report
+      - uses: codecov/codecov-action@v2
+        with:
+          files: coverage.xml
