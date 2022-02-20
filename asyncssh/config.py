@@ -94,14 +94,20 @@ class SSHConfig:
                 continue
 
             try:
-                result.extend([value[last_idx:idx],
-                               self._tokens[value[idx+1]]])
+                token = value[idx+1]
+                result.extend([value[last_idx:idx], self._tokens[token]])
                 last_idx = idx + 2
             except IndexError:
                 raise ConfigParseError('Invalid token substitution') from None
             except KeyError:
-                raise ConfigParseError('Invalid token substitution: %s' %
-                                       value[idx+1]) from None
+                if token == 'd':
+                    raise ConfigParseError('Home directory is '
+                                           'not available') from None
+                elif token == 'i':
+                    raise ConfigParseError('User id not available') from None
+                else:
+                    raise ConfigParseError('Invalid token substitution: %s' %
+                                           value[idx+1]) from None
 
         result.append(value[last_idx:])
         return ''.join(result)
@@ -472,12 +478,12 @@ class SSHClientConfig(SSHConfig):
         host = cast(str, self._options.get('Hostname', self._orig_host))
         port = str(self._options.get('Port', DEFAULT_PORT))
         user = cast(str, self._options.get('User') or self._local_user)
+        home = os.path.expanduser('~')
 
         conn_info = ''.join((local_host, host, port, user))
         conn_hash = sha1(conn_info.encode('utf-8')).hexdigest()
 
         self._tokens.update({'C': conn_hash,
-                             'd': str(os.path.expanduser('~')),
                              'h': host,
                              'L': short_local_host,
                              'l': local_host,
@@ -486,7 +492,10 @@ class SSHClientConfig(SSHConfig):
                              'r': user,
                              'u': self._local_user})
 
-        if hasattr(os, 'getuid'): # pragma: no branch
+        if home != '~':
+            self._tokens['d'] = home
+
+        if hasattr(os, 'getuid'):
             self._tokens['i'] = str(os.getuid())
 
     _handlers = {option.lower(): (option, handler) for option, handler in (

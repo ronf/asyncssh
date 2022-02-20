@@ -389,6 +389,33 @@ class _TestClientConfig(_TestConfig):
 
         self.assertEqual(config.get('RemoteCommand'), '123')
 
+    def test_home_percent_expansion_unavailable(self):
+        """Test home directory token percent expansion not being available"""
+
+        def mock_expanduser(path):
+            """Don't expand the home directory"""
+
+            return path
+
+        with self.assertRaises(asyncssh.ConfigParseError):
+            with patch('os.path.expanduser', mock_expanduser):
+                self._parse_config('RemoteCommand %d')
+
+    def test_uid_percent_expansion_unavailable(self):
+        """Test UID token percent expansion not being available"""
+
+        orig_hasattr = hasattr
+
+        def mock_hasattr(obj, attr):
+            if obj == os and attr == 'getuid':
+                return False
+            else:
+                return orig_hasattr(obj, attr)
+
+        with self.assertRaises(asyncssh.ConfigParseError):
+            with patch('builtins.hasattr', mock_hasattr):
+                self._parse_config('RemoteCommand %i')
+
     def test_invalid_percent_expansion(self):
         """Test invalid percent expansion"""
 
