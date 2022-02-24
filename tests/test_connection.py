@@ -412,14 +412,14 @@ class _TestConnection(ServerTestCase):
         """Test failure connecting"""
 
         with self.assertRaises(OSError):
-            await asyncssh.connect('0.0.0.1')
+            await asyncssh.connect('\xff')
 
     @asynctest
     async def test_connect_failure_without_agent(self):
         """Test failure connecting with SSH agent disabled"""
 
         with self.assertRaises(OSError):
-            await asyncssh.connect('0.0.0.1', agent_path=None)
+            await asyncssh.connect('\xff', agent_path=None)
 
     @asynctest
     async def test_connect_timeout_exceeded(self):
@@ -553,7 +553,7 @@ class _TestConnection(ServerTestCase):
         """Test failure connecting when retrieving a server host key"""
 
         with self.assertRaises(OSError):
-            await asyncssh.get_server_host_key('0.0.0.1')
+            await asyncssh.get_server_host_key('\xff')
 
     @unittest.skipUnless(_nc_available, 'Netcat not available')
     @asynctest
@@ -572,7 +572,8 @@ class _TestConnection(ServerTestCase):
     async def test_get_server_host_key_proxy_failure(self):
         """Test failure retrieving a server host key using proxy command"""
 
-        proxy_command = 'nc 0.0.0.1 1'
+        # Leave out arguments to 'nc' to trigger a faliure
+        proxy_command = 'nc'
 
         with self.assertRaises((OSError, asyncssh.ConnectionLost)):
             await self.connect(proxy_command=proxy_command)

@@ -4983,14 +4983,14 @@ class _TestSCP(_CheckSCP):
         """Test passing a string to SCP"""
 
         with self.assertRaises(OSError):
-            await scp('0.0.0.1:xxx', '.')
+            await scp('\xff:xxx', '.')
 
     @asynctest
     async def test_source_bytes(self):
         """Test passing a byte string to SCP"""
 
         with self.assertRaises(OSError):
-            await scp(b'0.0.0.1:xxx', '.')
+            await scp('\xff:xxx'.encode('utf-8'), '.')
 
     @asynctest
     async def test_source_open_connection(self):
