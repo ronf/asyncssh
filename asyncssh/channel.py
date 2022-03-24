@@ -294,8 +294,13 @@ class SSHChannel(Generic[AnyStr], SSHPacketHandler):
         """Flush as much data in send buffer as the send window allows"""
 
         while self._send_buf and self._send_window:
-            pktsize = min(self._send_window, self._send_pktsize)
             buf, datatype = self._send_buf[0]
+            pktsize = min(self._send_window, self._send_pktsize)
+            pktsize -= 4  # 4-byte payload length
+            self.logger.debug2('Adjusted packet size from min(%d, %d) to %d',
+                               self._send_window, self._send_pktsize, pktsize)
+            if pktsize <= 0:
+                break
 
             if len(buf) > pktsize:
                 data = buf[:pktsize]
