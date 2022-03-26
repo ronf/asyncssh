@@ -2859,6 +2859,7 @@ def register_sk_alg(sk_alg: int, handler: Type[SSHKey], *args: object) -> None:
 
     _sk_alg_map[sk_alg] = handler, args
 
+
 def register_public_key_alg(algorithm: bytes, handler: Type[SSHKey],
                             default: bool,
                             sig_algorithms: Sequence[bytes] = None) -> None:
