@@ -33,6 +33,13 @@ This example only uses the output on stdout, but output on stderr is also
 collected as another attribute in the returned :class:`SSHCompletedProcess`
 object.
 
+Shell and exec sessions default to an encoding of 'utf-8', so read and
+write calls operate on strings by default. If you want to send and
+receive binary data, you can set the encoding to `None` when the
+session is opened to make read and write operate on bytes instead.
+Alternate encodings can also be selected to change how strings are
+convered to and from bytes.
+
 To check against a different set of server host keys, they can be provided
 in the known_hosts argument when the connection is opened:
 
@@ -422,6 +429,13 @@ Simple server
 The following code shows an example of a simple SSH server which listens
 for connections on port 8022, does password authentication, and prints
 a message when users authenticate successfully and start a shell.
+
+Shell and exec sessions default to an encoding of 'utf-8', so read and
+write calls operate on strings by default. If you want to send and
+receive binary data, you can set the encoding to `None` when the
+session is opened to make read and write operate on bytes instead.
+Alternate encodings can also be selected to change how strings are
+convered to and from bytes.
 
    .. include:: ../examples/simple_server.py
       :literal:
