@@ -2366,6 +2366,8 @@ currently supported by AsyncSSH:
   | ecdsa-sha2-nistp384-cert-v01\@openssh.com
   | ecdsa-sha2-nistp256-cert-v01\@openssh.com
   | ecdsa-sha2-1.3.132.0.10-cert-v01\@openssh.com
+  | rsa-sha2-256-cert-v01\@openssh.com
+  | rsa-sha2-512-cert-v01\@openssh.com
   | ssh-rsa-cert-v01\@openssh.com
   | sk-ssh-ed25519\@openssh.com
   | sk-ecdsa-sha2-nistp256\@openssh.com
