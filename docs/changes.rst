@@ -3,6 +3,44 @@
 Change Log
 ==========
 
+Release 2.10.0 (26 Mar 2022)
+----------------------------
+
+* Added new get_server_auth_methods() function which returns the set
+  of auth methods available for a given user and SSH server.
+
+* Added support for new line_echo argument when creating a server
+  channel which controls whether input in the line editor is echoed
+  to the output immediately or under the control of the application,
+  allowing more control over the ordering of input and output.
+
+* Added explicit support for RSA SHA-2 certificate algorithms.
+  Previously, SHA-2 signatures were supported using the original
+  ssh-rsa-cert-v01@openssh.com algorithm name, but recent versions
+  of SSH now disable this algorithm by default, so the new SHA-2
+  algorithm names need to be advertised for SHA-2 signatures to
+  work when using OpenSSH certificates.
+
+* Improved handling of config file loading when options argument is
+  used, allowing config loading to be overridden at connect() time
+  even if the options passed in referenced a config file.
+
+* Improved speed of unit tests by avoiding some network timeouts
+  when connecting to invalid addresses.
+
+* Merged GitHub workflows contributed by GitHub user hexchain to
+  run unit tests and collect code coverage information on multiple
+  platforms and Python versions. Thanks so much for this work!
+
+* Fixed issue with GSS auth unit tests hanging on Windows.
+
+* Fixed issue with known_hosts matching when ProxyJump is being used.
+  Thanks go to GitHub user velavokr for reporting this and helping
+  to debug it.
+
+* Fixed type annotations for SFTP client and server open methods.
+  Thanks go to Marat Sharafutdinov for reporting this!
+
 Release 2.9.0 (23 Jan 2022)
 ---------------------------
 
