@@ -59,10 +59,13 @@ class SSHLineEditor:
     """Input line editor"""
 
     def __init__(self, chan: 'SSHServerChannel[str]',
-                 session: 'SSHServerSession[str]', history_size: int,
-                 max_line_length: int, term_type: str, width: int):
+                 session: 'SSHServerSession[str]', line_echo: bool,
+                 history_size: int, max_line_length: int, term_type: str,
+                 width: int):
         self._chan = chan
         self._session = session
+        self._line_echo = line_echo
+        self._line_pending = False
         self._history_size = history_size if history_size > 0 else 0
         self._max_line_length = max_line_length
         self._wrap = term_type in _ansi_terminals
@@ -163,6 +166,7 @@ class SSHLineEditor:
                           pos: Optional[int] = None) -> Tuple[str, int]:
         """Determine new output column after output occurs"""
 
+        escaped = False
         offset = pos
         last_wrap_pos = pos
         wrapped_data = []
@@ -170,6 +174,11 @@ class SSHLineEditor:
         for ch in data:
             if ch == '\b':
                 column -= 1
+            elif ch == '\x1b':
+                escaped = True
+            elif escaped:
+                if ch == 'm':
+                    escaped = False
             else:
                 if _is_wide(ch) and (column % self._width) == self._width - 1:
                     column += 1
@@ -379,6 +388,24 @@ class SSHLineEditor:
 
         self._pos = new_pos
 
+    def _reset_line(self):
+        """Reset input line to empty"""
+
+        self._line = ''
+        self._left_pos = 0
+        self._right_pos = 0
+        self._pos = 0
+        self._start_column = self._cursor
+        self._end_column = self._cursor
+
+    def _reset_pending(self):
+        """Reset a pending echoed line if any"""
+
+        if self._line_pending:
+            self._erase_input()
+            self._reset_line()
+            self._line_pending = False
+
     def _insert_printable(self, data: str) -> None:
         """Insert data into the input line"""
 
@@ -401,32 +428,30 @@ class SSHLineEditor:
     def _end_line(self) -> None:
         """End the current input line and send it to the session"""
 
-        if (self._echo and not self._wrap and
-                (self._left_pos > 0 or self._right_pos < len(self._line))):
-            self._output('\b' * (self._cursor - self._start_column) +
-                         self._line)
+        line = self._line
+
+        need_wrap = (self._echo and not self._wrap and
+                     (self._left_pos > 0 or self._right_pos < len(line)))
+
+        if self._line_echo or need_wrap:
+            if need_wrap:
+                self._output('\b' * (self._cursor - self._start_column) + line)
+            else:
+                self._move_to_end()
+
+            self._output('\r\n')
+            self._reset_line()
         else:
             self._move_to_end()
+            self._line_pending = True
 
-        self._output('\r\n')
-
-        self._start_column = 0
-        self._end_column = 0
-        self._cursor = 0
-        self._left_pos = 0
-        self._right_pos = 0
-        self._pos = 0
-
-        if self._echo and self._history_size and self._line:
-            self._history.append(self._line)
+        if self._echo and self._history_size and line:
+            self._history.append(line)
             self._history = self._history[-self._history_size:]
 
         self._history_index = len(self._history)
 
-        data = self._line + '\n'
-        self._line = ''
-
-        self._session.data_received(data, None)
+        self._session.data_received(line + '\n', None)
 
     def _eof_or_delete(self) -> None:
         """Erase character to the right, or send EOF if input line is empty"""
@@ -596,11 +621,15 @@ class SSHLineEditor:
     def set_input(self, line: str, pos: int) -> None:
         """Set input line and cursor position"""
 
+        self._reset_pending()
+
         self._line = line
         self._update_input(0, self._start_column, pos)
 
     def set_line_mode(self, line_mode: bool) -> None:
         """Enable/disable input line editing"""
+
+        self._reset_pending()
 
         if self._line and not line_mode:
             data = self._line
@@ -614,6 +643,8 @@ class SSHLineEditor:
     def set_echo(self, echo: bool) -> None:
         """Enable/disable echoing of input in line mode"""
 
+        self._reset_pending()
+
         if self._echo and not echo:
             self._erase_input()
             self._echo = False
@@ -623,6 +654,8 @@ class SSHLineEditor:
 
     def set_width(self, width: int) -> None:
         """Set terminal line width"""
+
+        self._reset_pending()
 
         self._width = width or _DEFAULT_WIDTH
 
@@ -640,6 +673,8 @@ class SSHLineEditor:
             idx = 0
 
             while idx < data_len:
+                self._reset_pending()
+
                 ch = data[idx]
                 idx += 1
 
@@ -677,6 +712,16 @@ class SSHLineEditor:
     def process_output(self, data: str) -> None:
         """Process output to channel"""
 
+        if self._line_pending:
+            if data.startswith(self._line):
+                self._start_column = self._cursor
+                data = data[len(self._line):]
+            else:
+                self._erase_input()
+
+            self._reset_line()
+            self._line_pending = False
+
         data = data.replace('\n', '\r\n')
 
         self._erase_input()
@@ -707,10 +752,11 @@ class SSHLineEditorChannel:
     """
 
     def __init__(self, orig_chan: 'SSHServerChannel[str]',
-                 orig_session: 'SSHServerSession[str]',
+                 orig_session: 'SSHServerSession[str]', line_echo: bool,
                  history_size: int, max_line_length: int):
         self._orig_chan = orig_chan
         self._orig_session = orig_session
+        self._line_echo = line_echo
         self._history_size = history_size
         self._max_line_length = max_line_length
         self._editor: Optional[SSHLineEditor] = None
@@ -729,8 +775,8 @@ class SSHLineEditorChannel:
 
         if encoding and term_type:
             self._editor = SSHLineEditor(
-                self._orig_chan, self._orig_session, self._history_size,
-                self._max_line_length, term_type, width)
+                self._orig_chan, self._orig_session, self._line_echo,
+                self._history_size, self._max_line_length, term_type, width)
 
         return self._editor
 

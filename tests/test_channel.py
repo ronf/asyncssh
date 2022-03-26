@@ -283,8 +283,9 @@ class _ChannelServer(Server):
             except asyncssh.ChannelOpenError:
                 stdout.channel.exit(1)
         elif action == 'rejected_session':
-            chan = _ServerChannel(self._conn, asyncio.get_event_loop(), False,
-                                  False, 0, 1024, None, 'strict', 1, 32768)
+            chan = _ServerChannel(self._conn, asyncio.get_event_loop(),
+                                  False, False, False, 0, 1024, None,
+                                  'strict', 1, 32768)
 
             try:
                 await chan.open_session()

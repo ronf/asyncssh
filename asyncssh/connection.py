@@ -4852,6 +4852,7 @@ class SSHServerConnection(SSHConnection):
         self._authorized_client_keys = options.authorized_client_keys
         self._allow_pty = options.allow_pty
         self._line_editor = options.line_editor
+        self._line_echo = options.line_echo
         self._line_history = options.line_history
         self._max_line_length = options.max_line_length
         self._rdns_lookup = options.rdns_lookup
@@ -5907,9 +5908,9 @@ class SSHServerConnection(SSHConnection):
         """
 
         return SSHServerChannel(self, self._loop, self._allow_pty,
-                                self._line_editor, self._line_history,
-                                self._max_line_length, encoding, errors,
-                                window, max_pktsize)
+                                self._line_editor, self._line_echo,
+                                self._line_history, self._max_line_length,
+                                encoding, errors, window, max_pktsize)
 
     async def create_connection(
             self, session_factory: SSHTCPSessionFactory[AnyStr],
@@ -7189,6 +7190,12 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
        :param line_editor: (optional)
            Whether or not to enable input line editing on sessions which
            have a pseudo-tty allocated, defaulting to `True`
+       :param line_echo: (bool)
+           Whether or not to echo completed input lines when they are
+           entered, rather than waiting for the application to read and
+           echo them, defaulting to `True`. Setting this to `False`
+           and performing the echo in the application can better synchronize
+           input and output, especially when there are input prompts.
        :param line_history: (int)
            The number of lines of input line history to store in the
            line editor when it is enabled, defaulting to 1000
@@ -7349,6 +7356,7 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
        :type gss_auth: `bool`
        :type allow_pty: `bool`
        :type line_editor: `bool`
+       :type line_echo: `bool`
        :type line_history: `int`
        :type max_line_length: `int`
        :type rdns_lookup: `bool`
@@ -7393,6 +7401,7 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
     gss_auth: bool
     allow_pty: bool
     line_editor: bool
+    line_echo: bool
     line_history: int
     max_line_length: int
     rdns_lookup: bool
@@ -7447,6 +7456,7 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
                 gss_auth: DefTuple[bool] = (),
                 allow_pty: DefTuple[bool] = (),
                 line_editor: bool = True,
+                line_echo: bool = True,
                 line_history: int = _DEFAULT_LINE_HISTORY,
                 max_line_length: int = _DEFAULT_MAX_LINE_LENGTH,
                 rdns_lookup: DefTuple[bool] = (),
@@ -7553,6 +7563,7 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
             config.get('PermitTTY', True))
 
         self.line_editor = line_editor
+        self.line_echo = line_echo
         self.line_history = line_history
         self.max_line_length = max_line_length
 

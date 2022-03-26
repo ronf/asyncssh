@@ -20,6 +20,7 @@
 
 """Unit tests for AsyncSSH line editor"""
 
+import asyncio
 import asyncssh
 
 from .server import ServerTestCase
@@ -60,8 +61,15 @@ async def _handle_session(stdin, stdout, stderr):
     stdout.close()
 
 
+async def _handle_ansi_attrs(_stdin, stdout, _stderr):
+    """Output a line which has ANSI attributes in it"""
+
+    stdout.write('\x1b[2m' + 72*'*' + '\x1b[0m')
+    stdout.close()
+
+
 async def _handle_output_wrap(_stdin, stdout, _stderr):
-    """Accept input using read() and echo it back"""
+    """Output a line which needs to wrap early"""
 
     stdout.write(79*'*' + '\uff10')
     stdout.close()
@@ -73,6 +81,17 @@ async def _handle_soft_eof(stdin, stdout, _stderr):
     while not stdin.at_eof():
         data = await stdin.read()
         stdout.write(data or 'EOF\n')
+
+    stdout.close()
+
+
+async def _handle_app_line_echo(stdin, stdout, _stderr):
+    """Perform line echo in the application"""
+
+    while not stdin.at_eof():
+        stdout.write('> ')
+        data = await stdin.readline()
+        stdout.write(data)
 
     stdout.close()
 
@@ -383,6 +402,25 @@ class _TestEditorUnlimitedLength(_CheckEditor):
         await self.check_input(32768*'*' + '\n', 32768*'*' + '\r\n')
 
 
+class _TestEditorANSI(_CheckEditor):
+    """Unit tests for AsyncSSH line editor handling ANSI attributes"""
+
+    @classmethod
+    async def start_server(cls):
+        """Start an SSH server for the tests to use"""
+
+        return await cls.create_server(session_factory=_handle_ansi_attrs)
+
+    @asynctest
+    async def test_editor_ansi(self):
+        """Test that editor properly handles ANSI attributes in output"""
+
+        async with self.connect() as conn:
+            process = await conn.create_process(term_type='ansi')
+            output_data = (await process.wait()).stdout
+            self.assertEqual(output_data, '\x1b[2m' + 72*'*' + '\x1b[0m')
+
+
 class _TestEditorOutputWrap(_CheckEditor):
     """Unit tests for AsyncSSH line editor wrapping output text"""
 
@@ -481,3 +519,31 @@ class _TestEditorRegisterKey(ServerTestCase):
 
             process.stdin.write('\x1a')
             self.assertEqual((await process.stdout.read()), 'SIGNAL')
+
+
+class _TestEditorLineEcho(_CheckEditor):
+    """Unit tests for AsyncSSH line editor with line echo in application"""
+
+    @classmethod
+    async def start_server(cls):
+        """Start an SSH server for the tests to use"""
+
+        return (await cls.create_server(session_factory=_handle_app_line_echo,
+                                        line_echo=False))
+
+    @asynctest
+    async def test_editor_line_echo(self):
+        """Test line echo handled by application"""
+
+        async with self.connect() as conn:
+            process = await conn.create_process(term_type='ansi')
+
+            process.stdin.write('abc\rdef\r')
+            await asyncio.sleep(0.1)
+            process.stdin.write('ghi\r')
+            await asyncio.sleep(0.1)
+            process.stdin.write_eof()
+
+            self.assertEqual((await process.stdout.read()),
+                             '> abc\x1b[3D   \x1b[3Ddef\x1b[3D   \x1b[3D'
+                             'abc\r\n> def\r\n> ghi\r\n> ')

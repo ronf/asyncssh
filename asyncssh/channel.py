@@ -1443,9 +1443,9 @@ class SSHServerChannel(SSHChannel, Generic[AnyStr]):
 
     def __init__(self, conn: 'SSHServerConnection',
                  loop: asyncio.AbstractEventLoop, allow_pty: bool,
-                 line_editor: bool, line_history: int, max_line_length: int,
-                 encoding: Optional[str], errors: str, window: int,
-                 max_pktsize: int):
+                 line_editor: bool, line_echo: bool, line_history: int,
+                 max_line_length: int, encoding: Optional[str], errors: str,
+                 window: int, max_pktsize: int):
         """Initialize an SSH server channel"""
 
         super().__init__(conn, loop, encoding, errors, window, max_pktsize)
@@ -1455,6 +1455,7 @@ class SSHServerChannel(SSHChannel, Generic[AnyStr]):
 
         self._allow_pty = allow_pty
         self._line_editor = line_editor
+        self._line_echo = line_echo
         self._line_history = line_history
         self._max_line_length = max_line_length
         self._term_type: Optional[str] = None
@@ -1473,6 +1474,7 @@ class SSHServerChannel(SSHChannel, Generic[AnyStr]):
             server_session = cast(SSHServerSession[str], session)
 
             editor_chan = SSHLineEditorChannel(server_chan, server_session,
+                                               self._line_echo,
                                                self._line_history,
                                                self._max_line_length)
             editor_session = SSHLineEditorSession(editor_chan, server_session)
