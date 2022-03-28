@@ -42,7 +42,7 @@ if backend.poly1305_supported():
         """Encrypt/decrypt a block of data with the ChaCha20 cipher"""
 
         return Cipher(ChaCha20(key, (_CTR_1 if ctr else _CTR_0) + nonce),
-                      mode=None).encryptor().update(data)
+                      mode=None, backend=backend).encryptor().update(data)
 
     def poly1305_key(key: bytes, nonce: bytes) -> bytes:
         """Derive a Poly1305 key"""
