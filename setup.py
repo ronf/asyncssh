@@ -57,7 +57,7 @@ setup(name = 'asyncssh',
       long_description = long_description,
       platforms = 'Any',
       python_requires = '>= 3.6',
-      install_requires = ['cryptography >= 2.8', 'typing_extensions >= 3.6'],
+      install_requires = ['cryptography >= 3.1', 'typing_extensions >= 3.6'],
       extras_require = {
           'bcrypt':     ['bcrypt >= 3.1.3'],
           'fido2':      ['fido2 >= 0.9.2'],
