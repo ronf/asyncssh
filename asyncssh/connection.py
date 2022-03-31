@@ -2717,7 +2717,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
                The receive window size for this session
            :param max_pktsize: (optional)
                The maximum packet size for this session
-           :type encoding: `str`
+           :type encoding: `str` or `None`
            :type errors: `str`
            :type window: `int`
            :type max_pktsize: `int`
@@ -2752,7 +2752,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
                The receive window size for this session
            :param max_pktsize: (optional)
                The maximum packet size for this session
-           :type encoding: `str`
+           :type encoding: `str` or `None`
            :type errors: `str`
            :type window: `int`
            :type max_pktsize: `int`
@@ -3764,7 +3764,7 @@ class SSHClientConnection(SSHConnection):
            :type x11_display: `str`
            :type x11_auth_path: `str`
            :type x11_single_connection: `bool`
-           :type encoding: `str`
+           :type encoding: `str` or `None`
            :type errors: `str`
            :type window: `int`
            :type max_pktsize: `int`
@@ -4135,7 +4135,7 @@ class SSHClientConnection(SSHConnection):
            :type remote_port: `int`
            :type orig_host: `str`
            :type orig_port: `int`
-           :type encoding: `str`
+           :type encoding: `str` or `None`
            :type errors: `str`
            :type window: `int`
            :type max_pktsize: `int`
@@ -4223,7 +4223,7 @@ class SSHClientConnection(SSHConnection):
            :type session_factory: `callable`
            :type listen_host: `str`
            :type listen_port: `int`
-           :type encoding: `str`
+           :type encoding: `str` or `None`
            :type errors: `str`
            :type window: `int`
            :type max_pktsize: `int`
@@ -4357,7 +4357,7 @@ class SSHClientConnection(SSHConnection):
                The maximum packet size for this session
            :type session_factory: `callable`
            :type remote_path: `str`
-           :type encoding: `str`
+           :type encoding: `str` or `None`
            :type errors: `str`
            :type window: `int`
            :type max_pktsize: `int`
@@ -4439,7 +4439,7 @@ class SSHClientConnection(SSHConnection):
                The maximum packet size for this session
            :type session_factory: `callable`
            :type listen_path: `str`
-           :type encoding: `str`
+           :type encoding: `str` or `None`
            :type errors: `str`
            :type window: `int`
            :type max_pktsize: `int`
@@ -4778,7 +4778,7 @@ class SSHClientConnection(SSHConnection):
                either 3 or 4, defaulting to 3.
            :type env: `dict` with `str` keys and values
            :type send_env: `list` of `str`
-           :type path_encoding: `str`
+           :type path_encoding: `str` or `None`
            :type path_errors: `str`
            :type sftp_version: `int`
 
@@ -5874,11 +5874,9 @@ class SSHServerConnection(SSHConnection):
         else:
             return True
 
-    def create_server_channel(self, encoding: Optional[str] = 'utf-8',
-                              errors: str = 'strict',
-                              window: int = _DEFAULT_WINDOW,
-                              max_pktsize: int = _DEFAULT_MAX_PKTSIZE) -> \
-            SSHServerChannel:
+    def create_server_channel(self, encoding: Optional[str] = '',
+                              errors: str = '', window: int = 0,
+                              max_pktsize: int = 0) -> SSHServerChannel:
         """Create an SSH server channel for a new SSH session
 
            This method can be called by :meth:`session_requested()
@@ -5898,7 +5896,7 @@ class SSHServerConnection(SSHConnection):
                The receive window size for this session
            :param max_pktsize: (optional)
                The maximum packet size for this session
-           :type encoding: `str`
+           :type encoding: `str` or `None`
            :type errors: `str`
            :type window: `int`
            :type max_pktsize: `int`
@@ -5910,7 +5908,10 @@ class SSHServerConnection(SSHConnection):
         return SSHServerChannel(self, self._loop, self._allow_pty,
                                 self._line_editor, self._line_echo,
                                 self._line_history, self._max_line_length,
-                                encoding, errors, window, max_pktsize)
+                                self._encoding if encoding == '' else encoding,
+                                self._errors if errors == '' else errors,
+                                window or self._window,
+                                max_pktsize or self._max_pktsize)
 
     async def create_connection(
             self, session_factory: SSHTCPSessionFactory[AnyStr],
@@ -5964,7 +5965,7 @@ class SSHServerConnection(SSHConnection):
            :type remote_port: `int`
            :type orig_host: `str`
            :type orig_port: `int`
-           :type encoding: `str`
+           :type encoding: `str` or `None`
            :type errors: `str`
            :type window: `int`
            :type max_pktsize: `int`
@@ -6050,7 +6051,7 @@ class SSHServerConnection(SSHConnection):
                The maximum packet size for this session
            :type session_factory: `callable`
            :type remote_path: `str`
-           :type encoding: `str`
+           :type encoding: `str` or `None`
            :type errors: `str`
            :type window: `int`
            :type max_pktsize: `int`
@@ -6750,7 +6751,7 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
        :type x11_display: `str`
        :type x11_auth_path: `str`
        :type x11_single_connection: `bool`
-       :type encoding: `str`
+       :type encoding: `str` or `None`
        :type errors: `str`
        :type window: `int`
        :type max_pktsize: `int`
@@ -7365,7 +7366,7 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
        :type agent_forwarding: `bool`
        :type process_factory: `callable`
        :type session_factory: `callable`
-       :type encoding: `str`
+       :type encoding: `str` or `None`
        :type errors: `str`
        :type sftp_factory: `callable`
        :type sftp_version: `int`
