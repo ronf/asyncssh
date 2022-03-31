@@ -63,6 +63,11 @@ class _ClientChannel(asyncssh.SSHClientChannel):
 
         super()._send_request(request, *args, want_reply=want_reply)
 
+    def get_send_pktsize(self):
+        """Return the sender's max packet size """
+
+        return self._send_pktsize
+
     def send_request(self, request, *args):
         """Send a custom request (for unit testing)"""
 
@@ -151,6 +156,11 @@ class _ServerChannel(asyncssh.SSHServerChannel):
 
         asyncio.get_event_loop().call_later(0.1, self._report_response, True)
 
+    def get_send_pktsize(self):
+        """Return the sender's max packet size """
+
+        return self._send_pktsize
+
     async def open_session(self):
         """Attempt to open a session on the client"""
 
@@ -158,7 +168,7 @@ class _ServerChannel(asyncssh.SSHServerChannel):
 
 
 class _EchoServerSession(asyncssh.SSHServerSession):
-    """A shell session which echos data from stdin to stdout/stderr"""
+    """A shell session which echoes data from stdin to stdout/stderr"""
 
     def __init__(self):
         self._chan = None
@@ -427,6 +437,9 @@ class _ChannelServer(Server):
                                    String('ssh-connection'), String('none'))
         elif action == 'invalid_response':
             stdin.channel.send_packet(MSG_CHANNEL_SUCCESS)
+        elif action == 'send_pktsize':
+            stdout.write(str(stdout.channel.get_send_pktsize()))
+            stdout.close()
         else:
             stdin.channel.exit(255)
 
@@ -1634,3 +1647,53 @@ class _TestChannelNoAgentForwarding(ServerTestCase):
             result = await conn.run('agent')
 
         self.assertEqual(result.exit_status, 1)
+
+
+class _TestConnectionDropbearClient(ServerTestCase):
+    """Unit tests for testing Dropbear client compatibility fix"""
+
+    @classmethod
+    async def start_server(cls):
+        """Start an SSH server to connect to"""
+
+        return await cls.create_server(_ChannelServer)
+
+    @asynctest
+    async def test_dropbear_client(self):
+        """Test reduced dropbear send packet size"""
+
+        with patch('asyncssh.connection.SSHServerChannel', _ServerChannel):
+            async with self.connect(client_version='dropbear',
+                                    max_pktsize=32759) as conn:
+                _, stdout, _ = await conn.open_session('send_pktsize')
+                self.assertEqual((await stdout.read()), '32758')
+
+            async with self.connect(client_version='dropbear',
+                                    max_pktsize=32759,
+                                    compression_algs=None) as conn:
+                _, stdout, _ = await conn.open_session('send_pktsize')
+                self.assertEqual((await stdout.read()), '32759')
+
+
+class _TestConnectionDropbearServer(ServerTestCase):
+    """Unit tests for testing Dropbear server compatibility fix"""
+
+    @classmethod
+    async def start_server(cls):
+        """Start an SSH server to connect to"""
+
+        return await cls.create_server(
+            _ChannelServer, server_version='dropbear', max_pktsize=32759)
+
+    @asynctest
+    async def test_dropbear_server(self):
+        """Test reduced dropbear send packet size"""
+
+        with patch('asyncssh.connection.SSHClientChannel', _ClientChannel):
+            async with self.connect() as conn:
+                stdin, _, _ = await conn.open_session()
+                self.assertEqual(stdin.channel.get_send_pktsize(), 32758)
+
+            async with self.connect(compression_algs=None) as conn:
+                stdin, _, _ = await conn.open_session()
+                self.assertEqual(stdin.channel.get_send_pktsize(), 32759)

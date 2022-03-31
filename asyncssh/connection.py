@@ -2411,6 +2411,11 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         send_window = packet.get_uint32()
         send_pktsize = packet.get_uint32()
 
+        # Work around an off-by-one error in dropbear introduced in
+        # https://github.com/mkj/dropbear/commit/49263b5
+        if b'dropbear' in self._client_version and self._compressor:
+            send_pktsize -= 1
+
         try:
             chantype = chantype_bytes.decode('ascii')
         except UnicodeDecodeError:
@@ -2442,6 +2447,11 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         send_chan = packet.get_uint32()
         send_window = packet.get_uint32()
         send_pktsize = packet.get_uint32()
+
+        # Work around an off-by-one error in dropbear introduced in
+        # https://github.com/mkj/dropbear/commit/49263b5
+        if b'dropbear' in self._server_version and self._compressor:
+            send_pktsize -= 1
 
         chan = self._channels.get(recv_chan)
         if chan:
