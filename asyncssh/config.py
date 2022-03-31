@@ -57,6 +57,7 @@ class SSHConfig:
         else:
             self._last_options = {}
 
+        self._default_path = Path('~', '.ssh').expanduser()
         self._path = Path()
         self._line_no = 0
         self._matching = True
@@ -126,12 +127,12 @@ class SSHConfig:
                 pattern = str(Path(*path.parts[1:]))
                 path = Path(path.anchor)
             else:
-                path = Path(self._path).parent
+                path = self._default_path
 
             paths = list(path.glob(pattern))
 
             if not paths:
-                self._error('No match to pattern "%s"', pattern)
+                logger.debug1('Config pattern "%s" matched no files', pattern)
 
             for path in paths:
                 self.parse(path)

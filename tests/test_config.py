@@ -37,6 +37,16 @@ from .util import TempDirTestCase
 class _TestConfig(TempDirTestCase):
     """Unit tests for config module"""
 
+    @classmethod
+    def setUpClass(cls):
+        """Set up $HOME and .ssh directory"""
+
+        super().setUpClass()
+
+        os.mkdir('.ssh', 0o700)
+        os.environ['HOME'] = '.'
+        os.environ['USERPROFILE'] = '.'
+
     def _load_config(self, config, last_config=None, reload=False):
         """Abstract method to load a config object"""
 
@@ -130,36 +140,36 @@ class _TestConfig(TempDirTestCase):
     def test_include(self):
         """Test include config option"""
 
-        with open('include', 'w') as f:
+        with open('.ssh/include', 'w') as f:
             f.write('Port 2222')
 
-        for path in ('include', Path('include').absolute().as_posix()):
+        for path in ('include', Path('.ssh/include').absolute().as_posix()):
             config = self._parse_config('Include %s' % path)
             self.assertEqual(config.get('Port'), 2222)
 
     def test_missing_include(self):
         """Test missing include target"""
 
-        with self.assertRaises(asyncssh.ConfigParseError):
-            self._parse_config('Include xxx')
+        # Missing include files should be ignored
+        self._parse_config('Include xxx')
 
     def test_multiple_include(self):
         """Test multiple levels of include"""
 
-        os.mkdir('dir1')
-        os.mkdir('dir2')
+        os.mkdir('.ssh/dir1')
+        os.mkdir('.ssh/dir2')
 
-        with open('include', 'w') as f:
+        with open('.ssh/include', 'w') as f:
             f.write('Include dir1/include2\n'
                     'Include dir2/include4\n')
 
-        with open('dir1/include2', 'w') as f:
-            f.write('Include include3\n')
+        with open('.ssh/dir1/include2', 'w') as f:
+            f.write('Include dir1/include3\n')
 
-        with open('dir1/include3', 'w') as f:
+        with open('.ssh/dir1/include3', 'w') as f:
             f.write('AddressFamily inet\n')
 
-        with open('dir2/include4', 'w') as f:
+        with open('.ssh/dir2/include4', 'w') as f:
             f.write('Port 2222\n')
 
         config = self._parse_config('Include include')
