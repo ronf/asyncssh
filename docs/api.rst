@@ -1737,12 +1737,14 @@ For the "Match" conditional, the following criteria are currently supported:
   | OriginalHost
   | User
 
-  .. warning:: To maintain backward compatibility with prior AsyncSSH
-               releases, config file parsing remains a synchronous
-               operation. This can be a problem when using "Match Exec"
-               if the command provided doesn't return an immediate result,
-               as the entire asyncio event loop will remain blocked until
-               config parsing completes. Proceed with caution!
+  .. warning:: When instantiating :class:`SSHClientConnectionOptions`
+               objects manually within an asyncio task, you may block
+               the event loop if the options refer to a config file with
+               "Match Exec" directives which don't return immediate
+               results. In such cases, the asyncio `run_in_executor()`
+               function should be used. This is taken care of automatically
+               when options objects are created by AsyncSSH APIs such as
+               :func:`connect` and :func:`listen`.
 
 The following client config token expansions are currently supported:
 
@@ -1818,12 +1820,14 @@ For the "Match" conditional, the following criteria are currently supported:
   | LocalPort
   | User
 
-  .. warning:: To maintain backward compatibility with prior AsyncSSH
-               releases, config file parsing remains a synchronous
-               operation. This can be a problem when using "Match Exec"
-               if the command provided doesn't return an immediate result,
-               as the entire asyncio event loop will remain blocked until
-               config parsing completes. Proceed with caution!
+  .. warning:: When instantiating :class:`SSHServerConnectionOptions`
+               objects manually within an asyncio task, you may block
+               the event loop if the options refer to a config file with
+               "Match Exec" directives which don't return immediate
+               results. In such cases, the asyncio `run_in_executor()`
+               function should be used. This is taken care of automatically
+               when options objects are created by AsyncSSH APIs such as
+               :func:`connect` and :func:`listen`.
 
 The following server config token expansions are currently supported:
 
