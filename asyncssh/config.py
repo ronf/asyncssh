@@ -24,9 +24,11 @@ import os
 import re
 import shlex
 import socket
+import subprocess
 
 from hashlib import sha1
 from pathlib import Path, PurePath
+from subprocess import DEVNULL
 from typing import Callable, Dict, List, NoReturn, Optional, Sequence
 from typing import Set, Tuple, Union, cast
 
@@ -37,6 +39,13 @@ from .pattern import HostPatternList, WildcardPatternList
 
 
 ConfigPaths = Union[None, FilePath, Sequence[FilePath]]
+
+
+def _exec(cmd: str) -> bool:
+    """Execute a command and return if exit status is 0"""
+
+    return subprocess.run(cmd, check=False, shell=True, stdin=DEVNULL,
+                          stdout=DEVNULL, stderr=DEVNULL).returncode == 0
 
 
 class ConfigParseError(ValueError):
@@ -154,11 +163,13 @@ class SSHConfig:
 
             match_val = self._match_val(match)
 
-            if match_val is None:
+            if match != 'exec' and match_val is None:
                 self._error('Invalid match condition')
 
             try:
-                if match in ('address', 'localaddress'):
+                if match == 'exec':
+                    self._matching = _exec(args.pop(0))
+                elif match in ('address', 'localaddress'):
                     host_pat = HostPatternList(args.pop(0))
                     ip = ip_address(cast(str, match_val)) \
                         if match_val else None

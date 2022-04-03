@@ -182,6 +182,16 @@ class _TestConfig(TempDirTestCase):
         config = self._parse_config('Match user xxx\nMatch all\nPort 2222')
         self.assertEqual(config.get('Port'), 2222)
 
+    def test_match_exec(self):
+        """Test a match block which runs a subprocess"""
+
+        config = self._parse_config('Match exec "exit 0"\nPort 2222')
+        self.assertEqual(config.get('Port'), 2222)
+
+
+        config = self._parse_config('Match exec "exit 1"\nPort 2222')
+        self.assertEqual(config.get('Port'), None)
+
     def test_config_disabled(self):
         """Test config loading being disabled"""
 

@@ -1731,10 +1731,18 @@ The following OpenSSH client config options are currently supported:
 For the "Match" conditional, the following criteria are currently supported:
 
   | All
+  | Exec
   | Host
   | LocalUser
   | OriginalHost
   | User
+
+  .. warning:: To maintain backward compatibility with prior AsyncSSH
+               releases, config file parsing remains a synchronous
+               operation. This can be a problem when using "Match Exec"
+               if the command provided doesn't return an immediate result,
+               as the entire asyncio event loop will remain blocked until
+               config parsing completes. Proceed with caution!
 
 The following client config token expansions are currently supported:
 
@@ -1803,11 +1811,19 @@ The following OpenSSH server config options are currently supported:
 For the "Match" conditional, the following criteria are currently supported:
 
   | All
+  | Exec
   | Address
   | Host
   | LocalAddress
   | LocalPort
   | User
+
+  .. warning:: To maintain backward compatibility with prior AsyncSSH
+               releases, config file parsing remains a synchronous
+               operation. This can be a problem when using "Match Exec"
+               if the command provided doesn't return an immediate result,
+               as the entire asyncio event loop will remain blocked until
+               config parsing completes. Proceed with caution!
 
 The following server config token expansions are currently supported:
 
