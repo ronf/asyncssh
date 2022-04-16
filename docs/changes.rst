@@ -3,6 +3,28 @@
 Change Log
 ==========
 
+Release 2.10.1 (16 Apr 2022)
+----------------------------
+
+* Added support for "Match Exec" in config files and updated AsyncSSH
+  API calls to do config parsing in an executor to avoid blocking the
+  event loop if a "Match Exec" command doesn't return immediately.
+
+* Fixed an issue where settings associated with server channels set
+  when creating a listener rather than at the time a new channel is
+  opened were not always being applied correctly.
+
+* Fixed config file handling to be more consistent with OpenSSH, making
+  all relative paths be evaluated relative to ~/.ssh and allowing
+  references to config file patterns which don't match anything to only
+  trigger a debug message rather than an error. Thanks go to Caleb Ho
+  for reporting this issue!
+
+* Update minimum required version of cryprography package to 3.1, to
+  allow calls to it to be made without passing in a "backend" argument.
+  This was missed back in the 2.9 release. Thanks go to Github users
+  sebby97 and JavaScriptDude for reporting this issue!
+
 Release 2.10.0 (26 Mar 2022)
 ----------------------------
 
