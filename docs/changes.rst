@@ -6,6 +6,10 @@ Change Log
 Release 2.10.1 (16 Apr 2022)
 ----------------------------
 
+* Added a workaround for a bug in dropbear which can improperly reject
+  full-sized data packets when compression is enabled. Thanks go to
+  Matti Niemenmaa for reporting this issue and helping to reproduce it.
+
 * Added support for "Match Exec" in config files and updated AsyncSSH
   API calls to do config parsing in an executor to avoid blocking the
   event loop if a "Match Exec" command doesn't return immediately.
