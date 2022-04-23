@@ -331,7 +331,7 @@ class _TestKex(AsyncTestCase):
         with self.subTest('Invalid signature'):
             with self.assertRaises(asyncssh.KeyExchangeFailed):
                 client_conn.start()
-                client_conn.simulate_dh_reply(host_key.public_data, 1, b'')
+                client_conn.simulate_dh_reply(host_key.public_data, 2, b'')
 
         client_conn.close()
         server_conn.close()

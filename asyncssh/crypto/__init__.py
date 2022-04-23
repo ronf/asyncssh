@@ -24,6 +24,8 @@ from .cipher import BasicCipher, GCMCipher, register_cipher, get_cipher_params
 
 from .dsa import DSAPrivateKey, DSAPublicKey
 
+from .dh import DH
+
 from .ec import ECDSAPrivateKey, ECDSAPublicKey, ECDH
 
 from .ed import ed25519_available, ed448_available

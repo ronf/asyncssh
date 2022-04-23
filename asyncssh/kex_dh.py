@@ -26,11 +26,11 @@ from typing_extensions import Protocol
 
 from .constants import DEFAULT_LANG
 from .crypto import curve25519_available, curve448_available
-from .crypto import Curve25519DH, Curve448DH, ECDH
+from .crypto import Curve25519DH, Curve448DH, DH, ECDH
 from .gss import GSSError
 from .kex import Kex, register_kex_alg, register_gss_kex_alg
 from .misc import HashType, KeyExchangeFailed, ProtocolError
-from .misc import get_symbol_names, randrange
+from .misc import get_symbol_names
 from .packet import Boolean, MPInt, String, UInt32, SSHPacket
 from .public_key import SigningKey, VerifyingKey
 
@@ -128,10 +128,9 @@ class _KexDHBase(Kex):
     def __init__(self, alg: bytes, conn: 'SSHConnection', hash_alg: HashType):
         super().__init__(alg, conn, hash_alg)
 
+        self._dh: Optional[DH] = None
         self._g = 0
         self._p = 0
-        self._q = 0
-        self._x = 0
         self._e = 0
         self._f = 0
         self._gex_data = b''
@@ -141,7 +140,6 @@ class _KexDHBase(Kex):
 
         self._g = g
         self._p = p
-        self._q = (p - 1) // 2
 
     def _compute_hash(self, host_key_data: bytes, k: int) -> bytes:
         """Compute a hash of key information associated with the connection"""
@@ -195,8 +193,8 @@ class _KexDHBase(Kex):
     def _perform_init(self) -> None:
         """Compute e and send init message"""
 
-        self._x = randrange(2, self._q)
-        self._e = pow(self._g, self._x, self._p)
+        self._dh = DH(self._g, self._p)
+        self._e = self._dh.get_public()
 
         self._send_init()
 
@@ -206,12 +204,8 @@ class _KexDHBase(Kex):
         if not 1 <= self._f < self._p:
             raise ProtocolError('Kex DH f out of range')
 
-        k = pow(self._f, self._x, self._p)
-
-        if k < 1: # pragma: no cover, shouldn't be possible with valid p
-            raise ProtocolError('Kex DH k out of range')
-
-        return k
+        assert self._dh is not None
+        return self._dh.get_shared(self._f)
 
     def _compute_server_shared(self) -> int:
         """Compute server shared key"""
@@ -219,18 +213,13 @@ class _KexDHBase(Kex):
         if not 1 <= self._e < self._p:
             raise ProtocolError('Kex DH e out of range')
 
-        y = randrange(2, self._q)
-        self._f = pow(self._g, y, self._p)
+        self._dh = DH(self._g, self._p)
+        self._f = self._dh.get_public()
 
-        k = pow(self._e, y, self._p)
-
-        if k < 1: # pragma: no cover, shouldn't be possible with valid p
-            raise ProtocolError('Kex DH k out of range')
-
-        return k
+        return self._dh.get_shared(self._e)
 
     def _perform_reply(self, key: SigningKey, key_data: bytes) -> None:
-        """Compute f and send reply message"""
+        """Compute server shared key and send reply message"""
 
         k = self._compute_server_shared()
         h = self._compute_hash(key_data, k)
