@@ -487,6 +487,22 @@ class _TestGSSAuth(ServerTestCase):
             pass
 
     @asynctest
+    async def test_gss_mic_auth_sign_error(self):
+        """Test GSS MIC authentication signing failure"""
+
+        with self.assertRaises(asyncssh.PermissionDenied):
+            await self.connect(kex_algs=['ecdh-sha2-nistp256'],
+                               username='user', gss_host='1,sign_error')
+
+    @asynctest
+    async def test_gss_mic_auth_verify_error(self):
+        """Test GSS MIC authentication signature verification failure"""
+
+        with self.assertRaises(asyncssh.PermissionDenied):
+            await self.connect(kex_algs=['ecdh-sha2-nistp256'],
+                               username='user', gss_host='1,verify_error')
+
+    @asynctest
     async def test_gss_delegate(self):
         """Test GSS credential delegation"""
 

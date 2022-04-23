@@ -126,7 +126,10 @@ class SSPIAuth:
 
         # pylint: disable=no-self-use,unused-argument
 
-        return b'fail' if 'fail' in self._host else 'succeed'
+        if 'sign_error' in self._host:
+            raise SSPIError('Signing error')
+
+        return b'fail' if 'verify_error' in self._host else b''
 
     def verify(self, data, sig):
         """Verify a signature for a block of data"""

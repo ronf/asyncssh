@@ -399,7 +399,8 @@ class _TestKex(AsyncTestCase):
 
         with self.subTest('Signature verification failure'):
             with self.assertRaises(asyncssh.KeyExchangeFailed):
-                await self._check_kex(b'gss-group1-sha1-mech', '0,fail')
+                await self._check_kex(b'gss-group1-sha1-mech',
+                                      '0,verify_error')
 
         with self.subTest('Empty token in init'):
             with self.assertRaises(asyncssh.ProtocolError):

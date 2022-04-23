@@ -121,7 +121,10 @@ class SecurityContext:
     def get_signature(self, _data):
         """Sign a block of data"""
 
-        return b'fail' if 'fail' in self._host else 'succeed'
+        if 'sign_error' in self._host:
+            raise GSSError(99, 99)
+
+        return b'fail' if 'verify_error' in self._host else b''
 
     def verify_signature(self, _data, sig):
         """Verify a signature for a block of data"""
