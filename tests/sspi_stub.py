@@ -21,13 +21,10 @@
 
 """Stub SSPI module for unit tests"""
 
-import sys
+from asyncssh.gss_win32 import ASC_RET_INTEGRITY, ISC_RET_INTEGRITY
+from asyncssh.gss_win32 import SECPKG_ATTR_NATIVE_NAMES, SSPIError
 
 from .gss_stub import step
-
-if sys.platform == 'win32':
-    from asyncssh.gss_win32 import ASC_RET_INTEGRITY, ISC_RET_INTEGRITY
-    from asyncssh.gss_win32 import SECPKG_ATTR_NATIVE_NAMES, SSPIError
 
 
 class SSPIBuffer:
@@ -53,7 +50,7 @@ class SSPIContext:
 
         if attr == SECPKG_ATTR_NATIVE_NAMES:
             return ['user@TEST', 'host@TEST']
-        else:
+        else: # pragma: no cover
             return None
 
 
