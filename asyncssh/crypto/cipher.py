@@ -21,15 +21,21 @@
 """A shim around PyCA for accessing symmetric ciphers needed by AsyncSSH"""
 
 from typing import Any, MutableMapping, Optional, Tuple
+import warnings
 
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers import Cipher, CipherContext
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.ciphers.algorithms import AES, ARC4
-from cryptography.hazmat.primitives.ciphers.algorithms import Blowfish, CAST5
-from cryptography.hazmat.primitives.ciphers.algorithms import SEED, TripleDES
-
+from cryptography.hazmat.primitives.ciphers.algorithms import TripleDES
 from cryptography.hazmat.primitives.ciphers.modes import CBC, CTR
+
+with warnings.catch_warnings():
+    warnings.simplefilter('ignore')
+
+    from cryptography.hazmat.primitives.ciphers.algorithms import Blowfish
+    from cryptography.hazmat.primitives.ciphers.algorithms import CAST5
+    from cryptography.hazmat.primitives.ciphers.algorithms import SEED
 
 
 _CipherAlgs = Tuple[Any, Any, int]
