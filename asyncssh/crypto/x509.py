@@ -169,7 +169,7 @@ class X509Name(x509.Name):
         """Format an X.509 NameAttribute as a string"""
 
         attr = self._from_oid.get(nameattr.oid) or nameattr.oid.dotted_string
-        return attr + '=' + self._escape.sub(r'\\\1', nameattr.value)
+        return attr + '=' + self._escape.sub(r'\\\1', cast(str, nameattr.value))
 
     def _parse_name(self, name: str) -> \
             Iterable[x509.RelativeDistinguishedName]:
@@ -261,7 +261,7 @@ class X509Certificate:
                 [str(ip) for ip in sans.get_values_for_type(x509.IPAddress)]
         except x509.ExtensionNotFound:
             cn = cert.subject.get_attributes_for_oid(x509.NameOID.COMMON_NAME)
-            principals = [attr.value for attr in cn]
+            principals = [cast(str, attr.value) for attr in cn]
 
             self.user_principals = principals
             self.host_principals = principals
