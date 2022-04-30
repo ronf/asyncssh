@@ -114,7 +114,7 @@ Prerequisites
 To use AsyncSSH 2.0 or later, you need the following:
 
 * Python 3.6 or later
-* cryptography (PyCA) 2.8 or later
+* cryptography (PyCA) 3.1 or later
 
 Installation
 ------------
