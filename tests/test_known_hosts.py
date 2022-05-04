@@ -27,7 +27,7 @@ import os
 
 import asyncssh
 
-from .util import TempDirTestCase, x509_available
+from .util import TempDirTestCase, get_test_key, x509_available
 
 if x509_available: # pragma: no branch
     from asyncssh.crypto import X509NamePattern
@@ -58,16 +58,16 @@ class _TestKnownHosts(TempDirTestCase):
 
         for keylist, imported_keylist in zip(cls.keylists[:3],
                                              cls.imported_keylists[:3]):
-            for _ in range(3):
-                key = asyncssh.generate_private_key('ssh-rsa')
+            for i in range(3):
+                key = get_test_key('ssh-rsa', i)
                 keylist.append(key.export_public_key().decode('ascii'))
                 imported_keylist.append(key.convert_to_public())
 
         if x509_available: # pragma: no branch
             for keylist, imported_keylist in zip(cls.keylists[3:5],
                                                  cls.imported_keylists[3:5]):
-                for _ in range(2):
-                    key = asyncssh.generate_private_key('ssh-rsa')
+                for i in range(3, 5):
+                    key = get_test_key('ssh-rsa', i)
                     cert = key.generate_x509_user_certificate(key, 'OU=user',
                                                               'OU=user')
                     keylist.append(

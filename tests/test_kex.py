@@ -42,7 +42,7 @@ from asyncssh.kex import register_kex_alg, get_kex_algs, get_kex
 from asyncssh.packet import SSHPacket, Boolean, Byte, MPInt, String
 from asyncssh.public_key import decode_ssh_public_key
 
-from .util import asynctest, gss_available, patch_gss
+from .util import asynctest, get_test_key, gss_available, patch_gss
 from .util import AsyncTestCase, ConnectionStub
 
 
@@ -209,7 +209,7 @@ class _KexServerStub(_KexConnectionStub):
         if gss_host and 'no_host_key' in gss_host:
             self._server_host_key = None
         else:
-            priv_key = asyncssh.generate_private_key('ssh-rsa')
+            priv_key = get_test_key('ssh-rsa')
             self._server_host_key = asyncssh.load_keypairs(priv_key)[0]
 
     def connection_lost(self, exc):
@@ -573,7 +573,7 @@ class _TestKex(AsyncTestCase):
         with self.subTest('Invalid signature'):
             with self.assertRaises(asyncssh.KeyExchangeFailed):
                 host_key = server_conn.get_server_host_key()
-                trans_key = asyncssh.generate_private_key('ssh-rsa', 2048)
+                trans_key = get_test_key('ssh-rsa', 2048)
                 client_conn.simulate_rsa_pubkey(host_key.public_data,
                                                 trans_key.public_data)
                 client_conn.simulate_rsa_done(b'')

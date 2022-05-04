@@ -26,7 +26,7 @@ import asyncssh
 
 from .server import ServerTestCase
 from .sk_stub import sk_available, stub_sk, unstub_sk, patch_sk, sk_error
-from .util import asynctest
+from .util import asynctest, get_test_key
 
 
 class _CheckSKAuth(ServerTestCase):
@@ -46,7 +46,7 @@ class _CheckSKAuth(ServerTestCase):
 
         cls.addClassCleanup(unstub_sk, *stub_sk(cls._sk_devs))
 
-        cls._privkey = asyncssh.generate_private_key(
+        cls._privkey = get_test_key(
             cls._sk_alg, resident=cls._sk_resident,
             touch_required=cls._sk_touch_required)
 
@@ -144,7 +144,7 @@ class _TestSKAuthCTAP2(_CheckSKAuth):
     async def test_enroll_without_pin(self):
         """Test generating key without a PIN"""
 
-        key = asyncssh.generate_private_key('sk-ssh-ed25519@openssh.com')
+        key = get_test_key('sk-ssh-ed25519@openssh.com')
 
         self.assertIsNotNone(key)
 
@@ -152,8 +152,7 @@ class _TestSKAuthCTAP2(_CheckSKAuth):
     async def test_enroll_with_pin(self):
         """Test generating key with a PIN"""
 
-        key = asyncssh.generate_private_key('sk-ssh-ed25519@openssh.com',
-                                            pin=b'123456')
+        key = get_test_key('sk-ssh-ed25519@openssh.com', pin=b'123456')
 
         self.assertIsNotNone(key)
 

@@ -34,7 +34,7 @@ from asyncssh.gss import GSSClient, GSSServer
 from asyncssh.packet import SSHPacket, Boolean, Byte, NameList, String
 
 from .util import asynctest, gss_available, patch_gss
-from .util import AsyncTestCase, ConnectionStub
+from .util import AsyncTestCase, ConnectionStub, get_test_key
 
 
 class _AuthConnectionStub(ConnectionStub):
@@ -517,7 +517,7 @@ class _TestAuth(AsyncTestCase):
     async def test_hostbased_auth(self):
         """Unit test host-based authentication"""
 
-        hkey = asyncssh.generate_private_key('ssh-rsa')
+        hkey = get_test_key('ssh-rsa')
         cert = hkey.generate_host_certificate(hkey, 'host')
 
         with self.subTest('Host-based auth not available'):
@@ -541,7 +541,7 @@ class _TestAuth(AsyncTestCase):
     async def test_publickey_auth(self):
         """Unit test public key authentication"""
 
-        ckey = asyncssh.generate_private_key('ssh-rsa')
+        ckey = get_test_key('ssh-rsa')
         cert = ckey.generate_user_certificate(ckey, 'name')
 
         with self.subTest('Public key auth not available'):

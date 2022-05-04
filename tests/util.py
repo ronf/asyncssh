@@ -57,6 +57,7 @@ from asyncssh.gss import gss_available
 from asyncssh.logging import logger
 from asyncssh.misc import ConnectionLost, SignalReceived
 from asyncssh.packet import Byte, String, UInt32, UInt64
+from asyncssh.public_key import generate_private_key
 
 
 # pylint: disable=no-member
@@ -69,6 +70,9 @@ else:
     current_task = asyncio.Task.current_task
 
 # pylint: enable=no-member
+
+
+_test_keys = {}
 
 
 def asynctest(coro):
@@ -155,6 +159,20 @@ def _encode_options(options):
     """Encode SSH certificate critical options and extensions"""
 
     return b''.join((String(k) + String(v) for k, v in options.items()))
+
+
+def get_test_key(alg_name, key_id=0, **kwargs):
+    """Generate or return a key with the requested parameters"""
+
+    params = tuple((alg_name, key_id)) + tuple(kwargs.items())
+
+    try:
+        key = _test_keys[params]
+    except KeyError:
+        key = generate_private_key(alg_name, **kwargs)
+        _test_keys[params] = key
+
+    return key
 
 
 def make_certificate(cert_version, cert_type, key, signing_key, principals,

@@ -53,7 +53,7 @@ from asyncssh.public_key import import_certificate_subject
 from asyncssh.public_key import load_identities
 
 from .sk_stub import sk_available, stub_sk, unstub_sk
-from .util import bcrypt_available, x509_available
+from .util import bcrypt_available, get_test_key, x509_available
 from .util import make_certificate, run, TempDirTestCase
 
 
@@ -193,6 +193,7 @@ class _TestPublicKey(TempDirTestCase):
     default_cert_version = ''
     x509_supported = False
     generate_args = ()
+    single_cipher = True
     use_openssh = _openssh_available
     use_openssl = _openssl_available
 
@@ -1320,7 +1321,7 @@ class _TestPublicKey(TempDirTestCase):
         keypair = asyncssh.load_keypairs((keypair, self.usercert))[0]
         self.assertEqual(keypair.public_data, self.usercert.public_data)
 
-        key2 = asyncssh.generate_private_key('ssh-rsa')
+        key2 = get_test_key('ssh-rsa', 1)
 
         with self.assertRaises(ValueError):
             asyncssh.load_keypairs((key2, self.usercert))
@@ -1534,7 +1535,7 @@ class _TestPublicKey(TempDirTestCase):
             keypair = asyncssh.load_keypairs(('key', None))[0]
             self.assertEqual(keypair.get_comment(), 'pub_comment')
 
-            key2 = asyncssh.generate_private_key('ssh-rsa')
+            key2 = get_test_key('ssh-rsa', 1)
 
             with self.assertRaises(ValueError):
                 asyncssh.load_keypairs((key2, 'pub'))
@@ -1622,6 +1623,9 @@ class _TestPublicKey(TempDirTestCase):
                 self.export_pkcs8_private('der', openssl_ok, cipher,
                                           hash_alg, pbe_version, legacy_args)
 
+            if self.single_cipher:
+                break
+
     def check_pkcs8_public(self):
         """Check PKCS#8 public key format"""
 
@@ -1653,6 +1657,9 @@ class _TestPublicKey(TempDirTestCase):
 
                 with self.subTest('Export OpenSSH private (%s)' % cipher):
                     self.export_openssh_private(openssh_ok, cipher)
+
+                if self.single_cipher:
+                    break
 
     def check_openssh_public(self):
         """Check OpenSSH public key format"""
@@ -2002,7 +2009,7 @@ class _TestPublicKey(TempDirTestCase):
 
         for alg_name, kwargs in self.generate_args:
             with self.subTest(alg_name=alg_name, **kwargs):
-                self.privkey = asyncssh.generate_private_key(
+                self.privkey = get_test_key(
                     alg_name, comment='comment', **kwargs)
                 self.privkey.write_private_key('priv', self.base_format)
 
@@ -2012,7 +2019,7 @@ class _TestPublicKey(TempDirTestCase):
                 self.pubkey.write_public_key('pub', self.base_format)
                 self.pubkey.write_public_key('sshpub', 'openssh')
 
-                self.privca = asyncssh.generate_private_key(alg_name, **kwargs)
+                self.privca = get_test_key(alg_name, 1, **kwargs)
                 self.privca.write_private_key('privca', self.base_format)
 
                 self.pubca = self.privca.convert_to_public()
@@ -2156,6 +2163,7 @@ class TestEd25519(_TestPublicKey):
     x509_supported = x509_available
     default_cert_version = 'ssh-ed25519-cert-v01@openssh.com'
     generate_args = (('ssh-ed25519', {}),)
+    single_cipher = False
     use_openssh = False
     use_openssl = _openssl_supports_pkey
 
@@ -2236,7 +2244,7 @@ class _TestPublicKeyTopLevel(TempDirTestCase):
     def test_public_key_algorithm_mismatch(self):
         """Test algorihm mismatch in SSH public key"""
 
-        privkey = asyncssh.generate_private_key('ssh-rsa')
+        privkey = get_test_key('ssh-rsa')
         keydata = privkey.export_public_key('openssh')
         keydata = b'ssh-dss ' + keydata.split(None, 1)[1]
 
@@ -2290,9 +2298,9 @@ class _TestPublicKeyTopLevel(TempDirTestCase):
                 with self.assertRaises(asyncssh.KeyGenerationError):
                     asyncssh.generate_private_key(alg_name, **kwargs)
 
-        privkey = asyncssh.generate_private_key('ssh-rsa')
+        privkey = get_test_key('ssh-rsa')
         pubkey = privkey.convert_to_public()
-        privca = asyncssh.generate_private_key('ssh-rsa')
+        privca = get_test_key('ssh-rsa', 1)
 
         with self.assertRaises(asyncssh.KeyGenerationError):
             privca.generate_user_certificate(pubkey, 'name', version=0)
@@ -2328,7 +2336,7 @@ class _TestPublicKeyTopLevel(TempDirTestCase):
     def test_rsa_encrypt_error(self):
         """Test RSA encryption error"""
 
-        privkey = asyncssh.generate_private_key('ssh-rsa', 2048)
+        privkey = get_test_key('ssh-rsa', 2048)
         pubkey = privkey.convert_to_public()
 
         self.assertIsNone(pubkey.encrypt(os.urandom(256), pubkey.algorithm))
@@ -2336,7 +2344,7 @@ class _TestPublicKeyTopLevel(TempDirTestCase):
     def test_rsa_decrypt_error(self):
         """Test RSA decryption error"""
 
-        privkey = asyncssh.generate_private_key('ssh-rsa', 2048)
+        privkey = get_test_key('ssh-rsa', 2048)
 
         self.assertIsNone(privkey.decrypt(b'', privkey.algorithm))
 
@@ -2344,7 +2352,7 @@ class _TestPublicKeyTopLevel(TempDirTestCase):
     def test_x509_certificate_hashes(self):
         """Test X.509 certificate hash algorithms"""
 
-        privkey = asyncssh.generate_private_key('ssh-rsa')
+        privkey = get_test_key('ssh-rsa')
         pubkey = privkey.convert_to_public()
 
         for hash_alg in ('sha1', 'sha256', 'sha512'):

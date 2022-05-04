@@ -23,7 +23,7 @@
 import asyncssh
 from asyncssh.asn1 import der_decode
 from asyncssh.pkcs11 import pkcs11_available
-from asyncssh.public_key import generate_private_key
+from .util import get_test_key
 
 if pkcs11_available: # pragma: no branch
     import pkcs11
@@ -55,8 +55,8 @@ if pkcs11_available: # pragma: no branch
 class _PKCS11Key:
     """Stub for unit testing PKCS#11 keys"""
 
-    def __init__(self, alg, key_type, key_label, key_id):
-        self._priv = generate_private_key(alg, comment=key_label)
+    def __init__(self, alg_name, key_type, key_label, key_id):
+        self._priv = get_test_key(alg_name, key_id, comment=key_label)
         self.key_type = key_type
         self.label = key_label
         self.id = key_id

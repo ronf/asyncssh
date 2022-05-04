@@ -24,7 +24,7 @@ import unittest
 
 import asyncssh
 
-from .util import TempDirTestCase, x509_available
+from .util import TempDirTestCase, get_test_key, x509_available
 
 
 class _TestAuthorizedKeys(TempDirTestCase):
@@ -43,7 +43,7 @@ class _TestAuthorizedKeys(TempDirTestCase):
         super().setUpClass()
 
         for i in range(3):
-            key = asyncssh.generate_private_key('ssh-rsa')
+            key = get_test_key('ssh-rsa', i)
             cls.keylist.append(key.export_public_key().decode('ascii'))
             cls.imported_keylist.append(key.convert_to_public())
 
@@ -197,7 +197,7 @@ class _TestAuthorizedKeys(TempDirTestCase):
     def test_non_root_ca(self):
         """Test error on non-root X.509 CA"""
 
-        key = asyncssh.generate_private_key('ssh-rsa')
+        key = get_test_key('ssh-rsa')
         cert = key.generate_x509_user_certificate(key, 'CN=a', 'CN=b')
         data = 'cert-authority ' + cert.export_certificate().decode('ascii')
 
