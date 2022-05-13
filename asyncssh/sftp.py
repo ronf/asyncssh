@@ -4038,7 +4038,8 @@ class SFTPClient:
         curpath = b'/' if posixpath.isabs(path) else (self._cwd or b'')
         exists = True
 
-        for part in path.split(b'/'):
+        parts = path.split(b'/')
+        for i, part in enumerate(parts):
             curpath = posixpath.join(curpath, part)
 
             try:
@@ -4054,6 +4055,10 @@ class SFTPClient:
                         else SFTPFailure
 
                     raise exc('%s is not a directory' % curpath_str) from None
+            except SFTPPermissionDenied:
+                if i == len(parts) - 1:
+                    raise
+                continue
 
         if exists and not exist_ok:
             exc = SFTPFileAlreadyExists if self.version >= 6 else SFTPFailure

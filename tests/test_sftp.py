@@ -3759,6 +3759,33 @@ class _TestSFTP(_CheckSFTP):
 
         asyncssh.set_sftp_log_level('WARNING')
 
+    @sftp_test
+    async def test_makedirs_no_parent_perms(self, sftp):
+        """Test creating a directory path without mkdir perms for a parent dir"""
+
+        orig_mkdir = sftp.mkdir
+
+        def _mkdir(path, *args, **kwargs):
+            if path == b'/':
+                raise SFTPPermissionDenied('')
+            return orig_mkdir(path, *args, **kwargs)
+
+        try:
+            root = os.path.abspath(os.getcwd())
+            with patch.object(sftp, 'mkdir', _mkdir):
+                await sftp.makedirs(os.path.join(root, 'dir/dir1'))
+                self.assertTrue(os.path.isdir(os.path.join(root, 'dir/dir1')))
+        finally:
+            remove('dir')
+
+    @sftp_test
+    async def test_makedirs_no_perms(self, sftp):
+        """Test creating a directory path without mkdir perms for all parents"""
+        root = os.path.abspath(os.getcwd())
+        with patch.object(sftp, 'mkdir', side_effect=SFTPPermissionDenied('')):
+            with self.assertRaises(SFTPPermissionDenied):
+                await sftp.makedirs(os.path.join(root, 'dir/dir1'))
+
 
 class _TestSFTPCallable(_CheckSFTP):
     """Unit tests for AsyncSSH SFTP factory being a callable"""
