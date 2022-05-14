@@ -635,6 +635,7 @@ class _ServerGSSMICAuth(ServerAuth):
             return
 
         self.logger.debug1('Trying GSS MIC auth')
+        self._gss.reset()
 
         self.send_packet(MSG_USERAUTH_GSSAPI_RESPONSE, String(match))
 
