@@ -39,19 +39,20 @@ def _mech_to_oid(mech: OID) -> bytes:
 class GSSBase:
     """GSS base class"""
 
-    def __init__(self, host: str, usage: str):
+    def __init__(self, host: str):
         if '@' in host:
             self._host = Name(host)
         else:
             self._host = Name('host@' + host, NameType.hostbased_service)
 
-        if usage == 'initiate':
-            self._creds = Credentials(usage=usage)
-        else:
-            self._creds = Credentials(name=self._host, usage=usage)
-
         self._mechs = [_mech_to_oid(mech) for mech in self._creds.mechs]
         self._ctx: Optional[SecurityContext] = None
+
+    @property
+    def _creds(self) -> None:
+        """Abstract method to construct GSS credentials"""
+
+        raise NotImplementedError
 
     def _init_context(self) -> None:
         """Abstract method to construct GSS security context"""
@@ -141,7 +142,7 @@ class GSSClient(GSSBase):
     """GSS client"""
 
     def __init__(self, host: str, delegate_creds: bool):
-        super().__init__(host, 'initiate')
+        super().__init__(host)
 
         flags = set((RequirementFlag.mutual_authentication,
                      RequirementFlag.integrity))
@@ -150,6 +151,12 @@ class GSSClient(GSSBase):
             flags.add(RequirementFlag.delegate_to_peer)
 
         self._flags = flags
+
+    @property
+    def _creds(self) -> Credentials:
+        """Abstract method to construct GSS credentials"""
+
+        return Credentials(usage='initiate')
 
     def _init_context(self) -> None:
         """Construct GSS client security context"""
@@ -161,8 +168,11 @@ class GSSClient(GSSBase):
 class GSSServer(GSSBase):
     """GSS server"""
 
-    def __init__(self, host: str):
-        super().__init__(host, 'accept')
+    @property
+    def _creds(self) -> Credentials:
+        """Abstract method to construct GSS credentials"""
+
+        return Credentials(name=self._host, usage='accept')
 
     def _init_context(self) -> None:
         """Construct GSS server security context"""
