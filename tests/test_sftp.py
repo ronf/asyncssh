@@ -3761,7 +3761,7 @@ class _TestSFTP(_CheckSFTP):
 
     @sftp_test
     async def test_makedirs_no_parent_perms(self, sftp):
-        """Test creating a directory path without mkdir perms for a parent dir"""
+        """Test creating a directory path without perms for a parent dir"""
 
         orig_mkdir = sftp.mkdir
 
@@ -3780,8 +3780,10 @@ class _TestSFTP(_CheckSFTP):
 
     @sftp_test
     async def test_makedirs_no_perms(self, sftp):
-        """Test creating a directory path without mkdir perms for all parents"""
+        """Test creating a directory path without perms for all parents"""
+
         root = os.path.abspath(os.getcwd())
+
         with patch.object(sftp, 'mkdir', side_effect=SFTPPermissionDenied('')):
             with self.assertRaises(SFTPPermissionDenied):
                 await sftp.makedirs(os.path.join(root, 'dir/dir1'))
