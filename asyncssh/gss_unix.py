@@ -49,7 +49,7 @@ class GSSBase:
         self._ctx: Optional[SecurityContext] = None
 
     @property
-    def _creds(self) -> None:
+    def _creds(self) -> Credentials:
         """Abstract method to construct GSS credentials"""
 
         raise NotImplementedError
