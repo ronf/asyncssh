@@ -425,23 +425,32 @@ class _TestConnection(ServerTestCase):
     async def test_connect_timeout_exceeded(self):
         """Test connect timeout exceeded"""
 
-        with self.assertRaises(asyncio.TimeoutError):
-            await asyncssh.connect('223.255.255.254', connect_timeout=1)
+        try:
+            with self.assertRaises(asyncio.TimeoutError):
+                await asyncssh.connect('223.255.255.254', connect_timeout=1)
+        except ConnectionRefusedError:
+            raise unittest.SkipTest('Outbound connection firewalled')
 
     @asynctest
     async def test_connect_timeout_exceeded_string(self):
         """Test connect timeout exceeded with string value"""
 
-        with self.assertRaises(asyncio.TimeoutError):
-            await asyncssh.connect('223.255.255.254', connect_timeout='0m1s')
+        try:
+            with self.assertRaises(asyncio.TimeoutError):
+                await asyncssh.connect('223.255.255.254', connect_timeout='0m1s')
+        except ConnectionRefusedError:
+            raise unittest.SkipTest('Outbound connection firewalled')
 
     @asynctest
     async def test_connect_timeout_exceeded_tunnel(self):
         """Test connect timeout exceeded"""
 
-        with self.assertRaises(asyncio.TimeoutError):
-            await asyncssh.listen(server_host_keys=['skey'],
-                                  tunnel='223.255.255.254', connect_timeout=1)
+        try:
+            with self.assertRaises(asyncio.TimeoutError):
+                await asyncssh.listen(server_host_keys=['skey'],
+                                      tunnel='223.255.255.254', connect_timeout=1)
+        except ConnectionRefusedError:
+            raise unittest.SkipTest('Outbound connection firewalled')
 
     @asynctest
     async def test_invalid_connect_timeout(self):
