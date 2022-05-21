@@ -205,7 +205,7 @@ class _SFTPGlobProtocol(Protocol):
         """List the contents of a directory"""
 
     def scandir(self, path: bytes) -> AsyncIterator['SFTPName']:
-        """Return an async iterator of the contents of a remote directory"""
+        """Return names and attributes of the files in a directory"""
 
 
 class SFTPFileProtocol(Protocol):
@@ -262,7 +262,7 @@ class _SFTPFSProtocol(Protocol):
         """List the contents of a directory"""
 
     def scandir(self, path: bytes) -> AsyncIterator['SFTPName']:
-        """Return an async iterator of the contents of a remote directory"""
+        """Return names and attributes of the files in a directory"""
 
     async def mkdir(self, path: bytes) -> None:
         """Create a directory"""
@@ -2030,6 +2030,9 @@ class SFTPGlob:
         self._fs = fs
         self._prev_matches: Set[bytes] = set()
         self._new_matches: List[SFTPName] = []
+        self._matched = False
+        self._stat_cache: Dict[bytes, Optional[SFTPAttrs]] = {}
+        self._scandir_cache: Dict[bytes, List[SFTPName]] = {}
 
     def _split(self, pattern: bytes) -> Tuple[bytes, _SFTPPatList]:
         """Split out exact parts of a glob pattern"""
@@ -2064,9 +2067,47 @@ class SFTPGlob:
     def _report_match(self, path, attrs):
         """Report a matching name"""
 
+        self._matched = True
+
         if path not in self._prev_matches:
             self._prev_matches.add(path)
             self._new_matches.append(SFTPName(path, attrs=attrs))
+
+    async def _stat(self, path) -> Optional[SFTPAttrs]:
+        """Cache results of calls to stat"""
+
+        cached_attrs = self._stat_cache.get(path)
+
+        if cached_attrs is None:
+            try:
+                attrs = await self._fs.stat(path)
+            except (SFTPNoSuchFile, SFTPPermissionDenied, SFTPNoSuchPath):
+                attrs = None
+
+            self._stat_cache[path] = attrs
+            return attrs
+        else:
+            return cached_attrs
+
+    async def _scandir(self, path) -> AsyncIterator[SFTPName]:
+        """Cache results of calls to scandir"""
+
+        cached_entries = self._scandir_cache.get(path)
+
+        if cached_entries is None:
+            entries: List[SFTPName] = []
+
+            try:
+                async for entry in self._fs.scandir(path):
+                    entries.append(entry)
+                    yield entry
+            except (SFTPNoSuchFile, SFTPPermissionDenied, SFTPNoSuchPath):
+                pass
+
+            self._scandir_cache[path] = entries
+        else:
+            for entry in cached_entries:
+                yield entry
 
     async def _match_exact(self, path: bytes, pattern: Sequence[bytes],
                            patlist: _SFTPPatList) -> None:
@@ -2075,9 +2116,9 @@ class SFTPGlob:
         newpath = posixpath.join(path, *pattern)
         newpatlist = patlist[1:]
 
-        try:
-            attrs = await self._fs.stat(newpath)
-        except (SFTPNoSuchFile, SFTPPermissionDenied, SFTPNoSuchPath):
+        attrs = await self._stat(newpath)
+
+        if attrs is None:
             return
 
         if newpatlist:
@@ -2095,28 +2136,24 @@ class SFTPGlob:
         if pattern == b'**' and newpatlist:
             await self._match(path, newpatlist)
 
-        try:
-            async for entry in self._fs.scandir(path or b'.'):
-                filename = cast(bytes, entry.filename)
+        async for entry in self._scandir(path or b'.'):
+            filename = cast(bytes, entry.filename)
 
-                if filename in (b'.', b'..'):
-                    continue
+            if filename in (b'.', b'..'):
+                continue
 
-                if not pattern or fnmatch(filename, pattern):
-                    newpath = posixpath.join(path, filename)
-                    attrs = entry.attrs
+            if not pattern or fnmatch(filename, pattern):
+                newpath = posixpath.join(path, filename)
+                attrs = entry.attrs
 
-                    if newpatlist:
-                        if attrs.type == FILEXFER_TYPE_DIRECTORY:
-                            await self._match(newpath, newpatlist)
-                    else:
-                        self._report_match(newpath, attrs)
+                if newpatlist:
+                    if attrs.type == FILEXFER_TYPE_DIRECTORY:
+                        await self._match(newpath, newpatlist)
+                else:
+                    self._report_match(newpath, attrs)
 
-                    if pattern == b'**' and \
-                            attrs.type == FILEXFER_TYPE_DIRECTORY:
-                        await self._match(newpath, patlist)
-        except (SFTPNoSuchFile, SFTPPermissionDenied, SFTPNoSuchPath):
-            pass
+                if pattern == b'**' and attrs.type == FILEXFER_TYPE_DIRECTORY:
+                    await self._match(newpath, patlist)
 
     async def _match(self, path: bytes, patlist: _SFTPPatList) -> None:
         """Recursively match against a glob pattern"""
@@ -2134,22 +2171,23 @@ class SFTPGlob:
         """Match against a glob pattern"""
 
         self._new_matches = []
+        self._matched = False
 
         path, patlist = self._split(pattern)
 
         try:
-            attrs = await self._fs.stat(path or b'.')
+            attrs = await self._stat(path or b'.')
 
-            if patlist:
-                if attrs.type == FILEXFER_TYPE_DIRECTORY:
-                    await self._match(path, patlist)
+            if attrs:
+                if patlist:
+                    if attrs.type == FILEXFER_TYPE_DIRECTORY:
+                        await self._match(path, patlist)
+                elif path:
+                    self._report_match(path, attrs)
 
-                if not self._new_matches:
-                    exc = SFTPNoSuchPath if sftp_version >= 4 else \
-                            SFTPNoSuchFile
-                    raise exc('No matches found')
-            elif path:
-                self._report_match(path, attrs)
+            if pattern and not self._matched:
+                exc = SFTPNoSuchPath if sftp_version >= 4 else SFTPNoSuchFile
+                raise exc('No matches found')
         except (OSError, SFTPError) as exc:
             setattr(exc, 'srcpath', pattern)
 
@@ -4931,7 +4969,7 @@ class SFTPClient:
         await self._handler.posix_rename(oldpath, newpath)
 
     async def scandir(self, path: _SFTPPath = '.') -> AsyncIterator[SFTPName]:
-        """Return an async iterator of the contents of a remote directory
+        """Return names and attributes of the files in a remote directory
 
            This method reads the contents of a directory, returning
            the names and attributes of what is contained there as an
@@ -7457,7 +7495,7 @@ class SFTPServerFS:
         return files
 
     def scandir(self, path: bytes) -> AsyncIterator[SFTPName]:
-        """Read the names and attributes of files in a directory"""
+        """Return names and attributes of the files in a directory"""
 
         return self._server.scandir(path)
 
