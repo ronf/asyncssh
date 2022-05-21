@@ -2152,6 +2152,7 @@ class SFTPGlob:
                 self._report_match(path, attrs)
         except (OSError, SFTPError) as exc:
             setattr(exc, 'srcpath', path)
+            setattr(exc, 'pattern', pattern)
 
             if error_handler:
                 error_handler(exc)
