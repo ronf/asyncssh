@@ -31,7 +31,7 @@ import stat
 import string
 import sys
 from types import TracebackType
-from typing import TYPE_CHECKING, List, NoReturn, Optional
+from typing import TYPE_CHECKING, AsyncIterator, List, NoReturn, Optional
 from typing import Sequence, Tuple, Type, Union, cast
 from typing_extensions import Protocol
 
@@ -39,10 +39,10 @@ from .constants import DEFAULT_LANG
 from .logging import SSHLogger
 from .misc import BytesOrStr, FilePath, HostPort, MaybeAwait
 from .misc import async_context_manager, plural
-from .sftp import SFTPAttrs, SFTPServer, SFTPServerFS, SFTPFileProtocol
-from .sftp import SFTPError, SFTPFailure, SFTPBadMessage, SFTPConnectionLost
-from .sftp import SFTPErrorHandler, SFTPProgressHandler
-from .sftp import SFTP_BLOCK_SIZE, local_fs, match_glob
+from .sftp import SFTPAttrs, SFTPGlob, SFTPName, SFTPServer, SFTPServerFS
+from .sftp import SFTPFileProtocol, SFTPError, SFTPFailure, SFTPBadMessage
+from .sftp import SFTPConnectionLost, SFTPErrorHandler, SFTPProgressHandler
+from .sftp import SFTP_BLOCK_SIZE, local_fs
 
 
 if TYPE_CHECKING:
@@ -78,6 +78,9 @@ class _SCPFSProtocol(Protocol):
 
     async def listdir(self, path: bytes) -> Sequence[bytes]:
         """List the contents of a directory"""
+
+    def scandir(self, path: bytes) -> AsyncIterator[SFTPName]:
+        """Read the names and attributes of files in a directory"""
 
     async def mkdir(self, path: bytes) -> None:
         """Create a directory"""
@@ -546,8 +549,8 @@ class _SCPSource(_SCPHandler):
             if exc:
                 raise exc
 
-            for path in await match_glob(self._fs, srcpath):
-                await self._send_files(path, b'')
+            for name in await SFTPGlob(self._fs).match(srcpath):
+                await self._send_files(cast(bytes, name.filename), b'')
         except (OSError, SFTPError) as exc:
             self.handle_error(exc)
         finally:

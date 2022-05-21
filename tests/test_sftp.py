@@ -458,10 +458,21 @@ class _SFTPAttrsSFTPServer(SFTPServer):
             else:
                 raise SFTPError(99, exc.strerror) from None
 
+    async def lstat(self, path):
+        """Get attributes of a local file, directory, or symlink"""
+
+        return SFTPAttrs.from_local(super().stat(path))
+
     async def fstat(self, file_obj):
         """Get attributes of an open file"""
 
         return SFTPAttrs.from_local(super().fstat(file_obj))
+
+    async def listdir(self, path):
+        """Read the names of the files in a local directory"""
+
+        return [SFTPName(name, attrs=await self.lstat(path))
+                if name == b'src' else name for name in super().listdir(path)]
 
 
 class _AsyncSFTPServer(SFTPServer):
@@ -1066,7 +1077,7 @@ class _TestSFTP(_CheckSFTP):
             (['file*/*2'],               ['filedir/file2', 'filedir/filedir2']),
             (['file*/*[3-9]'],           ['filedir/file3']),
             (['**/file[12]'],            ['file1', 'filedir/file2']),
-            (['**/file*/'],              ['filedir', 'filedir/filedir2']),
+            (['**/file*/'],              ['filedir/', 'filedir/filedir2/']),
             ('filedir/file2',            ['filedir/file2']),
             ('./filedir/file2',          ['./filedir/file2']),
             ('filedir/file*',            ['filedir/file2', 'filedir/file3',
@@ -1109,11 +1120,28 @@ class _TestSFTP(_CheckSFTP):
             remove('file1 filedir')
 
     @sftp_test
-    async def test_glob_error(self, sftp):
-        """Test a glob pattern match error over SFTP"""
+    async def test_glob_errors(self, sftp):
+        """Test glob pattern match errors over SFTP"""
 
-        with self.assertRaises(SFTPNoSuchFile):
-            await sftp.glob('file*')
+        _glob_errors = (
+            'file*',
+            'dir/file1/*',
+            'dir*/file1/*',
+            'dir/dir1/*')
+
+        try:
+            os.mkdir('dir')
+            self._create_file('dir/file1')
+            os.mkdir('dir/dir1')
+            os.chmod('dir/dir1', 0)
+
+            for pattern in _glob_errors:
+                with self.subTest(pattern=pattern):
+                    with self.assertRaises(SFTPNoSuchFile):
+                        await sftp.glob(pattern)
+        finally:
+            os.chmod('dir/dir1', 0o700)
+            remove('dir')
 
     @sftp_test_v4
     async def test_glob_error_v4(self, sftp):
@@ -5117,7 +5145,7 @@ class _TestSCPAttrs(_CheckSCP):
 
         try:
             self._create_file('src')
-            await scp((self._scp_server, 'src'), 'dst')
+            await scp((self._scp_server, 'src*'), 'dst')
             self._check_file('src', 'dst')
         finally:
             remove('src dst')

@@ -1147,6 +1147,7 @@ SFTPClient
    .. automethod:: readdir
    .. automethod:: listdir
    .. automethod:: glob
+   .. automethod:: glob_sftpname
    ================================================= =
 
    =========================== =
