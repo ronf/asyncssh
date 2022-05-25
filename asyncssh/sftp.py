@@ -2076,38 +2076,40 @@ class SFTPGlob:
     async def _stat(self, path) -> Optional[SFTPAttrs]:
         """Cache results of calls to stat"""
 
-        cached_attrs = self._stat_cache.get(path)
+        try:
+            return self._stat_cache[path]
+        except KeyError:
+            pass
 
-        if cached_attrs is None:
-            try:
-                attrs = await self._fs.stat(path)
-            except (SFTPNoSuchFile, SFTPPermissionDenied, SFTPNoSuchPath):
-                attrs = None
+        try:
+            attrs = await self._fs.stat(path)
+        except (SFTPNoSuchFile, SFTPPermissionDenied, SFTPNoSuchPath):
+            attrs = None
 
-            self._stat_cache[path] = attrs
-            return attrs
-        else:
-            return cached_attrs
+        self._stat_cache[path] = attrs
+        return attrs
 
     async def _scandir(self, path) -> AsyncIterator[SFTPName]:
         """Cache results of calls to scandir"""
 
-        cached_entries = self._scandir_cache.get(path)
-
-        if cached_entries is None:
-            entries: List[SFTPName] = []
-
-            try:
-                async for entry in self._fs.scandir(path):
-                    entries.append(entry)
-                    yield entry
-            except (SFTPNoSuchFile, SFTPPermissionDenied, SFTPNoSuchPath):
-                pass
-
-            self._scandir_cache[path] = entries
-        else:
-            for entry in cached_entries:
+        try:
+            for entry in self._scandir_cache[path]:
                 yield entry
+
+            return
+        except KeyError:
+            pass
+
+        entries: List[SFTPName] = []
+
+        try:
+            async for entry in self._fs.scandir(path):
+                entries.append(entry)
+                yield entry
+        except (SFTPNoSuchFile, SFTPPermissionDenied, SFTPNoSuchPath):
+            pass
+
+        self._scandir_cache[path] = entries
 
     async def _match_exact(self, path: bytes, pattern: Sequence[bytes],
                            patlist: _SFTPPatList) -> None:
@@ -2123,18 +2125,21 @@ class SFTPGlob:
 
         if newpatlist:
             if attrs.type == FILEXFER_TYPE_DIRECTORY:
-                await self._match(newpath, newpatlist)
+                await self._match(newpath, attrs, newpatlist)
         else:
             self._report_match(newpath, attrs)
 
-    async def _match_pattern(self, path: bytes, pattern: bytes,
-                             patlist: _SFTPPatList) -> None:
+    async def _match_pattern(self, path: bytes, attrs: SFTPAttrs,
+                             pattern: bytes, patlist: _SFTPPatList) -> None:
         """Match on a pattern portion of a path"""
 
         newpatlist = patlist[1:]
 
-        if pattern == b'**' and newpatlist:
-            await self._match(path, newpatlist)
+        if pattern == b'**':
+            if newpatlist:
+                await self._match(path, attrs, newpatlist)
+            else:
+                self._report_match(path, attrs)
 
         async for entry in self._scandir(path or b'.'):
             filename = cast(bytes, entry.filename)
@@ -2148,14 +2153,15 @@ class SFTPGlob:
 
                 if newpatlist:
                     if attrs.type == FILEXFER_TYPE_DIRECTORY:
-                        await self._match(newpath, newpatlist)
+                        await self._match(newpath, attrs, newpatlist)
                 else:
                     self._report_match(newpath, attrs)
 
                 if pattern == b'**' and attrs.type == FILEXFER_TYPE_DIRECTORY:
-                    await self._match(newpath, patlist)
+                    await self._match(newpath, attrs, patlist)
 
-    async def _match(self, path: bytes, patlist: _SFTPPatList) -> None:
+    async def _match(self, path: bytes, attrs: SFTPAttrs,
+                     patlist: _SFTPPatList) -> None:
         """Recursively match against a glob pattern"""
 
         pattern = patlist[0]
@@ -2163,7 +2169,7 @@ class SFTPGlob:
         if isinstance(pattern, list):
             await self._match_exact(path, pattern, patlist)
         else:
-            await self._match_pattern(path, pattern, patlist)
+            await self._match_pattern(path, attrs, pattern, patlist)
 
     async def match(self, pattern: bytes,
                     error_handler: SFTPErrorHandler = None,
@@ -2181,7 +2187,7 @@ class SFTPGlob:
             if attrs:
                 if patlist:
                     if attrs.type == FILEXFER_TYPE_DIRECTORY:
-                        await self._match(path, patlist)
+                        await self._match(path, attrs, patlist)
                 elif path:
                     self._report_match(path, attrs)
 
