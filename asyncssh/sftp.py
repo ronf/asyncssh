@@ -2026,8 +2026,9 @@ class SFTPName(Record):
 class SFTPGlob:
     """SFTP glob matcher"""
 
-    def __init__(self, fs: _SFTPGlobProtocol):
+    def __init__(self, fs: _SFTPGlobProtocol, multiple=False):
         self._fs = fs
+        self._multiple = multiple
         self._prev_matches: Set[bytes] = set()
         self._new_matches: List[SFTPName] = []
         self._matched = False
@@ -2069,9 +2070,13 @@ class SFTPGlob:
 
         self._matched = True
 
-        if path not in self._prev_matches:
-            self._prev_matches.add(path)
-            self._new_matches.append(SFTPName(path, attrs=attrs))
+        if self._multiple:
+            if path not in self._prev_matches:
+                self._prev_matches.add(path)
+            else:
+                return
+
+        self._new_matches.append(SFTPName(path, attrs=attrs))
 
     async def _stat(self, path) -> Optional[SFTPAttrs]:
         """Cache results of calls to stat"""
@@ -3600,7 +3605,7 @@ class SFTPClient:
         exppaths: List[bytes] = []
 
         if expand_glob:
-            glob = SFTPGlob(srcfs)
+            glob = SFTPGlob(srcfs, len(srcpaths) > 1)
 
             for srcpath in srcpaths:
                 names = await glob.match(srcfs.encode(srcpath),
@@ -4085,7 +4090,7 @@ class SFTPClient:
         if isinstance(patterns, (bytes, str, PurePath)):
             patterns = [patterns]
 
-        glob = SFTPGlob(self)
+        glob = SFTPGlob(self, len(patterns) > 1)
         matches: List[SFTPName] = []
 
         for pattern in patterns:
