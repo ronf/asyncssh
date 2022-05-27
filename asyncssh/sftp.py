@@ -2151,14 +2151,13 @@ class SFTPGlob:
                 newpath = posixpath.join(path, filename)
                 attrs = entry.attrs
 
-                if newpatlist:
+                if pattern == b'**' and attrs.type == FILEXFER_TYPE_DIRECTORY:
+                    await self._match(newpath, attrs, patlist)
+                elif newpatlist:
                     if attrs.type == FILEXFER_TYPE_DIRECTORY:
                         await self._match(newpath, attrs, newpatlist)
                 else:
                     self._report_match(newpath, attrs)
-
-                if pattern == b'**' and attrs.type == FILEXFER_TYPE_DIRECTORY:
-                    await self._match(newpath, attrs, patlist)
 
     async def _match(self, path: bytes, attrs: SFTPAttrs,
                      patlist: _SFTPPatList) -> None:

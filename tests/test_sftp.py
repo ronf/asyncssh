@@ -1078,6 +1078,10 @@ class _TestSFTP(_CheckSFTP):
             (['file*/*[3-9]'],           ['filedir/file3']),
             (['**/file[12]'],            ['file1', 'filedir/file2']),
             (['**/file*/'],              ['filedir/', 'filedir/filedir2/']),
+            (['filedir/**'],             ['filedir', 'filedir/file2',
+                                          'filedir/file3', 'filedir/filedir2',
+                                          'filedir/filedir2/file4',
+                                          'filedir/filedir2/file5']),
             ('filedir/file2',            ['filedir/file2']),
             ('./filedir/file2',          ['./filedir/file2']),
             ('filedir/file*',            ['filedir/file2', 'filedir/file3',
@@ -1098,7 +1102,8 @@ class _TestSFTP(_CheckSFTP):
             ('filedir/filedir*/file*',   ['filedir/filedir2/file4',
                                           'filedir/filedir2/file5']),
             ('./**/filedir2/file4',      ['./filedir/filedir2/file4']),
-            ('**/filedir2/file4',        ['filedir/filedir2/file4']))
+            ('**/filedir2/file4',        ['filedir/filedir2/file4']),
+            (['file1', '**/file1'],      ['file1']))
 
         try:
             os.mkdir('filedir')
