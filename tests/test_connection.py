@@ -193,6 +193,12 @@ def _failing_get_mac(alg, key):
     return _FailingMAC(key, hash_size, *args)
 
 
+async def _slow_connect(*_args, **_kwargs):
+    """Simulate a really slow connect that ends up timing out"""
+
+    await asyncio.sleep(5)
+
+
 class _FailingGCMCipher(GCMCipher):
     """Test error in GCM tag verification"""
 
@@ -426,22 +432,28 @@ class _TestConnection(ServerTestCase):
         """Test connect timeout exceeded"""
 
         with self.assertRaises(asyncio.TimeoutError):
-            await asyncssh.connect('223.255.255.254', connect_timeout=1)
+            with patch('asyncio.BaseEventLoop.create_connection',
+                       _slow_connect):
+                await asyncssh.connect('', connect_timeout=1)
 
     @asynctest
     async def test_connect_timeout_exceeded_string(self):
         """Test connect timeout exceeded with string value"""
 
         with self.assertRaises(asyncio.TimeoutError):
-            await asyncssh.connect('223.255.255.254', connect_timeout='0m1s')
+            with patch('asyncio.BaseEventLoop.create_connection',
+                       _slow_connect):
+                await asyncssh.connect('', connect_timeout='0m1s')
 
     @asynctest
     async def test_connect_timeout_exceeded_tunnel(self):
         """Test connect timeout exceeded"""
 
         with self.assertRaises(asyncio.TimeoutError):
-            await asyncssh.listen(server_host_keys=['skey'],
-                                  tunnel='223.255.255.254', connect_timeout=1)
+            with patch('asyncio.BaseEventLoop.create_connection',
+                       _slow_connect):
+                await asyncssh.listen(server_host_keys=['skey'],
+                                      tunnel='', connect_timeout=1)
 
     @asynctest
     async def test_invalid_connect_timeout(self):
