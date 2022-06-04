@@ -26,7 +26,7 @@ Release 2.11.0 (4 Jun 2022)
     be called only if a pattern results in no matches, or if a more
     serious error occurs while scanning.
 
-* Changed SFTP makedirs() method to work better cases where parts of
+* Changed SFTP makedirs() method to work better in cases where parts of
   requested path already exist but don't allow read access. As long as
   the entire path can be created, makedirs() will succeed, even if some
   directories on the path don't allow their contents to be read. Thanks
