@@ -3,6 +3,58 @@
 Change Log
 ==========
 
+Release 2.11.0 (4 Jun 2022)
+---------------------------
+
+* Made a number of improvements in SFTP glob support, with thanks to
+  Github user LuckyDams for all the help working out these changes!
+
+  * Added a new glob_sftpname() method which returns glob matches
+    together with attribute information, avoiding the need for a
+    caller to make separate calls to stat() on the returned results.
+  * Switched from listdir() to scandir() to reduce the number of
+    stat() operations required while finding matches.
+  * Added code to remove duplicates when glob() is called with
+    multiple patterns that match the same path.
+  * Added a cache of directory listing and stat results to improve
+    performance when matching patterns with overlapping paths.
+  * Fixed an "index out of range" bug in recursive glob matching
+    and aligned it better with results reeturned by UNIX shells.
+  * Changed matching to ignore inaccessible or non-existent paths
+    in a glob pattern, to allow accessible paths to be fully
+    explored before returning an error. The error handler will now
+    be called only if a pattern results in no matches, or if a more
+    serious error occurs while scanning.
+
+* Changed SFTP makedirs() method to work better cases where parts of
+  requested path already exist but don't allow read access. As long as
+  the entire path can be created, makedirs() will succeed, even if some
+  directories on the path don't allow their contents to be read. Thanks
+  go to Peter Rowlands for providing this fix.
+
+* Replaced custom Diffie Hellman implementation in AsyncSSH with the
+  one in the cryptography package, resulting in an over 10x speedup.
+  Thanks go to Github user iwanb for suggesting this change.
+
+* Fixed AsyncSSH to re-acquire GSS credentials when performing key
+  renegotiation to avoid expired credentials on long-lived connections.
+  Thanks go to Github user PromyLOPh for pointing out this issue and
+  suggesting a fix.
+
+* Fixed GSS MIC to work properly with GSS key exchange when AsyncSSH
+  is running as a server. This was previously fixed on the client side,
+  but a similar fix for the server was missed.
+
+* Changed connection timeout unit tests to work better in environments
+  where a firewall is present. Thanks go to Stefano Rivera for
+  reporting this issue.
+
+* Improved unit tests of Windows SSPI GSSAPI module.
+
+* Improved speed of unit tests by reducing the number of key generation
+  calls. RSA key generation in particular has gotten much more expensive
+  in OpenSSL 3.
+
 Release 2.10.1 (16 Apr 2022)
 ----------------------------
 
@@ -24,7 +76,7 @@ Release 2.10.1 (16 Apr 2022)
   trigger a debug message rather than an error. Thanks go to Caleb Ho
   for reporting this issue!
 
-* Update minimum required version of cryprography package to 3.1, to
+* Updated minimum required version of cryprography package to 3.1, to
   allow calls to it to be made without passing in a "backend" argument.
   This was missed back in the 2.9 release. Thanks go to Github users
   sebby97 and JavaScriptDude for reporting this issue!
