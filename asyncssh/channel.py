@@ -233,7 +233,7 @@ class SSHChannel(Generic[AnyStr], SSHPacketHandler):
 
             assert self._recv_chan is not None
             self._conn.remove_channel(self._recv_chan)
-            self._send_chan = None
+            self._close_send()
             self._recv_chan = None
             self._conn = None
 
