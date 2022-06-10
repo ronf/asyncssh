@@ -388,7 +388,7 @@ class SSHLineEditor:
 
         self._pos = new_pos
 
-    def _reset_line(self):
+    def _reset_line(self) -> None:
         """Reset input line to empty"""
 
         self._line = ''
@@ -398,7 +398,7 @@ class SSHLineEditor:
         self._start_column = self._cursor
         self._end_column = self._cursor
 
-    def _reset_pending(self):
+    def _reset_pending(self) -> None:
         """Reset a pending echoed line if any"""
 
         if self._line_pending:
