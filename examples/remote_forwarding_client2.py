@@ -24,7 +24,7 @@ import asyncio, asyncssh, sys
 from functools import partial
 from typing import Awaitable
 
-def connection_requested(conn: asyncssh.SSHServerConnection, orig_host: str,
+def connection_requested(conn: asyncssh.SSHClientConnection, orig_host: str,
                          orig_port: int) -> Awaitable[asyncssh.SSHForwarder]:
     if orig_host in ('127.0.0.1', '::1'):
         return conn.forward_connection('localhost', 80)
