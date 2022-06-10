@@ -569,7 +569,7 @@ class SSHStreamSession(Generic[AnyStr]):
             separators = cast(AnyStr, '\n' if self._encoding else b'\n')
         elif isinstance(separator, (bytes, str)):
             seplen = len(separator)
-            separators = cast(AnyStr, separator)
+            separators = re.escape(cast(AnyStr, separator))
         else:
             bar = cast(AnyStr, '|' if self._encoding else b'|')
             seplist = list(cast(Iterable[AnyStr], separator))
