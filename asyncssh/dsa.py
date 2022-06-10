@@ -123,7 +123,7 @@ class _DSAKey(SSHKey):
         if (isinstance(alg_params, tuple) and len(alg_params) == 3 and
                 all_ints(alg_params) and isinstance(x, int)):
             p, q, g = alg_params
-            y = pow(g, x, p)
+            y: int = pow(g, x, p)
             return p, q, g, y, x
         else:
             return None
