@@ -453,6 +453,8 @@ class SSHChannel(Generic[AnyStr], SSHPacketHandler):
 
         self.logger.info('Closing channel due to connection close')
 
+        self._send_state = 'closed'
+        self._close_send()
         self._cleanup(exc)
 
     def process_open(self, send_chan: int, send_window: int, send_pktsize: int,
