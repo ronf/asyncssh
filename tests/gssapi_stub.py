@@ -57,6 +57,8 @@ class Credentials:
 class RequirementFlag(IntEnum):
     """Stub class for GSS requirement flags"""
 
+    # pylint: disable=invalid-name
+
     delegate_to_peer = 1
     mutual_authentication = 2
     integrity = 4
