@@ -20,6 +20,8 @@
 
 """Stub GSSAPI module for unit tests"""
 
+from enum import IntEnum
+
 from asyncssh.gss import GSSError
 
 from .gss_stub import step
@@ -52,12 +54,12 @@ class Credentials:
             return [2]
 
 
-class RequirementFlag:
+class RequirementFlag(IntEnum):
     """Stub class for GSS requirement flags"""
 
-    mutual_authentication = 'mutual_auth'
-    integrity = 'integrity'
-    delegate_to_peer = 'delegate'
+    delegate_to_peer = 1
+    mutual_authentication = 2
+    integrity = 4
 
 
 class SecurityContext:
@@ -67,12 +69,12 @@ class SecurityContext:
         host = creds.host if creds.server else name.host
 
         if flags is None:
-            flags = set((RequirementFlag.mutual_authentication,
-                         RequirementFlag.integrity))
+            flags = RequirementFlag.mutual_authentication | \
+                    RequirementFlag.integrity
 
         if ((creds.server and 'no_server_integrity' in host) or
                 (not creds.server and 'no_client_integrity' in host)):
-            flags.remove(RequirementFlag.integrity)
+            flags &= ~RequirementFlag.integrity
 
         self._host = host
         self._server = creds.server

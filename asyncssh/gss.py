@@ -37,8 +37,7 @@ except ImportError: # pragma: no cover
     class GSSError(ValueError): # type: ignore
         """Stub class for reporting that GSS is not available"""
 
-        def __init__(self, maj_code: int = 0, min_code: int = 0,
-                     token: bytes = None):
+        def __init__(self, maj_code: int, min_code: int, token: bytes = None):
             super().__init__('GSS not available')
 
             self.maj_code = maj_code
@@ -52,10 +51,10 @@ except ImportError: # pragma: no cover
         """Stub client class for reporting that GSS is not available"""
 
         def __init__(self, _host: str, _delegate_creds: bool):
-            raise GSSError()
+            raise GSSError(0, 0)
 
     class GSSServer(GSSBase): # type: ignore
         """Stub client class for reporting that GSS is not available"""
 
         def __init__(self, _host: str):
-            raise GSSError()
+            raise GSSError(0, 0)

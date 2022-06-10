@@ -20,7 +20,7 @@
 
 """GSSAPI wrapper for UNIX"""
 
-from typing import Optional, Sequence
+from typing import Optional, Sequence, SupportsBytes, cast
 
 from gssapi import Credentials, Name, NameType, OID
 from gssapi import RequirementFlag, SecurityContext
@@ -32,7 +32,7 @@ from .asn1 import OBJECT_IDENTIFIER
 def _mech_to_oid(mech: OID) -> bytes:
     """Return a DER-encoded OID corresponding to the requested GSS mechanism"""
 
-    mech_bytes = bytes(mech)
+    mech_bytes = bytes(cast(SupportsBytes, mech))
     return bytes((OBJECT_IDENTIFIER, len(mech_bytes))) + mech_bytes
 
 
@@ -77,8 +77,8 @@ class GSSBase:
 
         assert self._ctx is not None
 
-        return (RequirementFlag.mutual_authentication in
-                self._ctx.actual_flags)
+        return bool(self._ctx.actual_flags &
+                    RequirementFlag.mutual_authentication)
 
     @property
     def provides_integrity(self) -> bool:
@@ -86,7 +86,7 @@ class GSSBase:
 
         assert self._ctx is not None
 
-        return RequirementFlag.integrity in self._ctx.actual_flags
+        return bool(self._ctx.actual_flags & RequirementFlag.integrity)
 
     @property
     def user(self) -> str:
@@ -144,11 +144,11 @@ class GSSClient(GSSBase):
     def __init__(self, host: str, delegate_creds: bool):
         super().__init__(host)
 
-        flags = set((RequirementFlag.mutual_authentication,
-                     RequirementFlag.integrity))
+        flags = RequirementFlag.mutual_authentication | \
+                RequirementFlag.integrity
 
         if delegate_creds:
-            flags.add(RequirementFlag.delegate_to_peer)
+            flags |= RequirementFlag.delegate_to_peer
 
         self._flags = flags
 
