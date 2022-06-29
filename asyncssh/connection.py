@@ -7017,10 +7017,9 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
             agent_path = cast(DefTuple[str], config.get('IdentityAgent', ()))
 
         if agent_path == ():
-            agent_path = \
-                cast(DefTuple[str], os.environ.get('SSH_AUTH_SOCK', None))
+            agent_path = os.environ.get('SSH_AUTH_SOCK', '')
 
-        agent_path = str(Path(agent_path).expanduser()) if agent_path else None
+        agent_path = str(Path(agent_path).expanduser()) if agent_path else ''
 
         if pkcs11_provider == ():
             pkcs11_provider = \

@@ -27,7 +27,7 @@ import asyncio
 import ctypes
 import ctypes.wintypes
 import errno
-from typing import TYPE_CHECKING, Optional, Tuple, Union, cast
+from typing import TYPE_CHECKING, Tuple, Union, cast
 
 from .misc import open_file
 
@@ -164,8 +164,7 @@ class _W10OpenSSHTransport:
         """Wait for the transport to close"""
 
 
-async def open_agent(agent_path: Optional[str]) -> \
-        Tuple['AgentReader', 'AgentWriter']:
+async def open_agent(agent_path: str) -> Tuple['AgentReader', 'AgentWriter']:
     """Open a connection to the Pageant or Windows 10 OpenSSH agent"""
 
     transport: Union[None, _PageantTransport, _W10OpenSSHTransport] = None
@@ -178,7 +177,6 @@ async def open_agent(agent_path: Optional[str]) -> \
             agent_path = _DEFAULT_OPENSSH_PATH
 
     if not transport:
-        assert agent_path is not None
         transport = _W10OpenSSHTransport(agent_path)
 
     return transport, transport

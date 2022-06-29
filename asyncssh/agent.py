@@ -64,7 +64,7 @@ try:
     else:
         from .agent_unix import open_agent
 except ImportError as _exc: # pragma: no cover
-    async def open_agent(agent_path: Optional[str]) -> \
+    async def open_agent(agent_path: str) -> \
             Tuple[AgentReader, AgentWriter]:
         """Dummy function if we're unable to import agent support"""
 
@@ -78,7 +78,7 @@ class _SupportsOpenAgentConnection(Protocol):
         """Open a forwarded ssh-agent connection back to the client"""
 
 
-_AgentPath = Union[None, str, _SupportsOpenAgentConnection]
+_AgentPath = Union[str, _SupportsOpenAgentConnection]
 
 
 # Client request message numbers
@@ -222,7 +222,7 @@ class SSHAgentClient:
     async def connect(self) -> None:
         """Connect to the SSH agent"""
 
-        if isinstance(self._agent_path, str) or self._agent_path is None:
+        if isinstance(self._agent_path, str):
             self._reader, self._writer = await open_agent(self._agent_path)
         else:
             self._reader, self._writer = \
@@ -626,7 +626,7 @@ class SSHAgentListener:
 
 
 @async_context_manager
-async def connect_agent(agent_path: _AgentPath = None) -> 'SSHAgentClient':
+async def connect_agent(agent_path: _AgentPath = '') -> 'SSHAgentClient':
     """Make a connection to the SSH agent
 
        This function attempts to connect to an ssh-agent process
@@ -654,7 +654,7 @@ async def connect_agent(agent_path: _AgentPath = None) -> 'SSHAgentClient':
     """
 
     if not agent_path:
-        agent_path = os.environ.get('SSH_AUTH_SOCK', None)
+        agent_path = os.environ.get('SSH_AUTH_SOCK', '')
 
     agent = SSHAgentClient(agent_path)
     await agent.connect()

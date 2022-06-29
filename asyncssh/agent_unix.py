@@ -22,7 +22,7 @@
 
 import asyncio
 import errno
-from typing import TYPE_CHECKING, Optional, Tuple
+from typing import TYPE_CHECKING, Tuple
 
 
 if TYPE_CHECKING:
@@ -30,8 +30,7 @@ if TYPE_CHECKING:
     from .agent import AgentReader, AgentWriter
 
 
-async def open_agent(agent_path: Optional[str]) -> \
-        Tuple['AgentReader', 'AgentWriter']:
+async def open_agent(agent_path: str) -> Tuple['AgentReader', 'AgentWriter']:
     """Open a connection to ssh-agent"""
 
     if not agent_path:
