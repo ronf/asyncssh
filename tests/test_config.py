@@ -417,8 +417,10 @@ class _TestClientConfig(_TestConfig):
 
             return path
 
-        def mock_pathlib_expanduser(s):
-            return s._from_parts([os.environ['HOME']] + s._parts[1:])
+        def mock_pathlib_expanduser(self):
+            """Expand user even with os.path.expanduser mocked out"""
+
+            return Path(os.environ['HOME'], *self.parts[1:])
 
         with self.assertRaises(asyncssh.ConfigParseError):
             with patch('os.path.expanduser', mock_expanduser), \
