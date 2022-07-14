@@ -28,6 +28,8 @@ from hashlib import sha1
 import asyncssh
 
 from asyncssh.crypto import curve25519_available, curve448_available
+from asyncssh.crypto import sntrup761_available
+from asyncssh.crypto import sntrup761_pubkey_bytes, sntrup761_ciphertext_bytes
 from asyncssh.crypto import Curve25519DH, Curve448DH, ECDH
 from asyncssh.kex_dh import MSG_KEXDH_INIT, MSG_KEXDH_REPLY
 from asyncssh.kex_dh import MSG_KEX_DH_GEX_REQUEST, MSG_KEX_DH_GEX_GROUP
@@ -525,19 +527,44 @@ class _TestKex(AsyncTestCase):
                 host_key = server_conn.get_server_host_key()
                 client_conn.simulate_ecdh_reply(host_key.public_data, b'', b'')
 
-        with self.subTest('Invalid peer public key'):
-            with self.assertRaises(asyncssh.ProtocolError):
-                host_key = server_conn.get_server_host_key()
-                server_pub = b'\x01' + 55*b'\x00'
-                client_conn.simulate_ecdh_reply(host_key.public_data,
-                                                server_pub, b'')
-
         with self.subTest('Invalid signature'):
             with self.assertRaises(asyncssh.KeyExchangeFailed):
                 host_key = server_conn.get_server_host_key()
                 server_pub = Curve448DH().get_public()
                 client_conn.simulate_ecdh_reply(host_key.public_data,
                                                 server_pub, b'')
+
+        client_conn.close()
+        server_conn.close()
+
+    @unittest.skipUnless(sntrup761_available, 'SNTRUP761 not available')
+    @asynctest
+    async def test_sntrup761dh_errors(self):
+        """Unit test error conditions in SNTRUP761 key exchange"""
+
+        client_conn, server_conn = \
+            _KexClientStub.make_pair(b'sntrup761x25519-sha512@openssh.com')
+
+        with self.subTest('Invalid client SNTRUP761 public key'):
+            with self.assertRaises(asyncssh.ProtocolError):
+                server_conn.simulate_ecdh_init(b'')
+
+        with self.subTest('Invalid client Curve25519 public key'):
+            with self.assertRaises(asyncssh.ProtocolError):
+                pub = sntrup761_pubkey_bytes * b'\0'
+                server_conn.simulate_ecdh_init(pub)
+
+        with self.subTest('Invalid server SNTRUP761 public key'):
+            with self.assertRaises(asyncssh.ProtocolError):
+                host_key = server_conn.get_server_host_key()
+                client_conn.simulate_ecdh_reply(host_key.public_data, b'', b'')
+
+        with self.subTest('Invalid server Curve25519 public key'):
+            with self.assertRaises(asyncssh.ProtocolError):
+                host_key = server_conn.get_server_host_key()
+                ciphertext = sntrup761_ciphertext_bytes * b'\0'
+                client_conn.simulate_ecdh_reply(host_key.public_data,
+                                                ciphertext, b'')
 
         client_conn.close()
         server_conn.close()

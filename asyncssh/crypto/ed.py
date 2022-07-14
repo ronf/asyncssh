@@ -243,12 +243,16 @@ if curve25519_available: # pragma: no branch
             return self._priv_key.public_key().public_bytes(Encoding.Raw,
                                                             PublicFormat.Raw)
 
-        def get_shared(self, peer_public: bytes) -> int:
+        def get_shared_bytes(self, peer_public: bytes) -> bytes:
             """Return the shared key from the peer's public key"""
 
             peer_key = x25519.X25519PublicKey.from_public_bytes(peer_public)
-            shared = self._priv_key.exchange(peer_key)
-            return int.from_bytes(shared, 'big')
+            return self._priv_key.exchange(peer_key)
+
+        def get_shared(self, peer_public: bytes) -> int:
+            """Return the shared key from the peer's public key as bytes"""
+
+            return int.from_bytes(self.get_shared_bytes(peer_public), 'big')
 else: # pragma: no cover
     class Curve25519DH: # type: ignore
         """Curve25519 Diffie Hellman implementation based on libnacl"""
@@ -267,8 +271,8 @@ else: # pragma: no cover
 
             return public.raw
 
-        def get_shared(self, peer_public: bytes) -> int:
-            """Return the shared key from the peer's public key"""
+        def get_shared_bytes(self, peer_public: bytes) -> bytes:
+            """Return the shared key from the peer's public key as bytes"""
 
             if len(peer_public) != _CURVE25519_BYTES:
                 raise ValueError('Invalid curve25519 public key size')
@@ -278,7 +282,12 @@ else: # pragma: no cover
             if _curve25519(shared, self._private, peer_public) != 0:
                 raise ValueError('Curve25519 failed')
 
-            return int.from_bytes(shared.raw, 'big')
+            return shared.raw
+
+        def get_shared(self, peer_public: bytes) -> int:
+            """Return the shared key from the peer's public key"""
+
+            return int.from_bytes(self.get_shared_bytes(peer_public), 'big')
 
     try:
         from libnacl import nacl

@@ -40,6 +40,10 @@ from .misc import CryptoKey, PyCAKey
 
 from .rsa import RSAPrivateKey, RSAPublicKey
 
+from .sntrup import sntrup761_available
+from .sntrup import sntrup761_pubkey_bytes, sntrup761_ciphertext_bytes
+from .sntrup import sntrup761_keypair, sntrup761_encaps, sntrup761_decaps
+
 # Import chacha20-poly1305 cipher if available
 from .chacha import ChachaCipher, chacha_available
 

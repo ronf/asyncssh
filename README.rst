@@ -46,6 +46,10 @@ Features
 * Multiple SSH connections in a single event loop
 * Byte and string based I/O with settable encoding
 * A variety of `key exchange`__, `encryption`__, and `MAC`__ algorithms
+
+  * Including OpenSSH post-quantum kex algorithm
+    sntrup761x25519-sha512\@openssh.com
+
 * Support for `gzip compression`__
 
   * Including OpenSSH variant to delay compression until after auth
@@ -143,6 +147,10 @@ functionality:
 * Install gssapi from https://pypi.python.org/pypi/gssapi if you
   want support for GSSAPI key exchange and authentication on UNIX.
 
+* Install liboqs from https://github.com/open-quantum-safe/liboqs
+  if you want support for the OpenSSH post-quantum key exchange
+  algorithm sntrup761x25519-sha512\@openssh.com.
+
 * Install libsodium from https://github.com/jedisct1/libsodium
   and libnacl from https://pypi.python.org/pypi/libnacl if you have
   a version of OpenSSL older than 1.1.1b installed and you want
@@ -186,8 +194,8 @@ Windows, you can run:
 
 Note that you will still need to manually install the libsodium library
 listed above for libnacl to work correctly and/or libnettle for UMAC
-support. Unfortunately, since libsodium and libnettle are not Python
-packages, they cannot be directly installed using pip.
+support. Unfortunately, since liboqs, libsodium, and libnettle are not
+Python packages, they cannot be directly installed using pip.
 
 Installing the development branch
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

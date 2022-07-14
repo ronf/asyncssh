@@ -2191,6 +2191,7 @@ by AsyncSSH:
   | gss-group17-sha512
   | gss-group18-sha512
   | gss-group14-sha1
+  | sntrup761x25519-sha512\@openssh.com
   | curve25519-sha256
   | curve25519-sha256\@libssh.org
   | curve448-sha512

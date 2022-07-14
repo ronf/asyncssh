@@ -142,7 +142,7 @@ class _KexRSA(Kex):
 
         self.send_packet(MSG_KEXRSA_DONE, String(sig))
 
-        self._conn.send_newkeys(self._k, h)
+        self._conn.send_newkeys(MPInt(self._k), h)
 
     def _process_done(self, _pkttype: int, _pktid: int,
                       packet: SSHPacket) -> None:
@@ -161,7 +161,7 @@ class _KexRSA(Kex):
         if not host_key.verify(h, sig):
             raise KeyExchangeFailed('Key exchange hash mismatch')
 
-        self._conn.send_newkeys(self._k, h)
+        self._conn.send_newkeys(MPInt(self._k), h)
 
     _packet_handlers = {
         MSG_KEXRSA_PUBKEY: _process_pubkey,

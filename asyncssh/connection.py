@@ -1667,7 +1667,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         self.send_packet(MSG_EXT_INFO, packet)
 
-    def send_newkeys(self, k: int, h: bytes) -> None:
+    def send_newkeys(self, k: bytes, h: bytes) -> None:
         """Finish a key exchange and send a new keys message"""
 
         if not self._session_id:
