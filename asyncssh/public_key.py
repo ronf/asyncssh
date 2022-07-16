@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2021 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2022 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -317,6 +317,7 @@ class SSHKey:
                               principals: _CertPrincipals,
                               valid_after: _Time, valid_before: _Time,
                               cert_options: _OpenSSHCertOptions,
+                              sig_alg_name: DefTuple[str],
                               comment: DefTuple[_Comment]) -> \
             'SSHOpenSSHCertificate':
         """Generate a new SSH certificate"""
@@ -333,6 +334,11 @@ class SSHKey:
             raise ValueError('Valid before time must be later than '
                              'valid after time')
 
+        if sig_alg_name == ():
+            sig_alg = self.sig_algorithms[0]
+        else:
+            sig_alg = cast(str, sig_alg_name).encode()
+
         if comment == ():
             comment = key.get_comment_bytes()
 
@@ -346,7 +352,8 @@ class SSHKey:
 
         return cert_handler.generate(self, algorithm, key, serial, cert_type,
                                      key_id, principals, valid_after,
-                                     valid_before, cert_options, comment)
+                                     valid_before, cert_options,
+                                     sig_alg, comment)
 
     def _generate_x509_certificate(self, key: 'SSHKey', subject: str,
                                    issuer: Optional[str],
@@ -639,6 +646,7 @@ class SSHKey:
                                   permit_pty: bool = True,
                                   permit_user_rc: bool = True,
                                   touch_required: bool = True,
+                                  sig_alg: DefTuple[str] = (),
                                   comment: DefTuple[_Comment] = ()) -> \
             'SSHOpenSSHCertificate':
         """Generate a new SSH user certificate
@@ -689,6 +697,8 @@ class SSHKey:
            :param touch_required: (optional)
                Whether or not to require the user to touch the security key
                when authenticating with it, defaulting to `True`.
+           :param sig_alg: (optional)
+               The algorithm to use when signing the new certificate.
            :param comment:
                The comment to associate with this certificate. By default,
                the comment will be set to the comment currently set on
@@ -706,6 +716,7 @@ class SSHKey:
            :type permit_pty: `bool`
            :type permit_user_rc: `bool`
            :type touch_required: `bool`
+           :type sig_alg: `str`
            :type comment: `str`, `bytes`, or `None`
 
            :returns: :class:`SSHCertificate`
@@ -746,13 +757,15 @@ class SSHKey:
         return self._generate_certificate(user_key, version, serial,
                                           CERT_TYPE_USER, key_id,
                                           principals, valid_after,
-                                          valid_before, cert_options, comment)
+                                          valid_before, cert_options,
+                                          sig_alg, comment)
 
     def generate_host_certificate(self, host_key: 'SSHKey', key_id: str,
                                   version: int = 1, serial: int = 0,
                                   principals: _CertPrincipals = (),
                                   valid_after: _Time = 0,
                                   valid_before: _Time = 0xffffffffffffffff,
+                                  sig_alg: DefTuple[str] = (),
                                   comment: DefTuple[_Comment] = ()) -> \
             'SSHOpenSSHCertificate':
         """Generate a new SSH host certificate
@@ -779,6 +792,8 @@ class SSHKey:
                The latest time the certificate is valid for, defaulting to
                no restriction on when the certificate stops being valid.
                See :ref:`SpecifyingTimeValues` for allowed time specifications.
+           :param sig_alg: (optional)
+               The algorithm to use when signing the new certificate.
            :param comment:
                The comment to associate with this certificate. By default,
                the comment will be set to the comment currently set on
@@ -788,6 +803,7 @@ class SSHKey:
            :type version: `int`
            :type serial: `int`
            :type principals: `str` or `list` of `str`
+           :type sig_alg: `str`
            :type comment: `str`, `bytes`, or `None`
 
            :returns: :class:`SSHCertificate`
@@ -803,7 +819,7 @@ class SSHKey:
         return self._generate_certificate(host_key, version, serial,
                                           CERT_TYPE_HOST, key_id,
                                           principals, valid_after,
-                                          valid_before, {}, comment)
+                                          valid_before, {}, sig_alg, comment)
 
     def generate_x509_user_certificate(self, user_key: 'SSHKey', subject: str,
                                        issuer: str = None, serial: int = None,
@@ -1565,7 +1581,7 @@ class SSHOpenSSHCertificate(SSHCertificate):
                  serial: int, cert_type: int, key_id: str,
                  principals: Sequence[str], valid_after: int,
                  valid_before: int, options: _OpenSSHCertOptions,
-                 comment: _Comment) -> 'SSHOpenSSHCertificate':
+                 sig_alg: bytes, comment: _Comment) -> 'SSHOpenSSHCertificate':
         """Generate a new SSH certificate"""
 
         principal_bytes = b''.join(String(p) for p in principals)
@@ -1590,7 +1606,7 @@ class SSHOpenSSHCertificate(SSHCertificate):
                                      cert_extensions),
                          String(signing_key.public_data)))
 
-        data += String(signing_key.sign(data, signing_key.algorithm))
+        data += String(signing_key.sign(data, sig_alg))
 
         signing_key = signing_key.convert_to_public()
 

@@ -2029,8 +2029,10 @@ class _TestPublicKey(TempDirTestCase):
                     self.pubkey, 'name', comment='user_comment')
                 self.usercert.write_certificate('usercert')
 
+                hostcert_sig_alg = self.privca.sig_algorithms[0].decode()
                 self.hostcert = self.privca.generate_host_certificate(
-                    self.pubkey, 'name', comment='host_comment')
+                    self.pubkey, 'name', sig_alg=hostcert_sig_alg,
+                    comment='host_comment')
                 self.hostcert.write_certificate('hostcert')
 
                 for f in ('priv', 'privca'):
