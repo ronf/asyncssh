@@ -1157,7 +1157,7 @@ class _TestPublicKeyAuth(ServerTestCase):
         if not self.agent_available(): # pragma: no cover
             self.skipTest('ssh-agent not available')
 
-        for alg in ('ssh-rsa', 'rsa-sha2-256', 'rsa-sha2-512'):
+        for alg in ('rsa-sha2-256', 'rsa-sha2-512'):
             async with self.connect(username='ckey', signature_algs=[alg]):
                 pass
 
@@ -1210,8 +1210,8 @@ class _TestPublicKeyAuth(ServerTestCase):
         """Test public key authentication with specific signature algorithms"""
 
         for alg in ('ssh-rsa', 'rsa-sha2-256', 'rsa-sha2-512'):
-            async with self.connect(username='ckey', client_keys='ckey',
-                                    signature_algs=[alg]):
+            async with self.connect(username='ckey', agent_path=None,
+                                    client_keys='ckey', signature_algs=[alg]):
                 pass
 
     @asynctest
@@ -1303,7 +1303,7 @@ class _TestPublicKeyAuth(ServerTestCase):
 
     @asynctest
     async def test_agent_keypair_with_replaced_cert(self):
-        """Test connecting with sn agent key with replaced cert"""
+        """Test connecting with an agent key with replaced cert"""
 
         if not self.agent_available(): # pragma: no cover
             self.skipTest('ssh-agent not available')
@@ -1482,14 +1482,6 @@ class _TestLimitedPublicKeySignatureAlgs(ServerTestCase):
             await self.connect(username='ckey', client_keys='ckey',
                                signature_algs=['rsa-sha2-256'])
 
-    @asynctest
-    async def test_client_signature_alg_fallback(self):
-        """Test fall back to default client key signature algorithm"""
-
-        async with self.connect(username='ckey', client_keys='ckey',
-                                signature_algs=['rsa-sha2-256', 'ssh-rsa']):
-            pass
-
 
 class _TestSetAuthorizedKeys(ServerTestCase):
     """Unit tests for public key authentication with set_authorized_keys"""
@@ -1610,7 +1602,7 @@ class _TestX509Auth(ServerTestCase):
 
     @asynctest
     async def test_agent_keypair_with_x509_cert(self):
-        """Test connecting with sn agent key with replaced X.509 cert"""
+        """Test connecting with an agent key with replaced X.509 cert"""
 
         if not self.agent_available(): # pragma: no cover
             self.skipTest('ssh-agent not available')
