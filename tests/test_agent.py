@@ -1,4 +1,4 @@
-# Copyright (c) 2016-2020 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2016-2022 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -173,7 +173,7 @@ class _TestAgent(AsyncTestCase):
     async def test_sign(self, agent):
         """Test signing a block of data using the agent"""
 
-        algs = ['ssh-dss', 'ssh-rsa', 'ecdsa-sha2-nistp256']
+        algs = ['ssh-rsa', 'ecdsa-sha2-nistp256']
 
         if ed25519_available: # pragma: no branch
             algs.append('ssh-ed25519')
@@ -187,6 +187,7 @@ class _TestAgent(AsyncTestCase):
             agent_keys = await agent.get_keys()
 
             for agent_key in agent_keys:
+                agent_key.set_sig_algorithm(agent_key.sig_algorithms[0])
                 sig = await agent_key.sign_async(b'test')
                 self.assertTrue(pubkey.verify(b'test', sig))
 
@@ -222,7 +223,7 @@ class _TestAgent(AsyncTestCase):
     async def test_reconnect(self, agent):
         """Test reconnecting to the agent after closing it"""
 
-        key = get_test_key('ssh-rsa')
+        key = get_test_key('ecdsa-sha2-nistp256')
         pubkey = key.convert_to_public()
 
         async with agent:
@@ -372,7 +373,7 @@ class _TestAgent(AsyncTestCase):
     async def test_confirm(self, agent):
         """Test confirmation of key"""
 
-        key = get_test_key('ssh-rsa')
+        key = get_test_key('ecdsa-sha2-nistp256')
         pubkey = key.convert_to_public()
 
         await agent.add_keys([key], confirm=True)
@@ -394,7 +395,7 @@ class _TestAgent(AsyncTestCase):
     async def test_lock(self, agent):
         """Test lock and unlock"""
 
-        key = get_test_key('ssh-rsa')
+        key = get_test_key('ecdsa-sha2-nistp256')
         pubkey = key.convert_to_public()
 
         await agent.add_keys([key])
