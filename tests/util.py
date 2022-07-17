@@ -206,7 +206,7 @@ def make_certificate(cert_version, cert_type, key, signing_key, principals,
     if bad_signature:
         data += String('')
     else:
-        data += String(signing_key.sign(data, signing_key.algorithm))
+        data += String(signing_key.sign(data, signing_key.sig_algorithms[0]))
 
     return b''.join((cert_version.encode('ascii'), b' ',
                      binascii.b2a_base64(data)))
