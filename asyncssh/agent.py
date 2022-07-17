@@ -1,4 +1,4 @@
-# Copyright (c) 2016-2021 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2016-2022 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -161,7 +161,7 @@ class SSHAgentKeyPair(SSHKeyPair):
 
         super().set_sig_algorithm(sig_algorithm)
 
-        if sig_algorithm == b'rsa-sha2-256':
+        if sig_algorithm in (b'rsa-sha2-256', b'x509v3-rsa2048-sha256'):
             self._flags |= SSH_AGENT_RSA_SHA2_256
         elif sig_algorithm == b'rsa-sha2-512':
             self._flags |= SSH_AGENT_RSA_SHA2_512
