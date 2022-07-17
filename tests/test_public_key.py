@@ -2118,6 +2118,7 @@ class TestDSA(_TestPublicKey):
     default_cert_version = 'ssh-dss-cert-v01@openssh.com'
     x509_supported = x509_available
     generate_args = (('ssh-dss', {}),)
+    use_openssh = False
 
 
 class TestRSA(_TestPublicKey):
