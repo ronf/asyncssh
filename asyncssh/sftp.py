@@ -201,9 +201,6 @@ class _SFTPGlobProtocol(Protocol):
     async def stat(self, path: bytes) -> 'SFTPAttrs':
         """Get attributes of a file"""
 
-    async def listdir(self, path: bytes) -> Sequence[bytes]:
-        """List the contents of a directory"""
-
     def scandir(self, path: bytes) -> AsyncIterator['SFTPName']:
         """Return names and attributes of the files in a directory"""
 
