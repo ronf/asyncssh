@@ -695,7 +695,7 @@ class SSHCompletedProcess(Record):
     stderr: Optional[BytesOrStr]
 
 
-class SSHProcess(SSHStreamSession, _WriterProtocol[AnyStr]):
+class SSHProcess(SSHStreamSession, Generic[AnyStr]):
     """SSH process handler"""
 
     def __init__(self, *args) -> None:
