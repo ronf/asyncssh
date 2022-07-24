@@ -64,6 +64,16 @@ async def _handle_client(process):
     elif action == 'env':
         process.channel.set_encoding('utf-8')
         process.stdout.write(process.env.get('TEST', ''))
+    elif action.startswith('redirect '):
+        _, addr, port, action = action.split(None, 3)
+
+        async with asyncssh.connect(addr, int(port)) as conn:
+            upstream_process = await conn.create_process(
+                command=action, encoding=None, term_type=process.term_type,
+                stdin=process.stdin, stdout=process.stdout)
+
+            result = await upstream_process.wait()
+            process.exit_with_signal(*result.exit_signal)
     elif action == 'redirect_stdin':
         await process.redirect_stdin(process.stdout)
         await process.stdout.drain()
@@ -625,6 +635,45 @@ class _TestProcessRedirection(_TestProcess):
 
         self.assertEqual(result.stdout, data)
         self.assertEqual(result.stderr, data)
+
+    @asynctest
+    async def test_forward_terminal_size(self):
+        """Test forwarding a terminal size change"""
+
+        async with self.connect() as conn:
+            cmd = f'redirect {self._server_addr} {self._server_port} term_size'
+            process = await conn.create_process(cmd, term_type='ansi')
+            process.change_terminal_size(80, 24)
+            result = await process.wait()
+
+        self.assertEqual(result.exit_signal[2], '80x24')
+
+    @asynctest
+    async def test_forward_break(self):
+        """Test forwarding a break"""
+
+        async with self.connect() as conn:
+            cmd = f'redirect {self._server_addr} {self._server_port} break'
+            process = await conn.create_process(cmd)
+            process.send_break(1000)
+            result = await process.wait()
+
+        self.assertEqual(result.exit_signal[2], '1000')
+
+    @asynctest
+    async def test_forward_signal(self):
+        """Test forwarding a signal"""
+
+        async with self.connect() as conn:
+            cmd = f'redirect {self._server_addr} {self._server_port} echo'
+            process = await conn.create_process(cmd)
+            process.stdin.write('\n')
+            await process.stdout.readline()
+            process.send_signal('INT')
+            result = await process.wait()
+
+        self.assertEqual(result.exit_signal[0], 'INT')
+        self.assertEqual(result.returncode, -SIGINT)
 
     @unittest.skipIf(sys.platform == 'win32',
                      'skip asyncio.subprocess tests on Windows')

@@ -43,6 +43,7 @@ from .logging import SSHLogger
 
 from .misc import BytesOrStr, Error, MaybeAwait
 from .misc import ProtocolError, Record, open_file
+from .misc import BreakReceived, SignalReceived, TerminalSizeChanged
 
 from .session import DataType, TermModes, TermSize
 
@@ -96,6 +97,9 @@ class _WriterProtocol(Protocol[_AnyStrContra]):
     def write(self, data: _AnyStrContra) -> None:
         """Write data"""
 
+    def write_exception(self, exc: Exception) -> None:
+        """Write exception (break, signal, terminal size change)"""
+
     def write_eof(self) -> None:
         """Close output when end of file is received"""
 
@@ -111,11 +115,13 @@ def _is_regular_file(file: IO[bytes]) -> bool:
     except OSError:
         return True
 
-class _UnicodeReader(Generic[AnyStr]):
+class _UnicodeReader(_ReaderProtocol, Generic[AnyStr]):
     """Handle buffering partial Unicode data"""
 
     def __init__(self, encoding: Optional[str], errors: str,
                  textmode: bool = False):
+        super().__init__()
+
         if encoding and not textmode:
             self._decoder: Optional[codecs.IncrementalDecoder] = \
                 codecs.getincrementaldecoder(encoding)(errors)
@@ -144,11 +150,13 @@ class _UnicodeReader(Generic[AnyStr]):
         """Perform necessary cleanup on error (provided by derived classes)"""
 
 
-class _UnicodeWriter(Generic[AnyStr]):
+class _UnicodeWriter(_WriterProtocol[AnyStr]):
     """Handle encoding Unicode data before writing it"""
 
     def __init__(self, encoding: Optional[str], errors: str,
                  textmode: bool = False):
+        super().__init__()
+
         if encoding and not textmode:
             self._encoder: Optional[codecs.IncrementalEncoder] = \
                 codecs.getincrementalencoder(encoding)(errors)
@@ -404,10 +412,11 @@ class _PipeWriter(_UnicodeWriter[AnyStr], asyncio.BaseProtocol):
         self._transport.close()
 
 
-class _ProcessReader(Generic[AnyStr]):
+class _ProcessReader(_ReaderProtocol, Generic[AnyStr]):
     """Forward data from another SSH process"""
 
     def __init__(self, process: 'SSHProcess[AnyStr]', datatype: DataType):
+        super().__init__()
         self._process: 'SSHProcess[AnyStr]' = process
         self._datatype = datatype
 
@@ -427,10 +436,11 @@ class _ProcessReader(Generic[AnyStr]):
         self._process.clear_writer(self._datatype)
 
 
-class _ProcessWriter(Generic[AnyStr]):
+class _ProcessWriter(_WriterProtocol[AnyStr]):
     """Forward data to another SSH process"""
 
     def __init__(self, process: 'SSHProcess[AnyStr]', datatype: DataType):
+        super().__init__()
         self._process: 'SSHProcess[AnyStr]' = process
         self._datatype = datatype
 
@@ -438,6 +448,11 @@ class _ProcessWriter(Generic[AnyStr]):
         """Write data to the other channel"""
 
         self._process.feed_data(data, self._datatype)
+
+    def write_exception(self, exc: Exception) -> None:
+        """Write an exception to the other channel"""
+
+        cast(SSHClientProcess, self._process).feed_exception(exc)
 
     def write_eof(self) -> None:
         """Write EOF to the other channel"""
@@ -522,7 +537,7 @@ class _StreamWriter(_UnicodeWriter[AnyStr]):
         """Ignore close -- the caller must clean up the associated transport"""
 
 
-class _DevNullWriter(Generic[AnyStr]):
+class _DevNullWriter(_WriterProtocol[AnyStr]):
     """Discard data"""
 
     def write(self, data: AnyStr) -> None:
@@ -535,10 +550,11 @@ class _DevNullWriter(Generic[AnyStr]):
         """Ignore close"""
 
 
-class _StdoutWriter(Generic[AnyStr]):
+class _StdoutWriter(_WriterProtocol[AnyStr]):
     """Forward data to an SSH process' stdout instead of stderr"""
 
     def __init__(self, process: 'SSHProcess[AnyStr]'):
+        super().__init__()
         self._process: 'SSHProcess[AnyStr]' = process
 
     def write(self, data: AnyStr) -> None:
@@ -679,7 +695,7 @@ class SSHCompletedProcess(Record):
     stderr: Optional[BytesOrStr]
 
 
-class SSHProcess(SSHStreamSession, Generic[AnyStr]):
+class SSHProcess(SSHStreamSession, _WriterProtocol[AnyStr]):
     """SSH process handler"""
 
     def __init__(self, *args) -> None:
@@ -956,9 +972,11 @@ class SSHProcess(SSHStreamSession, Generic[AnyStr]):
         """Feed current receive buffer to a newly set writer"""
 
         for buf in self._recv_buf[datatype]:
-            data = cast(AnyStr, buf)
-            writer.write(data)
-            self._recv_buf_len -= len(data)
+            if isinstance(buf, Exception):
+                writer.write_exception(buf)
+            else:
+                writer.write(buf)
+                self._recv_buf_len -= len(buf)
 
         self._recv_buf[datatype].clear()
 
@@ -1129,6 +1147,17 @@ class SSHClientProcess(SSHProcess[AnyStr], SSHClientStreamSession[AnyStr]):
 
         assert self._stderr is not None
         return self._stderr
+
+    def feed_exception(self, exc: Exception) -> None:
+        """Feed exception to the channel"""
+
+        if isinstance(exc, TerminalSizeChanged):
+            self._chan.change_terminal_size(exc.width, exc.height,
+                                            exc.pixwidth, exc.pixheight)
+        elif isinstance(exc, BreakReceived):
+            self._chan.send_break(exc.msec)
+        elif isinstance(exc, SignalReceived): # pragma: no branch
+            self._chan.send_signal(exc.signal)
 
     async def redirect(self, stdin: Optional[ProcessSource] = None,
                        stdout: Optional[ProcessTarget] = None,
@@ -1496,6 +1525,16 @@ class SSHServerProcess(SSHProcess[AnyStr], SSHServerStreamSession[AnyStr]):
 
         assert self._stderr is not None
         return self._stderr
+
+    def exception_received(self, exc: Exception) -> None:
+        """Handle an incoming exception on the channel"""
+
+        writer = self._writers.get(None)
+
+        if writer:
+            writer.write_exception(exc)
+        else:
+            super().exception_received(exc)
 
     async def redirect(self, stdin: Optional[ProcessTarget] = None,
                        stdout: Optional[ProcessSource] = None,

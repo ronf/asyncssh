@@ -736,32 +736,34 @@ class SSHServerStreamSession(SSHStreamSession[AnyStr],
             assert handler is not None
             self._conn.create_task(handler, stdin.logger)
 
+    def exception_received(self, exc: Exception) -> None:
+        """Handle an incoming exception on the channel"""
+
+        self._recv_buf[None].append(exc)
+        self._unblock_read(None)
+
     def break_received(self, msec: int) -> bool:
         """Handle an incoming break on the channel"""
 
-        self._recv_buf[None].append(BreakReceived(msec))
-        self._unblock_read(None)
+        self.exception_received(BreakReceived(msec))
         return True
 
     def signal_received(self, signal: str) -> None:
         """Handle an incoming signal on the channel"""
 
-        self._recv_buf[None].append(SignalReceived(signal))
-        self._unblock_read(None)
+        self.exception_received(SignalReceived(signal))
 
     def soft_eof_received(self) -> None:
         """Handle an incoming soft EOF on the channel"""
 
-        self._recv_buf[None].append(SoftEOFReceived())
-        self._unblock_read(None)
+        self.exception_received(SoftEOFReceived())
 
     def terminal_size_changed(self, width: int, height: int,
                               pixwidth: int, pixheight: int) -> None:
         """Handle an incoming terminal size change on the channel"""
 
-        self._recv_buf[None].append(TerminalSizeChanged(width, height,
-                                                        pixwidth, pixheight))
-        self._unblock_read(None)
+        self.exception_received(TerminalSizeChanged(width, height,
+                                                    pixwidth, pixheight))
 
 
 class SSHSocketStreamSession(SSHStreamSession[AnyStr]):
