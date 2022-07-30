@@ -243,20 +243,11 @@ class _SFTPFSProtocol(Protocol):
     async def stat(self, path: bytes) -> 'SFTPAttrs':
         """Get attributes of a file or directory, following symlinks"""
 
-    async def lstat(self, path: bytes) -> 'SFTPAttrs':
-        """Get attributes of a file or directory"""
-
     async def setstat(self, path: bytes, attrs: 'SFTPAttrs') -> None:
         """Set attributes of a file or directory"""
 
-    async def exists(self, path: bytes) -> bool:
-        """Return if a path exists"""
-
     async def isdir(self, path: bytes) -> bool:
         """Return if the path refers to a directory"""
-
-    async def listdir(self, path: bytes) -> Sequence[bytes]:
-        """List the contents of a directory"""
 
     def scandir(self, path: bytes) -> AsyncIterator['SFTPName']:
         """Return names and attributes of the files in a directory"""
@@ -3502,19 +3493,19 @@ class SFTPClient:
             return FILEXFER_TYPE_UNKNOWN
 
     async def _copy(self, srcfs: _SFTPFSProtocol, dstfs: _SFTPFSProtocol,
-                    srcpath: bytes, dstpath: bytes, preserve: bool,
-                    recurse: bool, follow_symlinks: bool, block_size: int,
-                    max_requests: int, progress_handler: SFTPProgressHandler,
+                    srcpath: bytes, dstpath: bytes, srcattrs: SFTPAttrs,
+                    preserve: bool, recurse: bool, follow_symlinks: bool,
+                    block_size: int, max_requests: int,
+                    progress_handler: SFTPProgressHandler,
                     error_handler: SFTPErrorHandler) -> None:
         """Copy a file, directory, or symbolic link"""
 
         try:
-            if follow_symlinks:
-                srcattrs = await srcfs.stat(srcpath)
-            else:
-                srcattrs = await srcfs.lstat(srcpath)
-
             filetype = srcattrs.type
+
+            if follow_symlinks and filetype == FILEXFER_TYPE_SYMLINK:
+                srcattrs = await srcfs.stat(srcpath)
+                filetype = srcattrs.type
 
             if filetype == FILEXFER_TYPE_DIRECTORY:
                 if not recurse:
@@ -3530,18 +3521,18 @@ class SFTPClient:
                 if not await dstfs.isdir(dstpath):
                     await dstfs.mkdir(dstpath)
 
-                names = await srcfs.listdir(srcpath)
+                async for srcname in srcfs.scandir(srcpath):
+                    filename = cast(bytes, srcname.filename)
 
-                for name in names:
-                    if name in (b'.', b'..'):
+                    if filename in (b'.', b'..'):
                         continue
 
-                    srcfile = posixpath.join(srcpath, name)
-                    dstfile = posixpath.join(dstpath, name)
+                    srcfile = posixpath.join(srcpath, filename)
+                    dstfile = posixpath.join(dstpath, filename)
 
                     await self._copy(srcfs, dstfs, srcfile, dstfile,
-                                     preserve, recurse, follow_symlinks,
-                                     block_size, max_requests,
+                                     srcname.attrs, preserve, recurse,
+                                     follow_symlinks, block_size, max_requests,
                                      progress_handler, error_handler)
 
                 self.logger.info('  Finished copy of directory %s to %s',
@@ -3599,18 +3590,19 @@ class SFTPClient:
         if isinstance(srcpaths, (bytes, str, PurePath)):
             srcpaths = [srcpaths]
 
-        exppaths: List[bytes] = []
+        srcnames: List[SFTPName] = []
 
         if expand_glob:
             glob = SFTPGlob(srcfs, len(srcpaths) > 1)
 
             for srcpath in srcpaths:
-                names = await glob.match(srcfs.encode(srcpath),
-                                         error_handler, self.version)
-
-                exppaths.extend([cast(bytes, name.filename) for name in names])
+                srcnames.extend(await glob.match(srcfs.encode(srcpath),
+                                                 error_handler, self.version))
         else:
-            exppaths = [srcfs.encode(srcfile) for srcfile in srcpaths]
+            for srcpath in srcpaths:
+                srcpath = srcfs.encode(srcpath)
+                srcattrs = await srcfs.stat(srcpath)
+                srcnames.append(SFTPName(srcpath, attrs=srcattrs))
 
         if dstpath:
             dstpath = dstfs.encode(dstpath)
@@ -3619,25 +3611,26 @@ class SFTPClient:
 
         dst_isdir = dstpath is None or (await dstfs.isdir(dstpath))
 
-        if len(exppaths) > 1 and not dst_isdir:
+        if len(srcnames) > 1 and not dst_isdir:
             assert dstpath is not None
             exc = SFTPNotADirectory if self.version >= 6 else SFTPFailure
 
             raise exc('%s must be a directory' %
                        dstpath.decode('utf-8', 'backslashreplace'))
 
-        for srcfile in exppaths:
-            filename = srcfs.basename(srcfile)
+        for srcname in srcnames:
+            srcfile = cast(bytes, srcname.filename)
+            basename = srcfs.basename(srcfile)
 
             if dstpath is None:
-                dstfile = filename
+                dstfile = basename
             elif dst_isdir:
-                dstfile = dstfs.compose_path(filename, parent=dstpath)
+                dstfile = dstfs.compose_path(basename, parent=dstpath)
             else:
                 dstfile = dstpath
 
-            await self._copy(srcfs, dstfs, srcfile, dstfile, preserve,
-                             recurse, follow_symlinks, block_size,
+            await self._copy(srcfs, dstfs, srcfile, dstfile, srcname.attrs,
+                             preserve, recurse, follow_symlinks, block_size,
                              max_requests, progress_handler, error_handler)
 
     async def get(self, remotepaths: Sequence[_SFTPPath],
@@ -5366,7 +5359,7 @@ class SFTPServerHandler(SFTPHandler):
         self._nonstandard_symlink = False
         self._next_handle = 0
         self._file_handles: Dict[bytes, object] = {}
-        self._dir_handles: Dict[bytes, List[SFTPName]] = {}
+        self._dir_handles: Dict[bytes, AsyncIterator[SFTPName]] = {}
 
     async def _cleanup(self, exc: Optional[Exception]) -> None:
         """Clean up this SFTP server session"""
@@ -5645,16 +5638,8 @@ class SFTPServerHandler(SFTPHandler):
             result: bytes
 
             if self._version >= 6:
-                attr_result = self._server.fstat(file_obj)
-
-                if inspect.isawaitable(attr_result):
-                    attr_result = await cast(Awaitable[_SFTPOSAttrs],
-                                             attr_result)
-
-                if isinstance(attr_result, os.stat_result):
-                    attrs = SFTPAttrs.from_local(attr_result)
-                else:
-                    attrs = cast(SFTPAttrs, attr_result)
+                attrs = await self._server.convert_attrs(
+                    self._server.fstat(file_obj))
 
                 at_end = offset + len(result) == attrs.size
             else:
@@ -5794,46 +5779,8 @@ class SFTPServerHandler(SFTPHandler):
 
         self.logger.debug1('Received opendir for %s', path)
 
-        listdir_result = self._server.listdir(path)
-
-        if inspect.isawaitable(listdir_result):
-            listdir_result = await cast(Awaitable[Sequence[bytes]],
-                                        listdir_result)
-
-        listdir_result: Sequence[Union[bytes, SFTPName]]
-        entries = list(listdir_result)
-
-        for i, entry in enumerate(entries):
-            if isinstance(entry, bytes):
-                entries[i] = entry = SFTPName(entry)
-
-                filename = os.path.join(path, cast(bytes, entry.filename))
-                attr_result = self._server.lstat(filename)
-
-                if inspect.isawaitable(attr_result):
-                    attr_result = await cast(Awaitable[_SFTPOSAttrs],
-                                             attr_result)
-
-                attr_result: _SFTPOSAttrs
-
-                if isinstance(attr_result, os.stat_result):
-                    attr_result = SFTPAttrs.from_local(attr_result)
-
-                attr_result: SFTPAttrs
-
-                entry.attrs = attr_result
-
-            if not entry.longname and self._version == 3:
-                longname_result = self._server.format_longname(entry)
-
-                if inspect.isawaitable(longname_result):
-                    assert longname_result is not None
-                    await longname_result
-
-        entries: List[SFTPName]
-
         handle = self._get_next_handle()
-        self._dir_handles[handle] = entries
+        self._dir_handles[handle] = self._server.scandir(path)
         return handle
 
     async def _process_readdir(self, packet: SSHPacket) -> _SFTPNames:
@@ -5847,12 +5794,29 @@ class SFTPServerHandler(SFTPHandler):
         self.logger.debug1('Received readdir for handle %s', handle.hex())
 
         names = self._dir_handles.get(handle)
+
         if names:
-            result = names[:_MAX_READDIR_NAMES]
-            del names[:_MAX_READDIR_NAMES]
-            return result, not names
-        elif names is not None:
-            raise SFTPEOFError
+            count = 0
+            result: List[SFTPName] = []
+
+            async for name in names:
+                if not name.longname and self._version == 3:
+                    longname_result = self._server.format_longname(name)
+
+                    if inspect.isawaitable(longname_result):
+                        assert longname_result is not None
+                        await longname_result
+
+                result.append(name)
+                count += 1
+
+                if count == _MAX_READDIR_NAMES:
+                    break
+
+            if result:
+                return result, count < _MAX_READDIR_NAMES
+            else:
+                raise SFTPEOFError
         else:
             raise SFTPInvalidHandle('Invalid file handle')
 
@@ -5944,16 +5908,8 @@ class SFTPServerHandler(SFTPHandler):
 
         if check != FXRP_NO_CHECK:
             try:
-                attr_result = self._server.stat(result)
-
-                if inspect.isawaitable(attr_result):
-                    attr_result = await cast(Awaitable[_SFTPOSAttrs],
-                                             attr_result)
-
-                if isinstance(attr_result, os.stat_result):
-                    attrs = SFTPAttrs.from_local(attr_result)
-                else:
-                    attrs = cast(SFTPAttrs, attr_result)
+                attrs = await self._server.convert_attrs(
+                    self._server.stat(result))
             except (OSError, SFTPError):
                 if check == FXRP_STAT_ALWAYS:
                     raise
@@ -6421,6 +6377,29 @@ class SFTPServer:
         """A logger associated with this SFTP server"""
 
         return self._chan.logger
+
+    async def convert_attrs(self, result: MaybeAwait[_SFTPOSAttrs]) -> \
+            SFTPAttrs:
+        """Convert stat result to SFTPAttrs"""
+
+        if inspect.isawaitable(result):
+            result = await cast(Awaitable[_SFTPOSAttrs], result)
+
+        result: _SFTPOSAttrs
+
+        if isinstance(result, os.stat_result):
+            result = SFTPAttrs.from_local(result)
+
+        result: SFTPAttrs
+
+        return result
+
+    async def _to_sftpname(self, parent: bytes, name: bytes) -> SFTPName:
+        """Construct an SFTPName for a filename in a directory"""
+
+        path = posixpath.join(parent, name)
+        attrs = await self.convert_attrs(self.lstat(path))
+        return SFTPName(name, attrs=attrs)
 
     def format_user(self, uid: Optional[int]) -> str:
         """Return the user name associated with a uid
@@ -6895,66 +6874,59 @@ class SFTPServer:
 
         return None
 
-    def listdir(self, path: bytes) -> \
-            MaybeAwait[Sequence[Union[bytes, SFTPName]]]:
-        """List the contents of a directory
+    async def scandir(self, path: bytes) -> AsyncIterator[SFTPName]:
+        """Return names and attributes of the files in a directory
+
+           This function returns an async iterator of :class:`SFTPName`
+           entries corresponding to files in the requested directory.
 
            :param path:
-               The path of the directory to open
+               The path of the directory to scan
            :type path: `bytes`
 
-           :returns: A list of names of files in the directory or
-                     :class:`SFTPName` objects containing file names
-                     and attributes
+           :returns: An async iterator of :class:`SFTPName`
 
            :raises: :exc:`SFTPError` to return an error to the client
 
         """
 
-        files = os.listdir(_to_local_path(self.map_path(path)))
+        if hasattr(self, 'listdir'):
+            # Support backward compatibility with older AsyncSSH versions
+            # which allowed listdir() to be overridden, returning a list
+            # of either :class:`SFTPName` objects or plain filenames, in
+            # which case :meth:`lstat` is called to retrieve attribute
+            # information.
 
-        if sys.platform == 'win32': # pragma: no cover
-            files = [os.fsencode(f) for f in files]
+            # pylint: disable=no-member
+            listdir_result = self.listdir(path) # type: ignore
 
-        files: List[bytes]
+            if inspect.isawaitable(listdir_result):
+                listdir_result = await cast(
+                    Awaitable[Sequence[Union[bytes, SFTPName]]],
+                    listdir_result)
 
-        return [b'.', b'..'] + files
+            listdir_result: Sequence[Union[bytes, SFTPName]]
 
-    async def scandir(self, path: bytes) -> AsyncIterator[SFTPName]:
-        """Return names and attributes of the files in a directory
+            for name in listdir_result:
+                if isinstance(name, bytes):
+                    yield await self._to_sftpname(path, name)
+                else:
+                    yield name
+        else:
+            for name in (b'.', b'..'):
+                yield await self._to_sftpname(path, name)
 
-           This function calls listdir to get the entries, but fills in
-           attribute information from the local filesystem in cases
-           where listdir returns just a file name.
+            with os.scandir(_to_local_path(self.map_path(path))) as entries:
+                for entry in entries:
+                    filename = entry.name
 
-        """
+                    if sys.platform == 'win32': # pragma: no cover
+                        filename = os.fsencode(filename)
 
-        listdir_result = self.listdir(path)
+                    attrs = SFTPAttrs.from_local(
+                        entry.stat(follow_symlinks=False))
 
-        if inspect.isawaitable(listdir_result):
-            listdir_result = await cast(
-                Awaitable[Sequence[Union[bytes, SFTPName]]], listdir_result)
-
-        listdir_result: Sequence[Union[bytes, SFTPName]]
-
-        for name in listdir_result:
-            if isinstance(name, bytes):
-                attr_result = self.lstat(name)
-
-                if inspect.isawaitable(attr_result):
-                    attr_result = await cast(Awaitable[_SFTPOSAttrs],
-                                             attr_result)
-
-                attr_result: _SFTPOSAttrs
-
-                if isinstance(attr_result, os.stat_result):
-                    attr_result = SFTPAttrs.from_local(attr_result)
-
-                attr_result: SFTPAttrs
-
-                yield SFTPName(name, attrs=attr_result)
-            else:
-                yield name
+                    yield SFTPName(filename, attrs=attrs)
 
     def remove(self, path: bytes) -> MaybeAwait[None]:
         """Remove a file or symbolic link
@@ -7308,11 +7280,6 @@ class LocalFS:
 
         return SFTPAttrs.from_local(os.stat(_to_local_path(path)))
 
-    async def lstat(self, path: bytes) -> 'SFTPAttrs':
-        """Get attributes of a local file, directory, or symlink"""
-
-        return SFTPAttrs.from_local(os.lstat(_to_local_path(path)))
-
     async def setstat(self, path: bytes, attrs: 'SFTPAttrs') -> None:
         """Set attributes of a local file or directory"""
 
@@ -7328,26 +7295,18 @@ class LocalFS:
 
         return os.path.isdir(_to_local_path(path))
 
-    async def listdir(self, path: bytes) -> Sequence[bytes]:
-        """Read the names of the files in a local directory"""
-
-        files = os.listdir(_to_local_path(path))
-
-        if sys.platform == 'win32': # pragma: no cover
-            files = [os.fsencode(f) for f in files]
-
-        return files
-
     async def scandir(self, path: bytes) -> AsyncIterator[SFTPName]:
         """Return names and attributes of the files in a local directory"""
 
-        for entry in os.scandir(_to_local_path(path)):
-            filename = entry.name
+        with os.scandir(_to_local_path(path)) as entries:
+            for entry in entries:
+                filename = entry.name
 
-            if sys.platform == 'win32': # pragma: no cover
-                filename = os.fsencode(filename)
+                if sys.platform == 'win32': # pragma: no cover
+                    filename = os.fsencode(filename)
 
-            yield SFTPName(filename, attrs=SFTPAttrs.from_local(entry.stat()))
+                attrs = SFTPAttrs.from_local(entry.stat(follow_symlinks=False))
+                yield SFTPName(filename, attrs=attrs)
 
     async def mkdir(self, path: bytes) -> None:
         """Create a local directory with the specified attributes"""
@@ -7488,18 +7447,6 @@ class SFTPServerFS:
         """Return if the path refers to a directory"""
 
         return (await self._type(path)) == FILEXFER_TYPE_DIRECTORY
-
-    async def listdir(self, path: bytes) -> Sequence[bytes]:
-        """List the contents of a directory"""
-
-        files = self._server.listdir(path)
-
-        if inspect.isawaitable(files):
-            files = await cast(Awaitable[Sequence[bytes]], files)
-
-        files: Sequence[bytes]
-
-        return files
 
     def scandir(self, path: bytes) -> AsyncIterator[SFTPName]:
         """Return names and attributes of the files in a directory"""

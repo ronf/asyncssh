@@ -252,7 +252,7 @@ class _ReorderReadServerHandler(SFTPServerHandler):
 class _CheckPropSFTPServer(SFTPServer):
     """Return an FTP server which checks channel properties"""
 
-    def listdir(self, path):
+    def listdir(self, _path):
         """List the contents of a directory"""
 
         if self.channel.get_connection() == self.connection: # pragma: no branch
@@ -349,7 +349,7 @@ class _FileTypeSFTPServer(SFTPServer):
                    (FILEXFER_TYPE_BLOCK_DEVICE, stat.S_IFBLK),
                    (FILEXFER_TYPE_FIFO,         stat.S_IFIFO))
 
-    def listdir(self, path):
+    def listdir(self, _path):
         """List the contents of a directory"""
 
         return [SFTPName(str(filetype).encode('ascii'),
@@ -360,8 +360,10 @@ class _FileTypeSFTPServer(SFTPServer):
 class _LongnameSFTPServer(SFTPServer):
     """Return a fixed set of files in response to a listdir request"""
 
-    def listdir(self, path):
+    def listdir(self, _path):
         """List the contents of a directory"""
+
+        # pylint: disable=no-self-use
 
         return list((b'.',
                      b'..',
@@ -461,18 +463,18 @@ class _SFTPAttrsSFTPServer(SFTPServer):
     async def lstat(self, path):
         """Get attributes of a local file, directory, or symlink"""
 
-        return SFTPAttrs.from_local(super().stat(path))
+        return SFTPAttrs.from_local(super().lstat(path))
 
     async def fstat(self, file_obj):
         """Get attributes of an open file"""
 
         return SFTPAttrs.from_local(super().fstat(file_obj))
 
-    async def listdir(self, path):
-        """Read the names of the files in a local directory"""
+    async def scandir(self, path):
+        """Return names and attributes of the files in a local directory"""
 
-        return [SFTPName(name, attrs=await self.lstat(path))
-                if name == b'src' else name for name in super().listdir(path)]
+        async for name in super().scandir(path):
+            yield name
 
 
 class _AsyncSFTPServer(SFTPServer):
@@ -525,10 +527,10 @@ class _AsyncSFTPServer(SFTPServer):
 
         super().fsetstat(file_obj, attrs)
 
-    async def listdir(self, path):
-        """List the contents of a directory"""
+    def scandir(self, path):
+        """Scan the contents of a directory"""
 
-        return super().listdir(path)
+        return super().scandir(path)
 
     async def remove(self, path):
         """Remove a file or symbolic link"""
@@ -840,6 +842,25 @@ class _TestSFTP(_CheckSFTP):
                     self._check_file('src', 'dst')
                 finally:
                     remove('src dst link')
+
+    @sftp_test
+    async def test_copy_recurse_follow_symlinks(self, sftp):
+        """Test recursively copying over SFTP while following symlinks"""
+
+        if not self._symlink_supported: # pragma: no cover
+            raise unittest.SkipTest('symlink not available')
+
+        for method in ('get', 'put', 'copy'):
+            with self.subTest(method=method):
+                try:
+                    os.mkdir('src')
+                    self._create_file('src/file1')
+                    os.symlink('file1', 'src/file2')
+                    await getattr(sftp, method)('src', 'dst', recurse=True,
+                                                follow_symlinks=True)
+                    self._check_file('src/file1', 'dst/file2')
+                finally:
+                    remove('src dst')
 
     @sftp_test
     async def test_copy_invalid_name(self, sftp):
@@ -1240,6 +1261,19 @@ class _TestSFTP(_CheckSFTP):
     @sftp_test_v4
     async def test_lstat_v4(self, sftp):
         """Test getting attributes on a link with SFTPv4"""
+
+        if not self._symlink_supported: # pragma: no cover
+            raise unittest.SkipTest('symlink not available')
+
+        try:
+            os.symlink('file', 'link')
+            self._check_stat_v4((await sftp.lstat('link')), os.lstat('link'))
+        finally:
+            remove('link')
+
+    @sftp_test_v6
+    async def test_lstat_v6(self, sftp):
+        """Test getting attributes on a link with SFTPv6"""
 
         if not self._symlink_supported: # pragma: no cover
             raise unittest.SkipTest('symlink not available')

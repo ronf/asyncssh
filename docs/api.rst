@@ -1238,9 +1238,9 @@ SFTPServer
    ======================== =
    Directory access methods
    ======================== =
-   .. automethod:: listdir
    .. automethod:: mkdir
    .. automethod:: rmdir
+   .. automethod:: scandir
    ======================== =
 
    ===================== =

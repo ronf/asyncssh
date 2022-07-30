@@ -27,7 +27,6 @@ import asyncio
 import posixpath
 from pathlib import PurePath
 import shlex
-import stat
 import string
 import sys
 from types import TracebackType
@@ -36,6 +35,7 @@ from typing import Sequence, Tuple, Type, Union, cast
 from typing_extensions import Protocol
 
 from .constants import DEFAULT_LANG
+from .constants import FILEXFER_TYPE_REGULAR, FILEXFER_TYPE_DIRECTORY
 from .logging import SSHLogger
 from .misc import BytesOrStr, FilePath, HostPort, MaybeAwait
 from .misc import async_context_manager, plural
@@ -75,9 +75,6 @@ class _SCPFSProtocol(Protocol):
 
     async def isdir(self, path: bytes) -> bool:
         """Return if the path refers to a directory"""
-
-    async def listdir(self, path: bytes) -> Sequence[bytes]:
-        """List the contents of a directory"""
 
     def scandir(self, path: bytes) -> AsyncIterator[SFTPName]:
         """Read the names and attributes of files in a directory"""
@@ -496,38 +493,39 @@ class _SCPSource(_SCPHandler):
         if final_exc:
             raise final_exc
 
-    async def _send_dir(self, srcpath: bytes,
-                        dstpath: bytes, attrs: SFTPAttrs) -> None:
+    async def _send_dir(self, srcpath: bytes, dstpath: bytes,
+                        attrs: SFTPAttrs) -> None:
         """Send directory over SCP"""
 
         self.logger.info('  Starting send of directory %s', srcpath)
 
         await self._make_cd_request(b'D', attrs, 0, srcpath)
 
-        for name in await self._fs.listdir(srcpath):
+        async for entry in self._fs.scandir(srcpath):
+            name = cast(bytes, entry.filename)
+
             if name in (b'.', b'..'):
                 continue
 
             await self._send_files(posixpath.join(srcpath, name),
-                                   posixpath.join(dstpath, name))
+                                   posixpath.join(dstpath, name),
+                                   entry.attrs)
 
         await self.make_request(b'E')
 
         self.logger.info('  Finished send of directory %s', srcpath)
 
-    async def _send_files(self, srcpath: bytes, dstpath: bytes) -> None:
+    async def _send_files(self, srcpath: bytes, dstpath: bytes,
+                          attrs: SFTPAttrs) -> None:
         """Send files via SCP"""
 
         try:
-            attrs = await self._fs.stat(srcpath)
-            assert attrs.permissions is not None
-
             if self._preserve:
                 await self._make_t_request(attrs)
 
-            if self._recurse and stat.S_ISDIR(attrs.permissions):
+            if self._recurse and attrs.type == FILEXFER_TYPE_DIRECTORY:
                 await self._send_dir(srcpath, dstpath, attrs)
-            elif stat.S_ISREG(attrs.permissions):
+            elif attrs.type == FILEXFER_TYPE_REGULAR:
                 await self._send_file(srcpath, dstpath, attrs)
             else:
                 raise _scp_error(SFTPFailure, 'Not a regular file', srcpath)
@@ -550,7 +548,8 @@ class _SCPSource(_SCPHandler):
                 raise exc
 
             for name in await SFTPGlob(self._fs).match(srcpath):
-                await self._send_files(cast(bytes, name.filename), b'')
+                await self._send_files(cast(bytes, name.filename),
+                                            b'', name.attrs)
         except (OSError, SFTPError) as exc:
             self.handle_error(exc)
         finally:
