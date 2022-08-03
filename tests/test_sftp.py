@@ -2105,10 +2105,11 @@ class _TestSFTP(_CheckSFTP):
             f = None
 
             try:
-                self._create_file('file', 4*1024*1024*'\0')
+                random_data = os.urandom(4*1024*1024)
+                self._create_file('file', random_data)
 
-                async with sftp.open('file') as f:
-                    await f.read()
+                async with sftp.open('file', 'rb') as f:
+                    self.assertEqual(await f.read(), random_data)
             finally:
                 remove('file')
 
