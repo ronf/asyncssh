@@ -611,7 +611,14 @@ class _SFTPParallelIO(Generic[_T]):
         self._max_requests = max_requests
         self._offset = offset
         self._bytes_left = size
-        self._pending: Set['asyncio.Task[None]'] = set()
+        self._pending: Set['asyncio.Task[Tuple[int, int, int, _T]]'] = set()
+
+    async def _start_task(self, offset: int, size: int) -> \
+                Tuple[int, int, int, _T]:
+        """Start a task to perform file I/O on a particular byte range"""
+
+        count, result = await self.run_task(offset, size)
+        return offset, size, count, result
 
     def _start_tasks(self) -> None:
         """Create parallel file I/O tasks"""
@@ -619,57 +626,48 @@ class _SFTPParallelIO(Generic[_T]):
         while self._bytes_left and len(self._pending) < self._max_requests:
             size = min(self._bytes_left, self._block_size)
 
-            task = asyncio.ensure_future(self.run_task(self._offset, size))
+            task = asyncio.ensure_future(self._start_task(self._offset, size))
             self._pending.add(task)
 
             self._offset += size
             self._bytes_left -= size
 
-    async def start(self) -> None:
-        """Start parallel I/O"""
-
-    async def run_task(self, offset: int, size: int) -> None:
+    async def run_task(self, offset: int, size: int) -> Tuple[int, _T]:
         """Perform file I/O on a particular byte range"""
 
         raise NotImplementedError
 
-    async def finish(self) -> _T:
-        """Finish parallel I/O"""
+    async def iter(self) -> AsyncIterator[Tuple[int, _T]]:
+        """Perform file I/O and return async iterator of results"""
 
-    async def cleanup(self) -> None:
-        """Clean up parallel I/O"""
+        self._start_tasks()
 
-    async def run(self) -> _T:
-        """Perform all file I/O and return result or exception"""
+        while self._pending:
+            done, self._pending = await asyncio.wait(
+                self._pending, return_when=asyncio.FIRST_COMPLETED)
 
-        try:
-            await self.start()
+            exceptions = []
+
+            for task in done:
+                try:
+                    offset, size, count, result = task.result()
+                    yield offset, result
+
+                    if count < size:
+                        self._pending.add(asyncio.ensure_future(
+                            self._start_task(offset+count, size-count)))
+                except SFTPEOFError:
+                    pass
+                except (OSError, SFTPError) as exc:
+                    exceptions.append(exc)
+
+            if exceptions:
+                for task in self._pending:
+                    task.cancel()
+
+                raise exceptions[0]
 
             self._start_tasks()
-
-            while self._pending:
-                done, self._pending = await asyncio.wait(
-                    self._pending, return_when=asyncio.FIRST_COMPLETED)
-
-                exceptions = []
-
-                for task in done:
-                    exc = task.exception()
-
-                    if exc and not isinstance(exc, SFTPEOFError):
-                        exceptions.append(exc)
-
-                if exceptions:
-                    for task in self._pending:
-                        task.cancel()
-
-                    raise exceptions[0]
-
-                self._start_tasks()
-
-            return await self.finish()
-        finally:
-            await self.cleanup()
 
 
 class _SFTPFileReader(_SFTPParallelIO[bytes]):
@@ -683,33 +681,32 @@ class _SFTPFileReader(_SFTPParallelIO[bytes]):
         self._handler = handler
         self._handle = handle
         self._start = offset
-        self._data = bytearray()
 
-    async def run_task(self, offset: int, size: int) -> None:
+    async def run_task(self, offset: int, size: int) -> Tuple[int, bytes]:
         """Read a block of the file"""
 
-        while size:
-            data, _ = await self._handler.read(self._handle, offset, size)
+        data, _ = await self._handler.read(self._handle, offset, size)
 
+        return len(data), data
+
+    async def run(self) -> bytes:
+        """Reassemble and return data from parallel reads"""
+
+        result = bytearray()
+
+        async for offset, data in self.iter():
             pos = offset - self._start
-            pad = pos - len(self._data)
+            pad = pos - len(result)
 
             if pad > 0:
-                self._data += pad * b'\0'
+                result += pad * b'\0'
 
-            datalen = len(data)
-            self._data[pos:pos+datalen] = data
+            result[pos:pos+len(data)] = data
 
-            offset += datalen
-            size -= datalen
-
-    async def finish(self) -> bytes:
-        """Finish parallel read"""
-
-        return bytes(self._data)
+        return bytes(result)
 
 
-class _SFTPFileWriter(_SFTPParallelIO[None]):
+class _SFTPFileWriter(_SFTPParallelIO[int]):
     """Parallelized SFTP file writer"""
 
     def __init__(self, block_size: int, max_requests: int,
@@ -722,13 +719,19 @@ class _SFTPFileWriter(_SFTPParallelIO[None]):
         self._start = offset
         self._data = data
 
-    async def run_task(self, offset: int, size: int) -> None:
+    async def run_task(self, offset: int, size: int) -> Tuple[int, int]:
         """Write a block to the file"""
 
         pos = offset - self._start
         await self._handler.write(self._handle, offset,
                                   self._data[pos:pos+size])
+        return size, size
 
+    async def run(self):
+        """Perform parallel writes"""
+
+        async for _ in self.iter():
+            pass
 
 class _SFTPFileCopier(_SFTPParallelIO):
     """SFTP file copier
@@ -757,51 +760,45 @@ class _SFTPFileCopier(_SFTPParallelIO):
         self._total_bytes = total_bytes
         self._progress_handler = progress_handler
 
-    async def start(self) -> None:
-        """Start parallel copy"""
-
-        self._src = await self._srcfs.open(self._srcpath, 'rb')
-        self._dst = await self._dstfs.open(self._dstpath, 'wb')
-
-        if self._progress_handler and self._total_bytes == 0:
-            self._progress_handler(self._srcpath, self._dstpath, 0, 0)
-
-    async def run_task(self, offset: int, size: int) -> None:
-        """Copy the next block of the file"""
+    async def run_task(self, offset: int, size: int) -> Tuple[int, bytes]:
+        """Read a block of the source file"""
 
         assert self._src is not None
-        assert self._dst is not None
 
-        while size:
-            data = await self._src.read(size, offset)
+        data = await self._src.read(size, offset)
 
-            if not data:
-                exc = SFTPFailure('Unexpected EOF during file copy')
+        return len(data), data
 
-                setattr(exc, 'filename', self._srcpath)
-                setattr(exc, 'offset', offset)
-
-                raise exc
-
-            await self._dst.write(data, offset)
-
-            datalen = len(data)
-
-            if self._progress_handler:
-                self._bytes_copied += datalen
-                self._progress_handler(self._srcpath, self._dstpath,
-                                       self._bytes_copied, self._total_bytes)
-
-            offset += datalen
-            size -= datalen
-
-    async def cleanup(self) -> None:
-        """Clean up parallel copy"""
+    async def run(self) -> None:
+        """Perform parallel file copy"""
 
         try:
+            self._src = await self._srcfs.open(self._srcpath, 'rb')
+            self._dst = await self._dstfs.open(self._dstpath, 'wb')
+
+            if self._progress_handler and self._total_bytes == 0:
+                self._progress_handler(self._srcpath, self._dstpath, 0, 0)
+
+            async for offset, data in self.iter():
+                if not data:
+                    exc = SFTPFailure('Unexpected EOF during file copy')
+
+                    setattr(exc, 'filename', self._srcpath)
+                    setattr(exc, 'offset', offset)
+
+                    raise exc
+
+                await self._dst.write(data, offset)
+
+                if self._progress_handler:
+                    self._bytes_copied += len(data)
+                    self._progress_handler(self._srcpath, self._dstpath,
+                                           self._bytes_copied,
+                                           self._total_bytes)
+        finally:
             if self._src: # pragma: no branch
                 await self._src.close()
-        finally:
+
             if self._dst: # pragma: no branch
                 await self._dst.close()
 
@@ -3080,6 +3077,66 @@ class SFTPClientFile:
             return cast(AnyStr, data.decode(self._encoding, self._errors))
         else:
             return cast(AnyStr, data)
+
+    async def read_parallel(self, size: int = -1,
+                            offset: Optional[int] = None) -> \
+            AsyncIterator[Tuple[int, bytes]]:
+        """Read parallel blocks of data from the remote file
+
+           This method reads and returns up to `size` bytes of data
+           from the remote file. If size is negative, all data up to
+           the end of the file is returned.
+
+           If offset is specified, the read will be performed starting
+           at that offset rather than the current file position.
+
+           Data is returned as a series of tuples delivered by an
+           async iterator, where each tuple contains an offset and
+           data bytes. Encoding is ignored here, since multi-byte
+           characters may be split across block boundaries.
+
+           To maximize performance, multiple reads are issued in
+           parallel, and data blocks may be returned out of order.
+           The size of the blocks and the maximum number of
+           outstanding read requests can be controlled using
+           the `block_size` and `max_requests` arguments passed
+           in the call to the :meth:`open() <SFTPClient.open>`
+           method on the :class:`SFTPClient` class.
+
+           :param size:
+               The number of bytes to read
+           :param offset: (optional)
+               The offset from the beginning of the file to begin reading
+           :type size: `int`
+           :type offset: `int`
+
+           :returns: an async iterator of tuples of offset and data bytes
+
+           :raises: | :exc:`ValueError` if the file has been closed
+                    | :exc:`SFTPError` if the server returns an error
+
+        """
+
+        if self._handle is None:
+            raise ValueError('I/O operation on closed file')
+
+        if offset is None:
+            offset = self._offset
+
+        # If self._offset is None, we're appending and haven't seeked
+        # backward in the file since the last write, so there's no
+        # data to return
+
+        if offset is not None:
+            if size is None or size < 0:
+                size = (await self._end()) - offset
+        else:
+            offset = 0
+            size = 0
+
+        return _SFTPFileReader(self._block_size, self._max_requests,
+                               self._handler, self._handle, offset,
+                               size).iter()
 
     async def write(self, data: AnyStr, offset: Optional[int] = None) -> int:
         """Write data to the remote file

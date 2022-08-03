@@ -1164,6 +1164,7 @@ SFTPClientFile
 
    ================================================= =
    .. automethod:: read
+   .. automethod:: read_parallel
    .. automethod:: write
    .. automethod:: seek(offset, from_what=SEEK_SET)
    .. automethod:: tell

@@ -2032,6 +2032,10 @@ class _TestSFTP(_CheckSFTP):
 
             f = await sftp.open('file', 'rb')
             self.assertEqual((await f.read()), b'xxx')
+
+            await f.seek(0)
+            self.assertEqual([result async for result in
+                              await f.read_parallel()], [(0, b'xxx')])
         finally:
             if f: # pragma: no branch
                 await f.close()
@@ -2049,6 +2053,8 @@ class _TestSFTP(_CheckSFTP):
 
             f = await sftp.open('file')
             self.assertEqual((await f.read(4, 2)), 'xxyy')
+            self.assertEqual([result async for result in
+                              await f.read_parallel(4, 2)], [(2, b'xxyy')])
         finally:
             if f: # pragma: no branch
                 await f.close()
@@ -2295,6 +2301,8 @@ class _TestSFTP(_CheckSFTP):
             f = await sftp.open('file', 'a+')
             await f.write('yyy')
             self.assertEqual((await f.read()), '')
+            self.assertEqual([result async for result in
+                              await f.read_parallel()], [])
             await f.close()
 
             with open('file') as localf:
@@ -3087,6 +3095,9 @@ class _TestSFTP(_CheckSFTP):
 
             with self.assertRaises(ValueError):
                 await f.read()
+
+            with self.assertRaises(ValueError):
+                await f.read_parallel()
 
             with self.assertRaises(ValueError):
                 await f.write('')
@@ -4168,9 +4179,13 @@ class _TestSFTPIOError(_CheckSFTP):
         try:
             self._create_file('file', 4*1024*1024*'\0')
 
-            with self.assertRaises(SFTPFailure):
-                async with sftp.open('file') as f:
+            async with sftp.open('file') as f:
+                with self.assertRaises(SFTPFailure):
                     await f.read(4*1024*1024)
+
+                with self.assertRaises(SFTPFailure):
+                    async for _ in  await f.read_parallel(4*1024*1024):
+                        pass
         finally:
             remove('file')
 
