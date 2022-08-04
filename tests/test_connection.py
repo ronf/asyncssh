@@ -398,6 +398,17 @@ class _TestConnection(ServerTestCase):
             pass
 
     @asynctest
+    async def test_connect_sock(self):
+        """Test connecting with async context manager"""
+
+        sock = socket.socket()
+        await self.loop.sock_connect(sock, (self._server_addr,
+                                            self._server_port))
+
+        async with asyncssh.connect(sock=sock):
+            pass
+
+    @asynctest
     async def test_connect_invalid_options_type(self):
         """Test connecting using options using incorrect type of options"""
 
@@ -1470,6 +1481,25 @@ class _TestConnection(ServerTestCase):
         with self.assertRaises(RuntimeError):
             await self.create_connection(_InternalErrorClient)
 
+
+class _TestConnectionListenSock(ServerTestCase):
+    """Unit test for specifying a listen socket"""
+
+    @classmethod
+    async def start_server(cls):
+        """Start an SSH server to connect to"""
+
+        sock = socket.socket()
+
+        return await cls.create_server(_TunnelServer, sock=sock)
+
+    @asynctest
+    async def test_connect(self):
+        """Test acceptor"""
+
+        with self.assertLogs(level='INFO'):
+            async with self.connect():
+                pass
 
 class _TestConnectionAsyncAcceptor(ServerTestCase):
     """Unit test for async acceptor"""

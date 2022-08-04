@@ -381,6 +381,7 @@ async def _open_tunnel(tunnel: object, passphrase: Optional[BytesOrStr]) -> \
 
 async def _connect(options: 'SSHConnectionOptions',
                    loop: asyncio.AbstractEventLoop, flags: int,
+                   sock: Optional[socket.socket],
                    conn_factory: _ConnectionFactory[_Conn], msg: str) -> _Conn:
     """Make outbound TCP or SSH tunneled connection"""
 
@@ -427,9 +428,13 @@ async def _connect(options: 'SSHConnectionOptions',
         else:
             logger.info('%s %s', msg, (host, port))
 
-            _, session = await loop.create_connection(
-                conn_factory, host, port, family=family,
-                flags=flags, local_addr=local_addr)
+            if sock:
+                _, session = await loop.create_connection(
+                    conn_factory, sock=sock)
+            else:
+                _, session = await loop.create_connection(
+                    conn_factory, host, port, family=family,
+                    flags=flags, local_addr=local_addr)
 
             conn = cast(_Conn, session)
     except asyncio.CancelledError:
@@ -451,7 +456,8 @@ async def _connect(options: 'SSHConnectionOptions',
 
 
 async def _listen(options: 'SSHConnectionOptions',
-                  loop: asyncio.AbstractEventLoop, flags: int, backlog: int,
+                  loop: asyncio.AbstractEventLoop, flags: int,
+                  backlog: int, sock: Optional[socket.socket],
                   reuse_address: bool, reuse_port: bool,
                   conn_factory: _ConnectionFactory[_Conn],
                   msg: str) -> 'SSHAcceptor':
@@ -493,10 +499,15 @@ async def _listen(options: 'SSHConnectionOptions',
     else:
         logger.info('%s %s', msg, (host, port))
 
-        server = await loop.create_server(
-            conn_factory, host, port, family=family, flags=flags,
-            backlog=backlog, reuse_address=reuse_address,
-            reuse_port=reuse_port)
+        if sock:
+            server = await loop.create_server(
+                conn_factory, sock=sock, backlog=backlog,
+                reuse_address=reuse_address, reuse_port=reuse_port)
+        else:
+            server = await loop.create_server(
+                conn_factory, host, port, family=family, flags=flags,
+                backlog=backlog, reuse_address=reuse_address,
+                reuse_port=reuse_port)
 
     return SSHAcceptor(server, options)
 
@@ -7608,10 +7619,11 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
 
 
 @async_context_manager
-async def connect(host: str, port: DefTuple[int] = (), *,
+async def connect(host: str = '', port: DefTuple[int] = (), *,
                   tunnel: DefTuple[_TunnelConnector] = (),
                   family: DefTuple[int] = (), flags: int = 0,
                   local_addr: DefTuple[HostPort] = (),
+                  sock: Optional[socket.socket] = None,
                   config: DefTuple[ConfigPaths] = (),
                   options: Optional[SSHClientConnectionOptions] = None,
                   **kwargs: object) -> SSHClientConnection:
@@ -7661,6 +7673,10 @@ async def connect(host: str, port: DefTuple[int] = (), *,
            The flags to pass to getaddrinfo() when looking up the host address
        :param local_addr: (optional)
            The host and port to bind the socket to before connecting
+       :param sock: (optional)
+           An existing already-connected socket to run SSH over, instead of
+           opening up a new connection. When this is specified, none of
+           host, port family, flags, or local_addr should be specified.
        :param config: (optional)
            Paths to OpenSSH client configuration files to load. This
            configuration will be used as a fallback to override the
@@ -7684,6 +7700,7 @@ async def connect(host: str, port: DefTuple[int] = (), *,
        :type family: `socket.AF_UNSPEC`, `socket.AF_INET`, or `socket.AF_INET6`
        :type flags: flags to pass to :meth:`getaddrinfo() <socket.getaddrinfo>`
        :type local_addr: tuple of `str` and `int`
+       :type sock: :class:`socket.socket` or `None`
        :type config: `list` of `str`
        :type options: :class:`SSHClientConnectionOptions`
 
@@ -7704,7 +7721,7 @@ async def connect(host: str, port: DefTuple[int] = (), *,
         local_addr=local_addr, **kwargs))
 
     return await asyncio.wait_for(
-        _connect(new_options, loop, flags, conn_factory,
+        _connect(new_options, loop, flags, sock, conn_factory,
                  'Opening SSH connection to'),
         timeout=new_options.connect_timeout)
 
@@ -7715,6 +7732,7 @@ async def connect_reverse(
         tunnel: DefTuple[_TunnelConnector] = (),
         family: DefTuple[int] = (), flags: int = 0,
         local_addr: DefTuple[HostPort] = (),
+        sock: Optional[socket.socket] = None,
         config: DefTuple[ConfigPaths] = (),
         options: Optional[SSHServerConnectionOptions] = None,
         **kwargs: object) -> SSHServerConnection:
@@ -7750,6 +7768,10 @@ async def connect_reverse(
            The flags to pass to getaddrinfo() when looking up the host address
        :param local_addr: (optional)
            The host and port to bind the socket to before connecting
+       :param sock: (optional)
+           An existing already-connected socket to run SSH over, instead of
+           opening up a new connection. When this is specified, none of
+           host, port family, flags, or local_addr should be specified.
        :param config: (optional)
            Paths to OpenSSH server configuration files to load. This
            configuration will be used as a fallback to override the
@@ -7768,6 +7790,7 @@ async def connect_reverse(
        :type family: `socket.AF_UNSPEC`, `socket.AF_INET`, or `socket.AF_INET6`
        :type flags: flags to pass to :meth:`getaddrinfo() <socket.getaddrinfo>`
        :type local_addr: tuple of `str` and `int`
+       :type sock: :class:`socket.socket` or `None`
        :type config: `list` of `str`
        :type options: :class:`SSHServerConnectionOptions`
 
@@ -7788,7 +7811,7 @@ async def connect_reverse(
         local_addr=local_addr, **kwargs))
 
     return await asyncio.wait_for(
-        _connect(new_options, loop, flags, conn_factory,
+        _connect(new_options, loop, flags, sock, conn_factory,
                  'Opening reverse SSH connection to'),
         timeout=new_options.connect_timeout)
 
@@ -7797,8 +7820,9 @@ async def connect_reverse(
 async def listen(host: str = '', port: DefTuple[int] = (), *,
                  tunnel: DefTuple[_TunnelListener] = (),
                  family: DefTuple[int] = (), flags:int = socket.AI_PASSIVE,
-                 backlog: int = 100, reuse_address: bool = False,
-                 reuse_port: bool = False, acceptor: _AcceptHandler = None,
+                 backlog: int = 100, sock: Optional[socket.socket] = None,
+                 reuse_address: bool = False, reuse_port: bool = False,
+                 acceptor: _AcceptHandler = None,
                  error_handler: _ErrorHandler = None,
                  config: DefTuple[ConfigPaths] = (),
                  options: Optional[SSHServerConnectionOptions] = None,
@@ -7830,6 +7854,10 @@ async def listen(host: str = '', port: DefTuple[int] = (), *,
            The flags to pass to getaddrinfo() when looking up the host
        :param backlog: (optional)
            The maximum number of queued connections allowed on listeners
+       :param sock: (optional)
+           A pre-existing socket to use instead of creating and binding
+           a new socket. When this is specified, host and port should not
+           be specified.
        :param reuse_address: (optional)
            Whether or not to reuse a local socket in the TIME_WAIT state
            without waiting for its natural timeout to expire. If not
@@ -7868,6 +7896,7 @@ async def listen(host: str = '', port: DefTuple[int] = (), *,
        :type family: `socket.AF_UNSPEC`, `socket.AF_INET`, or `socket.AF_INET6`
        :type flags: flags to pass to :meth:`getaddrinfo() <socket.getaddrinfo>`
        :type backlog: `int`
+       :type sock: :class:`socket.socket` or `None`
        :type reuse_address: `bool`
        :type reuse_port: `bool`
        :type config: `list` of `str`
@@ -7892,7 +7921,7 @@ async def listen(host: str = '', port: DefTuple[int] = (), *,
     new_options.proxy_command = None
 
     return await asyncio.wait_for(
-        _listen(new_options, loop, flags, backlog, reuse_address,
+        _listen(new_options, loop, flags, backlog, sock, reuse_address,
                 reuse_port, conn_factory, 'Creating SSH listener on'),
         timeout=new_options.connect_timeout)
 
@@ -7901,7 +7930,8 @@ async def listen(host: str = '', port: DefTuple[int] = (), *,
 async def listen_reverse(host: str = '', port: DefTuple[int] = (), *,
                          tunnel: DefTuple[_TunnelListener] = (),
                          family: DefTuple[int] = (),
-                         flags:int = socket.AI_PASSIVE, backlog: int = 100,
+                         flags: int = socket.AI_PASSIVE, backlog: int = 100,
+                         sock: Optional[socket.socket] = None,
                          reuse_address: bool = False, reuse_port: bool = False,
                          acceptor: _AcceptHandler = None,
                          error_handler: _ErrorHandler = None,
@@ -7945,6 +7975,9 @@ async def listen_reverse(host: str = '', port: DefTuple[int] = (), *,
            The flags to pass to getaddrinfo() when looking up the host
        :param backlog: (optional)
            The maximum number of queued connections allowed on listeners
+       :param sock: (optional)
+           A pre-existing socket to use instead of creating and binding
+           a new socket. When this is specified, host and port should not
        :param reuse_address: (optional)
            Whether or not to reuse a local socket in the TIME_WAIT state
            without waiting for its natural timeout to expire. If not
@@ -7988,6 +8021,7 @@ async def listen_reverse(host: str = '', port: DefTuple[int] = (), *,
        :type family: `socket.AF_UNSPEC`, `socket.AF_INET`, or `socket.AF_INET6`
        :type flags: flags to pass to :meth:`getaddrinfo() <socket.getaddrinfo>`
        :type backlog: `int`
+       :type sock: :class:`socket.socket` or `None`
        :type reuse_address: `bool`
        :type reuse_port: `bool`
        :type config: `list` of `str`
@@ -8012,7 +8046,7 @@ async def listen_reverse(host: str = '', port: DefTuple[int] = (), *,
     new_options.proxy_command = None
 
     return await asyncio.wait_for(
-        _listen(new_options, loop, flags, backlog,
+        _listen(new_options, loop, flags, backlog, sock,
                 reuse_address, reuse_port, conn_factory,
                 'Creating reverse direction SSH listener on'),
         timeout=new_options.connect_timeout)
@@ -8067,6 +8101,7 @@ async def get_server_host_key(
         tunnel: DefTuple[_TunnelConnector] = (),
         proxy_command: DefTuple[str] = (), family: DefTuple[int] = (),
         flags: int = 0, local_addr: DefTuple[HostPort] = (),
+        sock: Optional[socket.socket] = None,
         client_version: DefTuple[BytesOrStr] = (),
         kex_algs: _AlgsArg = (), server_host_key_algs: _AlgsArg = (),
         config: DefTuple[ConfigPaths] = (),
@@ -8114,6 +8149,10 @@ async def get_server_host_key(
            The flags to pass to getaddrinfo() when looking up the host address
        :param local_addr: (optional)
            The host and port to bind the socket to before connecting
+       :param sock: (optional)
+           An existing already-connected socket to run SSH over, instead of
+           opening up a new connection. When this is specified, none of
+           host, port family, flags, or local_addr should be specified.
        :param client_version: (optional)
            An ASCII string to advertise to the SSH server as the version of
            this client, defaulting to `'AsyncSSH'` and its version number.
@@ -8149,6 +8188,7 @@ async def get_server_host_key(
        :type family: `socket.AF_UNSPEC`, `socket.AF_INET`, or `socket.AF_INET6`
        :type flags: flags to pass to :meth:`getaddrinfo() <socket.getaddrinfo>`
        :type local_addr: tuple of `str` and `int`
+       :type sock: :class:`socket.socket` or `None`
        :type client_version: `str`
        :type kex_algs: `str` or `list` of `str`
        :type server_host_key_algs: `str` or `list` of `str`
@@ -8175,7 +8215,7 @@ async def get_server_host_key(
         kex_algs=kex_algs, client_version=client_version))
 
     conn = await asyncio.wait_for(
-        _connect(new_options, loop, flags, conn_factory,
+        _connect(new_options, loop, flags, sock, conn_factory,
                  'Fetching server host key from'),
         timeout=new_options.connect_timeout)
 
@@ -8193,6 +8233,7 @@ async def get_server_auth_methods(
         tunnel: DefTuple[_TunnelConnector] = (),
         proxy_command: DefTuple[str] = (), family: DefTuple[int] = (),
         flags: int = 0, local_addr: DefTuple[HostPort] = (),
+        sock: Optional[socket.socket] = None,
         client_version: DefTuple[BytesOrStr] = (),
         kex_algs: _AlgsArg = (), server_host_key_algs: _AlgsArg = (),
         config: DefTuple[ConfigPaths] = (),
@@ -8239,6 +8280,10 @@ async def get_server_auth_methods(
            The flags to pass to getaddrinfo() when looking up the host address
        :param local_addr: (optional)
            The host and port to bind the socket to before connecting
+       :param sock: (optional)
+           An existing already-connected socket to run SSH over, instead of
+           opening up a new connection. When this is specified, none of
+           host, port family, flags, or local_addr should be specified.
        :param client_version: (optional)
            An ASCII string to advertise to the SSH server as the version of
            this client, defaulting to `'AsyncSSH'` and its version number.
@@ -8274,6 +8319,7 @@ async def get_server_auth_methods(
        :type family: `socket.AF_UNSPEC`, `socket.AF_INET`, or `socket.AF_INET6`
        :type flags: flags to pass to :meth:`getaddrinfo() <socket.getaddrinfo>`
        :type local_addr: tuple of `str` and `int`
+       :type sock: :class:`socket.socket` or `None`
        :type client_version: `str`
        :type kex_algs: `str` or `list` of `str`
        :type server_host_key_algs: `str` or `list` of `str`
@@ -8301,7 +8347,7 @@ async def get_server_auth_methods(
         client_version=client_version))
 
     conn = await asyncio.wait_for(
-        _connect(new_options, loop, flags, conn_factory,
+        _connect(new_options, loop, flags, sock, conn_factory,
                  'Fetching server auth methods from'),
         timeout=new_options.connect_timeout)
 
