@@ -399,7 +399,7 @@ class _TestConnection(ServerTestCase):
 
     @asynctest
     async def test_connect_sock(self):
-        """Test connecting with async context manager"""
+        """Test connecting using already-connected socket"""
 
         sock = socket.socket()
         await self.loop.sock_connect(sock, (self._server_addr,
@@ -1490,12 +1490,13 @@ class _TestConnectionListenSock(ServerTestCase):
         """Start an SSH server to connect to"""
 
         sock = socket.socket()
+        sock.bind(('', 0))
 
         return await cls.create_server(_TunnelServer, sock=sock)
 
     @asynctest
     async def test_connect(self):
-        """Test acceptor"""
+        """Test specifying explicit listen sock"""
 
         with self.assertLogs(level='INFO'):
             async with self.connect():

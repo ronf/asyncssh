@@ -7619,7 +7619,7 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
 
 
 @async_context_manager
-async def connect(host: str = '', port: DefTuple[int] = (), *,
+async def connect(host = '', port: DefTuple[int] = (), *,
                   tunnel: DefTuple[_TunnelConnector] = (),
                   family: DefTuple[int] = (), flags: int = 0,
                   local_addr: DefTuple[HostPort] = (),
@@ -7653,7 +7653,7 @@ async def connect(host: str = '', port: DefTuple[int] = (), *,
        If an error occurs, it will be raised as an exception and the partially
        open connection and client objects will be cleaned up.
 
-       :param host:
+       :param host: (optional)
            The hostname or address to connect to.
        :param port: (optional)
            The port number to connect to. If not specified, the default
@@ -7728,7 +7728,7 @@ async def connect(host: str = '', port: DefTuple[int] = (), *,
 
 @async_context_manager
 async def connect_reverse(
-        host: str, port: DefTuple[int] = (), *,
+        host = '', port: DefTuple[int] = (), *,
         tunnel: DefTuple[_TunnelConnector] = (),
         family: DefTuple[int] = (), flags: int = 0,
         local_addr: DefTuple[HostPort] = (),
@@ -7748,7 +7748,7 @@ async def connect_reverse(
        that the `options` are of type :class:`SSHServerConnectionOptions`
        instead of :class:`SSHClientConnectionOptions`.
 
-       :param host:
+       :param host: (optional)
            The hostname or address to connect to.
        :param port: (optional)
            The port number to connect to. If not specified, the default
@@ -7817,7 +7817,7 @@ async def connect_reverse(
 
 
 @async_context_manager
-async def listen(host: str = '', port: DefTuple[int] = (), *,
+async def listen(host = '', port: DefTuple[int] = (), *,
                  tunnel: DefTuple[_TunnelListener] = (),
                  family: DefTuple[int] = (), flags:int = socket.AI_PASSIVE,
                  backlog: int = 100, sock: Optional[socket.socket] = None,
@@ -7927,7 +7927,7 @@ async def listen(host: str = '', port: DefTuple[int] = (), *,
 
 
 @async_context_manager
-async def listen_reverse(host: str = '', port: DefTuple[int] = (), *,
+async def listen_reverse(host = '', port: DefTuple[int] = (), *,
                          tunnel: DefTuple[_TunnelListener] = (),
                          family: DefTuple[int] = (),
                          flags: int = socket.AI_PASSIVE, backlog: int = 100,
@@ -8053,7 +8053,7 @@ async def listen_reverse(host: str = '', port: DefTuple[int] = (), *,
 
 
 async def create_connection(client_factory: _ClientFactory,
-                            host: str, port: DefTuple[int] = (),
+                            host = '', port: DefTuple[int] = (),
                             **kwargs: object) -> \
         Tuple[SSHClientConnection, SSHClient]:
     """Create an SSH client connection
@@ -8079,7 +8079,7 @@ async def create_connection(client_factory: _ClientFactory,
 
 @async_context_manager
 async def create_server(server_factory: _ServerFactory,
-                        host: str = '', port: DefTuple[int] = (),
+                        host = '', port: DefTuple[int] = (),
                         **kwargs: object) -> SSHAcceptor:
     """Create an SSH server
 
@@ -8097,7 +8097,7 @@ async def create_server(server_factory: _ServerFactory,
 
 
 async def get_server_host_key(
-        host: str, port: DefTuple[int] = (), *,
+        host = '', port: DefTuple[int] = (), *,
         tunnel: DefTuple[_TunnelConnector] = (),
         proxy_command: DefTuple[str] = (), family: DefTuple[int] = (),
         flags: int = 0, local_addr: DefTuple[HostPort] = (),
@@ -8123,7 +8123,7 @@ async def get_server_host_key(
                      method may return `None` even when the handshake
                      completes.
 
-       :param host:
+       :param host: (optional)
            The hostname or address to connect to
        :param port: (optional)
            The port number to connect to. If not specified, the default
@@ -8229,7 +8229,7 @@ async def get_server_host_key(
 
 
 async def get_server_auth_methods(
-        host: str, port: DefTuple[int] = (), username: DefTuple[str] = (), *,
+        host = '', port: DefTuple[int] = (), username: DefTuple[str] = (), *,
         tunnel: DefTuple[_TunnelConnector] = (),
         proxy_command: DefTuple[str] = (), family: DefTuple[int] = (),
         flags: int = 0, local_addr: DefTuple[HostPort] = (),
@@ -8251,7 +8251,7 @@ async def get_server_auth_methods(
                      want to specify the specific user you would like
                      to get auth methods for.
 
-       :param host:
+       :param host: (optional)
            The hostname or address to connect to
        :param port: (optional)
            The port number to connect to. If not specified, the default
