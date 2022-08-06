@@ -6491,9 +6491,9 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
            are already loaded, this argument is ignored.
        :param ignore_encrypted: (optional)
            Whether or not to ignore encrypted keys when no passphrase is
-           provided. This is intended to allow encrypted keys specified via
-           the IdentityFile config option to be ignored if a passphrase
-           is not specified, loading only unencrypted local keys. Note
+           specified. This defaults to `True` for keys specified via
+           the IdentityFile config option, causing encrypted keys in the
+           config to be ignored when no passphrase is specified. Note
            that encrypted keys loaded into an SSH agent can still be used
            when this option is set.
        :param host_based_auth: (optional)
@@ -6870,7 +6870,7 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
                 client_keys: _ClientKeysArg = (),
                 client_certs: Sequence[FilePath] = (),
                 passphrase: Optional[BytesOrStr] = None,
-                ignore_encrypted: bool = False,
+                ignore_encrypted: DefTuple[bool] = (),
                 gss_host: DefTuple[Optional[str]] = (),
                 gss_kex: DefTuple[bool] = (), gss_auth: DefTuple[bool] = (),
                 gss_delegate_creds: DefTuple[bool] = (),
@@ -7037,6 +7037,11 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
                 cast(Optional[FilePath], config.get('PKCS11Provider'))
 
         pkcs11_provider: Optional[FilePath]
+
+        if ignore_encrypted == ():
+            ignore_encrypted = client_keys == ()
+
+        ignore_encrypted: bool
 
         if client_keys == ():
             client_keys = cast(_ClientKeysArg, config.get('IdentityFile', ()))

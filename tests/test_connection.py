@@ -409,6 +409,26 @@ class _TestConnection(ServerTestCase):
             pass
 
     @asynctest
+    async def test_connect_encrypted_key(self):
+        """Test connecting with encrytped client key and no passphrase"""
+
+        async with self.connect(client_keys='ckey_encrypted',
+                                ignore_encrypted=True):
+            pass
+
+        with self.assertRaises(asyncssh.KeyImportError):
+            await self.connect(client_keys='ckey_encrypted')
+
+        with open('config', 'w') as f:
+            f.write('IdentityFile ckey_encrypted')
+
+        async with self.connect(config='config'):
+            pass
+
+        with self.assertRaises(asyncssh.KeyImportError):
+            await self.connect(config='config', ignore_encrypted=False)
+
+    @asynctest
     async def test_connect_invalid_options_type(self):
         """Test connecting using options using incorrect type of options"""
 
