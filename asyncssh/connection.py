@@ -6491,7 +6491,7 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
            are already loaded, this argument is ignored.
        :param ignore_encrypted: (optional)
            Whether or not to ignore encrypted keys when no passphrase is
-           specified. This defaults to `True` for keys specified via
+           specified. This defaults to `True` when keys are specified via
            the IdentityFile config option, causing encrypted keys in the
            config to be ignored when no passphrase is specified. Note
            that encrypted keys loaded into an SSH agent can still be used
