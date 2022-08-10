@@ -46,7 +46,7 @@ from .connection import SSHAcceptor, SSHClientConnection, SSHServerConnection
 from .connection import SSHClientConnectionOptions, SSHServerConnectionOptions
 from .connection import create_connection, create_server, connect, listen
 from .connection import connect_reverse, listen_reverse, get_server_host_key
-from .connection import get_server_auth_methods
+from .connection import get_server_auth_methods, run_client, run_server
 
 from .editor import SSHLineEditorChannel
 
@@ -163,5 +163,6 @@ __all__ = [
     'match_known_hosts', 'read_authorized_keys', 'read_certificate',
     'read_certificate_list', 'read_known_hosts', 'read_private_key',
     'read_private_key_list', 'read_public_key', 'read_public_key_list',
-    'scp', 'set_debug_level', 'set_log_level', 'set_sftp_log_level',
+    'run_client', 'run_server', 'scp', 'set_debug_level', 'set_log_level',
+    'set_sftp_log_level',
 ]

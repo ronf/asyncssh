@@ -326,6 +326,22 @@ class ServerTestCase(AsyncTestCase):
                                               self._server_port,
                                               options=options, **kwargs)
 
+    @async_context_manager
+    async def run_client(self, sock, config=(), options=None, **kwargs):
+        """Run an SSH client on an already-connected socket"""
+
+        return await asyncssh.run_client(sock, config, options, **kwargs)
+
+    @async_context_manager
+    async def run_server(self, sock, config=(), options=None, **kwargs):
+        """Run an SSH server on an already-connected socket"""
+
+        options = asyncssh.SSHServerConnectionOptions(options,
+                                                      server_factory=Server,
+                                                      server_host_keys=['skey'])
+
+        return await asyncssh.run_server(sock, config, options, **kwargs)
+
     async def create_connection(self, client_factory, **kwargs):
         """Create a connection to the test server"""
 

@@ -399,7 +399,13 @@ async def _connect(options: 'SSHConnectionOptions',
     tunnel: _TunnelConnectorProtocol
 
     try:
-        if new_tunnel:
+        if sock:
+            logger.info('%s already-connected socket', msg)
+
+            _, session = await loop.create_connection(conn_factory, sock=sock)
+
+            conn = cast(_Conn, session)
+        elif new_tunnel:
             new_tunnel.logger.info('%s %s via %s', msg, (host, port), tunnel)
 
             # pylint: disable=broad-except
@@ -428,13 +434,9 @@ async def _connect(options: 'SSHConnectionOptions',
         else:
             logger.info('%s %s', msg, (host, port))
 
-            if sock:
-                _, session = await loop.create_connection(
-                    conn_factory, sock=sock)
-            else:
-                _, session = await loop.create_connection(
-                    conn_factory, host, port, family=family,
-                    flags=flags, local_addr=local_addr)
+            _, session = await loop.create_connection(
+                conn_factory, host, port, family=family,
+                flags=flags, local_addr=local_addr)
 
             conn = cast(_Conn, session)
     except asyncio.CancelledError:
@@ -476,7 +478,13 @@ async def _listen(options: 'SSHConnectionOptions',
     new_tunnel = await _open_tunnel(tunnel, options.passphrase)
     tunnel: _TunnelListenerProtocol
 
-    if new_tunnel:
+    if sock:
+        logger.info('%s already-connected socket', msg)
+
+        server: asyncio.AbstractServer = await loop.create_server(
+            conn_factory, sock=sock, backlog=backlog,
+            reuse_address=reuse_address, reuse_port=reuse_port)
+    elif new_tunnel:
         new_tunnel.logger.info('%s %s via %s', msg, (host, port), tunnel)
 
         # pylint: disable=broad-except
@@ -499,15 +507,10 @@ async def _listen(options: 'SSHConnectionOptions',
     else:
         logger.info('%s %s', msg, (host, port))
 
-        if sock:
-            server = await loop.create_server(
-                conn_factory, sock=sock, backlog=backlog,
-                reuse_address=reuse_address, reuse_port=reuse_port)
-        else:
-            server = await loop.create_server(
-                conn_factory, host, port, family=family, flags=flags,
-                backlog=backlog, reuse_address=reuse_address,
-                reuse_port=reuse_port)
+        server = await loop.create_server(
+            conn_factory, host, port, family=family, flags=flags,
+            backlog=backlog, reuse_address=reuse_address,
+            reuse_port=reuse_port)
 
     return SSHAcceptor(server, options)
 
@@ -7624,6 +7627,109 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
 
 
 @async_context_manager
+async def run_client(sock: socket.socket, config: DefTuple[ConfigPaths] = (),
+                     options: Optional[SSHClientConnectionOptions] = None,
+                     **kwargs: object) -> SSHClientConnection:
+    """Start an SSH client connection on an already-connected socket
+
+       This function is a coroutine which starts an SSH client on an
+       existing already-connected socket. It can be used instead of
+       :func:`connect` when a socket is connected outside of asyncio.
+
+       :param sock:
+           An existing already-connected socket to run an SSH client on,
+           instead of opening up a new connection.
+       :param config: (optional)
+           Paths to OpenSSH client configuration files to load. This
+           configuration will be used as a fallback to override the
+           defaults for settings which are not explcitly specified using
+           AsyncSSH's configuration options. If no paths are specified and
+           no config paths were set when constructing the `options`
+           argument (if any), an attempt will be made to load the
+           configuration from the file :file:`.ssh/config`. If this
+           argument is explicitly set to `None`, no new configuration
+           files will be loaded, but any configuration loaded when
+           constructing the `options` argument will still apply. See
+           :ref:`SupportedClientConfigOptions` for details on what
+           configuration options are currently supported.
+       :param options: (optional)
+           Options to use when establishing the SSH client connection. These
+           options can be specified either through this parameter or as direct
+           keyword arguments to this function.
+       :type sock: :class:`socket.socket`
+       :type config: `list` of `str`
+       :type options: :class:`SSHClientConnectionOptions`
+
+       :returns: :class:`SSHClientConnection`
+
+    """
+
+    def conn_factory() -> SSHClientConnection:
+        """Return an SSH client connection factory"""
+
+        return SSHClientConnection(loop, new_options, wait='auth')
+
+    loop = asyncio.get_event_loop()
+
+    new_options = cast(SSHClientConnectionOptions, await _run_in_executor(
+        loop, SSHClientConnectionOptions, options, config=config, **kwargs))
+
+    return await asyncio.wait_for(
+        _connect(new_options, loop, 0, sock, conn_factory,
+                 'Starting SSH client on'),
+        timeout=new_options.connect_timeout)
+
+
+@async_context_manager
+async def run_server(sock: socket.socket, config: DefTuple[ConfigPaths] = (),
+                     options: Optional[SSHServerConnectionOptions] = None,
+                      **kwargs: object) -> SSHServerConnection:
+    """Start an SSH server connection on an already-connected socket
+
+       This function is a coroutine which starts an SSH server on an
+       existing already-connected TCP socket. It can be used instead of
+       :func:`listen` when connections are accepted outside of asyncio.
+
+       :param sock:
+           An existing already-connected socket to run SSH over, instead of
+           opening up a new connection.
+       :param config: (optional)
+           Paths to OpenSSH server configuration files to load. This
+           configuration will be used as a fallback to override the
+           defaults for settings which are not explcitly specified using
+           AsyncSSH's configuration options. By default, no OpenSSH
+           configuration files will be loaded. See
+           :ref:`SupportedServerConfigOptions` for details on what
+           configuration options are currently supported.
+       :param options: (optional)
+           Options to use when starting the reverse-direction SSH server.
+           These options can be specified either through this parameter
+           or as direct keyword arguments to this function.
+       :type sock: :class:`socket.socket`
+       :type config: `list` of `str`
+       :type options: :class:`SSHServerConnectionOptions`
+
+       :returns: :class:`SSHServerConnection`
+
+    """
+
+    def conn_factory() -> SSHServerConnection:
+        """Return an SSH server connection factory"""
+
+        return SSHServerConnection(loop, new_options, wait='auth')
+
+    loop = asyncio.get_event_loop()
+
+    new_options = cast(SSHServerConnectionOptions, await _run_in_executor(
+        loop, SSHServerConnectionOptions, options, config=config, **kwargs))
+
+    return await asyncio.wait_for(
+        _connect(new_options, loop, 0, sock, conn_factory,
+                 'Starting SSH server on'),
+        timeout=new_options.connect_timeout)
+
+
+@async_context_manager
 async def connect(host = '', port: DefTuple[int] = (), *,
                   tunnel: DefTuple[_TunnelConnector] = (),
                   family: DefTuple[int] = (), flags: int = 0,
@@ -7804,7 +7910,7 @@ async def connect_reverse(
     """
 
     def conn_factory() -> SSHServerConnection:
-        """Return an SSH client connection factory"""
+        """Return an SSH server connection factory"""
 
         return SSHServerConnection(loop, new_options, wait='auth')
 
@@ -7912,7 +8018,7 @@ async def listen(host = '', port: DefTuple[int] = (), *,
     """
 
     def conn_factory() -> SSHServerConnection:
-        """Return an SSH client connection factory"""
+        """Return an SSH server connection factory"""
 
         return SSHServerConnection(loop, new_options, acceptor, error_handler)
 

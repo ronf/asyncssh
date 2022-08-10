@@ -145,6 +145,16 @@ listen_reverse
 
 .. autofunction:: listen_reverse
 
+run_client
+----------
+
+.. autofunction:: run_client
+
+run_server
+----------
+
+.. autofunction:: run_server
+
 create_connection
 -----------------
 

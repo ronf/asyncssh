@@ -399,13 +399,24 @@ class _TestConnection(ServerTestCase):
 
     @asynctest
     async def test_connect_sock(self):
-        """Test connecting using already-connected socket"""
+        """Test connecting using an already-connected socket"""
 
         sock = socket.socket()
         await self.loop.sock_connect(sock, (self._server_addr,
                                             self._server_port))
 
         async with asyncssh.connect(sock=sock):
+            pass
+
+    @asynctest
+    async def test_run_client(self):
+        """Test running an SSH client on an already-connected socket"""
+
+        sock = socket.socket()
+        await self.loop.sock_connect(sock, (self._server_addr,
+                                            self._server_port))
+
+        async with self.run_client(sock):
             pass
 
     @asynctest
@@ -1522,6 +1533,7 @@ class _TestConnectionListenSock(ServerTestCase):
             async with self.connect():
                 pass
 
+
 class _TestConnectionAsyncAcceptor(ServerTestCase):
     """Unit test for async acceptor"""
 
@@ -1589,6 +1601,28 @@ class _TestConnectionReverse(ServerTestCase):
         with self.assertLogs(level='INFO'):
             async with self.connect_reverse():
                 pass
+
+    @asynctest
+    async def test_connect_reverse_sock(self):
+        """Test reverse connection using an already-connected socket"""
+
+        sock = socket.socket()
+        await self.loop.sock_connect(sock, (self._server_addr,
+                                            self._server_port))
+
+        async with self.connect_reverse(sock=sock):
+            pass
+
+    @asynctest
+    async def test_run_server(self):
+        """Test running an SSH server on an already-connected socket"""
+
+        sock = socket.socket()
+        await self.loop.sock_connect(sock, (self._server_addr,
+                                            self._server_port))
+
+        async with self.run_server(sock):
+            pass
 
     @unittest.skipUnless(_nc_available, 'Netcat not available')
     @asynctest
