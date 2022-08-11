@@ -3,6 +3,74 @@
 Change Log
 ==========
 
+Release 2.12.0 (10 Aug 2022)
+----------------------------
+
+* Added top-level functions run_client() and run_server() which allow
+  you to begin running an SSH client or server on an already-connected
+  socket. This capability is also available via a new "sock" argument
+  in the existing connect(), connect_reverse(), get_server_host_key(),
+  and get_server_auth_methods() functions.
+
+* Added "sock" argument to listen() and listen_reverse() functions
+  which takes an already-bound listening socket instead of a host
+  and port to bind a new socket to.
+
+* Added support for forwarding break, signal, and terminal size updates
+  when redirection of stdin is set up between two SSHProcess instances.
+
+* Added support for sntrup761x25519-sha512@openssh.com post-quantum
+  key exchange algorithm. For this to be available, the Open Quantum
+  Safe (liboqs) dynamic library must be installed.
+
+* Added "sig_alg" argument to set a signature algorithm when creating
+  OpenSSH certificates, allowing a choice between ssh-rsa, rsa-sha2-256,
+  and rsa-sha2-512 for certificates signed by RSA keys.
+
+* Added new read_parallel() method in SFTPClientFile which allows
+  parallel reads to be performed from a remote file, delivering
+  incremental results as these reads complete. Previously, large
+  reads would automatically be parallelized, but a result was only
+  returned after all reads completed.
+
+* Added definition of __all__ for public symbols in AsyncSSH to make
+  pyright autocompletion work better. Thanks go to Nicolas Riebesel
+  for providing this change.
+
+* Updated SFTP and SCP glob and copy functions to use scandir() instead
+  of listdir() to improve efficiency.
+
+* Updated default for "ignore_encrypted" client connection option to
+  ignore encrypted keys specified in an OpenSSH config file when no
+  passphrase is provided, similar to what was previosuly done for
+  keys with default names.
+
+* Fixed an issue when using an SSH agent with RSA keys and an X.509
+  certificate while requesting SHA-2 signatures.
+
+* Fixed an issue with use of expanduser() in unit tests on newer versions
+  of Python. Thanks go to Georg Sauthoff for providing an initial version
+  of this fix.
+
+* Fixed an issue with fallback to a Pageant agent not working properly
+  on Windows when no agent_path or SSH_AUTH_SOCK was set.
+
+* Fixed improper escaping in readuntil(), causing certain punctuation in
+  separator to not match properly. Thanks go to Github user MazokuMaxy
+  for reporting this issue.
+
+* Fixed the connection close handler to properly mark channels as fully
+  closed when the peer unexpected closes the connection, allowing
+  exceptions to fire if an application continues to try and use
+  the channel. Thanks go to Taha Jahangir for reporting this issue and
+  suggesting a possible fix.
+
+* Eliminated unit testing against OpenSSH for tests involving DSA and
+  RSA keys using SHA-1 signatures, since this support is being dropped
+  in some distributions of OpenSSH. These tests are still performed, but
+  using only AsyncSSH code. Thanks go to Ken Dreyer and Georg Sauthoff
+  for reporting this issue and helping me to reproduce it.
+
 Release 2.11.0 (4 Jun 2022)
 ---------------------------
 
