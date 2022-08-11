@@ -2245,6 +2245,9 @@ Curve25519 and Curve448 support is available when OpenSSL 1.1.1 or
 later is installed. Alternately, Curve25519 is available when the
 libnacl package and libsodium library are installed.
 
+SNTRUP support is available when the Open Quantum Safe (liboqs)
+dynamic library is installed.
+
 .. index:: Encryption algorithms
 .. _EncryptionAlgs:
 
