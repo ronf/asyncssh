@@ -2952,6 +2952,9 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         if listen_port == 0:
             listen_port = listener.get_port()
 
+        if dest_port == 0:
+            dest_port = listen_port
+
         self._local_listeners[listen_host, listen_port] = listener
 
         return listener
