@@ -62,7 +62,8 @@ ProcessSource = Union[int, str, socket.socket, PurePath, SSHReader[bytes],
 ProcessTarget = Union[int, str, socket.socket, PurePath, SSHWriter[bytes],
                       asyncio.StreamWriter, _File]
 
-SSHServerProcessFactory = Callable[['SSHServerProcess[AnyStr]'], None]
+SSHServerProcessFactory = Callable[['SSHServerProcess[AnyStr]'],
+                                   MaybeAwait[None]]
 
 
 class _AsyncFileProtocol(Protocol[AnyStr]):

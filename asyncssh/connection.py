@@ -4253,7 +4253,7 @@ class SSHClientConnection(SSHConnection):
                The receive window size for this session
            :param max_pktsize: (optional)
                The maximum packet size for this session
-           :type session_factory: `callable`
+           :type session_factory: `callable` or coroutine
            :type listen_host: `str`
            :type listen_port: `int`
            :type encoding: `str` or `None`
@@ -7401,8 +7401,8 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
        :type x11_forwarding: `bool`
        :type x11_auth_path: `str`
        :type agent_forwarding: `bool`
-       :type process_factory: `callable`
-       :type session_factory: `callable`
+       :type process_factory: `callable` or coroutine
+       :type session_factory: `callable` or coroutine
        :type encoding: `str` or `None`
        :type errors: `str`
        :type sftp_factory: `callable`
@@ -8010,6 +8010,8 @@ async def listen(host = '', port: DefTuple[int] = (), *,
        :type sock: :class:`socket.socket` or `None`
        :type reuse_address: `bool`
        :type reuse_port: `bool`
+       :type acceptor: `callable` or coroutine
+       :type error_handler: `callable`
        :type config: `list` of `str`
        :type options: :class:`SSHServerConnectionOptions`
 
@@ -8135,6 +8137,8 @@ async def listen_reverse(host = '', port: DefTuple[int] = (), *,
        :type sock: :class:`socket.socket` or `None`
        :type reuse_address: `bool`
        :type reuse_port: `bool`
+       :type acceptor: `callable` or coroutine
+       :type error_handler: `callable`
        :type config: `list` of `str`
        :type options: :class:`SSHClientConnectionOptions`
 
