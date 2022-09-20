@@ -1698,7 +1698,7 @@ class SSHServerChannel(SSHChannel, Generic[AnyStr]):
             self.logger.info('Received window change: %sx%s (%sx%s pixels)',
                              width, height, pixwidth, pixheight)
         else:
-            self.logger.info('Recceived window change: %sx%s', width, height)
+            self.logger.info('Received window change: %sx%s', width, height)
 
         self._term_size = (width, height, pixwidth, pixheight)
         self._session.terminal_size_changed(width, height, pixwidth, pixheight)
