@@ -733,7 +733,7 @@ class _SFTPFileWriter(_SFTPParallelIO[int]):
         async for _ in self.iter():
             pass
 
-class _SFTPFileCopier(_SFTPParallelIO):
+class _SFTPFileCopier(_SFTPParallelIO[int]):
     """SFTP file copier
 
        This class parforms an SFTP file copy, initiating multiple
@@ -760,14 +760,17 @@ class _SFTPFileCopier(_SFTPParallelIO):
         self._total_bytes = total_bytes
         self._progress_handler = progress_handler
 
-    async def run_task(self, offset: int, size: int) -> Tuple[int, bytes]:
-        """Read a block of the source file"""
+    async def run_task(self, offset: int, size: int) -> Tuple[int, int]:
+        """Copy a block of the source file"""
 
         assert self._src is not None
+        assert self._dst is not None
 
         data = await self._src.read(size, offset)
+        await self._dst.write(data, offset)
+        datalen = len(data)
 
-        return len(data), data
+        return datalen, datalen
 
     async def run(self) -> None:
         """Perform parallel file copy"""
@@ -779,8 +782,8 @@ class _SFTPFileCopier(_SFTPParallelIO):
             if self._progress_handler and self._total_bytes == 0:
                 self._progress_handler(self._srcpath, self._dstpath, 0, 0)
 
-            async for offset, data in self.iter():
-                if not data:
+            async for offset, datalen in self.iter():
+                if not datalen:
                     exc = SFTPFailure('Unexpected EOF during file copy')
 
                     setattr(exc, 'filename', self._srcpath)
@@ -788,10 +791,8 @@ class _SFTPFileCopier(_SFTPParallelIO):
 
                     raise exc
 
-                await self._dst.write(data, offset)
-
                 if self._progress_handler:
-                    self._bytes_copied += len(data)
+                    self._bytes_copied += datalen
                     self._progress_handler(self._srcpath, self._dstpath,
                                            self._bytes_copied,
                                            self._total_bytes)
