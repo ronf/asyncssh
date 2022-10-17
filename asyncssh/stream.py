@@ -511,10 +511,12 @@ class SSHStreamSession(Generic[AnyStr]):
         data: List[AnyStr] = []
 
         async with self._read_locks[datatype]:
+            break_read = False
             while True:
                 while recv_buf and n != 0:
                     if isinstance(recv_buf[0], Exception):
                         if data:
+                            break_read = True
                             break
                         else:
                             exc = cast(Exception, recv_buf.pop(0))
@@ -542,7 +544,7 @@ class SSHStreamSession(Generic[AnyStr]):
                     continue
 
                 if n == 0 or (n > 0 and data and not exact) or \
-                        (n < 0 and recv_buf) or self._eof_received:
+                        (n < 0 and recv_buf) or self._eof_received or break_read:
                     break
 
                 await self._block_read(datatype)
