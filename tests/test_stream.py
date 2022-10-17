@@ -53,6 +53,18 @@ class _StreamServer(Server):
         elif action == 'custom_disconnect':
             await stdin.read(1)
             raise asyncssh.DisconnectError(99, 'Disconnect')
+        elif action == 'partial':
+            try:
+                await stdin.readexactly(10)
+            except asyncio.IncompleteReadError as exc:
+                stdout.write(exc.partial)
+
+            try:
+                await stdin.read()
+            except asyncssh.TerminalSizeChanged:
+                pass
+
+            stdout.write(await stdin.readexactly(5))
         else:
             stdin.channel.exit(255)
 
@@ -232,6 +244,22 @@ class _TestStream(ServerTestCase):
 
             with self.assertRaises(asyncssh.ConnectionLost):
                 await stdout.readline()
+
+    @asynctest
+    async def test_readexactly_partial_exception(self):
+        """Test readexactly returning partial data before an exception"""
+
+        import logging
+        logging.basicConfig(level='DEBUG')
+
+        async with self.connect() as conn:
+            stdin, stdout, _ = await conn.open_session('partial')
+
+            stdin.write('abcde')
+            stdout.channel.change_terminal_size(80, 24)
+            stdin.write('fghij')
+
+            self.assertEqual((await stdout.read()), 'abcdefghij')
 
     @asynctest
     async def test_custom_disconnect(self):
