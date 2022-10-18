@@ -2189,6 +2189,11 @@ class SSHKeyPair:
 
             cert = cast('SSHX509CertificateChain', self._cert)
             self.public_data = cert.adjust_public_data(sig_algorithm)
+        else:
+            if sig_algorithm.endswith(b'@openssh.com'):
+                sig_algorithm = sig_algorithm[:-12]
+
+            self.algorithm = sig_algorithm + b'-cert-v01@openssh.com'
 
     def sign(self, data: bytes) -> bytes:
         """Sign a block of data with this private key"""
