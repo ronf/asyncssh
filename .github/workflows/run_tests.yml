@@ -23,34 +23,40 @@ jobs:
             python-version: "3.10"
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-python@v2
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Determine pip cache path
-        id: pip-cache
+      - name: Determine pip cache path (non-Windows)
+        if: ${{ runner.os != 'Windows' }}
         run: |
-          echo "::set-output name=dir::$(pip cache dir)"
+          echo "_PIP_CACHE_DIR=$(pip cache dir)" >> $GITHUB_ENV
+      - name: Determine pip cache path (Windows)
+        if: ${{ runner.os == 'Windows' }}
+        shell: pwsh
+        run: |
+          "_PIP_CACHE_DIR=$(pip cache dir)" >> $env:GITHUB_ENV
       - name: Set up pip cache
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
-          path: ${{ steps.pip-cache.outputs.dir }}
+          path: ${{ env._PIP_CACHE_DIR }}
           key: pip-${{ runner.os }}-${{ hashFiles('setup.py', 'tox.ini') }}
           restore-keys: |
             pip-${{ runner.os }}-
       - name: Determine vcpkg cache path
         if: ${{ runner.os == 'Windows' }}
         id: vcpkg-cache
+        shell: pwsh
         run: |
-          echo "::set-output name=archives-dir::$env:LOCALAPPDATA\vcpkg\archives"
-          echo "::set-output name=downloads-dir::$env:VCPKG_INSTALLATION_ROOT\downloads"
+          "archives_dir=${env:LOCALAPPDATA}\vcpkg\archives" >> $env:GITHUB_OUTPUT
+          "downloads_dir=${env:VCPKG_INSTALLATION_ROOT}\downloads" >> $env:GITHUB_OUTPUT
       - name: Set up vcpkg cache
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         if: ${{ runner.os == 'Windows' }}
         with:
           path: |
-            ${{ steps.vcpkg-cache.outputs.archives-dir }}
-            ${{ steps.vcpkg-cache.outputs.downloads-dir }}
+            ${{ steps.vcpkg-cache.outputs.archives_dir }}
+            ${{ steps.vcpkg-cache.outputs.downloads_dir }}
           key: vcpkg
       - name: Install Linux dependencies
         if: ${{ runner.os == 'Linux' }}
@@ -74,22 +80,23 @@ jobs:
           p = platform.system().lower()
           exit(os.system(f"tox -e py{V.major}{V.minor}-{p} -- -ra"))
       - name: Upload coverage data
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: coverage
           path: .coverage.*
           retention-days: 1
+
   report-coverage:
     name: Report coverage
     runs-on: ubuntu-latest
     needs: run-tests
     if: ${{ always() }}
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-python@v2
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
         with:
           python-version: "3.7"
-      - uses: actions/download-artifact@v2
+      - uses: actions/download-artifact@v3
         with:
           name: coverage
       - name: Install dependencies
@@ -103,6 +110,6 @@ jobs:
             sqlite3 "$f" "update file set path = replace(path, '\\', '/');"
           done
           tox -e report
-      - uses: codecov/codecov-action@v2
+      - uses: codecov/codecov-action@v3
         with:
           files: coverage.xml
