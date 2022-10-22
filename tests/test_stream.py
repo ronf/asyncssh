@@ -249,9 +249,6 @@ class _TestStream(ServerTestCase):
     async def test_readexactly_partial_exception(self):
         """Test readexactly returning partial data before an exception"""
 
-        import logging
-        logging.basicConfig(level='DEBUG')
-
         async with self.connect() as conn:
             stdin, stdout, _ = await conn.open_session('partial')
 
