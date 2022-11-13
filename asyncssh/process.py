@@ -274,10 +274,12 @@ class _AsyncFileReader(_UnicodeReader[AnyStr]):
 class _FileWriter(_UnicodeWriter[AnyStr]):
     """Forward data to a file"""
 
-    def __init__(self, file: IO[bytes], encoding: Optional[str], errors: str):
+    def __init__(self, file: IO[bytes], needs_close: bool,
+                 encoding: Optional[str], errors: str):
         super().__init__(encoding, errors, hasattr(file, 'encoding'))
 
         self._file = file
+        self._needs_close = needs_close
 
     def write(self, data: AnyStr) -> None:
         """Write data to the file"""
@@ -292,19 +294,21 @@ class _FileWriter(_UnicodeWriter[AnyStr]):
     def close(self) -> None:
         """Stop forwarding data to the file"""
 
-        self._file.close()
+        if self._needs_close:
+            self._file.close()
 
 
 class _AsyncFileWriter(_UnicodeWriter[AnyStr]):
     """Forward data to an aiofile"""
 
     def __init__(self, process: 'SSHProcess[AnyStr]',
-                 file: _AsyncFileProtocol[bytes],
+                 file: _AsyncFileProtocol[bytes], needs_close: bool,
                  encoding: Optional[str], errors: str):
         super().__init__(encoding, errors, hasattr(file, 'encoding'))
 
         self._conn = process.channel.get_connection()
         self._file = file
+        self._needs_close = needs_close
 
     def write(self, data: AnyStr) -> None:
         """Write data to the file"""
@@ -319,7 +323,8 @@ class _AsyncFileWriter(_UnicodeWriter[AnyStr]):
     def close(self) -> None:
         """Stop forwarding data to the file"""
 
-        self._conn.create_task(self._file.close())
+        if self._needs_close:
+            self._conn.create_task(self._file.close())
 
 
 class _PipeReader(_UnicodeReader[AnyStr], asyncio.BaseProtocol):
@@ -372,11 +377,12 @@ class _PipeWriter(_UnicodeWriter[AnyStr], asyncio.BaseProtocol):
     """Forward data to a pipe"""
 
     def __init__(self, process: 'SSHProcess[AnyStr]', datatype: DataType,
-                 encoding: Optional[str], errors: str):
+                 needs_close: bool, encoding: Optional[str], errors: str):
         super().__init__(encoding, errors)
 
         self._process: 'SSHProcess[AnyStr]' = process
         self._datatype = datatype
+        self._needs_close = needs_close
         self._transport: Optional[asyncio.WriteTransport] = None
 
     def connection_made(self, transport: asyncio.BaseTransport) -> None:
@@ -410,7 +416,18 @@ class _PipeWriter(_UnicodeWriter[AnyStr], asyncio.BaseProtocol):
         """Stop forwarding data to the pipe"""
 
         assert self._transport is not None
-        self._transport.close()
+
+        # There's currently no public API to tell connect_write_pipe()
+        # to not close the pipe on when the created transport is closed,
+        # and not closing it triggers an "unclosed transport" warning.
+        # This masks that warning when we want to keep the pipe open.
+        #
+        # pylint: disable=protected-access
+
+        if self._needs_close:
+            self._transport.close()
+        else:
+            self._transport._pipe = None # type: ignore
 
 
 class _ProcessReader(_ReaderProtocol, Generic[AnyStr]):
@@ -706,6 +723,8 @@ class SSHProcess(SSHStreamSession, Generic[AnyStr]):
         self._send_eof: Dict[Optional[int], bool] = {}
 
         self._writers: Dict[Optional[int], _WriterProtocol[AnyStr]] = {}
+        self._recv_eof: Dict[Optional[int], bool] = {}
+
         self._paused_write_streams: Set[Optional[int]] = set()
 
     @property
@@ -766,8 +785,8 @@ class SSHProcess(SSHStreamSession, Generic[AnyStr]):
         assert self._chan is not None
         return self._chan.get_extra_info(name, default)
 
-    async def _create_reader(self, source: ProcessSource,
-                             bufsize: int, send_eof: bool,
+    async def _create_reader(self, source: ProcessSource, bufsize: int,
+                             send_eof: bool, recv_eof: bool,
                              datatype: DataType = None) -> None:
         """Create a reader to forward data to the SSH channel"""
 
@@ -786,7 +805,7 @@ class SSHProcess(SSHStreamSession, Generic[AnyStr]):
             reader_stream, reader_datatype = source.get_redirect_info()
             reader_process = cast('SSHProcess[AnyStr]', reader_stream)
             writer = _ProcessWriter[AnyStr](self, datatype)
-            reader_process.set_writer(writer, reader_datatype)
+            reader_process.set_writer(writer, recv_eof, reader_datatype)
             reader = _ProcessReader(reader_process, reader_datatype)
         elif isinstance(source, asyncio.StreamReader):
             reader = _StreamReader(self, source, bufsize, datatype,
@@ -831,15 +850,16 @@ class SSHProcess(SSHStreamSession, Generic[AnyStr]):
         elif isinstance(reader, _ProcessReader):
             reader_process.feed_recv_buf(reader_datatype, writer)
 
-    async def _create_writer(self, target: ProcessTarget,
-                             bufsize: int, send_eof: bool,
+    async def _create_writer(self, target: ProcessTarget, bufsize: int,
+                             send_eof: bool, recv_eof: bool,
                              datatype: DataType = None) -> None:
         """Create a writer to forward data from the SSH channel"""
 
         def pipe_factory() -> _PipeWriter:
             """Return a pipe write handler"""
 
-            return _PipeWriter(self, datatype, self._encoding, self._errors)
+            return _PipeWriter(self, datatype, recv_eof,
+                               self._encoding, self._errors)
 
         if target == PIPE:
             writer: Optional[_WriterProtocol[AnyStr]] = None
@@ -857,26 +877,31 @@ class SSHProcess(SSHStreamSession, Generic[AnyStr]):
             writer = _StreamWriter(target, self._encoding, self._errors)
         else:
             file: _File
+            needs_close = True
 
             if isinstance(target, str):
                 file = open_file(target, 'wb', buffering=bufsize)
             elif isinstance(target, PurePath):
                 file = open_file(str(target), 'wb', buffering=bufsize)
             elif isinstance(target, int):
-                file = os.fdopen(target, 'wb', buffering=bufsize)
+                file = os.fdopen(target, 'wb',
+                                 buffering=bufsize, closefd=recv_eof)
             elif isinstance(target, socket.socket):
-                file = os.fdopen(target.detach(), 'wb', buffering=bufsize)
+                fd = target.detach() if recv_eof else target.fileno()
+                file = os.fdopen(fd, 'wb', buffering=bufsize, closefd=recv_eof)
             else:
                 file = target
+                needs_close = recv_eof
 
             if hasattr(file, 'write') and \
                     (asyncio.iscoroutinefunction(file.write) or
                      inspect.isgeneratorfunction(file.write)):
-                writer = _AsyncFileWriter(self, cast(_AsyncFileProtocol, file),
-                                          self._encoding, self._errors)
+                writer = _AsyncFileWriter(
+                    self, cast(_AsyncFileProtocol, file), needs_close,
+                    self._encoding, self._errors)
             elif _is_regular_file(cast(IO[bytes], file)):
-                writer = _FileWriter(cast(IO[bytes], file), self._encoding,
-                                     self._errors)
+                writer = _FileWriter(cast(IO[bytes], file), needs_close,
+                                    self._encoding, self._errors)
             else:
                 if hasattr(target, 'buffer'):
                     # If file was opened in text mode, remove that wrapper
@@ -887,7 +912,7 @@ class SSHProcess(SSHStreamSession, Generic[AnyStr]):
                     await self._loop.connect_write_pipe(pipe_factory, file)
                 writer = cast(_PipeWriter, protocol)
 
-        self.set_writer(writer, datatype)
+        self.set_writer(writer, recv_eof, datatype)
 
         if writer:
             self.feed_recv_buf(datatype, writer)
@@ -931,8 +956,9 @@ class SSHProcess(SSHStreamSession, Generic[AnyStr]):
     def eof_received(self) -> bool:
         """Handle an incoming end of file from the SSH channel"""
 
-        for writer in list(self._writers.values()):
-            writer.write_eof()
+        for datatype, writer in list(self._writers.items()):
+            if self._recv_eof[datatype]:
+                writer.write_eof()
 
         return super().eof_received()
 
@@ -1024,7 +1050,7 @@ class SSHProcess(SSHStreamSession, Generic[AnyStr]):
         self._unblock_drain(datatype)
 
     def set_writer(self, writer: Optional[_WriterProtocol[AnyStr]],
-                   datatype: DataType) -> None:
+                   recv_eof: bool, datatype: DataType) -> None:
         """Set a writer used to forward data from the channel"""
 
         old_writer = self._writers.get(datatype)
@@ -1035,6 +1061,7 @@ class SSHProcess(SSHStreamSession, Generic[AnyStr]):
 
         if writer:
             self._writers[datatype] = writer
+            self._recv_eof[datatype] = recv_eof
 
     def clear_writer(self, datatype: DataType) -> None:
         """Clear a writer forwarding data from the channel"""
@@ -1164,7 +1191,7 @@ class SSHClientProcess(SSHProcess[AnyStr], SSHClientStreamSession[AnyStr]):
                        stdout: Optional[ProcessTarget] = None,
                        stderr: Optional[ProcessTarget] = None,
                        bufsize: int =io.DEFAULT_BUFFER_SIZE,
-                       send_eof: bool = True) -> None:
+                       send_eof: bool = True, recv_eof: bool = True) -> None:
         """Perform I/O redirection for the process
 
            This method redirects data going to or from any or all of
@@ -1217,44 +1244,52 @@ class SSHClientProcess(SSHProcess[AnyStr], SSHClientStreamSession[AnyStr]):
            :param bufsize:
                Buffer size to use when forwarding data from a file
            :param send_eof:
-               Whether or not to send EOF to the channel when redirection
-               is complete, defaulting to `True`. If set to `False`,
-               multiple sources can be sequentially fed to the channel.
+               Whether or not to send EOF to the channel when EOF is
+               received from stdin, defaulting to `True`. If set to `False`,
+               the channel will remain open after EOF is received on stdin,
+               and multiple sources can be redirected to the channel.
+           :param recv_eof:
+               Whether or not to send EOF to stdout and stderr when EOF is
+               received from the channel, defaulting to `True`. If set to
+               `False`, the redirect targets of stdout and stderr will remain
+               open after EOF is received on the channel and can be used for
+               multiple redirects.
            :type bufsize: `int`
            :type send_eof: `bool`
+           :type recv_eof: `bool`
 
         """
 
         if stdin:
-            await self._create_reader(stdin, bufsize, send_eof)
+            await self._create_reader(stdin, bufsize, send_eof, recv_eof)
 
         if stdout:
-            await self._create_writer(stdout, bufsize, send_eof)
+            await self._create_writer(stdout, bufsize, send_eof, recv_eof)
 
         if stderr:
-            await self._create_writer(stderr, bufsize, send_eof,
+            await self._create_writer(stderr, bufsize, send_eof, recv_eof,
                                       EXTENDED_DATA_STDERR)
 
     async def redirect_stdin(self, source: ProcessSource,
                              bufsize: int = io.DEFAULT_BUFFER_SIZE,
-                             send_eof : bool = True) -> None:
+                             send_eof: bool = True) -> None:
         """Redirect standard input of the process"""
 
-        await self.redirect(source, None, None, bufsize, send_eof)
+        await self.redirect(source, None, None, bufsize, send_eof, True)
 
     async def redirect_stdout(self, target: ProcessTarget,
                               bufsize: int = io.DEFAULT_BUFFER_SIZE,
-                              send_eof: bool = True) -> None:
+                              recv_eof: bool = True) -> None:
         """Redirect standard output of the process"""
 
-        await self.redirect(None, target, None, bufsize, send_eof)
+        await self.redirect(None, target, None, bufsize, True, recv_eof)
 
     async def redirect_stderr(self, target: ProcessTarget,
                               bufsize: int = io.DEFAULT_BUFFER_SIZE,
-                              send_eof: bool = True) -> None:
+                              recv_eof: bool = True) -> None:
         """Redirect standard error of the process"""
 
-        await self.redirect(None, None, target, bufsize, send_eof)
+        await self.redirect(None, None, target, bufsize, True, recv_eof)
 
     def collect_output(self) -> Tuple[AnyStr, AnyStr]:
         """Collect output from the process without blocking
@@ -1541,7 +1576,7 @@ class SSHServerProcess(SSHProcess[AnyStr], SSHServerStreamSession[AnyStr]):
                        stdout: Optional[ProcessSource] = None,
                        stderr: Optional[ProcessSource] = None,
                        bufsize: int = io.DEFAULT_BUFFER_SIZE,
-                       send_eof: bool = True) -> None:
+                       send_eof: bool = True, recv_eof: bool = True) -> None:
         """Perform I/O redirection for the process
 
            This method redirects data going to or from any or all of
@@ -1591,44 +1626,53 @@ class SSHServerProcess(SSHProcess[AnyStr], SSHServerStreamSession[AnyStr]):
            :param bufsize:
                Buffer size to use when forwarding data from a file
            :param send_eof:
-               Whether or not to send EOF to the channel when redirection
-               is complete, defaulting to `True`. If set to `False`,
-               multiple sources can be sequentially fed to the channel.
+               Whether or not to send EOF to the channel when EOF is
+               received from stdout or stderr, defaulting to `True`. If
+               set to `False`, the channel will remain open after EOF is
+               received on stdout or stderr, and multiple sources can be
+               redirected to the channel.
+           :param recv_eof:
+               Whether or not to send EOF to stdin when EOF is received
+               on the channel, defaulting to `True`. If set to `False`,
+               the redirect target of stdin will remain open after EOF
+               is received on the channel and can be used for multiple
+               redirects.
            :type bufsize: `int`
            :type send_eof: `bool`
+           :type recv_eof: `bool`
 
         """
 
         if stdin:
-            await self._create_writer(stdin, bufsize, send_eof)
+            await self._create_writer(stdin, bufsize, send_eof, recv_eof)
 
         if stdout:
-            await self._create_reader(stdout, bufsize, send_eof)
+            await self._create_reader(stdout, bufsize, send_eof, recv_eof)
 
         if stderr:
-            await self._create_reader(stderr, bufsize, send_eof,
+            await self._create_reader(stderr, bufsize, send_eof, recv_eof,
                                       EXTENDED_DATA_STDERR)
 
     async def redirect_stdin(self, target: ProcessTarget,
                              bufsize: int = io.DEFAULT_BUFFER_SIZE,
-                             send_eof: bool = True) -> None:
+                             recv_eof: bool = True) -> None:
         """Redirect standard input of the process"""
 
-        await self.redirect(target, None, None, bufsize, send_eof)
+        await self.redirect(target, None, None, bufsize, True, recv_eof)
 
     async def redirect_stdout(self, source: ProcessSource,
                               bufsize: int = io.DEFAULT_BUFFER_SIZE,
                               send_eof: bool = True) -> None:
         """Redirect standard output of the process"""
 
-        await self.redirect(None, source, None, bufsize, send_eof)
+        await self.redirect(None, source, None, bufsize, send_eof, True)
 
     async def redirect_stderr(self, source: ProcessSource,
                               bufsize: int = io.DEFAULT_BUFFER_SIZE,
                               send_eof: bool = True) -> None:
         """Redirect standard error of the process"""
 
-        await self.redirect(None, None, source, bufsize, send_eof)
+        await self.redirect(None, None, source, bufsize, send_eof, True)
 
     def get_terminal_type(self) -> Optional[str]:
         """Return the terminal type set by the client for the process

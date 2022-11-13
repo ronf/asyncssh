@@ -3937,11 +3937,12 @@ class SSHClientConnection(SSHConnection):
     # pylint: disable=redefined-builtin
     @async_context_manager
     async def create_process(self, *args: object,
-                             bufsize: int = io.DEFAULT_BUFFER_SIZE,
                              input: Optional[AnyStr] = None,
                              stdin: ProcessSource = PIPE,
                              stdout: ProcessTarget = PIPE,
                              stderr: ProcessTarget = PIPE,
+                             bufsize: int = io.DEFAULT_BUFFER_SIZE,
+                             send_eof: bool = True, recv_eof: bool = True,
                              **kwargs: object) -> SSHClientProcess:
         """Create a process on the remote system
 
@@ -3966,8 +3967,6 @@ class SSHClientConnection(SSHConnection):
            :meth:`create_session` except for `session_factory` are
            supported and have the same meaning.
 
-           :param bufsize: (optional)
-               Buffer size to use when feeding data from a file to stdin
            :param input: (optional)
                Input data to feed to standard input of the remote process.
                If specified, this argument takes precedence over stdin.
@@ -3985,8 +3984,23 @@ class SSHClientConnection(SSHConnection):
                :class:`SSHWriter` to feed standard error of the remote
                process to, `DEVNULL` to discard this output, or `STDOUT`
                to feed standard error to the same place as stdout.
-           :type bufsize: `int`
+           :param bufsize: (optional)
+               Buffer size to use when feeding data from a file to stdin
+           :param send_eof:
+               Whether or not to send EOF to the channel when EOF is
+               received from stdin, defaulting to `True`. If set to `False`,
+               the channel will remain open after EOF is received on stdin,
+               and multiple sources can be redirected to the channel.
+           :param recv_eof:
+               Whether or not to send EOF to stdout and stderr when EOF is
+               received from the channel, defaulting to `True`. If set to
+               `False`, the redirect targets of stdout and stderr will remain
+               open after EOF is received on the channel and can be used for
+               multiple redirects.
            :type input: `str` or `bytes`
+           :type bufsize: `int`
+           :type send_eof: `bool`
+           :type recv_eof: `bool`
 
            :returns: :class:`SSHClientProcess`
 
@@ -4005,7 +4019,8 @@ class SSHClientConnection(SSHConnection):
             chan.write_eof()
             new_stdin = None
 
-        await process.redirect(new_stdin, stdout, stderr, bufsize)
+        await process.redirect(new_stdin, stdout, stderr,
+                               bufsize, send_eof, recv_eof)
 
         return process
 

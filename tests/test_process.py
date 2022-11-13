@@ -777,6 +777,22 @@ class _TestProcessRedirection(_TestProcess):
         self.assertEqual(result.stderr, data)
 
     @asynctest
+    async def test_stdout_open_file_keep_open(self):
+        """Test with stdout redirected to an open file which remains open"""
+
+        data = str(id(self))
+
+        with open('stdout', 'w') as file:
+            async with self.connect() as conn:
+                await conn.run('echo', input=data, stdout=file, recv_eof=False)
+                await conn.run('echo', input=data, stdout=file, recv_eof=False)
+
+        with open('stdout', 'r') as file:
+            stdout_data = file.read()
+
+        self.assertEqual(stdout_data, 2*data)
+
+    @asynctest
     async def test_stdout_open_binary_file(self):
         """Test with stdout redirected to an open binary file"""
 
@@ -1153,7 +1169,7 @@ class _TestAsyncFileRedirection(_TestProcess):
 
         data = str(id(self))
 
-        file = open('stdout', 'w')
+        file = await aiofiles.open('stdout', 'w')
 
         async with self.connect() as conn:
             result = await conn.run('echo', input=data, stdout=file)
@@ -1164,6 +1180,22 @@ class _TestAsyncFileRedirection(_TestProcess):
         self.assertEqual(stdout_data, data)
         self.assertEqual(result.stdout, '')
         self.assertEqual(result.stderr, data)
+
+    @asynctest
+    async def test_stdout_aiofile_keep_open(self):
+        """Test with stdout redirected to an aiofile which remains open"""
+
+        data = str(id(self))
+
+        async with aiofiles.open('stdout', 'w') as file:
+            async with self.connect() as conn:
+                await conn.run('echo', input=data, stdout=file, recv_eof=False)
+                await conn.run('echo', input=data, stdout=file, recv_eof=False)
+
+        with open('stdout', 'r') as file:
+            stdout_data = file.read()
+
+        self.assertEqual(stdout_data, 2*data)
 
     @asynctest
     async def test_stdout_binary_aiofile(self):
@@ -1279,6 +1311,28 @@ class _TestProcessPipes(_TestProcess):
         self.assertEqual(result.stderr, data)
 
     @asynctest
+    async def test_stdout_pipe_keep_open(self):
+        """Test with stdout redirected to a pipe which remains open"""
+
+        data = str(id(self))
+
+        rpipe, wpipe = os.pipe()
+
+        os.write(wpipe, data.encode())
+
+        async with self.connect() as conn:
+            await conn.run('echo', input=data, stdout=wpipe, recv_eof=False)
+            await conn.run('echo', input=data, stdout=wpipe, recv_eof=False)
+
+        os.write(wpipe, data.encode())
+        os.close(wpipe)
+
+        stdout_data = os.read(rpipe, 1024)
+        os.close(rpipe)
+
+        self.assertEqual(stdout_data.decode(), 4*data)
+
+    @asynctest
     async def test_stdout_text_pipe(self):
         """Test with stdout redirected to a pipe in text mode"""
 
@@ -1298,6 +1352,31 @@ class _TestProcessPipes(_TestProcess):
         self.assertEqual(stdout_data, data)
         self.assertEqual(result.stdout, '')
         self.assertEqual(result.stderr, data)
+
+    @asynctest
+    async def test_stdout_text_pipe_keep_open(self):
+        """Test with stdout to a pipe in text mode which remains open"""
+
+        data = str(id(self))
+
+        rpipe, wpipe = os.pipe()
+
+        rpipe = os.fdopen(rpipe, 'r')
+        wpipe = os.fdopen(wpipe, 'w')
+
+        wpipe.write(data)
+
+        async with self.connect() as conn:
+            await conn.run('echo', input=data, stdout=wpipe, recv_eof=False)
+            await conn.run('echo', input=data, stdout=wpipe, recv_eof=False)
+
+        wpipe.write(data)
+        wpipe.close()
+
+        stdout_data = rpipe.read(1024)
+        rpipe.close()
+
+        self.assertEqual(stdout_data, 4*data)
 
     @asynctest
     async def test_stdout_binary_pipe(self):
