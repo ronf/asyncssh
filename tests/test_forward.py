@@ -258,6 +258,24 @@ class _CheckForwarding(ServerTestCase):
 
         self.assertEqual(b''.join(data), result)
 
+    async def _check_local_connection(self, listen_port, delay=None):
+        """Open a local connection and test if an input line is echoed back"""
+
+        reader, writer = await asyncio.open_connection('127.0.0.1',
+                                                       listen_port)
+
+        await self._check_echo_line(reader, writer, delay=delay)
+
+    async def _check_local_unix_connection(self, listen_path):
+        """Open a local connection and test if an input line is echoed back"""
+
+        # pylint doesn't think open_unix_connection exists
+        # pylint: disable=no-member
+        reader, writer = await asyncio.open_unix_connection(listen_path)
+        # pylint: enable=no-member
+
+        await self._check_echo_line(reader, writer)
+
 
 class _TestTCPForwarding(_CheckForwarding):
     """Unit tests for AsyncSSH TCP connection forwarding"""
@@ -277,14 +295,6 @@ class _TestTCPForwarding(_CheckForwarding):
                                                     *kwargs)
 
         await self._check_echo_block(reader, writer)
-
-    async def _check_local_connection(self, listen_port, delay=None):
-        """Open a local connection and test if an input line is echoed back"""
-
-        reader, writer = await asyncio.open_connection('127.0.0.1',
-                                                       listen_port)
-
-        await self._check_echo_line(reader, writer, delay=delay)
 
     @asynctest
     async def test_ssh_create_tunnel(self):
@@ -584,6 +594,32 @@ class _TestTCPForwarding(_CheckForwarding):
                 await self._check_local_connection(listener.get_port(),
                                                    delay=0.1)
 
+    @unittest.skipIf(sys.platform == 'win32',
+                     'skip UNIX domain socket tests on Windows')
+    @asynctest
+    async def test_forward_local_path_to_port(self):
+        """Test forwarding of a local UNIX domain path to a remote TCP port"""
+
+        async with self.connect() as conn:
+            async with conn.forward_local_path_to_port('local', '', 7):
+                await self._check_local_unix_connection('local')
+
+        os.remove('local')
+
+    @unittest.skipIf(sys.platform == 'win32',
+                     'skip UNIX domain socket tests on Windows')
+    @asynctest
+    async def test_forward_local_path_to_port_failure(self):
+        """Test failure forwarding a local UNIX domain path to a TCP port"""
+
+        open('local', 'w').close()
+
+        async with self.connect() as conn:
+            with self.assertRaises(OSError):
+                await conn.forward_local_path_to_port('local', '', 7)
+
+        os.remove('local')
+
     @asynctest
     async def test_forward_local_port_pause(self):
         """Test pause during forwarding of a local port"""
@@ -642,6 +678,18 @@ class _TestTCPForwarding(_CheckForwarding):
                     await conn.forward_local_port('', listener.get_port(),
                                                   '', 7)
 
+    @unittest.skipIf(sys.platform == 'win32',
+                     'skip UNIX domain socket tests on Windows')
+    @asynctest
+    async def test_forward_port_to_path_bind_error(self):
+        """Test error binding a local port forwarding to remote path"""
+
+        async with self.connect() as conn:
+            async with conn.forward_local_port('0.0.0.0', 0, '', 7) as listener:
+                with self.assertRaises(OSError):
+                    await conn.forward_local_port_to_path(
+                            '', listener.get_port(), '')
+
     @asynctest
     async def test_forward_connect_error(self):
         """Test error connecting a local forwarding port"""
@@ -687,6 +735,23 @@ class _TestTCPForwarding(_CheckForwarding):
 
         server.close()
         await server.wait_closed()
+
+    @unittest.skipIf(sys.platform == 'win32',
+                     'skip UNIX domain socket tests on Windows')
+    @asynctest
+    async def test_forward_remote_port_to_path(self):
+        """Test forwarding of a remote port to a local UNIX domain socket"""
+
+        server = await asyncio.start_unix_server(echo, 'local')
+
+        async with self.connect() as conn:
+            async with conn.forward_remote_port_to_path(
+                    '', 0, 'local') as listener:
+                await self._check_local_connection(listener.get_port())
+
+        server.close()
+        await server.wait_closed()
+        os.remove('local')
 
     @asynctest
     async def test_forward_remote_specific_port(self):
@@ -822,16 +887,6 @@ class _TestUNIXForwarding(_CheckForwarding):
 
         await self._check_echo_line(reader, writer, encoded=True)
 
-    async def _check_local_unix_connection(self, listen_path):
-        """Open a local connection and test if an input line is echoed back"""
-
-        # pylint doesn't think open_unix_connection exists
-        # pylint: disable=no-member
-        reader, writer = await asyncio.open_unix_connection(listen_path)
-        # pylint: enable=no-member
-
-        await self._check_echo_line(reader, writer)
-
     @asynctest
     async def test_unix_connection(self):
         """Test opening a remote UNIX connection"""
@@ -945,6 +1000,31 @@ class _TestUNIXForwarding(_CheckForwarding):
         os.remove('local')
 
     @asynctest
+    async def test_forward_local_port_to_path(self):
+        """Test forwarding of a local port to a remote UNIX domain socket"""
+
+        async with self.connect() as conn:
+            async with conn.forward_local_port_to_path('', 0,
+                                                       '/echo') as listener:
+                await self._check_local_connection(listener.get_port(),
+                                                   delay=0.1)
+
+    @asynctest
+    async def test_forward_specific_local_port_to_path(self):
+        """Test forwarding of a specific local port to a UNIX domain socket"""
+
+        sock = socket.socket()
+        sock.bind(('', 0))
+        listen_port = sock.getsockname()[1]
+        sock.close()
+
+        async with self.connect() as conn:
+            async with conn.forward_local_port_to_path(
+                    '', listen_port, '/echo') as listener:
+                await self._check_local_connection(listener.get_port(),
+                                                   delay=0.1)
+
+    @asynctest
     async def test_forward_remote_path(self):
         """Test forwarding of a remote UNIX domain path"""
 
@@ -964,6 +1044,26 @@ class _TestUNIXForwarding(_CheckForwarding):
 
         os.remove('echo')
         os.remove('local')
+
+    @asynctest
+    async def test_forward_remote_path_to_port(self):
+        """Test forwarding of a remote UNIX domain path to a local TCP port"""
+
+        server = await asyncio.start_server(echo, None, 0,
+                                            family=socket.AF_INET)
+        server_port = server.sockets[0].getsockname()[1]
+
+        path = os.path.abspath('echo')
+
+        async with self.connect() as conn:
+            async with conn.forward_remote_path_to_port(
+                    path, '127.0.0.1', server_port):
+                await self._check_local_unix_connection('echo')
+
+        os.remove('echo')
+
+        server.close()
+        await server.wait_closed()
 
     @asynctest
     async def test_forward_remote_path_failure(self):

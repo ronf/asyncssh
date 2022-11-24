@@ -75,7 +75,18 @@ The client can also set up TCP port forwarding by calling
 :meth:`forward_remote_port() <SSHClientConnection.forward_remote_port>` and
 UNIX domain socket forwarding by calling :meth:`forward_local_path()
 <SSHClientConnection.forward_local_path>` or :meth:`forward_remote_path()
-<SSHClientConnection.forward_remote_path>`. In these cases, data transfer on
+<SSHClientConnection.forward_remote_path>`. Mixed forwarding from a TCP port
+to a UNIX domain socket or vice-versa can be set up using the functions
+:meth:`forward_local_port_to_path()
+<SSHClientConnection.forward_local_port_to_path>`,
+:meth:`forward_local_path_to_port()
+<SSHClientConnection.forward_local_path_to_port>`,
+:meth:`forward_remote_port_to_path()
+<SSHClientConnection.forward_remote_port_to_path>`, and
+:meth:`forward_remote_path_to_port()
+<SSHClientConnection.forward_remote_path_to_port>`.
+
+In these cases, data transfer on
 the channels is managed automatically by AsyncSSH whenever new connections
 are opened, so custom session objects are not required.
 
@@ -354,16 +365,20 @@ SSHClientConnection
    .. automethod:: start_unix_server
    ====================================== =
 
-   =================================== =
+   =========================================== =
    Client forwarding methods
-   =================================== =
+   =========================================== =
    .. automethod:: forward_connection
    .. automethod:: forward_local_port
    .. automethod:: forward_local_path
+   .. automethod:: forward_local_port_to_path
+   .. automethod:: forward_local_path_to_port
    .. automethod:: forward_remote_port
    .. automethod:: forward_remote_path
+   .. automethod:: forward_remote_port_to_path
+   .. automethod:: forward_remote_path_to_port
    .. automethod:: forward_socks
-   =================================== =
+   =========================================== =
 
    =========================== =
    Connection close methods
