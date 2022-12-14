@@ -243,7 +243,10 @@ class SSHConfig:
         """Set whitespace-separated string config options as a list"""
 
         if option not in self._options:
-            self._options[option] = args[:]
+            if len(args) == 1 and args[0].lower() == 'none':
+                self._options[option] = []
+            else:
+                self._options[option] = args[:]
 
         args.clear()
 
@@ -292,6 +295,7 @@ class SSHConfig:
 
         if option not in self._options:
             self._options[option] = byte_limit, time_limit
+
 
     def parse(self, path: Path) -> None:
         """Parse an OpenSSH config file and return matching declarations"""

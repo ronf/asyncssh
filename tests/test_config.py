@@ -279,6 +279,10 @@ class _TestClientConfig(_TestConfig):
                                     'UserKnownHostsFile file2')
         self.assertEqual(config.get('UserKnownHostsFile'), ['file1'])
 
+        config = self._parse_config('UserKnownHostsFile none\n'
+                                    'UserKnownHostsFile file2')
+        self.assertEqual(config.get('UserKnownHostsFile'), [])
+
     def test_append_string_list(self):
         """Test appending multiple string config options to a list"""
 
