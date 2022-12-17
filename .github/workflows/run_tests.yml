@@ -8,10 +8,13 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        python-version: ["3.7", "3.8", "3.9", "3.10"]
+        python-version: ["3.7", "3.8", "3.9", "3.10", "3.11"]
         include:
           - os: macos-latest
             python-version: "3.10"
+            openssl-version: "3"
+          - os: macos-latest
+            python-version: "3.11"
             openssl-version: "3"
         exclude:
           # test hangs on these combination
@@ -21,6 +24,8 @@ jobs:
             python-version: "3.9"
           - os: windows-latest
             python-version: "3.10"
+          - os: windows-latest
+            python-version: "3.11"
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v3
