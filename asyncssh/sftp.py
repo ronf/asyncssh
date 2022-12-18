@@ -404,7 +404,7 @@ def _utime_to_attrs(times: Optional[Tuple[float, float]] = None,
     else:
         if hasattr(time, 'time_ns'):
             atime, atime_ns = _nsec_to_tuple(time.time_ns())
-        else:
+        else: # pragma: no cover
             atime, atime_ns = _float_sec_to_tuple(time.time())
 
         mtime, mtime_ns = atime, atime_ns

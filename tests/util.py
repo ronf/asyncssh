@@ -67,7 +67,7 @@ from asyncssh.public_key import generate_private_key
 if hasattr(asyncio, 'all_tasks'):
     all_tasks = asyncio.all_tasks
     current_task = asyncio.current_task
-else:
+else: # pragma: no cover
     all_tasks = asyncio.Task.all_tasks
     current_task = asyncio.Task.current_task
 
