@@ -1735,6 +1735,14 @@ class SFTPAttrs(Record):
         flags = packet.get_uint32()
         attrs = cls()
 
+        # Work around a bug seen in a Huawei SFTP server where
+        # FILEXFER_ATTR_MODIFYTIME is included in flags, even though
+        # the SFTP version is set to 3. That flag is only defined for
+        # SFTPv4 and later.
+        if sftp_version == 3 and flags & (FILEXFER_ATTR_ACMODTIME |
+                                          FILEXFER_ATTR_MODIFYTIME):
+            flags &= ~FILEXFER_ATTR_MODIFYTIME
+
         unsupported_attrs = flags & ~_valid_attr_flags[sftp_version]
 
         if unsupported_attrs:
