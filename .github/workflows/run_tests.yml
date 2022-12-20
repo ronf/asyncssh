@@ -68,7 +68,7 @@ jobs:
         run: sudo apt install -y --no-install-recommends libnettle8 libsodium-dev libssl-dev libkrb5-dev ssh
       - name: Install macOS dependencies
         if: ${{ runner.os == 'macOS' }}
-        run: brew install nettle libsodium openssl
+        run: brew install nettle liboqs libsodium openssl
       - name: Provide OpenSSL 3
         if: ${{ runner.os == 'macOS' && matrix.openssl-version == '3' }}
         run: echo "/usr/local/opt/openssl@3/bin" >> $GITHUB_PATH
