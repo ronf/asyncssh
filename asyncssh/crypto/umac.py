@@ -23,7 +23,6 @@
 import binascii
 import ctypes
 import ctypes.util
-import sys
 from typing import TYPE_CHECKING, Callable, Optional
 
 
@@ -126,8 +125,13 @@ def _build_umac(size: int) -> '_New':
     return _UMAC.new
 
 
-_nettle_lib = 'libnettle-6' if sys.platform == 'win32' \
-                            else ctypes.util.find_library('nettle')
+for lib in ('nettle', 'libnettle', 'libnettle-6'):
+    _nettle_lib = ctypes.util.find_library(lib)
+
+    if _nettle_lib: # pragma: no branch
+        break
+else: # pragma: no cover
+    _nettle_lib = None
 
 if _nettle_lib: # pragma: no branch
     _nettle = ctypes.cdll.LoadLibrary(_nettle_lib)

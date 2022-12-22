@@ -33,7 +33,13 @@ sntrup761_ciphertext_bytes = 1039
 sntrup761_secret_bytes = 32
 
 
-_oqs_lib = ctypes.util.find_library('oqs')
+for lib in ('oqs', 'liboqs'):
+    _oqs_lib = ctypes.util.find_library(lib)
+
+    if _oqs_lib: # pragma: no branch
+        break
+else: # pragma: no cover
+    _oqs_lib = None
 
 if _oqs_lib: # pragma: no branch
     _oqs = ctypes.cdll.LoadLibrary(_oqs_lib)
