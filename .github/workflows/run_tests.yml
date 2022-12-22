@@ -128,10 +128,12 @@ jobs:
         shell: python
         working-directory: asyncssh
         run: |
-          import os, sys, platform
+          import os, sys, platform, subprocess
           V = sys.version_info
           p = platform.system().lower()
-          exit(os.system(f"tox -e py{V.major}{V.minor}-{p} -- -ra"))
+          subprocess.run(
+              ['tox', '-e', f'py{V.major}{V.minor}-{p}', '--', '-ra'],
+              check=True)
 
       - name: Upload coverage data
         uses: actions/upload-artifact@v3
