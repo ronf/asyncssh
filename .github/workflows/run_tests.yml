@@ -99,7 +99,7 @@ jobs:
 
       - name: Install Windows dependencies
         if: ${{ runner.os == 'Windows' }}
-        run: vcpkg install libsodium nettle openssl --triplet x64-windows
+        run: vcpkg install libsodium nettle openssl --triplet x64-windows-release
 
       - name: Install liboqs (Linux)
         if: ${{ runner.os == 'Linux' }}
