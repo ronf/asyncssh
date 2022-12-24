@@ -30,6 +30,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     env:
       liboqs_version: '0.7.2'
+      nettle_version: nettle_3.8.1_release_20220727
 
     steps:
       - name: Checkout asyncssh
@@ -48,36 +49,10 @@ jobs:
       - uses: actions/setup-python@v4
         with:
           python-version: ${{ matrix.python-version }}
-
-      - name: Determine pip cache path
-        shell: bash
-        run: |
-          echo "_PIP_CACHE_DIR=$(pip cache dir)" >> $GITHUB_ENV
-
-      - name: Set up pip cache
-        uses: actions/cache@v3
-        with:
-          path: ${{ env._PIP_CACHE_DIR }}
-          key: pip-${{ runner.os }}-${{ hashFiles('asyncssh/setup.py', 'asyncssh/tox.ini') }}
-          restore-keys: |
-            pip-${{ runner.os }}-
-
-      - name: Determine vcpkg cache path
-        if: ${{ runner.os == 'Windows' }}
-        id: vcpkg-cache
-        shell: pwsh
-        run: |
-          "archives_dir=${env:LOCALAPPDATA}\vcpkg\archives" >> $env:GITHUB_OUTPUT
-          "downloads_dir=${env:VCPKG_INSTALLATION_ROOT}\downloads" >> $env:GITHUB_OUTPUT
-
-      - name: Set up vcpkg cache
-        uses: actions/cache@v3
-        if: ${{ runner.os == 'Windows' }}
-        with:
-          path: |
-            ${{ steps.vcpkg-cache.outputs.archives_dir }}
-            ${{ steps.vcpkg-cache.outputs.downloads_dir }}
-          key: vcpkg
+          cache: pip
+          cache-dependency-path: |
+            asyncssh/setup.py
+            asyncssh/tox.ini
 
       - name: Set up ccache for liboqs (Linux)
         uses: hendrikmuhs/ccache-action@v1.2
@@ -97,9 +72,13 @@ jobs:
         if: ${{ runner.os == 'macOS' && matrix.openssl-version == '3' }}
         run: echo "/usr/local/opt/openssl@3/bin" >> $GITHUB_PATH
 
-      - name: Install Windows dependencies
+      - name: Install nettle (Windows)
         if: ${{ runner.os == 'Windows' }}
-        run: vcpkg install libsodium nettle openssl --triplet x64-windows-release
+        shell: pwsh
+        run: |
+          curl -fLO https://github.com/ShiftMediaProject/nettle/releases/download/${{ env.nettle_version }}/libnettle_${{ env.nettle_version }}_msvc17.zip
+          Expand-Archive libnettle_${{ env.nettle_version }}_msvc17.zip nettle
+          cp nettle\bin\x64\*.dll "$env:Python_ROOT_DIR"
 
       - name: Install liboqs (Linux)
         if: ${{ runner.os == 'Linux' }}
@@ -119,7 +98,7 @@ jobs:
         run: |
           cmake -GNinja -Bbuild . -DBUILD_SHARED_LIBS=ON -DOQS_BUILD_ONLY_LIB=ON -DOQS_DIST_BUILD=ON
           cmake --build build
-          "$pwd\build\bin" >> "$env:GITHUB_PATH"
+          cp build\bin\oqs.dll "$env:Python_ROOT_DIR"
 
       - name: Install Python dependencies
         run: pip install tox
