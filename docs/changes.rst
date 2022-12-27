@@ -3,6 +3,54 @@
 Change Log
 ==========
 
+Release 2.13.0 (27 Dec 2022)
+----------------------------
+
+* Updated testing and coverage to drop Python 3.6 and add Python 3.11.
+  Thanks go to GitHub user hexchain for maintaining the GitHub workflows
+  supporting this!
+
+* Added new "recv_eof" option to not pass an EOF from a channel to a
+  redirected target, allowing output from multiple SSH sessions to be
+  sent and mixed with other direct output to that target. This is meant
+  to be similar to the existing "send_eof" option which controls whether
+  EOF on a redirect source is passed through to the SSH channel. Thanks
+  go to Stuart Reynolds for inspiring this idea.
+
+* Added new methods to make it easy to perform forwarding between TCP
+  ports and UNIX domain sockets. Thanks go to Alex Rogozhnikov for
+  suggesting this use case.
+
+* Added a workaround for a problem seen on a Huawei SFTP server where
+  it sends an invalid combination of file attribute flags. In cases where
+  the flags are otherwise valid and the right amount of attribute data is
+  available, AsyncSSH will ignore the invalid flags and proceed.
+
+* Fixed an issue with copying files to SFTP servers that don't support
+  random access I/O. The potential to trigger this failyre goes back
+  several releases, but a change in AsyncSSH 2.12 made out-of-order writes
+  much more likely. This fix returns AsyncSSH to its previous behavior
+  where out-of-order writes are unlikely even when taking advantage of
+  parallel reads. Thanks go to Patrik Lindgren and Stefan Walkner for
+  reporting this issue and helping to identify the source of the problem.
+
+* Fixed an issue when requesting remote port forwarding on a dynamically
+  allocated port. Thanks go to Daniel Shimon for reporting this and
+  proposing a fix.
+
+* Fixed an issue where readexactly could block indefinitely when a signal
+  is delivered in the stream before the requested number of bytes are
+  available. Thanks go to Artem Bezborodko for reporting this and
+  providing a fix.
+
+* Fixed an interoperability issue with OpenSSH when using SSH certificates
+  with RSA keys with a SHA-2 signature. Thanks go to Łukasz Siudut for
+  reporting this.
+
+* Fixed an issue with handling "None" in ProxyCommand, GlobalKnownHostsFile,
+  and UserKnownHostsFile config file options. Thanks go to GitHub user
+  dtrifiro for reporting this issue and suggesting a fix.
+
 Release 2.12.0 (10 Aug 2022)
 ----------------------------
 
