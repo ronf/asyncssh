@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2022 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2023 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -633,22 +633,18 @@ class SSHKey:
         result.set_filename(self._filename)
         return result
 
-    def generate_user_certificate(self, user_key: 'SSHKey', key_id: str,
-                                  version: int = 1, serial: int = 0,
-                                  principals: _CertPrincipals = (),
-                                  valid_after: _Time = 0,
-                                  valid_before: _Time = 0xffffffffffffffff,
-                                  force_command: str = None,
-                                  source_address: Sequence[str] = None,
-                                  permit_x11_forwarding: bool = True,
-                                  permit_agent_forwarding: bool = True,
-                                  permit_port_forwarding: bool = True,
-                                  permit_pty: bool = True,
-                                  permit_user_rc: bool = True,
-                                  touch_required: bool = True,
-                                  sig_alg: DefTuple[str] = (),
-                                  comment: DefTuple[_Comment] = ()) -> \
-            'SSHOpenSSHCertificate':
+    def generate_user_certificate(
+            self, user_key: 'SSHKey', key_id: str, version: int = 1,
+            serial: int = 0, principals: _CertPrincipals = (),
+            valid_after: _Time = 0, valid_before: _Time = 0xffffffffffffffff,
+            force_command: Optional[str] = None,
+            source_address: Optional[Sequence[str]] = None,
+            permit_x11_forwarding: bool = True,
+            permit_agent_forwarding: bool = True,
+            permit_port_forwarding: bool = True, permit_pty: bool = True,
+            permit_user_rc: bool = True, touch_required: bool = True,
+            sig_alg: DefTuple[str] = (),
+            comment: DefTuple[_Comment] = ()) -> 'SSHOpenSSHCertificate':
         """Generate a new SSH user certificate
 
            This method returns an SSH user certifcate with the requested
@@ -821,16 +817,14 @@ class SSHKey:
                                           principals, valid_after,
                                           valid_before, {}, sig_alg, comment)
 
-    def generate_x509_user_certificate(self, user_key: 'SSHKey', subject: str,
-                                       issuer: str = None, serial: int = None,
-                                       principals: _CertPrincipals = (),
-                                       valid_after: _Time = 0,
-                                       valid_before: _Time = 0xffffffffffffffff,
-                                       purposes: X509CertPurposes = \
-                                            'secureShellClient',
-                                       hash_alg: DefTuple[str] = (),
-                                       comment: DefTuple[_Comment] = ()) -> \
-            'SSHX509Certificate':
+    def generate_x509_user_certificate(
+            self, user_key: 'SSHKey', subject: str,
+            issuer: Optional[str] = None, serial: Optional[int] = None,
+            principals: _CertPrincipals = (), valid_after: _Time = 0,
+            valid_before: _Time = 0xffffffffffffffff,
+            purposes: X509CertPurposes = 'secureShellClient',
+            hash_alg: DefTuple[str] = (),
+            comment: DefTuple[_Comment] = ()) -> 'SSHX509Certificate':
         """Generate a new X.509 user certificate
 
            This method returns an X.509 user certifcate with the requested
@@ -894,16 +888,14 @@ class SSHKey:
                                                purposes, principals, (),
                                                hash_alg, comment)
 
-    def generate_x509_host_certificate(self, host_key: 'SSHKey', subject: str,
-                                       issuer: str = None, serial: int = None,
-                                       principals: _CertPrincipals = (),
-                                       valid_after: _Time = 0,
-                                       valid_before: _Time = 0xffffffffffffffff,
-                                       purposes: X509CertPurposes = \
-                                            'secureShellServer',
-                                       hash_alg: DefTuple[str] = (),
-                                       comment: DefTuple[_Comment] = ()) -> \
-            'SSHX509Certificate':
+    def generate_x509_host_certificate(
+            self, host_key: 'SSHKey', subject: str,
+            issuer: Optional[str] = None, serial: Optional[int] = None,
+            principals: _CertPrincipals = (), valid_after: _Time = 0,
+            valid_before: _Time = 0xffffffffffffffff,
+            purposes: X509CertPurposes = 'secureShellServer',
+            hash_alg: DefTuple[str] = (),
+            comment: DefTuple[_Comment] = ()) -> 'SSHX509Certificate':
         """Generate a new X.509 host certificate
 
            This method returns a X.509 host certifcate with the requested
@@ -1376,6 +1368,8 @@ class SSHCertificate:
                   comment: _Comment) -> 'SSHCertificate':
         """Construct an SSH certificate from packetized data"""
 
+        raise NotImplementedError
+
     def __eq__(self, other: object) -> bool:
         return (isinstance(other, type(self)) and
                 self.public_data == other.public_data)
@@ -1617,7 +1611,7 @@ class SSHOpenSSHCertificate(SSHCertificate):
     @classmethod
     def construct(cls, packet: SSHPacket, algorithm: bytes,
                   key_handler: Optional[Type[SSHKey]],
-                  comment: _Comment) -> 'SSHCertificate':
+                  comment: _Comment) -> 'SSHOpenSSHCertificate':
         """Construct an SSH certificate from packetized data"""
 
         assert key_handler is not None
@@ -1892,6 +1886,14 @@ class SSHX509Certificate(SSHCertificate):
                 pass
 
     @classmethod
+    def construct(cls, packet: SSHPacket, algorithm: bytes,
+                  key_handler: Optional[Type[SSHKey]],
+                  comment: _Comment) -> 'SSHX509Certificate':
+        """Construct an SSH X.509 certificate from packetized data"""
+
+        raise RuntimeError
+
+    @classmethod
     def generate(cls, signing_key: 'SSHKey', key: 'SSHKey', subject: str,
                  issuer: Optional[str], serial: Optional[int],
                  valid_after: int, valid_before: int, ca: bool,
@@ -2047,7 +2049,8 @@ class SSHKeyPair:
                  sig_algorithms: Sequence[bytes],
                  host_key_algorithms: Sequence[bytes],
                  public_data: bytes, comment: _Comment,
-                 cert: SSHCertificate = None, filename: bytes = None,
+                 cert: Optional[SSHCertificate] = None,
+                 filename: Optional[bytes] = None,
                  use_executor: bool = False):
         self.key_algorithm = algorithm
         self.key_public_data = public_data
@@ -2198,6 +2201,9 @@ class SSHKeyPair:
     def sign(self, data: bytes) -> bytes:
         """Sign a block of data with this private key"""
 
+        # pylint: disable=no-self-use
+        raise RuntimeError
+
 
 class SSHLocalKeyPair(SSHKeyPair):
     """Class which holds a local asymmetric key pair
@@ -2210,8 +2216,8 @@ class SSHLocalKeyPair(SSHKeyPair):
 
     _key_type = 'local'
 
-    def __init__(self, key: SSHKey, pubkey: SSHKey = None,
-                 cert: SSHCertificate = None):
+    def __init__(self, key: SSHKey, pubkey: Optional[SSHKey] = None,
+                 cert: Optional[SSHCertificate] = None):
         if pubkey and pubkey.public_data != key.public_data:
             raise ValueError('Public key mismatch')
 
@@ -2883,7 +2889,8 @@ def register_sk_alg(sk_alg: int, handler: Type[SSHKey], *args: object) -> None:
 
 def register_public_key_alg(algorithm: bytes, handler: Type[SSHKey],
                             default: bool,
-                            sig_algorithms: Sequence[bytes] = None) -> None:
+                            sig_algorithms: Optional[Sequence[bytes]] = \
+                                None) -> None:
     """Register a new public key algorithm"""
 
     if not sig_algorithms:
@@ -3717,7 +3724,8 @@ def load_default_identities() -> Sequence[bytes]:
     return result
 
 
-def load_resident_keys(pin: str, *, application: str = 'ssh:', user: str = None,
+def load_resident_keys(pin: str, *, application: str = 'ssh:',
+                       user: Optional[str] = None,
                        touch_required: bool = True) -> Sequence[SSHKey]:
     """Load keys resident on attached FIDO2 security keys
 

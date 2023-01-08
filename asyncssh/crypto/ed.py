@@ -1,4 +1,4 @@
-# Copyright (c) 2019-2021 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2019-2023 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -50,7 +50,8 @@ if ed25519_available or ed448_available: # pragma: no branch
     class _EdDSAKey(CryptoKey):
         """Base class for shim around PyCA for EdDSA keys"""
 
-        def __init__(self, pyca_key: PyCAKey, pub: bytes, priv: bytes = None):
+        def __init__(self, pyca_key: PyCAKey, pub: bytes,
+                     priv: Optional[bytes] = None):
             super().__init__(pyca_key)
 
             self._pub = pub
@@ -146,7 +147,7 @@ else: # pragma: no cover
     class _EdDSANaclKey:
         """Base class for shim around libnacl for EdDSA keys"""
 
-        def __init__(self, pub: bytes, priv: bytes = None):
+        def __init__(self, pub: bytes, priv: Optional[bytes] = None):
             self._pub = pub
             self._priv = priv
 

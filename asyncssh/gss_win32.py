@@ -1,4 +1,4 @@
-# Copyright (c) 2017-2022 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2017-2023 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -194,7 +194,7 @@ class GSSError(Exception):
     """Class for reporting GSS errors"""
 
     def __init__(self, maj_code: int = 0, min_code: int = 0,
-                 token: bytes = None, details: str = ''):
+                 token: Optional[bytes] = None, details: str = ''):
         super().__init__(details)
 
         self.maj_code = maj_code

@@ -1,4 +1,4 @@
-# Copyright (c) 2016-2021 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2016-2023 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -100,6 +100,8 @@ class _WriterProtocol(Protocol[_AnyStrContra]):
 
     def write_exception(self, exc: Exception) -> None:
         """Write exception (break, signal, terminal size change)"""
+
+        return
 
     def write_eof(self) -> None:
         """Close output when end of file is received"""

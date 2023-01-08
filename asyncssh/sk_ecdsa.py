@@ -1,4 +1,4 @@
-# Copyright (c) 2019-2021 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2019-2023 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -45,7 +45,7 @@ class _SKECDSAKey(SSHKey):
 
     def __init__(self, curve_id: bytes, public_value: bytes,
                  application: bytes, flags: int = 0,
-                 key_handle: bytes = None, reserved: bytes = b''):
+                 key_handle: Optional[bytes] = None, reserved: bytes = b''):
         super().__init__(ECDSAPublicKey.construct(curve_id, public_value))
 
         self.algorithm = b'sk-ecdsa-sha2-' + curve_id + b'@openssh.com'

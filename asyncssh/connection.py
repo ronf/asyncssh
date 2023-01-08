@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2022 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2023 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -282,12 +282,6 @@ async def _open_proxy(
             self._stdin: Optional[asyncio.WriteTransport] = None
             self._conn = conn_factory()
             self._close_event = asyncio.Event()
-
-        def set_protocol(self, protocol: asyncio.BaseProtocol) -> None:
-            """Changing the protocol is ignored here"""
-
-        def get_protocol(self) -> asyncio.BaseProtocol:
-            """Changing the protocol is ignored here"""
 
         def get_extra_info(self, name: str, default: Any = None) -> Any:
             """Return extra information associated with this tunnel"""
@@ -1053,7 +1047,8 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
             self.internal_error(error_logger=task_logger)
 
     def create_task(self, coro: Awaitable[None],
-                    task_logger: SSHLogger = None) -> 'asyncio.Task[None]':
+                    task_logger: Optional[SSHLogger] = None) -> \
+            'asyncio.Task[None]':
         """Create an asynchronous task which catches and reports errors"""
 
         task = asyncio.ensure_future(coro)
@@ -1543,7 +1538,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         return True
 
     def send_packet(self, pkttype: int, *args: bytes,
-                    handler: SSHPacketLogger = None) -> None:
+                    handler: Optional[SSHPacketLogger] = None) -> None:
         """Send an SSH packet"""
 
         if (self._auth_complete and self._kex_complete and
@@ -1825,7 +1820,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
                 self._get_userauth_request_packet(method, args))
 
     def send_userauth_packet(self, pkttype: int, *args: bytes,
-                             handler: SSHPacketLogger = None,
+                             handler: Optional[SSHPacketLogger] = None,
                              trivial: bool = True) -> None:
         """Send a user authentication packet"""
 
@@ -7079,7 +7074,7 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
                 server_host_key_algs: _AlgsArg = (),
                 username: DefTuple[str] = (), password: Optional[str] = None,
                 client_host_keysign: DefTuple[KeySignPath] = (),
-                client_host_keys: _ClientKeysArg = None,
+                client_host_keys: Optional[_ClientKeysArg] = None,
                 client_host_certs: Sequence[FilePath] = (),
                 client_host: Optional[str] = None,
                 client_username: DefTuple[str] = (),

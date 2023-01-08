@@ -1,4 +1,4 @@
-# Copyright (c) 2016-2022 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2016-2023 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -314,7 +314,8 @@ class SSHAgentClient:
             raise ValueError('Unknown SSH agent response: %d' % resptype)
 
     async def add_keys(self, keylist: KeyPairListArg = (),
-                       passphrase: str = None, lifetime: int = None,
+                       passphrase: Optional[str] = None,
+                       lifetime: Optional[int] = None,
                        confirm: bool = False) -> None:
         """Add keys to the agent
 
@@ -394,8 +395,9 @@ class SSHAgentClient:
             else:
                 raise ValueError('Unknown SSH agent response: %d' % resptype)
 
-    async def add_smartcard_keys(self, provider: str, pin: str = None,
-                                 lifetime: int = None,
+    async def add_smartcard_keys(self, provider: str,
+                                 pin: Optional[str] = None,
+                                 lifetime: Optional[int] = None,
                                  confirm: bool = False) -> None:
         """Store keys associated with a smart card in the agent
 
@@ -458,7 +460,7 @@ class SSHAgentClient:
                 raise ValueError('Unknown SSH agent response: %d' % resptype)
 
     async def remove_smartcard_keys(self, provider: str,
-                                    pin: str = None) -> None:
+                                    pin: Optional[str] = None) -> None:
         """Remove keys associated with a smart card stored in the agent
 
            :param provider:

@@ -1,4 +1,4 @@
-# Copyright (c) 2014-2021 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2014-2023 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -38,7 +38,7 @@ class _RSAKey(CryptoKey):
     """Base class for shim around PyCA for RSA keys"""
 
     def __init__(self, pyca_key: PyCAKey, pub: rsa.RSAPublicNumbers,
-                 priv: rsa.RSAPrivateNumbers = None):
+                 priv: Optional[rsa.RSAPrivateNumbers] = None):
         super().__init__(pyca_key)
 
         self._pub = pub

@@ -1,4 +1,4 @@
-# Copyright (c) 2015-2022 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2015-2023 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -141,9 +141,9 @@ _SFTPNames = Tuple[Sequence['SFTPName'], bool]
 _SFTPOSAttrs = Union[os.stat_result, 'SFTPAttrs']
 _SFTPOSVFSAttrs = Union[os.statvfs_result, 'SFTPVFSAttrs']
 
-_SFTPOnErrorHandler = Callable[[Callable, bytes, OptExcInfo], None]
-_SFTPPacketHandler = Callable[['SFTPServerHandler', SSHPacket],
-                              Awaitable[object]]
+_SFTPOnErrorHandler = Optional[Callable[[Callable, bytes, OptExcInfo], None]]
+_SFTPPacketHandler = Optional[Callable[['SFTPServerHandler', SSHPacket],
+                              Awaitable[object]]]
 
 SFTPErrorHandler = Union[None, Literal[False], Callable[[Exception], None]]
 SFTPProgressHandler = Optional[Callable[[bytes, bytes, int, int], None]]

@@ -1,4 +1,4 @@
-# Copyright (c) 2020-2021 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2020-2023 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -68,7 +68,7 @@ if pkcs11_available:
         _key_type = 'pkcs11'
 
         def __init__(self, session: 'SSHPKCS11Session', privkey: PrivateKey,
-                     pubkey: SSHKey, cert: SSHCertificate = None):
+                     pubkey: SSHKey, cert: Optional[SSHCertificate] = None):
             super().__init__(pubkey.algorithm, pubkey.algorithm,
                              pubkey.sig_algorithms, pubkey.sig_algorithms,
                              pubkey.public_data, privkey.label, cert,
@@ -197,12 +197,12 @@ if pkcs11_available:
             return keys
 
 
-    def load_pkcs11_keys(provider: str, pin: str = None, *,
+    def load_pkcs11_keys(provider: str, pin: Optional[str] = None, *,
                          load_certs: bool = True,
-                         token_label: str = None,
-                         token_serial: BytesOrStr = None,
-                         key_label: str = None,
-                         key_id: BytesOrStr = None) -> \
+                         token_label: Optional[str] = None,
+                         token_serial: Optional[BytesOrStr] = None,
+                         key_label: Optional[str] = None,
+                         key_id: Optional[BytesOrStr] = None) -> \
             Sequence[SSHPKCS11KeyPair]:
         """Load PIV keys and X.509 certificates from a PKCS#11 token
 
@@ -278,12 +278,12 @@ if pkcs11_available:
 
         return keys
 else: # pragma: no cover
-    def load_pkcs11_keys(provider: str, pin: str = None, *,
+    def load_pkcs11_keys(provider: str, pin: Optional[str] = None, *,
                          load_certs: bool = True,
-                         token_label: str = None,
-                         token_serial: BytesOrStr = None,
-                         key_label: str = None,
-                         key_id: BytesOrStr = None) -> \
+                         token_label: Optional[str] = None,
+                         token_serial: Optional[BytesOrStr] = None,
+                         key_label: Optional[str] = None,
+                         key_id: Optional[BytesOrStr] = None) -> \
             Sequence['SSHPKCS11KeyPair']:
         """Report that PKCS#11 support is not available"""
 

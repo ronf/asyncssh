@@ -1,4 +1,4 @@
-# Copyright (c) 2017-2021 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2017-2023 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -60,5 +60,11 @@ class CryptoKey:
     def sign(self, data: bytes, hash_name: str = '') -> bytes:
         """Sign a block of data"""
 
+        # pylint: disable=no-self-use
+        raise RuntimeError
+
     def verify(self, data: bytes, sig: bytes, hash_name: str = '') -> bool:
         """Verify the signature on a block of data"""
+
+        # pylint: disable=no-self-use
+        raise RuntimeError

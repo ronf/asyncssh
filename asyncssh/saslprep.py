@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2021 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2023 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -31,7 +31,7 @@
 # pylint: disable=deprecated-module
 import stringprep
 # pylint: enable=deprecated-module
-from typing import Callable, Sequence
+from typing import Callable, Optional, Sequence
 import unicodedata
 
 
@@ -60,8 +60,10 @@ def _check_bidi(s: str) -> None:
         raise SASLPrepError('RandALCat character not at both start and end')
 
 
-def _stringprep(s: str, check_unassigned: bool, mapping: Callable[[str], str],
-                normalization: str, prohibited: Sequence[Callable[[str], bool]],
+def _stringprep(s: str, check_unassigned: bool,
+                mapping: Optional[Callable[[str], str]],
+                normalization: str,
+                prohibited: Sequence[Callable[[str], bool]],
                 bidi: bool) -> str:
     """Implement a stringprep profile as defined in RFC 3454"""
 

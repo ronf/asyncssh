@@ -1,4 +1,4 @@
-# Copyright (c) 2016-2021 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2016-2023 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -242,7 +242,7 @@ class SSHX11ClientForwarder(SSHForwarder):
         if self._recv_handler:
             self._inpbuf += data
 
-            while self._recv_handler:
+            while self._recv_handler: # type: ignore[truthy-function]
                 if len(self._inpbuf) >= self._bytes_needed:
                     data = self._inpbuf[:self._bytes_needed]
                     self._inpbuf = self._inpbuf[self._bytes_needed:]

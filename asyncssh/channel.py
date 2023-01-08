@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2022 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2023 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -75,7 +75,7 @@ _signal_numbers = {k[3:]: int(v) for (k, v) in vars(_signal).items()
 _signal_names = {v: k for (k, v) in _signal_numbers.items()}
 
 _ExitSignal = Tuple[str, bool, str, str]
-_RequestHandler = Callable[[SSHPacket], Optional[bool]]
+_RequestHandler = Optional[Callable[[SSHPacket], Optional[bool]]]
 
 
 class SSHChannel(Generic[AnyStr], SSHPacketHandler):
@@ -198,7 +198,7 @@ class SSHChannel(Generic[AnyStr], SSHPacketHandler):
 
         return self._write_datatypes
 
-    def _cleanup(self, exc: Exception = None) -> None:
+    def _cleanup(self, exc: Optional[Exception] = None) -> None:
         """Clean up this channel"""
 
         if self._open_waiter:
@@ -322,7 +322,7 @@ class SSHChannel(Generic[AnyStr], SSHPacketHandler):
             elif self._send_state == 'close_pending':
                 self._close_send()
 
-    def _flush_recv_buf(self, exc: Exception = None) -> None:
+    def _flush_recv_buf(self, exc: Optional[Exception] = None) -> None:
         """Flush as much data in the recv buffer as the application allows"""
 
         while self._recv_buf and not self._recv_paused:
@@ -847,8 +847,8 @@ class SSHChannel(Generic[AnyStr], SSHPacketHandler):
 
         return self._send_buf_len
 
-    def set_write_buffer_limits(self, high: int = None,
-                                low: int = None) -> None:
+    def set_write_buffer_limits(self, high: Optional[int] = None,
+                                low: Optional[int] = None) -> None:
         """Set the high- and low-water limits for write flow control
 
            This method sets the limits used when deciding when to call
@@ -1623,8 +1623,8 @@ class SSHServerChannel(SSHChannel, Generic[AnyStr]):
         self._env[name] = value
         return True
 
-    def _start_session(self, command: str = None,
-                       subsystem: str = None) -> bool:
+    def _start_session(self, command: Optional[str] = None,
+                       subsystem: Optional[str] = None) -> bool:
         """Tell the session what type of channel is being requested"""
 
         forced_command = \

@@ -1,4 +1,4 @@
-# Copyright (c) 2019-2021 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2019-2023 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -94,8 +94,8 @@ class SSHSubprocessWritePipe(SSHSubprocessPipe[AnyStr]):
 
         return self._chan.get_write_buffer_size()
 
-    def set_write_buffer_limits(self, high: int = None,
-                                low: int = None) -> None:
+    def set_write_buffer_limits(self, high: Optional[int] = None,
+                                low: Optional[int] = None) -> None:
         """Set the high- and low-water limits for write flow control"""
 
         self._chan.set_write_buffer_limits(high, low)

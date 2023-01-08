@@ -1,4 +1,4 @@
-# Copyright (c) 2018-2021 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2018-2023 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -24,6 +24,7 @@ from ipaddress import ip_address
 from typing import TYPE_CHECKING, Callable, Optional
 
 from .forward import SSHForwarderCoro, SSHLocalForwarder
+from .session import DataType
 
 
 if TYPE_CHECKING:
@@ -212,13 +213,13 @@ class SSHSOCKSForwarder(SSHLocalForwarder):
         self._send_socks5_ok()
         self._connect()
 
-    def data_received(self, data: bytes, datatype: int = None) -> None:
+    def data_received(self, data: bytes, datatype: DataType = None) -> None:
         """Handle incoming data from the SOCKS client"""
 
         if self._recv_handler:
             self._inpbuf += data
 
-            while self._recv_handler:
+            while self._recv_handler: # type: ignore[truthy-function]
                 if self._bytes_needed < 0:
                     idx = self._inpbuf.find(b'\0')
                     if idx >= 0:

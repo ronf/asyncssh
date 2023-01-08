@@ -1,4 +1,4 @@
-# Copyright (c) 2019-2021 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2019-2023 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -46,7 +46,7 @@ class _SKEd25519Key(SSHKey):
     use_executor = True
 
     def __init__(self, public_value: bytes, application: bytes,
-                 flags: int = 0, key_handle: bytes = None,
+                 flags: int = 0, key_handle: Optional[bytes] = None,
                  reserved: bytes = b''):
         super().__init__(EdDSAPublicKey.construct(b'ed25519', public_value))
 
