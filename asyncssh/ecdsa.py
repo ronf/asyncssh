@@ -54,7 +54,7 @@ class _ECKey(SSHKey):
 
     _key: Union[ECDSAPrivateKey, ECDSAPublicKey]
 
-    default_hash_name = 'sha256'
+    default_x509_hash = 'sha256'
     pem_name = b'EC'
     pkcs8_oid = ObjectIdentifier('1.2.840.10045.2.1')
 

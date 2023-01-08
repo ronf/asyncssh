@@ -41,7 +41,7 @@ class _DSAKey(SSHKey):
     _key: Union[DSAPrivateKey, DSAPublicKey]
 
     algorithm = b'ssh-dss'
-    default_hash_name = 'sha1'
+    default_x509_hash = 'sha256'
     pem_name = b'DSA'
     pkcs8_oid = ObjectIdentifier('1.2.840.10040.4.1')
     sig_algorithms = (algorithm,)

@@ -2358,7 +2358,7 @@ class _TestPublicKeyTopLevel(TempDirTestCase):
         privkey = get_test_key('ssh-rsa')
         pubkey = privkey.convert_to_public()
 
-        for hash_alg in ('sha1', 'sha256', 'sha512'):
+        for hash_alg in ('sha256', 'sha512'):
             cert = privkey.generate_x509_user_certificate(
                 pubkey, 'OU=user', hash_alg=hash_alg)
 

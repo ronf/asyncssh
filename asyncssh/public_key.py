@@ -240,7 +240,7 @@ class SSHKey:
     sig_algorithms: Sequence[bytes] = ()
     x509_algorithms: Sequence[bytes] = ()
     all_sig_algorithms: Set[bytes] = set()
-    default_hash_name: str = ''
+    default_x509_hash: str = ''
     pem_name: bytes = b''
     pkcs8_oid: Optional[ObjectIdentifier] = None
     use_executor: bool = False
@@ -385,7 +385,7 @@ class SSHKey:
                              'valid after time')
 
         if hash_name == ():
-            hash_name = key.default_hash_name
+            hash_name = key.default_x509_hash
 
         if comment == ():
             comment = key.get_comment_bytes()

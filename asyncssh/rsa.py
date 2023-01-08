@@ -52,7 +52,7 @@ class RSAKey(SSHKey):
     _key: Union[RSAPrivateKey, RSAPublicKey]
 
     algorithm = b'ssh-rsa'
-    default_hash_name = 'sha256'
+    default_x509_hash = 'sha256'
     pem_name = b'RSA'
     pkcs8_oid = ObjectIdentifier('1.2.840.113549.1.1.1')
     sig_algorithms = (b'rsa-sha2-256', b'rsa-sha2-512',
