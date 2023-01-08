@@ -61,10 +61,10 @@ class CryptoKey:
         """Sign a block of data"""
 
         # pylint: disable=no-self-use
-        raise RuntimeError
+        raise RuntimeError # pragma: no cover
 
     def verify(self, data: bytes, sig: bytes, hash_name: str = '') -> bool:
         """Verify the signature on a block of data"""
 
         # pylint: disable=no-self-use
-        raise RuntimeError
+        raise RuntimeError # pragma: no cover

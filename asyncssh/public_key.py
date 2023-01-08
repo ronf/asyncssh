@@ -1891,7 +1891,7 @@ class SSHX509Certificate(SSHCertificate):
                   comment: _Comment) -> 'SSHX509Certificate':
         """Construct an SSH X.509 certificate from packetized data"""
 
-        raise RuntimeError
+        raise RuntimeError # pragma: no cover
 
     @classmethod
     def generate(cls, signing_key: 'SSHKey', key: 'SSHKey', subject: str,
@@ -2202,7 +2202,7 @@ class SSHKeyPair:
         """Sign a block of data with this private key"""
 
         # pylint: disable=no-self-use
-        raise RuntimeError
+        raise RuntimeError # pragma: no cover
 
 
 class SSHLocalKeyPair(SSHKeyPair):

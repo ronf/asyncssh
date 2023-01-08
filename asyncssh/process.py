@@ -101,7 +101,7 @@ class _WriterProtocol(Protocol[_AnyStrContra]):
     def write_exception(self, exc: Exception) -> None:
         """Write exception (break, signal, terminal size change)"""
 
-        return
+        return # pragma: no cover
 
     def write_eof(self) -> None:
         """Close output when end of file is received"""
