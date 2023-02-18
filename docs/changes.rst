@@ -3,6 +3,16 @@
 Change Log
 ==========
 
+Release 2.13.1 (18 Feb 2023)
+----------------------------
+
+* Updated type definitions for mypy 1.0.0, removing a dependency on
+  implicit Optional types, and working around an issue that could
+  trigger a mypy internal error.
+
+* Updated unit tests to avoid calculation of SHA-1 signatures, which
+  are no longer allowed in cryptography 39.0.0.
+
 Release 2.13.0 (27 Dec 2022)
 ----------------------------
 
