@@ -7985,6 +7985,17 @@ async def connect(host = '', port: DefTuple[int] = (), *,
            [user@]host[:port] may also be specified, in which case a
            connection will first be made to that host and it will then be
            used as a tunnel.
+
+               .. note:: When specifying tunnel as a string, any config
+                         options in the call will apply only when opening
+                         the connection inside the tunnel. The tunnel
+                         itself will be opened with default configuration
+                         settings or settings in the default config file.
+                         To get more control of config settings used to
+                         open the tunnel, :func:`connect` can be called
+                         explicitly, and the resulting client connection
+                         can be passed as the tunnel argument.
+
        :param family: (optional)
            The address family to use when creating the socket. By default,
            the address family is automatically selected based on the host.
@@ -8080,6 +8091,17 @@ async def connect_reverse(
            [user@]host[:port] may also be specified, in which case a
            connection will first be made to that host and it will then be
            used as a tunnel.
+
+               .. note:: When specifying tunnel as a string, any config
+                         options in the call will apply only when opening
+                         the connection inside the tunnel. The tunnel
+                         itself will be opened with default configuration
+                         settings or settings in the default config file.
+                         To get more control of config settings used to
+                         open the tunnel, :func:`connect` can be called
+                         explicitly, and the resulting client connection
+                         can be passed as the tunnel argument.
+
        :param family: (optional)
            The address family to use when creating the socket. By default,
            the address family is automatically selected based on the host.
@@ -8166,6 +8188,17 @@ async def listen(host = '', port: DefTuple[int] = (), *,
            [user@]host[:port] may also be specified, in which case a
            connection will first be made to that host and it will then be
            used as a tunnel.
+
+               .. note:: When specifying tunnel as a string, any config
+                         options in the call will apply only when opening
+                         the connection inside the tunnel. The tunnel
+                         itself will be opened with default configuration
+                         settings or settings in the default config file.
+                         To get more control of config settings used to
+                         open the tunnel, :func:`connect` can be called
+                         explicitly, and the resulting client connection
+                         can be passed as the tunnel argument.
+
        :param family: (optional)
            The address family to use when creating the server. By default,
            the address families are automatically selected based on the host.
@@ -8289,6 +8322,17 @@ async def listen_reverse(host = '', port: DefTuple[int] = (), *,
            [user@]host[:port] may also be specified, in which case a
            connection will first be made to that host and it will then be
            used as a tunnel.
+
+               .. note:: When specifying tunnel as a string, any config
+                         options in the call will apply only when opening
+                         the connection inside the tunnel. The tunnel
+                         itself will be opened with default configuration
+                         settings or settings in the default config file.
+                         To get more control of config settings used to
+                         open the tunnel, :func:`connect` can be called
+                         explicitly, and the resulting client connection
+                         can be passed as the tunnel argument.
+
        :param family: (optional)
            The address family to use when creating the server. By default,
            the address families are automatically selected based on the host.
@@ -8459,6 +8503,17 @@ async def get_server_host_key(
            [user@]host[:port] may also be specified, in which case a
            connection will first be made to that host and it will then be
            used as a tunnel.
+
+               .. note:: When specifying tunnel as a string, any config
+                         options in the call will apply only when opening
+                         the connection inside the tunnel. The tunnel
+                         itself will be opened with default configuration
+                         settings or settings in the default config file.
+                         To get more control of config settings used to
+                         open the tunnel, :func:`connect` can be called
+                         explicitly, and the resulting client connection
+                         can be passed as the tunnel argument.
+
        :param proxy_command: (optional)
            A string or list of strings specifying a command and arguments
            to run to make a connection to the SSH server. Data will be
@@ -8590,6 +8645,17 @@ async def get_server_auth_methods(
            [user@]host[:port] may also be specified, in which case a
            connection will first be made to that host and it will then be
            used as a tunnel.
+
+               .. note:: When specifying tunnel as a string, any config
+                         options in the call will apply only when opening
+                         the connection inside the tunnel. The tunnel
+                         itself will be opened with default configuration
+                         settings or settings in the default config file.
+                         To get more control of config settings used to
+                         open the tunnel, :func:`connect` can be called
+                         explicitly, and the resulting client connection
+                         can be passed as the tunnel argument.
+
        :param proxy_command: (optional)
            A string or list of strings specifying a command and arguments
            to run to make a connection to the SSH server. Data will be
