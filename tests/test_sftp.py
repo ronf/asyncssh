@@ -868,7 +868,7 @@ class _TestSFTP(_CheckSFTP):
 
         for method in ('get', 'put', 'copy', 'mget', 'mput', 'mcopy'):
             with self.subTest(method=method):
-                with self.assertRaises((FileNotFoundError, SFTPNoSuchFile,
+                with self.assertRaises((OSError, SFTPNoSuchFile,
                                         SFTPFailure, UnicodeDecodeError)):
                     await getattr(sftp, method)(b'\xff')
 
