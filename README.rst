@@ -1,3 +1,12 @@
+.. image:: https://readthedocs.org/projects/asyncssh/badge/?version=latest
+    :target: https://asyncssh.readthedocs.io/en/latest/?badge=latest
+    :alt: Documentation Status
+
+.. image:: https://img.shields.io/pypi/v/asyncssh.svg
+    :target: https://pypi.python.org/pypi/asyncssh/
+    :alt: AsyncSSH PyPI Project
+
+
 AsyncSSH: Asynchronous SSH for Python
 =====================================
 
