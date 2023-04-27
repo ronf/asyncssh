@@ -24,6 +24,7 @@ import asyncio
 import binascii
 import functools
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -33,13 +34,22 @@ from unittest.mock import patch
 
 from cryptography.hazmat.backends.openssl import backend
 
-# pylint: disable=unused-import
+from asyncssh.gss import gss_available
+from asyncssh.logging import logger
+from asyncssh.misc import ConnectionLost, SignalReceived
+from asyncssh.packet import Byte, String, UInt32, UInt64
+from asyncssh.public_key import generate_private_key
+
+
+# pylint: disable=ungrouped-imports, unused-import
 
 try:
     import bcrypt
     bcrypt_available = hasattr(bcrypt, 'kdf')
 except ImportError: # pragma: no cover
     bcrypt_available = False
+
+nc_available = bool(shutil.which('nc'))
 
 try:
     import uvloop
@@ -53,14 +63,7 @@ try:
 except ImportError: # pragma: no cover
     x509_available = False
 
-# pylint: enable=unused-import
-
-from asyncssh.gss import gss_available
-from asyncssh.logging import logger
-from asyncssh.misc import ConnectionLost, SignalReceived
-from asyncssh.packet import Byte, String, UInt32, UInt64
-from asyncssh.public_key import generate_private_key
-
+# pylint: enable=ungrouped-imports, unused-import
 
 # pylint: disable=no-member
 

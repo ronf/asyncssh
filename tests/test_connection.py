@@ -25,7 +25,6 @@ from copy import copy
 import os
 from pathlib import Path
 import socket
-import subprocess
 import sys
 import unittest
 from unittest.mock import patch
@@ -51,15 +50,8 @@ from asyncssh.public_key import get_default_x509_certificate_algs
 
 from .server import Server, ServerTestCase
 
-from .util import asynctest, gss_available, patch_gss, run
+from .util import asynctest, gss_available, nc_available, patch_gss
 from .util import patch_getnameinfo, x509_available
-
-
-try:
-    run('which nc')
-    _nc_available = True
-except subprocess.CalledProcessError: # pragma: no cover
-    _nc_available = False
 
 
 class _CheckAlgsClientConnection(asyncssh.SSHClientConnection):
@@ -609,7 +601,7 @@ class _TestConnection(ServerTestCase):
         with self.assertRaises(OSError):
             await asyncssh.get_server_host_key('\xff')
 
-    @unittest.skipUnless(_nc_available, 'Netcat not available')
+    @unittest.skipUnless(nc_available, 'Netcat not available')
     @asynctest
     async def test_get_server_host_key_proxy(self):
         """Test retrieving a server host key using proxy command"""
@@ -621,7 +613,7 @@ class _TestConnection(ServerTestCase):
 
         self.assertEqual(key, keylist[0])
 
-    @unittest.skipUnless(_nc_available, 'Netcat not available')
+    @unittest.skipUnless(nc_available, 'Netcat not available')
     @asynctest
     async def test_get_server_host_key_proxy_failure(self):
         """Test failure retrieving a server host key using proxy command"""
@@ -1624,7 +1616,7 @@ class _TestConnectionReverse(ServerTestCase):
         async with self.run_server(sock):
             pass
 
-    @unittest.skipUnless(_nc_available, 'Netcat not available')
+    @unittest.skipUnless(nc_available, 'Netcat not available')
     @asynctest
     async def test_connect_reverse_proxy(self):
         """Test reverse direction SSH connection with proxy command"""

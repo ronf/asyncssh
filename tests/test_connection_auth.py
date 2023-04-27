@@ -34,7 +34,7 @@ from asyncssh.public_key import CERT_TYPE_USER, CERT_TYPE_HOST
 from .keysign_stub import create_subprocess_exec_stub
 from .server import Server, ServerTestCase
 from .util import asynctest, gss_available, patch_getnameinfo, patch_gss
-from .util import make_certificate, x509_available
+from .util import make_certificate, nc_available, x509_available
 
 
 class _FailValidateHostSSHServerConnection(asyncssh.SSHServerConnection):
@@ -658,6 +658,7 @@ class _TestHostBasedAuth(ServerTestCase):
 
         self.assertEqual(auth_methods, ['hostbased'])
 
+    @unittest.skipUnless(nc_available, 'Netcat not available')
     @asynctest
     async def test_get_server_auth_methods_no_sockname(self):
         """Test getting auth methods from the test server"""
