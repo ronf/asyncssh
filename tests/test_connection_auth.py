@@ -659,6 +659,16 @@ class _TestHostBasedAuth(ServerTestCase):
         self.assertEqual(auth_methods, ['hostbased'])
 
     @asynctest
+    async def test_get_server_auth_methods_no_sockname(self):
+        """Test getting auth methods from the test server"""
+
+        proxy_command = ('nc', str(self._server_addr), str(self._server_port))
+
+        with self.assertRaises(asyncssh.PermissionDenied):
+            await self.connect(username='user', client_host_keys='skey',
+                               proxy_command=proxy_command)
+
+    @asynctest
     async def test_client_host_auth(self):
         """Test connecting with host-based authentication"""
 

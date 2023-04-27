@@ -3329,9 +3329,13 @@ class SSHClientConnection(SSHConnection):
         client_host = self._options.client_host
 
         if client_host is None:
-            client_host, _ = await self._loop.getnameinfo(
-                cast(SockAddr, self.get_extra_info('sockname')),
-                socket.NI_NUMERICSERV)
+            sockname = self.get_extra_info('sockname')
+
+            if sockname:
+                client_host, _ = await self._loop.getnameinfo(
+                    cast(SockAddr, sockname), socket.NI_NUMERICSERV)
+            else:
+                client_host = ''
 
         # Add a trailing '.' to the client host to be compatible with
         # ssh-keysign from OpenSSH
