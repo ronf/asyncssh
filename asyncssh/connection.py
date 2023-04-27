@@ -1988,10 +1988,11 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
                         packet: SSHPacket) -> None:
         """Process an ignore message"""
 
-        # pylint: disable=no-self-use
-
-        _ = packet.get_string()     # data
-        packet.check_end()
+        # Work around missing payload bytes in an ignore message
+        # in some Cisco SSH servers
+        if b'Cisco' not in self._server_version:
+            _ = packet.get_string()     # data
+            packet.check_end()
 
     def _process_unimplemented(self, _pkttype: int, _pktid: int,
                                packet: SSHPacket) -> None:
