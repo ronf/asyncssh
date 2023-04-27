@@ -1990,7 +1990,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         # Work around missing payload bytes in an ignore message
         # in some Cisco SSH servers
-        if b'Cisco' not in self._server_version:
+        if b'Cisco' not in self._server_version: # pragma: no branch
             _ = packet.get_string()     # data
             packet.check_end()
 
