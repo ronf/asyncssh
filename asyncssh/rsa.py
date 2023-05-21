@@ -59,6 +59,9 @@ class RSAKey(SSHKey):
                       b'ssh-rsa-sha224@ssh.com', b'ssh-rsa-sha256@ssh.com',
                       b'ssh-rsa-sha384@ssh.com', b'ssh-rsa-sha512@ssh.com',
                       b'ssh-rsa')
+    cert_sig_algorithms = (b'rsa-sha2-256', b'rsa-sha2-512', b'ssh-rsa')
+    cert_algorithms = tuple(alg + b'-cert-v01@openssh.com'
+                            for alg in cert_sig_algorithms)
     x509_sig_algorithms = (b'rsa2048-sha256', b'ssh-rsa')
     x509_algorithms = tuple(b'x509v3-' + alg for alg in x509_sig_algorithms)
     all_sig_algorithms = set(x509_sig_algorithms + sig_algorithms)
@@ -265,7 +268,7 @@ class RSAKey(SSHKey):
 
 register_public_key_alg(b'ssh-rsa', RSAKey, True)
 
-for _alg  in (b'rsa-sha2-256', b'rsa-sha2-512', b'ssh-rsa'):
+for _alg in RSAKey.cert_sig_algorithms:
     register_certificate_alg(1, _alg, _alg + b'-cert-v01@openssh.com',
                              RSAKey, SSHOpenSSHCertificateV01, True)
 

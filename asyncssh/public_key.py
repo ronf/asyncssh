@@ -70,6 +70,7 @@ _Time = Union[int, float, datetime, str]
 _PubKeyAlgMap = Dict[bytes, Type['SSHKey']]
 _CertAlgMap = Dict[bytes, Tuple[Optional[Type['SSHKey']],
                                 Type['SSHCertificate']]]
+_CertSigAlgMap = Dict[bytes, bytes]
 _CertVersionMap = Dict[Tuple[bytes, int],
                        Tuple[bytes, Type['SSHOpenSSHCertificate']]]
 
@@ -128,6 +129,7 @@ _default_x509_certificate_algs: List[bytes] = []
 
 _public_key_alg_map: _PubKeyAlgMap = {}
 _certificate_alg_map: _CertAlgMap = {}
+_certificate_sig_alg_map: _CertSigAlgMap = {}
 _certificate_version_map: _CertVersionMap = {}
 _pem_map: _PEMMap = {}
 _pkcs8_oid_map: _PKCS8OIDMap = {}
@@ -238,6 +240,7 @@ class SSHKey:
 
     algorithm: bytes = b''
     sig_algorithms: Sequence[bytes] = ()
+    cert_algorithms: Sequence[bytes] = ()
     x509_algorithms: Sequence[bytes] = ()
     all_sig_algorithms: Set[bytes] = set()
     default_x509_hash: str = ''
@@ -1557,7 +1560,8 @@ class SSHOpenSSHCertificate(SSHCertificate):
                  signing_key: SSHKey, serial: int, cert_type: int,
                  key_id: str, valid_after: int, valid_before: int,
                  comment: _Comment):
-        super().__init__(algorithm, key.sig_algorithms, (algorithm,),
+        super().__init__(algorithm, key.sig_algorithms,
+                         key.cert_algorithms or (algorithm,),
                          key, data, comment)
 
         self.principals = principals
@@ -2182,6 +2186,11 @@ class SSHKeyPair:
 
     def set_sig_algorithm(self, sig_algorithm: bytes) -> None:
         """Set the signature algorithm to use when signing data"""
+
+        try:
+            sig_algorithm = _certificate_sig_alg_map[sig_algorithm]
+        except KeyError:
+            pass
 
         self.sig_algorithm = sig_algorithm
 
@@ -2923,6 +2932,8 @@ def register_certificate_alg(version: int, algorithm: bytes,
         _default_certificate_algs.append(cert_algorithm)
 
     _certificate_alg_map[cert_algorithm] = (key_handler, cert_handler)
+
+    _certificate_sig_alg_map[cert_algorithm] = algorithm
 
     _certificate_version_map[algorithm, version] = \
         (cert_algorithm, cert_handler)
