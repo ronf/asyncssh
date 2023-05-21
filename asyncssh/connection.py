@@ -5187,7 +5187,7 @@ class SSHServerConnection(SSHConnection):
         self._keepalive_interval = options.keepalive_interval
 
     def choose_server_host_key(self,
-                                peer_host_key_algs: Sequence[bytes]) -> bool:
+                               peer_host_key_algs: Sequence[bytes]) -> bool:
         """Choose the server host key to use
 
            Given a list of host key algorithms supported by the client,
