@@ -1983,11 +1983,9 @@ class _TestServerWithoutCert(ServerTestCase):
 
             return _ValidateHostKeyClient(host_key='skey.pub')
 
-        algs = [asyncssh.read_public_key('skey.pub').get_algorithm()]
-
-        conn, _ = await self.create_connection(client_factory,
-                                               known_hosts=([], [], []),
-                                               server_host_key_algs=algs)
+        conn, _ = await self.create_connection(
+            client_factory, known_hosts=([], [], []),
+            server_host_key_algs=['rsa-sha2-256'])
 
         async with conn:
             pass

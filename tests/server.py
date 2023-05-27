@@ -131,10 +131,13 @@ class ServerTestCase(AsyncTestCase):
         skey_ecdsa.write_private_key('skey_ecdsa')
         skey_ecdsa.write_public_key('skey_ecdsa.pub')
 
-        skey_cert = skey.generate_host_certificate(skey, 'name',
-                                                   principals=['127.0.0.1',
-                                                               'localhost'])
+        skey_cert = skey.generate_host_certificate(
+            skey, 'name', principals=['127.0.0.1', 'localhost'])
         skey_cert.write_certificate('skey-cert.pub')
+
+        skey_ecdsa_cert = skey_ecdsa.generate_host_certificate(
+            skey_ecdsa, 'name', principals=['127.0.0.1', 'localhost'])
+        skey_ecdsa_cert.write_certificate('skey_ecdsa-cert.pub')
 
         exp_cert = skey.generate_host_certificate(skey, 'name',
                                                   valid_after='-2d',

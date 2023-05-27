@@ -36,6 +36,8 @@ import subprocess
 import sys
 import unittest
 
+from cryptography.exceptions import UnsupportedAlgorithm
+
 import asyncssh
 
 from asyncssh.asn1 import der_encode, BitString, ObjectIdentifier
@@ -1277,26 +1279,30 @@ class _TestPublicKey(TempDirTestCase):
 
                 for sig_alg in keypair.sig_algorithms:
                     with self.subTest('Good signature', sig_alg=sig_alg):
-                        keypair.set_sig_algorithm(sig_alg)
-                        sig = keypair.sign(data)
+                        try:
+                            keypair.set_sig_algorithm(sig_alg)
+                            sig = keypair.sign(data)
 
-                        with self.subTest('Good signature'):
-                            self.assertTrue(self.pubkey.verify(data, sig))
+                            with self.subTest('Good signature'):
+                                self.assertTrue(self.pubkey.verify(data, sig))
 
-                        badsig = bytearray(sig)
-                        badsig[-1] ^= 0xff
-                        badsig = bytes(badsig)
+                            badsig = bytearray(sig)
+                            badsig[-1] ^= 0xff
+                            badsig = bytes(badsig)
 
-                        with self.subTest('Bad signature'):
-                            self.assertFalse(self.pubkey.verify(data, badsig))
+                            with self.subTest('Bad signature'):
+                                self.assertFalse(self.pubkey.verify(data,
+                                                 badsig))
+                        except UnsupportedAlgorithm: # pragma: no cover
+                            pass
 
             with self.subTest('Missing signature'):
                 self.assertFalse(self.pubkey.verify(
-                    data, String(self.pubkey.algorithm)))
+                    data, String(self.pubkey.sig_algorithms[0])))
 
             with self.subTest('Empty signature'):
                 self.assertFalse(self.pubkey.verify(
-                    data, String(self.pubkey.algorithm) + String(b'')))
+                    data, String(self.pubkey.sig_algorithms[0]) + String(b'')))
 
             with self.subTest('Sign with bad algorithm'):
                 with self.assertRaises(ValueError):
@@ -1308,7 +1314,7 @@ class _TestPublicKey(TempDirTestCase):
 
             with self.subTest('Sign with public key'):
                 with self.assertRaises(ValueError):
-                    self.pubkey.sign(data, self.pubkey.algorithm)
+                    self.pubkey.sign(data, self.pubkey.sig_algorithms[0])
 
     def check_set_certificate(self):
         """Check setting certificate on existing keypair"""

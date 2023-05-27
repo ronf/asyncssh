@@ -48,7 +48,7 @@ class SSHKeysignStub:
         elif version == 1:
             return b'', b'invalid request'
         else:
-            skey = asyncssh.load_keypairs('skey')[0]
+            skey = asyncssh.load_keypairs('skey_ecdsa')[0]
             sig = skey.sign(data)
             return String(Byte(KEYSIGN_VERSION) + String(sig)), b''
 

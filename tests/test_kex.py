@@ -211,7 +211,7 @@ class _KexServerStub(_KexConnectionStub):
         if gss_host and 'no_host_key' in gss_host:
             self._server_host_key = None
         else:
-            priv_key = get_test_key('ssh-rsa')
+            priv_key = get_test_key('ecdsa-sha2-nistp256')
             self._server_host_key = asyncssh.load_keypairs(priv_key)[0]
 
     def connection_lost(self, exc):

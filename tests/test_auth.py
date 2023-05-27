@@ -517,7 +517,7 @@ class _TestAuth(AsyncTestCase):
     async def test_hostbased_auth(self):
         """Unit test host-based authentication"""
 
-        hkey = get_test_key('ssh-rsa')
+        hkey = get_test_key('ecdsa-sha2-nistp256')
         cert = hkey.generate_host_certificate(hkey, 'host')
 
         with self.subTest('Host-based auth not available'):
@@ -541,7 +541,7 @@ class _TestAuth(AsyncTestCase):
     async def test_publickey_auth(self):
         """Unit test public key authentication"""
 
-        ckey = get_test_key('ssh-rsa')
+        ckey = get_test_key('ecdsa-sha2-nistp256')
         cert = ckey.generate_user_certificate(ckey, 'name')
 
         with self.subTest('Public key auth not available'):
