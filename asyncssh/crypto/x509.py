@@ -55,11 +55,9 @@ _purpose_any = '2.5.29.37.0'
 
 _nscomment_oid = x509.ObjectIdentifier('2.16.840.1.113730.1.13')
 
-_datetime_min = datetime.utcfromtimestamp(0).replace(microsecond=1,
-                                                     tzinfo=timezone.utc)
+_datetime_min = datetime.fromtimestamp(0, timezone.utc).replace(microsecond=1)
 
-_datetime_32bit_max = datetime.utcfromtimestamp(2**31 - 1).replace(
-    tzinfo=timezone.utc)
+_datetime_32bit_max = datetime.fromtimestamp(2**31 - 1, timezone.utc)
 
 if sys.platform == 'win32': # pragma: no cover
     # Windows' datetime.max is year 9999, but timestamps that large don't work
@@ -75,12 +73,12 @@ def _to_generalized_time(t: int) -> datetime:
         return _datetime_min
     else:
         try:
-            return datetime.utcfromtimestamp(t).replace(tzinfo=timezone.utc)
+            return datetime.fromtimestamp(t, timezone.utc)
         except (OSError, OverflowError):
             try:
                 # Work around a bug in cryptography which shows up on
                 # systems with a small time_t.
-                datetime.utcfromtimestamp(_datetime_max.timestamp() - 1)
+                datetime.fromtimestamp(_datetime_max.timestamp() - 1, timezone.utc)
                 return _datetime_max
             except (OSError, OverflowError): # pragma: no cover
                 return _datetime_32bit_max
