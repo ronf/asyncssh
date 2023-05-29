@@ -78,7 +78,8 @@ def _to_generalized_time(t: int) -> datetime:
             try:
                 # Work around a bug in cryptography which shows up on
                 # systems with a small time_t.
-                datetime.fromtimestamp(_datetime_max.timestamp() - 1, timezone.utc)
+                datetime.fromtimestamp(_datetime_max.timestamp() - 1,
+                                       timezone.utc)
                 return _datetime_max
             except (OSError, OverflowError): # pragma: no cover
                 return _datetime_32bit_max
