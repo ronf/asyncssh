@@ -262,7 +262,7 @@ class SSHServerSession(SSHSession[AnyStr]):
     def pty_requested(self, term_type: str,
                       term_size: Tuple[int, int, int, int],
                       term_modes: Mapping[int, int]) -> bool:
-        """A psuedo-terminal has been requested
+        """A pseudo-terminal has been requested
 
            This method is called when the client sends a request to allocate
            a pseudo-terminal with the requested terminal type, size, and

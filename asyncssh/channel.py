@@ -1007,7 +1007,7 @@ class SSHChannel(Generic[AnyStr], SSHPacketHandler):
            This method can be called to resume delivery of incoming data
            which was suspended by a call to :meth:`pause_reading`. As soon
            as this method is called, any buffered data will be delivered
-           immediately. A pending end-of-file notication may also be
+           immediately. A pending end-of-file notification may also be
            delivered if one was queued while reading was paused.
 
         """
@@ -1042,7 +1042,7 @@ class SSHChannel(Generic[AnyStr], SSHPacketHandler):
            This method returns the command the client requested to
            execute when the session was opened, if any. If the client
            did not request that a command be executed, this method
-           will return `None`. On the server, alls to this method
+           will return `None`. On the server, calls to this method
            should only be made after :meth:`session_started
            <SSHServerSession.session_started>` has been called on the
            :class:`SSHServerSession`. When using the stream-based API,
@@ -1829,7 +1829,7 @@ class SSHServerChannel(SSHChannel, Generic[AnyStr]):
            forwarding, this method returns `None`.
 
            :returns: A `str` containing the X11 display or `None` if
-                     X11 fowarding was not requested
+                     X11 forwarding was not requested
 
         """
 
@@ -1845,7 +1845,7 @@ class SSHServerChannel(SSHChannel, Generic[AnyStr]):
            `None`.
 
            :returns: A `str` containing the ssh-agent socket path or
-                     `None` if agent fowarding was not requested
+                     `None` if agent forwarding was not requested
 
         """
 

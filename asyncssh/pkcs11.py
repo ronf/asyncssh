@@ -100,7 +100,7 @@ if pkcs11_available:
 
 
     class SSHPKCS11Session:
-        """Work around PKCS#11 sesssions not supporting simultaneous opens"""
+        """Work around PKCS#11 sessions not supporting simultaneous opens"""
 
         _sessions: _SessionMap = {}
 

@@ -1357,7 +1357,7 @@ which is trusted by the remote system.
 
 Instead of passing tuples of keys and certificates or relying on file
 naming conventions for certificates, you also have the option of
-providing a list of keys and a seperate list of certificates. In this
+providing a list of keys and a separate list of certificates. In this
 case, AsyncSSH will automatically match up the keys with their
 associated certificates when they are present.
 
@@ -1413,7 +1413,7 @@ with PKIX-SSH, which adds X.509 certificate support to OpenSSH.
 
 To specify a subject name pattern instead of a specific certificate,
 base64-encoded certificate data should be replaced with the string
-'Subject:' followed by a a comma-separated list of X.509 relative
+'Subject:' followed by a comma-separated list of X.509 relative
 distinguished name components.
 
 AsyncSSH extends the PKIX-SSH syntax to also support matching on a
@@ -2184,9 +2184,9 @@ ConfigParseError
 Supported Algorithms
 ====================
 
-Algorithms can be specified as either an list of exact algorithm names
+Algorithms can be specified as either a list of exact algorithm names
 or as a string of comma-separated algorithm names that may optionally
-include wildcards. A '*' in a name matches zero or more characters and
+include wildcards. An '*' in a name matches zero or more characters and
 a '?' matches exactly one character.
 
 When specifying algorithms as a string, it can also be prefixed with '^'

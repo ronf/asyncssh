@@ -664,7 +664,7 @@ class SSHAcceptor:
 
        This class in a wrapper around an :class:`asyncio.Server` listener
        which provides the ability to update the the set of SSH client or
-       server connection options associated wtih that listener. This is
+       server connection options associated with that listener. This is
        accomplished by calling the :meth:`update` method, which takes the
        same keyword arguments as the :class:`SSHClientConnectionOptions`
        and :class:`SSHServerConnectionOptions` classes.
@@ -2545,7 +2545,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         """Forcibly close the SSH connection
 
            This method closes the SSH connection immediately, without
-           waiting for pending operations to complete and wihtout sending
+           waiting for pending operations to complete and without sending
            an explicit SSH disconnect message. Buffered data waiting to be
            sent will be lost and no more data will be received. When the
            the connection is closed, :meth:`connection_lost()
@@ -6728,7 +6728,7 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
        :param password_auth: (optional)
            Whether or not to allow password authentication. By default,
            password authentication is enabled if a password is specified
-           or if callbacks to provide a password are made availble.
+           or if callbacks to provide a password are made available.
        :param gss_host: (optional)
            The principal name to use for the host in GSS key exchange and
            authentication. If not specified, this value will be the same
@@ -6918,7 +6918,7 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
        :param config: (optional)
            Paths to OpenSSH client configuration files to load. This
            configuration will be used as a fallback to override the
-           defaults for settings which are not explcitly specified using
+           defaults for settings which are not explicitly specified using
            AsyncSSH's configuration options.
 
                .. note:: Specifying configuration files when creating an
@@ -7377,7 +7377,7 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
            client connected from.
        :param authorized_client_keys: (optional)
            A list of authorized user and CA public keys which should be
-           trusted for certifcate-based client public key authentication.
+           trusted for certificate-based client public key authentication.
        :param x509_trusted_certs: (optional)
            A list of certificates which should be trusted for X.509 client
            certificate authentication. If this argument is explicitly set
@@ -7567,7 +7567,7 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
        :param config: (optional)
            Paths to OpenSSH server configuration files to load. This
            configuration will be used as a fallback to override the
-           defaults for settings which are not explcitly specified using
+           defaults for settings which are not explicitly specified using
            AsyncSSH's configuration options.
 
                .. note:: Specifying configuration files when creating an
@@ -7855,7 +7855,7 @@ async def run_client(sock: socket.socket, config: DefTuple[ConfigPaths] = (),
        :param config: (optional)
            Paths to OpenSSH client configuration files to load. This
            configuration will be used as a fallback to override the
-           defaults for settings which are not explcitly specified using
+           defaults for settings which are not explicitly specified using
            AsyncSSH's configuration options. If no paths are specified and
            no config paths were set when constructing the `options`
            argument (if any), an attempt will be made to load the
@@ -7909,7 +7909,7 @@ async def run_server(sock: socket.socket, config: DefTuple[ConfigPaths] = (),
        :param config: (optional)
            Paths to OpenSSH server configuration files to load. This
            configuration will be used as a fallback to override the
-           defaults for settings which are not explcitly specified using
+           defaults for settings which are not explicitly specified using
            AsyncSSH's configuration options. By default, no OpenSSH
            configuration files will be loaded. See
            :ref:`SupportedServerConfigOptions` for details on what
@@ -8015,7 +8015,7 @@ async def connect(host = '', port: DefTuple[int] = (), *,
        :param config: (optional)
            Paths to OpenSSH client configuration files to load. This
            configuration will be used as a fallback to override the
-           defaults for settings which are not explcitly specified using
+           defaults for settings which are not explicitly specified using
            AsyncSSH's configuration options. If no paths are specified and
            no config paths were set when constructing the `options`
            argument (if any), an attempt will be made to load the
@@ -8121,7 +8121,7 @@ async def connect_reverse(
        :param config: (optional)
            Paths to OpenSSH server configuration files to load. This
            configuration will be used as a fallback to override the
-           defaults for settings which are not explcitly specified using
+           defaults for settings which are not explicitly specified using
            AsyncSSH's configuration options. By default, no OpenSSH
            configuration files will be loaded. See
            :ref:`SupportedServerConfigOptions` for details on what
@@ -8238,7 +8238,7 @@ async def listen(host = '', port: DefTuple[int] = (), *,
        :param config: (optional)
            Paths to OpenSSH server configuration files to load. This
            configuration will be used as a fallback to override the
-           defaults for settings which are not explcitly specified using
+           defaults for settings which are not explicitly specified using
            AsyncSSH's configuration options. By default, no OpenSSH
            configuration files will be loaded. See
            :ref:`SupportedServerConfigOptions` for details on what
@@ -8371,7 +8371,7 @@ async def listen_reverse(host = '', port: DefTuple[int] = (), *,
        :param config: (optional)
            Paths to OpenSSH client configuration files to load. This
            configuration will be used as a fallback to override the
-           defaults for settings which are not explcitly specified using
+           defaults for settings which are not explicitly specified using
            AsyncSSH's configuration options. If no paths are specified and
            no config paths were set when constructing the `options`
            argument (if any), an attempt will be made to load the
@@ -8549,7 +8549,7 @@ async def get_server_host_key(
        :param config: (optional)
            Paths to OpenSSH client configuration files to load. This
            configuration will be used as a fallback to override the
-           defaults for settings which are not explcitly specified using
+           defaults for settings which are not explicitly specified using
            AsyncSSH's configuration options. If no paths are specified and
            no config paths were set when constructing the `options`
            argument (if any), an attempt will be made to load the
@@ -8691,7 +8691,7 @@ async def get_server_auth_methods(
        :param config: (optional)
            Paths to OpenSSH client configuration files to load. This
            configuration will be used as a fallback to override the
-           defaults for settings which are not explcitly specified using
+           defaults for settings which are not explicitly specified using
            AsyncSSH's configuration options. If no paths are specified and
            no config paths were set when constructing the `options`
            argument (if any), an attempt will be made to load the

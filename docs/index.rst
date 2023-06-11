@@ -38,7 +38,7 @@ write calls operate on strings by default. If you want to send and
 receive binary data, you can set the encoding to `None` when the
 session is opened to make read and write operate on bytes instead.
 Alternate encodings can also be selected to change how strings are
-convered to and from bytes.
+converted to and from bytes.
 
 To check against a different set of server host keys, they can be provided
 in the known_hosts argument when the connection is opened:
@@ -435,7 +435,7 @@ write calls operate on strings by default. If you want to send and
 receive binary data, you can set the encoding to `None` when the
 session is opened to make read and write operate on bytes instead.
 Alternate encodings can also be selected to change how strings are
-convered to and from bytes.
+converted to and from bytes.
 
    .. include:: ../examples/simple_server.py
       :literal:
@@ -512,7 +512,7 @@ provide character echo and line editing. To better support interactive
 applications like the one above, AsyncSSH defaults to providing basic
 line editing for server sessions which request a pseudo-terminal.
 
-When thise line editor is enabled, it defaults to delivering input to
+When this line editor is enabled, it defaults to delivering input to
 the application a line at a time. Applications can switch between line
 and character at a time input using the :meth:`set_line_mode()
 <SSHLineEditorChannel.set_line_mode>` method. Also, when in line

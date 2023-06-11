@@ -1972,7 +1972,7 @@ class _TestKbdintAuth(ServerTestCase):
             pass
 
     @asynctest
-    async def test_kbdint_auth_callback_faliure(self):
+    async def test_kbdint_auth_callback_failure(self):
         """Test failure connecting with keyboard-interactive auth callback"""
 
         with self.assertRaises(asyncssh.PermissionDenied):
