@@ -3074,6 +3074,7 @@ class SSHClientConnection(SSHConnection):
 
         self._client_keys: List[SSHKeyPair] = \
             list(options.client_keys) if options.client_keys else []
+        self._saved_rsa_key: Optional[_ClientHostKey] = None
 
         if options.preferred_auth != ():
             self._preferred_auth = [method.encode('ascii') for method in
@@ -3314,16 +3315,27 @@ class SSHClientConnection(SSHConnection):
         if not self._host_based_auth:
             return None, '', ''
 
+        key: Optional[_ClientHostKey]
+
         while True:
-            try:
-                key: Optional[_ClientHostKey] = self._client_host_keys.pop(0)
-            except IndexError:
-                key = None
-                break
+            if self._saved_rsa_key:
+                key = self._saved_rsa_key
+                key.algorithm = key.sig_algorithm + b'-cert-v01@openssh.com'
+                self._saved_rsa_key = None
+            else:
+                try:
+                    key = self._client_host_keys.pop(0)
+                except IndexError:
+                    key = None
+                    break
 
             assert key is not None
 
             if self._choose_signature_alg(key):
+                if key.algorithm == b'ssh-rsa-cert-v01@openssh.com' and \
+                        key.sig_algorithm != b'ssh-rsa':
+                    self._saved_rsa_key = key
+
                 break
 
         client_host = self._options.client_host
@@ -3382,10 +3394,33 @@ class SSHClientConnection(SSHConnection):
 
                 self._client_keys = list(load_keypairs(result))
 
-            keypair = self._client_keys.pop(0)
+            # OpenSSH versions before 7.8 didn't support RSA SHA-2
+            # signature names in certificate key types, requiring the
+            # use of ssh-rsa-cert-v01@openssh.com as the key type even
+            # when using SHA-2 signatures. However, OpenSSL 8.8 and
+            # later reject ssh-rsa-cert-v01@openssh.com as a key type
+            # by default, requiring that the RSA SHA-2 version of the key
+            # type be used. This makes it difficult to use RSA keys with
+            # certificates without knowing the version of the remote
+            # server and which key types it will accept.
+            #
+            # The code below works around this by trying multiple key
+            # types during public key and host-based authentication when
+            # using SHA-2 signatures with RSA keys signed by certificates.
 
-            if self._choose_signature_alg(keypair):
-                return keypair
+            if self._saved_rsa_key:
+                key = self._saved_rsa_key
+                key.algorithm = key.sig_algorithm + b'-cert-v01@openssh.com'
+                self._saved_rsa_key = None
+            else:
+                key = self._client_keys.pop(0)
+
+            if self._choose_signature_alg(key):
+                if key.algorithm == b'ssh-rsa-cert-v01@openssh.com' and \
+                        key.sig_algorithm != b'ssh-rsa':
+                    self._saved_rsa_key = key
+
+                return key
 
     async def password_auth_requested(self) -> Optional[str]:
         """Return a password to authenticate with"""
