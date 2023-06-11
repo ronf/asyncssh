@@ -601,7 +601,7 @@ def _setstat(path: Union[int, _SFTPPath], attrs: 'SFTPAttrs') -> None:
 class _SFTPParallelIO(Generic[_T]):
     """Parallelize I/O requests on files
 
-       This class issues parallel read and wite requests on files.
+       This class issues parallel read and write requests on files.
 
     """
 
@@ -1313,11 +1313,11 @@ class SFTPCannotDelete(SFTPError):
 class SFTPInvalidParameter(SFTPError):
     """SFTP invalid parameter (SFTPv6+)
 
-       This exception is raised when paramters in a request are
+       This exception is raised when parameters in a request are
        out of range or incompatible with one another.
 
        :param reason:
-           Details about the invalid paramter
+           Details about the invalid parameter
        :param lang: (optional)
            The language the reason is in
        :type reason: `str`
@@ -3059,7 +3059,7 @@ class SFTPClientFile:
         if offset is None:
             offset = self._offset
 
-        # If self._offset is None, we're appending and haven't seeked
+        # If self._offset is None, we're appending and haven't sought
         # backward in the file since the last write, so there's no
         # data to return
 
@@ -3132,7 +3132,7 @@ class SFTPClientFile:
         if offset is None:
             offset = self._offset
 
-        # If self._offset is None, we're appending and haven't seeked
+        # If self._offset is None, we're appending and haven't sought
         # backward in the file since the last write, so there's no
         # data to return
 
@@ -4379,7 +4379,7 @@ class SFTPClient:
            Most applications should be able to use this method regardless
            of the version of the SFTP protocol negotiated with the SFTP
            server. A conversion from the pflags_or_mode values to the
-           SFTPv5/v6 flag values will happen automaitcally. However, if
+           SFTPv5/v6 flag values will happen automatically. However, if
            an application wishes to set flags only available in SFTPv5/v6,
            the :meth:`open56` method may be used to specify these flags
            explicitly.
@@ -4973,7 +4973,7 @@ class SFTPClient:
            .. note:: By default, this version of rename will not overwrite
                      the new path if it already exists. However, this
                      can be controlled using the `flags` argument,
-                     available in SFTPv5 and later. Whan a connection
+                     available in SFTPv5 and later. When a connection
                      is negotiated to use an earliler version of SFTP
                      and `flags` is set, this method will attempt to
                      fall back to the OpenSSH "posix-rename" extension
@@ -5392,7 +5392,7 @@ class SFTPServerHandler(SFTPHandler):
     # Supported SFTPv5/v6 open flags
     _supported_open_flags = FXF_ACCESS_DISPOSITION | FXF_APPEND_DATA
 
-    # Supported SFTPv5/v6 desired accesss flags
+    # Supported SFTPv5/v6 desired access flags
     _supported_access_mask = ACE4_READ_DATA | ACE4_WRITE_DATA | \
                              ACE4_APPEND_DATA | ACE4_READ_ATTRIBUTES | \
                              ACE4_WRITE_ATTRIBUTES
@@ -6373,7 +6373,7 @@ class SFTPServer:
 
            .. note:: Any method can optionally be defined as a
                      coroutine if that method needs to perform
-                     blocking opertions to determine its result.
+                     blocking operations to determine its result.
 
        The `chan` object provided here is the :class:`SSHServerChannel`
        instance this SFTP server is associated with. It can be queried to

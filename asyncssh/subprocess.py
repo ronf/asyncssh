@@ -134,7 +134,7 @@ class SSHSubprocessProtocol(Generic[AnyStr]):
                         transport: 'SSHSubprocessTransport[AnyStr]') -> None:
         """Called when a remote process is successfully started
 
-           This method is called when a a remote process is successfully
+           This method is called when a remote process is successfully
            started. The transport parameter should be stored if needed
            for later use.
 

@@ -650,7 +650,7 @@ class SSHKey:
             comment: DefTuple[_Comment] = ()) -> 'SSHOpenSSHCertificate':
         """Generate a new SSH user certificate
 
-           This method returns an SSH user certifcate with the requested
+           This method returns an SSH user certificate with the requested
            attributes signed by this private key.
 
            :param user_key:
@@ -769,7 +769,7 @@ class SSHKey:
             'SSHOpenSSHCertificate':
         """Generate a new SSH host certificate
 
-           This method returns an SSH host certifcate with the requested
+           This method returns an SSH host certificate with the requested
            attributes signed by this private key.
 
            :param host_key:
@@ -830,7 +830,7 @@ class SSHKey:
             comment: DefTuple[_Comment] = ()) -> 'SSHX509Certificate':
         """Generate a new X.509 user certificate
 
-           This method returns an X.509 user certifcate with the requested
+           This method returns an X.509 user certificate with the requested
            attributes signed by this private key.
 
            :param user_key:
@@ -901,7 +901,7 @@ class SSHKey:
             comment: DefTuple[_Comment] = ()) -> 'SSHX509Certificate':
         """Generate a new X.509 host certificate
 
-           This method returns a X.509 host certifcate with the requested
+           This method returns an X.509 host certificate with the requested
            attributes signed by this private key.
 
            :param host_key:
@@ -972,7 +972,7 @@ class SSHKey:
             'SSHX509Certificate':
         """Generate a new X.509 CA certificate
 
-           This method returns a X.509 CA certifcate with the requested
+           This method returns an X.509 CA certificate with the requested
            attributes signed by this private key.
 
            :param ca_key:

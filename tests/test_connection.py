@@ -413,7 +413,7 @@ class _TestConnection(ServerTestCase):
 
     @asynctest
     async def test_connect_encrypted_key(self):
-        """Test connecting with encrytped client key and no passphrase"""
+        """Test connecting with encrypted client key and no passphrase"""
 
         async with self.connect(client_keys='ckey_encrypted',
                                 ignore_encrypted=True):
@@ -618,7 +618,7 @@ class _TestConnection(ServerTestCase):
     async def test_get_server_host_key_proxy_failure(self):
         """Test failure retrieving a server host key using proxy command"""
 
-        # Leave out arguments to 'nc' to trigger a faliure
+        # Leave out arguments to 'nc' to trigger a failure
         proxy_command = 'nc'
 
         with self.assertRaises((OSError, asyncssh.ConnectionLost)):
@@ -858,7 +858,7 @@ class _TestConnection(ServerTestCase):
 
     @asynctest
     async def test_duplicate_encryption_algs(self):
-        """Test connecting with an duplicated encryption algorithm"""
+        """Test connecting with a duplicated encryption algorithm"""
 
         with patch('asyncssh.connection.SSHClientConnection',
                    _CheckAlgsClientConnection):
@@ -1780,14 +1780,14 @@ class _TestServerX509Self(ServerTestCase):
 
     @asynctest
     async def test_connect_x509_untrusted_self(self):
-        """Test connecting with untrusted X.509 self-signed certficate"""
+        """Test connecting with untrusted X.509 self-signed certificate"""
 
         with self.assertRaises(asyncssh.HostKeyNotVerifiable):
             await self.connect(x509_trusted_certs='root_ca_cert.pem')
 
     @asynctest
     async def test_connect_x509_revoked_self(self):
-        """Test connecting with revoked X.509 self-signed certficate"""
+        """Test connecting with revoked X.509 self-signed certificate"""
 
         with self.assertRaises(asyncssh.HostKeyNotVerifiable):
             await self.connect(known_hosts=([], [], [], ['root_ca_cert.pem'],

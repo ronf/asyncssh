@@ -234,12 +234,12 @@ class _TestKnownHosts(TempDirTestCase):
             self.check_match(b'@cert-authority xxx\n')
 
     def test_invalid_key(self):
-        """Test for line with invaid key"""
+        """Test for line with invalid key"""
 
         self.check_match(b'xxx yyy\n', ([], [], [], [], [], [], []))
 
     def test_invalid_marker(self):
-        """Test for line with invaid marker"""
+        """Test for line with invalid marker"""
 
         with self.assertRaises(ValueError):
             self.check_match(b'@xxx yyy zzz\n')

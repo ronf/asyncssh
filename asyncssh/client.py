@@ -216,7 +216,7 @@ class SSHClient:
         """Authentication was completed successfully
 
            This method is called when authentication has completed
-           succesfully. Applications may use this method to create
+           successfully. Applications may use this method to create
            whatever client sessions and direct TCP/IP or UNIX domain
            connections are needed and/or set up listeners for incoming
            TCP/IP or UNIX domain connections coming from the server.

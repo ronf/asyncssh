@@ -2251,7 +2251,7 @@ class _TestPublicKeyTopLevel(TempDirTestCase):
         self.assertEqual(bool(get_x509_certificate_algs()), x509_available)
 
     def test_public_key_algorithm_mismatch(self):
-        """Test algorihm mismatch in SSH public key"""
+        """Test algorithm mismatch in SSH public key"""
 
         privkey = get_test_key('ssh-rsa')
         keydata = privkey.export_public_key('openssh')
@@ -2272,7 +2272,7 @@ class _TestPublicKeyTopLevel(TempDirTestCase):
             pkcs1_decrypt(b'', b'AES-128-CBC', os.urandom(16), 'x')
 
     def test_ec_explicit(self):
-        """Test EC certificate with explcit parameters"""
+        """Test EC certificate with explicit parameters"""
 
         if _openssl_available: # pragma: no branch
             for curve in ('secp256r1', 'secp384r1', 'secp521r1'):

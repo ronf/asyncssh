@@ -148,7 +148,7 @@ class SSHServer:
         """Authentication was completed successfully
 
            This method is called when authentication has completed
-           succesfully. Applications may use this method to perform
+           successfully. Applications may use this method to perform
            processing based on the authenticated username or options in
            the authorized keys list or certificate associated with the
            user before any sessions are opened or forwarding requests
@@ -575,7 +575,7 @@ class SSHServer:
            authentication is supported. Applications wishing to support
            it must have this method return `True` and implement
            :meth:`get_kbdint_challenge` and :meth:`validate_kbdint_response`
-           to generate the apporiate challenges and validate the responses
+           to generate the appropriate challenges and validate the responses
            for the user being authenticated.
 
            By default, this method returns `NotImplemented` tying
@@ -677,7 +677,7 @@ class SSHServer:
            If blocking operations need to be performed before the session
            can be created, a coroutine which returns an
            :class:`SSHServerSession` object can be returned instead of
-           the session iself. This can be either returned directly or as
+           the session itself. This can be either returned directly or as
            a part of a tuple with an :class:`SSHServerChannel` object.
 
            To reject this request, this method should return `False`
@@ -742,7 +742,7 @@ class SSHServer:
            If blocking operations need to be performed before the session
            can be created, a coroutine which returns an
            :class:`SSHTCPSession` object can be returned instead of
-           the session iself. This can be either returned directly or as
+           the session itself. This can be either returned directly or as
            a part of a tuple with an :class:`SSHTCPChannel` object.
 
            By default, all connection requests are rejected.
@@ -857,7 +857,7 @@ class SSHServer:
            If blocking operations need to be performed before the session
            can be created, a coroutine which returns an
            :class:`SSHUNIXSession` object can be returned instead of
-           the session iself. This can be either returned directly or as
+           the session itself. This can be either returned directly or as
            a part of a tuple with an :class:`SSHUNIXChannel` object.
 
            By default, all connection requests are rejected.

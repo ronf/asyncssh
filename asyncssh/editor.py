@@ -745,7 +745,7 @@ class SSHLineEditorChannel:
        this class is wrapped around the channel, providing the caller with
        the ability to enable and disable input line editing and echoing.
 
-       .. note:: Line editing is only available when a psuedo-terminal
+       .. note:: Line editing is only available when a pseudo-terminal
                  is requested on the server channel and the character
                  encoding on the channel is not set to `None`.
 
