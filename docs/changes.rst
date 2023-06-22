@@ -3,6 +3,31 @@
 Change Log
 ==========
 
+Release 2.13.2 (21 Jun 2023)
+----------------------------
+
+* Fixed an issue with host-based authentication when using proxy_command,
+  allowing it to be used if the caller explicitly specifies client_host.
+  Thanks go to GitHub user yuqingm7 for reporting this issue.
+
+* Improved handling of signature algorithms for OpenSSH certificates
+  so that RSA SHA-2 signatures will work with both older and newer
+  versions of OpenSSH.
+
+* Worked around an issue with some Cisco SSH implementations generating
+  invalid "ignore" packets. Thanks go to Jost Luebbe for reporting and
+  helping to debug this issue.
+
+* Fixed unit tests to avoid errors when cryptography's version of
+  OpenSSL disables support for SHA-1 signatures.
+
+* Fixed unit tests to avoid errors when the filesystem enforces that
+  filenames be valid UTF-8 strings. Thanks go to Robert Schütz and
+  Martin Weinelt for reporting this issue.
+
+* Added documentation about which config options apply when passing
+  a string as a tunnel argument.
+
 Release 2.13.1 (18 Feb 2023)
 ----------------------------
 
