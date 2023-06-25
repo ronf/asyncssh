@@ -32,8 +32,7 @@ import unittest
 
 from unittest.mock import patch
 
-from cryptography.hazmat.backends.openssl import backend
-
+from asyncssh import set_default_skip_rsa_key_validation
 from asyncssh.gss import gss_available
 from asyncssh.logging import logger
 from asyncssh.misc import ConnectionLost, SignalReceived
@@ -77,14 +76,9 @@ else: # pragma: no cover
 # pylint: enable=no-member
 
 
-# pylint: disable=protected-access
-
-# Disable RSA key blinding to speed up unit tests
-backend._rsa_skip_check_key = True
-
-# pylint: enable=protected-access
-
 _test_keys = {}
+
+set_default_skip_rsa_key_validation(True)
 
 
 def asynctest(coro):

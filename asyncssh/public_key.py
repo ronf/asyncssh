@@ -262,13 +262,13 @@ class SSHKey:
 
     @classmethod
     def make_private(cls, key_params: object) -> 'SSHKey':
-        """Construct an RSA private key"""
+        """Construct a private key"""
 
         raise NotImplementedError
 
     @classmethod
     def make_public(cls, key_params: object) -> 'SSHKey':
-        """Construct an RSA public key"""
+        """Construct a public key"""
 
         raise NotImplementedError
 
@@ -2402,7 +2402,9 @@ def _match_next(data: bytes, keytype: bytes, public: bool = False) -> \
     return None, (), len(data)
 
 
-def _decode_pkcs1_private(pem_name: bytes, key_data: object) -> SSHKey:
+def _decode_pkcs1_private(
+        pem_name: bytes, key_data: object,
+        unsafe_skip_rsa_key_validation: Optional[bool]) -> SSHKey:
     """Decode a PKCS#1 format private key"""
 
     handler = _pem_map.get(pem_name)
@@ -2414,6 +2416,10 @@ def _decode_pkcs1_private(pem_name: bytes, key_data: object) -> SSHKey:
     if key_params is None:
         raise KeyImportError('Invalid %s private key' %
                              pem_name.decode('ascii'))
+
+    if pem_name == b'RSA':
+        key_params = cast(Tuple, key_params) + \
+            (unsafe_skip_rsa_key_validation,)
 
     return handler.make_private(key_params)
 
@@ -2434,7 +2440,9 @@ def _decode_pkcs1_public(pem_name: bytes, key_data: object) -> SSHKey:
     return handler.make_public(key_params)
 
 
-def _decode_pkcs8_private(key_data: object) -> SSHKey:
+def _decode_pkcs8_private(
+        key_data: object,
+        unsafe_skip_rsa_key_validation: Optional[bool]) -> SSHKey:
     """Decode a PKCS#8 format private key"""
 
     if (isinstance(key_data, tuple) and len(key_data) >= 3 and
@@ -2454,6 +2462,10 @@ def _decode_pkcs8_private(key_data: object) -> SSHKey:
             raise KeyImportError('Invalid %s private key' %
                                  handler.pem_name.decode('ascii')
                                  if handler.pem_name else 'PKCS#8')
+
+        if alg == ObjectIdentifier('1.2.840.113549.1.1.1'):
+            key_params = cast(Tuple, key_params) + \
+                (unsafe_skip_rsa_key_validation,)
 
         return handler.make_private(key_params)
     else:
@@ -2486,8 +2498,9 @@ def _decode_pkcs8_public(key_data: object) -> SSHKey:
         raise KeyImportError('Invalid PKCS#8 public key')
 
 
-def _decode_openssh_private(data: bytes,
-                            passphrase: Optional[BytesOrStr]) -> SSHKey:
+def _decode_openssh_private(
+        data: bytes, passphrase: Optional[BytesOrStr],
+        unsafe_skip_rsa_key_validation: Optional[bool]) -> SSHKey:
     """Decode an OpenSSH format private key"""
 
     try:
@@ -2578,6 +2591,10 @@ def _decode_openssh_private(data: bytes,
         if len(pad) >= block_size or pad != bytes(range(1, len(pad) + 1)):
             raise KeyImportError('Invalid OpenSSH private key')
 
+        if alg == b'ssh-rsa':
+            key_params = cast(Tuple, key_params) + \
+                (unsafe_skip_rsa_key_validation,)
+
         key = handler.make_private(key_params)
         key.set_comment(comment)
         return key
@@ -2609,8 +2626,9 @@ def _decode_openssh_public(data: bytes) -> SSHKey:
         raise KeyImportError('Invalid OpenSSH private key') from None
 
 
-def _decode_der_private(key_data: object,
-                        passphrase: Optional[BytesOrStr]) -> SSHKey:
+def _decode_der_private(
+        key_data: object, passphrase: Optional[BytesOrStr],
+        unsafe_skip_rsa_key_validation: Optional[bool]) -> SSHKey:
     """Decode a DER format private key"""
 
     # First, if there's a passphrase, try to decrypt PKCS#8
@@ -2623,7 +2641,7 @@ def _decode_der_private(key_data: object,
 
     # Then, try to decode PKCS#8
     try:
-        return _decode_pkcs8_private(key_data)
+        return _decode_pkcs8_private(key_data, unsafe_skip_rsa_key_validation)
     except KeyImportError:
         # PKCS#8 failed - try PKCS#1 instead
         pass
@@ -2631,7 +2649,8 @@ def _decode_der_private(key_data: object,
     # If that fails, try each of the possible PKCS#1 encodings
     for pem_name in _pem_map:
         try:
-            return _decode_pkcs1_private(pem_name, key_data)
+            return _decode_pkcs1_private(pem_name, key_data,
+                                         unsafe_skip_rsa_key_validation)
         except KeyImportError:
             # Try the next PKCS#1 encoding
             pass
@@ -2667,13 +2686,15 @@ def _decode_der_certificate(data: bytes,
     return SSHX509Certificate.construct_from_der(data, comment)
 
 
-def _decode_pem_private(pem_name: bytes, headers: Mapping[bytes, bytes],
-                        data: bytes, passphrase: Optional[BytesOrStr]) -> \
-        SSHKey:
+def _decode_pem_private(
+        pem_name: bytes, headers: Mapping[bytes, bytes],
+        data: bytes, passphrase: Optional[BytesOrStr],
+        unsafe_skip_rsa_key_validation: Optional[bool]) -> SSHKey:
     """Decode a PEM format private key"""
 
     if pem_name == b'OPENSSH':
-        return _decode_openssh_private(data, passphrase)
+        return _decode_openssh_private(data, passphrase,
+                                       unsafe_skip_rsa_key_validation)
 
     if headers.get(b'Proc-Type') == b'4,ENCRYPTED':
         if passphrase is None:
@@ -2715,9 +2736,10 @@ def _decode_pem_private(pem_name: bytes, headers: Mapping[bytes, bytes],
                                  'private key') from None
 
     if pem_name:
-        return _decode_pkcs1_private(pem_name, key_data)
+        return _decode_pkcs1_private(pem_name, key_data,
+                                     unsafe_skip_rsa_key_validation)
     else:
-        return _decode_pkcs8_private(key_data)
+        return _decode_pkcs8_private(key_data, unsafe_skip_rsa_key_validation)
 
 
 def _decode_pem_public(pem_name: bytes, data: bytes) -> SSHKey:
@@ -2750,8 +2772,10 @@ def _decode_pem_certificate(pem_name: bytes, data: bytes) -> SSHCertificate:
     return SSHX509Certificate.construct_from_der(data)
 
 
-def _decode_private(data: bytes, passphrase: Optional[BytesOrStr]) -> \
-        Tuple[Optional[SSHKey], Optional[int]]:
+def _decode_private(
+        data: bytes, passphrase: Optional[BytesOrStr],
+        unsafe_skip_rsa_key_validation: Optional[bool]) -> \
+            Tuple[Optional[SSHKey], Optional[int]]:
     """Decode a private key"""
 
     fmt, key_info, end = _match_next(data, b'PRIVATE KEY')
@@ -2759,10 +2783,12 @@ def _decode_private(data: bytes, passphrase: Optional[BytesOrStr]) -> \
     key: Optional[SSHKey]
 
     if fmt == 'der':
-        key = _decode_der_private(key_info[0], passphrase)
+        key = _decode_der_private(key_info[0], passphrase,
+                                  unsafe_skip_rsa_key_validation)
     elif fmt == 'pem':
         pem_name, headers, data = key_info
-        key = _decode_pem_private(pem_name, headers, data, passphrase)
+        key = _decode_pem_private(pem_name, headers, data, passphrase,
+                                  unsafe_skip_rsa_key_validation)
     else:
         key = None
 
@@ -2799,7 +2825,7 @@ def _decode_public(data: bytes) -> Tuple[Optional[SSHKey], Optional[int]]:
         if fmt == 'pem' and key_info[0] == b'OPENSSH':
             key = _decode_openssh_public(key_info[2])
         else:
-            key, _ = _decode_private(data, None)
+            key, _ = _decode_private(data, None, False)
 
             if key:
                 key = key.convert_to_public()
@@ -2836,14 +2862,16 @@ def _decode_certificate(data: bytes) -> \
     return cert, end
 
 
-def _decode_private_list(data: bytes, passphrase: Optional[BytesOrStr]) -> \
-        Sequence[SSHKey]:
+def _decode_private_list(
+        data: bytes, passphrase: Optional[BytesOrStr],
+        unsafe_skip_rsa_key_validation: Optional[bool]) -> Sequence[SSHKey]:
     """Decode a private key list"""
 
     keys: List[SSHKey] = []
 
     while data:
-        key, end = _decode_private(data, passphrase)
+        key, end = _decode_private(data, passphrase,
+                                   unsafe_skip_rsa_key_validation)
 
         if key:
             keys.append(key)
@@ -3122,8 +3150,9 @@ def generate_private_key(alg_name: str, comment: _Comment = None,
     key.set_comment(comment)
     return key
 
-def import_private_key(data: BytesOrStr,
-                       passphrase: Optional[BytesOrStr] = None) -> SSHKey:
+def import_private_key(
+        data: BytesOrStr, passphrase: Optional[BytesOrStr] = None,
+        unsafe_skip_rsa_key_validation: Optional[bool] = None) -> SSHKey:
     """Import a private key
 
        This function imports a private key encoded in PKCS#1 or PKCS#8 DER
@@ -3134,8 +3163,13 @@ def import_private_key(data: BytesOrStr,
            The data to import.
        :param passphrase: (optional)
            The passphrase to use to decrypt the key.
+       :param unsafe_skip_rsa_key_validation: (optional)
+           Whether or not to skip key validation when loading RSA private
+           keys, defaulting to performing these checks unless changed by
+           calling :func:`set_default_skip_rsa_key_validation`.
        :type data: `bytes` or ASCII `str`
        :type passphrase: `str` or `bytes`
+       :type unsafe_skip_rsa_key_validation: bool
 
        :returns: An :class:`SSHKey` private key
 
@@ -3147,7 +3181,7 @@ def import_private_key(data: BytesOrStr,
         except UnicodeEncodeError:
             raise KeyImportError('Invalid encoding for key') from None
 
-    key, _ = _decode_private(data, passphrase)
+    key, _ = _decode_private(data, passphrase, unsafe_skip_rsa_key_validation)
 
     if key:
         return key
@@ -3155,12 +3189,14 @@ def import_private_key(data: BytesOrStr,
         raise KeyImportError('Invalid private key')
 
 
-def import_private_key_and_certs(data: bytes,
-                                 passphrase: Optional[BytesOrStr] = None) -> \
-        Tuple[SSHKey, Optional[SSHX509CertificateChain]]:
+def import_private_key_and_certs(
+        data: bytes, passphrase: Optional[BytesOrStr] = None,
+        unsafe_skip_rsa_key_validation: Optional[bool] = None) -> \
+            Tuple[SSHKey, Optional[SSHX509CertificateChain]]:
     """Import a private key and optional certificate chain"""
 
-    key, end = _decode_private(data, passphrase)
+    key, end = _decode_private(data, passphrase,
+                               unsafe_skip_rsa_key_validation)
 
     if key:
         return key, import_certificate_chain(data[end:])
@@ -3256,8 +3292,9 @@ def import_certificate_subject(data: str) -> str:
     raise KeyImportError('Invalid certificate subject')
 
 
-def read_private_key(filename: FilePath,
-                     passphrase: Optional[BytesOrStr] = None) -> SSHKey:
+def read_private_key(
+        filename: FilePath, passphrase: Optional[BytesOrStr] = None,
+        unsafe_skip_rsa_key_validation: Optional[bool] = None) -> SSHKey:
     """Read a private key from a file
 
        This function reads a private key from a file. See the function
@@ -3268,26 +3305,34 @@ def read_private_key(filename: FilePath,
            The file to read the key from.
        :param passphrase: (optional)
            The passphrase to use to decrypt the key.
+       :param unsafe_skip_rsa_key_validation: (optional)
+           Whether or not to skip key validation when loading RSA private
+           keys, defaulting to performing these checks unless changed by
+           calling :func:`set_default_skip_rsa_key_validation`.
        :type filename: :class:`PurePath <pathlib.PurePath>` or `str`
        :type passphrase: `str` or `bytes`
+       :type unsafe_skip_rsa_key_validation: bool
 
        :returns: An :class:`SSHKey` private key
 
     """
 
-    key = import_private_key(read_file(filename), passphrase)
+    key = import_private_key(read_file(filename), passphrase,
+                             unsafe_skip_rsa_key_validation)
 
     key.set_filename(filename)
 
     return key
 
 
-def read_private_key_and_certs(filename: FilePath,
-                               passphrase: Optional[BytesOrStr] = None) -> \
-        Tuple[SSHKey, Optional[SSHX509CertificateChain]]:
+def read_private_key_and_certs(
+        filename: FilePath, passphrase: Optional[BytesOrStr] = None,
+        unsafe_skip_rsa_key_validation: Optional[bool] = None) -> \
+            Tuple[SSHKey, Optional[SSHX509CertificateChain]]:
     """Read a private key and optional certificate chain from a file"""
 
-    key, cert = import_private_key_and_certs(read_file(filename), passphrase)
+    key, cert = import_private_key_and_certs(read_file(filename), passphrase,
+                                             unsafe_skip_rsa_key_validation)
 
     key.set_filename(filename)
 
@@ -3334,9 +3379,10 @@ def read_certificate(filename: FilePath) -> SSHCertificate:
     return import_certificate(read_file(filename))
 
 
-def read_private_key_list(filename: FilePath,
-                          passphrase: Optional[BytesOrStr] = None) -> \
-        Sequence[SSHKey]:
+def read_private_key_list(
+        filename: FilePath, passphrase: Optional[BytesOrStr] = None,
+        unsafe_skip_rsa_key_validation: Optional[bool] = None) -> \
+            Sequence[SSHKey]:
     """Read a list of private keys from a file
 
        This function reads a list of private keys from a file. See the
@@ -3348,14 +3394,20 @@ def read_private_key_list(filename: FilePath,
            The file to read the keys from.
        :param passphrase: (optional)
            The passphrase to use to decrypt the keys.
+       :param unsafe_skip_rsa_key_validation: (optional)
+           Whether or not to skip key validation when loading RSA private
+           keys, defaulting to performing these checks unless changed by
+           calling :func:`set_default_skip_rsa_key_validation`.
        :type filename: :class:`PurePath <pathlib.PurePath>` or `str`
        :type passphrase: `str` or `bytes`
+       :type unsafe_skip_rsa_key_validation: bool
 
        :returns: A list of :class:`SSHKey` private keys
 
     """
 
-    keys = _decode_private_list(read_file(filename), passphrase)
+    keys = _decode_private_list(read_file(filename), passphrase,
+                                unsafe_skip_rsa_key_validation)
 
     for key in keys:
         key.set_filename(filename)
@@ -3404,10 +3456,12 @@ def read_certificate_list(filename: FilePath) -> Sequence[SSHCertificate]:
     return _decode_certificate_list(read_file(filename))
 
 
-def load_keypairs(keylist: KeyPairListArg,
-                  passphrase: Optional[BytesOrStr] = None,
-                  certlist: CertListArg = (), skip_public: bool = False,
-                  ignore_encrypted: bool = False) -> Sequence[SSHKeyPair]:
+def load_keypairs(
+        keylist: KeyPairListArg, passphrase: Optional[BytesOrStr] = None,
+        certlist: CertListArg = (), skip_public: bool = False,
+        ignore_encrypted: bool = False,
+        unsafe_skip_rsa_key_validation: Optional[bool] = None) -> \
+            Sequence[SSHKeyPair]:
     """Load SSH private keys and optional matching certificates
 
        This function loads a list of SSH keys and optional matching
@@ -3427,10 +3481,15 @@ def load_keypairs(keylist: KeyPairListArg,
            An internal parameter used to skip public keys and certificates
            when IdentitiesOnly and IdentityFile are used to specify a
            mixture of private and public keys.
+       :param unsafe_skip_rsa_key_validation: (optional)
+           Whether or not to skip key validation when loading RSA private
+           keys, defaulting to performing these checks unless changed by
+           calling :func:`set_default_skip_rsa_key_validation`.
        :type keylist: *see* :ref:`SpecifyingPrivateKeys`
        :type passphrase: `str` or `bytes`
        :type certlist: *see* :ref:`SpecifyingCertificates`
        :type skip_public: `bool`
+       :type unsafe_skip_rsa_key_validation: bool
 
        :returns: A list of :class:`SSHKeyPair` objects
 
@@ -3444,7 +3503,8 @@ def load_keypairs(keylist: KeyPairListArg,
 
     if isinstance(keylist, (PurePath, str)):
         try:
-            priv_keys = read_private_key_list(keylist, passphrase)
+            priv_keys = read_private_key_list(keylist, passphrase,
+                                              unsafe_skip_rsa_key_validation)
             keys_to_load = [keylist] if len(priv_keys) <= 1 else priv_keys
         except KeyImportError:
             keys_to_load = [keylist]
@@ -3472,21 +3532,25 @@ def load_keypairs(keylist: KeyPairListArg,
                 key_prefix = str(key_to_load)
 
                 if allow_certs:
-                    key, certs_to_load = \
-                        read_private_key_and_certs(key_to_load, passphrase)
+                    key, certs_to_load = read_private_key_and_certs(
+                        key_to_load, passphrase,
+                        unsafe_skip_rsa_key_validation)
 
                     if not certs_to_load:
                         certs_to_load = key_prefix + '-cert.pub'
                 else:
-                    key = read_private_key(key_to_load, passphrase)
+                    key = read_private_key(key_to_load, passphrase,
+                                           unsafe_skip_rsa_key_validation)
 
                 pubkey_to_load = key_prefix + '.pub'
             elif isinstance(key_to_load, bytes):
                 if allow_certs:
-                    key, certs_to_load = \
-                        import_private_key_and_certs(key_to_load, passphrase)
+                    key, certs_to_load = import_private_key_and_certs(
+                        key_to_load, passphrase,
+                        unsafe_skip_rsa_key_validation)
                 else:
-                    key = import_private_key(key_to_load, passphrase)
+                    key = import_private_key(key_to_load, passphrase,
+                                             unsafe_skip_rsa_key_validation)
             else:
                 key = key_to_load
         except KeyImportError as exc:

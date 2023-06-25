@@ -86,6 +86,8 @@ from .public_key import read_certificate_list
 from .public_key import load_keypairs, load_public_keys, load_certificates
 from .public_key import load_resident_keys
 
+from .rsa import set_default_skip_rsa_key_validation
+
 from .scp import scp
 
 from .session import DataType, SSHClientSession, SSHServerSession
@@ -164,5 +166,5 @@ __all__ = [
     'read_certificate_list', 'read_known_hosts', 'read_private_key',
     'read_private_key_list', 'read_public_key', 'read_public_key_list',
     'run_client', 'run_server', 'scp', 'set_debug_level', 'set_log_level',
-    'set_sftp_log_level',
+    'set_sftp_log_level', 'set_default_skip_rsa_key_validation',
 ]

@@ -1617,6 +1617,11 @@ load_resident_keys
 
 .. index:: SSH agent support
 
+set_default_skip_rsa_key_validation
+-----------------------------------
+
+.. autofunction:: set_default_skip_rsa_key_validation
+
 SSH Agent Support
 =================
 

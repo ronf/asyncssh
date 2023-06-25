@@ -98,12 +98,14 @@ class RSAPrivateKey(_RSAKey):
 
     @classmethod
     def construct(cls, n: int, e: int, d: int, p: int, q: int,
-                  dmp1: int, dmq1: int, iqmp: int) -> 'RSAPrivateKey':
+                  dmp1: int, dmq1: int, iqmp: int,
+                  skip_validation: bool) -> 'RSAPrivateKey':
         """Construct an RSA private key"""
 
         pub = rsa.RSAPublicNumbers(e, n)
         priv = rsa.RSAPrivateNumbers(p, q, d, dmp1, dmq1, iqmp, pub)
-        priv_key = priv.private_key()
+        priv_key = priv.private_key(
+            unsafe_skip_rsa_key_validation=skip_validation)
 
         return cls(priv_key, pub, priv)
 

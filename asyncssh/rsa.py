@@ -43,7 +43,47 @@ _hash_algs = {b'ssh-rsa':                'sha1',
 
 
 _PrivateKeyArgs = Tuple[int, int, int, int, int, int, int, int]
+_PrivateKeyConstructArgs = Tuple[int, int, int, int, int, int, int, int, bool]
 _PublicKeyArgs = Tuple[int, int]
+
+
+_default_skip_rsa_key_validation = False
+
+
+def set_default_skip_rsa_key_validation(skip_validation: bool) -> None:
+    """Set whether to disable RSA key validation in OpenSSL
+
+       OpenSSL 3.x does additional validation when loading RSA keys
+       as an added security measure. However, the result is that
+       loading a key can take significantly longer than it did before.
+
+       If all your RSA keys are coming from a trusted source, you can
+       call this function with a value of `True` to default to skipping
+       these checks on RSA keys, reducing the cost back down to what it
+       was in earlier releases.
+
+       This can also be set on a case by case basis by using the new
+       `unsafe_skip_rsa_key_validation` argument on the functions used
+       to load keys. This will only affect loading keys of type RSA.
+
+       .. note:: The extra cost only applies to loading existing keys, and
+                 not to generating new keys. Also, in cases where a key is
+                 used repeatedly, it can be loaded once into an `SSHKey`
+                 object and reused without having to pay the cost each time.
+                 So, this call should not be needed in most applications.
+
+                 If an application does need this, it is strongly
+                 recommended that the `unsafe_skip_rsa_key_validation`
+                 argument be used rather than using this function to
+                 change the default behavior for all load operations.
+
+    """
+
+    # pylint: disable=global-statement
+
+    global _default_skip_rsa_key_validation
+
+    _default_skip_rsa_key_validation = skip_validation
 
 
 class RSAKey(SSHKey):
@@ -94,9 +134,14 @@ class RSAKey(SSHKey):
     def make_private(cls, key_params: object) -> SSHKey:
         """Construct an RSA private key"""
 
-        n, e, d, p, q, dmp1, dmq1, iqmp = cast(_PrivateKeyArgs, key_params)
+        n, e, d, p, q, dmp1, dmq1, iqmp, unsafe_skip_rsa_key_validation = \
+            cast(_PrivateKeyConstructArgs, key_params)
 
-        return cls(RSAPrivateKey.construct(n, e, d, p, q, dmp1, dmq1, iqmp))
+        if unsafe_skip_rsa_key_validation is None:
+            unsafe_skip_rsa_key_validation = _default_skip_rsa_key_validation
+
+        return cls(RSAPrivateKey.construct(n, e, d, p, q, dmp1, dmq1, iqmp,
+                                           unsafe_skip_rsa_key_validation))
 
     @classmethod
     def make_public(cls, key_params: object) -> SSHKey:
