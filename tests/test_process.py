@@ -902,7 +902,7 @@ class _TestProcessRedirection(_TestProcess):
             proc1.stdin.write(data)
             proc1.stdin.write_eof()
 
-            stdout_data, _ = await proc2.communicate()
+            stdout_data = await proc2.stdout.read()
 
         self.assertEqual(stdout_data, data.encode('ascii'))
 
