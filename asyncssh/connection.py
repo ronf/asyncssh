@@ -3286,9 +3286,9 @@ class SSHClientConnection(SSHConnection):
             if self._auth:
                 return
 
-        self.logger.info('Auth failed for user %s', self._username)
+        self.logger.info('Auth failed for %s@%s' % (self._username, self._host))
 
-        self._force_close(PermissionDenied('Permission denied'))
+        self._force_close(PermissionDenied('Permission denied for %s@%s' % (self._username, self._host)))
 
     def gss_kex_auth_requested(self) -> bool:
         """Return whether to allow GSS key exchange authentication or not"""
