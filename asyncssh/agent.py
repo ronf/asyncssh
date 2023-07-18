@@ -149,6 +149,18 @@ class SSHAgentKeyPair(SSHKeyPair):
         self._is_cert = is_cert
         self._flags = 0
 
+    @property
+    def has_cert(self) -> bool:
+        """ Return if this key pair has an associated cert"""
+
+        return self._is_cert
+
+    @property
+    def has_x509_chain(self) -> bool:
+        """ Return if this key pair has an associated X.509 cert chain"""
+
+        return False
+
     def set_certificate(self, cert: SSHCertificate) -> None:
         """Set certificate to use with this key"""
 

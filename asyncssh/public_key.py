@@ -2096,6 +2096,18 @@ class SSHKeyPair:
 
         return self._key_type
 
+    @property
+    def has_cert(self) -> bool:
+        """ Return if this key pair has an associated cert"""
+
+        return bool(self._cert)
+
+    @property
+    def has_x509_chain(self) -> bool:
+        """ Return if this key pair has an associated X.509 cert chain"""
+
+        return self._cert.is_x509_chain if self._cert else False
+
     def get_algorithm(self) -> str:
         """Return the algorithm associated with this key pair"""
 
@@ -2194,9 +2206,9 @@ class SSHKeyPair:
 
         self.sig_algorithm = sig_algorithm
 
-        if not self._cert:
+        if not self.has_cert:
             self.algorithm = sig_algorithm
-        elif self._cert.is_x509_chain:
+        elif self.has_x509_chain:
             self.algorithm = sig_algorithm
 
             cert = cast('SSHX509CertificateChain', self._cert)
