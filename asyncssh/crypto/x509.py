@@ -308,7 +308,7 @@ class X509Certificate:
                                                None)
             x509_ctx.verify_certificate()
         except crypto.X509StoreContextError as exc:
-            raise ValueError(str(exc)) from None
+            raise ValueError(f'X.509 chain validation error: {exc}') from None
 
 
 def generate_x509_certificate(signing_key: PyCAKey, key: PyCAKey,

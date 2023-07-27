@@ -2068,6 +2068,13 @@ class _TestHostKeyAlias(ServerTestCase):
             await self.connect()
 
     @asynctest
+    async def test_host_key_unknown(self):
+        """Test unknown host key alias"""
+
+        with self.assertRaises(asyncssh.HostKeyNotVerifiable):
+            await self.connect(host_key_alias='unknown')
+
+    @asynctest
     async def test_host_key_match(self):
         """Test host key match"""
 

@@ -3240,7 +3240,12 @@ class SSHClientConnection(SSHConnection):
                 self._host_key_alias or self._host,
                 self._peer_addr, self._port, key_data)
         except ValueError as exc:
-            raise HostKeyNotVerifiable(str(exc)) from None
+            host = self._host
+
+            if self._host_key_alias:
+                host += f' with alias {self._host_key_alias}'
+
+            raise HostKeyNotVerifiable(f'{exc} for host {host}') from None
 
         self._server_host_key = host_key
         return host_key
@@ -3288,7 +3293,9 @@ class SSHClientConnection(SSHConnection):
 
         self.logger.info('Auth failed for user %s', self._username)
 
-        self._force_close(PermissionDenied('Permission denied'))
+        self._force_close(PermissionDenied('Permission denied for user '
+                                           f'{self._username} on host '
+                                           f'{self._host}'))
 
     def gss_kex_auth_requested(self) -> bool:
         """Return whether to allow GSS key exchange authentication or not"""
@@ -6548,7 +6555,8 @@ class SSHConnectionOptions(Options):
         if x509_trusted_cert_paths:
             for path in x509_trusted_cert_paths:
                 if not Path(path).is_dir():
-                    raise ValueError('Path not a directory: ' + str(path))
+                    raise ValueError('X.509 trusted certificate path not '
+                                     f'a directory: {path}')
 
         self.x509_trusted_certs = x509_trusted_certs
         self.x509_trusted_cert_paths = x509_trusted_cert_paths
