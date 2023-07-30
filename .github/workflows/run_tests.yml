@@ -111,7 +111,7 @@ jobs:
           V = sys.version_info
           p = platform.system().lower()
           subprocess.run(
-              ['tox', '-e', f'py{V.major}{V.minor}-{p}', '--', '-ra'],
+              ['tox', 'run', '-e', f'py{V.major}{V.minor}-{p}', '--', '-ra'],
               check=True)
 
       - name: Upload coverage data
