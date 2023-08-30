@@ -704,8 +704,10 @@ class SSHLineEditor:
                     self._ring_bell()
 
             self._bell_rung = False
-            self._chan.write(''.join(self._outbuf))
-            self._outbuf.clear()
+
+            if self._outbuf:
+                self._chan.write(''.join(self._outbuf))
+                self._outbuf.clear()
         else:
             self._session.data_received(data, datatype)
 
