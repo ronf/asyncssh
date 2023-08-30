@@ -6980,7 +6980,7 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
            build up a configuration. When an option is not explicitly
            specified, its value will be pulled from this options object
            (if present) before falling back to the default value.
-       :type client_factory: `callable` returning :class:`SSHClientConnection`
+       :type client_factory: `callable` returning :class:`SSHClient`
        :type proxy_command: `str` or `list` of `str`
        :type known_hosts: *see* :ref:`SpecifyingKnownHosts`
        :type host_key_alias: `str`
@@ -7629,7 +7629,7 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
            build up a configuration. When an option is not explicitly
            specified, its value will be pulled from this options object
            (if present) before falling back to the default value.
-       :type server_factory: `callable` returning :class:`SSHServerConnection`
+       :type server_factory: `callable` returning :class:`SSHServer`
        :type proxy_command: `str` or `list` of `str`
        :type family: `socket.AF_UNSPEC`, `socket.AF_INET`, or `socket.AF_INET6`
        :type server_host_keys: *see* :ref:`SpecifyingPrivateKeys`
