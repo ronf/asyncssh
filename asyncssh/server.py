@@ -31,7 +31,7 @@ from .stream import SSHSocketSessionFactory, SSHServerSessionFactory
 
 if TYPE_CHECKING:
     # pylint: disable=cyclic-import
-    from .connection import SSHServerConnection
+    from .connection import SSHServerConnection, SSHAcceptHandler
     from .channel import SSHServerChannel, SSHTCPChannel, SSHUNIXChannel
     from .session import SSHServerSession, SSHTCPSession, SSHUNIXSession
 
@@ -45,7 +45,7 @@ _NewTCPSession = Union[bool, 'SSHTCPSession', SSHSocketSessionFactory,
 _NewUNIXSession = Union[bool, 'SSHUNIXSession', SSHSocketSessionFactory,
                         Tuple['SSHUNIXChannel', 'SSHUNIXSession'],
                         Tuple['SSHUNIXChannel', SSHSocketSessionFactory]]
-_NewListener = Union[bool, SSHListener]
+_NewListener = Union[bool, 'SSHAcceptHandler', SSHListener]
 
 
 class SSHServer:

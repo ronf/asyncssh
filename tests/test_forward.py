@@ -183,6 +183,18 @@ class _TCPAsyncConnectionServer(_TCPConnectionServer):
             return listen_host != 'fail'
 
 
+class _TCPAcceptHandlerServer(Server):
+    """Server for testing forwarding accept handler"""
+
+    async def server_requested(self, listen_host, listen_port):
+        """Handle a request to create a new socket listener"""
+
+        def accept_handler(_orig_host: str, _orig_port: int) -> bool:
+            return True
+
+        return accept_handler
+
+
 class _UNIXConnectionServer(Server):
     """Server for testing direct and forwarded UNIX domain connections"""
 
@@ -594,6 +606,39 @@ class _TestTCPForwarding(_CheckForwarding):
                 await self._check_local_connection(listener.get_port(),
                                                    delay=0.1)
 
+    @asynctest
+    async def test_forward_local_port_accept_handler(self):
+        """Test forwarding of a local port with an accept handler"""
+
+        def accept_handler(_orig_host: str, _orig_port: int) -> bool:
+            return True
+
+        async with self.connect() as conn:
+            async with conn.forward_local_port('', 0, '', 7,
+                                               accept_handler) as listener:
+                await self._check_local_connection(listener.get_port(),
+                                                   delay=0.1)
+
+    @asynctest
+    async def test_forward_local_port_accept_handler_denial(self):
+        """Test forwarding of a local port with an accept handler denial"""
+
+        async def accept_handler(_orig_host: str, _orig_port: int) -> bool:
+            return False
+
+        async with self.connect() as conn:
+            async with conn.forward_local_port('', 0, '', 7,
+                                               accept_handler) as listener:
+                listen_port = listener.get_port()
+
+                reader, writer = await asyncio.open_connection('127.0.0.1',
+                                                               listen_port)
+
+                self.assertEqual((await reader.read()), b'')
+
+                writer.close()
+                await maybe_wait_closed(writer)
+
     @unittest.skipIf(sys.platform == 'win32',
                      'skip UNIX domain socket tests on Windows')
     @asynctest
@@ -855,6 +900,33 @@ class _TestTCPForwarding(_CheckForwarding):
             await listener.wait_closed()
 
 
+class _TestTCPForwardingAcceptHandler(_CheckForwarding):
+    """Unit tests for TCP forwarding with accept handler"""
+
+    @classmethod
+    async def start_server(cls):
+        """Start an SSH server which supports TCP connection forwarding"""
+
+        return await cls.create_server(
+            _TCPAcceptHandlerServer, authorized_client_keys='authorized_keys')
+
+    @asynctest
+    async def test_forward_remote_port_accept_handler(self):
+        """Test forwarding of a remote port with accept handler"""
+
+        server = await asyncio.start_server(echo, None, 0,
+                                            family=socket.AF_INET)
+        server_port = server.sockets[0].getsockname()[1]
+
+        async with self.connect() as conn:
+            async with conn.forward_remote_port(
+                    '', 0, '127.0.0.1', server_port) as listener:
+                await self._check_local_connection(listener.get_port())
+
+        server.close()
+        await server.wait_closed()
+
+
 class _TestAsyncTCPForwarding(_TestTCPForwarding):
     """Unit tests for AsyncSSH TCP connection forwarding with async return"""
 
@@ -998,6 +1070,39 @@ class _TestUNIXForwarding(_CheckForwarding):
                 await self._check_local_unix_connection('local')
 
         os.remove('local')
+
+    @asynctest
+    async def test_forward_local_port_to_path_accept_handler(self):
+        """Test forwarding of port to UNIX path with accept handler"""
+
+        def accept_handler(_orig_host: str, _orig_port: int) -> bool:
+            return True
+
+        async with self.connect() as conn:
+            async with conn.forward_local_port_to_path(
+                    '', 0, '/echo', accept_handler) as listener:
+                await self._check_local_connection(listener.get_port(),
+                                                   delay=0.1)
+
+    @asynctest
+    async def test_forward_local_port_to_path_accept_handler_denial(self):
+        """Test forwarding of port to UNIX path with accept handler denial"""
+
+        async def accept_handler(_orig_host: str, _orig_port: int) -> bool:
+            return False
+
+        async with self.connect() as conn:
+            async with conn.forward_local_port_to_path(
+                    '', 0, '/echo', accept_handler) as listener:
+                listen_port = listener.get_port()
+
+                reader, writer = await asyncio.open_connection('127.0.0.1',
+                                                               listen_port)
+
+                self.assertEqual((await reader.read()), b'')
+
+                writer.close()
+                await maybe_wait_closed(writer)
 
     @asynctest
     async def test_forward_local_port_to_path(self):

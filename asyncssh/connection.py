@@ -233,6 +233,7 @@ _TunnelListener = Union[None, str, _TunnelListenerProtocol]
 
 _VersionArg = DefTuple[BytesOrStr]
 
+SSHAcceptHandler = Callable[[str, int], MaybeAwait[bool]]
 
 # SSH service names
 _USERAUTH_SERVICE = b'ssh-userauth'
@@ -2886,10 +2887,10 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         return SSHForwarder(cast(SSHForwarder, peer))
 
     @async_context_manager
-    async def forward_local_port(self, listen_host: str,
-                                 listen_port: int,
-                                 dest_host: str,
-                                 dest_port: int) -> SSHListener:
+    async def forward_local_port(
+            self, listen_host: str, listen_port: int,
+            dest_host: str, dest_port: int,
+            accept_handler: Optional[SSHAcceptHandler] = None) -> SSHListener:
         """Set up local port forwarding
 
            This method is a coroutine which attempts to set up port
@@ -2906,10 +2907,17 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
                The hostname or address to forward the connections to
            :param dest_port:
                The port number to forward the connections to
+           :param accept_handler:
+               A `callable` or coroutine which takes arguments of the
+               original host and port of the client and decides whether
+               or not to allow connection forwarding, returning `True` to
+               accept the connection and begin forwarding or `False` to
+               reject and close it.
            :type listen_host: `str`
            :type listen_port: `int`
            :type dest_host: `str`
            :type dest_port: `int`
+           :type accept_handler: `callable` or coroutine
 
            :returns: :class:`SSHListener`
 
@@ -2922,6 +2930,21 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
                 orig_host: str, orig_port: int) -> \
                     Tuple[SSHTCPChannel[bytes], SSHTCPSession[bytes]]:
             """Forward a local connection over SSH"""
+
+            if accept_handler:
+                result = accept_handler(orig_host, orig_port)
+
+                if inspect.isawaitable(result):
+                    result = await cast(Awaitable[bool], result)
+
+                if not result:
+                    self.logger.info('Request for TCP forwarding from '
+                                     '%s to %s denied by application',
+                                     (orig_host, orig_port),
+                                     (dest_host, dest_port))
+
+                    raise ChannelOpenError(OPEN_ADMINISTRATIVELY_PROHIBITED,
+                                           'Connection forwarding denied')
 
             return (await self.create_connection(session_factory,
                                                  dest_host, dest_port,
@@ -4695,9 +4718,9 @@ class SSHClientConnection(SSHConnection):
                                     **kwargs) # type: ignore
 
     @async_context_manager
-    async def forward_local_port_to_path(self, listen_host: str,
-                                         listen_port: int,
-                                         dest_path: str) -> SSHListener:
+    async def forward_local_port_to_path(
+            self, listen_host: str, listen_port: int, dest_path: str,
+            accept_handler: Optional[SSHAcceptHandler] = None) -> SSHListener:
         """Set up local TCP port forwarding to a remote UNIX domain socket
 
            This method is a coroutine which attempts to set up port
@@ -4712,9 +4735,16 @@ class SSHClientConnection(SSHConnection):
                The port number on the local host to listen on
            :param dest_path:
                The path on the remote host to forward the connections to
+           :param accept_handler:
+               A `callable` or coroutine which takes arguments of the
+               original host and port of the client and decides whether
+               or not to allow connection forwarding, returning `True` to
+               accept the connection and begin forwarding or `False` to
+               reject and close it.
            :type listen_host: `str`
            :type listen_port: `int`
            :type dest_path: `str`
+           :type accept_handler: `callable` or coroutine
 
            :returns: :class:`SSHListener`
 
@@ -4724,9 +4754,23 @@ class SSHClientConnection(SSHConnection):
 
         async def tunnel_connection(
                 session_factory: SSHUNIXSessionFactory[bytes],
-                _orig_host: str, _orig_port: int) -> \
+                orig_host: str, orig_port: int) -> \
                     Tuple[SSHUNIXChannel[bytes], SSHUNIXSession[bytes]]:
             """Forward a local connection over SSH"""
+
+            if accept_handler:
+                result = accept_handler(orig_host, orig_port)
+
+                if inspect.isawaitable(result):
+                    result = await cast(Awaitable[bool], result)
+
+                if not result:
+                    self.logger.info('Request for TCP forwarding from '
+                                     '%s to %s denied by application',
+                                     (orig_host, orig_port), dest_path)
+
+                    raise ChannelOpenError(OPEN_ADMINISTRATIVELY_PROHIBITED,
+                                           'Connection forwarding denied')
 
             return (await self.create_unix_connection(session_factory,
                                                       dest_path))
@@ -5737,6 +5781,10 @@ class SSHServerConnection(SSHConnection):
             if listener is True:
                 listener = await self.forward_local_port(
                     listen_host, listen_port, listen_host, listen_port)
+            elif callable(listener):
+                listener = await self.forward_local_port(
+                    listen_host, listen_port,
+                    listen_host, listen_port, listener)
         except OSError:
             self.logger.debug1('Failed to create TCP listener')
             self._report_global_response(False)
