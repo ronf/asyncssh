@@ -3,6 +3,44 @@
 Change Log
 ==========
 
+Release 2.14.0 (30 Sep 2023)
+----------------------------
+
+* Added support for a new accept_handler argument when setting up
+  local port forwarding, allowing the client host and port to be
+  validated and/or logged for each new forwarded connection. An
+  accept handler can also be returned from the server_requested
+  function to provide this functionality when acting as a server.
+  Thanks go to GitHub user zgxkbtl for suggesting this feature.
+
+* Added an option to disable expensive RSA private key checks when
+  using OpenSSL 3.x. Functions that read private keys have been
+  modified to include a new unsafe_skip_rsa_key_validation argument
+  which can be used to avoid these additional checks, if you are
+  loading keys from a trusted source.
+
+* Added host information into AsyncSSH exceptions when host key
+  validation fails, and a few other improvements related to X.509
+  certificate validation errors. Thanks go to Peter Moore for
+  suggesting this and providing an example.
+
+* Fixed a regression which prevented keys loaded into an SSH agent
+  with a certificate from working correctly beginning in AsyncSSH
+  after version 2.5.0. Thanks go to GitHub user htol for reporting
+  this issue and suggesting the commit which caused the problem.
+
+* Fixed an issue which was triggering an internal exception when
+  shutting down server sessions with the line editor enabled which
+  could cause some output to be lost on exit, especially when running
+  on Windows. Thanks go to GitHub user jerrbe for reporting this issue.
+
+* Fixed an issue in a unit test seen in Python 3.12 beta. Thanks go
+  to Georg Sauthoff for providing this fix.
+
+* Fixed a documentation error in SSHClientConnectionOptions and
+  SSHServerConnectionOptions. Thanks go to GitHub user bowenerchen
+  for reporting this issue.
+
 Release 2.13.2 (21 Jun 2023)
 ----------------------------
 
