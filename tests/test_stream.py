@@ -21,6 +21,7 @@
 """Unit tests for AsyncSSH stream API"""
 
 import asyncio
+import re
 
 import asyncssh
 
@@ -390,6 +391,27 @@ class _TestStream(ServerTestCase):
                 await stdout.readuntil('')
 
             stdin.close()
+
+    @asynctest
+    async def test_readuntil_regex(self):
+        """Test readuntil with a regex pattern"""
+
+        async with self.connect() as conn:
+            stdin, stdout, _ = await conn.open_session()
+            stdin.write("hello world\nhello world")
+            output = await stdout.readuntil(
+                re.compile('hello world'), len('hello world')
+            )
+            self.assertEqual(output, "hello world")
+
+            output = await stdout.readuntil(
+                re.compile('hello world'), len('hello world')
+            )
+            self.assertEqual(output, "\nhello world")
+
+            stdin.close()
+
+        await conn.wait_closed()
 
     @asynctest
     async def test_abort(self):
