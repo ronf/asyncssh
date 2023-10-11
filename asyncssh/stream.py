@@ -26,7 +26,6 @@ import re
 from typing import TYPE_CHECKING, Any, AnyStr, AsyncIterator
 from typing import Callable, Dict, Generic, Iterable
 from typing import List, Optional, Set, Tuple, Union, cast
-from typing.re import Pattern
 
 from .constants import EXTENDED_DATA_STDERR
 from .logging import SSHLogger
@@ -181,24 +180,35 @@ class SSHReader(Generic[AnyStr]):
         except asyncio.IncompleteReadError as exc:
             return cast(AnyStr, exc.partial)
 
-    async def readuntil(self, separator: object, max_separator_len: int = None) -> AnyStr:
+    async def readuntil(self, separator: object,
+                        max_separator_len = 0) -> AnyStr:
         """Read data from the stream until `separator` is seen
 
            This method is a coroutine which reads from the stream until
            the requested separator is seen. If a match is found, the
            returned data will include the separator at the end.
 
-           The separator argument can be a single `bytes` or
-           `str` value or a sequence of multiple values to match
-           against or a compiled regex (typing.re.Pattern),
-           returning data as soon as any of the separators
-           are found in the stream.
+           The `separator` argument can be a single `bytes` or `str`
+           value, a sequence of multiple `bytes` or `str` values,
+           or a compiled regex (`re.Pattern`) to match against,
+           returning data as soon as a matching separator is found
+           in the stream.
 
-           The separator-length argument may only be set when providing
-           a compiled regex as a separator.
-           Otherwise, the separator's length would be used.
-           Note that if compiled regex is provided and the length is not set,
-           0 would be used. (regex match on the whole buffer)
+           When passing a regex pattern as the separator, the
+           `max_separator_len` argument should be set to the
+           maximum length of an expected separator match. This
+           can greatly improve performance, by minimizing how far
+           back into the stream must be searched for a match.
+           When passing literal separators to match against, the
+           max separator length will be set automatically.
+
+           .. note:: For best results, a separator regex should
+                     both begin and end with data which is as
+                     unique as possible, and should not start or
+                     end with optional or repeated elements.
+                     Otherwise, you run the risk of failing to
+                     match parts of a separator when it is split
+                     across multiple reads.
 
            If EOF or a signal is received before a match occurs, an
            :exc:`IncompleteReadError <asyncio.IncompleteReadError>`
@@ -210,7 +220,8 @@ class SSHReader(Generic[AnyStr]):
 
         """
 
-        return await self._session.readuntil(separator, self._datatype, max_separator_len)
+        return await self._session.readuntil(separator, self._datatype,
+                                             max_separator_len)
 
     async def readexactly(self, n: int) -> AnyStr:
         """Read an exact amount of data from the stream
@@ -566,7 +577,8 @@ class SSHStreamSession(Generic[AnyStr]):
 
         return result
 
-    async def readuntil(self, separator: object, datatype: DataType, max_separator_len: int) -> AnyStr:
+    async def readuntil(self, separator: object, datatype: DataType,
+                        max_separator_len: int) -> AnyStr:
         """Read data from the channel until a separator is seen"""
 
         if not separator:
@@ -581,7 +593,7 @@ class SSHStreamSession(Generic[AnyStr]):
         elif isinstance(separator, (bytes, str)):
             seplen = len(separator)
             separators = re.escape(cast(AnyStr, separator))
-        elif isinstance(separator, Pattern):
+        elif isinstance(separator, re.Pattern):
             seplen = max_separator_len
             separators = separator
         else:
@@ -613,7 +625,7 @@ class SSHStreamSession(Generic[AnyStr]):
 
                     newbuf = cast(AnyStr, recv_buf[curbuf])
                     buf += newbuf
-                    start = 0 if seplen is None else max(buflen + 1 - seplen, 0)
+                    start = 0 if seplen == 0 else max(buflen + 1 - seplen, 0)
 
                     match = pat.search(buf, start)
                     if match:
