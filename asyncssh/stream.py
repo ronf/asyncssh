@@ -24,8 +24,8 @@ import asyncio
 import inspect
 import re
 from typing import TYPE_CHECKING, Any, AnyStr, AsyncIterator
-from typing import Callable, Dict, Generic, Iterable
-from typing import List, Optional, Set, Tuple, Union, cast
+from typing import Callable, Dict, Generic, Iterable, List
+from typing import Optional, Pattern, Set, Tuple, Union, cast
 
 from .constants import EXTENDED_DATA_STDERR
 from .logging import SSHLogger
@@ -590,19 +590,20 @@ class SSHStreamSession(Generic[AnyStr]):
         if separator is _NEWLINE:
             seplen = 1
             separators = cast(AnyStr, '\n' if self._encoding else b'\n')
+            pat = re.compile(separators)
         elif isinstance(separator, (bytes, str)):
             seplen = len(separator)
-            separators = re.escape(cast(AnyStr, separator))
-        elif isinstance(separator, re.Pattern):
+            pat = re.compile(re.escape(cast(AnyStr, separator)))
+        elif isinstance(separator, Pattern):
             seplen = max_separator_len
-            separators = separator
+            pat = cast(Pattern[AnyStr], separator)
         else:
             bar = cast(AnyStr, '|' if self._encoding else b'|')
             seplist = list(cast(Iterable[AnyStr], separator))
             seplen = max(len(sep) for sep in seplist)
             separators = bar.join(re.escape(sep) for sep in seplist)
+            pat = re.compile(separators)
 
-        pat = re.compile(separators)
         curbuf = 0
         buflen = 0
 
