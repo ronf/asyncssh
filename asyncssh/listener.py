@@ -184,6 +184,11 @@ class SSHTCPClientListener(SSHClientListener, Generic[AnyStr]):
 
         return chan, self._session_factory(orig_host, orig_port)
 
+    def get_addresses(self) -> List[Tuple]:
+        """Return the socket addresses being listened on"""
+
+        return [(self._listen_host, self._listen_port)]
+
     def get_port(self) -> int:
         """Return the port number being listened on"""
 

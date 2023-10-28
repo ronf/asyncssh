@@ -2278,7 +2278,6 @@ class _TestListenerContextManager(ServerTestCase):
         async with self.listen() as server:
             listen_port = server.get_port()
 
-
             async with asyncssh.connect('127.0.0.1', listen_port,
                                         known_hosts=(['skey.pub'], [], [])):
                 pass

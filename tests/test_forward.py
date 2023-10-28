@@ -422,8 +422,10 @@ class _TestTCPForwarding(_CheckForwarding):
 
         async with self.connect() as conn:
             async with conn.listen_ssh(port=0, server_factory=Server,
-                                       server_host_keys=['skey']) as server2:
-                listen_port = server2.get_port()
+                                       server_host_keys=['skey']) as server:
+                listen_port = server.get_port()
+
+                self.assertEqual(server.get_addresses(), [('', listen_port)])
 
                 async with asyncssh.connect('127.0.0.1', listen_port,
                                             known_hosts=(['skey.pub'], [], [])):

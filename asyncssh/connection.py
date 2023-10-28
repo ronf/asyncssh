@@ -694,36 +694,38 @@ class SSHAcceptor:
         return getattr(self._server, name)
 
     def get_addresses(self) -> List[Tuple]:
-        """Get socket addresses being listened on
+        """Return socket addresses being listened on
 
-           This method returns the IP addresses and ports being
-           listened on. It returns tuples of the form returned by
+           This method returns the socket addresses being listened on.
+           It returns tuples of the form returned by
            :meth:`socket.getsockname`.  If the listener was created
            using a hostname, the host's resolved IPs will be returned.
            If the requested listening port was `0`, the selected
            listening ports will be returned.
 
-           :returns: A list of IP addresses and ports being listened on
+           :returns: A list of socket addresses being listened on
 
         """
 
-        return [sock.getsockname() for sock in self.sockets]
+        if hasattr(self._server, 'get_addresses'):
+            return self._server.get_addresses()
+        else:
+            return [sock.getsockname() for sock in self.sockets]
 
     def get_port(self) -> int:
         """Return the port number being listened on
 
-           This method returns the port number this SSHAcceptor is
-           listening on. If it is listening on multiple sockets with
-           different port numbers, this function will return `0`. In
-           this case, :meth:`get_addresses` can be used to retrieve
-           the full list of listening addresses and ports.
+           This method returns the port number being listened on.
+           If it is listening on multiple sockets with different port
+           numbers, this function will return `0`. In that case,
+           :meth:`get_addresses` can be used to retrieve the full
+           list of listening addresses and ports.
 
-           :returns: The port number being listened on
+           :returns: The port number being listened on, if there's only one
 
         """
 
         if hasattr(self._server, 'get_port'):
-            print(type(self._server))
             return self._server.get_port()
         else:
             ports = set(addr[1] for addr in self.get_addresses())
