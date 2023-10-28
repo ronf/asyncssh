@@ -2276,7 +2276,7 @@ class _TestListenerContextManager(ServerTestCase):
         """Test using an SSH listener as a context manager"""
 
         async with self.listen() as server:
-            listen_port = server.sockets[0].getsockname()[1]
+            listen_port = server.get_port()
 
 
             async with asyncssh.connect('127.0.0.1', listen_port,

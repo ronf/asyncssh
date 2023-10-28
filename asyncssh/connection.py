@@ -693,13 +693,59 @@ class SSHAcceptor:
     def __getattr__(self, name: str) -> Any:
         return getattr(self._server, name)
 
+    def get_addresses(self) -> List[Tuple]:
+        """Get socket addresses being listened on
+
+           This method returns the IP addresses and ports being
+           listened on. It returns tuples of the form returned by
+           :meth:`socket.getsockname`.  If the listener was created
+           using a hostname, the host's resolved IPs will be returned.
+           If the requested listening port was `0`, the selected
+           listening ports will be returned.
+
+           :returns: A list of IP addresses and ports being listened on
+
+        """
+
+        return [sock.getsockname() for sock in self.sockets]
+
+    def get_port(self) -> int:
+        """Return the port number being listened on
+
+           This method returns the port number this SSHAcceptor is
+           listening on. If it is listening on multiple sockets with
+           different port numbers, this function will return `0`. In
+           this case, :meth:`get_addresses` can be used to retrieve
+           the full list of listening addresses and ports.
+
+           :returns: The port number being listened on
+
+        """
+
+        if hasattr(self._server, 'get_port'):
+            print(type(self._server))
+            return self._server.get_port()
+        else:
+            ports = set(addr[1] for addr in self.get_addresses())
+            return ports.pop() if len(ports) == 1 else 0
+
     def close(self) -> None:
-        """Close this SSH listener"""
+        """Stop listening for new connections
+
+           This method can be called to stop listening for new
+           SSH connections. Existing connections will remain open.
+
+        """
 
         self._server.close()
 
     async def wait_closed(self) -> None:
-        """Wait for this SSH listener to close"""
+        """Wait for this listener to close
+
+           This method is a coroutine which waits for this
+           listener to be closed.
+
+        """
 
         await self._server.wait_closed()
 

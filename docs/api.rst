@@ -1038,9 +1038,13 @@ SSHAcceptor
 
 .. autoclass:: SSHAcceptor()
 
-   ====================== =
+   ============================= =
+   .. automethod:: get_addresses
+   .. automethod:: get_port
+   .. automethod:: close
+   .. automethod:: wait_closed
    .. automethod:: update
-   ====================== =
+   ============================= =
 
 
 SSHListener
