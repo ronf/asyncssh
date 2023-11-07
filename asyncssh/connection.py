@@ -4061,7 +4061,7 @@ class SSHClientConnection(SSHConnection):
                              stderr: ProcessTarget = PIPE,
                              bufsize: int = io.DEFAULT_BUFFER_SIZE,
                              send_eof: bool = True, recv_eof: bool = True,
-                             **kwargs: object) -> SSHClientProcess:
+                             **kwargs: object) -> SSHClientProcess[AnyStr]:
         """Create a process on the remote system
 
            This method is a coroutine wrapper around :meth:`create_session`
