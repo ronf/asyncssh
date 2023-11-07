@@ -29,8 +29,8 @@ from pathlib import Path, PurePath
 from random import SystemRandom
 from types import TracebackType
 from typing import Any, AsyncContextManager, Awaitable, Callable, Dict
-from typing import Generator, Generic, IO, Mapping, Optional, Sequence
-from typing import Tuple, Type, TypeVar, Union, cast, overload
+from typing import Generator, Generic, IO, Mapping, Optional, ParamSpec
+from typing import Sequence, Tuple, Type, TypeVar, Union, cast, overload
 from typing_extensions import Literal, Protocol
 
 from .constants import DEFAULT_LANG
@@ -287,11 +287,9 @@ class _ACMWrapper(Generic[_ACM]):
 
         return exit_result
 
+_ACMParams = ParamSpec('_ACMParams')
 
-_ACMCoro = Callable[..., Awaitable[_ACM]]
-_ACMWrapperFunc = Callable[..., _ACMWrapper[_ACM]]
-
-def async_context_manager(coro: _ACMCoro[_ACM]) -> _ACMWrapperFunc[_ACM]:
+def async_context_manager(coro: Callable[_ACMParams, Awaitable[_ACM]]) -> Callable[_ACMParams, _ACMWrapper[_ACM]]:
     """Decorator for functions returning asynchronous context managers
 
        This decorator can be used on functions which return objects
@@ -305,7 +303,7 @@ def async_context_manager(coro: _ACMCoro[_ACM]) -> _ACMWrapperFunc[_ACM]:
     """
 
     @functools.wraps(coro)
-    def context_wrapper(*args, **kwargs) -> _ACMWrapper[_ACM]:
+    def context_wrapper(*args: _ACMParams.args, **kwargs: _ACMParams.kwargs) -> _ACMWrapper[_ACM]:
         """Return an async context manager wrapper for this coroutine"""
 
         return _ACMWrapper(coro(*args, **kwargs))

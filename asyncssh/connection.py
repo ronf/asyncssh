@@ -37,8 +37,8 @@ from functools import partial
 from pathlib import Path
 from types import TracebackType
 from typing import TYPE_CHECKING, Any, AnyStr, Awaitable, Callable, Dict
-from typing import List, Mapping, Optional, Sequence, Set, Tuple, Type
-from typing import TypeVar, Union, cast
+from typing import List, Mapping, Optional, overload, Sequence, Set
+from typing import Tuple, Type, TypeVar, Union, cast
 from typing_extensions import Protocol
 
 from .agent import SSHAgentClient, SSHAgentListener
@@ -4052,6 +4052,54 @@ class SSHClientConnection(SSHConnection):
         return (SSHWriter(session, chan), SSHReader(session, chan),
                 SSHReader(session, chan, EXTENDED_DATA_STDERR))
 
+    @overload
+    @async_context_manager
+    async def create_process(self, *args: object,
+                             input: None = None,
+                             stdin: ProcessSource = PIPE,
+                             stdout: ProcessTarget = PIPE,
+                             stderr: ProcessTarget = PIPE,
+                             bufsize: int = io.DEFAULT_BUFFER_SIZE,
+                             send_eof: bool = True, recv_eof: bool = True,
+                             encoding: str,
+                             **kwargs: object) -> SSHClientProcess[str]: ...
+
+    @overload
+    @async_context_manager
+    async def create_process(self, *args: object,
+                             input: str,
+                             stdin: ProcessSource = PIPE,
+                             stdout: ProcessTarget = PIPE,
+                             stderr: ProcessTarget = PIPE,
+                             bufsize: int = io.DEFAULT_BUFFER_SIZE,
+                             send_eof: bool = True, recv_eof: bool = True,
+                             encoding: str,
+                             **kwargs: object) -> SSHClientProcess[str]: ...
+
+    @overload
+    @async_context_manager
+    async def create_process(self, *args: object,
+                             input: None = None,
+                             stdin: ProcessSource = PIPE,
+                             stdout: ProcessTarget = PIPE,
+                             stderr: ProcessTarget = PIPE,
+                             bufsize: int = io.DEFAULT_BUFFER_SIZE,
+                             send_eof: bool = True, recv_eof: bool = True,
+                             encoding: None = None,
+                             **kwargs: object) -> SSHClientProcess[bytes]: ...
+
+    @overload
+    @async_context_manager
+    async def create_process(self, *args: object,
+                             input: bytes,
+                             stdin: ProcessSource = PIPE,
+                             stdout: ProcessTarget = PIPE,
+                             stderr: ProcessTarget = PIPE,
+                             bufsize: int = io.DEFAULT_BUFFER_SIZE,
+                             send_eof: bool = True, recv_eof: bool = True,
+                             encoding: None = None,
+                             **kwargs: object) -> SSHClientProcess[bytes]: ...
+
     # pylint: disable=redefined-builtin
     @async_context_manager
     async def create_process(self, *args: object,
@@ -4061,6 +4109,7 @@ class SSHClientConnection(SSHConnection):
                              stderr: ProcessTarget = PIPE,
                              bufsize: int = io.DEFAULT_BUFFER_SIZE,
                              send_eof: bool = True, recv_eof: bool = True,
+                             encoding: Optional[str] = None,
                              **kwargs: object) -> SSHClientProcess[AnyStr]:
         """Create a process on the remote system
 
@@ -4127,7 +4176,7 @@ class SSHClientConnection(SSHConnection):
         """
 
         chan, process = await self.create_session(
-            SSHClientProcess, *args, **kwargs) # type: ignore
+            SSHClientProcess, *args, encoding=encoding, **kwargs) # type: ignore
 
         new_stdin: Optional[ProcessSource] = stdin
         process: SSHClientProcess
