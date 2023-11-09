@@ -30,11 +30,12 @@ import unittest
 from unittest.mock import patch
 
 import asyncssh
-from asyncssh.constants import MSG_UNIMPLEMENTED, MSG_DEBUG
+from asyncssh.constants import MSG_DEBUG
 from asyncssh.constants import MSG_SERVICE_REQUEST, MSG_SERVICE_ACCEPT
-from asyncssh.constants import MSG_KEXINIT, MSG_NEWKEYS
+from asyncssh.constants import MSG_KEXINIT, MSG_NEWKEYS, MSG_KEX_FIRST
 from asyncssh.constants import MSG_USERAUTH_REQUEST, MSG_USERAUTH_SUCCESS
 from asyncssh.constants import MSG_USERAUTH_FAILURE, MSG_USERAUTH_BANNER
+from asyncssh.constants import MSG_USERAUTH_FIRST
 from asyncssh.constants import MSG_GLOBAL_REQUEST
 from asyncssh.constants import MSG_CHANNEL_OPEN, MSG_CHANNEL_OPEN_CONFIRMATION
 from asyncssh.constants import MSG_CHANNEL_OPEN_FAILURE, MSG_CHANNEL_DATA
@@ -335,14 +336,6 @@ class _VersionReportingServer(Server):
         version = self._conn.get_extra_info('client_version')
         self._conn.send_auth_banner(version)
         return False
-
-
-def disconnect_on_unimplemented(self, pkttype, pktid, packet):
-    """Process an unimplemented message response"""
-
-    # pylint: disable=unused-argument
-
-    self.disconnect(asyncssh.DISC_BY_APPLICATION, 'Unexpected response')
 
 
 @patch_gss
@@ -974,8 +967,8 @@ class _TestConnection(ServerTestCase):
 
         with patch('asyncssh.connection.SSHClientConnection.send_newkeys',
                    send_newkeys):
-            async with self.connect():
-                pass
+            with self.assertRaises(asyncssh.ProtocolError):
+                await self.connect()
 
     @asynctest
     async def test_encryption_algs(self):
@@ -1101,20 +1094,84 @@ class _TestConnection(ServerTestCase):
         await conn.wait_closed()
 
     @asynctest
-    async def test_invalid_service_request(self):
-        """Test invalid service request"""
+    async def test_service_request_before_kex_complete(self):
+        """Test service request before kex is complete"""
+
+        def send_newkeys(self, k, h):
+            """Finish a key exchange and send a new keys message"""
+
+            self.send_packet(MSG_SERVICE_REQUEST, String('ssh-userauth'))
+
+            asyncssh.connection.SSHConnection.send_newkeys(self, k, h)
+
+        with patch('asyncssh.connection.SSHClientConnection.send_newkeys',
+                   send_newkeys):
+            with self.assertRaises(asyncssh.ProtocolError):
+                await self.connect()
+
+    @asynctest
+    async def test_service_accept_before_kex_complete(self):
+        """Test service accept before kex is complete"""
+
+        def send_newkeys(self, k, h):
+            """Finish a key exchange and send a new keys message"""
+
+            self.send_packet(MSG_SERVICE_ACCEPT, String('ssh-userauth'))
+
+            asyncssh.connection.SSHConnection.send_newkeys(self, k, h)
+
+        with patch('asyncssh.connection.SSHServerConnection.send_newkeys',
+                   send_newkeys):
+            with self.assertRaises(asyncssh.ProtocolError):
+                await self.connect()
+
+    @asynctest
+    async def test_unexpected_service_name_in_request(self):
+        """Test unexpected service name in service request"""
 
         conn = await self.connect()
         conn.send_packet(MSG_SERVICE_REQUEST, String('xxx'))
         await conn.wait_closed()
 
     @asynctest
-    async def test_invalid_service_accept(self):
-        """Test invalid service accept"""
+    async def test_unexpected_service_name_in_accept(self):
+        """Test unexpected service name in accept sent by server"""
+
+        def send_newkeys(self, k, h):
+            """Finish a key exchange and send a new keys message"""
+
+            asyncssh.connection.SSHConnection.send_newkeys(self, k, h)
+
+            self.send_packet(MSG_SERVICE_ACCEPT, String('xxx'))
+
+        with patch('asyncssh.connection.SSHServerConnection.send_newkeys',
+                   send_newkeys):
+            with self.assertRaises(asyncssh.ServiceNotAvailable):
+                await self.connect()
+
+    @asynctest
+    async def test_service_accept_from_client(self):
+        """Test service accept sent by client"""
 
         conn = await self.connect()
-        conn.send_packet(MSG_SERVICE_ACCEPT, String('xxx'))
+        conn.send_packet(MSG_SERVICE_ACCEPT, String('ssh-userauth'))
         await conn.wait_closed()
+
+    @asynctest
+    async def test_service_request_from_server(self):
+        """Test service request sent by server"""
+
+        def send_newkeys(self, k, h):
+            """Finish a key exchange and send a new keys message"""
+
+            asyncssh.connection.SSHConnection.send_newkeys(self, k, h)
+
+            self.send_packet(MSG_SERVICE_REQUEST, String('ssh-userauth'))
+
+        with patch('asyncssh.connection.SSHServerConnection.send_newkeys',
+                   send_newkeys):
+            with self.assertRaises(asyncssh.ProtocolError):
+                await self.connect()
 
     @asynctest
     async def test_packet_decode_error(self):
@@ -1323,6 +1380,39 @@ class _TestConnection(ServerTestCase):
         await conn.wait_closed()
 
     @asynctest
+    async def test_kex_after_kex_complete(self):
+        """Test kex request when kex not in progress"""
+
+        conn = await self.connect()
+        conn.send_packet(MSG_KEX_FIRST)
+        await conn.wait_closed()
+
+    @asynctest
+    async def test_userauth_after_auth_complete(self):
+        """Test userauth request when auth not in progress"""
+
+        conn = await self.connect()
+        conn.send_packet(MSG_USERAUTH_FIRST)
+        await conn.wait_closed()
+
+    @asynctest
+    async def test_userauth_before_kex_complete(self):
+        """Test receiving userauth before kex is complete"""
+
+        def send_newkeys(self, k, h):
+            """Finish a key exchange and send a new keys message"""
+
+            self.send_packet(MSG_USERAUTH_REQUEST, String('guest'),
+                             String('ssh-connection'), String('none'))
+
+            asyncssh.connection.SSHConnection.send_newkeys(self, k, h)
+
+        with patch('asyncssh.connection.SSHClientConnection.send_newkeys',
+                   send_newkeys):
+            with self.assertRaises(asyncssh.ProtocolError):
+                await self.connect()
+
+    @asynctest
     async def test_invalid_userauth_service(self):
         """Test invalid service in userauth request"""
 
@@ -1372,24 +1462,31 @@ class _TestConnection(ServerTestCase):
             await asyncio.sleep(0.1)
 
     @asynctest
+    async def test_late_userauth_request(self):
+        """Test userauth request after auth is final"""
+
+        async with self.connect() as conn:
+            conn.send_packet(MSG_GLOBAL_REQUEST, String('xxx'),
+                             Boolean(False))
+            conn.send_packet(MSG_USERAUTH_REQUEST, String('guest'),
+                             String('ssh-connection'), String('none'))
+            await conn.wait_closed()
+
+    @asynctest
     async def test_unexpected_userauth_success(self):
         """Test unexpected userauth success response"""
 
-        with patch.dict('asyncssh.connection.SSHConnection._packet_handlers',
-                        {MSG_UNIMPLEMENTED: disconnect_on_unimplemented}):
-            conn = await self.connect()
-            conn.send_packet(MSG_USERAUTH_SUCCESS)
-            await conn.wait_closed()
+        conn = await self.connect()
+        conn.send_packet(MSG_USERAUTH_SUCCESS)
+        await conn.wait_closed()
 
     @asynctest
     async def test_unexpected_userauth_failure(self):
         """Test unexpected userauth failure response"""
 
-        with patch.dict('asyncssh.connection.SSHConnection._packet_handlers',
-                        {MSG_UNIMPLEMENTED: disconnect_on_unimplemented}):
-            conn = await self.connect()
-            conn.send_packet(MSG_USERAUTH_FAILURE, NameList([]), Boolean(False))
-            await conn.wait_closed()
+        conn = await self.connect()
+        conn.send_packet(MSG_USERAUTH_FAILURE, NameList([]), Boolean(False))
+        await conn.wait_closed()
 
     @asynctest
     async def test_unexpected_userauth_banner(self):
