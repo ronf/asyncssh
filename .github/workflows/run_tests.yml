@@ -67,7 +67,9 @@ jobs:
 
       - name: Install Linux dependencies
         if: ${{ runner.os == 'Linux' }}
-        run: sudo apt install -y --no-install-recommends libnettle8 libsodium-dev libssl-dev libkrb5-dev ssh cmake ninja-build
+        run: |
+          sudo apt update
+          sudo apt install -y --no-install-recommends libnettle8 libsodium-dev libssl-dev libkrb5-dev ssh cmake ninja-build
 
       - name: Install macOS dependencies
         if: ${{ runner.os == 'macOS' }}
