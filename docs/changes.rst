@@ -3,6 +3,32 @@
 Change Log
 ==========
 
+Release 2.14.1 (8 Nov 2023)
+---------------------------
+
+* Hardened AsyncSSH state machine against potential message
+  injection attacks, described in more detail in `CVE-2023-46445
+  <https://github.com/advisories/CVE-2023-46445>`_ and `CVE-2023-46446
+  <https://github.com/advisories/CVE-2023-46446>`_. Thanks go to
+  Fabian Bäumer, Marcus Brinkmann, and Jörg Schwenk for identifying
+  and reporting these vulnerabilities and providing detailed analysis
+  and suggestions about the proposed fixes.
+
+* Added support for passing in a regex in readuntil in SSHReader,
+  contributed by Oded Engel.
+
+* Added support for get_addresses() and get_port() methods on
+  SSHAcceptor. Thanks go to Allison Karlitskaya for suggesting
+  this feature.
+
+* Fixed an issue with AsyncFileWriter potentially writing data
+  out of order. Thanks go to Chan Chun Wai for reporting this
+  issue and providing code to reproduce it.
+
+* Updated testing to include Python 3.12.
+
+* Updated readthedocs integration to use YAML config file.
+
 Release 2.14.0 (30 Sep 2023)
 ----------------------------
 
