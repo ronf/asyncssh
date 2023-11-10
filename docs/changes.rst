@@ -8,8 +8,8 @@ Release 2.14.1 (8 Nov 2023)
 
 * Hardened AsyncSSH state machine against potential message
   injection attacks, described in more detail in `CVE-2023-46445
-  <https://github.com/advisories/CVE-2023-46445>`_ and `CVE-2023-46446
-  <https://github.com/advisories/CVE-2023-46446>`_. Thanks go to
+  <https://github.com/advisories/GHSA-cfc2-wr2v-gxm5>`_ and `CVE-2023-46446
+  <https://github.com/advisories/GHSA-c35q-ffpf-5qpm>`_. Thanks go to
   Fabian Bäumer, Marcus Brinkmann, and Jörg Schwenk for identifying
   and reporting these vulnerabilities and providing detailed analysis
   and suggestions about the proposed fixes.
