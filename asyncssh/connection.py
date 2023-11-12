@@ -179,7 +179,7 @@ _ServerFactory = Callable[[], SSHServer]
 _ProtocolFactory = Union[_ClientFactory, _ServerFactory]
 
 _Conn = TypeVar('_Conn', 'SSHClientConnection', 'SSHServerConnection')
-_ConnSelf = TypeVar("_ConnSelf", bound="SSHConnection")
+_ConnSelf = TypeVar('_ConnSelf', bound='SSHConnection')
 
 class _TunnelProtocol(Protocol):
     """Base protocol for connections to tunnel SSH over"""
