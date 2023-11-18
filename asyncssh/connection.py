@@ -1413,10 +1413,10 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         """Send data to the SSH connection"""
 
         if self._transport:
-            if self._transport.is_closing():
-                self._force_close(BrokenPipeError())
-            else:
+            try:
                 self._transport.write(data)
+            except BrokenPipeError:
+                pass
 
     def _send_version(self) -> None:
         """Start the SSH handshake"""
