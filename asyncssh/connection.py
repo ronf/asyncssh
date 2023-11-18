@@ -318,12 +318,6 @@ async def _open_proxy(
 
             self._conn.connection_lost(exc)
 
-        def is_closing(self) -> bool:
-            """Return whether the transport is closing or not"""
-
-            assert self._transport is not None
-            return self._transport.is_closing()
-
         def write(self, data: bytes) -> None:
             """Write data to this tunnel"""
 
@@ -1415,7 +1409,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         if self._transport:
             try:
                 self._transport.write(data)
-            except BrokenPipeError:
+            except BrokenPipeError: # pragma: no cover
                 pass
 
     def _send_version(self) -> None:
