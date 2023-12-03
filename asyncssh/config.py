@@ -315,22 +315,26 @@ class SSHConfig:
                     continue
 
                 try:
-                    args = shlex.split(line)
+                    split_args = shlex.split(line)
                 except ValueError as exc:
                     self._error(str(exc))
 
+                args = []
+
+                for arg in split_args:
+                    if arg.startswith('='):
+                        if len(arg) > 1:
+                            args.append(arg[1:])
+                    elif arg.endswith('='):
+                        args.append(arg[:-1])
+                    elif '=' in arg:
+                        arg, val = arg.split('=', 1)
+                        args.append(arg)
+                        args.append(val)
+                    else:
+                        args.append(arg)
+
                 option = args.pop(0)
-
-                if option.endswith('='):
-                    option = option[:-1]
-                elif '=' in option:
-                    option, arg = option.split('=', 1)
-                    args[:0] =[arg]
-                elif args and args[0] == '=':
-                    del args[0]
-                elif args and args[0].startswith('='):
-                    args[0] = args[0][1:]
-
                 loption = option.lower()
 
                 if loption in self._no_split:
