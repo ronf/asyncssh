@@ -3,6 +3,25 @@
 Change Log
 ==========
 
+Release 2.14.2 (18 Dec 2023)
+----------------------------
+
+* Implemented "strict kex" support and other countermeasures to
+  protect against the Terrapin Attack described in `CVE-2023-48795
+  <https://github.com/advisories/GHSA-hfmc-7525-mj55>`. Thanks once
+  again go to Fabian Bäumer, Marcus Brinkmann, and Jörg Schwenk for
+  identifying and reporting this vulnerability and providing detailed
+  analysis and suggestions about proposed fixes.
+
+* Fixed config parser to properly an optional equals delimiter in all
+  config arguments. Thanks go to Fawaz Orabi for reporting this issue.
+
+* Fixed TCP send error handling to avoid race condition when receiving
+  incoming disconnect message.
+
+* Improved type signature in SSHConnection async context manager. Thanks
+  go to Pieter-Jan Briers for providing this.
+
 Release 2.14.1 (8 Nov 2023)
 ---------------------------
 
