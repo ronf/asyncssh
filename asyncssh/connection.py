@@ -861,6 +861,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         self._kexinit_sent = False
         self._kex_complete = False
         self._ignore_first_kex = False
+        self._strict_kex = False
 
         self._gss: Optional[GSSBase] = None
         self._gss_kex = False
@@ -1398,10 +1399,13 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
             (alg_type, b','.join(local_algs).decode('ascii'),
              b','.join(remote_algs).decode('ascii')))
 
-    def _get_ext_info_kex_alg(self) -> List[bytes]:
-        """Return the kex alg to add if any to request extension info"""
+    def _get_extra_kex_algs(self) -> List[bytes]:
+        """Return the extra kex algs to add"""
 
-        return [b'ext-info-c' if self.is_client() else b'ext-info-s']
+        if self.is_client():
+            return [b'ext-info-c', b'kex-strict-c-v00@openssh.com']
+        else:
+            return [b'ext-info-s', b'kex-strict-s-v00@openssh.com']
 
     def _send(self, data: bytes) -> None:
         """Send data to the SSH connection"""
@@ -1546,6 +1550,11 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
             else:
                 skip_reason = 'kex not in progress'
                 exc_reason = 'Key exchange not in progress'
+        elif self._strict_kex and not self._recv_encryption and \
+                MSG_IGNORE <= pkttype <= MSG_DEBUG:
+            skip_reason = 'strict kex violation'
+            exc_reason = 'Strict key exchange violation: ' \
+                         'unexpected packet type %d received' % pkttype
         elif MSG_USERAUTH_FIRST <= pkttype <= MSG_USERAUTH_LAST:
             if self._auth:
                 handler = self._auth
@@ -1581,8 +1590,13 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
                 raise ProtocolError(str(exc)) from None
 
             if not processed:
-                self.logger.debug1('Unknown packet type %d received', pkttype)
-                self.send_packet(MSG_UNIMPLEMENTED, UInt32(seq))
+                if self._strict_kex and not self._recv_encryption:
+                    exc_reason = 'Strict key exchange violation: ' \
+                                 'unexpected packet type %d received' % pkttype
+                else:
+                    self.logger.debug1('Unknown packet type %d received',
+                                       pkttype)
+                    self.send_packet(MSG_UNIMPLEMENTED, UInt32(seq))
 
         if exc_reason:
             raise ProtocolError(exc_reason)
@@ -1591,8 +1605,15 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
             self._auth_final = True
 
         if self._transport:
-            self._recv_seq = (seq + 1) & 0xffffffff
             self._recv_handler = self._recv_pkthdr
+
+            if self._recv_seq == 0xffffffff and not self._recv_encryption:
+                raise ProtocolError('Sequence rollover before kex complete')
+
+            if pkttype == MSG_NEWKEYS and self._strict_kex:
+                self._recv_seq = 0
+            else:
+                self._recv_seq = (seq + 1) & 0xffffffff
 
         return True
 
@@ -1645,7 +1666,15 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
             mac = b''
 
         self._send(packet + mac)
-        self._send_seq = (seq + 1) & 0xffffffff
+
+        if self._send_seq == 0xffffffff and not self._send_encryption:
+            self._send_seq = 0
+            raise ProtocolError('Sequence rollover before kex complete')
+
+        if pkttype == MSG_NEWKEYS and self._strict_kex:
+            self._send_seq = 0
+        else:
+            self._send_seq = (seq + 1) & 0xffffffff
 
         if self._kex_complete:
             self._rekey_bytes_sent += pktlen
@@ -1689,7 +1718,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         kex_algs = expand_kex_algs(self._kex_algs, gss_mechs,
                                    bool(self._server_host_key_algs)) + \
-                   self._get_ext_info_kex_alg()
+                   self._get_extra_kex_algs()
 
         host_key_algs = self._server_host_key_algs or [b'null']
 
@@ -2191,13 +2220,27 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         if self.is_server():
             self._client_kexinit = packet.get_consumed_payload()
 
-            if b'ext-info-c' in peer_kex_algs and not self._session_id:
-                self._can_send_ext_info = True
+            if not self._session_id:
+                if b'ext-info-c' in peer_kex_algs:
+                    self._can_send_ext_info = True
+
+                if b'kex-strict-c-v00@openssh.com' in peer_kex_algs:
+                    self._strict_kex = True
         else:
             self._server_kexinit = packet.get_consumed_payload()
 
-            if b'ext-info-s' in peer_kex_algs and not self._session_id:
-                self._can_send_ext_info = True
+            if not self._session_id:
+                if b'ext-info-s' in peer_kex_algs:
+                    self._can_send_ext_info = True
+
+                if b'kex-strict-s-v00@openssh.com' in peer_kex_algs:
+                    self._strict_kex = True
+
+        if self._strict_kex and not self._recv_encryption and \
+                self._recv_seq != 0:
+            raise ProtocolError('Strict key exchange violation: '
+                                'KEXINIT was not the first packet')
+
 
         if self._kexinit_sent:
             self._kexinit_sent = False

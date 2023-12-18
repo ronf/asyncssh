@@ -106,6 +106,20 @@ def patch_getnameinfo(cls):
     return patch('socket.getnameinfo', getnameinfo)(cls)
 
 
+def patch_extra_kex(cls):
+    """Decorator for skipping extra kex algs"""
+
+    def skip_extra_kex_algs(self):
+        """Don't send extra key exchange algorithms"""
+
+        # pylint: disable=unused-argument
+
+        return []
+
+    return patch('asyncssh.connection.SSHConnection._get_extra_kex_algs',
+                 skip_extra_kex_algs)(cls)
+
+
 def patch_gss(cls):
     """Decorator for patching GSSAPI classes"""
 

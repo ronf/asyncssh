@@ -30,9 +30,10 @@ import unittest
 from unittest.mock import patch
 
 import asyncssh
-from asyncssh.constants import MSG_DEBUG
+from asyncssh.constants import MSG_IGNORE, MSG_DEBUG
 from asyncssh.constants import MSG_SERVICE_REQUEST, MSG_SERVICE_ACCEPT
-from asyncssh.constants import MSG_KEXINIT, MSG_NEWKEYS, MSG_KEX_FIRST
+from asyncssh.constants import MSG_KEXINIT, MSG_NEWKEYS
+from asyncssh.constants import MSG_KEX_FIRST, MSG_KEX_LAST
 from asyncssh.constants import MSG_USERAUTH_REQUEST, MSG_USERAUTH_SUCCESS
 from asyncssh.constants import MSG_USERAUTH_FAILURE, MSG_USERAUTH_BANNER
 from asyncssh.constants import MSG_USERAUTH_FIRST
@@ -43,6 +44,7 @@ from asyncssh.compression import get_compression_algs
 from asyncssh.crypto.cipher import GCMCipher
 from asyncssh.encryption import get_encryption_algs
 from asyncssh.kex import get_kex_algs
+from asyncssh.kex_dh import MSG_KEX_ECDH_REPLY
 from asyncssh.mac import _HMAC, _mac_handler, get_mac_algs
 from asyncssh.packet import Boolean, NameList, String, UInt32
 from asyncssh.public_key import get_default_public_key_algs
@@ -51,8 +53,8 @@ from asyncssh.public_key import get_default_x509_certificate_algs
 
 from .server import Server, ServerTestCase
 
-from .util import asynctest, gss_available, nc_available, patch_gss
-from .util import patch_getnameinfo, x509_available
+from .util import asynctest, patch_extra_kex, patch_getnameinfo, patch_gss
+from .util import gss_available, nc_available, x509_available
 
 
 class _CheckAlgsClientConnection(asyncssh.SSHClientConnection):
@@ -931,22 +933,6 @@ class _TestConnection(ServerTestCase):
                 await self.connect(kex_algs=['fail'])
 
     @asynctest
-    async def test_skip_ext_info(self):
-        """Test not requesting extension info from the server"""
-
-        def skip_ext_info(self):
-            """Don't request extension information"""
-
-            # pylint: disable=unused-argument
-
-            return []
-
-        with patch('asyncssh.connection.SSHConnection._get_ext_info_kex_alg',
-                   skip_ext_info):
-            async with self.connect():
-                pass
-
-    @asynctest
     async def test_unknown_ext_info(self):
         """Test receiving unknown extension information"""
 
@@ -967,6 +953,54 @@ class _TestConnection(ServerTestCase):
 
         with patch('asyncssh.connection.SSHClientConnection.send_newkeys',
                    send_newkeys):
+            with self.assertRaises(asyncssh.ProtocolError):
+                await self.connect()
+
+    @asynctest
+    async def test_message_before_kexinit_strict_kex(self):
+        """Test receiving a message before KEXINIT with strict_kex enabled"""
+
+        def send_packet(self, pkttype, *args, **kwargs):
+            if pkttype == MSG_KEXINIT:
+                self.send_packet(MSG_IGNORE, String(b''))
+
+            asyncssh.connection.SSHConnection.send_packet(
+                self, pkttype, *args, **kwargs)
+
+        with patch('asyncssh.connection.SSHClientConnection.send_packet',
+                   send_packet):
+            with self.assertRaises(asyncssh.ProtocolError):
+                await self.connect()
+
+    @asynctest
+    async def test_message_during_kex_strict_kex(self):
+        """Test receiving an unexpected message with strict_kex enabled"""
+
+        def send_packet(self, pkttype, *args, **kwargs):
+            if pkttype == MSG_KEX_ECDH_REPLY:
+                self.send_packet(MSG_IGNORE, String(b''))
+
+            asyncssh.connection.SSHConnection.send_packet(
+                self, pkttype, *args, **kwargs)
+
+        with patch('asyncssh.connection.SSHServerConnection.send_packet',
+                   send_packet):
+            with self.assertRaises(asyncssh.ProtocolError):
+                await self.connect()
+
+    @asynctest
+    async def test_unknown_message_during_kex_strict_kex(self):
+        """Test receiving an unknown message with strict_kex enabled"""
+
+        def send_packet(self, pkttype, *args, **kwargs):
+            if pkttype == MSG_KEX_ECDH_REPLY:
+                self.send_packet(MSG_KEX_LAST)
+
+            asyncssh.connection.SSHConnection.send_packet(
+                self, pkttype, *args, **kwargs)
+
+        with patch('asyncssh.connection.SSHServerConnection.send_packet',
+                   send_packet):
             with self.assertRaises(asyncssh.ProtocolError):
                 await self.connect()
 
@@ -1600,6 +1634,81 @@ class _TestConnection(ServerTestCase):
 
         with self.assertRaises(RuntimeError):
             await self.create_connection(_InternalErrorClient)
+
+
+@patch_extra_kex
+class _TestConnectionNoStrictKex(ServerTestCase):
+    """Unit tests for connection API with ext info and strict kex disabled"""
+
+    @classmethod
+    async def start_server(cls):
+        """Start an SSH server to connect to"""
+
+        return (await cls.create_server(_TunnelServer, gss_host=(),
+                                        compression_algs='*',
+                                        encryption_algs='*',
+                                        kex_algs='*', mac_algs='*'))
+
+    @asynctest
+    async def test_skip_ext_info(self):
+        """Test not requesting extension info from the server"""
+
+        async with self.connect():
+            pass
+
+    @asynctest
+    async def test_message_before_kexinit(self):
+        """Test receiving a message before KEXINIT"""
+
+        def send_packet(self, pkttype, *args, **kwargs):
+            if pkttype == MSG_KEXINIT:
+                self.send_packet(MSG_IGNORE, String(b''))
+
+            asyncssh.connection.SSHConnection.send_packet(
+                self, pkttype, *args, **kwargs)
+
+        with patch('asyncssh.connection.SSHClientConnection.send_packet',
+                   send_packet):
+            async with self.connect():
+                pass
+
+    @asynctest
+    async def test_message_during_kex(self):
+        """Test receiving an unexpected message in key exchange"""
+
+        def send_packet(self, pkttype, *args, **kwargs):
+            if pkttype == MSG_KEX_ECDH_REPLY:
+                self.send_packet(MSG_IGNORE, String(b''))
+
+            asyncssh.connection.SSHConnection.send_packet(
+                self, pkttype, *args, **kwargs)
+
+        with patch('asyncssh.connection.SSHServerConnection.send_packet',
+                   send_packet):
+            async with self.connect():
+                pass
+
+    @asynctest
+    async def test_sequence_wrap_during_kex(self):
+        """Test sequence wrap during initial key exchange"""
+
+        def send_packet(self, pkttype, *args, **kwargs):
+            if pkttype == MSG_KEXINIT:
+                if self._options.command == 'send':
+                    self._send_seq = 0xfffffffe
+                else:
+                    self._recv_seq = 0xfffffffe
+
+            asyncssh.connection.SSHConnection.send_packet(
+                self, pkttype, *args, **kwargs)
+
+        with patch('asyncssh.connection.SSHClientConnection.send_packet',
+                   send_packet):
+            with self.assertRaises(asyncssh.ProtocolError):
+                await self.connect(command='send')
+
+            with self.assertRaises(asyncssh.ProtocolError):
+                await self.connect(command='recv')
 
 
 class _TestConnectionListenSock(ServerTestCase):

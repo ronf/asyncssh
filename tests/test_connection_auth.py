@@ -739,7 +739,7 @@ class _TestHostBasedAuth(ServerTestCase):
 
             return []
 
-        with patch('asyncssh.connection.SSHConnection._get_ext_info_kex_alg',
+        with patch('asyncssh.connection.SSHConnection._get_extra_kex_algs',
                    skip_ext_info):
             try:
                 async with self.connect(username='user',
@@ -1245,7 +1245,7 @@ class _TestPublicKeyAuth(ServerTestCase):
 
             return []
 
-        with patch('asyncssh.connection.SSHConnection._get_ext_info_kex_alg',
+        with patch('asyncssh.connection.SSHConnection._get_extra_kex_algs',
                    skip_ext_info):
             try:
                 async with self.connect(username='ckey', client_keys='ckey',
