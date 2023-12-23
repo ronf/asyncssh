@@ -85,7 +85,10 @@ class _Agent:
         self._server.close()
         await self._server.wait_closed()
 
-        os.remove(self._path)
+        try:
+            os.remove(self._path)
+        except OSError:
+            pass
 
 
 class _TestAgent(AsyncTestCase):
