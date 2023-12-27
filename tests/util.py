@@ -235,6 +235,15 @@ def run(cmd):
         raise
 
 
+def try_remove(filename):
+    """Try to remove a file, ignoring errors"""
+
+    try:
+        os.remove(filename)
+    except OSError: # pragma: no cover
+        pass
+
+
 class ConnectionStub:
     """Stub class used to replace an SSHConnection object"""
 

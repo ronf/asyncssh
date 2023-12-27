@@ -37,7 +37,7 @@ from asyncssh.socks import SOCKS5, SOCKS5_AUTH_NONE
 from asyncssh.socks import SOCKS4_OK_RESPONSE, SOCKS5_OK_RESPONSE_HDR
 
 from .server import Server, ServerTestCase
-from .util import asynctest, echo, make_certificate
+from .util import asynctest, echo, make_certificate, try_remove
 
 
 def _echo_non_async(stdin, stdout, stderr=None):
@@ -651,10 +651,7 @@ class _TestTCPForwarding(_CheckForwarding):
             async with conn.forward_local_path_to_port('local', '', 7):
                 await self._check_local_unix_connection('local')
 
-        try:
-            os.remove('local')
-        except OSError:
-            pass
+        try_remove('local')
 
     @unittest.skipIf(sys.platform == 'win32',
                      'skip UNIX domain socket tests on Windows')
@@ -668,10 +665,7 @@ class _TestTCPForwarding(_CheckForwarding):
             with self.assertRaises(OSError):
                 await conn.forward_local_path_to_port('local', '', 7)
 
-        try:
-            os.remove('local')
-        except OSError:
-            pass
+        try_remove('local')
 
     @asynctest
     async def test_forward_local_port_pause(self):
@@ -805,10 +799,7 @@ class _TestTCPForwarding(_CheckForwarding):
         server.close()
         await server.wait_closed()
 
-        try:
-            os.remove('local')
-        except OSError:
-            pass
+        try_remove('local')
 
     @asynctest
     async def test_forward_remote_specific_port(self):
@@ -1030,10 +1021,7 @@ class _TestUNIXForwarding(_CheckForwarding):
             await listener.wait_closed()
             listener.close()
 
-        try:
-            os.remove('echo')
-        except OSError:
-            pass
+        try_remove('echo')
 
     @asynctest
     async def test_unix_server_open(self):
@@ -1066,10 +1054,7 @@ class _TestUNIXForwarding(_CheckForwarding):
             async with conn.start_unix_server(_unix_listener_non_async, path):
                 await self._check_local_unix_connection('echo')
 
-        try:
-            os.remove('echo')
-        except OSError:
-            pass
+        try_remove('echo')
 
     @asynctest
     async def test_unix_server_failure(self):
@@ -1087,10 +1072,7 @@ class _TestUNIXForwarding(_CheckForwarding):
             async with conn.forward_local_path('local', '/echo'):
                 await self._check_local_unix_connection('local')
 
-        try:
-            os.remove('local')
-        except OSError:
-            pass
+        try_remove('local')
 
     @asynctest
     async def test_forward_local_port_to_path_accept_handler(self):
@@ -1168,11 +1150,8 @@ class _TestUNIXForwarding(_CheckForwarding):
         server.close()
         await server.wait_closed()
 
-        try:
-            os.remove('echo')
-            os.remove('local')
-        except OSError:
-            pass
+        try_remove('echo')
+        try_remove('local')
 
     @asynctest
     async def test_forward_remote_path_to_port(self):
@@ -1192,10 +1171,7 @@ class _TestUNIXForwarding(_CheckForwarding):
         server.close()
         await server.wait_closed()
 
-        try:
-            os.remove('echo')
-        except OSError:
-            pass
+        try_remove('echo')
 
     @asynctest
     async def test_forward_remote_path_failure(self):
@@ -1209,10 +1185,7 @@ class _TestUNIXForwarding(_CheckForwarding):
             with self.assertRaises(asyncssh.ChannelListenError):
                 await conn.forward_remote_path(path, 'local')
 
-        try:
-            os.remove('echo')
-        except OSError:
-            pass
+        try_remove('echo')
 
     @asynctest
     async def test_forward_remote_path_not_permitted(self):

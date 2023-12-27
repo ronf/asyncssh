@@ -36,7 +36,7 @@ from asyncssh.crypto import ed25519_available
 from asyncssh.packet import Byte, String, UInt32
 
 from .sk_stub import sk_available, patch_sk
-from .util import AsyncTestCase, asynctest, get_test_key, run
+from .util import AsyncTestCase, asynctest, get_test_key, run, try_remove
 
 
 def agent_test(func):
@@ -85,10 +85,7 @@ class _Agent:
         self._server.close()
         await self._server.wait_closed()
 
-        try:
-            os.remove(self._path)
-        except OSError:
-            pass
+        try_remove(self._path)
 
 
 class _TestAgent(AsyncTestCase):
