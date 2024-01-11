@@ -381,8 +381,10 @@ class _TestConnection(ServerTestCase):
     async def test_connect(self):
         """Test connecting with async context manager"""
 
-        async with self.connect():
+        async with self.connect() as conn:
             pass
+
+        self.assertTrue(conn.is_closed())
 
     @asynctest
     async def test_connect_sock(self):

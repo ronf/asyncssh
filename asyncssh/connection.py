@@ -1112,6 +1112,11 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         return self._server
 
+    def is_closed(self):
+        """Return whether the connection is closed"""
+
+        return self._close_event.is_set()
+
     def get_owner(self) -> Optional[Union[SSHClient, SSHServer]]:
         """Return the SSHClient or SSHServer which owns this connection"""
 

@@ -334,6 +334,7 @@ SSHClientConnection
    .. automethod:: set_keepalive
    .. automethod:: get_server_host_key
    .. automethod:: send_debug
+   .. automethod:: is_closed
    =================================== =
 
    ====================================================================================================================================================== =
@@ -407,6 +408,7 @@ SSHServerConnection
    .. automethod:: set_extra_info
    .. automethod:: set_keepalive
    .. automethod:: send_debug
+   .. automethod:: is_closed
    ============================== =
 
    ============================================ =
