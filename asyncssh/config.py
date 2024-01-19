@@ -447,6 +447,8 @@ class SSHClientConfig(SSHConfig):
             return self._local_user
         elif match == 'user':
             return self._options.get('User', self._local_user)
+        elif match == 'tagged':
+            return self._options.get('Tag', '')
         else:
             return None
 
@@ -561,6 +563,7 @@ class SSHClientConfig(SSHConfig):
         ('ServerAliveCountMax',             SSHConfig._set_int),
         ('ServerAliveInterval',             SSHConfig._set_int),
         ('SetEnv',                          SSHConfig._append_string_list),
+        ('Tag',                             SSHConfig._set_string),
         ('TCPKeepAlive',                    SSHConfig._set_bool),
         ('User',                            SSHConfig._set_string),
         ('UserKnownHostsFile',              SSHConfig._set_string_list)

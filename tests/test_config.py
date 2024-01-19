@@ -349,6 +349,17 @@ class _TestClientConfig(_TestConfig):
         self.assertEqual(config.get('BindAddress'), 'addr')
         self.assertEqual(config.get('Port'), 2222)
 
+    def test_tag(self):
+        """Test setting and matching a tag"""
+
+        config = self._parse_config('Tag tag2\n'
+                                    'Match tagged tag1\n'
+                                    '  Port 1111\n'
+                                    'Match tagged tag*\n'
+                                    '  Port 2222')
+
+        self.assertEqual(config.get('Port'), 2222)
+
     def test_port_already_set(self):
         """Test that port is ignored if set outside of the config"""
 
