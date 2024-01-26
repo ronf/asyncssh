@@ -5329,8 +5329,8 @@ class SFTPClient:
 
         """
 
-        oldpath = self.compose_path(oldpath)
-        newpath = self.encode(newpath)
+        oldpath = self.encode(oldpath)
+        newpath = self.compose_path(newpath)
         await self._handler.symlink(oldpath, newpath)
 
     async def link(self, oldpath: _SFTPPath, newpath: _SFTPPath) -> None:
