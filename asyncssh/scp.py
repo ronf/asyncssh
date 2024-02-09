@@ -388,12 +388,14 @@ class _SCPHandler:
         elif self._error_handler:
             self._error_handler(exc)
 
-    async def close(self) -> None:
+    async def close(self, cancelled: bool = False) -> None:
         """Close an SCP session"""
 
         self.logger.info('Stopping remote SCP')
 
-        if self._server:
+        if cancelled:
+            self._writer.channel.abort()
+        elif self._server:
             cast('SSHServerChannel', self._writer.channel).exit(0)
         else:
             self._writer.close()
@@ -535,6 +537,8 @@ class _SCPSource(_SCPHandler):
     async def run(self, srcpath: _SCPPath) -> None:
         """Start SCP transfer"""
 
+        cancelled = False
+
         try:
             if isinstance(srcpath, PurePath):
                 srcpath = str(srcpath)
@@ -550,10 +554,12 @@ class _SCPSource(_SCPHandler):
             for name in await SFTPGlob(self._fs).match(srcpath):
                 await self._send_files(cast(bytes, name.filename),
                                             b'', name.attrs)
+        except asyncio.CancelledError:
+            cancelled = True
         except (OSError, SFTPError) as exc:
             self.handle_error(exc)
         finally:
-            await self.close()
+            await self.close(cancelled)
 
 
 class _SCPSink(_SCPHandler):
@@ -699,6 +705,8 @@ class _SCPSink(_SCPHandler):
     async def run(self, dstpath: _SCPPath) -> None:
         """Start SCP file receive"""
 
+        cancelled = False
+
         try:
             if isinstance(dstpath, PurePath):
                 dstpath = str(dstpath)
@@ -711,10 +719,12 @@ class _SCPSink(_SCPHandler):
                                              dstpath))
             else:
                 await self._recv_files(b'', dstpath)
+        except asyncio.CancelledError as exc:
+            cancelled = True
         except (OSError, SFTPError, ValueError) as exc:
             self.handle_error(exc)
         finally:
-            await self.close()
+            await self.close(cancelled)
 
 
 class _SCPCopier:
@@ -870,13 +880,17 @@ class _SCPCopier:
     async def run(self) -> None:
         """Start SCP remote-to-remote transfer"""
 
+        cancelled = False
+
         try:
             await self._copy_files()
+        except asyncio.CancelledError:
+            cancelled = True
         except (OSError, SFTPError) as exc:
             self._handle_error(exc)
         finally:
-            await self._source.close()
-            await self._sink.close()
+            await self._source.close(cancelled)
+            await self._sink.close(cancelled)
 
 
 async def scp(srcpaths: Union[_SCPConnPath, Sequence[_SCPConnPath]],
