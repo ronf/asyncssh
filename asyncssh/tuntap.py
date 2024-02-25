@@ -22,7 +22,6 @@
 
 import asyncio
 import errno
-import fcntl
 import os
 import socket
 import struct
@@ -30,6 +29,9 @@ import sys
 import threading
 
 from typing import Callable, Optional, Tuple, cast
+
+if sys.platform != 'win32':
+    import fcntl
 
 
 SSH_TUN_MODE_POINTTOPOINT = 1   # layer 3 IP packets

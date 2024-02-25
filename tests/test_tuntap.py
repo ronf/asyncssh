@@ -23,12 +23,11 @@
 import asyncio
 import builtins
 import errno
-import fcntl
 import socket
 import struct
 import sys
 
-from unittest import skipUnless
+from unittest import skipIf, skipUnless
 from unittest.mock import patch
 
 import asyncssh
@@ -36,6 +35,9 @@ from asyncssh.tuntap import IFF_FMT, LINUX_IFF_TUN
 
 from .server import Server, ServerTestCase
 from .util import asynctest
+
+if sys.platform != 'win32':
+    import fcntl
 
 
 _orig_funcs = {}
@@ -304,11 +306,13 @@ def patch_tuntap(cls):
 
     _orig_funcs['open'] = builtins.open
     _orig_funcs['socket'] = socket.socket
-    _orig_funcs['ioctl'] = fcntl.ioctl
 
     cls = patch('builtins.open', _open)(cls)
     cls = patch('socket.socket', _socket)(cls)
-    cls = patch('fcntl.ioctl', _ioctl)(cls)
+
+    if sys.platform != 'win32': # pragma: no branch
+        _orig_funcs['ioctl'] = fcntl.ioctl
+        cls = patch('fcntl.ioctl', _ioctl)(cls)
 
     return cls
 
@@ -367,6 +371,7 @@ class _TunTapServer(Server):
         return True
 
 
+@skipIf(sys.platform == 'win32', 'skip TUN/TAP tests on Windows')
 @patch_tuntap
 class _TestTunTap(ServerTestCase):
     """Unit tests for TUN/TAP functions"""
