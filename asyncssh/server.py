@@ -33,7 +33,9 @@ if TYPE_CHECKING:
     # pylint: disable=cyclic-import
     from .connection import SSHServerConnection, SSHAcceptHandler
     from .channel import SSHServerChannel, SSHTCPChannel, SSHUNIXChannel
+    from .channel import SSHTunTapChannel
     from .session import SSHServerSession, SSHTCPSession, SSHUNIXSession
+    from .session import SSHTunTapSession
 
 
 _NewSession = Union[bool, 'SSHServerSession', SSHServerSessionFactory,
@@ -45,6 +47,9 @@ _NewTCPSession = Union[bool, 'SSHTCPSession', SSHSocketSessionFactory,
 _NewUNIXSession = Union[bool, 'SSHUNIXSession', SSHSocketSessionFactory,
                         Tuple['SSHUNIXChannel', 'SSHUNIXSession'],
                         Tuple['SSHUNIXChannel', SSHSocketSessionFactory]]
+_NewTunTapSession = Union[bool, 'SSHTunTapSession', SSHSocketSessionFactory,
+                          Tuple['SSHTunTapChannel', 'SSHTunTapSession'],
+                          Tuple['SSHTunTapChannel', SSHSocketSessionFactory]]
 _NewListener = Union[bool, 'SSHAcceptHandler', SSHListener]
 
 
@@ -926,6 +931,122 @@ class SSHServer:
                        if the listener can't be opened
                      * `True` to set up standard path forwarding
                      * `False` to reject the request
+
+        """
+
+        return False # pragma: no cover
+
+    def tun_requested(self, unit: Optional[int]) -> _NewTunTapSession:
+        """Handle a layer 3 tunnel request
+
+           This method is called when a layer 3 tunnel request is received
+           by the server. Applications wishing to accept such tunnels must
+           override this method.
+
+           To allow standard path forwarding of data on the connection to the
+           requested TUN device, this method should return `True`.
+
+           To reject this request, this method should return `False`
+           to send back a "Connection refused" response or raise an
+           :exc:`ChannelOpenError` exception with the reason for
+           the failure.
+
+           If the application wishes to process the data on the
+           connection itself, this method should return either an
+           :class:`SSHTunTapSession` object which can be used to process the
+           data received on the channel or a tuple consisting of of an
+           :class:`SSHTunTapChannel` object created with
+           :meth:`create_tuntap_channel()
+           <SSHServerConnection.create_tuntap_channel>` and an
+           :class:`SSHTunTapSession`, if the application wishes
+           to pass non-default arguments when creating the channel.
+
+           If blocking operations need to be performed before the session
+           can be created, a coroutine which returns an
+           :class:`SSHTunTapSession` object can be returned instead of
+           the session itself. This can be either returned directly or as
+           a part of a tuple with an :class:`SSHTunTapChannel` object.
+
+           By default, all layer 3 tunnel requests are rejected.
+
+           :param dest_path:
+               The path the client wishes to connect to
+           :type dest_path: `str`
+
+           :returns: One of the following:
+
+                     * An :class:`SSHTunTapSession` object or a coroutine
+                       which returns an :class:`SSHTunTapSession`
+                     * A tuple consisting of an :class:`SSHTunTapChannel`
+                       and the above
+                     * A `callable` or coroutine handler function which
+                       takes AsyncSSH stream objects for reading from
+                       and writing to the connection
+                     * A tuple consisting of an :class:`SSHTunTapChannel`
+                       and the above
+                     * `True` to request standard layer 3 tunnel forwarding
+                     * `False` to refuse the connection
+
+           :raises: :exc:`ChannelOpenError` if the connection shouldn't
+                    be accepted
+
+        """
+
+        return False # pragma: no cover
+
+    def tap_requested(self, unit: Optional[int]) -> _NewTunTapSession:
+        """Handle a layer 2 tunnel request
+
+           This method is called when a layer 2 tunnel request is received
+           by the server. Applications wishing to accept such tunnels must
+           override this method.
+
+           To allow standard path forwarding of data on the connection to the
+           requested TUN device, this method should return `True`.
+
+           To reject this request, this method should return `False`
+           to send back a "Connection refused" response or raise an
+           :exc:`ChannelOpenError` exception with the reason for
+           the failure.
+
+           If the application wishes to process the data on the
+           connection itself, this method should return either an
+           :class:`SSHTunTapSession` object which can be used to process the
+           data received on the channel or a tuple consisting of of an
+           :class:`SSHTunTapChannel` object created with
+           :meth:`create_tuntap_channel()
+           <SSHServerConnection.create_tuntap_channel>` and an
+           :class:`SSHTunTapSession`, if the application wishes
+           to pass non-default arguments when creating the channel.
+
+           If blocking operations need to be performed before the session
+           can be created, a coroutine which returns an
+           :class:`SSHTunTapSession` object can be returned instead of
+           the session itself. This can be either returned directly or as
+           a part of a tuple with an :class:`SSHTunTapChannel` object.
+
+           By default, all layer 2 tunnel requests are rejected.
+
+           :param dest_path:
+               The path the client wishes to connect to
+           :type dest_path: `str`
+
+           :returns: One of the following:
+
+                     * An :class:`SSHTunTapSession` object or a coroutine
+                       which returns an :class:`SSHTunTapSession`
+                     * A tuple consisting of an :class:`SSHTunTapChannel`
+                       and the above
+                     * A `callable` or coroutine handler function which
+                       takes AsyncSSH stream objects for reading from
+                       and writing to the connection
+                     * A tuple consisting of an :class:`SSHTunTapChannel`
+                       and the above
+                     * `True` to request standard layer 2 tunnel forwarding
+                     * `False` to refuse the connection
+
+           :raises: :exc:`ChannelOpenError` if the connection shouldn't
+                    be accepted
 
         """
 

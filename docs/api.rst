@@ -310,6 +310,8 @@ SSHServer
    .. automethod:: unix_connection_requested
    .. automethod:: server_requested
    .. automethod:: unix_server_requested
+   .. automethod:: tun_requested
+   .. automethod:: tap_requested
    ========================================= =
 
 Connection Classes
@@ -364,12 +366,15 @@ SSHClientConnection
    .. automethod:: open_unix_connection
    .. automethod:: create_unix_server
    .. automethod:: start_unix_server
+   .. automethod:: create_tun
+   .. automethod:: create_tap
+   .. automethod:: open_tun
+   .. automethod:: open_tap
    ====================================== =
 
    =========================================== =
    Client forwarding methods
    =========================================== =
-   .. automethod:: forward_connection
    .. automethod:: forward_local_port
    .. automethod:: forward_local_path
    .. automethod:: forward_local_port_to_path
@@ -379,6 +384,8 @@ SSHClientConnection
    .. automethod:: forward_remote_port_to_path
    .. automethod:: forward_remote_path_to_port
    .. automethod:: forward_socks
+   .. automethod:: forward_tun
+   .. automethod:: forward_tap
    =========================================== =
 
    =========================== =
@@ -431,19 +438,13 @@ SSHServerConnection
    .. automethod:: open_unix_connection
    ====================================== =
 
-   ======================================= =
-   Server forwarding methods
-   ======================================= =
-   .. automethod:: forward_connection
-   .. automethod:: forward_unix_connection
-   ======================================= =
-
    ===================================== =
    Server channel creation methods
    ===================================== =
    .. automethod:: create_server_channel
    .. automethod:: create_tcp_channel
    .. automethod:: create_unix_channel
+   .. automethod:: create_tuntap_channel
    ===================================== =
 
    =========================== =
@@ -795,6 +796,33 @@ SSHUNIXSession
    .. automethod:: resume_writing
    ============================== =
 
+SSHTunTapSession
+----------------
+
+.. autoclass:: SSHTunTapSession
+
+   =============================== =
+   General session handlers
+   =============================== =
+   .. automethod:: connection_made
+   .. automethod:: connection_lost
+   .. automethod:: session_started
+   =============================== =
+
+   ============================= =
+   General session read handlers
+   ============================= =
+   .. automethod:: data_received
+   .. automethod:: eof_received
+   ============================= =
+
+   ============================== =
+   General session write handlers
+   ============================== =
+   .. automethod:: pause_writing
+   .. automethod:: resume_writing
+   ============================== =
+
 Channel Classes
 ===============
 
@@ -1031,6 +1059,65 @@ SSHUNIXChannel
    .. automethod:: is_closing
    .. automethod:: wait_closed
    ============================= =
+
+SSHTunTapChannel
+----------------
+
+.. autoclass:: SSHTunTapChannel()
+
+   ======================================================================= =
+   Channel attributes
+   ======================================================================= =
+   .. autoattribute:: logger
+   ======================================================================= =
+
+   ============================== =
+   General channel info methods
+   ============================== =
+   .. automethod:: get_extra_info
+   .. automethod:: set_extra_info
+   ============================== =
+
+   ============================== =
+   General channel read methods
+   ============================== =
+   .. automethod:: pause_reading
+   .. automethod:: resume_reading
+   ============================== =
+
+   ======================================= =
+   General channel write methods
+   ======================================= =
+   .. automethod:: can_write_eof
+   .. automethod:: get_write_buffer_size
+   .. automethod:: set_write_buffer_limits
+   .. automethod:: write
+   .. automethod:: writelines
+   .. automethod:: write_eof
+   ======================================= =
+
+   ============================= =
+   General channel close methods
+   ============================= =
+   .. automethod:: abort
+   .. automethod:: close
+   .. automethod:: is_closing
+   .. automethod:: wait_closed
+   ============================= =
+
+Forwarder Classes
+=================
+
+SSHForwarder
+------------
+
+.. autoclass:: SSHForwarder()
+
+   ============================== =
+   .. automethod:: get_extra_info
+   .. automethod:: close
+   ============================== =
+
 
 Listener Classes
 ================

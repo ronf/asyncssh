@@ -32,7 +32,7 @@ from .logging import SSHLogger
 from .misc import MaybeAwait, BreakReceived, SignalReceived
 from .misc import SoftEOFReceived, TerminalSizeChanged
 from .session import DataType, SSHClientSession, SSHServerSession
-from .session import SSHTCPSession, SSHUNIXSession
+from .session import SSHTCPSession, SSHUNIXSession, SSHTunTapSession
 from .sftp import SFTPServer, run_sftp_server
 from .scp import run_scp_server
 
@@ -81,8 +81,8 @@ class SSHReader(Generic[AnyStr]):
     async def __aiter__(self) -> AsyncIterator[AnyStr]:
         """Allow SSHReader to be an async iterator"""
 
-        while not self.at_eof():
-            yield await self.readline()
+        async for result in self._session.aiter(self._datatype):
+            yield result
 
     @property
     def channel(self) -> 'SSHChannel[AnyStr]':
@@ -154,7 +154,7 @@ class SSHReader(Generic[AnyStr]):
 
         """
 
-        return await self._session.read(n, self._datatype, exact=False)
+        return await self._session.read(self._datatype, n, exact=False)
 
     async def readline(self) -> AnyStr:
         """Read one line from the stream
@@ -175,10 +175,7 @@ class SSHReader(Generic[AnyStr]):
 
         """
 
-        try:
-            return await self.readuntil(_NEWLINE)
-        except asyncio.IncompleteReadError as exc:
-            return cast(AnyStr, exc.partial)
+        return await self._session.readline(self._datatype)
 
     async def readuntil(self, separator: object,
                         max_separator_len = 0) -> AnyStr:
@@ -239,7 +236,7 @@ class SSHReader(Generic[AnyStr]):
 
         """
 
-        return await self._session.read(n, self._datatype, exact=True)
+        return await self._session.read(self._datatype, n, exact=True)
 
     def at_eof(self) -> bool:
         """Return whether the stream is at EOF
@@ -394,6 +391,12 @@ class SSHStreamSession(Generic[AnyStr]):
         self._read_waiters: _ReadWaiters = {None: None}
         self._drain_waiters: _DrainWaiters = {None: set()}
 
+    async def aiter(self, datatype: DataType) -> AsyncIterator[AnyStr]:
+        """Allow SSHReader to be an async iterator"""
+
+        while not self.at_eof(datatype):
+            yield await self.readline(datatype)
+
     async def _block_read(self, datatype: DataType) -> None:
         """Wait for more data to arrive on the stream"""
 
@@ -523,7 +526,7 @@ class SSHStreamSession(Generic[AnyStr]):
         for datatype in self._drain_waiters:
             self._unblock_drain(datatype)
 
-    async def read(self, n: int, datatype: DataType, exact: bool) -> AnyStr:
+    async def read(self, datatype: DataType, n: int, exact: bool) -> AnyStr:
         """Read data from the channel"""
 
         recv_buf = self._recv_buf[datatype]
@@ -577,8 +580,16 @@ class SSHStreamSession(Generic[AnyStr]):
 
         return result
 
+    async def readline(self, datatype: DataType) -> AnyStr:
+        """Read one line from the stream"""
+
+        try:
+            return await self.readuntil(_NEWLINE, datatype)
+        except asyncio.IncompleteReadError as exc:
+            return cast(AnyStr, exc.partial)
+
     async def readuntil(self, separator: object, datatype: DataType,
-                        max_separator_len: int) -> AnyStr:
+                        max_separator_len = 0) -> AnyStr:
         """Read data from the channel until a separator is seen"""
 
         if not separator:
@@ -825,3 +836,34 @@ class SSHTCPStreamSession(SSHSocketStreamSession[AnyStr],
 class SSHUNIXStreamSession(SSHSocketStreamSession[AnyStr],
                            SSHUNIXSession[AnyStr]):
     """UNIX stream session handler"""
+
+class SSHTunTapStreamSession(SSHSocketStreamSession[bytes], SSHTunTapSession):
+    """TUN/TAP stream session handler"""
+
+    async def aiter(self, datatype: DataType) -> AsyncIterator[bytes]:
+        """Allow SSHReader to be an async iterator"""
+
+        while True:
+            packet = await self.read(datatype)
+
+            if packet:
+                yield packet
+            else:
+                break
+
+    async def read(self, datatype: DataType, n: int = -1,
+                   exact: bool = False) -> bytes:
+        """Override read to preserve TUN/TAP packet boundaries"""
+
+        recv_buf = self._recv_buf[datatype]
+
+        while not self._eof_received:
+            if recv_buf:
+                data = cast(bytes, recv_buf.pop(0))
+                self._recv_buf_len -= len(data)
+                self._maybe_resume_reading()
+                return data
+            else:
+                await self._block_read(datatype)
+
+        return b''

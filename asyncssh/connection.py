@@ -51,7 +51,7 @@ from .auth import get_supported_server_auth_methods, lookup_server_auth
 from .auth_keys import SSHAuthorizedKeys, read_authorized_keys
 
 from .channel import SSHChannel, SSHClientChannel, SSHServerChannel
-from .channel import SSHTCPChannel, SSHUNIXChannel
+from .channel import SSHTCPChannel, SSHUNIXChannel, SSHTunTapChannel
 from .channel import SSHX11Channel, SSHAgentChannel
 
 from .client import SSHClient
@@ -148,9 +148,9 @@ from .server import SSHServer
 
 from .session import DataType, TermModesArg, TermSizeArg
 from .session import SSHClientSession, SSHServerSession
-from .session import SSHTCPSession, SSHUNIXSession
+from .session import SSHTCPSession, SSHUNIXSession, SSHTunTapSession
 from .session import SSHClientSessionFactory, SSHTCPSessionFactory
-from .session import SSHUNIXSessionFactory
+from .session import SSHUNIXSessionFactory, SSHTunTapSessionFactory
 
 from .sftp import MIN_SFTP_VERSION, SFTPClient, SFTPServer
 from .sftp import start_sftp_client
@@ -159,9 +159,13 @@ from .stream import SSHReader, SSHWriter, SFTPServerFactory
 from .stream import SSHSocketSessionFactory, SSHServerSessionFactory
 from .stream import SSHClientStreamSession, SSHServerStreamSession
 from .stream import SSHTCPStreamSession, SSHUNIXStreamSession
+from .stream import SSHTunTapStreamSession
 
 from .subprocess import SSHSubprocessTransport, SSHSubprocessProtocol
 from .subprocess import SubprocessFactory, SSHSubprocessWritePipe
+
+from .tuntap import SSH_TUN_MODE_POINTTOPOINT, SSH_TUN_MODE_ETHERNET
+from .tuntap import SSH_TUN_UNIT_ANY, create_tuntap
 
 from .version import __version__
 
@@ -2918,6 +2922,31 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         return SSHUNIXChannel(self, self._loop, encoding,
                               errors, window, max_pktsize)
 
+    def create_tuntap_channel(self, window: int = _DEFAULT_WINDOW,
+                              max_pktsize: int = _DEFAULT_MAX_PKTSIZE) -> \
+            SSHTunTapChannel:
+        """Create a channel to use for TUN/TAP forwarding
+
+           This method can be called by :meth:`tun_requested()
+           <SSHServer.tun_requested>` or :meth:`tap_requested()
+           <SSHServer.tap_requested>` to create an :class:`SSHTunTapChannel`
+           with the desired window and max packet size for a newly created
+           TUN/TAP tunnel.
+
+           :param window: (optional)
+               The receive window size for this session
+           :param max_pktsize: (optional)
+               The maximum packet size for this session
+           :type window: `int`
+           :type max_pktsize: `int`
+
+           :returns: :class:`SSHTunTapChannel`
+
+        """
+
+        return SSHTunTapChannel(self, self._loop, None, 'strict',
+                                window, max_pktsize)
+
     def create_x11_channel(
             self, window: int = _DEFAULT_WINDOW,
             max_pktsize: int = _DEFAULT_MAX_PKTSIZE) -> SSHX11Channel:
@@ -3148,6 +3177,22 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         self._local_listeners[listen_path] = listener
 
         return listener
+
+    def forward_tuntap(self, mode: int, unit: Optional[int]) -> SSHForwarder:
+        """Set up TUN/TAP forwarding"""
+
+        try:
+            transport, peer = create_tuntap(SSHForwarder, mode, unit)
+            interface = transport.get_extra_info('interface')
+
+            self.logger.info('  Forwarding layer %d traffic to %s',
+                             3 if mode == SSH_TUN_MODE_POINTTOPOINT else 2,
+                             interface)
+        except OSError as exc:
+            raise ChannelOpenError(OPEN_CONNECT_FAILED, str(exc)) from None
+
+        return SSHForwarder(cast(SSHForwarder, peer),
+                            extra={'interface': interface})
 
     def close_forward_listener(self, listen_key: ListenKey) -> None:
         """Mark a local forwarding listener as closed"""
@@ -3768,6 +3813,20 @@ class SSHClientConnection(SSHConnection):
                                'Direct UNIX domain socket open '
                                'forbidden on client')
 
+    def _process_tun_at_openssh_dot_com_open(
+            self, _packet: SSHPacket) -> \
+                Tuple[SSHTunTapChannel, SSHTunTapSession]:
+        """Process an inbound TUN/TAP open request
+
+           These requests are disallowed on an SSH client.
+
+        """
+
+        # pylint: disable=no-self-use
+
+        raise ChannelOpenError(OPEN_ADMINISTRATIVELY_PROHIBITED,
+                               'TUN/TAP request forbidden on client')
+
     def _process_forwarded_streamlocal_at_openssh_dot_com_open(
             self, packet: SSHPacket) -> \
                 Tuple[SSHUNIXChannel, MaybeAwait[SSHUNIXSession]]:
@@ -4130,7 +4189,7 @@ class SSHClientConnection(SSHConnection):
                 SSHReader(session, chan, EXTENDED_DATA_STDERR))
 
     # pylint: disable=redefined-builtin
-    @async_context_manager
+    @async_context_manager # type: ignore
     async def create_process(self, *args: object,
                              input: Optional[AnyStr] = None,
                              stdin: ProcessSource = PIPE,
@@ -4842,6 +4901,154 @@ class SSHClientConnection(SSHConnection):
         return await listen_reverse(host, port, tunnel=self,
                                     **kwargs) # type: ignore
 
+    async def create_tun(
+            self, session_factory: SSHTunTapSessionFactory,
+            remote_unit: Optional[int] = None, *, window: int = _DEFAULT_WINDOW,
+            max_pktsize: int = _DEFAULT_MAX_PKTSIZE) -> \
+                Tuple[SSHTunTapChannel, SSHTunTapSession]:
+        """Create an SSH layer 3 tunnel
+
+           This method is a coroutine which can be called to request that
+           the server open a new outbound layer 3 tunnel to the specified
+           remote TUN device. If the tunnel is successfully opened, a new
+           SSH channel will be opened with data being handled by a
+           :class:`SSHTunTapSession` object created by `session_factory`.
+
+           Optional arguments include the SSH receive window size and max
+           packet size which default to 2 MB and 32 KB, respectively.
+
+           :param session_factory:
+               A `callable` which returns an :class:`SSHUNIXSession` object
+               that will be created to handle activity on this session
+           :param remote_unit:
+               The remote TUN device to connect to
+           :param window: (optional)
+               The receive window size for this session
+           :param max_pktsize: (optional)
+               The maximum packet size for this session
+           :type session_factory: `callable`
+           :type remote_unit: `int` or `None`
+           :type window: `int`
+           :type max_pktsize: `int`
+
+           :returns: an :class:`SSHTunTapChannel` and :class:`SSHTunTapSession`
+
+           :raises: :exc:`ChannelOpenError` if the connection can't be opened
+
+        """
+
+        self.logger.info('Opening layer 3 tunnel to remote unit %s',
+                         'any' if remote_unit is None else str(remote_unit))
+
+        chan = self.create_tuntap_channel(window, max_pktsize)
+
+        session = await chan.open(session_factory, SSH_TUN_MODE_POINTTOPOINT,
+                                  remote_unit)
+
+        return chan, session
+
+    async def create_tap(
+            self, session_factory: SSHTunTapSessionFactory,
+            remote_unit: Optional[int] = None, *, window: int = _DEFAULT_WINDOW,
+            max_pktsize: int = _DEFAULT_MAX_PKTSIZE) -> \
+                Tuple[SSHTunTapChannel, SSHTunTapSession]:
+        """Create an SSH layer 2 tunnel
+
+           This method is a coroutine which can be called to request that
+           the server open a new outbound layer 2 tunnel to the specified
+           remote TAP device. If the tunnel is successfully opened, a new
+           SSH channel will be opened with data being handled by a
+           :class:`SSHTunTapSession` object created by `session_factory`.
+
+           Optional arguments include the SSH receive window size and max
+           packet size which default to 2 MB and 32 KB, respectively.
+
+           :param session_factory:
+               A `callable` which returns an :class:`SSHUNIXSession` object
+               that will be created to handle activity on this session
+           :param remote_unit:
+               The remote TAP device to connect to
+           :param window: (optional)
+               The receive window size for this session
+           :param max_pktsize: (optional)
+               The maximum packet size for this session
+           :type session_factory: `callable`
+           :type remote_unit: `int` or `None`
+           :type window: `int`
+           :type max_pktsize: `int`
+
+           :returns: an :class:`SSHTunTapChannel` and :class:`SSHTunTapSession`
+
+           :raises: :exc:`ChannelOpenError` if the connection can't be opened
+
+        """
+
+        self.logger.info('Opening layer 2 tunnel to remote unit %s',
+                         'any' if remote_unit is None else str(remote_unit))
+
+        chan = self.create_tuntap_channel(window, max_pktsize)
+
+        session = await chan.open(session_factory, SSH_TUN_MODE_ETHERNET,
+                                  remote_unit)
+
+        return chan, session
+
+    async def open_tun(self, *args: object, **kwargs: object) -> \
+            Tuple[SSHReader, SSHWriter]:
+        """Open an SSH layer 3 tunnel
+
+           This method is a coroutine wrapper around :meth:`create_tun`
+           designed to provide a "high-level" stream interface for creating
+           an SSH layer 3 tunnel. Instead of taking a `session_factory`
+           argument for constructing an object which will handle activity
+           on the session via callbacks, it returns :class:`SSHReader` and
+           :class:`SSHWriter` objects which can be used to perform I/O on
+           the tunnel.
+
+           With the exception of `session_factory`, all of the arguments
+           to :meth:`create_tun` are supported and have the same meaning here.
+
+           :returns: an :class:`SSHReader` and :class:`SSHWriter`
+
+           :raises: :exc:`ChannelOpenError` if the connection can't be opened
+
+        """
+
+        chan, session = await self.create_tun(SSHTunTapStreamSession,
+                                              *args, **kwargs) # type: ignore
+
+        session: SSHTunTapStreamSession
+
+        return SSHReader(session, chan), SSHWriter(session, chan)
+
+    async def open_tap(self, *args: object, **kwargs: object) -> \
+            Tuple[SSHReader, SSHWriter]:
+        """Open an SSH layer 2 tunnel
+
+           This method is a coroutine wrapper around :meth:`create_tap`
+           designed to provide a "high-level" stream interface for creating
+           an SSH layer 2 tunnel. Instead of taking a `session_factory`
+           argument for constructing an object which will handle activity
+           on the session via callbacks, it returns :class:`SSHReader` and
+           :class:`SSHWriter` objects which can be used to perform I/O on
+           the tunnel.
+
+           With the exception of `session_factory`, all of the arguments
+           to :meth:`create_tap` are supported and have the same meaning here.
+
+           :returns: an :class:`SSHReader` and :class:`SSHWriter`
+
+           :raises: :exc:`ChannelOpenError` if the connection can't be opened
+
+        """
+
+        chan, session = await self.create_tap(SSHTunTapStreamSession,
+                                              *args, **kwargs) # type: ignore
+
+        session: SSHTunTapStreamSession
+
+        return SSHReader(session, chan), SSHWriter(session, chan)
+
     @async_context_manager
     async def forward_local_port_to_path(
             self, listen_host: str, listen_port: int, dest_path: str,
@@ -5188,6 +5395,75 @@ class SSHClientConnection(SSHConnection):
         self._local_listeners[listen_host, listen_port] = listener
 
         return listener
+
+    @async_context_manager
+    async def forward_tun(self, local_unit: Optional[int] = None,
+                          remote_unit: Optional[int] = None) -> SSHForwarder:
+        """Set up layer 3 forwarding
+
+           This method is a coroutine which attempts to set up layer 3
+           packet forwarding between local and remote TUN devices. If the
+           request is successful, the return value is an :class:`SSHForwarder`
+           object which can be used later to shut down the forwarding.
+
+           :param local_unit:
+               The unit number of the local TUN device to use
+           :param remote_unit:
+               The unit number of the remote TUN device to use
+           :type local_unit: `int` or `None`
+           :type remote_unit: `int` or `None`
+
+           :returns: :class:`SSHForwarder`
+
+           :raises: | :exc:`OSError` if the local TUN device can't be opened
+                    | :exc:`ChannelOpenError` if the SSH channel can't be opened
+
+        """
+
+        def session_factory() -> SSHTunTapSession:
+            """Return an SSHTunTapSession used to do layer 3 forwarding"""
+
+            return cast(SSHTunTapSession,
+                        self.forward_tuntap(SSH_TUN_MODE_POINTTOPOINT,
+                                            local_unit))
+
+        _, peer = await self.create_tun(session_factory, remote_unit)
+
+        return cast(SSHForwarder, peer)
+
+    @async_context_manager
+    async def forward_tap(self, local_unit: Optional[int] = None,
+                          remote_unit: Optional[int] = None) -> SSHForwarder:
+        """Set up layer 2 forwarding
+
+           This method is a coroutine which attempts to set up layer 2
+           packet forwarding between local and remote TAP devices. If the
+           request is successful, the return value is an :class:`SSHForwarder`
+           object which can be used later to shut down the forwarding.
+
+           :param local_unit:
+               The unit number of the local TAP device to use
+           :param remote_unit:
+               The unit number of the remote TAP device to use
+           :type local_unit: `int` or `None`
+           :type remote_unit: `int` or `None`
+
+           :returns: :class:`SSHForwarder`
+
+           :raises: | :exc:`OSError` if the local TUN device can't be opened
+                    | :exc:`ChannelOpenError` if the SSH channel can't be opened
+
+        """
+
+        def session_factory() -> SSHTunTapSession:
+            """Return an SSHTunTapSession used to do layer 2 forwarding"""
+
+            return cast(SSHTunTapSession,
+                        self.forward_tuntap(SSH_TUN_MODE_ETHERNET, local_unit))
+
+        _, peer = await self.create_tap(session_factory, remote_unit)
+
+        return cast(SSHForwarder, peer)
 
     @async_context_manager
     async def start_sftp_client(self, env: DefTuple[_Env] = (),
@@ -6089,6 +6365,51 @@ class SSHServerConnection(SSHConnection):
         listener.close()
 
         self._report_global_response(True)
+
+    def _process_tun_at_openssh_dot_com_open(
+            self, packet: SSHPacket) -> \
+                Tuple[SSHTunTapChannel, SSHTunTapSession]:
+        """Process an incoming TUN/TAP open request"""
+
+        mode = packet.get_uint32()
+        unit: Optional[int] = packet.get_uint32()
+        packet.check_end()
+
+        if unit == SSH_TUN_UNIT_ANY:
+            unit = None
+
+        if mode == SSH_TUN_MODE_POINTTOPOINT:
+            result = self._owner.tun_requested(unit)
+        elif mode == SSH_TUN_MODE_ETHERNET:
+            result = self._owner.tap_requested(unit)
+        else:
+            result = False
+
+        if not result:
+            raise ChannelOpenError(OPEN_CONNECT_FAILED, 'Connection refused')
+
+        if result is True:
+            result = cast(SSHTunTapSession, self.forward_tuntap(mode, unit))
+
+        if isinstance(result, tuple):
+            chan, result = result
+        else:
+            chan = self.create_tuntap_channel()
+
+        session: SSHTunTapSession
+
+        if callable(result):
+            session = SSHTunTapStreamSession(result)
+        else:
+            session = cast(SSHTunTapSession, result)
+
+        self.logger.info('Accepted layer %d tunnel request to unit %s',
+                         3 if mode == SSH_TUN_MODE_POINTTOPOINT else 2,
+                         'any' if unit == SSH_TUN_UNIT_ANY else str(unit))
+
+        chan.set_mode(mode)
+
+        return chan, session
 
     async def attach_x11_listener(self, chan: SSHServerChannel[AnyStr],
                                   auth_proto: bytes, auth_data: bytes,

@@ -34,7 +34,7 @@ from .auth_keys import SSHAuthorizedKeys
 from .auth_keys import import_authorized_keys, read_authorized_keys
 
 from .channel import SSHClientChannel, SSHServerChannel
-from .channel import SSHTCPChannel, SSHUNIXChannel
+from .channel import SSHTCPChannel, SSHUNIXChannel, SSHTunTapChannel
 
 from .client import SSHClient
 
@@ -92,7 +92,7 @@ from .rsa import set_default_skip_rsa_key_validation
 from .scp import scp
 
 from .session import DataType, SSHClientSession, SSHServerSession
-from .session import SSHTCPSession, SSHUNIXSession
+from .session import SSHTCPSession, SSHUNIXSession, SSHTunTapSession
 
 from .server import SSHServer
 
@@ -154,18 +154,19 @@ __all__ = [
     'SSHServerSessionFactory', 'SSHSocketSessionFactory',
     'SSHSubprocessProtocol', 'SSHSubprocessReadPipe',
     'SSHSubprocessTransport', 'SSHSubprocessWritePipe', 'SSHTCPChannel',
-    'SSHTCPSession', 'SSHUNIXChannel', 'SSHUNIXSession', 'SSHWriter',
-    'STDOUT', 'ServiceNotAvailable', 'SignalReceived',
-    'TerminalSizeChanged', 'TimeoutError', 'connect', 'connect_agent',
-    'connect_reverse', 'create_connection', 'create_server',
-    'generate_private_key', 'get_server_auth_methods',
-    'get_server_host_key', 'import_authorized_keys', 'import_certificate',
-    'import_known_hosts', 'import_private_key', 'import_public_key',
-    'listen', 'listen_reverse', 'load_certificates', 'load_keypairs',
-    'load_pkcs11_keys', 'load_public_keys', 'load_resident_keys', 'logger',
-    'match_known_hosts', 'read_authorized_keys', 'read_certificate',
-    'read_certificate_list', 'read_known_hosts', 'read_private_key',
-    'read_private_key_list', 'read_public_key', 'read_public_key_list',
-    'run_client', 'run_server', 'scp', 'set_debug_level', 'set_log_level',
-    'set_sftp_log_level', 'set_default_skip_rsa_key_validation',
+    'SSHTCPSession', 'SSHTunTapChannel', 'SSHTunTapSession',
+    'SSHUNIXChannel', 'SSHUNIXSession', 'SSHWriter',
+    'STDOUT', 'ServiceNotAvailable', 'SignalReceived', 'TerminalSizeChanged',
+    'TimeoutError', 'connect', 'connect_agent', 'connect_reverse',
+    'create_connection', 'create_server', 'generate_private_key',
+    'get_server_auth_methods', 'get_server_host_key',
+    'import_authorized_keys', 'import_certificate', 'import_known_hosts',
+    'import_private_key', 'import_public_key', 'listen', 'listen_reverse',
+    'load_certificates', 'load_keypairs', 'load_pkcs11_keys',
+    'load_public_keys', 'load_resident_keys', 'logger', 'match_known_hosts',
+    'read_authorized_keys', 'read_certificate', 'read_certificate_list',
+    'read_known_hosts', 'read_private_key', 'read_private_key_list',
+    'read_public_key', 'read_public_key_list', 'run_client', 'run_server',
+    'scp', 'set_debug_level', 'set_default_skip_rsa_key_validation',
+    'set_log_level', 'set_sftp_log_level'
 ]

@@ -40,6 +40,8 @@ from asyncssh.constants import MSG_CHANNEL_SUCCESS
 from asyncssh.packet import Byte, String, UInt32
 from asyncssh.public_key import CERT_TYPE_USER
 from asyncssh.stream import SSHTCPStreamSession, SSHUNIXStreamSession
+from asyncssh.stream import SSHTunTapStreamSession
+from asyncssh.tuntap import SSH_TUN_MODE_POINTTOPOINT, SSH_TUN_MODE_ETHERNET
 
 from .server import Server, ServerTestCase
 from .util import asynctest, echo, make_certificate
@@ -343,6 +345,22 @@ class _ChannelServer(Server):
                 await chan.accept(SSHUNIXStreamSession, b'\xff')
             except asyncssh.ChannelOpenError:
                 stdout.channel.exit(1)
+        elif action == 'rejected_tun_request':
+            chan = self._conn.create_tuntap_channel()
+
+            try:
+                await chan.open(SSHTunTapStreamSession,
+                                SSH_TUN_MODE_POINTTOPOINT, 0)
+            except asyncssh.ChannelOpenError:
+                stdout.channel.exit(1)
+        elif action == 'rejected_tap_request':
+            chan = self._conn.create_tuntap_channel()
+
+            try:
+                await chan.open(SSHTunTapStreamSession,
+                                SSH_TUN_MODE_ETHERNET, 0)
+            except asyncssh.ChannelOpenError:
+                stdout.channel.exit(1)
         elif action == 'late_auth_banner':
             try:
                 self._conn.send_auth_banner('auth banner')
@@ -408,6 +426,10 @@ class _ChannelServer(Server):
             stdin.channel.send_packet(MSG_CHANNEL_DATA, String(b'\xff'))
         elif action == 'data_past_window':
             stdin.channel.send_packet(MSG_CHANNEL_DATA,
+                                      String(2*1025*1024*'\0'))
+        elif action == 'ext_data_past_window':
+            stdin.channel.send_packet(MSG_CHANNEL_EXTENDED_DATA,
+                                      UInt32(asyncssh.EXTENDED_DATA_STDERR),
                                       String(2*1025*1024*'\0'))
         elif action == 'data_after_eof':
             stdin.channel.send_packet(MSG_CHANNEL_EOF)
@@ -907,6 +929,18 @@ class _TestChannel(ServerTestCase):
         """Test receiving connection on invalid UNIX listener path"""
 
         await self._check_action('invalid_unix_listener', None)
+
+    @asynctest
+    async def test_rejected_tun_request(self):
+        """Test receiving inbound TUN request"""
+
+        await self._check_action('rejected_tun_request', 1)
+
+    @asynctest
+    async def test_rejected_tap_request(self):
+        """Test receiving inbound TAP request"""
+
+        await self._check_action('rejected_tap_request', 1)
 
     @asynctest
     async def test_agent_forwarding_failure(self):
@@ -1475,6 +1509,15 @@ class _TestChannel(ServerTestCase):
 
         async with self.connect() as conn:
             chan, _ = await _create_session(conn, 'data_past_window')
+
+            await chan.wait_closed()
+
+    @asynctest
+    async def test_ext_data_past_window(self):
+        """Test receiving an extended data packet past the advertised window"""
+
+        async with self.connect() as conn:
+            chan, _ = await _create_session(conn, 'ext_data_past_window')
 
             await chan.wait_closed()
 

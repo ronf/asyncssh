@@ -400,18 +400,23 @@ class _PipeWriter(_UnicodeWriter[AnyStr], asyncio.BaseProtocol):
     """Forward data to a pipe"""
 
     def __init__(self, process: 'SSHProcess[AnyStr]', datatype: DataType,
-                 needs_close: bool, encoding: Optional[str], errors: str):
+                 encoding: Optional[str], errors: str):
         super().__init__(encoding, errors)
 
         self._process: 'SSHProcess[AnyStr]' = process
         self._datatype = datatype
-        self._needs_close = needs_close
         self._transport: Optional[asyncio.WriteTransport] = None
+        self._close_event = asyncio.Event()
 
     def connection_made(self, transport: asyncio.BaseTransport) -> None:
         """Handle a newly opened pipe"""
 
         self._transport = cast(asyncio.WriteTransport, transport)
+
+    def connection_lost(self, exc: Optional[Exception]) -> None:
+        """Handle closing of the pipe"""
+
+        self._close_event.set()
 
     def pause_writing(self) -> None:
         """Pause writing to the pipe"""
@@ -439,18 +444,8 @@ class _PipeWriter(_UnicodeWriter[AnyStr], asyncio.BaseProtocol):
         """Stop forwarding data to the pipe"""
 
         assert self._transport is not None
-
-        # There's currently no public API to tell connect_write_pipe()
-        # to not close the pipe on when the created transport is closed,
-        # and not closing it triggers an "unclosed transport" warning.
-        # This masks that warning when we want to keep the pipe open.
-        #
-        # pylint: disable=protected-access
-
-        if self._needs_close:
-            self._transport.close()
-        else:
-            self._transport._pipe = None # type: ignore
+        self._transport.close()
+        self._process.add_cleanup_task(self._close_event.wait())
 
 
 class _ProcessReader(_ReaderProtocol, Generic[AnyStr]):
@@ -897,8 +892,7 @@ class SSHProcess(SSHStreamSession, Generic[AnyStr]):
         def pipe_factory() -> _PipeWriter:
             """Return a pipe write handler"""
 
-            return _PipeWriter(self, datatype, recv_eof,
-                               self._encoding, self._errors)
+            return _PipeWriter(self, datatype, self._encoding, self._errors)
 
         if target == PIPE:
             writer: Optional[_WriterProtocol[AnyStr]] = None
@@ -946,6 +940,10 @@ class SSHProcess(SSHStreamSession, Generic[AnyStr]):
                     # If file was opened in text mode, remove that wrapper
                     file = cast(TextIO, target).buffer
 
+                if not recv_eof:
+                    fd = os.dup(cast(IO[bytes], file).fileno())
+                    file = os.fdopen(fd, 'wb', buffering=0)
+
                 assert self._loop is not None
                 _, protocol = \
                     await self._loop.connect_write_pipe(pipe_factory, file)
@@ -968,7 +966,7 @@ class SSHProcess(SSHStreamSession, Generic[AnyStr]):
         return bool(self._paused_write_streams) or \
             super()._should_pause_reading()
 
-    def add_cleanup_task(self, task: Awaitable[None]) -> None:
+    def add_cleanup_task(self, task: Awaitable) -> None:
         """Add a task to run when the process exits"""
 
         self._cleanup_tasks.append(task)
