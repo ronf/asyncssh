@@ -124,21 +124,31 @@ jobs:
       - name: Upload coverage data
         uses: actions/upload-artifact@v4
         with:
-          name: coverage
+          name: coverage-${{ matrix.runs-on }}
           path: asyncssh/.coverage.*
           retention-days: 1
+
+  merge-coverage:
+    runs-on: ubuntu-latest
+    needs: run-tests
+    steps:
+      - name: Merge coverage
+        uses: actions/upload-artifact/merge@v4
+        with:
+          name: coverage
+          pattern: coverage-*
 
   report-coverage:
     name: Report coverage
     runs-on: ubuntu-latest
-    needs: run-tests
+    needs: merge-covereage
     if: ${{ always() }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.7"
-      - uses: actions/download-artifact@v3
+      - uses: actions/download-artifact@v4
         with:
           name: coverage
       - name: Install dependencies
