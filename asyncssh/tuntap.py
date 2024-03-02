@@ -30,7 +30,7 @@ import threading
 
 from typing import Callable, Optional, Tuple, cast
 
-if sys.platform != 'win32':
+if sys.platform != 'win32': # pragma: no branch
     import fcntl
 
 

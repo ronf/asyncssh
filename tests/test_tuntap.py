@@ -36,7 +36,7 @@ from asyncssh.tuntap import IFF_FMT, LINUX_IFF_TUN
 from .server import Server, ServerTestCase
 from .util import asynctest
 
-if sys.platform != 'win32':
+if sys.platform != 'win32': # pragma: no branch
     import fcntl
 
 
