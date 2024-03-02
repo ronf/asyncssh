@@ -1,4 +1,4 @@
-# Copyright (c) 2015-2022 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2015-2024 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -20,6 +20,7 @@
 
 """Unit tests for AsyncSSH SFTP client and server"""
 
+import asyncio
 import errno
 import functools
 import os
@@ -4660,6 +4661,24 @@ class _CheckSCP(_CheckSFTP):
                 self.assertEqual(len(reports), (size // 8192) + 1)
                 self.assertEqual(reports[-1], size)
 
+    async def _check_cancel(self, src, dst):
+        """Check cancelling a file transfer over SCP"""
+
+        def _cancel(_srcpath, _dstpath, _bytes_copied, _total_bytes):
+            """Cancel transfer"""
+
+            task.cancel()
+
+        try:
+            self._create_file('src', 1024*8192 * 'a')
+
+            coro = scp(src, dst, block_size=8192, progress_handler=_cancel)
+
+            task = asyncio.create_task(coro)
+            await task
+        finally:
+            remove('src dst')
+
 
 class _TestSCP(_CheckSCP):
     """Unit tests for AsyncSSH SCP client and server"""
@@ -4678,6 +4697,12 @@ class _TestSCP(_CheckSCP):
         """Test getting a file over SCP with progress reporting"""
 
         await self._check_progress((self._scp_server, 'src'), 'dst')
+
+    @asynctest
+    async def test_get_cancel(self):
+        """Test cancelling a get of a file over SCP"""
+
+        await self._check_cancel((self._scp_server, 'src'), 'dst')
 
     @asynctest
     async def test_get_preserve(self):
@@ -4807,6 +4832,12 @@ class _TestSCP(_CheckSCP):
         """Test putting a file over SCP with progress reporting"""
 
         await self._check_progress('src', (self._scp_server, 'dst'))
+
+    @asynctest
+    async def test_put_cancel(self):
+        """Test cancelling a put of a file over SCP"""
+
+        await self._check_cancel('src', (self._scp_server, 'dst'))
 
     @asynctest
     async def test_put_preserve(self):
@@ -4962,6 +4993,13 @@ class _TestSCP(_CheckSCP):
 
         await self._check_progress((self._scp_server, 'src'),
                                    (self._scp_server, 'dst'))
+
+    @asynctest
+    async def test_copy_cancel(self):
+        """Test cancelling a copy of a file over SCP"""
+
+        await self._check_cancel((self._scp_server, 'src'),
+                                 (self._scp_server, 'dst'))
 
     @asynctest
     async def test_copy_preserve(self):
