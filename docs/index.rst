@@ -40,6 +40,14 @@ session is opened to make read and write operate on bytes instead.
 Alternate encodings can also be selected to change how strings are
 converted to and from bytes.
 
+It is also possible to open a connection without using the context manager:
+   .. code::
+
+      connection = await asyncssh.connect('localhost')
+      # do work
+      connection.close()
+When doing this, remember to close the connection when done.
+
 To check against a different set of server host keys, they can be provided
 in the known_hosts argument when the connection is opened:
 
