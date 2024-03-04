@@ -28,9 +28,6 @@ asyncio framework.
   except (OSError, asyncssh.Error) as exc:
       sys.exit('SSH connection failed: ' + str(exc))
 
-Check out the `examples`__ to get started!
-
-
 .. code:: python
 
   import asyncio, asyncssh, sys
@@ -45,6 +42,8 @@ Check out the `examples`__ to get started!
       asyncio.get_event_loop().run_until_complete(run_client())
   except (OSError, asyncssh.Error) as exc:
       sys.exit('SSH connection failed: ' + str(exc))
+
+Check out the `examples`__ to get started!
 
 __ http://asyncssh.readthedocs.io/en/stable/#client-examples
 
