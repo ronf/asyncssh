@@ -29,7 +29,26 @@ key doesn't match.
       :literal:
       :start-line: 22
 
-This example only uses the output on stdout, but output on stderr is also
+This example shows using the :class:`SSHClientConnection` returned by
+:func:`connect()` as a context manager, so that the connection is
+automatically closed when the end of the code block which opened it is
+reached. However, if you need the connection object to live longer, you
+can use "await" instead of "async with":
+
+   .. code::
+
+     conn = await asyncssh.connect('localhost')
+
+In this case, the application will need to close the connection explicitly
+when done with it, and it is best to also wait for the close to complete.
+This can be done with the following code from inside an async function:
+
+   .. code::
+
+     conn.close()
+     await conn.wait_closed()
+
+Only stdout is referenced this example, but output on stderr is also
 collected as another attribute in the returned :class:`SSHCompletedProcess`
 object.
 
