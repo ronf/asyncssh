@@ -32,7 +32,8 @@ import sys
 import tempfile
 import time
 
-from collections import OrderedDict
+from collections import OrderedDict, namedtuple
+from collections.abc import Iterable
 from functools import partial
 from pathlib import Path
 from types import TracebackType
@@ -233,8 +234,9 @@ _RequestPTY = Union[bool, str]
 _TCPServerHandlerFactory = Callable[[str, int], SSHSocketSessionFactory]
 _UNIXServerHandlerFactory = Callable[[], SSHSocketSessionFactory]
 
-_TunnelConnector = Union[None, str, _TunnelConnectorProtocol]
-_TunnelListener = Union[None, str, _TunnelListenerProtocol]
+_TunnelConfig = namedtuple("TunnelConfig", ["host", "port", "username"])
+_TunnelConnector = Union[None, str, list[str], _TunnelConnectorProtocol]
+_TunnelListener = Union[None, str, list[str], _TunnelListenerProtocol]
 
 _VersionArg = DefTuple[BytesOrStr]
 
@@ -347,27 +349,39 @@ async def _open_proxy(
     return cast(_Conn, cast(_ProxyCommandTunnel, tunnel).get_conn())
 
 
-async def _open_tunnel(tunnel: object, passphrase: Optional[BytesOrStr]) -> \
-        Optional['SSHClientConnection']:
-    """Parse and open connection to tunnel over"""
-
-    username: DefTuple[str]
-    port: DefTuple[int]
-
-    if isinstance(tunnel, str):
-        if '@' in tunnel:
-            username, host = tunnel.rsplit('@', 1)
+def _iterate_tunnels(tunnels: list[str]) -> Iterable[_TunnelConfig]:
+    """Iterate over a list of tunnels"""
+    for tunnel in tunnels:
+        if "@" in tunnel:
+            username, host = tunnel.rsplit("@", 1)
         else:
             username, host = (), tunnel
 
-        if ':' in host:
-            host, port_str = host.rsplit(':', 1)
+        if ":" in host:
+            host, port_str = host.rsplit(":", 1)
             port = int(port_str)
         else:
             port = ()
+        yield _TunnelConfig(host=host, port=port, username=username)
 
-        return await connect(host, port, username=username,
-                             passphrase=passphrase)
+
+async def _open_tunnel(
+    tunnel: object, passphrase: Optional[BytesOrStr]
+) -> Optional["SSHClientConnection"]:
+    """Parse and open connection to tunnel over"""
+    if isinstance(tunnel, str):
+        tunnel = [tunnel]
+    if isinstance(tunnel, list):
+        connection = None
+        for tunnel_config in _iterate_tunnels(tunnel):
+            connection = await connect(
+                host=tunnel_config.host,
+                port=tunnel_config.port,
+                username=tunnel_config.username,
+                passphrase=passphrase,
+                tunnel=connection,
+            )
+        return connection
     else:
         return None
 

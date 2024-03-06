@@ -554,7 +554,7 @@ class SSHClientConfig(SSHConfig):
         ('PreferredAuthentications',        SSHConfig._set_string),
         ('Port',                            SSHConfig._set_int),
         ('ProxyCommand',                    SSHConfig._set_string_list),
-        ('ProxyJump',                       SSHConfig._set_string),
+        ('ProxyJump',                       SSHConfig._set_string_list),
         ('PubkeyAuthentication',            SSHConfig._set_bool),
         ('RekeyLimit',                      SSHConfig._set_rekey_limits),
         ('RemoteCommand',                   SSHConfig._set_string),
