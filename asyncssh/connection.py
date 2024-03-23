@@ -3637,6 +3637,15 @@ class SSHClientConnection(SSHConnection):
 
         if self._password is not None:
             password: Optional[str] = self._password
+
+            if callable(password):
+                password = cast(Callable[[], Optional[str]], password)()
+
+            if inspect.isawaitable(password):
+                password = await cast(Awaitable[Optional[str]], password)
+            else:
+                password = cast(Optional[str], password)
+
             self._password = None
         else:
             result = self._owner.password_auth_requested()
@@ -7195,9 +7204,10 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
            the currently logged in user on the local machine will be used.
        :param password: (optional)
            The password to use for client password authentication or
-           keyboard-interactive authentication which prompts for a password.
-           If this is not specified, client password authentication will
-           not be performed.
+           keyboard-interactive authentication which prompts for a password,
+           or a `callable` or coroutine which returns the password to use.
+           If this is not specified or set to `None`, client password
+           authentication will not be performed.
        :param client_host_keysign: (optional)
            Whether or not to use `ssh-keysign` to sign host-based
            authentication requests. If set to `True`, an attempt will be

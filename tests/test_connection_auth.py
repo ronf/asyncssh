@@ -1796,6 +1796,36 @@ class _TestPasswordAuth(ServerTestCase):
             pass
 
     @asynctest
+    async def test_password_auth_callable(self):
+        """Test connecting with a callable for password authentication"""
+
+        async with self.connect(username='pw', password=lambda: 'pw',
+                                client_keys=None):
+            pass
+
+    @asynctest
+    async def test_password_auth_async_callable(self):
+        """Test connecting with an async callable for password authentication"""
+
+        async def get_password():
+            return 'pw'
+
+        async with self.connect(username='pw', password=get_password,
+                                client_keys=None):
+            pass
+
+    @asynctest
+    async def test_password_auth_awaitable(self):
+        """Test connecting with an awaitable for password authentication"""
+
+        async def get_password():
+            return 'pw'
+
+        async with self.connect(username='pw', password=get_password(),
+                                client_keys=None):
+            pass
+
+    @asynctest
     async def test_password_auth_disabled(self):
         """Test connecting with password authentication disabled"""
 
