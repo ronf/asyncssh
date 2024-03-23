@@ -252,6 +252,10 @@ class _TestPublicKey(TempDirTestCase):
     def check_private(self, format_name, passphrase=None):
         """Check for a private key match"""
 
+        def _passphrase(filename):
+            self.assertEqual(filename, 'new')
+            return passphrase
+
         newkey = asyncssh.read_private_key('new', passphrase)
         algorithm = newkey.get_algorithm()
         keydata = newkey.export_private_key()
@@ -275,6 +279,9 @@ class _TestPublicKey(TempDirTestCase):
         keypair = asyncssh.load_keypairs('new', passphrase)[0]
         self.assertEqual(keypair.public_data, pubdata)
 
+        keypair = asyncssh.load_keypairs('new', _passphrase)[0]
+        self.assertEqual(keypair.public_data, pubdata)
+
         keypair = asyncssh.load_keypairs([newkey])[0]
         self.assertEqual(keypair.public_data, pubdata)
 
@@ -290,7 +297,13 @@ class _TestPublicKey(TempDirTestCase):
         keypair = asyncssh.load_keypairs(['new'], passphrase)[0]
         self.assertEqual(keypair.public_data, pubdata)
 
+        keypair = asyncssh.load_keypairs(['new'], _passphrase)[0]
+        self.assertEqual(keypair.public_data, pubdata)
+
         keypair = asyncssh.load_keypairs([('new', None)], passphrase)[0]
+        self.assertEqual(keypair.public_data, pubdata)
+
+        keypair = asyncssh.load_keypairs([('new', None)], _passphrase)[0]
         self.assertEqual(keypair.public_data, pubdata)
 
         keypair = asyncssh.load_keypairs(Path('new'), passphrase)[0]
