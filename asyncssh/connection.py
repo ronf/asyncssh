@@ -347,32 +347,42 @@ async def _open_proxy(
     return cast(_Conn, cast(_ProxyCommandTunnel, tunnel).get_conn())
 
 
-async def _open_tunnel(tunnel: object, passphrase: Optional[BytesOrStr]) -> \
+async def _open_tunnel(tunnels: object, passphrase: Optional[BytesOrStr],
+                       config: DefTuple[ConfigPaths]) -> \
         Optional['SSHClientConnection']:
     """Parse and open connection to tunnel over"""
 
     username: DefTuple[str]
     port: DefTuple[int]
 
-    if isinstance(tunnel, str):
-        if '@' in tunnel:
-            username, host = tunnel.rsplit('@', 1)
-        else:
-            username, host = (), tunnel
+    if isinstance(tunnels, str):
+        conn: Optional[SSHClientConnection] = None
 
-        if ':' in host:
-            host, port_str = host.rsplit(':', 1)
-            port = int(port_str)
-        else:
-            port = ()
+        for tunnel in tunnels.split(','):
+            if '@' in tunnel:
+                username, host = tunnel.rsplit('@', 1)
+            else:
+                username, host = (), tunnel
 
-        return await connect(host, port, username=username,
-                             passphrase=passphrase)
+            if ':' in host:
+                host, port_str = host.rsplit(':', 1)
+                port = int(port_str)
+            else:
+                port = ()
+
+            last_conn = conn
+            conn = await connect(host, port, username=username,
+                                 passphrase=passphrase, tunnel=conn,
+                                 config=config)
+            conn.set_tunnel(last_conn)
+
+        return conn
     else:
         return None
 
 
 async def _connect(options: 'SSHConnectionOptions',
+                   config: DefTuple[ConfigPaths],
                    loop: asyncio.AbstractEventLoop, flags: int,
                    sock: Optional[socket.socket],
                    conn_factory: Callable[[], _Conn], msg: str) -> _Conn:
@@ -388,7 +398,7 @@ async def _connect(options: 'SSHConnectionOptions',
 
     options.waiter = loop.create_future()
 
-    new_tunnel = await _open_tunnel(tunnel, options.passphrase)
+    new_tunnel = await _open_tunnel(tunnel, options.passphrase, config)
     tunnel: _TunnelConnectorProtocol
 
     try:
@@ -439,10 +449,6 @@ async def _connect(options: 'SSHConnectionOptions',
     try:
         await options.waiter
         free_conn = False
-
-        if new_tunnel:
-            conn.set_tunnel(new_tunnel)
-
         return conn
     finally:
         if free_conn:
@@ -451,6 +457,7 @@ async def _connect(options: 'SSHConnectionOptions',
 
 
 async def _listen(options: 'SSHConnectionOptions',
+                  config: DefTuple[ConfigPaths],
                   loop: asyncio.AbstractEventLoop, flags: int,
                   backlog: int, sock: Optional[socket.socket],
                   reuse_address: bool, reuse_port: bool,
@@ -468,7 +475,7 @@ async def _listen(options: 'SSHConnectionOptions',
     tunnel = options.tunnel
     family = options.family
 
-    new_tunnel = await _open_tunnel(tunnel, options.passphrase)
+    new_tunnel = await _open_tunnel(tunnel, options.passphrase, config)
     tunnel: _TunnelListenerProtocol
 
     if sock:
@@ -1140,7 +1147,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
                          String(self._client_kexinit),
                          String(self._server_kexinit)))
 
-    def set_tunnel(self, tunnel: _TunnelProtocol) -> None:
+    def set_tunnel(self, tunnel: Optional[_TunnelProtocol]) -> None:
         """Set tunnel used to open this connection"""
 
         self._tunnel = tunnel
@@ -8425,7 +8432,7 @@ async def run_client(sock: socket.socket, config: DefTuple[ConfigPaths] = (),
         loop, SSHClientConnectionOptions, options, config=config, **kwargs))
 
     return await asyncio.wait_for(
-        _connect(new_options, loop, 0, sock, conn_factory,
+        _connect(new_options, config, loop, 0, sock, conn_factory,
                  'Starting SSH client on'),
         timeout=new_options.connect_timeout)
 
@@ -8474,7 +8481,7 @@ async def run_server(sock: socket.socket, config: DefTuple[ConfigPaths] = (),
         loop, SSHServerConnectionOptions, options, config=config, **kwargs))
 
     return await asyncio.wait_for(
-        _connect(new_options, loop, 0, sock, conn_factory,
+        _connect(new_options, config, loop, 0, sock, conn_factory,
                  'Starting SSH server on'),
         timeout=new_options.connect_timeout)
 
@@ -8525,15 +8532,16 @@ async def connect(host = '', port: DefTuple[int] = (), *,
            over this connection to the requested host and port rather than
            connecting directly via TCP. A string of the form
            [user@]host[:port] may also be specified, in which case a
-           connection will first be made to that host and it will then be
-           used as a tunnel.
+           connection will be made to that host and then used as a tunnel.
+           A comma-separated list may also be specified to establish a
+           tunnel through multiple hosts.
 
                .. note:: When specifying tunnel as a string, any config
                          options in the call will apply only when opening
-                         the connection inside the tunnel. The tunnel
-                         itself will be opened with default configuration
-                         settings or settings in the default config file.
-                         To get more control of config settings used to
+                         a connection to the final destination host and
+                         port. However, settings to use when opening
+                         tunnels may be specified via a configuration file.
+                         To get more control of config options used to
                          open the tunnel, :func:`connect` can be called
                          explicitly, and the resulting client connection
                          can be passed as the tunnel argument.
@@ -8593,7 +8601,7 @@ async def connect(host = '', port: DefTuple[int] = (), *,
         local_addr=local_addr, **kwargs))
 
     return await asyncio.wait_for(
-        _connect(new_options, loop, flags, sock, conn_factory,
+        _connect(new_options, config, loop, flags, sock, conn_factory,
                  'Opening SSH connection to'),
         timeout=new_options.connect_timeout)
 
@@ -8631,15 +8639,16 @@ async def connect_reverse(
            over this connection to the requested host and port rather than
            connecting directly via TCP. A string of the form
            [user@]host[:port] may also be specified, in which case a
-           connection will first be made to that host and it will then be
-           used as a tunnel.
+           connection will be made to that host and then used as a tunnel.
+           A comma-separated list may also be specified to establish a
+           tunnel through multiple hosts.
 
                .. note:: When specifying tunnel as a string, any config
                          options in the call will apply only when opening
-                         the connection inside the tunnel. The tunnel
-                         itself will be opened with default configuration
-                         settings or settings in the default config file.
-                         To get more control of config settings used to
+                         a connection to the final destination host and
+                         port. However, settings to use when opening
+                         tunnels may be specified via a configuration file.
+                         To get more control of config options used to
                          open the tunnel, :func:`connect` can be called
                          explicitly, and the resulting client connection
                          can be passed as the tunnel argument.
@@ -8694,7 +8703,7 @@ async def connect_reverse(
         local_addr=local_addr, **kwargs))
 
     return await asyncio.wait_for(
-        _connect(new_options, loop, flags, sock, conn_factory,
+        _connect(new_options, config, loop, flags, sock, conn_factory,
                  'Opening reverse SSH connection to'),
         timeout=new_options.connect_timeout)
 
@@ -8723,20 +8732,21 @@ async def listen(host = '', port: DefTuple[int] = (), *,
            The port number to listen on. If not specified, the default
            SSH port is used.
        :param tunnel: (optional)
-           An existing SSH client connection that this new listener should
-           be forwarded over. If set, a remote TCP/IP listener will be
-           opened on this connection on the requested host and port rather
-           than listening directly via TCP. A string of the form
+           An existing SSH client connection that this new connection should
+           be tunneled over. If set, a direct TCP/IP tunnel will be opened
+           over this connection to the requested host and port rather than
+           connecting directly via TCP. A string of the form
            [user@]host[:port] may also be specified, in which case a
-           connection will first be made to that host and it will then be
-           used as a tunnel.
+           connection will be made to that host and then used as a tunnel.
+           A comma-separated list may also be specified to establish a
+           tunnel through multiple hosts.
 
                .. note:: When specifying tunnel as a string, any config
                          options in the call will apply only when opening
-                         the connection inside the tunnel. The tunnel
-                         itself will be opened with default configuration
-                         settings or settings in the default config file.
-                         To get more control of config settings used to
+                         a connection to the final destination host and
+                         port. However, settings to use when opening
+                         tunnels may be specified via a configuration file.
+                         To get more control of config options used to
                          open the tunnel, :func:`connect` can be called
                          explicitly, and the resulting client connection
                          can be passed as the tunnel argument.
@@ -8817,7 +8827,7 @@ async def listen(host = '', port: DefTuple[int] = (), *,
     new_options.proxy_command = None
 
     return await asyncio.wait_for(
-        _listen(new_options, loop, flags, backlog, sock, reuse_address,
+        _listen(new_options, config, loop, flags, backlog, sock, reuse_address,
                 reuse_port, conn_factory, 'Creating SSH listener on'),
         timeout=new_options.connect_timeout)
 
@@ -8857,20 +8867,21 @@ async def listen_reverse(host = '', port: DefTuple[int] = (), *,
            The port number to listen on. If not specified, the default
            SSH port is used.
        :param tunnel: (optional)
-           An existing SSH client connection that this new listener should
-           be forwarded over. If set, a remote TCP/IP listener will be
-           opened on this connection on the requested host and port rather
-           than listening directly via TCP. A string of the form
+           An existing SSH client connection that this new connection should
+           be tunneled over. If set, a direct TCP/IP tunnel will be opened
+           over this connection to the requested host and port rather than
+           connecting directly via TCP. A string of the form
            [user@]host[:port] may also be specified, in which case a
-           connection will first be made to that host and it will then be
-           used as a tunnel.
+           connection will be made to that host and then used as a tunnel.
+           A comma-separated list may also be specified to establish a
+           tunnel through multiple hosts.
 
                .. note:: When specifying tunnel as a string, any config
                          options in the call will apply only when opening
-                         the connection inside the tunnel. The tunnel
-                         itself will be opened with default configuration
-                         settings or settings in the default config file.
-                         To get more control of config settings used to
+                         a connection to the final destination host and
+                         port. However, settings to use when opening
+                         tunnels may be specified via a configuration file.
+                         To get more control of config options used to
                          open the tunnel, :func:`connect` can be called
                          explicitly, and the resulting client connection
                          can be passed as the tunnel argument.
@@ -8955,7 +8966,7 @@ async def listen_reverse(host = '', port: DefTuple[int] = (), *,
     new_options.proxy_command = None
 
     return await asyncio.wait_for(
-        _listen(new_options, loop, flags, backlog, sock,
+        _listen(new_options, config, loop, flags, backlog, sock,
                 reuse_address, reuse_port, conn_factory,
                 'Creating reverse direction SSH listener on'),
         timeout=new_options.connect_timeout)
@@ -9043,15 +9054,16 @@ async def get_server_host_key(
            over this connection to the requested host and port rather than
            connecting directly via TCP. A string of the form
            [user@]host[:port] may also be specified, in which case a
-           connection will first be made to that host and it will then be
-           used as a tunnel.
+           connection will be made to that host and then used as a tunnel.
+           A comma-separated list may also be specified to establish a
+           tunnel through multiple hosts.
 
                .. note:: When specifying tunnel as a string, any config
                          options in the call will apply only when opening
-                         the connection inside the tunnel. The tunnel
-                         itself will be opened with default configuration
-                         settings or settings in the default config file.
-                         To get more control of config settings used to
+                         a connection to the final destination host and
+                         port. However, settings to use when opening
+                         tunnels may be specified via a configuration file.
+                         To get more control of config options used to
                          open the tunnel, :func:`connect` can be called
                          explicitly, and the resulting client connection
                          can be passed as the tunnel argument.
@@ -9135,7 +9147,7 @@ async def get_server_host_key(
         kex_algs=kex_algs, client_version=client_version))
 
     conn = await asyncio.wait_for(
-        _connect(new_options, loop, flags, sock, conn_factory,
+        _connect(new_options, config, loop, flags, sock, conn_factory,
                  'Fetching server host key from'),
         timeout=new_options.connect_timeout)
 
@@ -9185,15 +9197,16 @@ async def get_server_auth_methods(
            over this connection to the requested host and port rather than
            connecting directly via TCP. A string of the form
            [user@]host[:port] may also be specified, in which case a
-           connection will first be made to that host and it will then be
-           used as a tunnel.
+           connection will be made to that host and then used as a tunnel.
+           A comma-separated list may also be specified to establish a
+           tunnel through multiple hosts.
 
                .. note:: When specifying tunnel as a string, any config
                          options in the call will apply only when opening
-                         the connection inside the tunnel. The tunnel
-                         itself will be opened with default configuration
-                         settings or settings in the default config file.
-                         To get more control of config settings used to
+                         a connection to the final destination host and
+                         port. However, settings to use when opening
+                         tunnels may be specified via a configuration file.
+                         To get more control of config options used to
                          open the tunnel, :func:`connect` can be called
                          explicitly, and the resulting client connection
                          can be passed as the tunnel argument.
@@ -9278,7 +9291,7 @@ async def get_server_auth_methods(
         client_version=client_version))
 
     conn = await asyncio.wait_for(
-        _connect(new_options, loop, flags, sock, conn_factory,
+        _connect(new_options, config, loop, flags, sock, conn_factory,
                  'Fetching server auth methods from'),
         timeout=new_options.connect_timeout)
 
