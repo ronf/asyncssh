@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2023 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2024 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -20,7 +20,9 @@
 
 """SSH asymmetric encryption handlers"""
 
+import asyncio
 import binascii
+import inspect
 import os
 import re
 import time
@@ -3472,7 +3474,8 @@ def load_keypairs(
         keylist: KeyPairListArg, passphrase: Optional[BytesOrStr] = None,
         certlist: CertListArg = (), skip_public: bool = False,
         ignore_encrypted: bool = False,
-        unsafe_skip_rsa_key_validation: Optional[bool] = None) -> \
+        unsafe_skip_rsa_key_validation: Optional[bool] = None,
+        loop: Optional[asyncio.AbstractEventLoop] = None) -> \
             Sequence[SSHKeyPair]:
     """Load SSH private keys and optional matching certificates
 
@@ -3521,6 +3524,10 @@ def load_keypairs(
             else:
                 resolved_passphrase = passphrase
 
+            if loop and inspect.isawaitable(resolved_passphrase):
+                resolved_passphrase = asyncio.run_coroutine_threadsafe(
+                    resolved_passphrase, loop).result()
+
             priv_keys = read_private_key_list(keylist, resolved_passphrase,
                                               unsafe_skip_rsa_key_validation)
 
@@ -3558,6 +3565,10 @@ def load_keypairs(
                     resolved_passphrase = passphrase(key_prefix)
                 else:
                     resolved_passphrase = passphrase
+
+                if loop and inspect.isawaitable(resolved_passphrase):
+                    resolved_passphrase = asyncio.run_coroutine_threadsafe(
+                        resolved_passphrase, loop).result()
 
                 if allow_certs:
                     key, certs_to_load = read_private_key_and_certs(

@@ -6977,7 +6977,7 @@ class SSHConnectionOptions(Options):
         loop = asyncio.get_event_loop()
 
         return cast(_OptionsSelf, await loop.run_in_executor(
-            None, functools.partial(cls, options, **kwargs)))
+            None, functools.partial(cls, options, loop=loop, **kwargs)))
 
     # pylint: disable=arguments-differ
     def prepare(self, config: SSHConfig, # type: ignore
@@ -7255,10 +7255,12 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
            A list of optional certificates which can be paired with the
            provided client keys.
        :param passphrase: (optional)
-           The passphrase to use to decrypt client keys when loading them,
-           if they are encrypted. If this is not specified, only unencrypted
-           client keys can be loaded. If the keys passed into client_keys
-           are already loaded, this argument is ignored.
+           The passphrase to use to decrypt client keys if they are
+           encrypted, or a `callable` or coroutine which takes a filename
+           as a parameter and returns the passphrase to use to decrypt
+           that file. If not specified, only unencrypted client keys can
+           be loaded. If the keys passed into client_keys are already
+           loaded, this argument is ignored.
        :param ignore_encrypted: (optional)
            Whether or not to ignore encrypted keys when no passphrase is
            specified. This defaults to `True` when keys are specified via
@@ -7605,7 +7607,9 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
     max_pktsize: int
 
     # pylint: disable=arguments-differ
-    def prepare(self, last_config: Optional[SSHConfig] = None, # type: ignore
+    def prepare(self, # type: ignore
+                loop: Optional[asyncio.AbstractEventLoop] = None,
+                last_config: Optional[SSHConfig] = None,
                 config: DefTuple[ConfigPaths] = None, reload: bool = False,
                 client_factory: Optional[_ClientFactory] = None,
                 client_version: _VersionArg = (), host: str = '',
@@ -7761,7 +7765,7 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
 
             self.client_host_keypairs = \
                 load_keypairs(cast(KeyPairListArg, client_host_keys),
-                              passphrase, client_host_certs)
+                              passphrase, client_host_certs, loop=loop)
 
         self.client_host_keysign = client_host_keysign
         self.client_host = client_host
@@ -7839,7 +7843,8 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
         if client_keys:
             self.client_keys = \
                 load_keypairs(cast(KeyPairListArg, client_keys), passphrase,
-                              client_certs, identities_only, ignore_encrypted)
+                              client_certs, identities_only, ignore_encrypted,
+                              loop=loop)
         elif client_keys is not None:
             self.client_keys = load_default_keypairs(passphrase, client_certs)
         else:
@@ -7914,11 +7919,12 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
            A list of optional certificates which can be paired with the
            provided server host keys.
        :param passphrase: (optional)
-           The passphrase to use to decrypt server host keys when loading
-           them, if they are encrypted. If this is not specified, only
-           unencrypted server host keys can be loaded. If the keys passed
-           into server_host_keys are already loaded, this argument is
-           ignored.
+           The passphrase to use to decrypt server host keys if they are
+           encrypted, or a `callable` or coroutine which takes a filename
+           as a parameter and returns the passphrase to use to decrypt
+           that file. If not specified, only unencrypted server host keys
+           can be loaded. If the keys passed into server_host_keys are
+           already loaded, this argument is ignored.
        :param known_client_hosts: (optional)
            A list of client hosts which should be trusted to perform
            host-based client authentication. If this is not specified,
@@ -8224,7 +8230,9 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
     max_pktsize: int
 
     # pylint: disable=arguments-differ
-    def prepare(self, last_config: Optional[SSHConfig] = None, # type: ignore
+    def prepare(self, # type: ignore
+                loop: Optional[asyncio.AbstractEventLoop] = None,
+                last_config: Optional[SSHConfig] = None,
                 config: DefTuple[ConfigPaths] = None, reload: bool = False,
                 accept_addr: str = '', accept_port: int = 0,
                 username: str = '', client_host: str = '',
@@ -8320,7 +8328,7 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
                                      config.get('HostCertificate', ()))
 
         server_keys = load_keypairs(server_host_keys, passphrase,
-                                    server_host_certs)
+                                    server_host_certs, loop=loop)
 
         self.server_host_keys = OrderedDict()
 
