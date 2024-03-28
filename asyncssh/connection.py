@@ -184,6 +184,7 @@ _ProtocolFactory = Union[_ClientFactory, _ServerFactory]
 
 _Conn = TypeVar('_Conn', 'SSHClientConnection', 'SSHServerConnection')
 _ConnSelf = TypeVar('_ConnSelf', bound='SSHConnection')
+_OptionsSelf = TypeVar('_OptionsSelf', bound='SSHConnectionOptions')
 
 class _TunnelProtocol(Protocol):
     """Base protocol for connections to tunnel SSH over"""
@@ -381,8 +382,7 @@ async def _open_tunnel(tunnels: object, passphrase: Optional[BytesOrStr],
         return None
 
 
-async def _connect(options: 'SSHConnectionOptions',
-                   config: DefTuple[ConfigPaths],
+async def _connect(options: '_OptionsSelf', config: DefTuple[ConfigPaths],
                    loop: asyncio.AbstractEventLoop, flags: int,
                    sock: Optional[socket.socket],
                    conn_factory: Callable[[], _Conn], msg: str) -> _Conn:
@@ -456,8 +456,7 @@ async def _connect(options: 'SSHConnectionOptions',
             await conn.wait_closed()
 
 
-async def _listen(options: 'SSHConnectionOptions',
-                  config: DefTuple[ConfigPaths],
+async def _listen(options: '_OptionsSelf', config: DefTuple[ConfigPaths],
                   loop: asyncio.AbstractEventLoop, flags: int,
                   backlog: int, sock: Optional[socket.socket],
                   reuse_address: bool, reuse_port: bool,
@@ -513,14 +512,6 @@ async def _listen(options: 'SSHConnectionOptions',
             reuse_port=reuse_port)
 
     return SSHAcceptor(server, options)
-
-
-async def _run_in_executor(loop: asyncio.AbstractEventLoop, func: Callable,
-                           *args: object, **kwargs: object) -> object:
-    """Run a potentially blocking call in an executor"""
-
-    return await loop.run_in_executor(
-        None, functools.partial(func, *args, **kwargs))
 
 
 def _validate_version(version: DefTuple[BytesOrStr]) -> bytes:
@@ -5665,11 +5656,10 @@ class SSHServerConnection(SSHConnection):
             self._peer_host, _ = await self._loop.getnameinfo(
                 (self._peer_addr, self._peer_port), socket.NI_NUMERICSERV)
 
-        options = cast(SSHServerConnectionOptions, await _run_in_executor(
-            self._loop, SSHServerConnectionOptions, options=self._options,
-            reload=True, accept_addr=self._local_addr,
+        options = await SSHServerConnectionOptions.construct(
+            options=self._options, reload=True, accept_addr=self._local_addr,
             accept_port=self._local_port, username=self._username,
-            client_host=self._peer_host, client_addr=self._peer_addr))
+            client_host=self._peer_host, client_addr=self._peer_addr)
 
         self._options = options
 
@@ -6974,10 +6964,20 @@ class SSHConnectionOptions(Options):
     keepalive_internal: float
     keepalive_count_max: int
 
-    def __init__(self, options: Optional['SSHConnectionOptions'] = None,
+    def __init__(self, options: Optional['_OptionsSelf'] = None,
                  **kwargs: object):
         last_config = options.config if options else None
         super().__init__(options=options, last_config=last_config, **kwargs)
+
+    @classmethod
+    async def construct(cls, options: Optional['_OptionsSelf'] = None,
+                        **kwargs: object) -> _OptionsSelf:
+        """Construct a new options object from within an async task"""
+
+        loop = asyncio.get_event_loop()
+
+        return cast(_OptionsSelf, await loop.run_in_executor(
+            None, functools.partial(cls, options, **kwargs)))
 
     # pylint: disable=arguments-differ
     def prepare(self, config: SSHConfig, # type: ignore
@@ -8438,8 +8438,8 @@ async def run_client(sock: socket.socket, config: DefTuple[ConfigPaths] = (),
 
     loop = asyncio.get_event_loop()
 
-    new_options = cast(SSHClientConnectionOptions, await _run_in_executor(
-        loop, SSHClientConnectionOptions, options, config=config, **kwargs))
+    new_options = await SSHClientConnectionOptions.construct(
+        options, config=config, **kwargs)
 
     return await asyncio.wait_for(
         _connect(new_options, config, loop, 0, sock, conn_factory,
@@ -8487,8 +8487,8 @@ async def run_server(sock: socket.socket, config: DefTuple[ConfigPaths] = (),
 
     loop = asyncio.get_event_loop()
 
-    new_options = cast(SSHServerConnectionOptions, await _run_in_executor(
-        loop, SSHServerConnectionOptions, options, config=config, **kwargs))
+    new_options = await SSHServerConnectionOptions.construct(
+        options, config=config, **kwargs)
 
     return await asyncio.wait_for(
         _connect(new_options, config, loop, 0, sock, conn_factory,
@@ -8605,10 +8605,9 @@ async def connect(host = '', port: DefTuple[int] = (), *,
 
     loop = asyncio.get_event_loop()
 
-    new_options = cast(SSHClientConnectionOptions, await _run_in_executor(
-        loop, SSHClientConnectionOptions, options, config=config,
-        host=host, port=port, tunnel=tunnel, family=family,
-        local_addr=local_addr, **kwargs))
+    new_options = await SSHClientConnectionOptions.construct(
+        options, config=config, host=host, port=port, tunnel=tunnel,
+        family=family, local_addr=local_addr, **kwargs)
 
     return await asyncio.wait_for(
         _connect(new_options, config, loop, flags, sock, conn_factory,
@@ -8707,10 +8706,9 @@ async def connect_reverse(
 
     loop = asyncio.get_event_loop()
 
-    new_options = cast(SSHServerConnectionOptions, await _run_in_executor(
-        loop, SSHServerConnectionOptions, options, config=config,
-        host=host, port=port, tunnel=tunnel, family=family,
-        local_addr=local_addr, **kwargs))
+    new_options = await SSHServerConnectionOptions.construct(
+        options, config=config, host=host, port=port, tunnel=tunnel,
+        family=family, local_addr=local_addr, **kwargs)
 
     return await asyncio.wait_for(
         _connect(new_options, config, loop, flags, sock, conn_factory,
@@ -8829,9 +8827,9 @@ async def listen(host = '', port: DefTuple[int] = (), *,
 
     loop = asyncio.get_event_loop()
 
-    new_options = cast(SSHServerConnectionOptions, await _run_in_executor(
-        loop, SSHServerConnectionOptions, options, config=config,
-        host=host, port=port, tunnel=tunnel, family=family, **kwargs))
+    new_options = await SSHServerConnectionOptions.construct(
+        options, config=config, host=host, port=port, tunnel=tunnel,
+        family=family, **kwargs)
 
     # pylint: disable=attribute-defined-outside-init
     new_options.proxy_command = None
@@ -8968,9 +8966,9 @@ async def listen_reverse(host = '', port: DefTuple[int] = (), *,
 
     loop = asyncio.get_event_loop()
 
-    new_options = cast(SSHClientConnectionOptions, await _run_in_executor(
-        loop, SSHClientConnectionOptions, options, config=config,
-        host=host, port=port, tunnel=tunnel, family=family, **kwargs))
+    new_options = await SSHClientConnectionOptions.construct(
+        options, config=config, host=host, port=port, tunnel=tunnel,
+        family=family, **kwargs)
 
     # pylint: disable=attribute-defined-outside-init
     new_options.proxy_command = None
@@ -9148,13 +9146,13 @@ async def get_server_host_key(
 
     loop = asyncio.get_event_loop()
 
-    new_options = cast(SSHClientConnectionOptions, await _run_in_executor(
-        loop, SSHClientConnectionOptions, options, config=config,
-        host=host, port=port, tunnel=tunnel, proxy_command=proxy_command,
-        family=family, local_addr=local_addr, known_hosts=None,
-        server_host_key_algs=server_host_key_algs, x509_trusted_certs=None,
-        x509_trusted_cert_paths=None, x509_purposes='any', gss_host=None,
-        kex_algs=kex_algs, client_version=client_version))
+    new_options = await SSHClientConnectionOptions.construct(
+        options, config=config, host=host, port=port, tunnel=tunnel,
+        proxy_command=proxy_command, family=family, local_addr=local_addr,
+        known_hosts=None, server_host_key_algs=server_host_key_algs,
+        x509_trusted_certs=None, x509_trusted_cert_paths=None,
+        x509_purposes='any', gss_host=None, kex_algs=kex_algs,
+        client_version=client_version)
 
     conn = await asyncio.wait_for(
         _connect(new_options, config, loop, flags, sock, conn_factory,
@@ -9291,14 +9289,14 @@ async def get_server_auth_methods(
 
     loop = asyncio.get_event_loop()
 
-    new_options = cast(SSHClientConnectionOptions, await _run_in_executor(
-        loop, SSHClientConnectionOptions, options, config=config,
-        host=host, port=port, username=username, tunnel=tunnel,
-        proxy_command=proxy_command, family=family, local_addr=local_addr,
-        known_hosts=None, server_host_key_algs=server_host_key_algs,
+    new_options = await SSHClientConnectionOptions.construct(
+        options, config=config, host=host, port=port, username=username,
+        tunnel=tunnel, proxy_command=proxy_command, family=family,
+        local_addr=local_addr, known_hosts=None,
+        server_host_key_algs=server_host_key_algs,
         x509_trusted_certs=None, x509_trusted_cert_paths=None,
         x509_purposes='any', gss_host=None, kex_algs=kex_algs,
-        client_version=client_version))
+        client_version=client_version)
 
     conn = await asyncio.wait_for(
         _connect(new_options, config, loop, flags, sock, conn_factory,
