@@ -1262,6 +1262,14 @@ class SSHClientProcess(SSHProcess[AnyStr], SSHClientStreamSession[AnyStr]):
            The default value of `None` means to not change redirection
            for that stream.
 
+           .. note:: While it is legal to use buffered I/O streams such
+                     as sys.stdin, sys.stdout, and sys.stderr as redirect
+                     targets, you must make sure buffers are flushed
+                     before redirection begins and that these streams
+                     are put back into blocking mode before attempting
+                     to go back using buffered I/O again. Also, no buffered
+                     I/O should be performed while redirection is active.
+
            .. note:: When passing in asyncio streams, it is the responsibility
                      of the caller to close the associated transport when it
                      is no longer needed.
