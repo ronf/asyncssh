@@ -7261,6 +7261,14 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
            that file. If not specified, only unencrypted client keys can
            be loaded. If the keys passed into client_keys are already
            loaded, this argument is ignored.
+
+               .. note:: A callable or coroutine passed in as a passphrase
+                         will be called on all filenames configured as
+                         client keys or client host keys each time an
+                         SSHClientConnectionOptions object is instantiated,
+                         even if the keys aren't encrypted or aren't ever
+                         used for authentication.
+
        :param ignore_encrypted: (optional)
            Whether or not to ignore encrypted keys when no passphrase is
            specified. This defaults to `True` when keys are specified via
@@ -7925,6 +7933,14 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
            that file. If not specified, only unencrypted server host keys
            can be loaded. If the keys passed into server_host_keys are
            already loaded, this argument is ignored.
+
+               .. note:: A callable or coroutine passed in as a passphrase
+                         will be called on all filenames configured as
+                         server host keys each time an
+                         SSHServerConnectionOptions object is instantiated,
+                         even if the keys aren't encrypted or aren't ever
+                         used for server validation.
+
        :param known_client_hosts: (optional)
            A list of client hosts which should be trusted to perform
            host-based client authentication. If this is not specified,
