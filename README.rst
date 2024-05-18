@@ -41,6 +41,7 @@ Features
   * Environment variables, terminal type, and window size
   * Direct and forwarded TCP/IP channels
   * OpenSSH-compatible direct and forwarded UNIX domain socket channels
+  * OpenSSH-compatible TUN/TAP channels and packet forwarding
   * Local and remote TCP/IP port forwarding
   * Local and remote UNIX domain socket forwarding
   * Dynamic TCP/IP port forwarding via SOCKS

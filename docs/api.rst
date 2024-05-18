@@ -37,20 +37,23 @@ Once an SSH client connection is established and authentication is successful,
 multiple simultaneous channels can be opened on it.  This is accomplished
 calling methods such as :meth:`create_session()
 <SSHClientConnection.create_session>`, :meth:`create_connection()
-<SSHClientConnection.create_connection>`, and :meth:`create_unix_connection()
-<SSHClientConnection.create_unix_connection>` on the
-:class:`SSHClientConnection` object. The client can also set up listeners on
-remote TCP ports and UNIX domain sockets by calling :meth:`create_server()
-<SSHClientConnection.create_server>` and :meth:`create_unix_server()
-<SSHClientConnection.create_unix_server>`. All of these methods take
-``session_factory`` arguments that return :class:`SSHClientSession`,
-:class:`SSHTCPSession`, or :class:`SSHUNIXSession` objects used to manage
-the channels once they are open. Alternately, channels can be opened using
-:meth:`open_session() <SSHClientConnection.open_session>`,
-:meth:`open_connection() <SSHClientConnection.open_connection>`, or
+<SSHClientConnection.create_connection>`, :meth:`create_unix_connection()
+<SSHClientConnection.create_unix_connection>`, :meth:`create_tun()
+<SSHClientConnection.create_tun>`, and :meth:`create_tap()
+<SSHClientConnection.create_tap>` on the :class:`SSHClientConnection` object.
+The client can also set up listeners on remote TCP ports and UNIX domain
+sockets by calling :meth:`create_server() <SSHClientConnection.create_server>`
+and :meth:`create_unix_server() <SSHClientConnection.create_unix_server>`.
+All of these methods take ``session_factory`` arguments that return
+:class:`SSHClientSession`, :class:`SSHTCPSession`, or :class:`SSHUNIXSession`
+objects used to manage the channels once they are open. Alternately, channels
+can be opened using :meth:`open_session() <SSHClientConnection.open_session>`,
+:meth:`open_connection() <SSHClientConnection.open_connection>`,
 :meth:`open_unix_connection() <SSHClientConnection.open_unix_connection>`,
-which return :class:`SSHReader` and :class:`SSHWriter` objects that can be
-used to perform I/O on the channel. The methods :meth:`start_server()
+:meth:`open_tun() <SSHClientConnection.open_tun>`, or
+:meth:`open_tap() <SSHClientConnection.open_tap>`, which return
+:class:`SSHReader` and :class:`SSHWriter` objects that can be used to
+perform I/O on the channel. The methods :meth:`start_server()
 <SSHClientConnection.start_server>` and :meth:`start_unix_server()
 <SSHClientConnection.start_unix_server>` can be used to set up listeners on
 remote TCP ports or UNIX domain sockets and get back these :class:`SSHReader`
@@ -84,16 +87,21 @@ to a UNIX domain socket or vice-versa can be set up using the functions
 :meth:`forward_remote_port_to_path()
 <SSHClientConnection.forward_remote_port_to_path>`, and
 :meth:`forward_remote_path_to_port()
-<SSHClientConnection.forward_remote_path_to_port>`.
-
-In these cases, data transfer on
-the channels is managed automatically by AsyncSSH whenever new connections
-are opened, so custom session objects are not required.
+<SSHClientConnection.forward_remote_path_to_port>`. In these cases, data
+transfer on the channels is managed automatically by AsyncSSH whenever new
+connections are opened, so custom session objects are not required.
 
 Dynamic TCP port forwarding can be set up by calling :meth:`forward_socks()
 <SSHClientConnection.forward_socks>`. The SOCKS listener set up by
 AsyncSSH on the requested port accepts SOCKS connect requests and is
 compatible with SOCKS versions 4, 4a, and 5.
+
+Bidirectional packet forwarding at layer 2 or 3 is also supported using
+the functions :meth:`forward_tun() <SSHClientConnection.forward_tun>` and
+:meth:`forward_tap() <SSHClientConnection.forward_tap>` to set up tunnels
+between local and remote TUN or TAP interfaces. Once a tunnel is established,
+packets arriving on TUN/TAP interfaces on either side are sent over the
+tunnel and automatically sent out the TUN/TAP interface on the other side.
 
 When an SSH server receives a new connection and authentication is successful,
 handlers such as :meth:`session_requested() <SSHServer.session_requested>`,
