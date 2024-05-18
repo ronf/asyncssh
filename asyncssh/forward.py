@@ -25,6 +25,7 @@ import socket
 from types import TracebackType
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, Dict, Optional
 from typing import Type, cast
+from typing_extensions import Self
 
 from .misc import ChannelOpenError, SockAddr
 
@@ -55,7 +56,7 @@ class SSHForwarder(asyncio.BaseProtocol):
 
         self._extra = extra
 
-    async def __aenter__(self) -> 'SSHForwarder':
+    async def __aenter__(self) -> Self:
         return self
 
     async def __aexit__(self, _exc_type: Optional[Type[BaseException]],

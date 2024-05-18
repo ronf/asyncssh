@@ -39,7 +39,7 @@ from types import TracebackType
 from typing import TYPE_CHECKING, Any, AnyStr, Awaitable, Callable, Dict
 from typing import List, Mapping, Optional, Sequence, Set, Tuple, Type
 from typing import TypeVar, Union, cast
-from typing_extensions import Protocol
+from typing_extensions import Protocol, Self
 
 from .agent import SSHAgentClient, SSHAgentListener
 
@@ -182,9 +182,8 @@ _ClientFactory = Callable[[], SSHClient]
 _ServerFactory = Callable[[], SSHServer]
 _ProtocolFactory = Union[_ClientFactory, _ServerFactory]
 
-_Conn = TypeVar('_Conn', 'SSHClientConnection', 'SSHServerConnection')
-_ConnSelf = TypeVar('_ConnSelf', bound='SSHConnection')
-_OptionsSelf = TypeVar('_OptionsSelf', bound='SSHConnectionOptions')
+_Conn = TypeVar('_Conn', bound='SSHConnection')
+_Options = TypeVar('_Options', bound='SSHConnectionOptions')
 
 class _TunnelProtocol(Protocol):
     """Base protocol for connections to tunnel SSH over"""
@@ -382,7 +381,7 @@ async def _open_tunnel(tunnels: object, passphrase: Optional[BytesOrStr],
         return None
 
 
-async def _connect(options: '_OptionsSelf', config: DefTuple[ConfigPaths],
+async def _connect(options: '_Options', config: DefTuple[ConfigPaths],
                    loop: asyncio.AbstractEventLoop, flags: int,
                    sock: Optional[socket.socket],
                    conn_factory: Callable[[], _Conn], msg: str) -> _Conn:
@@ -456,7 +455,7 @@ async def _connect(options: '_OptionsSelf', config: DefTuple[ConfigPaths],
             await conn.wait_closed()
 
 
-async def _listen(options: '_OptionsSelf', config: DefTuple[ConfigPaths],
+async def _listen(options: '_Options', config: DefTuple[ConfigPaths],
                   loop: asyncio.AbstractEventLoop, flags: int,
                   backlog: int, sock: Optional[socket.socket],
                   reuse_address: bool, reuse_port: bool,
@@ -677,7 +676,7 @@ class SSHAcceptor:
         self._server = server
         self._options = options
 
-    async def __aenter__(self) -> 'SSHAcceptor':
+    async def __aenter__(self) -> Self:
         return self
 
     async def __aexit__(self, _exc_type: Optional[Type[BaseException]],
@@ -942,7 +941,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         self._disable_trivial_auth = False
 
-    async def __aenter__(self: _ConnSelf) -> _ConnSelf:
+    async def __aenter__(self) -> Self:
         """Allow SSHConnection to be used as an async context manager"""
 
         return self
@@ -6964,19 +6963,18 @@ class SSHConnectionOptions(Options):
     keepalive_internal: float
     keepalive_count_max: int
 
-    def __init__(self, options: Optional['_OptionsSelf'] = None,
-                 **kwargs: object):
+    def __init__(self, options: Optional['_Options'] = None, **kwargs: object):
         last_config = options.config if options else None
         super().__init__(options=options, last_config=last_config, **kwargs)
 
     @classmethod
-    async def construct(cls, options: Optional['_OptionsSelf'] = None,
-                        **kwargs: object) -> _OptionsSelf:
+    async def construct(cls, options: Optional['_Options'] = None,
+                        **kwargs: object) -> _Options:
         """Construct a new options object from within an async task"""
 
         loop = asyncio.get_event_loop()
 
-        return cast(_OptionsSelf, await loop.run_in_executor(
+        return cast(_Options, await loop.run_in_executor(
             None, functools.partial(cls, options, loop=loop, **kwargs)))
 
     # pylint: disable=arguments-differ

@@ -26,6 +26,7 @@ import socket
 from types import TracebackType
 from typing import TYPE_CHECKING, AnyStr, Callable, Generic, List, Optional
 from typing import Sequence, Tuple, Type, Union
+from typing_extensions import Self
 
 from .forward import SSHForwarderCoro
 from .forward import SSHLocalPortForwarder, SSHLocalPathForwarder
@@ -54,7 +55,7 @@ class SSHListener:
     def __init__(self) -> None:
         self._tunnel: Optional['SSHConnection'] = None
 
-    async def __aenter__(self) -> 'SSHListener':
+    async def __aenter__(self) -> Self:
         return self
 
     async def __aexit__(self, _exc_type: Optional[Type[BaseException]],

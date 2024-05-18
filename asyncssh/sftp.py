@@ -37,7 +37,7 @@ from types import TracebackType
 from typing import TYPE_CHECKING, AnyStr, AsyncIterator, Awaitable, Callable
 from typing import Dict, Generic, IO, Iterable, List, Mapping, Optional
 from typing import Sequence, Set, Tuple, Type, TypeVar, Union, cast, overload
-from typing_extensions import Literal, Protocol
+from typing_extensions import Literal, Protocol, Self
 
 from . import constants
 from .constants import DEFAULT_LANG
@@ -208,7 +208,7 @@ class _SFTPGlobProtocol(Protocol):
 class SFTPFileProtocol(Protocol):
     """Protocol for accessing a file via an SFTP server"""
 
-    async def __aenter__(self) -> 'SFTPFileProtocol':
+    async def __aenter__(self) -> Self:
         """Allow SFTPFileProtocol to be used as an async context manager"""
 
     async def __aexit__(self, _exc_type: Optional[Type[BaseException]],
@@ -2999,7 +2999,7 @@ class SFTPClientFile:
         self._max_requests = max_requests
         self._offset = None if appending else 0
 
-    async def __aenter__(self) -> 'SFTPClientFile':
+    async def __aenter__(self) -> Self:
         """Allow SFTPClientFile to be used as an async context manager"""
 
         return self
@@ -3463,7 +3463,7 @@ class SFTPClient:
         self._path_errors = path_errors
         self._cwd: Optional[bytes] = None
 
-    async def __aenter__(self) -> 'SFTPClient':
+    async def __aenter__(self) -> Self:
         """Allow SFTPClient to be used as an async context manager"""
 
         return self
@@ -7277,7 +7277,7 @@ class LocalFile:
     def __init__(self, file: _SFTPFileObj):
         self._file = file
 
-    async def __aenter__(self) -> 'LocalFile': # pragma: no cover
+    async def __aenter__(self) -> Self: # pragma: no cover
         """Allow LocalFile to be used as an async context manager"""
 
         return self
@@ -7407,7 +7407,7 @@ class SFTPServerFile:
         self._server = server
         self._file_obj = file_obj
 
-    async def __aenter__(self) -> 'SFTPServerFile': # pragma: no cover
+    async def __aenter__(self) -> Self: # pragma: no cover
         """Allow SFTPServerFile to be used as an async context manager"""
 
         return self

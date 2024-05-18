@@ -32,7 +32,7 @@ import sys
 from types import TracebackType
 from typing import TYPE_CHECKING, AsyncIterator, List, NoReturn, Optional
 from typing import Sequence, Tuple, Type, Union, cast
-from typing_extensions import Protocol
+from typing_extensions import Protocol, Self
 
 from .constants import DEFAULT_LANG
 from .constants import FILEXFER_TYPE_REGULAR, FILEXFER_TYPE_DIRECTORY
@@ -240,7 +240,7 @@ class _SCPHandler:
 
         self._logger = reader.logger.get_child('sftp')
 
-    async def __aenter__(self) -> '_SCPHandler': # pragma: no cover
+    async def __aenter__(self) -> Self: # pragma: no cover
         """Allow _SCPHandler to be used as an async context manager"""
 
         return self

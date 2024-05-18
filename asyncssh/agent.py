@@ -26,7 +26,7 @@ import os
 import sys
 from types import TracebackType
 from typing import TYPE_CHECKING, List, Optional, Sequence, Tuple, Type, Union
-from typing_extensions import Protocol
+from typing_extensions import Protocol, Self
 
 from .listener import SSHForwardListener
 from .misc import async_context_manager, maybe_wait_closed
@@ -198,7 +198,7 @@ class SSHAgentClient:
         self._writer: Optional[AgentWriter] = None
         self._lock = asyncio.Lock()
 
-    async def __aenter__(self) -> 'SSHAgentClient':
+    async def __aenter__(self) -> Self:
         """Allow SSHAgentClient to be used as an async context manager"""
 
         return self
