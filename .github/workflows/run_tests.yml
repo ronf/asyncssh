@@ -20,9 +20,6 @@ jobs:
             python-version: "3.12"
             openssl-version: "3"
         exclude:
-          - os: macos-latest
-            python-version: "3.7"
-        exclude:
           # test hangs on these combination
           - os: windows-latest
             python-version: "3.8"
