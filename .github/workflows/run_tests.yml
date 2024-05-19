@@ -167,6 +167,7 @@ jobs:
             sqlite3 "$f" "update file set path = replace(path, '\\', '/');"
           done
           tox -e report
-      - uses: codecov/codecov-action@v3
+      - uses: codecov/codecov-action@v4
         with:
           files: coverage.xml
+          token: ${{ secrets.CODECOV_TOKEN }}
