@@ -108,7 +108,7 @@ async def _handle_client(process):
                                      '%sx%s' % (exc.width, exc.height))
     elif action == 'term_size_tty':
         master, slave = os.openpty()
-        await process.redirect_stdin(master)
+        await process.redirect_stdin(master, recv_eof=False)
         process.stdout.write(b'\n')
 
         await process.stdin.readline()
@@ -672,7 +672,7 @@ class _TestProcessRedirection(_TestProcess):
         self.assertEqual(result.exit_signal[2], '80x24')
 
     @unittest.skipIf(sys.platform == 'win32',
-                     'skip fcntl/termios test on Windows')
+                     'skip TTY terminal size tests on Windows')
     @asynctest
     async def test_forward_terminal_size_tty(self):
         """Test forwarding a terminal size change to a remote tty"""
@@ -687,6 +687,8 @@ class _TestProcessRedirection(_TestProcess):
 
         self.assertEqual(result.stdout, '80x24')
 
+    @unittest.skipIf(sys.platform == 'win32',
+                     'skip TTY terminal size tests on Windows')
     @asynctest
     async def test_forward_terminal_size_nontty(self):
         """Test forwarding a terminal size change to a remote non-tty"""
