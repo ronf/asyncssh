@@ -41,16 +41,15 @@ from .constants import DEFAULT_LANG, EXTENDED_DATA_STDERR
 
 from .logging import SSHLogger
 
-from .misc import BytesOrStr, Error, MaybeAwait
-from .misc import ProtocolError, Record, open_file
+from .misc import BytesOrStr, Error, MaybeAwait, TermModes, TermSize
+from .misc import ProtocolError, Record, open_file, set_terminal_size
 from .misc import BreakReceived, SignalReceived, TerminalSizeChanged
 
-from .session import DataType, TermModes, TermSize
+from .session import DataType
 
 from .stream import SSHReader, SSHWriter, SSHStreamSession
 from .stream import SSHClientStreamSession, SSHServerStreamSession
 from .stream import SFTPServerFactory
-
 
 _AnyStrContra = TypeVar('_AnyStrContra', bytes, str, contravariant=True)
 
@@ -406,12 +405,19 @@ class _PipeWriter(_UnicodeWriter[AnyStr], asyncio.BaseProtocol):
         self._process: 'SSHProcess[AnyStr]' = process
         self._datatype = datatype
         self._transport: Optional[asyncio.WriteTransport] = None
+        self._tty: Optional[IO] = None
         self._close_event = asyncio.Event()
 
     def connection_made(self, transport: asyncio.BaseTransport) -> None:
         """Handle a newly opened pipe"""
 
         self._transport = cast(asyncio.WriteTransport, transport)
+
+        pipe = transport.get_extra_info('pipe')
+
+        if isinstance(self._process, SSHServerProcess) and pipe.isatty():
+            self._tty = pipe
+            set_terminal_size(pipe, *self._process.term_size)
 
     def connection_lost(self, exc: Optional[Exception]) -> None:
         """Handle closing of the pipe"""
@@ -433,6 +439,12 @@ class _PipeWriter(_UnicodeWriter[AnyStr], asyncio.BaseProtocol):
 
         assert self._transport is not None
         self._transport.write(self.encode(data))
+
+    def write_exception(self, exc: Exception) -> None:
+        """Write terminal size changes to the pipe if it is a TTY"""
+
+        if isinstance(exc, TerminalSizeChanged) and self._tty:
+            set_terminal_size(self._tty, *exc.term_size)
 
     def write_eof(self) -> None:
         """Write EOF to the pipe"""

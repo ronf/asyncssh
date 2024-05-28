@@ -34,11 +34,17 @@ import asyncssh
 from .server import ServerTestCase
 from .util import asynctest, echo
 
+if sys.platform != 'win32': # pragma: no branch
+    import fcntl
+    import struct
+    import termios
+
 try:
     import aiofiles
     _aiofiles_available = True
 except ImportError: # pragma: no cover
     _aiofiles_available = False
+
 
 async def _handle_client(process):
     """Handle a new client request"""
@@ -100,6 +106,23 @@ async def _handle_client(process):
         except asyncssh.TerminalSizeChanged as exc:
             process.exit_with_signal('ABRT', False,
                                      '%sx%s' % (exc.width, exc.height))
+    elif action == 'term_size_tty':
+        master, slave = os.openpty()
+        await process.redirect_stdin(master)
+        process.stdout.write(b'\n')
+
+        await process.stdin.readline()
+        size = fcntl.ioctl(slave, termios.TIOCGWINSZ, 8*b'\0')
+        height, width, _, _ = struct.unpack('hhhh', size)
+        process.stdout.write(('%sx%s' % (width, height)).encode())
+        os.close(slave)
+    elif action == 'term_size_nontty':
+        rpipe, wpipe = os.pipe()
+        await process.redirect_stdin(wpipe)
+        process.stdout.write(b'\n')
+
+        await process.stdin.readline()
+        os.close(rpipe)
     elif action == 'timeout':
         process.channel.set_encoding('utf-8')
         process.stdout.write('Sleeping')
@@ -647,6 +670,36 @@ class _TestProcessRedirection(_TestProcess):
             result = await process.wait()
 
         self.assertEqual(result.exit_signal[2], '80x24')
+
+    @unittest.skipIf(sys.platform == 'win32',
+                     'skip fcntl/termios test on Windows')
+    @asynctest
+    async def test_forward_terminal_size_tty(self):
+        """Test forwarding a terminal size change to a remote tty"""
+
+        async with self.connect() as conn:
+            process = await conn.create_process('term_size_tty',
+                                                term_type='ansi')
+            await process.stdout.readline()
+            process.change_terminal_size(80, 24)
+            process.stdin.write_eof()
+            result = await process.wait()
+
+        self.assertEqual(result.stdout, '80x24')
+
+    @asynctest
+    async def test_forward_terminal_size_nontty(self):
+        """Test forwarding a terminal size change to a remote non-tty"""
+
+        async with self.connect() as conn:
+            process = await conn.create_process('term_size_nontty',
+                                                term_type='ansi')
+            await process.stdout.readline()
+            process.change_terminal_size(80, 24)
+            process.stdin.write_eof()
+            result = await process.wait()
+
+        self.assertEqual(result.stdout, '')
 
     @asynctest
     async def test_forward_break(self):

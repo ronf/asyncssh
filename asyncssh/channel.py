@@ -46,11 +46,11 @@ from .editor import SSHLineEditorChannel, SSHLineEditorSession
 from .logging import SSHLogger
 
 from .misc import ChannelOpenError, MaybeAwait, ProtocolError
+from .misc import TermModes, TermSize, TermSizeArg
 from .misc import get_symbol_names, map_handler_name
 
 from .packet import Boolean, Byte, String, UInt32, SSHPacket, SSHPacketHandler
 
-from .session import TermModes, TermSize, TermSizeArg
 from .session import SSHSession, SSHClientSession, SSHServerSession
 from .session import SSHTCPSession, SSHUNIXSession, SSHTunTapSession
 from .session import SSHSessionFactory, SSHClientSessionFactory

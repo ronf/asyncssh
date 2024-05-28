@@ -21,7 +21,7 @@
 """SSH session handlers"""
 
 from typing import TYPE_CHECKING, Any, AnyStr, Callable, Generic
-from typing import Mapping, Optional, Tuple, Union
+from typing import Mapping, Optional, Tuple
 
 
 if TYPE_CHECKING:
@@ -30,11 +30,6 @@ if TYPE_CHECKING:
     from .channel import SSHTCPChannel, SSHUNIXChannel,  SSHTunTapChannel
 
 DataType = Optional[int]
-
-TermModes = Mapping[int, int]
-TermModesArg = Optional[TermModes]
-TermSize = Tuple[int, int, int, int]
-TermSizeArg = Union[None, Tuple[int, int], TermSize]
 
 
 class SSHSession(Generic[AnyStr]):

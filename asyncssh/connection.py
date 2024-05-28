@@ -112,6 +112,7 @@ from .misc import DisconnectError, ConnectionLost, HostKeyNotVerifiable
 from .misc import KeyExchangeFailed, IllegalUserName, MACError
 from .misc import PasswordChangeRequired, PermissionDenied, ProtocolError
 from .misc import ProtocolNotSupported, ServiceNotAvailable
+from .misc import TermModesArg, TermSizeArg
 from .misc import async_context_manager, construct_disc_error
 from .misc import get_symbol_names, ip_address, map_handler_name
 from .misc import parse_byte_count, parse_time_interval
@@ -146,8 +147,7 @@ from .saslprep import saslprep, SASLPrepError
 
 from .server import SSHServer
 
-from .session import DataType, TermModesArg, TermSizeArg
-from .session import SSHClientSession, SSHServerSession
+from .session import DataType, SSHClientSession, SSHServerSession
 from .session import SSHTCPSession, SSHUNIXSession, SSHTunTapSession
 from .session import SSHClientSessionFactory, SSHTCPSessionFactory
 from .session import SSHUNIXSessionFactory, SSHTunTapSessionFactory
