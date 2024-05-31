@@ -320,8 +320,9 @@ class SSHConfig:
                     self._error(str(exc))
 
                 args = []
+                loption = ''
 
-                for arg in split_args:
+                for i, arg in enumerate(split_args, 1):
                     if arg.startswith('='):
                         if len(arg) > 1:
                             args.append(arg[1:])
@@ -334,8 +335,11 @@ class SSHConfig:
                     else:
                         args.append(arg)
 
-                option = args.pop(0)
-                loption = option.lower()
+                    if i == 1:
+                        loption = args.pop(0).lower()
+                    elif i > 1 and loption not in self._conditionals:
+                        args.extend(split_args[i:])
+                        break
 
                 if loption in self._no_split:
                     args = [line.lstrip()[len(loption):].strip()]
@@ -562,7 +566,7 @@ class SSHClientConfig(SSHConfig):
         ('SendEnv',                         SSHConfig._append_string_list),
         ('ServerAliveCountMax',             SSHConfig._set_int),
         ('ServerAliveInterval',             SSHConfig._set_int),
-        ('SetEnv',                          SSHConfig._append_string_list),
+        ('SetEnv',                          SSHConfig._set_string_list),
         ('Tag',                             SSHConfig._set_string),
         ('TCPKeepAlive',                    SSHConfig._set_bool),
         ('User',                            SSHConfig._set_string),
