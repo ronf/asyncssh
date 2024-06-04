@@ -365,6 +365,12 @@ class _PipeReader(_UnicodeReader[AnyStr], asyncio.BaseProtocol):
 
         self._transport = cast(asyncio.ReadTransport, transport)
 
+    def connection_lost(self, exc: Optional[Exception]) -> None:
+        """Handle closing of the pipe"""
+
+        self._process.feed_close(self._datatype)
+        self.close()
+
     def data_received(self, data: bytes) -> None:
         """Forward data from the pipe"""
 
@@ -1047,6 +1053,12 @@ class SSHProcess(SSHStreamSession, Generic[AnyStr]):
 
         self._readers[datatype].close()
         self.clear_reader(datatype)
+
+    def feed_close(self, datatype: DataType) -> None:
+        """Feed pipe close to the channel"""
+
+        if datatype in self._readers:
+            self.feed_eof(datatype)
 
     def feed_recv_buf(self, datatype: DataType,
                       writer: _WriterProtocol[AnyStr]) -> None:
