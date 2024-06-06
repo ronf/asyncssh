@@ -1634,7 +1634,9 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
             self._send_kexinit()
             self._kexinit_sent = True
 
-        if ((pkttype == MSG_USERAUTH_BANNER and
+        if (((pkttype in {MSG_SERVICE_REQUEST, MSG_SERVICE_ACCEPT} or
+              pkttype > MSG_KEX_LAST) and not self._kex_complete) or
+                (pkttype == MSG_USERAUTH_BANNER and
                  not (self._auth_in_progress or self._auth_complete)) or
                 (pkttype > MSG_USERAUTH_LAST and not self._auth_complete)):
             self._deferred_packets.append((pkttype, args))

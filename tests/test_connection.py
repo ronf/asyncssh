@@ -1136,6 +1136,8 @@ class _TestConnection(ServerTestCase):
         def send_newkeys(self, k, h):
             """Finish a key exchange and send a new keys message"""
 
+            self._kex_complete = True
+
             self.send_packet(MSG_SERVICE_REQUEST, String('ssh-userauth'))
 
             asyncssh.connection.SSHConnection.send_newkeys(self, k, h)
@@ -1151,6 +1153,8 @@ class _TestConnection(ServerTestCase):
 
         def send_newkeys(self, k, h):
             """Finish a key exchange and send a new keys message"""
+
+            self._kex_complete = True
 
             self.send_packet(MSG_SERVICE_ACCEPT, String('ssh-userauth'))
 
@@ -1437,6 +1441,8 @@ class _TestConnection(ServerTestCase):
 
         def send_newkeys(self, k, h):
             """Finish a key exchange and send a new keys message"""
+
+            self._kex_complete = True
 
             self.send_packet(MSG_USERAUTH_REQUEST, String('guest'),
                              String('ssh-connection'), String('none'))
