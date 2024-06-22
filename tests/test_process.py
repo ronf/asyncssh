@@ -961,6 +961,28 @@ class _TestProcessRedirection(_TestProcess):
 
         self.assertEqual(stdout_data, data.encode('ascii'))
 
+    @unittest.skipIf(sys.platform == 'win32',
+                     'skip asyncio.subprocess tests on Windows')
+    @asynctest
+    async def test_stdout_stream_keep_open(self):
+        """Test with stdout redirected to asyncio stream which remains open"""
+
+        data = str(id(self))
+
+        async with self.connect() as conn:
+            proc2 = await asyncio.create_subprocess_shell(
+                'cat', stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE)
+
+            await conn.run('echo', input=data, stdout=proc2.stdin,
+                           stderr=asyncssh.DEVNULL, recv_eof=False)
+            await conn.run('echo', input=data, stdout=proc2.stdin,
+                           stderr=asyncssh.DEVNULL)
+
+            stdout_data = await proc2.stdout.read()
+
+        self.assertEqual(stdout_data, 2*data.encode('ascii'))
+
     @asynctest
     async def test_change_stdout(self):
         """Test changing stdout of an open process"""

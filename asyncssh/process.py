@@ -571,24 +571,52 @@ class _StreamReader(_UnicodeReader[AnyStr]):
 class _StreamWriter(_UnicodeWriter[AnyStr]):
     """Forward data to an asyncio stream"""
 
-    def __init__(self, writer: asyncio.StreamWriter,
+    def __init__(self, process: 'SSHProcess[AnyStr]',
+                 writer: asyncio.StreamWriter, recv_eof: bool,
                  encoding: Optional[str], errors: str):
         super().__init__(encoding, errors)
 
+        self._process: 'SSHProcess[AnyStr]' = process
         self._writer = writer
+        self._recv_eof = recv_eof
+        self._queue: asyncio.Queue[Optional[AnyStr]] = asyncio.Queue()
+        self._write_task: Optional[asyncio.Task[None]] = \
+            process.channel.get_connection().create_task(self._feed())
+
+    async def _feed(self) -> None:
+        """Feed data to the stream"""
+
+        while True:
+            data = await self._queue.get()
+
+            if data is None:
+                self._queue.task_done()
+                break
+
+            self._writer.write(self.encode(data))
+            await self._writer.drain()
+            self._queue.task_done()
+
+        if self._recv_eof:
+            self._writer.write_eof()
 
     def write(self, data: AnyStr) -> None:
         """Write data to the stream"""
 
-        self._writer.write(self.encode(data))
+        self._queue.put_nowait(data)
 
     def write_eof(self) -> None:
         """Write EOF to the stream"""
 
-        self._writer.write_eof()
+        self.close()
 
     def close(self) -> None:
-        """Ignore close -- the caller must clean up the associated transport"""
+        """Stop forwarding data to the stream"""
+
+        if self._write_task:
+            self._write_task = None
+            self._queue.put_nowait(None)
+            self._process.add_cleanup_task(self._queue.join())
 
 
 class _DevNullWriter(_WriterProtocol[AnyStr]):
@@ -925,7 +953,8 @@ class SSHProcess(SSHStreamSession, Generic[AnyStr]):
             writer_process.set_reader(reader, send_eof, writer_datatype)
             writer = _ProcessWriter[AnyStr](writer_process, writer_datatype)
         elif isinstance(target, asyncio.StreamWriter):
-            writer = _StreamWriter(target, self._encoding, self._errors)
+            writer = _StreamWriter(self, target, recv_eof,
+                                   self._encoding, self._errors)
         else:
             file: _File
             needs_close = True
