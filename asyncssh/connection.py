@@ -2501,6 +2501,13 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         msg_bytes = packet.get_string()
         lang_bytes = packet.get_string()
+
+        # Work around an extra NUL byte appearing in the user
+        # auth banner message in some versions of cryptlib
+        if b'cryptlib' in self._server_version and \
+                packet.get_remaining_payload() == b'\0': # pragma: no cover
+            packet.get_byte()
+
         packet.check_end()
 
         try:
