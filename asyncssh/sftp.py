@@ -240,11 +240,13 @@ class _SFTPFSProtocol(Protocol):
                      parent: Optional[bytes] = None) -> bytes:
         """Compose a path"""
 
-    async def stat(self, path: bytes) -> 'SFTPAttrs':
-        """Get attributes of a file or directory, following symlinks"""
+    async def stat(self, path: bytes, *,
+                   follow_symlinks: bool = True) -> 'SFTPAttrs':
+        """Get attributes of a file, directory, or symlink"""
 
-    async def setstat(self, path: bytes, attrs: 'SFTPAttrs') -> None:
-        """Set attributes of a file or directory"""
+    async def setstat(self, path: bytes, attrs: 'SFTPAttrs', *,
+                      follow_symlinks: bool = True) -> None:
+        """Set attributes of a file, directory, or symlink"""
 
     async def isdir(self, path: bytes) -> bool:
         """Return if the path refers to a directory"""
@@ -560,7 +562,8 @@ def _to_local_path(path: bytes) -> _LocalPath:
     return path
 
 
-def _setstat(path: Union[int, _SFTPPath], attrs: 'SFTPAttrs') -> None:
+def _setstat(path: Union[int, _SFTPPath], attrs: 'SFTPAttrs', *,
+             follow_symlinks: bool = True) -> None:
     """Utility function to set file attributes"""
 
     if attrs.size is not None:
@@ -577,7 +580,7 @@ def _setstat(path: Union[int, _SFTPPath], attrs: 'SFTPAttrs') -> None:
 
     if ((atime_ns is None and mtime_ns is not None) or
             (atime_ns is not None and mtime_ns is None)):
-        stat_result = os.stat(path)
+        stat_result = os.stat(path, follow_symlinks=follow_symlinks)
 
         if atime_ns is None and mtime_ns is not None:
             atime_ns = stat_result.st_atime_ns
@@ -587,15 +590,25 @@ def _setstat(path: Union[int, _SFTPPath], attrs: 'SFTPAttrs') -> None:
 
     if uid is not None and gid is not None:
         try:
-            os.chown(path, uid, gid)
+            os.chown(path, uid, gid, follow_symlinks=follow_symlinks)
+        except NotImplementedError: # pragma: no cover
+            pass
         except AttributeError: # pragma: no cover
             raise NotImplementedError from None
 
     if attrs.permissions is not None:
-        os.chmod(path, stat.S_IMODE(attrs.permissions))
+        try:
+            os.chmod(path, stat.S_IMODE(attrs.permissions),
+                     follow_symlinks=follow_symlinks)
+        except NotImplementedError: # pragma: no cover
+            pass
 
     if atime_ns is not None and mtime_ns is not None:
-        os.utime(path, ns=(atime_ns, mtime_ns))
+        try:
+            os.utime(path, ns=(atime_ns, mtime_ns),
+                     follow_symlinks=follow_symlinks)
+        except NotImplementedError: # pragma: no cover
+            pass
 
 
 class _SFTPParallelIO(Generic[_T]):
@@ -2387,6 +2400,7 @@ class SFTPClientHandler(SFTPHandler):
         self._supports_fstatvfs = False
         self._supports_hardlink = False
         self._supports_fsync = False
+        self._supports_lsetstat = False
 
     @property
     def version(self) -> int:
@@ -2603,6 +2617,8 @@ class SFTPClientHandler(SFTPHandler):
                 self._supports_hardlink = True
             elif name == b'fsync@openssh.com' and data == b'1':
                 self._supports_fsync = True
+            elif name == b'lsetstat@openssh.com' and data == b'1':
+                self._supports_lsetstat = True
 
         if version == 3:
             # Check if the server has a buggy SYMLINK implementation
@@ -2680,8 +2696,9 @@ class SFTPClientHandler(SFTPHandler):
         return cast(int, await self._make_request(
             FXP_WRITE, String(handle), UInt64(offset), String(data)))
 
-    async def stat(self, path: bytes, flags: int) -> SFTPAttrs:
-        """Make an SFTP stat request"""
+    async def stat(self, path: bytes, flags: int, *,
+                   follow_symlinks: bool = True) -> SFTPAttrs:
+        """Make an SFTP stat or lstat request"""
 
         if self._version >= 4:
             flag_bytes = UInt32(flags)
@@ -2690,10 +2707,16 @@ class SFTPClientHandler(SFTPHandler):
             flag_bytes = b''
             flag_text = ''
 
-        self.logger.debug1('Sending stat for %s%s', path, flag_text)
+        if follow_symlinks:
+            self.logger.debug1('Sending stat for %s%s', path, flag_text)
 
-        return cast(SFTPAttrs,  await self._make_request(
-            FXP_STAT, String(path), flag_bytes))
+            return cast(SFTPAttrs,  await self._make_request(
+                FXP_STAT, String(path), flag_bytes))
+        else:
+            self.logger.debug1('Sending lstat for %s%s', path, flag_text)
+
+            return cast(SFTPAttrs,  await self._make_request(
+                FXP_LSTAT, String(path), flag_bytes))
 
     async def lstat(self, path: bytes, flags: int) -> SFTPAttrs:
         """Make an SFTP lstat request"""
@@ -2726,13 +2749,24 @@ class SFTPClientHandler(SFTPHandler):
         return cast(SFTPAttrs, await self._make_request(
             FXP_FSTAT, String(handle), flag_bytes))
 
-    async def setstat(self, path: bytes, attrs: SFTPAttrs) -> None:
-        """Make an SFTP setstat request"""
+    async def setstat(self, path: bytes, attrs: SFTPAttrs, *,
+                      follow_symlinks: bool = True) -> None:
+        """Make an SFTP setstat or lsetstat request"""
 
-        self.logger.debug1('Sending setstat for %s%s', path, hide_empty(attrs))
+        if follow_symlinks:
+            self.logger.debug1('Sending setstat for %s%s',
+                               path, hide_empty(attrs))
 
-        await self._make_request(FXP_SETSTAT, String(path),
-                                 attrs.encode(self._version))
+            await self._make_request(FXP_SETSTAT, String(path),
+                                     attrs.encode(self._version))
+        elif self._supports_lsetstat:
+            self.logger.debug1('Sending lsetstat for %s%s',
+                               path, hide_empty(attrs))
+
+            await self._make_request(b'lsetstat@openssh.com', String(path),
+                                     attrs.encode(self._version))
+        else:
+            raise SFTPOpUnsupported('lsetstat not supported by server')
 
     async def fsetstat(self, handle: bytes, attrs: SFTPAttrs) -> None:
         """Make an SFTP fsetstat request"""
@@ -3619,15 +3653,22 @@ class SFTPClient:
                                       srcpath, dstpath, progress_handler).run()
 
             if preserve:
-                attrs = await srcfs.stat(srcpath)
+                attrs = await srcfs.stat(srcpath,
+                                         follow_symlinks=follow_symlinks)
 
                 attrs = SFTPAttrs(permissions=attrs.permissions,
                                   atime=attrs.atime, atime_ns=attrs.atime_ns,
                                   mtime=attrs.mtime, mtime_ns=attrs.mtime_ns)
 
-                self.logger.info('    Preserving attrs: %s', attrs)
+                try:
+                    await dstfs.setstat(dstpath, attrs,
+                                        follow_symlinks=follow_symlinks or
+                                        filetype != FILEXFER_TYPE_SYMLINK)
 
-                await dstfs.setstat(dstpath, attrs)
+                    self.logger.info('    Preserved attrs: %s', attrs)
+                except SFTPOpUnsupported:
+                    self.logger.info('    Preserving symlink attrs unsupported')
+
         except (OSError, SFTPError) as exc:
             setattr(exc, 'srcpath', srcpath)
             setattr(exc, 'dstpath', dstpath)
@@ -3667,7 +3708,8 @@ class SFTPClient:
         else:
             for srcpath in srcpaths:
                 srcpath = srcfs.encode(srcpath)
-                srcattrs = await srcfs.stat(srcpath)
+                srcattrs = await srcfs.stat(srcpath,
+                                            follow_symlinks=follow_symlinks)
                 srcnames.append(SFTPName(srcpath, attrs=srcattrs))
 
         if dstpath:
@@ -4547,21 +4589,24 @@ class SFTPClient:
                                    flags & FXF_APPEND_DATA),
                               encoding, errors, block_size, max_requests)
 
-    async def stat(self, path: _SFTPPath,
-                   flags = FILEXFER_ATTR_DEFINED_V4) -> SFTPAttrs:
-        """Get attributes of a remote file or directory, following symlinks
+    async def stat(self, path: _SFTPPath, flags = FILEXFER_ATTR_DEFINED_V4, *,
+                   follow_symlinks: bool = True) -> SFTPAttrs:
+        """Get attributes of a remote file, directory, or symlink
 
-           This method queries the attributes of a remote file or
-           directory. If the path provided is a symbolic link, the
-           returned attributes will correspond to the target of the
-           link.
+           This method queries the attributes of a remote file, directory,
+           or symlink. If the path provided is a symlink and follow_symlinks
+           is `True`, the returned attributes will correspond to the target
+           of the link.
 
            :param path:
                The path of the remote file or directory to get attributes for
            :param flags: (optional)
                Flags indicating attributes of interest (SFTPv4 only)
+           :param follow_symlinks: (optional)
+               Whether or not to follow symbolic links
            :type path: :class:`PurePath <pathlib.PurePath>`, `str`, or `bytes`
            :type flags: `int`
+           :type follow_symlinks: `bool`
 
            :returns: An :class:`SFTPAttrs` containing the file attributes
 
@@ -4570,7 +4615,8 @@ class SFTPClient:
         """
 
         path = self.compose_path(path)
-        return await self._handler.stat(path, flags)
+        return await self._handler.stat(path, flags,
+                                        follow_symlinks=follow_symlinks)
 
     async def lstat(self, path: _SFTPPath,
                     flags = FILEXFER_ATTR_DEFINED_V4) -> SFTPAttrs:
@@ -4598,14 +4644,15 @@ class SFTPClient:
         path = self.compose_path(path)
         return await self._handler.lstat(path, flags)
 
-    async def setstat(self, path: _SFTPPath, attrs: SFTPAttrs) -> None:
-        """Set attributes of a remote file or directory
+    async def setstat(self, path: _SFTPPath, attrs: SFTPAttrs, *,
+                      follow_symlinks: bool = True) -> None:
+        """Set attributes of a remote file, directory, or symlink
 
-           This method sets attributes of a remote file or directory.
-           If the path provided is a symbolic link, the attributes
-           will be set on the target of the link. A subset of the
-           fields in `attrs` can be initialized and only those
-           attributes will be changed.
+           This method sets attributes of a remote file, directory, or
+           symlink. If the path provided is a symlink and follow_symlinks
+           is `True`, the attributes will be set on the target of the link.
+           A subset of the fields in `attrs` can be initialized and only
+           those attributes will be changed.
 
            :param path:
                The path of the remote file or directory to set attributes for
@@ -4619,7 +4666,9 @@ class SFTPClient:
         """
 
         path = self.compose_path(path)
-        await self._handler.setstat(path, attrs)
+
+        await self._handler.setstat(path, attrs,
+                                    follow_symlinks=follow_symlinks)
 
     async def statvfs(self, path: _SFTPPath) -> SFTPVFSAttrs:
         """Get attributes of a remote file system
@@ -4663,20 +4712,23 @@ class SFTPClient:
         await self.setstat(path, SFTPAttrs(size=size))
 
     @overload
-    async def chown(self, path: _SFTPPath,
-                    uid: int, gid: int) -> None: ... # pragma: no cover
+    async def chown(self, path: _SFTPPath, uid: int, gid: int, *,
+                    follow_symlinks: bool = True) -> \
+        None: ... # pragma: no cover
 
     @overload
-    async def chown(self, path: _SFTPPath,
-                    owner: str, group: str) -> None: ... # pragma: no cover
+    async def chown(self, path: _SFTPPath, owner: str, group: str, *,
+                    follow_symlinks: bool = True) -> \
+        None: ... # pragma: no cover
 
     async def chown(self, path, uid_or_owner = None, gid_or_group = None,
-                    uid = None, gid = None, owner = None, group = None):
-        """Change the owner user and group id of a remote file or directory
+                    uid = None, gid = None, owner = None, group = None, *,
+                    follow_symlinks = True):
+        """Change the owner of a remote file, directory, or symlink
 
-           This method changes the user and group id of a remote
-           file or directory. If the path provided is a symbolic
-           link, the target of the link will be changed.
+           This method changes the user and group id of a remote file,
+           directory, or symlink. If the path provided is a symlink and
+           follow_symlinks is `True`, the target of the link will be changed.
 
            :param path:
                The path of the remote file to change
@@ -4688,11 +4740,14 @@ class SFTPClient:
                The new owner to assign to the file (SFTPv4 only)
            :param group:
                The new group to assign to the file (SFTPv4 only)
+           :param follow_symlinks: (optional)
+               Whether or not to follow symbolic links
            :type path: :class:`PurePath <pathlib.PurePath>`, `str`, or `bytes`
            :type uid: `int`
            :type gid: `int`
            :type owner: `str`
            :type group: `str`
+           :type follow_symlinks: `bool`
 
            :raises: :exc:`SFTPError` if the server returns an error
 
@@ -4709,39 +4764,46 @@ class SFTPClient:
             group = gid_or_group
 
         await self.setstat(path, SFTPAttrs(uid=uid, gid=gid,
-                                           owner=owner, group=group))
+                                           owner=owner, group=group),
+                           follow_symlinks=follow_symlinks)
 
-    async def chmod(self, path: _SFTPPath, mode: int) -> None:
-        """Change the file permissions of a remote file or directory
+    async def chmod(self, path: _SFTPPath, mode: int, *,
+                    follow_symlinks: bool = True) -> None:
+        """Change the permissions of a remote file, directory, or symlink
 
-           This method changes the permissions of a remote file or
-           directory. If the path provided is a symbolic link, the
-           target of the link will be changed.
+           This method changes the permissions of a remote file, directory,
+           or symlink. If the path provided is a symlink and follow_symlinks
+           is `True`, the target of the link will be changed.
 
            :param path:
                The path of the remote file to change
            :param mode:
                The new file permissions, expressed as an int
+           :param follow_symlinks: (optional)
+               Whether or not to follow symbolic links
            :type path: :class:`PurePath <pathlib.PurePath>`, `str`, or `bytes`
            :type mode: `int`
+           :type follow_symlinks: `bool`
 
            :raises: :exc:`SFTPError` if the server returns an error
 
         """
 
-        await self.setstat(path, SFTPAttrs(permissions=mode))
+        await self.setstat(path, SFTPAttrs(permissions=mode),
+                           follow_symlinks=follow_symlinks)
 
     async def utime(self, path: _SFTPPath,
                     times: Optional[Tuple[float, float]] = None,
-                    ns: Optional[Tuple[int, int]] = None) -> None:
-        """Change the access and modify times of a remote file or directory
+                    ns: Optional[Tuple[int, int]] = None, *,
+                    follow_symlinks: bool = True) -> None:
+        """Change the timestamps of a remote file, directory, or symlink
 
-           This method changes the access and modify times of a
-           remote file or directory. If neither `times` nor '`ns` is
-           provided, the times will be changed to the current time.
+           This method changes the access and modify times of a remote file,
+           directory, or symlink. If neither `times` nor '`ns` is provided,
+           the times will be changed to the current time.
 
-           If the path provided is a symbolic link, the target of the
-           link will be changed.
+           If the path provided is a symlink and follow_symlinks is `True`,
+           the target of the link will be changed.
 
            :param path:
                The path of the remote file to change
@@ -4751,15 +4813,19 @@ class SFTPClient:
            :param ns: (optional)
                The new access and modify times, as nanoseconds relative to
                the UNIX epoch
+           :param follow_symlinks: (optional)
+               Whether or not to follow symbolic links
            :type path: :class:`PurePath <pathlib.PurePath>`, `str`, or `bytes`
            :type times: tuple of two `int` or `float` values
            :type ns: tuple of two `int` values
+           :type follow_symlinks: `bool`
 
            :raises: :exc:`SFTPError` if the server returns an error
 
         """
 
-        await self.setstat(path, _utime_to_attrs(times, ns))
+        await self.setstat(path, _utime_to_attrs(times, ns),
+                           follow_symlinks=follow_symlinks)
 
     async def exists(self, path: _SFTPPath) -> bool:
         """Return if the remote path exists and isn't a broken symbolic link
@@ -5378,7 +5444,7 @@ class SFTPClient:
 class SFTPServerHandler(SFTPHandler):
     """An SFTP server session handler"""
 
-    # Supported attribute flags in setstat/fsetstat
+    # Supported attribute flags in setstat/fsetstat/lsetstat
     _supported_attr_mask = FILEXFER_ATTR_SIZE | \
                            FILEXFER_ATTR_PERMISSIONS | \
                            FILEXFER_ATTR_ACCESSTIME | \
@@ -5408,7 +5474,8 @@ class SFTPServerHandler(SFTPHandler):
         (b'vendor-id', _vendor_id),
         (b'posix-rename@openssh.com', b'1'),
         (b'hardlink@openssh.com', b'1'),
-        (b'fsync@openssh.com', b'1')]
+        (b'fsync@openssh.com', b'1'),
+        (b'lsetstat@openssh.com', b'1')]
 
     _attrib_extensions: List[bytes] = []
 
@@ -6231,6 +6298,24 @@ class SFTPServerHandler(SFTPHandler):
         else:
             raise SFTPInvalidHandle('Invalid file handle')
 
+    async def _process_lsetstat(self, packet: SSHPacket) -> None:
+        """Process an incoming SFTP lsetstat request"""
+
+        path = packet.get_string()
+        attrs = SFTPAttrs.decode(packet, self._version)
+
+        if self._version < 6:
+            packet.check_end()
+
+        self.logger.debug1('Received lsetstat for %s%s',
+                           path, hide_empty(attrs))
+
+        result = self._server.lsetstat(path, attrs)
+
+        if inspect.isawaitable(result):
+            assert result is not None
+            await result
+
     _packet_handlers: Dict[Union[int, bytes], _SFTPPacketHandler] = {
         FXP_OPEN:                     _process_open,
         FXP_CLOSE:                    _process_close,
@@ -6257,7 +6342,8 @@ class SFTPServerHandler(SFTPHandler):
         b'statvfs@openssh.com':       _process_statvfs,
         b'fstatvfs@openssh.com':      _process_fstatvfs,
         b'hardlink@openssh.com':      _process_openssh_link,
-        b'fsync@openssh.com':         _process_fsync
+        b'fsync@openssh.com':         _process_fsync,
+        b'lsetstat@openssh.com':      _process_lsetstat
     }
 
     async def run(self) -> None:
@@ -6914,6 +7000,30 @@ class SFTPServer:
         """
 
         _setstat(_to_local_path(self.map_path(path)), attrs)
+
+        return None
+
+    def lsetstat(self, path: bytes, attrs: SFTPAttrs) -> MaybeAwait[None]:
+        """Set attributes of a file, directory, or symlink
+
+           This method sets attributes of a file, directory, or symlink.
+           A subset of the fields in `attrs` can be initialized and only
+           those attributes should be changed.
+
+           :param path:
+               The path of the remote file or directory to set attributes for
+           :param attrs:
+               File attributes to set
+           :type path: `bytes`
+           :type attrs: :class:`SFTPAttrs`
+
+           :raises: :exc:`SFTPError` to return an error to the client
+
+        """
+
+        _setstat(_to_local_path(self.map_path(path)), attrs,
+                 follow_symlinks=False)
+
         return None
 
     def fsetstat(self, file_obj: object, attrs: SFTPAttrs) -> MaybeAwait[None]:
@@ -7341,15 +7451,18 @@ class LocalFS:
 
         return posixpath.join(parent, path) if parent else path
 
-    async def stat(self, path: bytes) -> 'SFTPAttrs':
-        """Get attributes of a local file or directory, following symlinks"""
+    async def stat(self, path: bytes, *,
+                   follow_symlinks: bool = True) -> 'SFTPAttrs':
+        """Get attributes of a local file, directory, or symlink"""
 
-        return SFTPAttrs.from_local(os.stat(_to_local_path(path)))
+        return SFTPAttrs.from_local(os.stat(_to_local_path(path),
+                                            follow_symlinks=follow_symlinks))
 
-    async def setstat(self, path: bytes, attrs: 'SFTPAttrs') -> None:
-        """Set attributes of a local file or directory"""
+    async def setstat(self, path: bytes, attrs: 'SFTPAttrs', *,
+                      follow_symlinks: bool = True) -> None:
+        """Set attributes of a local file, directory, or symlink"""
 
-        _setstat(_to_local_path(path), attrs)
+        _setstat(_to_local_path(path), attrs, follow_symlinks=follow_symlinks)
 
     async def exists(self, path: bytes) -> bool:
         """Return if the local path exists and isn't a broken symbolic link"""
