@@ -65,6 +65,10 @@ SSHServerProcessFactory = Callable[['SSHServerProcess[AnyStr]'],
                                    MaybeAwait[None]]
 
 
+_QUEUE_LOW_WATER = 8
+_QUEUE_HIGH_WATER = 16
+
+
 class _AsyncFileProtocol(Protocol[AnyStr]):
     """Protocol for an async file"""
 
@@ -304,12 +308,14 @@ class _AsyncFileWriter(_UnicodeWriter[AnyStr]):
 
     def __init__(self, process: 'SSHProcess[AnyStr]',
                  file: _AsyncFileProtocol[bytes], needs_close: bool,
-                 encoding: Optional[str], errors: str):
+                 datatype: Optional[int], encoding: Optional[str], errors: str):
         super().__init__(encoding, errors, hasattr(file, 'encoding'))
 
         self._process: 'SSHProcess[AnyStr]' = process
         self._file = file
         self._needs_close = needs_close
+        self._datatype = datatype
+        self._paused = False
         self._queue: asyncio.Queue[Optional[AnyStr]] = asyncio.Queue()
         self._write_task: Optional[asyncio.Task[None]] = \
             process.channel.get_connection().create_task(self._writer())
@@ -327,6 +333,10 @@ class _AsyncFileWriter(_UnicodeWriter[AnyStr]):
             await self._file.write(self.encode(data))
             self._queue.task_done()
 
+            if self._paused and self._queue.qsize() < _QUEUE_LOW_WATER:
+                self._process.resume_feeding(self._datatype)
+                self._paused = False
+
         if self._needs_close:
             await self._file.close()
 
@@ -334,6 +344,10 @@ class _AsyncFileWriter(_UnicodeWriter[AnyStr]):
         """Write data to the file"""
 
         self._queue.put_nowait(data)
+
+        if not self._paused and self._queue.qsize() >= _QUEUE_HIGH_WATER:
+            self._paused = True
+            self._process.pause_feeding(self._datatype)
 
     def write_eof(self) -> None:
         """Close output file when end of file is received"""
@@ -573,12 +587,14 @@ class _StreamWriter(_UnicodeWriter[AnyStr]):
 
     def __init__(self, process: 'SSHProcess[AnyStr]',
                  writer: asyncio.StreamWriter, recv_eof: bool,
-                 encoding: Optional[str], errors: str):
+                 datatype: Optional[int], encoding: Optional[str], errors: str):
         super().__init__(encoding, errors)
 
         self._process: 'SSHProcess[AnyStr]' = process
         self._writer = writer
         self._recv_eof = recv_eof
+        self._datatype = datatype
+        self._paused = False
         self._queue: asyncio.Queue[Optional[AnyStr]] = asyncio.Queue()
         self._write_task: Optional[asyncio.Task[None]] = \
             process.channel.get_connection().create_task(self._feed())
@@ -597,6 +613,10 @@ class _StreamWriter(_UnicodeWriter[AnyStr]):
             await self._writer.drain()
             self._queue.task_done()
 
+            if self._paused and self._queue.qsize() < _QUEUE_LOW_WATER:
+                self._process.resume_feeding(self._datatype)
+                self._paused = False
+
         if self._recv_eof:
             self._writer.write_eof()
 
@@ -604,6 +624,10 @@ class _StreamWriter(_UnicodeWriter[AnyStr]):
         """Write data to the stream"""
 
         self._queue.put_nowait(data)
+
+        if not self._paused and self._queue.qsize() >= _QUEUE_HIGH_WATER:
+            self._paused = True
+            self._process.pause_feeding(self._datatype)
 
     def write_eof(self) -> None:
         """Write EOF to the stream"""
@@ -953,7 +977,7 @@ class SSHProcess(SSHStreamSession, Generic[AnyStr]):
             writer_process.set_reader(reader, send_eof, writer_datatype)
             writer = _ProcessWriter[AnyStr](writer_process, writer_datatype)
         elif isinstance(target, asyncio.StreamWriter):
-            writer = _StreamWriter(self, target, recv_eof,
+            writer = _StreamWriter(self, target, recv_eof, datatype,
                                    self._encoding, self._errors)
         else:
             file: _File
@@ -978,7 +1002,7 @@ class SSHProcess(SSHStreamSession, Generic[AnyStr]):
                      inspect.isgeneratorfunction(file.write)):
                 writer = _AsyncFileWriter(
                     self, cast(_AsyncFileProtocol, file), needs_close,
-                    self._encoding, self._errors)
+                    datatype, self._encoding, self._errors)
             elif _is_regular_file(cast(IO[bytes], file)):
                 writer = _FileWriter(cast(IO[bytes], file), needs_close,
                                     self._encoding, self._errors)
