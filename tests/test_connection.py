@@ -46,7 +46,7 @@ from asyncssh.encryption import get_encryption_algs
 from asyncssh.kex import get_kex_algs
 from asyncssh.kex_dh import MSG_KEX_ECDH_REPLY
 from asyncssh.mac import _HMAC, _mac_handler, get_mac_algs
-from asyncssh.packet import Boolean, NameList, String, UInt32
+from asyncssh.packet import SSHPacket, Boolean, NameList, String, UInt32
 from asyncssh.public_key import get_default_public_key_algs
 from asyncssh.public_key import get_default_certificate_algs
 from asyncssh.public_key import get_default_x509_certificate_algs
@@ -171,6 +171,27 @@ class _ExtInfoServerConnection(asyncssh.SSHServerConnection):
 
         self._extensions_to_send['xxx'] = b''
         super()._send_ext_info()
+
+
+class _BadSignatureServerConnection(asyncssh.SSHServerConnection):
+    """Test returning a bad signature in host keys prove request"""
+
+    def _process_hostkeys_prove_00_at_openssh_dot_com_global_request(
+            self, packet):
+        """Prove the server has private keys for all requested host keys"""
+
+        self._report_global_response(String(b''))
+
+
+class _ProveFailedServerConnection(asyncssh.SSHServerConnection):
+    """Test returning failure in host keys prove request"""
+
+    def _process_hostkeys_prove_00_at_openssh_dot_com_global_request(
+            self, packet):
+        """Prove the server has private keys for all requested host keys"""
+
+        super()._process_hostkeys_prove_00_at_openssh_dot_com_global_request(
+                SSHPacket(String(b'')))
 
 
 def _failing_get_mac(alg, key):
@@ -569,8 +590,8 @@ class _TestConnection(ServerTestCase):
     async def test_duplicate_type_server_host_keys(self):
         """Test starting a server with duplicate host key types"""
 
-        with self.assertRaises(ValueError):
-            await asyncssh.listen(server_host_keys=['skey', 'skey'])
+        async with self.listen(server_host_keys=['skey', 'skey']):
+            pass
 
     @asynctest
     async def test_get_server_host_key(self):
@@ -1717,6 +1738,107 @@ class _TestConnectionNoStrictKex(ServerTestCase):
 
             with self.assertRaises(asyncssh.ProtocolError):
                 await self.connect(command='recv')
+
+
+class _TestConnectionHostKeysHandler(ServerTestCase):
+    """Unit test for specifying a host keys handler"""
+
+    @classmethod
+    async def start_server(cls):
+        """Start an SSH server to connect to"""
+
+        return (await cls.create_server(
+            server_host_keys=['skey', 'skey_ecdsa'],
+            send_server_host_keys=True))
+
+    async def _check_host_keys(self, host_keys, known_hosts, expected):
+        """Check server host keys handler"""
+
+        def host_keys_handler(*results):
+            """Check reported host keys against expected value"""
+
+            self.assertEqual([len(r) for r in results], expected)
+            conn.close()
+
+        async def async_host_keys_handler(*results):
+            """Check async version of server host keys handler"""
+
+            host_keys_handler(*results)
+
+        self._server.update(server_host_keys=host_keys)
+
+        conn = await self.connect(server_host_keys_handler=host_keys_handler,
+                                  known_hosts=known_hosts)
+
+        if expected is None:
+            await asyncio.sleep(0.1)
+            conn.close()
+
+        await conn.wait_closed()
+
+        if expected:
+            conn = await self.connect(
+                server_host_keys_handler=async_host_keys_handler,
+                known_hosts=known_hosts)
+
+            await conn.wait_closed()
+
+
+    @asynctest
+    async def test_host_key_handler_disabled(self):
+        """Test server host keys handler being disabled"""
+
+        async with self.connect():
+            await asyncio.sleep(0.1)
+
+    @asynctest
+    async def test_host_key_added(self):
+        """Test server host keys handler showing a key added"""
+
+        await self._check_host_keys(['skey', 'skey_ecdsa'],
+                                    [['skey'], [], []],
+                                    [1, 0, 1, 0])
+
+    @asynctest
+    async def test_host_key_removed(self):
+        """Test server host keys handler showing a key removed"""
+
+        await self._check_host_keys(['skey'], [['skey', 'skey_ecdsa'], [], []],
+                                    [0, 1, 1, 0])
+
+    @asynctest
+    async def test_host_key_revoked(self):
+        """Test server host keys handler showing a key revoked"""
+
+        await self._check_host_keys(['skey', 'skey_ecdsa'],
+                                    [['skey'], [], ['skey_ecdsa']],
+                                    [0, 0, 1, 1])
+
+    @asynctest
+    async def test_no_trusted_hosts(self):
+        """Test server host keys handler is disabled due to no trusted hosts"""
+
+        await self._check_host_keys(['skey'], None, None)
+
+    @asynctest
+    async def test_host_key_bad_signature(self):
+        """Test server host keys handler getting back a bad signature"""
+
+        with patch('asyncssh.connection.SSHServerConnection',
+                   _BadSignatureServerConnection):
+            await self._check_host_keys(['skey', 'skey_ecdsa'],
+                                        [['skey'], [], []],
+                                        [0, 0, 1, 0])
+
+    @asynctest
+    async def test_host_key_prove_failed(self):
+        """Test server host keys handler getting back a prove failure"""
+
+        with patch('asyncssh.connection.SSHServerConnection',
+                   _ProveFailedServerConnection):
+            await self._check_host_keys(['skey', 'skey_ecdsa'],
+                                        [['skey'], [], []],
+                                        [0, 0, 1, 0])
 
 
 class _TestConnectionListenSock(ServerTestCase):

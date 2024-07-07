@@ -185,6 +185,10 @@ _ProtocolFactory = Union[_ClientFactory, _ServerFactory]
 _Conn = TypeVar('_Conn', bound='SSHConnection')
 _Options = TypeVar('_Options', bound='SSHConnectionOptions')
 
+_ServerHostKeysHandler = Optional[Callable[[List[SSHKey], List[SSHKey],
+                                            List[SSHKey], List[SSHKey]],
+                                           MaybeAwait[None]]]
+
 class _TunnelProtocol(Protocol):
     """Base protocol for connections to tunnel SSH over"""
 
@@ -1995,6 +1999,11 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
                 not self._waiter.cancelled():
             self._waiter.set_result(None)
             self._wait = None
+            return
+
+        # This method is only in SSHServerConnection
+        # pylint: disable=no-member
+        cast(SSHServerConnection, self).send_server_host_keys()
 
     def send_channel_open_confirmation(self, send_chan: int, recv_chan: int,
                                        recv_window: int, recv_pktsize: int,
@@ -2012,6 +2021,13 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         self.send_packet(MSG_CHANNEL_OPEN_FAILURE, UInt32(send_chan),
                          UInt32(code), String(reason), String(lang))
 
+    def _send_global_request(self, request: bytes, *args: bytes,
+                             want_reply: bool = False) -> None:
+        """Send a global request"""
+
+        self.send_packet(MSG_GLOBAL_REQUEST, String(request),
+                         Boolean(want_reply), *args)
+
     async def _make_global_request(self, request: bytes,
                                    *args: bytes) -> Tuple[int, SSHPacket]:
         """Send a global request and wait for the response"""
@@ -2024,8 +2040,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         self._global_request_waiters.append(waiter)
 
-        self.send_packet(MSG_GLOBAL_REQUEST, String(request),
-                         Boolean(True), *args)
+        self._send_global_request(request, *args, want_reply=True)
 
         return await waiter
 
@@ -3266,6 +3281,8 @@ class SSHClientConnection(SSHConnection):
         self._server_host_key_algs: Optional[Sequence[bytes]] = None
         self._server_host_key: Optional[SSHKey] = None
 
+        self._server_host_keys_handler = options.server_host_keys_handler
+
         self._username = options.username
         self._password = options.password
 
@@ -3923,6 +3940,80 @@ class SSHClientConnection(SSHConnection):
         else:
             raise ChannelOpenError(OPEN_CONNECT_FAILED,
                                    'Auth agent forwarding disabled')
+
+    def _process_hostkeys_00_at_openssh_dot_com_global_request(
+            self, packet: SSHPacket) -> None:
+        """Process a list of accepted server host keys"""
+
+        self.create_task(self._finish_hostkeys(packet))
+
+    async def _finish_hostkeys(self, packet: SSHPacket) -> None:
+        """Finish processing hostkeys global request"""
+
+        if not self._server_host_keys_handler:
+            self.logger.debug1('Ignoring server host key message: no handler')
+            self._report_global_response(False)
+            return
+
+        if self._trusted_host_keys is None:
+            self.logger.info('Server host key not verified: handler disabled')
+            self._report_global_response(False)
+            return
+
+        added = []
+        removed = list(self._trusted_host_keys)
+        retained = []
+        revoked = []
+        prove = []
+
+        while packet:
+            try:
+                key_data = packet.get_string()
+                key = decode_ssh_public_key(key_data)
+
+                if key in self._revoked_host_keys:
+                    revoked.append(key)
+                elif key in self._trusted_host_keys:
+                    retained.append(key)
+                    removed.remove(key)
+                else:
+                    prove.append((key, String(key_data)))
+            except KeyImportError:
+                pass
+
+        if prove:
+            pkttype, packet = await self._make_global_request(
+                b'hostkeys-prove-00@openssh.com',
+                b''.join(key_str for _, key_str in prove))
+
+            if pkttype == MSG_REQUEST_SUCCESS:
+                prefix = String('hostkeys-prove-00@openssh.com') + \
+                         String(self._session_id)
+
+                for key, key_str in prove:
+                    sig = packet.get_string()
+
+                    if key.verify(prefix + key_str, sig):
+                        added.append(key)
+                    else:
+                        self.logger.debug1('Server host key validation failed')
+            else:
+                self.logger.debug1('Server host key prove request failed')
+
+        packet.check_end()
+
+        self.logger.info(f'Server host key report: {len(added)} added, '
+                         f'{len(removed)} removed, {len(retained)} retained, '
+                         f'{len(revoked)} revoked')
+
+        result = self._server_host_keys_handler(added, removed,
+                                                retained, revoked)
+
+        if inspect.isawaitable(result):
+            assert result is not None
+            await result
+
+        self._report_global_response(True)
 
     async def attach_x11_listener(self, chan: SSHClientChannel[AnyStr],
                                   display: Optional[str],
@@ -5594,6 +5685,7 @@ class SSHServerConnection(SSHConnection):
         self._options = options
 
         self._server_host_keys = options.server_host_keys
+        self._all_server_host_keys = options.all_server_host_keys
         self._server_host_key_algs = list(options.server_host_keys.keys())
         self._known_client_hosts = options.known_client_hosts
         self._trust_client_host = options.trust_client_host
@@ -5718,6 +5810,17 @@ class SSHServerConnection(SSHConnection):
         """
 
         return self._server_host_key
+
+    def send_server_host_keys(self) -> None:
+        """Send list of available server host keys"""
+
+        if self._all_server_host_keys:
+            self.logger.info('Sending server host keys')
+
+            keys = [String(key) for key in self._all_server_host_keys.keys()]
+            self._send_global_request(b'hostkeys-00@openssh.com', *keys)
+        else:
+            self.logger.info('Sending server host keys disabled')
 
     def gss_kex_auth_supported(self) -> bool:
         """Return whether GSS key exchange authentication is supported"""
@@ -6424,6 +6527,26 @@ class SSHServerConnection(SSHConnection):
         chan.set_mode(mode)
 
         return chan, session
+
+    def _process_hostkeys_prove_00_at_openssh_dot_com_global_request(
+            self, packet: SSHPacket) -> None:
+        """Prove the server has private keys for all requested host keys"""
+
+        prefix = String('hostkeys-prove-00@openssh.com') + \
+                 String(self._session_id)
+
+        signatures = []
+
+        while packet:
+            try:
+                key_data = packet.get_string()
+                key = self._all_server_host_keys[key_data]
+                signatures.append(String(key.sign(prefix + String(key_data))))
+            except (KeyError, KeyImportError):
+                self._report_global_response(False)
+                return
+
+        self._report_global_response(b''.join(signatures))
 
     async def attach_x11_listener(self, chan: SSHServerChannel[AnyStr],
                                   auth_proto: bytes, auth_data: bytes,
@@ -7178,6 +7301,17 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
                          caution, as it can result in a host key mismatch
                          if the client trusts only a subset of the host
                          keys the server might return.
+       :param server_host_keys_handler: (optional)
+          A `callable` or coroutine handler function which if set will be
+          called when a global request from the server is received which
+          provides an updated list of server host keys. The handler takes
+          four arguments (added, removed, retained, and revoked), each of
+          which is a list of SSHKey public keys, reflecting differences
+          between what the server reported and what is currently matching
+          in known_hosts.
+
+               .. note:: This handler will only be called when known
+                         host checking is enabled and the check succeeded.
        :param x509_trusted_certs: (optional)
            A list of certificates which should be trusted for X.509 server
            certificate authentication. If no trusted certificates are
@@ -7513,6 +7647,7 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
        :type known_hosts: *see* :ref:`SpecifyingKnownHosts`
        :type host_key_alias: `str`
        :type server_host_key_algs: `str` or `list` of `str`
+       :type server_host_keys_handler: `callable` or coroutine
        :type x509_trusted_certs: *see* :ref:`SpecifyingCertificates`
        :type x509_trusted_cert_paths: `list` of `str`
        :type x509_purposes: *see* :ref:`SpecifyingX509Purposes`
@@ -7583,6 +7718,7 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
     known_hosts: KnownHostsArg
     host_key_alias: Optional[str]
     server_host_key_algs: Union[str, Sequence[str]]
+    server_host_keys_handler: _ServerHostKeysHandler
     username: str
     password: Optional[str]
     client_host_keysign: Optional[str]
@@ -7650,6 +7786,7 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
                 known_hosts: KnownHostsArg = (),
                 host_key_alias: DefTuple[Optional[str]] = (),
                 server_host_key_algs: _AlgsArg = (),
+                server_host_keys_handler: _ServerHostKeysHandler = None,
                 username: DefTuple[str] = (), password: Optional[str] = None,
                 client_host_keysign: DefTuple[KeySignPath] = (),
                 client_host_keys: Optional[_ClientKeysArg] = None,
@@ -7757,6 +7894,8 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
         # selection is done later, after the known_hosts lookup is done.
         _select_host_key_algs(server_host_key_algs,
             cast(DefTuple[str], config.get('HostKeyAlgorithms', ())), [])
+
+        self.server_host_keys_handler = server_host_keys_handler
 
         self.username = saslprep(cast(str, username if username != () else
                                       config.get('User', local_username)))
@@ -7933,6 +8072,10 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
        :param server_host_certs: (optional)
            A list of optional certificates which can be paired with the
            provided server host keys.
+       :param send_server_host_keys: (optional)
+           Whether or not to send a list of the allowed server host keys
+           for clients to use to update their known hosts like for the
+           server.
        :param passphrase: (optional)
            The passphrase to use to decrypt server host keys if they are
            encrypted, or a `callable` or coroutine which takes a filename
@@ -8174,6 +8317,7 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
        :type family: `socket.AF_UNSPEC`, `socket.AF_INET`, or `socket.AF_INET6`
        :type server_host_keys: *see* :ref:`SpecifyingPrivateKeys`
        :type server_host_certs: *see* :ref:`SpecifyingCertificates`
+       :type send_server_host_keys: `bool`
        :type passphrase: `str` or `bytes`
        :type known_client_hosts: *see* :ref:`SpecifyingKnownHosts`
        :type trust_client_host: `bool`
@@ -8227,6 +8371,8 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
     server_factory: _ServerFactory
     server_version: bytes
     server_host_keys: 'OrderedDict[bytes, SSHKeyPair]'
+    all_server_host_keys: 'OrderedDict[bytes, SSHKeyPair]'
+    send_server_host_keys: bool
     known_client_hosts: KnownHostsArg
     trust_client_host: bool
     authorized_client_keys: DefTuple[Optional[SSHAuthorizedKeys]]
@@ -8283,6 +8429,7 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
                 keepalive_count_max: DefTuple[int] = (),
                 server_host_keys: KeyPairListArg = (),
                 server_host_certs: CertListArg = (),
+                send_server_host_keys: bool = False,
                 passphrase: Optional[BytesOrStr] = None,
                 known_client_hosts: KnownHostsArg = None,
                 trust_client_host: bool = False,
@@ -8354,14 +8501,15 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
                                     server_host_certs, loop=loop)
 
         self.server_host_keys = OrderedDict()
+        self.all_server_host_keys = OrderedDict()
 
         for keypair in server_keys:
             for alg in keypair.host_key_algorithms:
-                if alg in self.server_host_keys:
-                    raise ValueError('Multiple keys of type %s found' %
-                                     alg.decode('ascii'))
+                if alg not in self.server_host_keys:
+                    self.server_host_keys[alg] = keypair
 
-                self.server_host_keys[alg] = keypair
+                if send_server_host_keys:
+                    self.all_server_host_keys[keypair.public_data] = keypair
 
         self.known_client_hosts = known_client_hosts
         self.trust_client_host = trust_client_host
