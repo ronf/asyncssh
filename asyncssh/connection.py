@@ -8076,6 +8076,16 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
            Whether or not to send a list of the allowed server host keys
            for clients to use to update their known hosts like for the
            server.
+
+               .. note:: Enabling this option will allow multiple server
+                         host keys of the same type to be configured. Only
+                         the first key of each type will be actively used
+                         during key exchange, but the others will be
+                         reported as reserved keys that clients should
+                         begin to trust, to allow for future key rotation.
+                         If this option is disabled, specifying multiple
+                         server host keys of the same type is treated as
+                         a configuration error.
        :param passphrase: (optional)
            The passphrase to use to decrypt server host keys if they are
            encrypted, or a `callable` or coroutine which takes a filename
@@ -8505,6 +8515,12 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
 
         for keypair in server_keys:
             for alg in keypair.host_key_algorithms:
+                if alg in self.server_host_keys and not send_server_host_keys:
+                    raise ValueError('Multiple keys of type '
+                                     f'{alg.decode("ascii")} found: '
+                                     'Enable send_server_host_keys to '
+                                     'allow reserved keys to be configured')
+
                 if alg not in self.server_host_keys:
                     self.server_host_keys[alg] = keypair
 

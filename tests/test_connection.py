@@ -590,7 +590,15 @@ class _TestConnection(ServerTestCase):
     async def test_duplicate_type_server_host_keys(self):
         """Test starting a server with duplicate host key types"""
 
-        async with self.listen(server_host_keys=['skey', 'skey']):
+        with self.assertRaises(ValueError):
+            await asyncssh.listen(server_host_keys=['skey', 'skey'])
+
+    @asynctest
+    async def test_reserved_server_host_keys(self):
+        """Test reserved host keys with host key sending enabled"""
+
+        async with self.listen(server_host_keys=['skey', 'skey'],
+                               send_server_host_keys=True):
             pass
 
     @asynctest
