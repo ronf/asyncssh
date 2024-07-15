@@ -5168,7 +5168,7 @@ class SFTPClient:
         Sequence[bytes]: ... # pragma: no cover
 
     @overload
-    async def listdir(self, path: FilePath) -> \
+    async def listdir(self, path: FilePath = ...) -> \
         Sequence[str]: ... # pragma: no cover
 
     async def listdir(self, path: _SFTPPath = '.') -> Sequence[BytesOrStr]:
