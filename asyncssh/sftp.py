@@ -3679,8 +3679,7 @@ class SFTPClient:
                 raise
 
     async def _begin_copy(self, srcfs: _SFTPFSProtocol, dstfs: _SFTPFSProtocol,
-                          srcpaths: Sequence[_SFTPPath],
-                          dstpath: Optional[_SFTPPath],
+                          srcpaths: _SFTPPaths, dstpath: Optional[_SFTPPath],
                           copy_type: str, expand_glob: bool, preserve: bool,
                           recurse: bool, follow_symlinks: bool,
                           block_size: int, max_requests: int,
@@ -3688,14 +3687,13 @@ class SFTPClient:
                           error_handler: SFTPErrorHandler) -> None:
         """Begin a new file upload, download, or copy"""
 
-        if isinstance(srcpaths, tuple):
+        if isinstance(srcpaths, (bytes, str, PurePath)):
+            srcpaths = [srcpaths]
+        elif not isinstance(srcpaths, list):
             srcpaths = list(srcpaths)
 
         self.logger.info('Starting SFTP %s of %s to %s',
                          copy_type, srcpaths, dstpath)
-
-        if isinstance(srcpaths, (bytes, str, PurePath)):
-            srcpaths = [srcpaths]
 
         srcnames: List[SFTPName] = []
 
@@ -3741,7 +3739,7 @@ class SFTPClient:
                              preserve, recurse, follow_symlinks, block_size,
                              max_requests, progress_handler, error_handler)
 
-    async def get(self, remotepaths: Sequence[_SFTPPath],
+    async def get(self, remotepaths: _SFTPPaths,
                   localpath: Optional[_SFTPPath] = None, *,
                   preserve: bool = False, recurse: bool = False,
                   follow_symlinks: bool = False,
@@ -3846,7 +3844,7 @@ class SFTPClient:
                                block_size, max_requests, progress_handler,
                                error_handler)
 
-    async def put(self, localpaths: Sequence[_SFTPPath],
+    async def put(self, localpaths: _SFTPPaths,
                   remotepath: Optional[_SFTPPath] = None, *,
                   preserve: bool = False, recurse: bool = False,
                   follow_symlinks: bool = False,
@@ -3951,7 +3949,7 @@ class SFTPClient:
                                block_size, max_requests, progress_handler,
                                error_handler)
 
-    async def copy(self, srcpaths: Sequence[_SFTPPath],
+    async def copy(self, srcpaths: _SFTPPaths,
                    dstpath: Optional[_SFTPPath] = None, *,
                    preserve: bool = False, recurse: bool = False,
                    follow_symlinks: bool = False,
@@ -4056,7 +4054,7 @@ class SFTPClient:
                                block_size, max_requests, progress_handler,
                                error_handler)
 
-    async def mget(self, remotepaths: Sequence[_SFTPPath],
+    async def mget(self, remotepaths: _SFTPPaths,
                    localpath: Optional[_SFTPPath] = None, *,
                    preserve: bool = False, recurse: bool = False,
                    follow_symlinks: bool = False,
@@ -4080,7 +4078,7 @@ class SFTPClient:
                                block_size, max_requests, progress_handler,
                                error_handler)
 
-    async def mput(self, localpaths: Sequence[_SFTPPath],
+    async def mput(self, localpaths: _SFTPPaths,
                    remotepath: Optional[_SFTPPath] = None, *,
                    preserve: bool = False, recurse: bool = False,
                    follow_symlinks: bool = False,
@@ -4104,7 +4102,7 @@ class SFTPClient:
                                block_size, max_requests, progress_handler,
                                error_handler)
 
-    async def mcopy(self, srcpaths: Sequence[_SFTPPath],
+    async def mcopy(self, srcpaths: _SFTPPaths,
                     dstpath: Optional[_SFTPPath] = None, *,
                     preserve: bool = False, recurse: bool = False,
                     follow_symlinks: bool = False,

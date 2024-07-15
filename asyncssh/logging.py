@@ -61,14 +61,28 @@ class SSHLogger(logging.LoggerAdapter):
     def log(self, level: int, msg: object, *args, **kwargs) -> None:
         """Log a message to the underlying logger"""
 
-        def _text(arg: _LogArg) -> str:
+        def _item_text(item: _LogArg) -> str:
+            """Convert a list item to text"""
+
+            if isinstance(item, bytes):
+                result = item.decode('utf-8', errors='replace')
+
+                if not result.isprintable():
+                    result = repr(result)[1:-1]
+            elif not isinstance(item, str):
+                result = str(item)
+            else:
+                result = item
+
+            return result
+
+        def _text(arg: _LogArg) -> _LogArg:
             """Convert a log argument to text"""
 
+            result: _LogArg
+
             if isinstance(arg, list):
-                if arg and isinstance(arg[0], bytes):
-                    result = b','.join(arg).decode('utf-8', errors='replace')
-                else:
-                    result = ','.join(arg)
+                result = ','.join(_item_text(item) for item in arg)
             elif isinstance(arg, tuple):
                 host, port = arg
 
@@ -76,14 +90,10 @@ class SSHLogger(logging.LoggerAdapter):
                     result = '%s, port %d' % (host, port) if port else host
                 else:
                     result = 'port %d' % port if port else 'dynamic port'
+            elif isinstance(arg, bytes):
+                result = _item_text(arg)
             else:
-                result = cast(str, arg)
-
-            if isinstance(result, bytes):
-                result = result.decode('ascii', errors='backslashreplace')
-
-                if not result.isprintable():
-                    result = repr(result)[1:-1]
+                result = arg
 
             return result
 
