@@ -1072,7 +1072,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
             self._set_keepalive_timer()
             self.create_task(self._make_keepalive_request())
 
-    def _force_close(self, exc: Optional[BaseException]) -> None:
+    def _force_close(self, exc: Optional[Exception]) -> None:
         """Force this connection to close immediately"""
 
         if not self._transport:
@@ -1313,7 +1313,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
             error_logger = self.logger
 
         error_logger.debug1('Uncaught exception', exc_info=exc_info)
-        self._force_close(exc_info[1])
+        self._force_close(cast(Exception, exc_info[1]))
 
     def session_started(self) -> None:
         """Handle session start when opening tunneled SSH connection"""
@@ -3597,6 +3597,8 @@ class SSHClientConnection(SSHConnection):
             self._get_agent_keys = False
 
         if self._get_pkcs11_keys:
+            assert self._pkcs11_provider is not None
+
             pkcs11_keys = await self._loop.run_in_executor(
                 None, load_pkcs11_keys, self._pkcs11_provider, self._pkcs11_pin)
 
@@ -7677,7 +7679,7 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
        :type agent_identities:
            *see* :ref:`SpecifyingPublicKeys` and :ref:`SpecifyingCertificates`
        :type agent_forwarding: `bool`
-       :type pkcs11_provider: `str`
+       :type pkcs11_provider: `str` or `None`
        :type pkcs11_pin: `str`
        :type client_version: `str`
        :type kex_algs: `str` or `list` of `str`
@@ -7738,7 +7740,7 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
     agent_path: Optional[str]
     agent_identities: Optional[Sequence[bytes]]
     agent_forward_path: Optional[str]
-    pkcs11_provider: Optional[FilePath]
+    pkcs11_provider: Optional[str]
     pkcs11_pin: Optional[str]
     command: Optional[str]
     subsystem: Optional[str]
@@ -7805,7 +7807,7 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
                 agent_path: DefTuple[Optional[str]] = (),
                 agent_identities: DefTuple[Optional[IdentityListArg]] = (),
                 agent_forwarding: DefTuple[bool] = (),
-                pkcs11_provider: DefTuple[Optional[FilePath]] = (),
+                pkcs11_provider: DefTuple[Optional[str]] = (),
                 pkcs11_pin: Optional[str] = None,
                 command: DefTuple[Optional[str]] = (),
                 subsystem: Optional[str] = None, env: DefTuple[_Env] = (),
@@ -7962,9 +7964,9 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
 
         if pkcs11_provider == ():
             pkcs11_provider = \
-                cast(Optional[FilePath], config.get('PKCS11Provider'))
+                cast(Optional[str], config.get('PKCS11Provider'))
 
-        pkcs11_provider: Optional[FilePath]
+        pkcs11_provider: Optional[str]
 
         if ignore_encrypted == ():
             ignore_encrypted = client_keys == ()
