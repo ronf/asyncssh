@@ -31,9 +31,10 @@
 # pylint: disable=deprecated-module
 import stringprep
 # pylint: enable=deprecated-module
+import unicodedata
+
 from typing import Callable, Optional, Sequence
 from typing_extensions import Literal
-import unicodedata
 
 
 class SASLPrepError(ValueError):
