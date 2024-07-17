@@ -404,7 +404,8 @@ def generate_x509_certificate(signing_key: PyCAKey, key: PyCAKey,
     except KeyError:
         raise ValueError('Unknown hash algorithm') from None
 
-    cert = builder.sign(cast(PyCAPrivateKey, signing_key), hash_alg)
+    cert = builder.sign(cast(PyCAPrivateKey, signing_key),
+                        hash_alg) # type: ignore
     data = cert.public_bytes(Encoding.DER)
 
     return X509Certificate(cert, data)
