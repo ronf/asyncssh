@@ -68,19 +68,18 @@ contributors list.
 Branches
 --------
 
-There are two long-lived branches in AsyncSSH at the moment:
+There are two long-lived branches in AsyncSSH:
 
 * The master branch is intended to contain the latest stable version
   of the code. All official versions of AsyncSSH are released from
   this branch, and each release has a corresponding tag added
-  matching its release number. Bug fixes and simple improvements
-  may be checked directly into this branch, but most new features
-  will be added to the develop branch first.
+  matching its release number.
 
-* The develop branch is intended to contain features for developers
-  to test before they are ready to be added to an official release.
-  APIs in the develop branch may be subject to change until they
-  are migrated back to master, and there's no guarantee of backward
+* The develop branch is intended to contain new features and bug fixes
+  ready to be tested before being added to an official release. APIs
+  in the develop branch may be subject to change until they are
+  migrated back to master, and there's no guarantee of backward
   compatibility in this branch. However, pulling from this branch
   will provide early access to new functionality and a chance to
-  influence this functionality before it is released.
+  influence this functionality before it is released. Also, all
+  pull requests should be submitted against this branch.
