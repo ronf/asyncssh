@@ -286,8 +286,14 @@ class _TestClientConfig(_TestConfig):
     def test_append_string_list(self):
         """Test appending multiple string config options to a list"""
 
-        config = self._parse_config('SendEnv foo\nSendEnv  bar baz')
+        config = self._parse_config('SendEnv foo\nSendEnv bar baz')
         self.assertEqual(config.get('SendEnv'), ['foo', 'bar', 'baz'])
+
+    def test_set_environment(self):
+        """Test setting environment with equals-separated key/value pairs"""
+
+        config = self._parse_config('SetEnv A=1 B= C=D=2\nSetEnv E=3')
+        self.assertEqual(config.get('SetEnv'), ['A=1', 'B=', 'C=D=2'])
 
     def test_set_remote_command(self):
         """Test setting a remote command"""

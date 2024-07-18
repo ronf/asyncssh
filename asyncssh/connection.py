@@ -4232,7 +4232,7 @@ class SSHClientConnection(SSHConnection):
         if env:
             try:
                 if isinstance(env, list):
-                    new_env.update((item.split('=', 2) for item in env))
+                    new_env.update((item.split('=', 1) for item in env))
                 else:
                     new_env.update(cast(Mapping[str, str], env))
             except ValueError:
