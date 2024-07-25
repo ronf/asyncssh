@@ -1999,7 +1999,7 @@ by AsyncSSH:
   | gss-curve25519-sha256
   | gss-curve448-sha512
   | gss-nistp521-sha512
-  | gss-nistp384-sha256
+  | gss-nistp384-sha384
   | gss-nistp256-sha256
   | gss-1.3.132.0.10-sha256
   | gss-gex-sha256
