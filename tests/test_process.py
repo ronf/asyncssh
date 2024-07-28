@@ -248,6 +248,26 @@ class _TestProcessBasic(_TestProcess):
             result = await process.wait()
 
         self.assertEqual(result.stdout, 'test')
+   
+    @asynctest
+    async def test_env_as_list(self):
+        """Test sending environment as a list"""
+        
+        async with self.connect() as conn:
+            process = await conn.create_process('env', env=["TEST=test"])
+            result = await process.wait()
+
+        self.assertEqual(result.stdout, 'test')
+
+    @asynctest
+    async def test_env_as_tuple(self):
+        """Test sending environment as a tuple"""
+        
+        async with self.connect() as conn:
+            process = await conn.create_process('env', env=("TEST=test",))
+            result = await process.wait()
+
+        self.assertEqual(result.stdout, 'test')
 
     @asynctest
     async def test_old_terminal_info(self):
