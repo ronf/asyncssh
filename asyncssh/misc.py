@@ -23,6 +23,7 @@
 import functools
 import ipaddress
 import re
+import shlex
 import socket
 import sys
 
@@ -267,6 +268,18 @@ def parse_time_interval(value: str) -> float:
     """Parse a time interval with optional s, m, h, d, or w suffixes"""
 
     return _parse_units(value, _time_units, 'time interval')
+
+
+def split_args(command: str) -> Sequence[str]:
+    """Split a command string into a list of arguments"""
+
+    lex = shlex.shlex(command, posix=True)
+    lex.whitespace_split = True
+
+    if sys.platform == 'win32': # pragma: no cover
+        lex.escape = []
+
+    return list(lex)
 
 
 _ACM = TypeVar('_ACM', bound=AsyncContextManager, covariant=True)

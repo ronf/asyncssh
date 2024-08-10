@@ -425,7 +425,7 @@ class SSHClientConfig(SSHConfig):
     """Settings from an OpenSSH client config file"""
 
     _conditionals = {'host', 'match'}
-    _no_split = {'remotecommand'}
+    _no_split = {'proxycommand', 'remotecommand'}
     _percent_expand = {'CertificateFile', 'IdentityAgent',
                        'IdentityFile', 'ProxyCommand', 'RemoteCommand'}
 
@@ -559,7 +559,7 @@ class SSHClientConfig(SSHConfig):
         ('PKCS11Provider',                  SSHConfig._set_string),
         ('PreferredAuthentications',        SSHConfig._set_string),
         ('Port',                            SSHConfig._set_int),
-        ('ProxyCommand',                    SSHConfig._set_string_list),
+        ('ProxyCommand',                    SSHConfig._set_string),
         ('ProxyJump',                       SSHConfig._set_string),
         ('PubkeyAuthentication',            SSHConfig._set_bool),
         ('RekeyLimit',                      SSHConfig._set_rekey_limits),

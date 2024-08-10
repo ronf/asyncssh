@@ -115,7 +115,7 @@ from .misc import ProtocolNotSupported, ServiceNotAvailable
 from .misc import TermModesArg, TermSizeArg
 from .misc import async_context_manager, construct_disc_error
 from .misc import get_symbol_names, ip_address, map_handler_name
-from .misc import parse_byte_count, parse_time_interval
+from .misc import parse_byte_count, parse_time_interval, split_args
 
 from .packet import Boolean, Byte, NameList, String, UInt32, PacketDecodeError
 from .packet import SSHPacket, SSHPacketHandler, SSHPacketLogger
@@ -231,7 +231,7 @@ _GlobalRequest = Tuple[Optional[_PacketHandler], SSHPacket, bool]
 _GlobalRequestResult = Tuple[int, SSHPacket]
 _KeyOrCertOptions = Mapping[str, object]
 _ListenerArg = Union[bool, SSHListener]
-_ProxyCommand = Optional[Sequence[str]]
+_ProxyCommand = Optional[Union[str, Sequence[str]]]
 _RequestPTY = Union[bool, str]
 
 _TCPServerHandlerFactory = Callable[[str, int], SSHSocketSessionFactory]
@@ -7144,11 +7144,13 @@ class SSHConnectionOptions(Options):
         self.tunnel = tunnel if tunnel != () else config.get('ProxyJump')
         self.passphrase = passphrase
 
-        if isinstance(proxy_command, str):
-            proxy_command = shlex.split(proxy_command)
+        if proxy_command == ():
+            proxy_command = cast(Optional[str], config.get('ProxyCommand'))
 
-        self.proxy_command = proxy_command if proxy_command != () else \
-            cast(Sequence[str], config.get('ProxyCommand'))
+        if isinstance(proxy_command, str):
+            proxy_command = split_args(proxy_command)
+
+        self.proxy_command = proxy_command
 
         self.family = cast(int, family if family != () else
             config.get('AddressFamily', socket.AF_UNSPEC))
@@ -9224,7 +9226,7 @@ async def create_server(server_factory: _ServerFactory,
 async def get_server_host_key(
         host = '', port: DefTuple[int] = (), *,
         tunnel: DefTuple[_TunnelConnector] = (),
-        proxy_command: DefTuple[str] = (), family: DefTuple[int] = (),
+        proxy_command: DefTuple[_ProxyCommand] = (), family: DefTuple[int] = (),
         flags: int = 0, local_addr: DefTuple[HostPort] = (),
         sock: Optional[socket.socket] = None,
         client_version: DefTuple[BytesOrStr] = (),
@@ -9368,7 +9370,7 @@ async def get_server_host_key(
 async def get_server_auth_methods(
         host = '', port: DefTuple[int] = (), username: DefTuple[str] = (), *,
         tunnel: DefTuple[_TunnelConnector] = (),
-        proxy_command: DefTuple[str] = (), family: DefTuple[int] = (),
+        proxy_command: DefTuple[_ProxyCommand] = (), family: DefTuple[int] = (),
         flags: int = 0, local_addr: DefTuple[HostPort] = (),
         sock: Optional[socket.socket] = None,
         client_version: DefTuple[BytesOrStr] = (),
