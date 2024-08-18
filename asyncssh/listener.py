@@ -25,7 +25,7 @@ import errno
 import socket
 from types import TracebackType
 from typing import TYPE_CHECKING, AnyStr, Callable, Generic, List, Optional
-from typing import Sequence, Tuple, Type, Union
+from typing import Sequence, Set, Tuple, Type, Union
 from typing_extensions import Self
 
 from .forward import SSHForwarderCoro
@@ -285,9 +285,19 @@ async def create_tcp_local_listener(
     if not addrinfo: # pragma: no cover
         raise OSError('getaddrinfo() returned empty list')
 
+    seen_addrinfo: Set[Tuple] = set()
     servers: List[asyncio.AbstractServer] = []
 
-    for family, socktype, proto, _, sa in addrinfo:
+    for addrinfo_entry in addrinfo:
+        # Work around an issue where getaddrinfo() on some systems may
+        # return duplicate results, causing bind to fail.
+        if addrinfo_entry in seen_addrinfo: # pragma: no cover
+            continue
+
+        seen_addrinfo.add(addrinfo_entry)
+
+        family, socktype, proto, _, sa = addrinfo_entry
+
         try:
             sock = socket.socket(family, socktype, proto)
         except OSError: # pragma: no cover
