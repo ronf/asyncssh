@@ -3,6 +3,43 @@
 Change Log
 ==========
 
+Release 2.16.0 (17 Aug 2024)
+----------------------------
+
+* Added client and server support for the OpenSSH "hostkeys" extension.
+  When using known_hosts, clients can provide a handler which will be
+  called with the changes between the keys currently trusted in the
+  client's known hosts and those available on the server. On the server
+  side, an application can choose whether or not to enable the sending
+  of this host key information. Thanks go to Matthijs Kooijman for
+  getting me to take another look at how this might be supported.
+
+* Related to the above, AsyncSSH now allows the configuration of multiple
+  server host keys of the same type when the send_server_host_keys option
+  is enabled. Only the first key of each type will be used in the SSH
+  handshake, but the others can appear in the list of supported host keys
+  for clients to begin trusting, allowing for smoother key rotation.
+
+* Fixed logging and typing issues in SFTP high-level copy functions.
+  A mix of bytes, str, and PurePath entries are now supported in places
+  where a list of file paths is allowed, and the type signatures have
+  been updated to reflect that the functions accept either a single
+  path or a list of paths. Thanks go to GitHub user eyalgolan1337 for
+  reporting these issues.
+
+* Improved typing on SFTP listdir() function. Thanks go to Tim Stumbaugh
+  for contributing this change.
+
+* Reworked the config file parser to improve on a previous fix related
+  to handling key/value pairs with an equals delimiter.
+
+* Improved handling of ciphers deprecated in cryptography 43.0.0.
+  Thanks go to Guillaume Mulocher for reporting this issue.
+
+* Improved support for use of Windows pathnames in ProxyCommand.
+  Thanks go to GitHub user chipolux for reporting this issue and
+  investigating the existing OpenSSH parsing behavior.
+
 Release 2.15.0 (3 Jul 2024)
 ---------------------------
 
