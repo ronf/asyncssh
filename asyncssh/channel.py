@@ -413,7 +413,11 @@ class SSHChannel(Generic[AnyStr], SSHPacketHandler):
         handler = cast(_RequestHandler, getattr(self, name, None))
 
         if handler:
-            result = cast(Optional[bool], handler(packet))
+            if self._session:
+                result = cast(Optional[bool], handler(packet))
+            else:
+                # Ignore requests received after application closes the channel
+                result = True
         else:
             self.logger.debug1('Received unknown channel request: %s', request)
             result = False
