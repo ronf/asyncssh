@@ -39,6 +39,14 @@ class SSHClient:
        to receive callbacks when certain events occur on the SSH
        connection.
 
+       Whenever a new SSH client connection is opened, a corresponding
+       SSHClient object is created and the method :meth:`connection_made`
+       is called, passing in the :class:`SSHClientConnection` object.
+
+       When the connection is closed, the method :meth:`connection_lost`
+       is called with an exception representing the reason for the
+       disconnect, or `None` if the connection was closed cleanly.
+
        For simple password or public key based authentication, nothing
        needs to be defined here if the password or client keys are passed
        in when the connection is created. However, to prompt interactively

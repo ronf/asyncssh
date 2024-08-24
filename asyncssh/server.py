@@ -59,6 +59,14 @@ class SSHServer:
        Applications may subclass this when implementing an SSH server to
        provide custom authentication and request handlers.
 
+       Whenever a new SSH server connection is accepted, a corresponding
+       SSHServer object is created and the method :meth:`connection_made`
+       is called, passing in the :class:`SSHServerConnection` object.
+
+       When the connection is closed, the method :meth:`connection_lost`
+       is called with an exception representing the reason for the
+       disconnect, or `None` if the connection was closed cleanly.
+
        The method :meth:`begin_auth` can be overridden decide whether
        or not authentication is required, and additional callbacks are
        provided for each form of authentication in cases where authentication
