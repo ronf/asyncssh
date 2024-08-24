@@ -1,6 +1,6 @@
-#!/usr/bin/env python3.8
+#!/usr/bin/env python3.7
 #
-# Copyright (c) 2013-2021 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2024 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -58,6 +58,6 @@ async def run_reverse_client() -> None:
     await conn.wait_closed()
 
 try:
-    asyncio.get_event_loop().run_until_complete(run_reverse_client())
+    asyncio.run(run_reverse_client())
 except (OSError, asyncssh.Error) as exc:
     sys.exit('Reverse SSH connection failed: ' + str(exc))

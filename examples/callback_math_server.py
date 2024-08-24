@@ -1,6 +1,6 @@
-#!/usr/bin/env python3.6
+#!/usr/bin/env python3.7
 #
-# Copyright (c) 2013-2021 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2024 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -64,6 +64,9 @@ class MySSHServerSession(asyncssh.SSHServerSession):
     def break_received(self, msec: int) -> bool:
         return self.eof_received()
 
+    def soft_eof_received(self) -> None:
+        self.eof_received()
+
 class MySSHServer(asyncssh.SSHServer):
     def session_requested(self) -> asyncssh.SSHServerSession:
         return MySSHServerSession()
@@ -73,7 +76,7 @@ async def start_server() -> None:
                                  server_host_keys=['ssh_host_key'],
                                  authorized_client_keys='ssh_user_ca')
 
-loop = asyncio.get_event_loop()
+loop = asyncio.new_event_loop()
 
 try:
     loop.run_until_complete(start_server())

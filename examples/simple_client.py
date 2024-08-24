@@ -1,6 +1,6 @@
-#!/usr/bin/env python3.6
+#!/usr/bin/env python3.7
 #
-# Copyright (c) 2013-2021 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2024 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -24,10 +24,16 @@ import asyncio, asyncssh, sys
 
 async def run_client() -> None:
     async with asyncssh.connect('localhost') as conn:
-        result = await conn.run('ls abc', check=True)
-        print(result.stdout, end='')
+        try:
+            result = await conn.run('ls abc', check=True)
+        except asyncssh.ProcessError as exc:
+            print(exc.stderr, end='')
+            print(f'Process exited with status {exc.exit_status}',
+                  file=sys.stderr)
+        else:
+            print(result.stdout, end='')
 
 try:
-    asyncio.get_event_loop().run_until_complete(run_client())
+    asyncio.run(run_client())
 except (OSError, asyncssh.Error) as exc:
     sys.exit('SSH connection failed: ' + str(exc))

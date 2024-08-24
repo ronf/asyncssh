@@ -1,6 +1,6 @@
-#!/usr/bin/env python3.6
+#!/usr/bin/env python3.7
 #
-# Copyright (c) 2016-2021 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2016-2024 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -76,7 +76,7 @@ async def start_server() -> None:
                           authorized_client_keys='ssh_user_ca',
                           process_factory=ChatClient.handle_client)
 
-loop = asyncio.get_event_loop()
+loop = asyncio.new_event_loop()
 
 try:
     loop.run_until_complete(start_server())
