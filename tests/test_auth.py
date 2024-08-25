@@ -96,7 +96,7 @@ class _AuthClientStub(_AuthConnectionStub):
                                          password_change_prompt, kbdint_auth,
                                          kbdint_challenge, success), False)
 
-        self._gss = GSSClient(gss_host, False, None) if gss_host else None
+        self._gss = GSSClient(gss_host, None, False) if gss_host else None
 
         self._client_host_key = client_host_key
         self._client_host_cert = client_host_cert
