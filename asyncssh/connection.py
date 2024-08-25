@@ -1083,7 +1083,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         self._loop.call_soon(self._cleanup, exc)
 
-    def _reap_task(self, task_logger: SSHLogger,
+    def _reap_task(self, task_logger: Optional[SSHLogger],
                    task: 'asyncio.Task[None]') -> None:
         """Collect result of an async task, reporting errors"""
 
