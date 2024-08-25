@@ -513,6 +513,7 @@ class _TestGSSAuth(ServerTestCase):
             await self.connect(kex_algs=['ecdh-sha2-nistp256'],
                                username='user', gss_host='1,verify_error')
 
+    @unittest.skipIf(sys.platform == 'win32', 'skip GSS store test on Windows')
     @asynctest
     async def test_gss_delegate(self):
         """Test GSS credential delegation"""
