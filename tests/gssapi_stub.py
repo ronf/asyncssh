@@ -40,7 +40,9 @@ class Name:
 class Credentials:
     """Stub class for GSS credentials"""
 
-    def __init__(self, name=None, usage=None):
+    def __init__(self, name=None, usage=None, store=None):
+        # pylint: disable=unused-argument
+
         self.host = name.host if name else ''
         self.server = usage == 'accept'
 

@@ -179,7 +179,7 @@ class _KexClientStub(_KexConnectionStub):
         server_conn = _KexServerStub(alg, gss_host, self)
 
         if gss_host:
-            gss = GSSClient(gss_host, 'delegate' in gss_host)
+            gss = GSSClient(gss_host, None, 'delegate' in gss_host)
         else:
             gss = None
 
@@ -205,7 +205,7 @@ class _KexServerStub(_KexConnectionStub):
     """Stub class for server connection"""
 
     def __init__(self, alg, gss_host, peer):
-        gss = GSSServer(gss_host) if gss_host else None
+        gss = GSSServer(gss_host, None) if gss_host else None
         super().__init__(alg, gss, peer, True)
 
         if gss_host and 'no_host_key' in gss_host:

@@ -105,8 +105,8 @@ from .logging import SSHLogger, logger
 
 from .mac import get_mac_algs, get_default_mac_algs
 
-from .misc import BytesOrStr, DefTuple, FilePath, HostPort, IPNetwork
-from .misc import MaybeAwait, OptExcInfo, Options, SockAddr
+from .misc import BytesOrStr, BytesOrStrDict, DefTuple, FilePath, HostPort
+from .misc import IPNetwork, MaybeAwait, OptExcInfo, Options, SockAddr
 from .misc import ChannelListenError, ChannelOpenError, CompressionError
 from .misc import DisconnectError, ConnectionLost, HostKeyNotVerifiable
 from .misc import KeyExchangeFailed, IllegalUserName, MACError
@@ -3315,7 +3315,8 @@ class SSHClientConnection(SSHConnection):
 
         if gss_host:
             try:
-                self._gss = GSSClient(gss_host, options.gss_delegate_creds)
+                self._gss = GSSClient(gss_host, options.gss_store,
+                                      options.gss_delegate_creds)
                 self._gss_kex = options.gss_kex
                 self._gss_auth = options.gss_auth
                 self._gss_mic_auth = self._gss_auth
@@ -5713,7 +5714,7 @@ class SSHServerConnection(SSHConnection):
 
         if options.gss_host:
             try:
-                self._gss = GSSServer(options.gss_host)
+                self._gss = GSSServer(options.gss_host, options.gss_store)
                 self._gss_kex = options.gss_kex
                 self._gss_auth = options.gss_auth
                 self._gss_mic_auth = self._gss_auth
@@ -7443,6 +7444,8 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
            authentication. If not specified, this value will be the same
            as the `host` argument. If this argument is explicitly set to
            `None`, GSS key exchange and authentication will not be performed.
+       :param gss_store: (optional)
+           The GSS credential store from which to acquire credentials.
        :param gss_kex: (optional)
            Whether or not to allow GSS key exchange. By default, GSS
            key exchange is enabled.
@@ -7672,6 +7675,8 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
        :type kbdint_auth: `bool`
        :type password_auth: `bool`
        :type gss_host: `str`
+       :type gss_store:
+           `str`, `bytes`, or a `dict` with `str` or `bytes` keys and values
        :type gss_kex: `bool`
        :type gss_auth: `bool`
        :type gss_delegate_creds: `bool`
@@ -7734,6 +7739,7 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
     client_certs: Sequence[FilePath]
     ignore_encrypted: bool
     gss_host: DefTuple[Optional[str]]
+    gss_store: Optional[Dict[BytesOrStr, BytesOrStr]]
     gss_kex: bool
     gss_auth: bool
     gss_delegate_creds: bool
@@ -7802,6 +7808,7 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
                 passphrase: Optional[BytesOrStr] = None,
                 ignore_encrypted: DefTuple[bool] = (),
                 gss_host: DefTuple[Optional[str]] = (),
+                gss_store: Optional[Union[BytesOrStr, BytesOrStrDict]] = None,
                 gss_kex: DefTuple[bool] = (), gss_auth: DefTuple[bool] = (),
                 gss_delegate_creds: DefTuple[bool] = (),
                 preferred_auth: DefTuple[Union[str, Sequence[str]]] = (),
@@ -7932,6 +7939,11 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
                 if client_username != () else local_username))
 
         self.gss_host = gss_host
+
+        if isinstance(gss_store, (bytes, str)):
+            self.gss_store = {'ccache': gss_store}
+        else:
+            self.gss_store = gss_store
 
         self.gss_kex = cast(bool, gss_kex if gss_kex != () else
             config.get('GSSAPIKeyExchange', True))
@@ -8169,6 +8181,8 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
            name. Otherwise, the value used by :func:`socket.getfqdn` will be
            used. If this argument is explicitly set to `None`, GSS
            key exchange and authentication will not be performed.
+       :param gss_store: (optional)
+           The GSS credential store from which to acquire credentials.
        :param gss_kex: (optional)
            Whether or not to allow GSS key exchange. By default, GSS
            key exchange is enabled.
@@ -8344,6 +8358,8 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
        :type kbdint_auth: `bool`
        :type password_auth: `bool`
        :type gss_host: `str`
+       :type gss_store:
+           `str`, `bytes`, or a `dict` with `str` or `bytes` keys and values
        :type gss_kex: `bool`
        :type gss_auth: `bool`
        :type allow_pty: `bool`
@@ -8391,6 +8407,7 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
     trust_client_host: bool
     authorized_client_keys: DefTuple[Optional[SSHAuthorizedKeys]]
     gss_host: Optional[str]
+    gss_store: Optional[Dict[BytesOrStr, BytesOrStr]]
     gss_kex: bool
     gss_auth: bool
     allow_pty: bool
@@ -8449,6 +8466,7 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
                 trust_client_host: bool = False,
                 authorized_client_keys: _AuthKeysArg = (),
                 gss_host: DefTuple[Optional[str]] = (),
+                gss_store: Optional[Union[BytesOrStr, BytesOrStrDict]] = None,
                 gss_kex: DefTuple[bool] = (),
                 gss_auth: DefTuple[bool] = (),
                 allow_pty: DefTuple[bool] = (),
@@ -8553,6 +8571,11 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
         gss_host: Optional[str]
 
         self.gss_host = gss_host
+
+        if isinstance(gss_store, (bytes, str)):
+            self.gss_store = {'ccache': gss_store}
+        else:
+            self.gss_store = gss_store
 
         self.gss_kex = cast(bool, gss_kex if gss_kex != () else
             config.get('GSSAPIKeyExchange', True))

@@ -96,7 +96,7 @@ class _AuthClientStub(_AuthConnectionStub):
                                          password_change_prompt, kbdint_auth,
                                          kbdint_challenge, success), False)
 
-        self._gss = GSSClient(gss_host, False) if gss_host else None
+        self._gss = GSSClient(gss_host, False, None) if gss_host else None
 
         self._client_host_key = client_host_key
         self._client_host_cert = client_host_cert
@@ -259,7 +259,7 @@ class _AuthServerStub(_AuthConnectionStub):
                  kbdint_challenge=False, success=False):
         super().__init__(peer, True)
 
-        self._gss = GSSServer(gss_host) if gss_host else None
+        self._gss = GSSServer(gss_host, None) if gss_host else None
         self._override_gss_mech = override_gss_mech
 
         self._host_based_auth = host_based_auth

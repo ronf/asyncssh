@@ -101,6 +101,7 @@ ExcInfo = Tuple[Type[BaseException], BaseException, TracebackType]
 OptExcInfo = Union[ExcInfo, Tuple[None, None, None]]
 
 BytesOrStr = Union[bytes, str]
+BytesOrStrDict = Dict[BytesOrStr, BytesOrStr]
 FilePath = Union[str, PurePath]
 HostPort = Tuple[str, int]
 IPAddress = Union[ipaddress.IPv4Address, ipaddress.IPv6Address]

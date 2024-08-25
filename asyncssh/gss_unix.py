@@ -27,6 +27,7 @@ from gssapi import RequirementFlag, SecurityContext
 from gssapi.exceptions import GSSError
 
 from .asn1 import OBJECT_IDENTIFIER
+from .misc import BytesOrStrDict
 
 
 def _mech_to_oid(mech: OID) -> bytes:
@@ -39,11 +40,13 @@ def _mech_to_oid(mech: OID) -> bytes:
 class GSSBase:
     """GSS base class"""
 
-    def __init__(self, host: str):
+    def __init__(self, host: str, store: Optional[BytesOrStrDict]):
         if '@' in host:
             self._host = Name(host)
         else:
             self._host = Name('host@' + host, NameType.hostbased_service)
+
+        self._store = store
 
         self._mechs = [_mech_to_oid(mech) for mech in self._creds.mechs]
         self._ctx: Optional[SecurityContext] = None
@@ -141,8 +144,9 @@ class GSSBase:
 class GSSClient(GSSBase):
     """GSS client"""
 
-    def __init__(self, host: str, delegate_creds: bool):
-        super().__init__(host)
+    def __init__(self, host: str, store: Optional[BytesOrStrDict],
+                 delegate_creds: bool):
+        super().__init__(host, store)
 
         flags = RequirementFlag.mutual_authentication | \
                 RequirementFlag.integrity
@@ -156,7 +160,7 @@ class GSSClient(GSSBase):
     def _creds(self) -> Credentials:
         """Abstract method to construct GSS credentials"""
 
-        return Credentials(usage='initiate')
+        return Credentials(usage='initiate', store=self._store)
 
     def _init_context(self) -> None:
         """Construct GSS client security context"""
@@ -172,7 +176,7 @@ class GSSServer(GSSBase):
     def _creds(self) -> Credentials:
         """Abstract method to construct GSS credentials"""
 
-        return Credentials(name=self._host, usage='accept')
+        return Credentials(name=self._host, usage='accept', store=self._store)
 
     def _init_context(self) -> None:
         """Construct GSS server security context"""

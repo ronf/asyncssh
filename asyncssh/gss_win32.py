@@ -35,6 +35,7 @@ from sspicon import ASC_RET_INTEGRITY, ASC_RET_MUTUAL_AUTH
 from sspicon import SECPKG_ATTR_NATIVE_NAMES
 
 from .asn1 import ObjectIdentifier, der_encode
+from .misc import BytesOrStrDict
 
 
 _krb5_oid = der_encode(ObjectIdentifier('1.2.840.113554.1.2.2'))
@@ -156,7 +157,11 @@ class GSSClient(GSSBase):
     _mutual_auth_flag = ISC_RET_MUTUAL_AUTH
     _integrity_flag = ISC_RET_INTEGRITY
 
-    def __init__(self, host: str, delegate_creds: bool):
+    def __init__(self, host: str, store: Optional[BytesOrStrDict],
+                 delegate_creds: bool):
+        if store is not None:
+            raise GSSError(details='GSS store not supported on Windows')
+
         super().__init__(host)
 
         flags = ISC_REQ_MUTUAL_AUTH | ISC_REQ_INTEGRITY
@@ -179,7 +184,10 @@ class GSSServer(GSSBase):
     _mutual_auth_flag = ASC_RET_MUTUAL_AUTH
     _integrity_flag = ASC_RET_INTEGRITY
 
-    def __init__(self, host: str):
+    def __init__(self, host: str, store: Optional[BytesOrStrDict]):
+        if store is not None:
+            raise GSSError(details='GSS store not supported on Windows')
+
         super().__init__(host)
 
         flags = ASC_REQ_MUTUAL_AUTH | ASC_REQ_INTEGRITY
