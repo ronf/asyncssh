@@ -2541,7 +2541,7 @@ def _decode_openssh_private(
                                      'encrypted private keys')
 
             try:
-                key_size, iv_size, block_size, _, _, _ = \
+                key_size, iv_size, _, _, _, _ = \
                     get_encryption_params(cipher_name)
             except KeyError:
                 raise KeyEncryptionError('Unknown cipher: %s' %
@@ -2579,9 +2579,6 @@ def _decode_openssh_private(
                 raise KeyEncryptionError('Incorrect passphrase')
 
             key_data = decrypted_key
-            block_size = max(block_size, 8)
-        else:
-            block_size = 8
 
         packet = SSHPacket(key_data)
 
@@ -2602,7 +2599,7 @@ def _decode_openssh_private(
         comment = packet.get_string()
         pad = packet.get_remaining_payload()
 
-        if len(pad) >= block_size or pad != bytes(range(1, len(pad) + 1)):
+        if len(pad) >= 256 or pad != bytes(range(1, len(pad) + 1)):
             raise KeyImportError('Invalid OpenSSH private key')
 
         if alg == b'ssh-rsa':
