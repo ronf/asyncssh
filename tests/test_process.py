@@ -951,13 +951,8 @@ class _TestProcessRedirection(_TestProcess):
                 'cat', stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE)
 
-            proc1 = await conn.create_process(stdout=proc2.stdin,
-                                              stderr=asyncssh.DEVNULL)
-
-            proc1.stdin.write(data)
-            proc1.stdin.write_eof()
-
-            stdout_data = await proc2.stdout.read()
+            async with conn.create_process(input=data, stdout=proc2.stdin):
+                stdout_data = await proc2.stdout.read()
 
         self.assertEqual(stdout_data, data.encode('ascii'))
 
