@@ -130,6 +130,7 @@ jobs:
         with:
           name: coverage-${{ matrix.os }}-${{ matrix.python-version }}
           path: asyncssh/.coverage.*
+          include-hidden-files: true
           retention-days: 1
 
   merge-coverage:
