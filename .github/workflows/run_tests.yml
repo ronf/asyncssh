@@ -143,6 +143,7 @@ jobs:
         with:
           name: coverage
           pattern: coverage-*
+          include-hidden-files: true
 
   report-coverage:
     name: Report coverage
