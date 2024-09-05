@@ -36,7 +36,8 @@ from asyncssh.public_key import CERT_TYPE_USER, CERT_TYPE_HOST
 
 from .keysign_stub import create_subprocess_exec_stub
 from .server import Server, ServerTestCase
-from .util import asynctest, gss_available, patch_getnameinfo, patch_gss
+from .util import asynctest, gss_available, patch_getnameinfo
+from .util import patch_getnameinfo_error, patch_gss
 from .util import make_certificate, nc_available, x509_available
 
 
@@ -858,6 +859,26 @@ class _TestHostBasedAuth(ServerTestCase):
             await self.connect(username='user', client_host_keys='skey',
                                client_username='user',
                                disable_trivial_auth=True)
+
+
+class _TestHostBasedAuthNoRDNS(ServerTestCase):
+    """Unit tests for host-based authentication with no reverse DNS"""
+
+    @classmethod
+    async def start_server(cls):
+        """Start an SSH server which supports host-based authentication"""
+
+        return await cls.create_server(
+            _HostBasedServer, known_client_hosts='known_hosts')
+
+    @patch_getnameinfo_error
+    @asynctest
+    async def test_client_host_auth_no_rdns(self):
+        """Test connecting with host-based authentication with no RDNS"""
+
+        async with self.connect(username='user', client_host_keys='skey',
+                                client_username='user'):
+            pass
 
 
 @patch_getnameinfo

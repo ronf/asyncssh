@@ -3565,11 +3565,14 @@ class SSHClientConnection(SSHConnection):
         client_host = self._options.client_host
 
         if client_host is None:
-            sockname = self.get_extra_info('sockname')
+            sockname = cast(SockAddr, self.get_extra_info('sockname'))
 
             if sockname:
-                client_host, _ = await self._loop.getnameinfo(
-                    cast(SockAddr, sockname), socket.NI_NUMERICSERV)
+                try:
+                    client_host, _ = await self._loop.getnameinfo(
+                        sockname, socket.NI_NUMERICSERV)
+                except socket.gaierror:
+                    client_host = sockname[0]
             else:
                 client_host = ''
 
@@ -5875,9 +5878,13 @@ class SSHServerConnection(SSHConnection):
         if self._trust_client_host:
             resolved_host = client_host
         else:
-            resolved_host, _ = await self._loop.getnameinfo(
-                cast(SockAddr, self.get_extra_info('peername')),
-                socket.NI_NUMERICSERV)
+            peername = cast(SockAddr, self.get_extra_info('peername'))
+
+            try:
+                resolved_host, _ = await self._loop.getnameinfo(
+                    peername, socket.NI_NUMERICSERV)
+            except socket.gaierror:
+                resolved_host = peername[0]
 
             if resolved_host != client_host:
                 self.logger.info('Client host mismatch: received %s, '
@@ -5931,11 +5938,10 @@ class SSHServerConnection(SSHConnection):
 
         self._key_options = options
 
-        if self.get_key_option('principals'):
-            username = ''
+        cert_user = None if self.get_key_option('principals') else username
 
         try:
-            cert.validate(CERT_TYPE_USER, username)
+            cert.validate(CERT_TYPE_USER, cert_user)
         except ValueError:
             return None
 

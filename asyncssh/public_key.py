@@ -1767,7 +1767,7 @@ class SSHOpenSSHCertificate(SSHCertificate):
 
         return result
 
-    def validate(self, cert_type: int, principal: str) -> None:
+    def validate(self, cert_type: int, principal: Optional[str]) -> None:
         """Validate an OpenSSH certificate"""
 
         if self._cert_type != cert_type:
@@ -1781,7 +1781,8 @@ class SSHOpenSSHCertificate(SSHCertificate):
         if now >= self._valid_before:
             raise ValueError('Certificate expired')
 
-        if principal and self.principals and principal not in self.principals:
+        if principal is not None and self.principals and \
+                principal not in self.principals:
             raise ValueError('Certificate principal mismatch')
 
 

@@ -25,6 +25,7 @@ import binascii
 import functools
 import os
 import shutil
+import socket
 import subprocess
 import sys
 import tempfile
@@ -104,6 +105,19 @@ def patch_getnameinfo(cls):
         return ('localhost', sockaddr[1])
 
     return patch('socket.getnameinfo', getnameinfo)(cls)
+
+
+def patch_getnameinfo_error(cls):
+    """Decorator for patching socket.getnameinfo to raise an error"""
+
+    def getnameinfo_error(sockaddr, flags):
+        """Mock failure of reverse DNS lookup of client address"""
+
+        # pylint: disable=unused-argument
+
+        raise socket.gaierror()
+
+    return patch('socket.getnameinfo', getnameinfo_error)(cls)
 
 
 def patch_extra_kex(cls):
