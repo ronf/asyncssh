@@ -229,7 +229,7 @@ class SSHChannel(Generic[AnyStr], SSHPacketHandler):
 
         self._close_event.set()
 
-        if self._conn and self._recv_state == 'closed': # pragma: no branch
+        if self._conn: # pragma: no branch
             self.logger.info('Channel closed%s',
                              ': ' + str(exc) if exc else '')
 
@@ -263,8 +263,7 @@ class SSHChannel(Generic[AnyStr], SSHPacketHandler):
         # If recv is close_pending, we know send is already closed
         if self._recv_state == 'close_pending':
             self._recv_state = 'closed'
-
-        self._loop.call_soon(self._cleanup)
+            self._loop.call_soon(self._cleanup)
 
     async def _start_reading(self) -> None:
         """Start processing data on a new connection"""
@@ -413,11 +412,7 @@ class SSHChannel(Generic[AnyStr], SSHPacketHandler):
         handler = cast(_RequestHandler, getattr(self, name, None))
 
         if handler:
-            if self._session:
-                result = cast(Optional[bool], handler(packet))
-            else:
-                # Ignore requests received after application closes the channel
-                result = True
+            result = cast(Optional[bool], handler(packet))
         else:
             self.logger.debug1('Received unknown channel request: %s', request)
             result = False
