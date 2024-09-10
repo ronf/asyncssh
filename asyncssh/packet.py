@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2021 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2024 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -20,14 +20,15 @@
 
 """SSH packet encoding and decoding functions"""
 
-from typing import Any, Callable, Iterable, Mapping, Optional, Sequence, Union
+from typing import Any, Awaitable, Callable, Iterable, Mapping, Optional
+from typing import Sequence, Union
 
 from .logging import SSHLogger
-from .misc import plural
+from .misc import MaybeAwait, plural
 
 
 _LoggedPacket = Union[bytes, 'SSHPacket']
-_PacketHandler = Callable[[Any, int, int, 'SSHPacket'], None]
+_PacketHandler = Callable[[Any, int, int, 'SSHPacket'], MaybeAwait[None]]
 
 
 class PacketDecodeError(ValueError):
@@ -230,11 +231,11 @@ class SSHPacketHandler(SSHPacketLogger):
         raise NotImplementedError
 
     def process_packet(self, pkttype: int, pktid: int,
-                       packet: SSHPacket) -> bool:
+                       packet: SSHPacket) -> Union[bool, Awaitable[None]]:
         """Log and process a received packet"""
 
         if pkttype in self._packet_handlers:
-            self._packet_handlers[pkttype](self, pkttype, pktid, packet)
-            return True
+            return self._packet_handlers[pkttype](self, pkttype,
+                                                  pktid, packet) or True
         else:
             return False

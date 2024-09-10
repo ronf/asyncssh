@@ -323,7 +323,7 @@ class ConnectionStub:
                 self.connection_lost(data)
                 break
 
-            self.process_packet(data)
+            await self.process_packet(data)
 
     def connection_lost(self, exc):
         """Handle the closing of a connection"""

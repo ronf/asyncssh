@@ -20,6 +20,7 @@
 
 """Miscellaneous utility classes and functions"""
 
+import asyncio
 import functools
 import ipaddress
 import re
@@ -354,6 +355,14 @@ async def maybe_wait_closed(writer: '_SupportsWaitClosed') -> None:
         await writer.wait_closed()
     except AttributeError: # pragma: no cover
         pass
+
+
+async def run_in_executor(func: Callable[..., _T], *args: object) -> _T:
+    """Run a function in an asyncio executor"""
+
+    loop = asyncio.get_event_loop()
+
+    return await loop.run_in_executor(None, func, *args)
 
 
 def set_terminal_size(tty: IO, width: int, height: int,

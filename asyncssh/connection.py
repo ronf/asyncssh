@@ -1326,17 +1326,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         self._inpbuf += data
 
-        self._reset_keepalive_timer()
-
-        # pylint: disable=broad-except
-        try:
-            while self._inpbuf and self._recv_handler():
-                pass
-        except DisconnectError as exc:
-            self._send_disconnect(exc.code, exc.reason, exc.lang)
-            self._force_close(exc)
-        except Exception:
-            self.internal_error()
+        self._recv_data()
     # pylint: enable=arguments-differ
 
     def eof_received(self) -> None:
@@ -1441,6 +1431,21 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
             self.set_extra_info(server_version=version.decode('ascii'))
 
         self._send(version + b'\r\n')
+
+    def _recv_data(self) -> None:
+        """Parse received data"""
+
+        self._reset_keepalive_timer()
+
+        # pylint: disable=broad-except
+        try:
+            while self._inpbuf and self._recv_handler():
+                pass
+        except DisconnectError as exc:
+            self._send_disconnect(exc.code, exc.reason, exc.lang)
+            self._force_close(exc)
+        except Exception:
+            self.internal_error()
 
     def _recv_version(self) -> bool:
         """Receive and parse the remote SSH version"""
@@ -1595,11 +1600,20 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         if not skip_reason:
             try:
-                processed = handler.process_packet(pkttype, seq, packet)
+                result = handler.process_packet(pkttype, seq, packet)
             except PacketDecodeError as exc:
                 raise ProtocolError(str(exc)) from None
 
-            if not processed:
+            if inspect.isawaitable(result):
+                # Buffer received data until current packet is processed
+                self._recv_handler = lambda: False
+
+                task = self.create_task(result)
+                task.add_done_callback(functools.partial(
+                    self._finish_recv_packet, pkttype, seq, is_async=True))
+
+                return False
+            elif not result:
                 if self._strict_kex and not self._recv_encryption:
                     exc_reason = 'Strict key exchange violation: ' \
                                  'unexpected packet type %d received' % pkttype
@@ -1610,6 +1624,14 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         if exc_reason:
             raise ProtocolError(exc_reason)
+
+        self._finish_recv_packet(pkttype, seq)
+        return True
+
+    def _finish_recv_packet(self, pkttype: int, seq: int,
+                            _task: Optional[asyncio.Task] = None,
+                            is_async: bool = False) -> None:
+        """Finish processing a packet"""
 
         if pkttype > MSG_USERAUTH_LAST:
             self._auth_final = True
@@ -1625,7 +1647,8 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
             else:
                 self._recv_seq = (seq + 1) & 0xffffffff
 
-        return True
+        if is_async and self._inpbuf:
+            self._recv_data()
 
     def send_packet(self, pkttype: int, *args: bytes,
                     handler: Optional[SSHPacketLogger] = None) -> None:
@@ -2218,8 +2241,8 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
             self._server_sig_algs = \
                 set(extensions.get(b'server-sig-algs', b'').split(b','))
 
-    def _process_kexinit(self, _pkttype: int, _pktid: int,
-                         packet: SSHPacket) -> None:
+    async def _process_kexinit(self, _pkttype: int, _pktid: int,
+                               packet: SSHPacket) -> None:
         """Process a key exchange request"""
 
         if self._kex:
@@ -2323,7 +2346,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         self.logger.debug1('Beginning key exchange')
         self.logger.debug2('  Key exchange alg: %s', self._kex.algorithm)
 
-        self._kex.start()
+        await self._kex.start()
 
     def _process_newkeys(self, _pkttype: int, _pktid: int,
                          packet: SSHPacket) -> None:

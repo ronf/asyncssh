@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2022 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2024 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -33,7 +33,7 @@ from .crypto import sntrup761_keypair, sntrup761_encaps, sntrup761_decaps
 from .gss import GSSError
 from .kex import Kex, register_kex_alg, register_gss_kex_alg
 from .misc import HashType, KeyExchangeFailed, ProtocolError
-from .misc import get_symbol_names
+from .misc import get_symbol_names, run_in_executor
 from .packet import Boolean, MPInt, String, UInt32, SSHPacket
 from .public_key import SigningKey, VerifyingKey
 
@@ -274,7 +274,7 @@ class _KexDHBase(Kex):
         host_key = client_conn.validate_server_host_key(host_key_data)
         self._verify_reply(host_key, host_key_data, sig)
 
-    def start(self) -> None:
+    async def start(self) -> None:
         """Start DH key exchange"""
 
         if self._conn.is_client():
@@ -384,7 +384,7 @@ class _KexDHGex(_KexDHBase):
         self._gex_data += MPInt(p) + MPInt(g)
         self._perform_init()
 
-    def start(self) -> None:
+    async def start(self) -> None:
         """Start DH group exchange"""
 
         if self._conn.is_client():
@@ -455,7 +455,7 @@ class _KexECDH(_KexDHBase):
         except ValueError:
             raise ProtocolError('Invalid ECDH client public key') from None
 
-    def start(self) -> None:
+    async def start(self) -> None:
         """Start ECDH key exchange"""
 
         if self._conn.is_client():
@@ -567,11 +567,11 @@ class _KexGSSBase(_KexDHBase):
 
         self.send_packet(MSG_KEXGSS_CONTINUE, String(self._token))
 
-    def _process_token(self, token: Optional[bytes] = None) -> None:
+    async def _process_token(self, token: Optional[bytes] = None) -> None:
         """Process a GSS token"""
 
         try:
-            self._token = self._gss.step(token)
+            self._token = await run_in_executor(self._gss.step, token)
         except GSSError as exc:
             if self._conn.is_server():
                 self.send_packet(MSG_KEXGSS_ERROR, UInt32(exc.maj_code),
@@ -583,8 +583,8 @@ class _KexGSSBase(_KexDHBase):
 
             raise KeyExchangeFailed(str(exc)) from None
 
-    def _process_init(self, _pkttype: int, _pktid: int,
-                      packet: SSHPacket) -> None:
+    async def _process_gss_init(self, _pkttype: int, _pktid: int,
+                                packet: SSHPacket) -> None:
         """Process a GSS init message"""
 
         if self._conn.is_client():
@@ -603,7 +603,7 @@ class _KexGSSBase(_KexDHBase):
         else:
             self._host_key_data = b''
 
-        self._process_token(token)
+        await self._process_token(token)
 
         if self._gss.complete:
             self._check_secure()
@@ -612,8 +612,8 @@ class _KexGSSBase(_KexDHBase):
         else:
             self._send_continue()
 
-    def _process_continue(self, _pkttype: int, _pktid: int,
-                          packet: SSHPacket) -> None:
+    async def _process_continue(self, _pkttype: int, _pktid: int,
+                                packet: SSHPacket) -> None:
         """Process a GSS continue message"""
 
         token = packet.get_string()
@@ -622,7 +622,7 @@ class _KexGSSBase(_KexDHBase):
         if self._conn.is_client() and self._gss.complete:
             raise ProtocolError('Unexpected kexgss continue msg')
 
-        self._process_token(token)
+        await self._process_token(token)
 
         if self._conn.is_server() and self._gss.complete:
             self._check_secure()
@@ -630,8 +630,8 @@ class _KexGSSBase(_KexDHBase):
         else:
             self._send_continue()
 
-    def _process_complete(self, _pkttype: int, _pktid: int,
-                          packet: SSHPacket) -> None:
+    async def _process_complete(self, _pkttype: int, _pktid: int,
+                                packet: SSHPacket) -> None:
         """Process a GSS complete message"""
 
         if self._conn.is_server():
@@ -647,7 +647,7 @@ class _KexGSSBase(_KexDHBase):
             if self._gss.complete:
                 raise ProtocolError('Non-empty token after complete')
 
-            self._process_token(token)
+            await self._process_token(token)
 
             if self._token:
                 raise ProtocolError('Non-empty token after complete')
@@ -682,12 +682,12 @@ class _KexGSSBase(_KexDHBase):
         self._conn.logger.debug1('GSS error: %s',
                                  msg.decode('utf-8', errors='ignore'))
 
-    def start(self) -> None:
+    async def start(self) -> None:
         """Start GSS key exchange"""
 
         if self._conn.is_client():
-            self._process_token()
-            super().start()
+            await self._process_token()
+            await super().start()
 
 
 class _KexGSS(_KexGSSBase, _KexDH):
@@ -696,7 +696,7 @@ class _KexGSS(_KexGSSBase, _KexDH):
     _handler_names = get_symbol_names(globals(), 'MSG_KEXGSS_')
 
     _packet_handlers = {
-        MSG_KEXGSS_INIT:     _KexGSSBase._process_init,
+        MSG_KEXGSS_INIT:     _KexGSSBase._process_gss_init,
         MSG_KEXGSS_CONTINUE: _KexGSSBase._process_continue,
         MSG_KEXGSS_COMPLETE: _KexGSSBase._process_complete,
         MSG_KEXGSS_HOSTKEY:  _KexGSSBase._process_hostkey,
@@ -713,7 +713,7 @@ class _KexGSSGex(_KexGSSBase, _KexDHGex):
     _group_type = MSG_KEXGSS_GROUP
 
     _packet_handlers = {
-        MSG_KEXGSS_INIT:     _KexGSSBase._process_init,
+        MSG_KEXGSS_INIT:     _KexGSSBase._process_gss_init,
         MSG_KEXGSS_CONTINUE: _KexGSSBase._process_continue,
         MSG_KEXGSS_COMPLETE: _KexGSSBase._process_complete,
         MSG_KEXGSS_HOSTKEY:  _KexGSSBase._process_hostkey,
@@ -729,7 +729,7 @@ class _KexGSSECDH(_KexGSSBase, _KexECDH):
     _handler_names = get_symbol_names(globals(), 'MSG_KEXGSS_')
 
     _packet_handlers = {
-        MSG_KEXGSS_INIT:     _KexGSSBase._process_init,
+        MSG_KEXGSS_INIT:     _KexGSSBase._process_gss_init,
         MSG_KEXGSS_CONTINUE: _KexGSSBase._process_continue,
         MSG_KEXGSS_COMPLETE: _KexGSSBase._process_complete,
         MSG_KEXGSS_HOSTKEY:  _KexGSSBase._process_hostkey,

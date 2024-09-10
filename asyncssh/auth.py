@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2022 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2024 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -27,6 +27,7 @@ from .constants import DEFAULT_LANG
 from .gss import GSSBase, GSSError
 from .logging import SSHLogger
 from .misc import ProtocolError, PasswordChangeRequired, get_symbol_names
+from .misc import run_in_executor
 from .packet import Boolean, String, UInt32, SSHPacket, SSHPacketHandler
 from .public_key import SigningKey
 from .saslprep import saslprep, SASLPrepError
@@ -199,8 +200,8 @@ class _ClientGSSMICAuth(ClientAuth):
         else:
             self.send_packet(MSG_USERAUTH_GSSAPI_EXCHANGE_COMPLETE)
 
-    def _process_response(self, _pkttype: int, _pktid: int,
-                          packet: SSHPacket) -> None:
+    async def _process_response(self, _pkttype: int, _pktid: int,
+                                packet: SSHPacket) -> None:
         """Process a GSS response from the server"""
 
         mech = packet.get_string()
@@ -212,7 +213,7 @@ class _ClientGSSMICAuth(ClientAuth):
             raise ProtocolError('Mechanism mismatch')
 
         try:
-            token = self._gss.step()
+            token = await run_in_executor(self._gss.step)
             assert token is not None
 
             self.send_packet(MSG_USERAUTH_GSSAPI_TOKEN, String(token))
@@ -225,8 +226,8 @@ class _ClientGSSMICAuth(ClientAuth):
 
             self._conn.try_next_auth()
 
-    def _process_token(self, _pkttype: int, _pktid: int,
-                       packet: SSHPacket) -> None:
+    async def _process_token(self, _pkttype: int, _pktid: int,
+                             packet: SSHPacket) -> None:
         """Process a GSS token from the server"""
 
         token: Optional[bytes] = packet.get_string()
@@ -235,7 +236,7 @@ class _ClientGSSMICAuth(ClientAuth):
         assert self._gss is not None
 
         try:
-            token = self._gss.step(token)
+            token = await run_in_executor(self._gss.step, token)
 
             if token:
                 self.send_packet(MSG_USERAUTH_GSSAPI_TOKEN, String(token))
@@ -261,8 +262,8 @@ class _ClientGSSMICAuth(ClientAuth):
         self.logger.debug1('GSS error from server: %s', msg)
         self._got_error = True
 
-    def _process_error_token(self, _pkttype: int, _pktid: int,
-                             packet: SSHPacket) -> None:
+    async def _process_error_token(self, _pkttype: int, _pktid: int,
+                                   packet: SSHPacket) -> None:
         """Process a GSS error token from the server"""
 
         token = packet.get_string()
@@ -271,7 +272,7 @@ class _ClientGSSMICAuth(ClientAuth):
         assert self._gss is not None
 
         try:
-            self._gss.step(token)
+            await run_in_executor(self._gss.step, token)
         except GSSError as exc:
             if not self._got_error: # pragma: no cover
                 self.logger.debug1('GSS error from server: %s', str(exc))
@@ -649,15 +650,15 @@ class _ServerGSSMICAuth(ServerAuth):
         else:
             self.send_failure()
 
-    def _process_token(self, _pkttype: int, _pktid: int,
-                       packet: SSHPacket) -> None:
+    async def _process_token(self, _pkttype: int, _pktid: int,
+                             packet: SSHPacket) -> None:
         """Process a GSS token from the client"""
 
         token: Optional[bytes] = packet.get_string()
         packet.check_end()
 
         try:
-            token = self._gss.step(token)
+            token = await run_in_executor(self._gss.step, token)
 
             if token:
                 self.send_packet(MSG_USERAUTH_GSSAPI_TOKEN, String(token))
@@ -682,15 +683,15 @@ class _ServerGSSMICAuth(ServerAuth):
         else:
             self.send_failure()
 
-    def _process_error_token(self, _pkttype: int, _pktid: int,
-                             packet: SSHPacket) -> None:
+    async def _process_error_token(self, _pkttype: int, _pktid: int,
+                                   packet: SSHPacket) -> None:
         """Process a GSS error token from the client"""
 
         token = packet.get_string()
         packet.check_end()
 
         try:
-            self._gss.step(token)
+            await run_in_executor(self._gss.step, token)
         except GSSError as exc:
             self.logger.debug1('GSS error from client: %s', str(exc))
 

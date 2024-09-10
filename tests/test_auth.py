@@ -21,6 +21,7 @@
 """Unit tests for authentication"""
 
 import asyncio
+import inspect
 import unittest
 
 import asyncssh
@@ -45,7 +46,7 @@ class _AuthConnectionStub(ConnectionStub):
 
         raise NotImplementedError
 
-    def process_packet(self, data):
+    async def process_packet(self, data):
         """Process an incoming packet"""
 
         raise NotImplementedError
@@ -126,7 +127,7 @@ class _AuthClientStub(_AuthConnectionStub):
 
         self.close()
 
-    def process_packet(self, data):
+    async def process_packet(self, data):
         """Process an incoming packet"""
 
         packet = SSHPacket(data)
@@ -154,7 +155,10 @@ class _AuthClientStub(_AuthConnectionStub):
             self._auth = None
             self._auth_waiter = None
         else:
-            self._auth.process_packet(pkttype, None, packet)
+            result = self._auth.process_packet(pkttype, None, packet)
+
+            if inspect.isawaitable(result):
+                await result
 
     async def get_auth_result(self):
         """Return the result of the authentication"""
@@ -285,7 +289,7 @@ class _AuthServerStub(_AuthConnectionStub):
 
         self.close()
 
-    def process_packet(self, data):
+    async def process_packet(self, data):
         """Process an incoming packet"""
 
         packet = SSHPacket(data)
@@ -308,7 +312,10 @@ class _AuthServerStub(_AuthConnectionStub):
             else:
                 self._auth = lookup_server_auth(self, 'user', method, packet)
         else:
-            self._auth.process_packet(pkttype, None, packet)
+            result = self._auth.process_packet(pkttype, None, packet)
+
+            if inspect.isawaitable(result):
+                await result
 
     def send_userauth_failure(self, partial_success):
         """Send a user authentication failure response"""
