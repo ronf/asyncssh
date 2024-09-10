@@ -1078,7 +1078,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         if not self._transport:
             return
 
-        self._transport.abort()
+        self._loop.call_soon(self._transport.abort)
         self._transport = None
 
         self._loop.call_soon(self._cleanup, exc)
@@ -1413,7 +1413,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         if self._transport:
             try:
                 self._transport.write(data)
-            except BrokenPipeError: # pragma: no cover
+            except ConnectionError: # pragma: no cover
                 pass
 
     def _send_version(self) -> None:
