@@ -65,7 +65,7 @@ class SSHLogger(logging.LoggerAdapter):
             """Convert a list item to text"""
 
             if isinstance(item, bytes):
-                result = item.decode('utf-8', errors='replace')
+                result = item.decode('utf-8', errors='backslashreplace')
 
                 if not result.isprintable():
                     result = repr(result)[1:-1]
