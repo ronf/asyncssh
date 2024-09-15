@@ -105,16 +105,16 @@ from .logging import SSHLogger, logger
 
 from .mac import get_mac_algs, get_default_mac_algs
 
-from .misc import BytesOrStr, BytesOrStrDict, DefTuple, FilePath, HostPort
-from .misc import IPNetwork, MaybeAwait, OptExcInfo, Options, SockAddr
+from .misc import BytesOrStr, BytesOrStrDict, DefTuple, Env, EnvList, FilePath
+from .misc import HostPort, IPNetwork, MaybeAwait, OptExcInfo, Options, SockAddr
 from .misc import ChannelListenError, ChannelOpenError, CompressionError
 from .misc import DisconnectError, ConnectionLost, HostKeyNotVerifiable
 from .misc import KeyExchangeFailed, IllegalUserName, MACError
 from .misc import PasswordChangeRequired, PermissionDenied, ProtocolError
 from .misc import ProtocolNotSupported, ServiceNotAvailable
 from .misc import TermModesArg, TermSizeArg
-from .misc import async_context_manager, construct_disc_error
-from .misc import get_symbol_names, ip_address, map_handler_name
+from .misc import async_context_manager, construct_disc_error, encode_env
+from .misc import get_symbol_names, ip_address, lookup_env, map_handler_name
 from .misc import parse_byte_count, parse_time_interval, split_args
 
 from .packet import Boolean, Byte, NameList, String, UInt32, PacketDecodeError
@@ -223,9 +223,6 @@ _AuthArg = DefTuple[bool]
 _AuthKeysArg = DefTuple[Union[None, str, List[str], SSHAuthorizedKeys]]
 _ClientHostKey = Union[SSHKeyPair, SSHKeySignKeyPair]
 _ClientKeysArg = Union[KeyListArg, KeyPairListArg]
-
-_Env = Optional[Union[Mapping[str, str], Sequence[str]]]
-_SendEnv = Optional[Sequence[str]]
 
 _GlobalRequest = Tuple[Optional[_PacketHandler], SSHPacket, bool]
 _GlobalRequestResult = Tuple[int, SSHPacket]
@@ -4073,8 +4070,8 @@ class SSHClientConnection(SSHConnection):
     async def create_session(self, session_factory: SSHClientSessionFactory,
                              command: DefTuple[Optional[str]] = (), *,
                              subsystem: DefTuple[Optional[str]]= (),
-                             env: DefTuple[_Env] = (),
-                             send_env: DefTuple[_SendEnv] = (),
+                             env: DefTuple[Env] = (),
+                             send_env: DefTuple[Optional[EnvList]] = (),
                              request_pty: DefTuple[Union[bool, str]] = (),
                              term_type: DefTuple[Optional[str]] = (),
                              term_size: DefTuple[TermSizeArg] = (),
@@ -4179,8 +4176,8 @@ class SSHClientConnection(SSHConnection):
            :type session_factory: `callable`
            :type command: `str`
            :type subsystem: `str`
-           :type env: `dict` with `str` keys and values
-           :type send_env: `list` of `str`
+           :type env: `dict` with `bytes` or `str` keys and values
+           :type send_env: `list` of `bytes` or `str`
            :type request_pty: `bool`, `'force'`, or `'auto'`
            :type term_type: `str`
            :type term_size: `tuple` of 2 or 4 `int` values
@@ -4248,22 +4245,13 @@ class SSHClientConnection(SSHConnection):
         if max_pktsize == ():
             max_pktsize = self._options.max_pktsize
 
-        new_env: Dict[str, str] = {}
+        new_env: Dict[bytes, bytes] = {}
 
         if send_env:
-            for key in send_env:
-                pattern = WildcardPattern(key)
-                new_env.update((key, value) for key, value in os.environ.items()
-                               if pattern.matches(key))
+            new_env.update(lookup_env(send_env))
 
         if env:
-            try:
-                if isinstance(env, list):
-                    new_env.update((item.split('=', 1) for item in env))
-                else:
-                    new_env.update(cast(Mapping[str, str], env))
-            except ValueError:
-                raise ValueError('Invalid environment value') from None
+            new_env.update(encode_env(env))
 
         if request_pty == 'force':
             request_pty = True
@@ -5601,8 +5589,8 @@ class SSHClientConnection(SSHConnection):
         return cast(SSHForwarder, peer)
 
     @async_context_manager
-    async def start_sftp_client(self, env: DefTuple[_Env] = (),
-                                send_env: DefTuple[_SendEnv] = (),
+    async def start_sftp_client(self, env: DefTuple[Env] = (),
+                                send_env: DefTuple[Optional[EnvList]] = (),
                                 path_encoding: Optional[str] = 'utf-8',
                                 path_errors = 'strict',
                                 sftp_version = MIN_SFTP_VERSION) -> SFTPClient:
@@ -7781,8 +7769,8 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
     pkcs11_pin: Optional[str]
     command: Optional[str]
     subsystem: Optional[str]
-    env: _Env
-    send_env: _SendEnv
+    env: Env
+    send_env: Optional[EnvList]
     request_pty: _RequestPTY
     term_type: Optional[str]
     term_size: TermSizeArg
@@ -7848,8 +7836,8 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
                 pkcs11_provider: DefTuple[Optional[str]] = (),
                 pkcs11_pin: Optional[str] = None,
                 command: DefTuple[Optional[str]] = (),
-                subsystem: Optional[str] = None, env: DefTuple[_Env] = (),
-                send_env: DefTuple[_SendEnv] = (),
+                subsystem: Optional[str] = None, env: DefTuple[Env] = (),
+                send_env: DefTuple[Optional[EnvList]] = (),
                 request_pty: DefTuple[_RequestPTY] = (),
                 term_type: Optional[str] = None,
                 term_size: TermSizeArg = None,
@@ -8068,9 +8056,9 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
 
         self.subsystem = subsystem
 
-        self.env = cast(_Env, env if env != () else config.get('SetEnv'))
+        self.env = cast(Env, env if env != () else config.get('SetEnv'))
 
-        self.send_env = cast(_SendEnv, send_env if send_env != () else
+        self.send_env = cast(Optional[EnvList], send_env if send_env != () else
             config.get('SendEnv'))
 
         self.request_pty = cast(_RequestPTY, request_pty if request_pty != ()

@@ -21,8 +21,10 @@
 """Miscellaneous utility classes and functions"""
 
 import asyncio
+import fnmatch
 import functools
 import ipaddress
+import os
 import re
 import shlex
 import socket
@@ -32,8 +34,8 @@ from pathlib import Path, PurePath
 from random import SystemRandom
 from types import TracebackType
 from typing import Any, AsyncContextManager, Awaitable, Callable, Dict
-from typing import Generator, Generic, IO, Mapping, Optional, Sequence
-from typing import Tuple, Type, TypeVar, Union, cast, overload
+from typing import Generator, Generic, IO, Iterator, Mapping, Optional
+from typing import Sequence, Tuple, Type, TypeVar, Union, cast, overload
 from typing_extensions import Literal, Protocol
 
 from .constants import DEFAULT_LANG
@@ -109,6 +111,10 @@ IPAddress = Union[ipaddress.IPv4Address, ipaddress.IPv6Address]
 IPNetwork = Union[ipaddress.IPv4Network, ipaddress.IPv6Network]
 SockAddr = Union[Tuple[str, int], Tuple[str, int, int, int]]
 
+EnvDict = Mapping[BytesOrStr, BytesOrStr]
+EnvIter = Iterator[Tuple[BytesOrStr, BytesOrStr]]
+EnvList = Sequence[BytesOrStr]
+Env = Optional[Union[EnvDict, EnvIter, EnvList]]
 
 # Define a version of randrange which is based on SystemRandom(), so that
 # we get back numbers suitable for cryptographic use.
@@ -119,6 +125,53 @@ _unit_pattern = re.compile(r'([A-Za-z])')
 _byte_units = {'': 1, 'k': 1024, 'm': 1024*1024, 'g': 1024*1024*1024}
 _time_units = {'': 1, 's': 1, 'm': 60, 'h': 60*60,
                'd': 24*60*60, 'w': 7*24*60*60}
+
+
+def encode_env(env: Env) -> Iterator[Tuple[bytes, bytes]]:
+    """Convert environemnt dict or list to bytes-based dictionary"""
+
+    try:
+        if isinstance(env, list):
+            for item in env:
+                if isinstance(item, str):
+                    item = item.encode('utf-8')
+
+                yield item.split(b'=', 1)
+        else:
+            env = cast(EnvIter, env.items() if isinstance(env, dict) else env)
+
+            for key, value in env:
+                key_bytes = key.encode('utf-8') \
+                    if isinstance(key, str) else key
+
+                value_bytes = value.encode('utf-8') \
+                    if isinstance(value, str) else value
+
+                yield key_bytes, value_bytes
+    except (TypeError, ValueError) as exc:
+        raise ValueError('Invalid environment value: %s' % exc) from None
+
+
+def lookup_env(patterns: EnvList) -> Iterator[Tuple[bytes, bytes]]:
+    """Look up environemnt variables with wildcard matches"""
+
+    for pattern in patterns:
+        if isinstance(pattern, str):
+            pattern = pattern.encode('utf-8')
+
+        for key_bytes, value_bytes in os.environb.items():
+            if fnmatch.fnmatch(key_bytes, pattern):
+                yield key_bytes, value_bytes
+
+
+def decode_env(env: Dict[bytes, bytes]) -> Iterator[Tuple[str, str]]:
+    """Convert bytes-based environemnt dict to Unicode strings"""
+
+    for key, value in env.items():
+        try:
+            yield key.decode('utf-8'), value.decode('utf-8')
+        except UnicodeDecodeError:
+            pass
 
 
 def hide_empty(value: object, prefix: str = ', ') -> str:

@@ -45,9 +45,9 @@ from .editor import SSHLineEditorChannel, SSHLineEditorSession
 
 from .logging import SSHLogger
 
-from .misc import ChannelOpenError, MaybeAwait, ProtocolError
+from .misc import ChannelOpenError, EnvIter, MaybeAwait, ProtocolError
 from .misc import TermModes, TermSize, TermSizeArg
-from .misc import get_symbol_names, map_handler_name
+from .misc import decode_env, encode_env, get_symbol_names, map_handler_name
 
 from .packet import Boolean, Byte, String, UInt32, SSHPacket, SSHPacketHandler
 
@@ -115,7 +115,9 @@ class SSHChannel(Generic[AnyStr], SSHPacketHandler):
         self._send_high_water: int
         self._send_low_water: int
 
-        self._env: Dict[str, str] = {}
+        self._env: Dict[bytes, bytes] = {}
+        self._str_env: Optional[Dict[str, str]] = None
+
         self._command: Optional[str] = None
         self._subsystem: Optional[str] = None
 
@@ -1030,12 +1032,41 @@ class SSHChannel(Generic[AnyStr], SSHPacketHandler):
         """Return the environment for this session
 
            This method returns the environment set by the client when
-           the session was opened. On the server, calls to this method
-           should only be made after :meth:`session_started
-           <SSHServerSession.session_started>` has been called on the
-           :class:`SSHServerSession`. When using the stream-based API,
-           calls to this can be made at any time after the handler
-           function has started up.
+           the session was opened. Keys and values are of type `str`
+           and this object only provides access to keys and values sent
+           as valid UTF-8 strings. Use :meth:`get_environment_bytes`
+           if you need to access environment variables with keys or
+           values containing binary data or non-UTF-8 encodings.
+
+           On the server, calls to this method should only be made after
+           :meth:`session_started <SSHServerSession.session_started>` has
+           been called on the :class:`SSHServerSession`. When using the
+           stream-based API, calls to this can be made at any time after
+           the handler function has started up.
+
+           :returns: A dictionary containing the environment variables
+                     set by the client
+
+        """
+
+        if self._str_env is None:
+            self._str_env = dict(decode_env(self._env))
+
+        return MappingProxyType(self._str_env)
+
+    def get_environment_bytes(self) -> Mapping[bytes, bytes]:
+        """Return the environment for this session
+
+           This method returns the environment set by the client when
+           the session was opened. Keys and values are of type `bytes`
+           and can include arbitrary binary data, with the exception
+           of NUL (\0) bytes.
+
+           On the server, calls to this method should only be made after
+           :meth:`session_started <SSHServerSession.session_started>` has
+           been called on the :class:`SSHServerSession`. When using the
+           stream-based API, calls to this can be made at any time after
+           the handler function has started up.
 
            :returns: A dictionary containing the environment variables
                      set by the client
@@ -1097,7 +1128,7 @@ class SSHClientChannel(SSHChannel, Generic[AnyStr]):
 
     async def create(self, session_factory: SSHClientSessionFactory[AnyStr],
                      command: Optional[str], subsystem: Optional[str],
-                     env: Dict[str, str], request_pty: bool,
+                     env: Dict[bytes, bytes], request_pty: bool,
                      term_type: Optional[str], term_size: TermSizeArg,
                      term_modes: TermModes, x11_forwarding: Union[bool, str],
                      x11_display: Optional[str], x11_auth_path: Optional[str],
@@ -1119,10 +1150,16 @@ class SSHClientChannel(SSHChannel, Generic[AnyStr]):
         self._command = command
         self._subsystem = subsystem
 
-        for name, env_value in env.items():
-            self.logger.debug1('  Env: %s=%s', name, env_value)
-            self._send_request(b'env', String(str(name)),
-                               String(str(env_value)))
+        for key, value in env.items():
+            self.logger.debug1('  Env: %s=%s', key, value)
+
+            if not isinstance(key, (bytes, str)):
+                key = str(key)
+
+            if not isinstance(value, (bytes, str)):
+                value = str(value)
+
+            self._send_request(b'env', String(key), String(value))
 
         if request_pty:
             self.logger.debug1('  Terminal type: %s', term_type or 'None')
@@ -1460,8 +1497,8 @@ class SSHServerChannel(SSHChannel, Generic[AnyStr]):
 
         super().__init__(conn, loop, encoding, errors, window, max_pktsize)
 
-        self._env = cast(Dict[str, str],
-                         conn.get_key_option('environment', {}))
+        env_option = cast(EnvIter, conn.get_key_option('environment', {}))
+        self._env = dict(encode_env(env_option))
 
         self._allow_pty = allow_pty
         self._line_editor = line_editor
@@ -1616,19 +1653,12 @@ class SSHServerChannel(SSHChannel, Generic[AnyStr]):
     def _process_env_request(self, packet: SSHPacket) -> bool:
         """Process a request to set an environment variable"""
 
-        name_bytes = packet.get_string()
-        value_bytes = packet.get_string()
+        key = packet.get_string()
+        value = packet.get_string()
         packet.check_end()
 
-        try:
-            name = name_bytes.decode('utf-8')
-            value = value_bytes.decode('utf-8')
-        except UnicodeDecodeError:
-            self.logger.debug1('Invalid environment data')
-            return False
-
-        self.logger.debug1('  Env: %s=%s', name, value)
-        self._env[name] = value
+        self.logger.debug1('  Env: %s=%s', key, value)
+        self._env[key] = value
         return True
 
     def _start_session(self, command: Optional[str] = None,
