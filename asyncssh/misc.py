@@ -159,9 +159,16 @@ def lookup_env(patterns: EnvList) -> Iterator[Tuple[bytes, bytes]]:
         if isinstance(pattern, str):
             pattern = pattern.encode('utf-8')
 
-        for key_bytes, value_bytes in os.environb.items():
-            if fnmatch.fnmatch(key_bytes, pattern):
-                yield key_bytes, value_bytes
+        if os.supports_bytes_environ:
+            for key_bytes, value_bytes in os.environb.items():
+                if fnmatch.fnmatch(key_bytes, pattern):
+                    yield key_bytes, value_bytes
+        else: # pragma: no cover
+            for key, value in os.environ.items():
+                key_bytes = key.encode('utf-8')
+                value_bytes = value.encode('utf-8')
+                if fnmatch.fnmatch(key_bytes, pattern):
+                    yield key_bytes, value_bytes
 
 
 def decode_env(env: Dict[bytes, bytes]) -> Iterator[Tuple[str, str]]:

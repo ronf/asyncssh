@@ -23,6 +23,7 @@
 import asyncio
 import os
 import tempfile
+import unittest
 from signal import SIGINT
 
 from unittest.mock import patch
@@ -1315,6 +1316,8 @@ class _TestChannel(ServerTestCase):
             result = ''.join(session.recv_buf[None])
             self.assertEqual(result, 'test\n')
 
+    @unittest.skipUnless(os.supports_bytes_environ,
+                         'skip binary send env if not supported by OS')
     @asynctest
     async def test_send_env_binary(self):
         """Test sending local environment using a byte string"""
