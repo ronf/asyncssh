@@ -111,10 +111,10 @@ IPAddress = Union[ipaddress.IPv4Address, ipaddress.IPv6Address]
 IPNetwork = Union[ipaddress.IPv4Network, ipaddress.IPv6Network]
 SockAddr = Union[Tuple[str, int], Tuple[str, int, int, int]]
 
-EnvDict = Mapping[BytesOrStr, BytesOrStr]
-EnvIter = Iterator[Tuple[BytesOrStr, BytesOrStr]]
-EnvList = Sequence[BytesOrStr]
-Env = Optional[Union[EnvDict, EnvIter, EnvList]]
+EnvMap = Mapping[BytesOrStr, BytesOrStr]
+EnvItems = Sequence[Tuple[BytesOrStr, BytesOrStr]]
+EnvSeq = Sequence[BytesOrStr]
+Env = Optional[Union[EnvMap, EnvItems, EnvSeq]]
 
 # Define a version of randrange which is based on SystemRandom(), so that
 # we get back numbers suitable for cryptographic use.
@@ -130,29 +130,31 @@ _time_units = {'': 1, 's': 1, 'm': 60, 'h': 60*60,
 def encode_env(env: Env) -> Iterator[Tuple[bytes, bytes]]:
     """Convert environemnt dict or list to bytes-based dictionary"""
 
+    env = cast(Sequence[Tuple[BytesOrStr, BytesOrStr]],
+               env.items() if isinstance(env, dict) else env)
+
     try:
-        if isinstance(env, list):
-            for item in env:
+        for item in env:
+            if isinstance(item, (bytes, str)):
                 if isinstance(item, str):
                     item = item.encode('utf-8')
 
-                yield item.split(b'=', 1)
-        else:
-            env = cast(EnvIter, env.items() if isinstance(env, dict) else env)
+                key_bytes, value_bytes = item.split(b'=', 1)
+            else:
+                key, value = item
 
-            for key, value in env:
                 key_bytes = key.encode('utf-8') \
                     if isinstance(key, str) else key
 
                 value_bytes = value.encode('utf-8') \
                     if isinstance(value, str) else value
 
-                yield key_bytes, value_bytes
+            yield key_bytes, value_bytes
     except (TypeError, ValueError) as exc:
         raise ValueError('Invalid environment value: %s' % exc) from None
 
 
-def lookup_env(patterns: EnvList) -> Iterator[Tuple[bytes, bytes]]:
+def lookup_env(patterns: EnvSeq) -> Iterator[Tuple[bytes, bytes]]:
     """Look up environemnt variables with wildcard matches"""
 
     for pattern in patterns:

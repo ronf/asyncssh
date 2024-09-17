@@ -105,7 +105,7 @@ from .logging import SSHLogger, logger
 
 from .mac import get_mac_algs, get_default_mac_algs
 
-from .misc import BytesOrStr, BytesOrStrDict, DefTuple, Env, EnvList, FilePath
+from .misc import BytesOrStr, BytesOrStrDict, DefTuple, Env, EnvSeq, FilePath
 from .misc import HostPort, IPNetwork, MaybeAwait, OptExcInfo, Options, SockAddr
 from .misc import ChannelListenError, ChannelOpenError, CompressionError
 from .misc import DisconnectError, ConnectionLost, HostKeyNotVerifiable
@@ -4071,7 +4071,7 @@ class SSHClientConnection(SSHConnection):
                              command: DefTuple[Optional[str]] = (), *,
                              subsystem: DefTuple[Optional[str]]= (),
                              env: DefTuple[Env] = (),
-                             send_env: DefTuple[Optional[EnvList]] = (),
+                             send_env: DefTuple[Optional[EnvSeq]] = (),
                              request_pty: DefTuple[Union[bool, str]] = (),
                              term_type: DefTuple[Optional[str]] = (),
                              term_size: DefTuple[TermSizeArg] = (),
@@ -5590,7 +5590,7 @@ class SSHClientConnection(SSHConnection):
 
     @async_context_manager
     async def start_sftp_client(self, env: DefTuple[Env] = (),
-                                send_env: DefTuple[Optional[EnvList]] = (),
+                                send_env: DefTuple[Optional[EnvSeq]] = (),
                                 path_encoding: Optional[str] = 'utf-8',
                                 path_errors = 'strict',
                                 sftp_version = MIN_SFTP_VERSION) -> SFTPClient:
@@ -7770,7 +7770,7 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
     command: Optional[str]
     subsystem: Optional[str]
     env: Env
-    send_env: Optional[EnvList]
+    send_env: Optional[EnvSeq]
     request_pty: _RequestPTY
     term_type: Optional[str]
     term_size: TermSizeArg
@@ -7837,7 +7837,7 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
                 pkcs11_pin: Optional[str] = None,
                 command: DefTuple[Optional[str]] = (),
                 subsystem: Optional[str] = None, env: DefTuple[Env] = (),
-                send_env: DefTuple[Optional[EnvList]] = (),
+                send_env: DefTuple[Optional[EnvSeq]] = (),
                 request_pty: DefTuple[_RequestPTY] = (),
                 term_type: Optional[str] = None,
                 term_size: TermSizeArg = None,
@@ -8058,7 +8058,7 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
 
         self.env = cast(Env, env if env != () else config.get('SetEnv'))
 
-        self.send_env = cast(Optional[EnvList], send_env if send_env != () else
+        self.send_env = cast(Optional[EnvSeq], send_env if send_env != () else
             config.get('SendEnv'))
 
         self.request_pty = cast(_RequestPTY, request_pty if request_pty != ()

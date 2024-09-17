@@ -45,7 +45,7 @@ from .editor import SSHLineEditorChannel, SSHLineEditorSession
 
 from .logging import SSHLogger
 
-from .misc import ChannelOpenError, EnvIter, MaybeAwait, ProtocolError
+from .misc import ChannelOpenError, EnvMap, MaybeAwait, ProtocolError
 from .misc import TermModes, TermSize, TermSizeArg
 from .misc import decode_env, encode_env, get_symbol_names, map_handler_name
 
@@ -1497,8 +1497,8 @@ class SSHServerChannel(SSHChannel, Generic[AnyStr]):
 
         super().__init__(conn, loop, encoding, errors, window, max_pktsize)
 
-        env_option = cast(EnvIter, conn.get_key_option('environment', {}))
-        self._env = dict(encode_env(env_option))
+        env_opt = cast(EnvMap, conn.get_key_option('environment', {}))
+        self._env = dict(encode_env(env_opt))
 
         self._allow_pty = allow_pty
         self._line_editor = line_editor

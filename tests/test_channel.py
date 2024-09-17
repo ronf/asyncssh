@@ -1292,6 +1292,19 @@ class _TestChannel(ServerTestCase):
             self.assertEqual(result, 'test\\xff\n')
 
     @asynctest
+    async def test_env_tuple(self):
+        """Test setting environment using a tuple of name=value strings"""
+
+        async with self.connect() as conn:
+            chan, session = await _create_session(conn, 'env',
+                                                  env=('TEST=test',))
+
+            await chan.wait_closed()
+
+            result = ''.join(session.recv_buf[None])
+            self.assertEqual(result, 'test\n')
+
+    @asynctest
     async def test_invalid_env_list(self):
         """Test setting environment using an invalid string"""
 
