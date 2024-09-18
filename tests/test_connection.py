@@ -418,6 +418,24 @@ class _TestConnection(ServerTestCase):
         async with asyncssh.connect(sock=sock):
             pass
 
+    @unittest.skipUnless(nc_available, 'Netcat not available')
+    @asynctest
+    async def test_connect_non_tcp_sock(self):
+        """Test connecting using an non-TCP socket"""
+
+        sock1, sock2 = socket.socketpair()
+
+        proc = await asyncio.create_subprocess_exec(
+            'nc', str(self._server_addr), str(self._server_port),
+            stdin=sock1, stdout=sock1, stderr=sock1)
+
+        async with asyncssh.connect(
+                self._server_addr, self._server_port, sock=sock2):
+            pass
+
+        await proc.wait()
+        sock1.close()
+
     @asynctest
     async def test_run_client(self):
         """Test running an SSH client on an already-connected socket"""

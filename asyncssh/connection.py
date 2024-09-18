@@ -1269,7 +1269,9 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         if sock:
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE,
                             self._tcp_keepalive)
-            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+
+            if sock.family in (socket.AF_INET, socket.AF_INET6):
+                sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 
         sockname = cast(SockAddr, transport.get_extra_info('sockname'))
 
