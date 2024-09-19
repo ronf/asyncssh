@@ -383,10 +383,10 @@ class _SCPHandler:
 
         self.logger.debug1('Handling SCP error: %s', str(exc))
 
-        if getattr(exc, 'fatal', False) or self._error_handler is None:
-            raise exc from None
-        elif self._error_handler:
+        if self._error_handler and not getattr(exc, 'fatal', False):
             self._error_handler(exc)
+        elif not self._server:
+            raise exc
 
     async def close(self, cancelled: bool = False) -> None:
         """Close an SCP session"""
@@ -395,12 +395,13 @@ class _SCPHandler:
 
         if cancelled:
             self._writer.channel.abort()
-        elif self._server:
-            cast('SSHServerChannel', self._writer.channel).exit(0)
         else:
-            self._writer.close()
+            if self._server:
+                cast('SSHServerChannel', self._writer.channel).exit(0)
+            else:
+                self._writer.close()
 
-        await self._writer.channel.wait_closed()
+            await self._writer.wait_closed()
 
 
 class _SCPSource(_SCPHandler):
@@ -665,7 +666,8 @@ class _SCPSink(_SCPHandler):
 
             try:
                 if action in b'\x01\x02':
-                    raise _scp_error(SFTPFailure, args, fatal=action != b'\x01',
+                    raise _scp_error(SFTPFailure, args,
+                                     fatal=action != b'\x01',
                                      suppress_send=True)
                 elif action == b'T':
                     if self._preserve:
@@ -754,7 +756,8 @@ class _SCPCopier:
         """Handle an SCP error"""
 
         if isinstance(exc, BrokenPipeError):
-            exc = _scp_error(SFTPConnectionLost, 'Connection lost', fatal=True)
+            exc = _scp_error(SFTPConnectionLost, 'Connection lost',
+                             fatal=True, suppress_send=True)
 
         self.logger.debug1('Handling SCP error: %s', str(exc))
 
@@ -797,7 +800,7 @@ class _SCPCopier:
 
             if not data:
                 raise _scp_error(SFTPConnectionLost, 'Connection lost',
-                                 fatal=True)
+                                 fatal=True, suppress_send=True)
 
             await self._sink.send_data(data)
             offset += len(data)
