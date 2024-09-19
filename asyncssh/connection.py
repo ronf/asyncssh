@@ -1636,8 +1636,6 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
             self._auth_final = True
 
         if self._transport:
-            self._recv_handler = self._recv_pkthdr
-
             if self._recv_seq == 0xffffffff and not self._recv_encryption:
                 raise ProtocolError('Sequence rollover before kex complete')
 
@@ -1645,6 +1643,8 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
                 self._recv_seq = 0
             else:
                 self._recv_seq = (seq + 1) & 0xffffffff
+
+        self._recv_handler = self._recv_pkthdr
 
         if is_async and self._inpbuf:
             self._recv_data()
