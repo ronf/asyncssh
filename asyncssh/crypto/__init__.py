@@ -57,5 +57,5 @@ except (ImportError, AttributeError, OSError): # pragma: no cover
 try:
     from .x509 import X509Certificate, X509Name, X509NamePattern
     from .x509 import generate_x509_certificate, import_x509_certificate
-except ImportError: # pragma: no cover
+except (ImportError, AttributeError): # pragma: no cover
     pass
