@@ -245,13 +245,13 @@ if curve25519_available: # pragma: no branch
                                                             PublicFormat.Raw)
 
         def get_shared_bytes(self, peer_public: bytes) -> bytes:
-            """Return the shared key from the peer's public key"""
+            """Return the shared key from the peer's public key as bytes"""
 
             peer_key = x25519.X25519PublicKey.from_public_bytes(peer_public)
             return self._priv_key.exchange(peer_key)
 
         def get_shared(self, peer_public: bytes) -> int:
-            """Return the shared key from the peer's public key as bytes"""
+            """Return the shared key from the peer's public key"""
 
             return int.from_bytes(self.get_shared_bytes(peer_public), 'big')
 else: # pragma: no cover

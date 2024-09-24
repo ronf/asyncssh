@@ -194,12 +194,15 @@ class ECDH:
         return pub_key.public_bytes(Encoding.X962,
                                     PublicFormat.UncompressedPoint)
 
-    def get_shared(self, peer_public: bytes) -> int:
-        """Return the shared key from the peer's public key"""
+    def get_shared_bytes(self, peer_public: bytes) -> bytes:
+        """Return the shared key from the peer's public key as bytes"""
 
         peer_key = ec.EllipticCurvePublicKey.from_encoded_point(
             self._priv_key.curve, peer_public)
 
-        shared_key = self._priv_key.exchange(ec.ECDH(), peer_key)
+        return self._priv_key.exchange(ec.ECDH(), peer_key)
 
-        return int.from_bytes(shared_key, 'big')
+    def get_shared(self, peer_public: bytes) -> int:
+        """Return the shared key from the peer's public key"""
+
+        return int.from_bytes(self.get_shared_bytes(peer_public), 'big')

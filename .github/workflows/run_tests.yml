@@ -38,7 +38,7 @@ jobs:
 
     runs-on: ${{ matrix.os }}
     env:
-      liboqs_version: '0.7.2'
+      liboqs_version: '0.10.1'
       nettle_version: nettle_3.8.1_release_20220727
 
     steps:

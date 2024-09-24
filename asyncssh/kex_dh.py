@@ -25,11 +25,9 @@ from typing import TYPE_CHECKING, Callable, Mapping, Optional, cast
 from typing_extensions import Protocol
 
 from .constants import DEFAULT_LANG
+from .crypto import Curve25519DH, Curve448DH, DH, ECDH, PQDH
 from .crypto import curve25519_available, curve448_available
-from .crypto import Curve25519DH, Curve448DH, DH, ECDH
-from .crypto import sntrup761_available
-from .crypto import sntrup761_pubkey_bytes, sntrup761_ciphertext_bytes
-from .crypto import sntrup761_keypair, sntrup761_encaps, sntrup761_decaps
+from .crypto import mlkem_available, sntrup_available
 from .gss import GSSError
 from .kex import Kex, register_kex_alg, register_gss_kex_alg
 from .misc import HashType, KeyExchangeFailed, ProtocolError
@@ -49,6 +47,9 @@ class DHKey(Protocol):
 
     def get_public(self) -> bytes:
         """Return the public key to send to the peer"""
+
+    def get_shared_bytes(self, peer_public: bytes) -> bytes:
+        """Return the shared key from the peer's public key in bytes"""
 
     def get_shared(self, peer_public: bytes) -> int:
         """Return the shared key from the peer's public key"""
@@ -467,58 +468,56 @@ class _KexECDH(_KexDHBase):
     }
 
 
-class _KexSNTRUP761(_KexECDH):
-    """Handler for Streamlined NTRU Prime post-quantum key exchange"""
+class _KexHybridECDH(_KexECDH):
+    """Handler for post-quantum key exchange"""
 
     def __init__(self, alg: bytes, conn: 'SSHConnection', hash_alg: HashType,
-                 *args: object):
-        super().__init__(alg, conn, hash_alg, Curve25519DH)
+                 pq_alg_name: bytes, ecdh_class: _ECDHClass, *args: object):
+        super().__init__(alg, conn, hash_alg, ecdh_class, *args)
+
+        self._pq = PQDH(pq_alg_name)
 
         if conn.is_client():
-            sntrup_pub, self._sntrup_priv = sntrup761_keypair()
-            self._client_pub = sntrup_pub + self._client_pub
+            pq_pub, self._pq_priv = self._pq.keypair()
+            self._client_pub = pq_pub + self._client_pub
 
     def _compute_client_shared(self) -> bytes:
         """Compute client shared key"""
 
-        ciphertext = self._server_pub[:sntrup761_ciphertext_bytes]
-        curve25519_pub = self._server_pub[sntrup761_ciphertext_bytes:]
+        pq_ciphertext = self._server_pub[:self._pq.ciphertext_bytes]
+        ec_pub = self._server_pub[self._pq.ciphertext_bytes:]
 
         try:
-            sntrup_secret = sntrup761_decaps(ciphertext, self._sntrup_priv)
+            pq_secret = self._pq.decaps(pq_ciphertext, self._pq_priv)
         except ValueError:
-            raise ProtocolError('Invalid SNTRUP server ciphertext') from None
+            raise ProtocolError('Invalid PQ server ciphertext') from None
 
         try:
-            priv = cast(Curve25519DH, self._priv)
-            curve25519_shared = priv.get_shared_bytes(curve25519_pub)
+            ec_shared = self._priv.get_shared_bytes(ec_pub)
         except ValueError:
             raise ProtocolError('Invalid ECDH server public key') from None
 
-        return String(self._hash_alg(sntrup_secret +
-                                     curve25519_shared).digest())
+        return String(self._hash_alg(pq_secret + ec_shared).digest())
 
     def _compute_server_shared(self) -> bytes:
         """Compute server shared key"""
 
-        sntrup_pub = self._client_pub[:sntrup761_pubkey_bytes]
-        curve25519_pub = self._client_pub[sntrup761_pubkey_bytes:]
+        pq_pub = self._client_pub[:self._pq.pubkey_bytes]
+        ec_pub = self._client_pub[self._pq.pubkey_bytes:]
 
         try:
-            sntrup_secret, ciphertext = sntrup761_encaps(sntrup_pub)
+            pq_secret, pq_ciphertext = self._pq.encaps(pq_pub)
         except ValueError:
-            raise ProtocolError('Invalid SNTRUP client public key') from None
+            raise ProtocolError('Invalid PQ client public key') from None
 
         try:
-            priv = cast(Curve25519DH, self._priv)
-            curve25519_shared = priv.get_shared_bytes(curve25519_pub)
+            ec_shared = self._priv.get_shared_bytes(ec_pub)
         except ValueError:
             raise ProtocolError('Invalid ECDH client public key') from None
 
-        self._server_pub = ciphertext + self._server_pub
+        self._server_pub = pq_ciphertext + self._server_pub
 
-        return String(self._hash_alg(sntrup_secret +
-                                     curve25519_shared).digest())
+        return String(self._hash_alg(pq_secret + ec_shared).digest())
 
 
 class _KexGSSBase(_KexDHBase):
@@ -737,10 +736,22 @@ class _KexGSSECDH(_KexGSSBase, _KexECDH):
     }
 
 
+if mlkem_available: # pragma: no branch
+    if curve25519_available: # pragma: no branch
+        register_kex_alg(b'mlkem768x25519-sha256', _KexHybridECDH,
+                         sha256, (b'mlkem768', Curve25519DH), True)
+
+    register_kex_alg(b'mlkem768nistp256-sha256', _KexHybridECDH,
+                     sha256, (b'mlkem768', ECDH, b'nistp256'), True)
+    register_kex_alg(b'mlkem1024nistp384-sha384', _KexHybridECDH,
+                     sha384, (b'mlkem1024', ECDH, b'nistp384'), True)
+
 if curve25519_available: # pragma: no branch
-    if sntrup761_available: # pragma: no branch
-        register_kex_alg(b'sntrup761x25519-sha512@openssh.com', _KexSNTRUP761,
-                         sha512, (), True)
+    if sntrup_available: # pragma: no branch
+        register_kex_alg(b'sntrup761x25519-sha512', _KexHybridECDH,
+                         sha512, (b'sntrup761', Curve25519DH), True)
+        register_kex_alg(b'sntrup761x25519-sha512@openssh.com', _KexHybridECDH,
+                         sha512, (b'sntrup761', Curve25519DH), True)
 
     register_kex_alg(b'curve25519-sha256', _KexECDH, sha256,
                      (Curve25519DH,), True)

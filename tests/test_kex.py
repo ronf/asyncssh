@@ -29,9 +29,8 @@ from hashlib import sha1
 import asyncssh
 
 from asyncssh.crypto import curve25519_available, curve448_available
-from asyncssh.crypto import sntrup761_available
-from asyncssh.crypto import sntrup761_pubkey_bytes, sntrup761_ciphertext_bytes
-from asyncssh.crypto import Curve25519DH, Curve448DH, ECDH
+from asyncssh.crypto import sntrup_available
+from asyncssh.crypto import Curve25519DH, Curve448DH, ECDH, PQDH
 from asyncssh.kex_dh import MSG_KEXDH_INIT, MSG_KEXDH_REPLY
 from asyncssh.kex_dh import MSG_KEX_DH_GEX_REQUEST, MSG_KEX_DH_GEX_GROUP
 from asyncssh.kex_dh import MSG_KEX_DH_GEX_INIT, MSG_KEX_DH_GEX_REPLY, _KexDHGex
@@ -550,10 +549,12 @@ class _TestKex(AsyncTestCase):
         client_conn.close()
         server_conn.close()
 
-    @unittest.skipUnless(sntrup761_available, 'SNTRUP761 not available')
+    @unittest.skipUnless(sntrup_available, 'SNTRUP761 not available')
     @asynctest
     async def test_sntrup761dh_errors(self):
         """Unit test error conditions in SNTRUP761 key exchange"""
+
+        pqdh = PQDH(b'sntrup761')
 
         client_conn, server_conn = \
             _KexClientStub.make_pair(b'sntrup761x25519-sha512@openssh.com')
@@ -564,7 +565,7 @@ class _TestKex(AsyncTestCase):
 
         with self.subTest('Invalid client Curve25519 public key'):
             with self.assertRaises(asyncssh.ProtocolError):
-                pub = sntrup761_pubkey_bytes * b'\0'
+                pub = pqdh.pubkey_bytes * b'\0'
                 await server_conn.simulate_ecdh_init(pub)
 
         with self.subTest('Invalid server SNTRUP761 public key'):
@@ -576,7 +577,7 @@ class _TestKex(AsyncTestCase):
         with self.subTest('Invalid server Curve25519 public key'):
             with self.assertRaises(asyncssh.ProtocolError):
                 host_key = server_conn.get_server_host_key()
-                ciphertext = sntrup761_ciphertext_bytes * b'\0'
+                ciphertext = pqdh.ciphertext_bytes * b'\0'
                 await client_conn.simulate_ecdh_reply(host_key.public_data,
                                                       ciphertext, b'')
 
