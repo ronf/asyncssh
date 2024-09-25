@@ -670,7 +670,7 @@ class _SFTPParallelIO(Generic[_T]):
                         self._pending.add(asyncio.ensure_future(
                             self._start_task(offset+count, size-count)))
                 except SFTPEOFError:
-                    pass
+                    self._bytes_left = 0
                 except (OSError, SFTPError) as exc:
                     exceptions.append(exc)
 
