@@ -148,19 +148,23 @@ _SFTPPacketHandler = Optional[Callable[['SFTPServerHandler', SSHPacket],
 SFTPErrorHandler = Union[None, Literal[False], Callable[[Exception], None]]
 SFTPProgressHandler = Optional[Callable[[bytes, bytes, int, int], None]]
 
+_T = TypeVar('_T')
+
 
 MIN_SFTP_VERSION = 3
 MAX_SFTP_VERSION = 6
 
-SFTP_BLOCK_SIZE = 16384
-_MAX_SFTP_READ_SIZE = 4*1024*1024    # 4 MiB
+SAFE_SFTP_READ_LEN = 16*1024                        # 16 KiB
+SAFE_SFTP_WRITE_LEN = 16*1024                       # 16 KiB
+
+MAX_SFTP_READ_LEN = 4*1024*1024                     # 4 MiB
+MAX_SFTP_WRITE_LEN = 4*1024*1024                    # 4 MiB
+MAX_SFTP_PACKET_LEN = MAX_SFTP_WRITE_LEN + 1024
 
 _MAX_SFTP_REQUESTS = 128
 _MAX_READDIR_NAMES = 128
 
 _NSECS_IN_SEC = 1_000_000_000
-
-_T = TypeVar('_T')
 
 
 _const_dict: Mapping[str, int] = constants.__dict__
@@ -228,6 +232,14 @@ class SFTPFileProtocol(Protocol):
 
 class _SFTPFSProtocol(Protocol):
     """Protocol for accessing a filesystem via an SFTP server"""
+
+    @property
+    def max_read_len(self) -> int:
+        """Maximum read length associated with this SFTP session"""
+
+    @property
+    def max_write_len(self) -> int:
+        """Maximum write length associated with this SFTP session"""
 
     @staticmethod
     def basename(path: bytes) -> bytes:
@@ -666,7 +678,7 @@ class _SFTPParallelIO(Generic[_T]):
                     offset, size, count, result = task.result()
                     yield offset, result
 
-                    if count < size:
+                    if count and count < size:
                         self._pending.add(asyncio.ensure_future(
                             self._start_task(offset+count, size-count)))
                 except SFTPEOFError:
@@ -795,20 +807,24 @@ class _SFTPFileCopier(_SFTPParallelIO[int]):
             if self._progress_handler and self._total_bytes == 0:
                 self._progress_handler(self._srcpath, self._dstpath, 0, 0)
 
-            async for offset, datalen in self.iter():
-                if not datalen:
-                    exc = SFTPFailure('Unexpected EOF during file copy')
-
-                    setattr(exc, 'filename', self._srcpath)
-                    setattr(exc, 'offset', offset)
-
-                    raise exc
-
-                if self._progress_handler:
+            async for _, datalen in self.iter():
+                if datalen:
                     self._bytes_copied += datalen
-                    self._progress_handler(self._srcpath, self._dstpath,
-                                           self._bytes_copied,
-                                           self._total_bytes)
+
+                    if self._progress_handler:
+                        self._progress_handler(self._srcpath, self._dstpath,
+                                               self._bytes_copied,
+                                               self._total_bytes)
+
+            if self._bytes_copied != self._total_bytes:
+                exc = SFTPFailure('Unexpected EOF during file copy')
+
+                setattr(exc, 'filename', self._srcpath)
+                setattr(exc, 'offset', self._bytes_copied)
+
+                raise exc
+
+
         finally:
             if self._src: # pragma: no branch
                 await self._src.close()
@@ -2030,6 +2046,37 @@ class SFTPName(Record):
         return cls(filename, longname, attrs)
 
 
+class SFTPLimits(Record):
+    """SFTP server limits"""
+
+    max_packet_len: int
+    max_read_len: int
+    max_write_len: int
+    max_open_handles: int
+
+    def encode(self, sftp_version: int) -> bytes:
+        """Encode SFTP server limits in an SSH packet"""
+
+        # pylint: disable=unused-argument
+
+        return (UInt64(self.max_packet_len) + UInt64(self.max_read_len) +
+                UInt64(self.max_write_len) + UInt64(self.max_open_handles))
+
+    @classmethod
+    def decode(cls, packet: SSHPacket, sftp_version: int) -> 'SFTPLimits':
+        """Decode bytes in an SSH packet as SFTP server limits"""
+
+        # pylint: disable=unused-argument
+
+        max_packet_len = packet.get_uint64()
+        max_read_len = packet.get_uint64()
+        max_write_len = packet.get_uint64()
+        max_open_handles = packet.get_uint64()
+
+        return cls(max_packet_len, max_read_len,
+                   max_write_len, max_open_handles)
+
+
 class SFTPGlob:
     """SFTP glob matcher"""
 
@@ -2240,13 +2287,17 @@ class SFTPHandler(SSHPacketLogger):
         FXP_STAT:                 FXP_ATTRS,
         FXP_READLINK:             FXP_NAME,
         b'statvfs@openssh.com':   FXP_EXTENDED_REPLY,
-        b'fstatvfs@openssh.com':  FXP_EXTENDED_REPLY
+        b'fstatvfs@openssh.com':  FXP_EXTENDED_REPLY,
+        b'limits@openssh.com':    FXP_EXTENDED_REPLY
     }
 
     def __init__(self, reader: 'SSHReader[bytes]', writer: 'SSHWriter[bytes]'):
         self._reader: Optional['SSHReader[bytes]'] = reader
         self._writer: Optional['SSHWriter[bytes]'] = writer
         self._logger = reader.logger.get_child('sftp')
+
+        self.max_read_len = SAFE_SFTP_READ_LEN
+        self.max_write_len = SAFE_SFTP_WRITE_LEN
 
     @property
     def logger(self) -> SSHLogger:
@@ -2328,6 +2379,14 @@ class SFTPHandler(SSHPacketLogger):
                 self.logger.debug1('  %s%s%s', name,
                                    ': ' if data else '', data)
 
+    def _log_limits(self, limits: SFTPLimits) -> None:
+        """Log SFTP server limits"""
+
+        self.logger.debug1('  Max packet len: %d', limits.max_packet_len)
+        self.logger.debug1('  Max read len: %d', limits.max_read_len)
+        self.logger.debug1('  Max write len: %d', limits.max_write_len)
+        self.logger.debug1('  Max open handles: %d', limits.max_open_handles)
+
     async def _process_packet(self, pkttype: int, pktid: int,
                               packet: SSHPacket) -> None:
         """Abstract method for processing SFTP packets"""
@@ -2401,6 +2460,7 @@ class SFTPClientHandler(SFTPHandler):
         self._supports_hardlink = False
         self._supports_fsync = False
         self._supports_lsetstat = False
+        self._supports_limits = False
 
     @property
     def version(self) -> int:
@@ -2619,6 +2679,8 @@ class SFTPClientHandler(SFTPHandler):
                 self._supports_fsync = True
             elif name == b'lsetstat@openssh.com' and data == b'1':
                 self._supports_lsetstat = True
+            elif name == b'limits@openssh.com' and data == b'1':
+                self._supports_limits = True
 
         if version == 3:
             # Check if the server has a buggy SYMLINK implementation
@@ -2631,6 +2693,25 @@ class SFTPClientHandler(SFTPHandler):
                 self.logger.debug1('Adjusting for non-standard symlink '
                                    'implementation')
                 self._nonstandard_symlink = True
+
+    async def request_limits(self) -> None:
+        """Request SFTP server limits"""
+
+        if self._supports_limits:
+            packet = cast(SSHPacket, await self._make_request(
+                b'limits@openssh.com'))
+
+            limits = SFTPLimits.decode(packet, self._version)
+            packet.check_end()
+
+            self.logger.debug1('Received server limits:')
+            self._log_limits(limits)
+
+            if limits.max_read_len:
+                self.max_read_len = limits.max_read_len
+
+            if limits.max_write_len:
+                self.max_write_len = limits.max_write_len
 
     async def open(self, filename: bytes, pflags: int,
                    attrs: SFTPAttrs) -> bytes:
@@ -3029,9 +3110,13 @@ class SFTPClientFile:
         self._appending = appending
         self._encoding = encoding
         self._errors = errors
-        self._block_size = block_size
         self._max_requests = max_requests
         self._offset = None if appending else 0
+
+        self.read_len = \
+            handler.max_read_len if block_size == -1 else block_size
+        self.write_len = \
+            handler.max_write_len if block_size == -1 else block_size
 
     async def __aenter__(self) -> Self:
         """Allow SFTPClientFile to be used as an async context manager"""
@@ -3104,9 +3189,9 @@ class SFTPClientFile:
                 size = (await self._end()) - offset
 
             try:
-                if self._block_size and size > self._block_size:
+                if self.read_len and size > self.read_len:
                     data = await _SFTPFileReader(
-                        self._block_size, self._max_requests, self._handler,
+                        self.read_len, self._max_requests, self._handler,
                         self._handle, offset, size).run()
                 else:
                     data, _ = await self._handler.read(self._handle,
@@ -3177,7 +3262,7 @@ class SFTPClientFile:
             offset = 0
             size = 0
 
-        return _SFTPFileReader(self._block_size, self._max_requests,
+        return _SFTPFileReader(self.read_len, self._max_requests,
                                self._handler, self._handle, offset,
                                size).iter()
 
@@ -3224,9 +3309,9 @@ class SFTPClientFile:
 
         datalen = len(data_bytes)
 
-        if self._block_size and datalen > self._block_size:
+        if self.write_len and datalen > self.write_len:
             await _SFTPFileWriter(
-                self._block_size, self._max_requests, self._handler,
+                self.write_len, self._max_requests, self._handler,
                 self._handle, offset, data_bytes).run()
         else:
             await self._handler.write(self._handle, offset, data_bytes)
@@ -3523,6 +3608,18 @@ class SFTPClient:
 
         return self._handler.version
 
+    @property
+    def max_read_len(self) -> int:
+        """Maximum read length associated with this SFTP session"""
+
+        return self._handler.max_read_len
+
+    @property
+    def max_write_len(self) -> int:
+        """Maximum write length associated with this SFTP session"""
+
+        return self._handler.max_write_len
+
     @staticmethod
     def basename(path: bytes) -> bytes:
         """Return the final component of a POSIX-style path"""
@@ -3687,6 +3784,9 @@ class SFTPClient:
                           error_handler: SFTPErrorHandler) -> None:
         """Begin a new file upload, download, or copy"""
 
+        if block_size == -1:
+            block_size = min(srcfs.max_read_len, dstfs.max_write_len)
+
         if isinstance(srcpaths, (bytes, str, PurePath)):
             srcpaths = [srcpaths]
         elif not isinstance(srcpaths, list):
@@ -3742,8 +3842,7 @@ class SFTPClient:
     async def get(self, remotepaths: _SFTPPaths,
                   localpath: Optional[_SFTPPath] = None, *,
                   preserve: bool = False, recurse: bool = False,
-                  follow_symlinks: bool = False,
-                  block_size: int = SFTP_BLOCK_SIZE,
+                  follow_symlinks: bool = False, block_size: int = -1,
                   max_requests: int = _MAX_SFTP_REQUESTS,
                   progress_handler: SFTPProgressHandler = None,
                   error_handler: SFTPErrorHandler = None) -> None:
@@ -3847,8 +3946,7 @@ class SFTPClient:
     async def put(self, localpaths: _SFTPPaths,
                   remotepath: Optional[_SFTPPath] = None, *,
                   preserve: bool = False, recurse: bool = False,
-                  follow_symlinks: bool = False,
-                  block_size: int = SFTP_BLOCK_SIZE,
+                  follow_symlinks: bool = False, block_size: int = -1,
                   max_requests: int = _MAX_SFTP_REQUESTS,
                   progress_handler: SFTPProgressHandler = None,
                   error_handler: SFTPErrorHandler = None) -> None:
@@ -3952,8 +4050,7 @@ class SFTPClient:
     async def copy(self, srcpaths: _SFTPPaths,
                    dstpath: Optional[_SFTPPath] = None, *,
                    preserve: bool = False, recurse: bool = False,
-                   follow_symlinks: bool = False,
-                   block_size: int =SFTP_BLOCK_SIZE,
+                   follow_symlinks: bool = False, block_size: int = -1,
                    max_requests: int = _MAX_SFTP_REQUESTS,
                    progress_handler: SFTPProgressHandler = None,
                    error_handler: SFTPErrorHandler = None) -> None:
@@ -4057,8 +4154,7 @@ class SFTPClient:
     async def mget(self, remotepaths: _SFTPPaths,
                    localpath: Optional[_SFTPPath] = None, *,
                    preserve: bool = False, recurse: bool = False,
-                   follow_symlinks: bool = False,
-                   block_size: int = SFTP_BLOCK_SIZE,
+                   follow_symlinks: bool = False, block_size: int = -1,
                    max_requests: int = _MAX_SFTP_REQUESTS,
                    progress_handler: SFTPProgressHandler = None,
                    error_handler: SFTPErrorHandler = None) -> None:
@@ -4081,8 +4177,7 @@ class SFTPClient:
     async def mput(self, localpaths: _SFTPPaths,
                    remotepath: Optional[_SFTPPath] = None, *,
                    preserve: bool = False, recurse: bool = False,
-                   follow_symlinks: bool = False,
-                   block_size: int = SFTP_BLOCK_SIZE,
+                   follow_symlinks: bool = False, block_size: int = -1,
                    max_requests: int = _MAX_SFTP_REQUESTS,
                    progress_handler: SFTPProgressHandler = None,
                    error_handler: SFTPErrorHandler = None) -> None:
@@ -4105,8 +4200,7 @@ class SFTPClient:
     async def mcopy(self, srcpaths: _SFTPPaths,
                     dstpath: Optional[_SFTPPath] = None, *,
                     preserve: bool = False, recurse: bool = False,
-                    follow_symlinks: bool = False,
-                    block_size: int =SFTP_BLOCK_SIZE,
+                    follow_symlinks: bool = False, block_size: int = -1,
                     max_requests: int = _MAX_SFTP_REQUESTS,
                     progress_handler: SFTPProgressHandler = None,
                     error_handler: SFTPErrorHandler = None) -> None:
@@ -4366,7 +4460,7 @@ class SFTPClient:
                    pflags_or_mode: Union[int, str] = FXF_READ,
                    attrs: SFTPAttrs = SFTPAttrs(),
                    encoding: Optional[str] = 'utf-8', errors: str = 'strict',
-                   block_size: int = SFTP_BLOCK_SIZE,
+                   block_size: int = -1,
                    max_requests: int = _MAX_SFTP_REQUESTS) -> SFTPClientFile:
         """Open a remote file
 
@@ -4498,7 +4592,7 @@ class SFTPClient:
                      flags: int = FXF_OPEN_EXISTING,
                      attrs: SFTPAttrs = SFTPAttrs(),
                      encoding: Optional[str] = 'utf-8', errors: str = 'strict',
-                     block_size: int = SFTP_BLOCK_SIZE,
+                     block_size: int = -1,
                      max_requests: int = _MAX_SFTP_REQUESTS) -> SFTPClientFile:
         """Open a remote file using SFTP v5/v6 flags
 
@@ -5473,7 +5567,8 @@ class SFTPServerHandler(SFTPHandler):
         (b'posix-rename@openssh.com', b'1'),
         (b'hardlink@openssh.com', b'1'),
         (b'fsync@openssh.com', b'1'),
-        (b'lsetstat@openssh.com', b'1')]
+        (b'lsetstat@openssh.com', b'1'),
+        (b'limits@openssh.com', b'1')]
 
     _attrib_extensions: List[bytes] = []
 
@@ -5576,6 +5671,10 @@ class SFTPServerHandler(SFTPHandler):
                 response = (UInt32(len(names)) +
                             b''.join(name.encode(self._version)
                                      for name in names) + end)
+            elif isinstance(result, SFTPLimits):
+                self.logger.debug1('Sending server limits:')
+                self._log_limits(result)
+                response = result.encode(self._version)
             else:
                 attrs: _SupportsEncode
 
@@ -6314,6 +6413,14 @@ class SFTPServerHandler(SFTPHandler):
             assert result is not None
             await result
 
+    async def _process_limits(self, packet: SSHPacket) -> SFTPLimits:
+        """Process an incoming SFTP fstatvfs request"""
+
+        packet.check_end()
+
+        return SFTPLimits(MAX_SFTP_PACKET_LEN, MAX_SFTP_READ_LEN,
+                          MAX_SFTP_WRITE_LEN, 0)
+
     _packet_handlers: Dict[Union[int, bytes], _SFTPPacketHandler] = {
         FXP_OPEN:                     _process_open,
         FXP_CLOSE:                    _process_close,
@@ -6341,7 +6448,8 @@ class SFTPServerHandler(SFTPHandler):
         b'fstatvfs@openssh.com':      _process_fstatvfs,
         b'hardlink@openssh.com':      _process_openssh_link,
         b'fsync@openssh.com':         _process_fsync,
-        b'lsetstat@openssh.com':      _process_lsetstat
+        b'lsetstat@openssh.com':      _process_lsetstat,
+        b'limits@openssh.com':        _process_limits
     }
 
     async def run(self) -> None:
@@ -6394,7 +6502,7 @@ class SFTPServerHandler(SFTPHandler):
                         UInt32(self._supported_attrib_mask) + \
                         UInt32(self._supported_open_flags) + \
                         UInt32(self._supported_access_mask) + \
-                        UInt32(_MAX_SFTP_READ_SIZE) + ext_names + \
+                        UInt32(MAX_SFTP_READ_LEN) + ext_names + \
                         attrib_ext_names
 
             extensions.append((b'supported', supported))
@@ -6405,7 +6513,7 @@ class SFTPServerHandler(SFTPHandler):
                          UInt32(self._supported_attrib_mask) + \
                          UInt32(self._supported_open_flags) + \
                          UInt32(self._supported_access_mask) + \
-                         UInt32(_MAX_SFTP_READ_SIZE) + \
+                         UInt32(MAX_SFTP_READ_LEN) + \
                          UInt16(self._supported_open_block_vector) + \
                          UInt16(self._supported_block_vector) + \
                          UInt32(len(self._attrib_extensions)) + \
@@ -7420,6 +7528,9 @@ class LocalFile:
 class LocalFS:
     """An async wrapper around local filesystem access"""
 
+    max_read_len = MAX_SFTP_READ_LEN
+    max_write_len = MAX_SFTP_WRITE_LEN
+
     @staticmethod
     def basename(path: bytes) -> bytes:
         """Return the final component of a local file path"""
@@ -7667,6 +7778,8 @@ async def start_sftp_client(conn: 'SSHClientConnection',
     await handler.start()
 
     conn.create_task(handler.recv_packets(), handler.logger)
+
+    await handler.request_limits()
 
     return SFTPClient(handler, path_encoding, path_errors)
 

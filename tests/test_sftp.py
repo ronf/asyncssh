@@ -68,7 +68,9 @@ from asyncssh import FILEXFER_ATTR_BITS_READONLY, FILEXFER_ATTR_KNOWN_TEXT
 from asyncssh import FX_OK, scp
 
 from asyncssh.packet import SSHPacket, String, UInt32
-from asyncssh.sftp import LocalFile, SFTPHandler, SFTPServerHandler
+
+from asyncssh.sftp import SAFE_SFTP_READ_LEN, SAFE_SFTP_WRITE_LEN
+from asyncssh.sftp import LocalFile, SFTPHandler, SFTPLimits, SFTPServerHandler
 
 from .server import ServerTestCase
 from .util import asynctest
@@ -292,17 +294,17 @@ class _IOErrorSFTPServer(SFTPServer):
     """Return an I/O error during file writing"""
 
     async def read(self, file_obj, offset, size):
-        """Return an error for reads past 64 KB in a file"""
+        """Return an error for reads past 4 MB in a file"""
 
-        if offset >= 65536:
+        if offset >= 4*1024*1024:
             raise SFTPFailure('I/O error')
         else:
             return super().read(file_obj, offset, size)
 
     async def write(self, file_obj, offset, data):
-        """Return an error for writes past 64 KB in a file"""
+        """Return an error for writes past 4 MB in a file"""
 
-        if offset >= 65536:
+        if offset >= 4*1024*1024:
             raise SFTPFailure('I/O error')
         else:
             super().write(file_obj, offset, data)
@@ -2219,7 +2221,7 @@ class _TestSFTP(_CheckSFTP):
             f = None
 
             try:
-                random_data = os.urandom(4*1024*1024)
+                random_data = os.urandom(12*1024*1024)
                 self._create_file('file', random_data)
 
                 async with sftp.open('file', 'rb') as f:
@@ -3709,6 +3711,24 @@ class _TestSFTP(_CheckSFTP):
             # pylint: disable=no-value-for-parameter
             _unsupported_extensions_v6(self)
 
+    @asynctest
+    async def test_zero_limits(self):
+        """Test sending a server limits response with zero read/write length"""
+
+        async def _send_zero_read_write_len(self, packet):
+            """Send a server limits response with zero read/write length"""
+
+            # pylint: disable=unused-argument
+
+            return SFTPLimits(0, 0, 0, 0)
+
+        with patch.dict('asyncssh.sftp.SFTPServerHandler._packet_handlers',
+                        {b'limits@openssh.com': _send_zero_read_write_len}):
+            async with self.connect() as conn:
+                async with conn.start_sftp_client() as sftp:
+                    self.assertEqual(sftp.max_read_len, SAFE_SFTP_READ_LEN)
+                    self.assertEqual(sftp.max_write_len, SAFE_SFTP_WRITE_LEN)
+
     def test_write_close(self):
         """Test session cleanup in the middle of a write request"""
 
@@ -4103,6 +4123,7 @@ class _TestSFTPChroot(_CheckSFTP):
 
         with self.assertRaises(SFTPInvalidParameter):
             await sftp.realpath('.', check=99)
+
     @sftp_test
     async def test_getcwd_and_chdir(self, sftp):
         """Test changing directory on an SFTP server with a changed root"""
@@ -4284,7 +4305,7 @@ class _TestSFTPIOError(_CheckSFTP):
         for method in ('get', 'put', 'copy'):
             with self.subTest(method=method):
                 try:
-                    self._create_file('src', 4*1024*1024*'\0')
+                    self._create_file('src', 8*1024*1024*'\0')
 
                     with self.assertRaises(SFTPFailure):
                         await getattr(sftp, method)('src', 'dst')
@@ -4296,14 +4317,14 @@ class _TestSFTPIOError(_CheckSFTP):
         """Test error when reading a file on an SFTP server"""
 
         try:
-            self._create_file('file', 4*1024*1024*'\0')
+            self._create_file('file', 8*1024*1024*'\0')
 
             async with sftp.open('file') as f:
                 with self.assertRaises(SFTPFailure):
-                    await f.read(4*1024*1024)
+                    await f.read(8*1024*1024)
 
                 with self.assertRaises(SFTPFailure):
-                    async for _ in  await f.read_parallel(4*1024*1024):
+                    async for _ in  await f.read_parallel(8*1024*1024):
                         pass
         finally:
             remove('file')
@@ -4315,7 +4336,7 @@ class _TestSFTPIOError(_CheckSFTP):
         try:
             with self.assertRaises(SFTPFailure):
                 async with sftp.open('file', 'w') as f:
-                    await f.write(4*1024*1024*'\0')
+                    await f.write(8*1024*1024*'\0')
         finally:
             remove('file')
 
@@ -4338,10 +4359,10 @@ class _TestSFTPSmallBlockSize(_CheckSFTP):
             data = os.urandom(65536)
             self._create_file('file', data)
 
-            async with sftp.open('file', 'rb') as f:
-                result = await f.read(32768, 16384)
+            async with sftp.open('file', 'rb', block_size=16384) as f:
+                result = await f.read(65536, 16384)
 
-            self.assertEqual(result, data[16384:49152])
+            self.assertEqual(result, data[16384:])
         finally:
             remove('file')
 
@@ -4350,7 +4371,7 @@ class _TestSFTPSmallBlockSize(_CheckSFTP):
         """Test getting a file from an SFTP server with a small block size"""
 
         try:
-            data = os.urandom(65536)
+            data = os.urandom(8*1024*1024)
             self._create_file('src', data)
             await sftp.get('src', 'dst')
             self._check_file('src', 'dst')
@@ -4372,7 +4393,7 @@ class _TestSFTPEOFDuringCopy(_CheckSFTP):
         """Test getting a file from an SFTP server truncated during the copy"""
 
         try:
-            self._create_file('src', 65536*'\0')
+            self._create_file('src', 8*1024*1024*'\0')
 
             with self.assertRaises(SFTPFailure):
                 await sftp.get('src', 'dst')
@@ -5041,15 +5062,15 @@ class _TestSCP(_CheckSCP):
         """Test read errors when putting a file over SCP"""
 
         async def _read_error(self, size, offset):
-            """Return an error for reads past 64 KB in a file"""
+            """Return an error for reads past 4 MB in a file"""
 
-            if offset >= 65536:
+            if offset >= 4*1024*1024:
                 raise OSError(errno.EIO, 'I/O error')
             else:
                 return await orig_read(self, size, offset)
 
         try:
-            self._create_file('src', 128*1024*'\0')
+            self._create_file('src', 8*1024*1024*'\0')
 
             orig_read = LocalFile.read
 
@@ -5064,15 +5085,15 @@ class _TestSCP(_CheckSCP):
         """Test getting early EOF when putting a file over SCP"""
 
         async def _read_early_eof(self, size, offset):
-            """Return an early EOF for reads past 64 KB in a file"""
+            """Return an early EOF for reads past 4 MB in a file"""
 
-            if offset >= 65536:
+            if offset >= 4*1024*1024:
                 return b''
             else:
                 return await orig_read(self, size, offset)
 
         try:
-            self._create_file('src', 128*1024*'\0')
+            self._create_file('src', 8*1024*1024*'\0')
 
             orig_read = LocalFile.read
 
@@ -5405,7 +5426,7 @@ class _TestSCPIOError(_CheckSCP):
         """Test error when putting a file over SCP"""
 
         try:
-            self._create_file('src', 4*1024*1024*'\0')
+            self._create_file('src', 8*1024*1024*'\0')
 
             with self.assertRaises(SFTPFailure):
                 await scp('src', (self._scp_server, 'dst'))
@@ -5417,7 +5438,7 @@ class _TestSCPIOError(_CheckSCP):
         """Test error when copying a file over SCP"""
 
         try:
-            self._create_file('src', 4*1024*1024*'\0')
+            self._create_file('src', 8*1024*1024*'\0')
 
             with self.assertRaises(SFTPFailure):
                 await scp((self._scp_server, 'src'),
