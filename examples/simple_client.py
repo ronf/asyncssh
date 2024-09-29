@@ -20,7 +20,9 @@
 # Contributors:
 #     Ron Frederick - initial implementation, API, and documentation
 
-import asyncio, asyncssh, sys
+import asyncio
+import asyncssh
+import sys
 
 async def run_client() -> None:
     async with asyncssh.connect('localhost') as conn:

@@ -24,7 +24,10 @@
 # private key in it to use as a server host key. An SSH host certificate
 # can optionally be provided in the file ``ssh_host_key-cert.pub``.
 
-import asyncio, asyncssh, crypt, sys
+import asyncio
+import asyncssh
+import crypt
+import sys
 from typing import Optional
 
 passwords = {'guest': '',                 # guest account with no password

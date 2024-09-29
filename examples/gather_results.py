@@ -20,7 +20,8 @@
 # Contributors:
 #     Ron Frederick - initial implementation, API, and documentation
 
-import asyncio, asyncssh
+import asyncio
+import asyncssh
 
 async def run_client(host, command: str) -> asyncssh.SSHCompletedProcess:
     async with asyncssh.connect(host) as conn:

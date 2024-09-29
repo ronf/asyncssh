@@ -20,7 +20,9 @@
 # Contributors:
 #     Ron Frederick - initial implementation, API, and documentation
 
-import asyncio, asyncssh, sys
+import asyncio
+import asyncssh
+import sys
 
 class MySSHTCPSession(asyncssh.SSHTCPSession):
     def connection_made(self, chan: asyncssh.SSHTCPChannel) -> None:

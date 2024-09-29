@@ -30,7 +30,9 @@
 # key trusted to sign client host keys if certificates are used. This file
 # should be in "known_hosts" format.
 
-import asyncio, asyncssh, sys
+import asyncio
+import asyncssh
+import sys
 
 async def run_commands(conn: asyncssh.SSHClientConnection) -> None:
     """Run a series of commands on the client which connected to us"""
