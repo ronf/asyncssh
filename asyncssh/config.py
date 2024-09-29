@@ -78,7 +78,7 @@ class SSHConfig:
     def _error(self, reason: str, *args: object) -> NoReturn:
         """Raise a configuration parsing error"""
 
-        raise ConfigParseError('%s line %s: %s' % (self._path, self._line_no,
+        raise ConfigParseError('{} line {}: {}'.format(self._path, self._line_no,
                                                    reason % args))
 
     def _match_val(self, match: str) -> object:

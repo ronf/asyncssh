@@ -30,7 +30,7 @@ async def handle_connection(reader, writer):
     writer.close()
 
 def connection_requested(orig_host, orig_port):
-    print('Connection received from %s, port %s' % (orig_host, orig_port))
+    print('Connection received from {}, port {}'.format(orig_host, orig_port))
     return handle_connection
 
 async def run_client():

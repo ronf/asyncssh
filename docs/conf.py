@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 #
 # AsyncSSH documentation build configuration file, created by
 # sphinx-quickstart on Sun Sep  1 17:36:31 2013.

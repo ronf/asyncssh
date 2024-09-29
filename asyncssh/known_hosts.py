@@ -208,8 +208,8 @@ class SSHKnownHosts:
                 ip = None
 
         if port:
-            host = '[{}]:{}'.format(host, port) if host else ''
-            addr = '[{}]:{}'.format(addr, port) if addr else ''
+            host = f'[{host}]:{port}' if host else ''
+            addr = f'[{addr}]:{port}' if addr else ''
 
         matches = []
         matches += self._exact_entries.get(host, [])

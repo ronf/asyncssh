@@ -35,7 +35,7 @@ async def handle_client(process: asyncssh.SSHServerProcess) -> None:
     process.stdout.write('Terminal type: %s, size: %sx%s' %
                          (process.term_type, width, height))
     if pixwidth and pixheight:
-        process.stdout.write(' (%sx%s pixels)' % (pixwidth, pixheight))
+        process.stdout.write(' ({}x{} pixels)'.format(pixwidth, pixheight))
     process.stdout.write('\nTry resizing your window!\n')
 
     while not process.stdin.at_eof():

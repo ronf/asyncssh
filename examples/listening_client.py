@@ -31,7 +31,7 @@ class MySSHTCPSession(asyncssh.SSHTCPSession):
 
 def connection_requested(orig_host: str,
                          orig_port: int) -> asyncssh.SSHTCPSession:
-    print('Connection received from %s, port %s' % (orig_host, orig_port))
+    print('Connection received from {}, port {}'.format(orig_host, orig_port))
     return MySSHTCPSession()
 
 async def run_client() -> None:

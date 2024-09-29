@@ -1632,7 +1632,7 @@ class SFTPAttrs(Record):
             return _file_types.get(cast(int, v), str(v)) \
                 if v != FILEXFER_TYPE_UNKNOWN else None
         elif k == 'permissions':
-            return '{:04o}'.format(cast(int, v))
+            return f'{cast(int, v):04o}'
         elif k in ('atime', 'crtime', 'mtime', 'ctime'):
             return self._format_ns(k)
         elif k in ('atime_ns', 'crtime_ns', 'mtime_ns', 'ctime_ns'):
@@ -5783,7 +5783,7 @@ class SFTPServerHandler(SFTPHandler):
         if self._version >= 5:
             desired_access = packet.get_uint32()
             flags = packet.get_uint32()
-            flagmsg = 'access=0x%04x, flags=0x%04x' % (desired_access, flags)
+            flagmsg = 'access=0x{:04x}, flags=0x{:04x}'.format(desired_access, flags)
         else:
             pflags = packet.get_uint32()
             flagmsg = 'pflags=0x%02x' % pflags

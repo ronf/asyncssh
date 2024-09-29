@@ -495,15 +495,15 @@ class Record(metaclass=_RecordMeta):
             setattr(self, k, v)
 
     def __repr__(self) -> str:
-        return '%s(%s)' % (type(self).__name__,
-                           ', '.join('%s=%r' % (k, getattr(self, k))
+        return '{}({})'.format(type(self).__name__,
+                           ', '.join('{}={!r}'.format(k, getattr(self, k))
                                      for k in self.__slots__))
 
     def __str__(self) -> str:
         values = ((k, self._format(k, getattr(self, k)))
                   for k in self.__slots__)
 
-        return ', '.join('%s: %s' % (k, v) for k, v in values if v is not None)
+        return ', '.join('{}: {}'.format(k, v) for k, v in values if v is not None)
 
     def _format(self, k: str, v: object) -> Optional[str]:
         """Format a field as a string"""

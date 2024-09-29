@@ -42,7 +42,7 @@ class MySSHServer(asyncssh.SSHServer):
     def begin_auth(self, username: str) -> bool:
         try:
             self._conn.set_authorized_keys('authorized_keys/%s' % username)
-        except IOError:
+        except OSError:
             pass
 
         return True

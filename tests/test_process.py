@@ -105,7 +105,7 @@ async def _handle_client(process):
             await process.stdin.readline()
         except asyncssh.TerminalSizeChanged as exc:
             process.exit_with_signal('ABRT', False,
-                                     '%sx%s' % (exc.width, exc.height))
+                                     '{}x{}'.format(exc.width, exc.height))
     elif action == 'term_size_tty':
         master, slave = os.openpty()
         await process.redirect_stdin(master, recv_eof=False)
@@ -114,7 +114,7 @@ async def _handle_client(process):
         await process.stdin.readline()
         size = fcntl.ioctl(slave, termios.TIOCGWINSZ, 8*b'\0')
         height, width, _, _ = struct.unpack('hhhh', size)
-        process.stdout.write(('%sx%s' % (width, height)).encode())
+        process.stdout.write(('{}x{}'.format(width, height)).encode())
         os.close(slave)
     elif action == 'term_size_nontty':
         rpipe, wpipe = os.pipe()
@@ -460,7 +460,7 @@ class _TestProcessBasic(_TestProcess):
     async def test_incomplete_unicode(self):
         """Test incomplete Unicode data"""
 
-        data = '\u2000'.encode('utf-8')[:2]
+        data = '\u2000'.encode()[:2]
 
         with open('stdin', 'wb') as file:
             file.write(data)
@@ -586,7 +586,7 @@ class _TestProcessRedirection(_TestProcess):
         with open('stdin', 'w') as file:
             file.write(data)
 
-        file = open('stdin', 'r')
+        file = open('stdin')
 
         async with self.connect() as conn:
             result = await conn.run('echo', stdin=file)
@@ -773,7 +773,7 @@ class _TestProcessRedirection(_TestProcess):
         async with self.connect() as conn:
             result = await conn.run('echo', input=data, stdout='stdout')
 
-        with open('stdout', 'r') as file:
+        with open('stdout') as file:
             stdout_data = file.read()
 
         self.assertEqual(stdout_data, data)
@@ -806,7 +806,7 @@ class _TestProcessRedirection(_TestProcess):
         async with self.connect() as conn:
             result = await conn.run('echo', input=data, stdout=Path('stdout'))
 
-        with open('stdout', 'r') as file:
+        with open('stdout') as file:
             stdout_data = file.read()
 
         self.assertEqual(stdout_data, data)
@@ -824,7 +824,7 @@ class _TestProcessRedirection(_TestProcess):
         async with self.connect() as conn:
             result = await conn.run('echo', input=data, stdout=file)
 
-        with open('stdout', 'r') as file:
+        with open('stdout') as file:
             stdout_data = file.read()
 
         self.assertEqual(stdout_data, data)
@@ -842,7 +842,7 @@ class _TestProcessRedirection(_TestProcess):
                 await conn.run('echo', input=data, stdout=file, recv_eof=False)
                 await conn.run('echo', input=data, stdout=file, recv_eof=False)
 
-        with open('stdout', 'r') as file:
+        with open('stdout') as file:
             stdout_data = file.read()
 
         self.assertEqual(stdout_data, 2*data)
@@ -995,7 +995,7 @@ class _TestProcessRedirection(_TestProcess):
 
             result = await process.wait()
 
-        with open('stdout', 'r') as file:
+        with open('stdout') as file:
             stdout_data = file.read()
 
         self.assertEqual(stdout_data, 'xxx')
@@ -1246,7 +1246,7 @@ class _TestAsyncFileRedirection(_TestProcess):
         async with self.connect() as conn:
             result = await conn.run('echo', input=data, stdout=file)
 
-        with open('stdout', 'r') as file:
+        with open('stdout') as file:
             stdout_data = file.read()
 
         self.assertEqual(stdout_data, data)
@@ -1264,7 +1264,7 @@ class _TestAsyncFileRedirection(_TestProcess):
                 await conn.run('echo', input=data, stdout=file, recv_eof=False)
                 await conn.run('echo', input=data, stdout=file, recv_eof=False)
 
-        with open('stdout', 'r') as file:
+        with open('stdout') as file:
             stdout_data = file.read()
 
         self.assertEqual(stdout_data, 2*data)
@@ -1316,7 +1316,7 @@ class _TestAsyncFileRedirection(_TestProcess):
                 await conn.run('delay', input=data, stdout=file,
                                stderr=asyncssh.DEVNULL)
 
-        with open('stdout', 'r') as file:
+        with open('stdout') as file:
             self.assertEqual(file.read(), data)
 
 

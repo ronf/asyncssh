@@ -64,7 +64,7 @@ class ChatClient:
 
         try:
             async for line in self._process.stdin:
-                self.broadcast('%s: %s' % (name, line))
+                self.broadcast('{}: {}'.format(name, line))
         except asyncssh.BreakReceived:
             pass
 
