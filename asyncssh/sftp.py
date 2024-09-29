@@ -3189,7 +3189,8 @@ class SFTPClientFile:
                 size = (await self._end()) - offset
 
             try:
-                if self.read_len and size > self.read_len:
+                if self.read_len and size > min(self.read_len,
+                                                self._handler.max_read_len):
                     data = await _SFTPFileReader(
                         self.read_len, self._max_requests, self._handler,
                         self._handle, offset, size).run()
