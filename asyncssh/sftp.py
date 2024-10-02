@@ -234,12 +234,8 @@ class _SFTPFSProtocol(Protocol):
     """Protocol for accessing a filesystem via an SFTP server"""
 
     @property
-    def max_read_len(self) -> int:
-        """Maximum read length associated with this SFTP session"""
-
-    @property
-    def max_write_len(self) -> int:
-        """Maximum write length associated with this SFTP session"""
+    def limits(self) -> 'SFTPLimits':
+        """SFTP server limits associated with this SFTP session"""
 
     @staticmethod
     def basename(path: bytes) -> bytes:
@@ -2047,7 +2043,20 @@ class SFTPName(Record):
 
 
 class SFTPLimits(Record):
-    """SFTP server limits"""
+    """SFTP server limits
+
+       SFTPLimits is a simple record class with the following fields:
+
+         ================= ========================================= ======
+         Field             Description                               Type
+         ================= ========================================= ======
+         max_packet_len    Max allowed size of an SFTP packet        uint64
+         max_read_len      Max allowed size of an SFTP read request  uint64
+         max_write_len     Max allowed size of an SFTP write request uint64
+         max_open_handles  Max allowed number of open file handles   uint64
+         ================= ========================================= ======
+
+    """
 
     max_packet_len: int
     max_read_len: int
@@ -2296,8 +2305,7 @@ class SFTPHandler(SSHPacketLogger):
         self._writer: Optional['SSHWriter[bytes]'] = writer
         self._logger = reader.logger.get_child('sftp')
 
-        self.max_read_len = SAFE_SFTP_READ_LEN
-        self.max_write_len = SAFE_SFTP_WRITE_LEN
+        self.limits = SFTPLimits(0, SAFE_SFTP_READ_LEN, SAFE_SFTP_WRITE_LEN, 0)
 
     @property
     def logger(self) -> SSHLogger:
@@ -2708,10 +2716,10 @@ class SFTPClientHandler(SFTPHandler):
             self._log_limits(limits)
 
             if limits.max_read_len:
-                self.max_read_len = limits.max_read_len
+                self.limits.max_read_len = limits.max_read_len
 
             if limits.max_write_len:
-                self.max_write_len = limits.max_write_len
+                self.limits.max_write_len = limits.max_write_len
 
     async def open(self, filename: bytes, pflags: int,
                    attrs: SFTPAttrs) -> bytes:
@@ -3114,9 +3122,9 @@ class SFTPClientFile:
         self._offset = None if appending else 0
 
         self.read_len = \
-            handler.max_read_len if block_size == -1 else block_size
+            handler.limits.max_read_len if block_size == -1 else block_size
         self.write_len = \
-            handler.max_write_len if block_size == -1 else block_size
+            handler.limits.max_write_len if block_size == -1 else block_size
 
     async def __aenter__(self) -> Self:
         """Allow SFTPClientFile to be used as an async context manager"""
@@ -3189,8 +3197,8 @@ class SFTPClientFile:
                 size = (await self._end()) - offset
 
             try:
-                if self.read_len and size > min(self.read_len,
-                                                self._handler.max_read_len):
+                if self.read_len and size > \
+                        min(self.read_len, self._handler.limits.max_read_len):
                     data = await _SFTPFileReader(
                         self.read_len, self._max_requests, self._handler,
                         self._handle, offset, size).run()
@@ -3610,16 +3618,10 @@ class SFTPClient:
         return self._handler.version
 
     @property
-    def max_read_len(self) -> int:
-        """Maximum read length associated with this SFTP session"""
+    def limits(self) -> SFTPLimits:
+        """:class:`SFTPLimits` associated with this SFTP session"""
 
-        return self._handler.max_read_len
-
-    @property
-    def max_write_len(self) -> int:
-        """Maximum write length associated with this SFTP session"""
-
-        return self._handler.max_write_len
+        return self._handler.limits
 
     @staticmethod
     def basename(path: bytes) -> bytes:
@@ -3786,7 +3788,8 @@ class SFTPClient:
         """Begin a new file upload, download, or copy"""
 
         if block_size == -1:
-            block_size = min(srcfs.max_read_len, dstfs.max_write_len)
+            block_size = min(srcfs.limits.max_read_len,
+                             dstfs.limits.max_write_len)
 
         if isinstance(srcpaths, (bytes, str, PurePath)):
             srcpaths = [srcpaths]
@@ -3880,7 +3883,9 @@ class SFTPClient:
            watch out for links that result in loops.
 
            The block_size argument specifies the size of read and write
-           requests issued when downloading the files, defaulting to 16 KB.
+           requests issued when downloading the files, defaulting to
+           the maximum allowed by the server, or 16 KB if the server
+           doesn't advertise limits.
 
            The max_requests argument specifies the maximum number of
            parallel read or write requests issued, defaulting to 128.
@@ -3984,7 +3989,9 @@ class SFTPClient:
            watch out for links that result in loops.
 
            The block_size argument specifies the size of read and write
-           requests issued when uploading the files, defaulting to 16 KB.
+           requests issued when downloading the files, defaulting to
+           the maximum allowed by the server, or 16 KB if the server
+           doesn't advertise limits.
 
            The max_requests argument specifies the maximum number of
            parallel read or write requests issued, defaulting to 128.
@@ -4088,7 +4095,9 @@ class SFTPClient:
            watch out for links that result in loops.
 
            The block_size argument specifies the size of read and write
-           requests issued when copying the files, defaulting to 16 KB.
+           requests issued when downloading the files, defaulting to
+           the maximum allowed by the server, or 16 KB if the server
+           doesn't advertise limits.
 
            The max_requests argument specifies the maximum number of
            parallel read or write requests issued, defaulting to 128.
@@ -4528,14 +4537,14 @@ class SFTPClient:
            or write call will become a single request to the SFTP server.
            Otherwise, read or write calls larger than this size will be
            turned into parallel requests to the server of the requested
-           size, defaulting to 16 KB.
+           size, defaulting to the maximum allowed by the server, or 16 KB
+           if the server doesn't advertise limits.
 
                .. note:: The OpenSSH SFTP server will close the connection
-                         if it receives a message larger than 256 KB, and
-                         limits read requests to returning no more than
-                         64 KB. So, when connecting to an OpenSSH SFTP
-                         server, it is recommended that the block_size be
-                         set below these sizes.
+                         if it receives a message larger than 256 KB. So,
+                         when connecting to an OpenSSH SFTP server, it is
+                         recommended that the block_size be left at its
+                         default of using the server-advertised limits.
 
            The max_requests argument specifies the maximum number of
            parallel read or write requests issued, defaulting to 128.
@@ -6419,8 +6428,10 @@ class SFTPServerHandler(SFTPHandler):
 
         packet.check_end()
 
+        nfiles = os.sysconf('SC_OPEN_MAX') - 5 if hasattr(os, 'sysconf') else 0
+
         return SFTPLimits(MAX_SFTP_PACKET_LEN, MAX_SFTP_READ_LEN,
-                          MAX_SFTP_WRITE_LEN, 0)
+                          MAX_SFTP_WRITE_LEN, nfiles)
 
     _packet_handlers: Dict[Union[int, bytes], _SFTPPacketHandler] = {
         FXP_OPEN:                     _process_open,
@@ -7529,8 +7540,7 @@ class LocalFile:
 class LocalFS:
     """An async wrapper around local filesystem access"""
 
-    max_read_len = MAX_SFTP_READ_LEN
-    max_write_len = MAX_SFTP_WRITE_LEN
+    limits = SFTPLimits(0, MAX_SFTP_READ_LEN, MAX_SFTP_WRITE_LEN, 0)
 
     @staticmethod
     def basename(path: bytes) -> bytes:

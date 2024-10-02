@@ -3726,8 +3726,10 @@ class _TestSFTP(_CheckSFTP):
                         {b'limits@openssh.com': _send_zero_read_write_len}):
             async with self.connect() as conn:
                 async with conn.start_sftp_client() as sftp:
-                    self.assertEqual(sftp.max_read_len, SAFE_SFTP_READ_LEN)
-                    self.assertEqual(sftp.max_write_len, SAFE_SFTP_WRITE_LEN)
+                    self.assertEqual(sftp.limits.max_read_len,
+                                     SAFE_SFTP_READ_LEN)
+                    self.assertEqual(sftp.limits.max_write_len,
+                                     SAFE_SFTP_WRITE_LEN)
 
     def test_write_close(self):
         """Test session cleanup in the middle of a write request"""

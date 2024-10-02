@@ -109,7 +109,7 @@ from .sftp import SFTPByteRangeLockRefused, SFTPDeletePending
 from .sftp import SFTPFileCorrupt, SFTPOwnerInvalid, SFTPGroupInvalid
 from .sftp import SFTPNoMatchingByteRangeLock
 from .sftp import SFTPConnectionLost, SFTPOpUnsupported
-from .sftp import SFTPAttrs, SFTPVFSAttrs, SFTPName
+from .sftp import SFTPAttrs, SFTPVFSAttrs, SFTPName, SFTPLimits
 from .sftp import SEEK_SET, SEEK_CUR, SEEK_END
 
 from .stream import SSHSocketSessionFactory, SSHServerSessionFactory

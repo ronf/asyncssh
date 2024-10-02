@@ -1074,6 +1074,7 @@ SFTP Support
    ======================================================================= =
    .. autoattribute:: logger
    .. autoattribute:: version
+   .. autoattribute:: limits
    ======================================================================= =
 
    ===================== =
@@ -1242,6 +1243,8 @@ SFTP Support
 .. autoclass:: SFTPVFSAttrs()
 
 .. autoclass:: SFTPName()
+
+.. autoclass:: SFTPLimits()
 
 .. index:: Public key and certificate support
 .. _PublicKeySupport:
