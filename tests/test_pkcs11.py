@@ -165,6 +165,10 @@ class _TestPKCS11Auth(_CheckPKCS11Auth):
             for sig_alg in key.sig_algorithms:
                 sig_alg = sig_alg.decode('ascii')
 
+                # Disable unit tests that involve SHA-1 hashes
+                if sig_alg in ('ssh-rsa', 'x509v3-ssh-rsa'):
+                    continue
+
                 with self.subTest(key=key.get_comment(), sig_alg=sig_alg):
                     async with self.connect(
                             username='ckey', pkcs11_provider='xxx',
