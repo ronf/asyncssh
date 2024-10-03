@@ -1848,8 +1848,9 @@ class _TestConnectionDropbearClient(ServerTestCase):
         """Test reduced dropbear send packet size"""
 
         with patch('asyncssh.connection.SSHServerChannel', _ServerChannel):
-            async with self.connect(client_version='dropbear',
-                                    max_pktsize=32759) as conn:
+            async with self.connect(
+                    client_version='dropbear', max_pktsize=32759,
+                    compression_algs=['zlib@openssh.com']) as conn:
                 _, stdout, _ = await conn.open_session('send_pktsize')
                 self.assertEqual((await stdout.read()), '32758')
 
@@ -1875,7 +1876,8 @@ class _TestConnectionDropbearServer(ServerTestCase):
         """Test reduced dropbear send packet size"""
 
         with patch('asyncssh.connection.SSHClientChannel', _ClientChannel):
-            async with self.connect() as conn:
+            async with self.connect(
+                    compression_algs='zlib@openssh.com') as conn:
                 stdin, _, _ = await conn.open_session()
                 self.assertEqual(stdin.channel.get_send_pktsize(), 32758)
 

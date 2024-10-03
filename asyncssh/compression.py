@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2021 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2024 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -149,9 +149,9 @@ def get_decompressor(alg: bytes) -> Optional[Decompressor]:
 
     return _cmp_decompressors[alg]()
 
+register_compression_alg(b'none',
+                         _none,         _none,           False, True)
 register_compression_alg(b'zlib@openssh.com',
                          _ZLibCompress, _ZLibDecompress, True,  True)
 register_compression_alg(b'zlib',
                          _ZLibCompress, _ZLibDecompress, False, False)
-register_compression_alg(b'none',
-                         _none,         _none,           False, True)

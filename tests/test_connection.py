@@ -1261,6 +1261,24 @@ class _TestConnection(ServerTestCase):
                 await self.connect()
 
     @asynctest
+    async def test_client_decompression_failure(self):
+        """Test client decompression failure"""
+
+        def send_packet(self, pkttype, *args, **kwargs):
+            """Send an SSH packet"""
+
+            asyncssh.connection.SSHConnection.send_packet(
+                self, pkttype, *args, **kwargs)
+
+            if pkttype == MSG_USERAUTH_SUCCESS:
+                self._compressor = None
+                self.send_debug('Test')
+
+        with patch('asyncssh.connection.SSHServerConnection.send_packet',
+                   send_packet):
+            await self.connect(compression_algs=['zlib@openssh.com'])
+
+    @asynctest
     async def test_packet_decode_error(self):
         """Test SSH packet decode error"""
 

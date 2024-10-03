@@ -7544,16 +7544,17 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
        :param compression_algs: (optional)
            A list of compression algorithms to use during the SSH handshake,
            taken from :ref:`compression algorithms <CompressionAlgs>`, or
-           `None` to disable compression.
+           `None` to disable compression. The client prefers to disable
+           compression, but will enable it if the server requires it.
        :param signature_algs: (optional)
            A list of public key signature algorithms to use during the SSH
            handshake, taken from :ref:`signature algorithms <SignatureAlgs>`.
        :param rekey_bytes: (optional)
            The number of bytes which can be sent before the SSH session
-           key is renegotiated. This defaults to 1 GB.
+           key is renegotiated, defaulting to 1 GB.
        :param rekey_seconds: (optional)
            The maximum time in seconds before the SSH session key is
-           renegotiated. This defaults to 1 hour.
+           renegotiated, defaulting to 1 hour.
        :param connect_timeout: (optional)
            The maximum time in seconds allowed to complete an outbound
            SSH connection. This includes the time to establish the TCP
@@ -8289,26 +8290,28 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
            this server, defaulting to `'AsyncSSH'` and its version number.
        :param kex_algs: (optional)
            A list of allowed key exchange algorithms in the SSH handshake,
-           taken from :ref:`key exchange algorithms <KexAlgs>`
+           taken from :ref:`key exchange algorithms <KexAlgs>`,
        :param encryption_algs: (optional)
            A list of encryption algorithms to use during the SSH handshake,
-           taken from :ref:`encryption algorithms <EncryptionAlgs>`
+           taken from :ref:`encryption algorithms <EncryptionAlgs>`.
        :param mac_algs: (optional)
            A list of MAC algorithms to use during the SSH handshake, taken
-           from :ref:`MAC algorithms <MACAlgs>`
+           from :ref:`MAC algorithms <MACAlgs>`.
        :param compression_algs: (optional)
            A list of compression algorithms to use during the SSH handshake,
            taken from :ref:`compression algorithms <CompressionAlgs>`, or
-           `None` to disable compression
+           `None` to disable compression. The server defaults to allowing
+           either no compression or compression after auth, depending on
+           what the client requests.
        :param signature_algs: (optional)
            A list of public key signature algorithms to use during the SSH
-           handshake, taken from :ref:`signature algorithms <SignatureAlgs>`
+           handshake, taken from :ref:`signature algorithms <SignatureAlgs>`.
        :param rekey_bytes: (optional)
            The number of bytes which can be sent before the SSH session
-           key is renegotiated, defaulting to 1 GB
+           key is renegotiated, defaulting to 1 GB.
        :param rekey_seconds: (optional)
            The maximum time in seconds before the SSH session key is
-           renegotiated, defaulting to 1 hour
+           renegotiated, defaulting to 1 hour.
        :param connect_timeout: (optional)
            The maximum time in seconds allowed to complete an outbound
            SSH connection. This includes the time to establish the TCP
@@ -8318,8 +8321,8 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
            and AsyncSSH's login timeout.
        :param login_timeout: (optional)
            The maximum time in seconds allowed for authentication to
-           complete, defaulting to 2 minutes. Setting this to 0
-           will disable the login timeout.
+           complete, defaulting to 2 minutes. Setting this to 0 will
+           disable the login timeout.
 
                .. note:: This timeout only applies after the SSH TCP
                          connection is established. To set a timeout
