@@ -27,7 +27,9 @@
 # The file ``ssh_user_ca`` must exist with a cert-authority entry of
 # the certificate authority which can sign valid client certificates.
 
-import asyncio, asyncssh, sys
+import asyncio
+import asyncssh
+import sys
 
 async def handle_client(process: asyncssh.SSHServerProcess) -> None:
     width, height, pixwidth, pixheight = process.term_size
@@ -35,7 +37,7 @@ async def handle_client(process: asyncssh.SSHServerProcess) -> None:
     process.stdout.write('Terminal type: %s, size: %sx%s' %
                          (process.term_type, width, height))
     if pixwidth and pixheight:
-        process.stdout.write(' (%sx%s pixels)' % (pixwidth, pixheight))
+        process.stdout.write(' ({}x{} pixels)'.format(pixwidth, pixheight))
     process.stdout.write('\nTry resizing your window!\n')
 
     while not process.stdin.at_eof():

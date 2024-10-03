@@ -725,7 +725,7 @@ class SSHAcceptor:
         if hasattr(self._server, 'get_port'):
             return self._server.get_port()
         else:
-            ports = set(addr[1] for addr in self.get_addresses())
+            ports = {addr[1] for addr in self.get_addresses()}
             return ports.pop() if len(ports) == 1 else 0
 
     def close(self) -> None:
@@ -3427,8 +3427,7 @@ class SSHClientConnection(SSHConnection):
                          (self._host, self._port))
 
         if self._options.proxy_command:
-            proxy_command = ' '.join(shlex.quote(arg) for arg in
-                                     self._options.proxy_command)
+            proxy_command = shlex.join(self._options.proxy_command)
             self.logger.info('  Proxy command: %s', proxy_command)
         else:
             self.logger.info('  Local address: %s',
@@ -5759,8 +5758,7 @@ class SSHServerConnection(SSHConnection):
         self.logger.info('Accepted SSH client connection')
 
         if self._options.proxy_command:
-            proxy_command = ' '.join(shlex.quote(arg) for arg in
-                                     self._options.proxy_command)
+            proxy_command = shlex.join(self._options.proxy_command)
             self.logger.info('  Proxy command: %s', proxy_command)
         else:
             self.logger.info('  Local address: %s',

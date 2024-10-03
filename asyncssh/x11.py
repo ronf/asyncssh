@@ -345,7 +345,7 @@ class SSHX11ServerListener:
 
         self._channels.add(chan)
 
-        return '%s.%s' % (self._display, screen)
+        return '{}.{}'.format(self._display, screen)
 
     def detach(self, chan: 'SSHChannel') -> bool:
         """Detach a channel from this listener"""

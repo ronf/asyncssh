@@ -271,7 +271,7 @@ class _ChannelServer(Server):
         elif action == 'agent':
             try:
                 async with asyncssh.connect_agent(self._conn) as agent:
-                    stdout.write(str(len((await agent.get_keys()))) + '\n')
+                    stdout.write(str(len(await agent.get_keys())) + '\n')
             except (OSError, asyncssh.ChannelOpenError):
                 stdout.channel.exit(1)
         elif action == 'agent_sock':
@@ -280,7 +280,7 @@ class _ChannelServer(Server):
             if agent_path:
                 async with asyncssh.connect_agent(agent_path) as agent:
                     await asyncio.sleep(0.1)
-                    stdout.write(str(len((await agent.get_keys()))) + '\n')
+                    stdout.write(str(len(await agent.get_keys())) + '\n')
             else:
                 stdout.channel.exit(1)
         elif action == 'rejected_agent':
@@ -428,11 +428,11 @@ class _ChannelServer(Server):
         elif action == 'empty_data':
             stdin.channel.send_packet(MSG_CHANNEL_DATA, String(''))
         elif action == 'partial_unicode':
-            data = '\xff\xff'.encode('utf-8')
+            data = '\xff\xff'.encode()
             stdin.channel.send_packet(MSG_CHANNEL_DATA, String(data[:3]))
             stdin.channel.send_packet(MSG_CHANNEL_DATA, String(data[3:]))
         elif action == 'partial_unicode_at_eof':
-            data = '\xff\xff'.encode('utf-8')
+            data = '\xff\xff'.encode()
             stdin.channel.send_packet(MSG_CHANNEL_DATA, String(data[:3]))
         elif action == 'unicode_error':
             stdin.channel.send_packet(MSG_CHANNEL_DATA, String(b'\xff'))
@@ -767,7 +767,7 @@ class _TestChannel(ServerTestCase):
             async with self.connect() as conn:
                 chan, _ = await _create_session(conn)
 
-                self.assertFalse((await chan.make_request('unknown')))
+                self.assertFalse(await chan.make_request('unknown'))
 
     @asynctest
     async def test_invalid_channel_request(self):

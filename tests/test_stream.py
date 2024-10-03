@@ -49,7 +49,7 @@ class _StreamServer(Server):
             await stdin.read(1)
             stdout.write('\n')
         elif action == 'disconnect':
-            stdout.write((await stdin.read(1)))
+            stdout.write(await stdin.read(1))
             raise asyncssh.ConnectionLost('Connection lost')
         elif action == 'custom_disconnect':
             await stdin.read(1)

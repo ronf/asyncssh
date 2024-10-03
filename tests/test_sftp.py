@@ -1182,7 +1182,7 @@ class _TestSFTP(_CheckSFTP):
 
             for pattern, matches in glob_tests:
                 with self.subTest(pattern=pattern):
-                    self.assertEqual(sorted((await sftp.glob(pattern))),
+                    self.assertEqual(sorted(await sftp.glob(pattern)),
                                      matches)
 
             self.assertEqual((await sftp.glob([b'fil*1', 'fil*dir'])),
@@ -1264,29 +1264,29 @@ class _TestSFTP(_CheckSFTP):
                 with self.assertRaises(SFTPNoSuchFile):
                     await sftp.stat('badlink')
 
-            self.assertTrue((await sftp.isdir('dir')))
-            self.assertFalse((await sftp.isdir('file')))
+            self.assertTrue(await sftp.isdir('dir'))
+            self.assertFalse(await sftp.isdir('file'))
 
             if self._symlink_supported: # pragma: no branch
-                self.assertFalse((await sftp.isdir('badlink')))
-                self.assertTrue((await sftp.isdir('dirlink')))
-                self.assertFalse((await sftp.isdir('filelink')))
+                self.assertFalse(await sftp.isdir('badlink'))
+                self.assertTrue(await sftp.isdir('dirlink'))
+                self.assertFalse(await sftp.isdir('filelink'))
 
-            self.assertFalse((await sftp.isfile('dir')))
-            self.assertTrue((await sftp.isfile('file')))
-
-            if self._symlink_supported: # pragma: no branch
-                self.assertFalse((await sftp.isfile('badlink')))
-                self.assertFalse((await sftp.isfile('dirlink')))
-                self.assertTrue((await sftp.isfile('filelink')))
-
-            self.assertFalse((await sftp.islink('dir')))
-            self.assertFalse((await sftp.islink('file')))
+            self.assertFalse(await sftp.isfile('dir'))
+            self.assertTrue(await sftp.isfile('file'))
 
             if self._symlink_supported: # pragma: no branch
-                self.assertTrue((await sftp.islink('badlink')))
-                self.assertTrue((await sftp.islink('dirlink')))
-                self.assertTrue((await sftp.islink('filelink')))
+                self.assertFalse(await sftp.isfile('badlink'))
+                self.assertFalse(await sftp.isfile('dirlink'))
+                self.assertTrue(await sftp.isfile('filelink'))
+
+            self.assertFalse(await sftp.islink('dir'))
+            self.assertFalse(await sftp.islink('file'))
+
+            if self._symlink_supported: # pragma: no branch
+                self.assertTrue(await sftp.islink('badlink'))
+                self.assertTrue(await sftp.islink('dirlink'))
+                self.assertTrue(await sftp.islink('filelink'))
         finally:
             remove('dir file badlink dirlink filelink')
 
@@ -1605,8 +1605,8 @@ class _TestSFTP(_CheckSFTP):
             self.assertEqual(stat_result.st_mtime_ns, 2250000000)
             self.assertEqual((await sftp.getatime('file')), 1.0)
             self.assertEqual((await sftp.getatime_ns('file')), 1000000000)
-            self.assertIsNotNone((await sftp.getcrtime('file')))
-            self.assertIsNotNone((await sftp.getcrtime_ns('file')))
+            self.assertIsNotNone(await sftp.getcrtime('file'))
+            self.assertIsNotNone(await sftp.getcrtime_ns('file'))
             self.assertEqual((await sftp.getmtime('file')), 2.25)
             self.assertEqual((await sftp.getmtime_ns('file')), 2250000000)
 
@@ -1619,8 +1619,8 @@ class _TestSFTP(_CheckSFTP):
             self.assertEqual(stat_result.st_mtime_ns, 4750000000)
             self.assertEqual((await sftp.getatime('file')), 3.5)
             self.assertEqual((await sftp.getatime_ns('file')), 3500000000)
-            self.assertIsNotNone((await sftp.getcrtime('file')))
-            self.assertIsNotNone((await sftp.getcrtime_ns('file')))
+            self.assertIsNotNone(await sftp.getcrtime('file'))
+            self.assertIsNotNone(await sftp.getcrtime_ns('file'))
             self.assertEqual((await sftp.getmtime('file')), 4.75)
             self.assertEqual((await sftp.getmtime_ns('file')), 4750000000)
         finally:
@@ -1633,8 +1633,8 @@ class _TestSFTP(_CheckSFTP):
         try:
             self._create_file('file1')
 
-            self.assertTrue((await sftp.exists('file1')))
-            self.assertFalse((await sftp.exists('file2')))
+            self.assertTrue(await sftp.exists('file1'))
+            self.assertFalse(await sftp.exists('file2'))
         finally:
             remove('file1')
 
@@ -1648,8 +1648,8 @@ class _TestSFTP(_CheckSFTP):
         try:
             os.symlink('file', 'link1')
 
-            self.assertTrue((await sftp.lexists('link1')))
-            self.assertFalse((await sftp.lexists('link2')))
+            self.assertTrue(await sftp.lexists('link1'))
+            self.assertFalse(await sftp.lexists('link2'))
         finally:
             remove('link1')
 
@@ -1769,7 +1769,7 @@ class _TestSFTP(_CheckSFTP):
             os.mkdir('dir')
             self._create_file('dir/file1')
             self._create_file('dir/file2')
-            self.assertEqual(sorted((await sftp.listdir('dir'))),
+            self.assertEqual(sorted(await sftp.listdir('dir')),
                              ['.', '..', 'file1', 'file2'])
         finally:
             remove('dir')
@@ -1782,7 +1782,7 @@ class _TestSFTP(_CheckSFTP):
             os.mkdir('dir')
             self._create_file('dir/file1')
             self._create_file('dir/file2')
-            self.assertEqual(sorted((await sftp.listdir('dir'))),
+            self.assertEqual(sorted(await sftp.listdir('dir')),
                              ['.', '..', 'file1', 'file2'])
         finally:
             remove('dir')
@@ -2204,7 +2204,7 @@ class _TestSFTP(_CheckSFTP):
             self._create_file('file', 40*1024*'\0')
 
             f = await sftp.open('file')
-            self.assertEqual(len((await f.read(64*1024))), 40*1024)
+            self.assertEqual(len(await f.read(64*1024)), 40*1024)
         finally:
             if f: # pragma: no branch
                 await f.close()
@@ -2978,8 +2978,8 @@ class _TestSFTP(_CheckSFTP):
             self.assertEqual(stat_result.st_mtime_ns, 2250000000)
             self.assertEqual((await sftp.getatime('file')), 1.0)
             self.assertEqual((await sftp.getatime_ns('file')), 1000000000)
-            self.assertIsNotNone((await sftp.getcrtime('file')))
-            self.assertIsNotNone((await sftp.getcrtime_ns('file')))
+            self.assertIsNotNone(await sftp.getcrtime('file'))
+            self.assertIsNotNone(await sftp.getcrtime_ns('file'))
             self.assertEqual((await sftp.getmtime('file')), 2.25)
             self.assertEqual((await sftp.getmtime_ns('file')), 2250000000)
 
@@ -2992,8 +2992,8 @@ class _TestSFTP(_CheckSFTP):
             self.assertEqual(stat_result.st_mtime_ns, 4750000000)
             self.assertEqual((await sftp.getatime('file')), 3.5)
             self.assertEqual((await sftp.getatime_ns('file')), 3500000000)
-            self.assertIsNotNone((await sftp.getcrtime('file')))
-            self.assertIsNotNone((await sftp.getcrtime_ns('file')))
+            self.assertIsNotNone(await sftp.getcrtime('file'))
+            self.assertIsNotNone(await sftp.getcrtime_ns('file'))
             self.assertEqual((await sftp.getmtime('file')), 4.75)
             self.assertEqual((await sftp.getmtime_ns('file')), 4750000000)
         finally:
@@ -3073,7 +3073,7 @@ class _TestSFTP(_CheckSFTP):
 
         try:
             f = await sftp.open('file', 'w')
-            self.assertIsNone((await f.fsync()))
+            self.assertIsNone(await f.fsync())
         finally:
             if f: # pragma: no branch
                 await f.close()
@@ -3598,7 +3598,7 @@ class _TestSFTP(_CheckSFTP):
 
         with patch('asyncssh.sftp.SFTPServerHandler._process_packet',
                    _short_ok_response):
-            self.assertIsNone((await sftp.mkdir('dir')))
+            self.assertIsNone(await sftp.mkdir('dir'))
 
     @sftp_test
     async def test_malformed_realpath_response(self, sftp):
@@ -4078,7 +4078,7 @@ class _TestSFTPChroot(_CheckSFTP):
         try:
             self._create_file('chroot/file1')
             self._create_file('chroot/file2')
-            self.assertEqual(sorted((await sftp.glob('/file*'))),
+            self.assertEqual(sorted(await sftp.glob('/file*')),
                              ['/file1', '/file2'])
         finally:
             remove('chroot/file1 chroot/file2')
@@ -4515,7 +4515,7 @@ class _TestSFTPLargeListDir(_CheckSFTP):
     async def test_large_listdir(self, sftp):
         """Test large listdir result"""
 
-        self.assertEqual(len((await sftp.readdir('/'))), 100000)
+        self.assertEqual(len(await sftp.readdir('/')), 100000)
 
 
 @unittest.skipIf(sys.platform == 'win32', 'skip statvfs tests on Windows')
@@ -4551,7 +4551,7 @@ class _TestSFTPStatVFS(_CheckSFTP):
     async def test_statvfs(self, sftp):
         """Test getting attributes on a filesystem"""
 
-        self._check_statvfs((await sftp.statvfs('.')))
+        self._check_statvfs(await sftp.statvfs('.'))
 
     @sftp_test
     async def test_file_statvfs(self, sftp):
@@ -4563,7 +4563,7 @@ class _TestSFTPStatVFS(_CheckSFTP):
             self._create_file('file')
 
             f = await sftp.open('file')
-            self._check_statvfs((await f.statvfs()))
+            self._check_statvfs(await f.statvfs())
         finally:
             if f: # pragma: no branch
                 await f.close()
@@ -5280,7 +5280,7 @@ class _TestSCP(_CheckSCP):
         """Test passing a byte string to SCP"""
 
         with self.assertRaises(OSError):
-            await scp('\xff:xxx'.encode('utf-8'), '.')
+            await scp('\xff:xxx'.encode(), '.')
 
     @asynctest
     async def test_source_open_connection(self):

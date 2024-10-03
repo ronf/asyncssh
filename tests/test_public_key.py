@@ -180,7 +180,7 @@ def select_passphrase(cipher, pbe_version=0):
                                          'rc4-40', 'rc4-128'):
         return 'passphrase'.encode('utf-16-be')
     else:
-        return 'passphrase'.encode('utf-8')
+        return b'passphrase'
 
 
 class _TestPublicKey(TempDirTestCase):

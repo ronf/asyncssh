@@ -79,7 +79,7 @@ class _TestX509(unittest.TestCase):
 
         cert = self.generate_certificate(purposes='secureShellClient')
 
-        self.assertEqual(cert.purposes, set((_purpose_secureShellClient,)))
+        self.assertEqual(cert.purposes, {_purpose_secureShellClient})
 
     def test_generate_ca(self):
         """Test X.509 CA certificate generation"""

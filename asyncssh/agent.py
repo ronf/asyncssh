@@ -260,7 +260,7 @@ class SSHAgentClient:
 
                 resplen = int.from_bytes((await reader.readexactly(4)), 'big')
 
-                resp = SSHPacket((await reader.readexactly(resplen)))
+                resp = SSHPacket(await reader.readexactly(resplen))
                 resptype = resp.get_byte()
 
                 return resptype, resp

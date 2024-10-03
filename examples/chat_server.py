@@ -27,7 +27,9 @@
 # The file ``ssh_user_ca`` must exist with a cert-authority entry of
 # the certificate authority which can sign valid client certificates.
 
-import asyncio, asyncssh, sys
+import asyncio
+import asyncssh
+import sys
 from typing import List, cast
 
 class ChatClient:
@@ -64,7 +66,7 @@ class ChatClient:
 
         try:
             async for line in self._process.stdin:
-                self.broadcast('%s: %s' % (name, line))
+                self.broadcast('{}: {}'.format(name, line))
         except asyncssh.BreakReceived:
             pass
 

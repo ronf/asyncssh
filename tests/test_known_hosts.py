@@ -108,7 +108,7 @@ class _TestKnownHosts(TempDirTestCase):
 
         for prefix, patlist, keys in zip(prefixes, patlists, self.keylists):
             for pattern, key in zip(patlist, keys):
-                known_hosts += '%s%s %s' % (prefix, pattern, key)
+                known_hosts += '{}{} {}'.format(prefix, pattern, key)
 
         if from_file:
             with open('known_hosts', 'w') as f:

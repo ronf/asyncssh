@@ -27,7 +27,9 @@
 # The file ``ssh_user_ca`` must exist with a cert-authority entry of
 # the certificate authority which can sign valid client certificates.
 
-import asyncio, asyncssh, sys
+import asyncio
+import asyncssh
+import sys
 
 async def start_server() -> None:
     await asyncssh.listen('', 8022, server_host_keys=['ssh_host_key'],

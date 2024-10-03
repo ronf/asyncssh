@@ -213,7 +213,7 @@ class TaggedDERObject:
 
     def __repr__(self) -> str:
         if self.asn1_class == CONTEXT_SPECIFIC:
-            return 'TaggedDERObject(%s, %r)' % (self.tag, self.value)
+            return 'TaggedDERObject({}, {!r})'.format(self.tag, self.value)
         else:
             return ('TaggedDERObject(%s, %s, %r)' %
                     (_asn1_class[self.asn1_class], self.tag, self.value))

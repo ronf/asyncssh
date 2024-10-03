@@ -63,7 +63,7 @@ class _TestAuthorizedKeys(TempDirTestCase):
             keynum = 1 if 'cert-authority' in options else 0
             key_or_cert = (self.certlist if x509 else self.keylist)[keynum]
 
-            auth_keys += '%s%s' % (options, key_or_cert)
+            auth_keys += '{}{}'.format(options, key_or_cert)
 
         if from_file:
             with open('authorized_keys', 'w') as f:

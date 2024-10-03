@@ -20,7 +20,9 @@
 # Contributors:
 #     Ron Frederick - initial implementation, API, and documentation
 
-import asyncio, asyncssh, sys
+import asyncio
+import asyncssh
+import sys
 
 async def handle_connection(reader, writer):
     while not reader.at_eof():
@@ -30,7 +32,7 @@ async def handle_connection(reader, writer):
     writer.close()
 
 def connection_requested(orig_host, orig_port):
-    print('Connection received from %s, port %s' % (orig_host, orig_port))
+    print('Connection received from {}, port {}'.format(orig_host, orig_port))
     return handle_connection
 
 async def run_client():

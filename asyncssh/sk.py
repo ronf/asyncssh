@@ -173,7 +173,7 @@ def sk_enroll(alg: int, application: bytes, user: str,
             raise ValueError('Invalid PIN') from None
         else:
             raise ValueError(str(exc)) from None
-    except ValueError as exc:
+    except ValueError:
         try:
             return _ctap1_enroll(dev, alg, application)
         except ApduError as exc:

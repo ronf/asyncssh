@@ -181,7 +181,7 @@ class _ClientGSSMICAuth(ClientAuth):
 
             self._gss = self._conn.get_gss_context()
             self._gss.reset()
-            mechs = b''.join((String(mech) for mech in self._gss.mechs))
+            mechs = b''.join(String(mech) for mech in self._gss.mechs)
             await self.send_request(UInt32(len(self._gss.mechs)), mechs)
         else:
             self._conn.try_next_auth()
