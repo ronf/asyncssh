@@ -24,11 +24,11 @@
 # private key in it to use as a server host key. An SSH host certificate
 # can optionally be provided in the file ``ssh_host_key-cert.pub``.
 
-import asyncio, asyncssh, crypt, sys
+import asyncio, asyncssh, bcrypt, sys
 from typing import Optional
 
-passwords = {'guest': '',                 # guest account with no password
-             'user123': 'qV2iEadIGV2rw'   # password of 'secretpw'
+passwords = {'guest': b'',                # guest account with no password
+             'user123': bcrypt.hashpw(b'secretpw', bcrypt.gensalt()),
             }
 
 def handle_client(process: asyncssh.SSHServerProcess) -> None:
@@ -49,14 +49,18 @@ class MySSHServer(asyncssh.SSHServer):
 
     def begin_auth(self, username: str) -> bool:
         # If the user's password is the empty string, no auth is required
-        return passwords.get(username) != ''
+        return passwords.get(username) != b''
 
     def password_auth_supported(self) -> bool:
         return True
 
     def validate_password(self, username: str, password: str) -> bool:
-        pw = passwords.get(username, '*')
-        return crypt.crypt(password, pw) == pw
+        if username not in passwords:
+            return False
+        pw = passwords[username]
+        if not password and not pw:
+            return True
+        return bcrypt.checkpw(password.encode('utf-8'), pw)
 
 async def start_server() -> None:
     await asyncssh.create_server(MySSHServer, '', 8022,
