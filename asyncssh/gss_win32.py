@@ -136,7 +136,7 @@ class GSSBase:
 
         try:
             return self._ctx.sign(data)
-        except SSPIError as exc:
+        except SSPIError as exc: # pragna: no cover
             raise GSSError(details=exc.strerror) from None
 
     def verify(self, data: bytes, sig: bytes) -> bool:
@@ -159,7 +159,7 @@ class GSSClient(GSSBase):
 
     def __init__(self, host: str, store: Optional[BytesOrStrDict],
                  delegate_creds: bool):
-        if store is not None:
+        if store is not None: # pragna: no cover
             raise GSSError(details='GSS store not supported on Windows')
 
         super().__init__(host)
@@ -172,7 +172,7 @@ class GSSClient(GSSBase):
         try:
             self._ctx = ClientAuth('Kerberos', targetspn=self._host,
                                    scflags=flags)
-        except SSPIError as exc:
+        except SSPIError as exc: # pragna: no cover
             raise GSSError(1, 1, details=exc.strerror) from None
 
         self._init_token = self.step(None)
@@ -185,7 +185,7 @@ class GSSServer(GSSBase):
     _integrity_flag = ASC_RET_INTEGRITY
 
     def __init__(self, host: str, store: Optional[BytesOrStrDict]):
-        if store is not None:
+        if store is not None: # pragna: no cover
             raise GSSError(details='GSS store not supported on Windows')
 
         super().__init__(host)

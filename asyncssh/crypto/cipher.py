@@ -35,7 +35,7 @@ _decrepit_algs: Optional[ModuleType]
 
 try:
     import cryptography.hazmat.decrepit.ciphers.algorithms as _decrepit_algs
-except ImportError:
+except ImportError: # pragma: no cover
     _decrepit_algs = None
 
 
