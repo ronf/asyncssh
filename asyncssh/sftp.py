@@ -2660,7 +2660,7 @@ class SFTPClientHandler(SFTPHandler):
                 rcvd_extensions.append((name, data))
         except PacketDecodeError as exc:
             raise SFTPBadMessage(str(exc)) from None
-        except SFTPError as exc:
+        except SFTPError:
             raise
         except ConnectionLost as exc:
             raise SFTPConnectionLost(str(exc)) from None
@@ -5715,7 +5715,7 @@ class SFTPServerHandler(SFTPHandler):
                                    str(exc.reason))
 
             response = exc.encode(self._version)
-        except NotImplementedError as exc:
+        except NotImplementedError:
             assert handler is not None
 
             return_type = FXP_STATUS

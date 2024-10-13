@@ -21,7 +21,6 @@
 """SSH agent client"""
 
 import asyncio
-import errno
 import os
 import sys
 from types import TracebackType
@@ -58,17 +57,10 @@ class AgentWriter(Protocol):
         """Wait for the connection to the SSH agent to close"""
 
 
-try:
-    if sys.platform == 'win32': # pragma: no cover
-        from .agent_win32 import open_agent
-    else:
-        from .agent_unix import open_agent
-except ImportError as _exc: # pragma: no cover
-    async def open_agent(agent_path: str) -> \
-            Tuple[AgentReader, AgentWriter]:
-        """Dummy function if we're unable to import agent support"""
-
-        raise OSError(errno.ENOENT, 'Agent support unavailable: %s' % str(_exc))
+if sys.platform == 'win32': # pragma: no cover
+    from .agent_win32 import open_agent
+else:
+    from .agent_unix import open_agent
 
 
 class _SupportsOpenAgentConnection(Protocol):

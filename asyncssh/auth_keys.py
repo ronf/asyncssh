@@ -120,7 +120,7 @@ class _SSHAuthorizedKeyEntry:
                 host = host[1:-1]
 
             port = None if port_str == '*' else int(port_str)
-        except:
+        except ValueError:
             raise ValueError('Illegal permitopen value: %s' % value) from None
 
         permitted_opens = cast(Set[Tuple[str, Optional[int]]],

@@ -724,7 +724,7 @@ class _SCPSink(_SCPHandler):
                                              dstpath))
             else:
                 await self._recv_files(b'', dstpath)
-        except asyncio.CancelledError as exc:
+        except asyncio.CancelledError:
             cancelled = True
         except (OSError, SFTPError, ValueError) as exc:
             self.handle_error(exc)
