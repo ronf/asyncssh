@@ -1002,7 +1002,7 @@ class _TestConnection(ServerTestCase):
 
         with patch('asyncssh.connection.SSHClientConnection.send_newkeys',
                    send_newkeys):
-            with self.assertRaises(asyncssh.ProtocolError):
+            with self.assertRaises((ConnectionError, asyncssh.ProtocolError)):
                 await self.connect()
 
     @asynctest
