@@ -7911,9 +7911,17 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
                         rekey_seconds, connect_timeout, login_timeout,
                         keepalive_interval, keepalive_count_max)
 
-        self.known_hosts = known_hosts if known_hosts != () else \
-            (cast(List[str], config.get('UserKnownHostsFile', [])) +
-             cast(List[str], config.get('GlobalKnownHostsFile', []))) or ()
+        if known_hosts != ():
+            self.known_hosts = known_hosts
+        else:
+            user_known_hosts = \
+                cast(List[str], config.get('UserKnownHostsFile', ()))
+
+            if user_known_hosts == []:
+                self.known_hosts = None
+            else:
+                self.known_hosts = list(user_known_hosts) + \
+                    cast(List[str], config.get('GlobalKnownHostsFile', []))
 
         self.host_key_alias = \
             cast(Optional[str], host_key_alias if host_key_alias != () else

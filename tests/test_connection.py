@@ -707,6 +707,16 @@ class _TestConnection(ServerTestCase):
             self.assertEqual(conn.get_server_host_key_algs(), default_algs)
 
     @asynctest
+    async def test_known_hosts_none_in_config(self):
+        """Test connecting with known hosts checking disabled in config file"""
+
+        with open('config', 'w') as f:
+            f.write('UserKnownHostsFile none')
+
+        async with self.connect(config='config'):
+            pass
+
+    @asynctest
     async def test_known_hosts_none_without_x509(self):
         """Test connecting with known hosts checking and X.509 disabled"""
 
