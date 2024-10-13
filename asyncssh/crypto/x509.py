@@ -94,8 +94,8 @@ def _to_purpose_oids(purposes: _Purposes) -> _PurposeOIDs:
     if not purposes or 'any' in purposes or _purpose_any in purposes:
         purpose_oids = None
     else:
-        purpose_oids = set(_purpose_to_oid.get(p) or x509.ObjectIdentifier(p)
-                           for p in purposes)
+        purpose_oids = {_purpose_to_oid.get(p) or x509.ObjectIdentifier(p)
+                           for p in purposes}
 
     return purpose_oids
 
@@ -143,8 +143,8 @@ class X509Name(x509.Name):
         ('CN', x509.NameOID.COMMON_NAME),
         ('DC', x509.NameOID.DOMAIN_COMPONENT))
 
-    _to_oid = dict((k, v) for k, v in _attrs)
-    _from_oid = dict((v, k) for k, v in _attrs)
+    _to_oid = dict(_attrs)
+    _from_oid = {v: k for k, v in _attrs}
 
     def __init__(self, name: _NameInit):
         if isinstance(name, str):

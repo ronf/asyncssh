@@ -798,7 +798,7 @@ class _TestConnection(ServerTestCase):
 
         known_hosts_path = os.path.join('.ssh', 'known_hosts')
 
-        with open(known_hosts_path, 'r') as f:
+        with open(known_hosts_path) as f:
             known_hosts = asyncssh.import_known_hosts(f.read())
 
         async with self.connect(known_hosts=known_hosts):

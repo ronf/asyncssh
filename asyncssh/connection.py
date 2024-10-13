@@ -725,7 +725,7 @@ class SSHAcceptor:
         if hasattr(self._server, 'get_port'):
             return self._server.get_port()
         else:
-            ports = set(addr[1] for addr in self.get_addresses())
+            ports = {addr[1] for addr in self.get_addresses()}
             return ports.pop() if len(ports) == 1 else 0
 
     def close(self) -> None:

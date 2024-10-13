@@ -216,7 +216,7 @@ def make_certificate(cert_version, cert_type, key, signing_key, principals,
     """Construct an SSH certificate"""
 
     keydata = key.encode_ssh_public()
-    principals = b''.join((String(p) for p in principals))
+    principals = b''.join(String(p) for p in principals)
     options = _encode_options(options) if options else b''
     extensions = _encode_options(extensions) if extensions else b''
     signing_keydata = b''.join((String(signing_key.algorithm),

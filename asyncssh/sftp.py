@@ -1628,7 +1628,7 @@ class SFTPAttrs(Record):
             return _file_types.get(cast(int, v), str(v)) \
                 if v != FILEXFER_TYPE_UNKNOWN else None
         elif k == 'permissions':
-            return '{:04o}'.format(cast(int, v))
+            return f'{cast(int, v):04o}'
         elif k in ('atime', 'crtime', 'mtime', 'ctime'):
             return self._format_ns(k)
         elif k in ('atime_ns', 'crtime_ns', 'mtime_ns', 'ctime_ns'):
