@@ -33,7 +33,7 @@ class MySSHClientSession(asyncssh.SSHClientSession):
 
 class MySSHClient(asyncssh.SSHClient):
     def connection_made(self, conn: asyncssh.SSHClientConnection) -> None:
-        print('Connection made to %s.' % conn.get_extra_info('peername')[0])
+        print(f'Connection made to {conn.get_extra_info('peername')[0]}.')
 
     def auth_completed(self) -> None:
         print('Authentication successful.')

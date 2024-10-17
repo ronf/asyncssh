@@ -1,4 +1,4 @@
-# Copyright (c) 2017-2019 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2017-2024 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -138,7 +138,7 @@ class _TestLogging(ServerTestCase):
 
                 self.assertEqual(len(log.records), 1)
                 self.assertRegex(log.records[0].msg,
-                                 r'\[conn=\d+, chan=%s\] Test' % i)
+                                 rf'\[conn=\d+, chan={i}\] Test')
 
     @asynctest
     async def test_stream_log(self):

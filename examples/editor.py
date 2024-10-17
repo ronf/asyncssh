@@ -33,8 +33,8 @@ from typing import cast
 async def handle_client(process: asyncssh.SSHServerProcess):
     channel = cast(asyncssh.SSHLineEditorChannel, process.channel)
 
-    process.stdout.write('Welcome to my SSH server, %s!\n\n' %
-                         process.get_extra_info('username'))
+    username = process.get_extra_info('username')
+    process.stdout.write(f'Welcome to my SSH server, {username}!\n\n')
 
     channel.set_echo(False)
     process.stdout.write('Tell me a secret: ')

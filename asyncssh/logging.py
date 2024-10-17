@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2021 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2024 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -87,9 +87,9 @@ class SSHLogger(logging.LoggerAdapter):
                 host, port = arg
 
                 if host:
-                    result = '%s, port %d' % (host, port) if port else host
+                    result = f'{host}, port {port}' if port else host
                 else:
-                    result = 'port %d' % port if port else 'dynamic port'
+                    result = f'port {port}' if port else 'dynamic port'
             elif isinstance(arg, bytes):
                 result = _item_text(arg)
             else:
@@ -114,10 +114,10 @@ class SSHLogger(logging.LoggerAdapter):
         offset = 0
 
         while packet:
-            line = '\n  %08x:' % offset
+            line = f'\n  {offset:08x}:'
 
             for b in packet[:16]:
-                line += ' %02x' % b
+                line += f' {b:02x}'
 
             line += (62 - len(line)) * ' '
 
@@ -167,7 +167,7 @@ class SSHLogger(logging.LoggerAdapter):
             extra = cast(_ObjDict, kwargs.get('extra'))
 
             if pktid is not None:
-                extra.update(context='pktid=%d' % pktid)
+                extra.update(context=f'pktid={pktid}')
 
             extra.update(packet=packet)
 

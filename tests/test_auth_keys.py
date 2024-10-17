@@ -1,4 +1,4 @@
-# Copyright (c) 2015-2020 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2015-2024 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -48,7 +48,7 @@ class _TestAuthorizedKeys(TempDirTestCase):
             cls.imported_keylist.append(key.convert_to_public())
 
             if x509_available: # pragma: no branch
-                subject = 'CN=cert%s' % i
+                subject = f'CN=cert{i}'
                 cert = key.generate_x509_user_certificate(key, subject)
                 cls.certlist.append(cert.export_certificate().decode('ascii'))
                 cls.imported_certlist.append(cert)
@@ -63,7 +63,7 @@ class _TestAuthorizedKeys(TempDirTestCase):
             keynum = 1 if 'cert-authority' in options else 0
             key_or_cert = (self.certlist if x509 else self.keylist)[keynum]
 
-            auth_keys += '%s%s' % (options, key_or_cert)
+            auth_keys += options + key_or_cert
 
         if from_file:
             with open('authorized_keys', 'w') as f:

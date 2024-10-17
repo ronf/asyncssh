@@ -1,4 +1,4 @@
-# Copyright (c) 2016-2022 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2016-2024 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -99,7 +99,7 @@ class _TestAgent(AsyncTestCase):
         """Set return status for ssh-askpass"""
 
         with open('ssh-askpass', 'w') as f:
-            f.write('#!/bin/sh\nexit %d\n' % status)
+            f.write(f'#!/bin/sh\nexit {status}\n')
             os.chmod('ssh-askpass', 0o755)
 
     # Pylint doesn't like mixed case method names, but this was chosen to

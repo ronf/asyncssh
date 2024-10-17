@@ -25,7 +25,7 @@ import asyncio, asyncssh, sys
 async def run_client() -> None:
     async with asyncssh.connect('localhost') as conn:
         listener = await conn.forward_local_port('', 0, 'www.google.com', 80)
-        print('Listening on port %s...' % listener.get_port())
+        print(f'Listening on port {listener.get_port()}...')
         await listener.wait_closed()
 
 try:

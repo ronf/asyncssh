@@ -1,4 +1,4 @@
-# Copyright (c) 2016-2021 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2016-2024 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -42,8 +42,8 @@ _UMAC_DEFAULT_CTX_SIZE = 4096
 def _build_umac(size: int) -> '_New':
     """Function to build UMAC wrapper for a specific digest size"""
 
-    _name = 'umac%d' % size
-    _prefix = 'nettle_%s_' % _name
+    _name = f'umac{size}'
+    _prefix = f'nettle_{_name}_'
 
     try:
         _context_size: int = getattr(_nettle, _prefix + '_ctx_size')()

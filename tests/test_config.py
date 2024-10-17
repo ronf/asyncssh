@@ -71,7 +71,7 @@ class _TestConfig(TempDirTestCase):
 
         for value, result in (('yes', True), ('true', True),
                               ('no', False), ('false', False)):
-            config = self._parse_config('Compression %s' % value)
+            config = self._parse_config(f'Compression {value}')
             self.assertEqual(config.get('Compression'), result)
 
         config = self._parse_config('Compression yes\nCompression no')
@@ -101,7 +101,7 @@ class _TestConfig(TempDirTestCase):
         for family, result in (('any', socket.AF_UNSPEC),
                                ('inet', socket.AF_INET),
                                ('inet6', socket.AF_INET6)):
-            config = self._parse_config('AddressFamily %s' % family)
+            config = self._parse_config(f'AddressFamily {family}')
             self.assertEqual(config.get('AddressFamily'), result)
 
         config = self._parse_config('AddressFamily inet\n'
@@ -117,7 +117,7 @@ class _TestConfig(TempDirTestCase):
                               ('default', ((), ())),
                               ('default 2', ((), '2')),
                               ('default none', ((), None))):
-            config = self._parse_config('RekeyLimit %s' % value)
+            config = self._parse_config(f'RekeyLimit {value}')
             self.assertEqual(config.get('RekeyLimit'), result)
 
         config = self._parse_config('RekeyLimit 1 2\nRekeyLimit 3 4')
@@ -144,7 +144,7 @@ class _TestConfig(TempDirTestCase):
             f.write('Port 2222')
 
         for path in ('include', Path('.ssh/include').absolute().as_posix()):
-            config = self._parse_config('Include %s' % path)
+            config = self._parse_config(f'Include {path}')
             self.assertEqual(config.get('Port'), 2222)
 
     def test_missing_include(self):
@@ -214,7 +214,7 @@ class _TestConfig(TempDirTestCase):
         """Test config option with equals instead of space"""
 
         for delimiter in ('=', ' =', '= ', ' = '):
-            config = self._parse_config('Compression%syes' % delimiter)
+            config = self._parse_config(f'Compression{delimiter}yes')
             self.assertEqual(config.get('Compression'), True)
 
     def test_unknown(self):
@@ -307,7 +307,7 @@ class _TestClientConfig(_TestConfig):
         for value, result in (('yes', True), ('true', True),
                               ('no', False), ('false', False),
                               ('force', 'force'), ('auto', 'auto')):
-            config = self._parse_config('RequestTTY %s' % value)
+            config = self._parse_config(f'RequestTTY {value}')
             self.assertEqual(config.get('RequestTTY'), result)
 
         config = self._parse_config('RequestTTY yes\nRequestTTY no')

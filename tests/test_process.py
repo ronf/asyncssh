@@ -1,4 +1,4 @@
-# Copyright (c) 2016-2021 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2016-2024 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -105,7 +105,7 @@ async def _handle_client(process):
             await process.stdin.readline()
         except asyncssh.TerminalSizeChanged as exc:
             process.exit_with_signal('ABRT', False,
-                                     '%sx%s' % (exc.width, exc.height))
+                                     f'{exc.width}x{exc.height}')
     elif action == 'term_size_tty':
         master, slave = os.openpty()
         await process.redirect_stdin(master, recv_eof=False)
@@ -114,7 +114,7 @@ async def _handle_client(process):
         await process.stdin.readline()
         size = fcntl.ioctl(slave, termios.TIOCGWINSZ, 8*b'\0')
         height, width, _, _ = struct.unpack('hhhh', size)
-        process.stdout.write(('%sx%s' % (width, height)).encode())
+        process.stdout.write(f'{width}x{height}'.encode())
         os.close(slave)
     elif action == 'term_size_nontty':
         rpipe, wpipe = os.pipe()

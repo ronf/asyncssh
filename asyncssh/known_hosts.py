@@ -1,4 +1,4 @@
-# Copyright (c) 2015-2021 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2015-2024 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -94,13 +94,13 @@ class _HashedHost:
             self._salt = binascii.a2b_base64(salt)
             self._hosthash = binascii.a2b_base64(hosthash)
         except (ValueError, binascii.Error):
-            raise ValueError('Invalid known hosts hash entry: %s' %
-                             pattern) from None
+            raise ValueError(
+                f'Invalid known hosts hash entry: {pattern}') from None
 
         if magic != self._HMAC_SHA1_MAGIC:
             # Only support HMAC SHA-1 for now
-            raise ValueError('Invalid known hosts hash type: %s' %
-                             magic) from None
+            raise ValueError(
+                f'Invalid known hosts hash type: {magic}') from None
 
     def _match(self, value: str) -> bool:
         """Return whether this host hash matches a value"""
@@ -141,12 +141,12 @@ class SSHKnownHosts:
                     marker = None
                     pattern, data = line.split(None, 1)
             except ValueError:
-                raise ValueError('Invalid known hosts entry: %s' %
-                                 line) from None
+                raise ValueError(
+                    f'Invalid known hosts entry: {line}') from None
 
             if marker not in (None, 'cert-authority', 'revoked'):
-                raise ValueError('Invalid known hosts marker: %s' %
-                                 marker) from None
+                raise ValueError(
+                    f'Invalid known hosts marker: {marker}') from None
 
             key: Optional[SSHKey] = None
             cert: Optional[SSHCertificate] = None

@@ -41,11 +41,11 @@ async def handle_client(process: asyncssh.SSHServerProcess) -> None:
                 try:
                     total += int(line)
                 except ValueError:
-                    process.stderr.write('Invalid number: %s\n' % line)
+                    process.stderr.write(f'Invalid number: {line}\n')
     except asyncssh.BreakReceived:
         pass
 
-    process.stdout.write('Total = %s\n' % total)
+    process.stdout.write(f'Total = {total}\n')
     process.exit(0)
 
 async def start_server() -> None:

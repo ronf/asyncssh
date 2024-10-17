@@ -75,11 +75,10 @@ class SSHConfig:
 
         self.loaded = False
 
-    def _error(self, reason: str, *args: object) -> NoReturn:
+    def _error(self, reason: str) -> NoReturn:
         """Raise a configuration parsing error"""
 
-        raise ConfigParseError('%s line %s: %s' % (self._path, self._line_no,
-                                                   reason % args))
+        raise ConfigParseError(f'{self._path} line {self._line_no}: {reason}')
 
     def _match_val(self, match: str) -> object:
         """Return the value to match against in a match condition"""
@@ -116,7 +115,7 @@ class SSHConfig:
                 elif token == 'i':
                     raise ConfigParseError('User id not available') from None
                 else:
-                    raise ConfigParseError('Invalid token substitution: %s' %
+                    raise ConfigParseError('Invalid token substitution: ' +
                                            value[idx+1]) from None
 
         result.append(value[last_idx:])
@@ -141,7 +140,7 @@ class SSHConfig:
             paths = list(path.glob(pattern))
 
             if not paths:
-                logger.debug1('Config pattern "%s" matched no files', pattern)
+                logger.debug1(f'Config pattern "{pattern}" matched no files')
 
             for path in paths:
                 self.parse(path)
@@ -178,7 +177,7 @@ class SSHConfig:
                     wild_pat = WildcardPatternList(args.pop(0))
                     self._matching = wild_pat.matches(match_val)
             except IndexError:
-                self._error('Missing %s match pattern', match)
+                self._error(f'Missing {match} match pattern')
 
             if not self._matching:
                 args.clear()
@@ -194,7 +193,7 @@ class SSHConfig:
         elif value_str in ('no', 'false'):
             value = False
         else:
-            self._error('Invalid %s boolean value: %s', option, value_str)
+            self._error(f'Invalid {option} boolean value: {value_str}')
 
         if option not in self._options:
             self._options[option] = value
@@ -207,7 +206,7 @@ class SSHConfig:
         try:
             value = int(value_str)
         except ValueError:
-            self._error('Invalid %s integer value: %s', option, value_str)
+            self._error(f'Invalid {option} integer value: {value_str}')
 
         if option not in self._options:
             self._options[option] = value
@@ -272,7 +271,7 @@ class SSHConfig:
         elif value_str == 'inet6':
             value = socket.AF_INET6
         else:
-            self._error('Invalid %s value: %s', option, value_str)
+            self._error(f'Invalid {option} value: {value_str}')
 
         if option not in self._options:
             self._options[option] = value
@@ -355,12 +354,12 @@ class SSHConfig:
                     continue
 
                 if not args:
-                    self._error('Missing %s value', option)
+                    self._error(f'Missing {option} value')
 
                 handler(self, option, args)
 
                 if args:
-                    self._error('Extra data at end: %s', ' '.join(args))
+                    self._error(f'Extra data at end: {" ".join(args)}')
 
         self._set_tokens()
 
@@ -487,7 +486,7 @@ class SSHClientConfig(SSHConfig):
         elif value_str in ('no', 'false'):
             value = False
         elif value_str not in ('force', 'auto'):
-            self._error('Invalid %s value: %s', option, value_str)
+            self._error(f'Invalid {option} value: {value_str}')
         else:
             value = value_str
 

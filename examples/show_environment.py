@@ -34,7 +34,7 @@ async def handle_client(process: asyncssh.SSHServerProcess) -> None:
         keywidth = max(map(len, process.env.keys()))+1
         process.stdout.write('Environment:\n')
         for key, value in process.env.items():
-            process.stdout.write('  %-*s %s\n' % (keywidth, key+':', value))
+            process.stdout.write(f'  {key+":":{keywidth}} {value}\n')
         process.exit(0)
     else:
         process.stderr.write('No environment sent.\n')

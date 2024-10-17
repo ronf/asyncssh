@@ -52,12 +52,12 @@ class MySSHServerSession(asyncssh.SSHServerSession):
                 if line:
                     self._total += int(line)
             except ValueError:
-                self._chan.write_stderr('Invalid number: %s\n' % line)
+                self._chan.write_stderr(f'Invalid number: {line}\n')
 
         self._input = lines[-1]
 
     def eof_received(self) -> bool:
-        self._chan.write('Total = %s\n' % self._total)
+        self._chan.write(f'Total = {self._total}\n')
         self._chan.exit(0)
         return False
 

@@ -332,8 +332,8 @@ class _TestTCPForwarding(_CheckForwarding):
     async def test_ssh_connect_tunnel_string(self):
         """Test connecting a tunneled SSH connection via string"""
 
-        async with self.connect(tunnel='%s:%d' % (self._server_addr,
-                                                  self._server_port)) as conn:
+        async with self.connect(tunnel=f'{self._server_addr}:'
+                                f'{self._server_port}') as conn:
             await self._check_connection(conn)
 
     @asynctest
@@ -341,9 +341,8 @@ class _TestTCPForwarding(_CheckForwarding):
         """Test failed connection on a tunneled SSH connection via string"""
 
         with self.assertRaises(asyncssh.ChannelOpenError):
-            await asyncssh.connect('\xff',
-                                   tunnel='%s:%d' % (self._server_addr,
-                                                     self._server_port))
+            await asyncssh.connect(
+                '\xff', tunnel=f'{self._server_addr}:{self._server_port}')
 
     @asynctest
     async def test_proxy_jump(self):
@@ -452,10 +451,9 @@ class _TestTCPForwarding(_CheckForwarding):
     async def test_ssh_listen_tunnel_string(self):
         """Test opening a tunneled SSH listener via string"""
 
-        async with self.listen(tunnel='ckey@%s:%d' % (self._server_addr,
-                                                      self._server_port),
-                               server_factory=Server,
-                               server_host_keys=['skey']) as server:
+        async with self.listen(
+                tunnel=f'ckey@{self._server_addr}:{self._server_port}',
+                server_factory=Server, server_host_keys=['skey']) as server:
             listen_port = server.get_port()
 
             async with asyncssh.connect('127.0.0.1', listen_port,
@@ -467,11 +465,9 @@ class _TestTCPForwarding(_CheckForwarding):
         """Test open failure on a tunneled SSH listener via string"""
 
         with self.assertRaises(asyncssh.ChannelListenError):
-            await asyncssh.listen('\xff',
-                                  tunnel='%s:%d' % (self._server_addr,
-                                                    self._server_port),
-                                  server_factory=Server,
-                                  server_host_keys=['skey'])
+            await asyncssh.listen(
+                '\xff', tunnel=f'{self._server_addr}:{self._server_port}',
+                server_factory=Server, server_host_keys=['skey'])
 
     @asynctest
     async def test_ssh_listen_tunnel_default_port(self):

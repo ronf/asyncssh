@@ -145,8 +145,7 @@ class SSHChannel(Generic[AnyStr], SSHPacketHandler):
 
         self._recv_chan: Optional[int] = conn.add_channel(self)
 
-        self._logger = conn.logger.get_child(context='chan=%d' %
-                                             self._recv_chan)
+        self._logger = conn.logger.get_child(context=f'chan={self._recv_chan}')
 
         self.set_encoding(encoding, errors)
         self.set_write_buffer_limits()
@@ -877,8 +876,8 @@ class SSHChannel(Generic[AnyStr], SSHPacketHandler):
             low = high // 4
 
         if not 0 <= low <= high:
-            raise ValueError('high (%r) must be >= low (%r) must be >= 0' %
-                             (high, low))
+            raise ValueError(f'high (high) must be >= low ({low}) '
+                             'must be >= 0')
 
         self.logger.debug1('Set write buffer limits: low-water=%d, '
                            'high-water=%d', low, high)
@@ -932,7 +931,7 @@ class SSHChannel(Generic[AnyStr], SSHPacketHandler):
         datalen = len(encoded_data)
 
         if datatype:
-            typename = ' to %s' % _data_type_names[datatype]
+            typename = f' to {_data_type_names[datatype]}'
         else:
             typename = ''
 
@@ -1181,7 +1180,7 @@ class SSHClientChannel(SSHChannel, Generic[AnyStr]):
             modes = b''
             for mode, mode_value in term_modes.items():
                 if mode <= PTY_OP_END or mode >= PTY_OP_RESERVED:
-                    raise ValueError('Invalid pty mode: %s' % mode)
+                    raise ValueError(f'Invalid pty mode: {mode}')
 
                 name = _pty_mode_names.get(mode, str(mode))
                 self.logger.debug2('  Mode %s: %d', name, mode_value)
@@ -1439,7 +1438,7 @@ class SSHClientChannel(SSHChannel, Generic[AnyStr]):
             try:
                 signal = _signal_names[signal]
             except KeyError:
-                raise ValueError('Unknown signal: %s' % int(signal)) from None
+                raise ValueError(f'Unknown signal: {signal}') from None
 
         self.logger.info('Sending %s signal', signal)
 

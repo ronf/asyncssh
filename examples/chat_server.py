@@ -57,18 +57,18 @@ class ChatClient:
         self.write('Enter your name: ')
         name = (await self.readline()).rstrip('\n')
 
-        self.write('\n%d other users are connected.\n\n' % len(self._clients))
+        self.write(f'\n{len(self._clients)} other users are connected.\n\n')
 
         self._clients.append(self)
-        self.broadcast('*** %s has entered chat ***\n' % name)
+        self.broadcast(f'*** {name} has entered chat ***\n')
 
         try:
             async for line in self._process.stdin:
-                self.broadcast('%s: %s' % (name, line))
+                self.broadcast(f'{name}: {line}')
         except asyncssh.BreakReceived:
             pass
 
-        self.broadcast('*** %s has left chat ***\n' % name)
+        self.broadcast(f'*** {name} has left chat ***\n')
         self._clients.remove(self)
 
 async def start_server() -> None:

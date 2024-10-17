@@ -1,4 +1,4 @@
-# Copyright (c) 2016-2021 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2016-2024 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -245,7 +245,7 @@ class ServerTestCase(AsyncTestCase):
         cls._server_addr = '127.0.0.1'
         cls._server_port = sock.getsockname()[1]
 
-        host = '[%s]:%d,localhost ' % (cls._server_addr, cls._server_port)
+        host = f'[{cls._server_addr}]:{cls._server_port},localhost '
 
         with open('known_hosts', 'w') as known_hosts:
             known_hosts.write(host)

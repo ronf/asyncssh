@@ -32,21 +32,20 @@ import asyncio, asyncssh, sys
 async def handle_client(process: asyncssh.SSHServerProcess) -> None:
     width, height, pixwidth, pixheight = process.term_size
 
-    process.stdout.write('Terminal type: %s, size: %sx%s' %
-                         (process.term_type, width, height))
+    process.stdout.write(f'Terminal type: {process.term_type}, '
+                         f'size: {width}x{height}')
     if pixwidth and pixheight:
-        process.stdout.write(' (%sx%s pixels)' % (pixwidth, pixheight))
+        process.stdout.write(f' ({pixwidth}x{pixheight} pixels)')
     process.stdout.write('\nTry resizing your window!\n')
 
     while not process.stdin.at_eof():
         try:
             await process.stdin.read()
         except asyncssh.TerminalSizeChanged as exc:
-            process.stdout.write('New window size: %sx%s' %
-                                 (exc.width, exc.height))
+            process.stdout.write(f'New window size: {exc.width}x{exc.height}')
             if exc.pixwidth and exc.pixheight:
-                process.stdout.write(' (%sx%s pixels)' %
-                                     (exc.pixwidth, exc.pixheight))
+                process.stdout.write(f' ({exc.pixwidth}'
+                                     f'x{exc.pixheight} pixels)')
             process.stdout.write('\n')
 
 async def start_server() -> None:

@@ -729,12 +729,11 @@ class ProcessError(Error):
 
         if exit_signal:
             signal, core_dumped, msg, lang = exit_signal
-            reason = 'Process exited with signal %s%s%s' % \
-                (signal, ': ' + msg if msg else '',
-                 ' (core dumped)' if core_dumped else '')
+            reason = 'Process exited with signal ' + signal + \
+                     (': ' + msg if msg else '') + \
+                     (' (core dumped)' if core_dumped else '')
         elif exit_status:
-            reason = 'Process exited with non-zero exit status %s' % \
-                exit_status
+            reason = f'Process exited with non-zero exit status {exit_status}'
 
         super().__init__(exit_status or 0, reason, lang)
 

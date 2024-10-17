@@ -435,7 +435,7 @@ def _lookup_uid(user: Optional[str]) -> Optional[int]:
             try:
                 uid = int(user)
             except ValueError:
-                raise SFTPOwnerInvalid('Invalid owner: %s' % user) from None
+                raise SFTPOwnerInvalid(f'Invalid owner: {user}') from None
     else:
         uid = None
 
@@ -454,7 +454,7 @@ def _lookup_gid(group: Optional[str]) -> Optional[int]:
             try:
                 gid = int(group)
             except ValueError:
-                raise SFTPGroupInvalid('Invalid group: %s' % group) from None
+                raise SFTPGroupInvalid(f'Invalid group: {group}') from None
     else:
         gid = None
 
@@ -505,7 +505,7 @@ def _mode_to_pflags(mode: str) -> Tuple[int, bool]:
     pflags = _open_modes.get(mode)
 
     if not pflags:
-        raise ValueError('Invalid mode: %r' % mode)
+        raise ValueError(f'Invalid mode: {mode!r}')
 
     return pflags, binary
 
@@ -875,7 +875,7 @@ class SFTPError(Error):
             try:
                 exc = _sftp_error_map[code](reason, lang)
             except KeyError:
-                exc = SFTPError(code, '%s (error %d)' % (reason, code), lang)
+                exc = SFTPError(code, f'{reason} (error {code})', lang)
 
             exc.decode(packet)
             return exc
@@ -1771,8 +1771,8 @@ class SFTPAttrs(Record):
         unsupported_attrs = flags & ~_valid_attr_flags[sftp_version]
 
         if unsupported_attrs:
-            raise SFTPBadMessage('Unsupported attribute flags: 0x%08x' %
-                                 unsupported_attrs)
+            raise SFTPBadMessage(
+                f'Unsupported attribute flags: 0x{unsupported_attrs:08x}')
 
         if sftp_version >= 4:
             attrs.type = packet.get_byte()
@@ -1794,7 +1794,7 @@ class SFTPAttrs(Record):
                 try:
                     attrs.owner = owner.decode('utf-8')
                 except UnicodeDecodeError:
-                    raise SFTPOwnerInvalid('Invalid owner name: %s' %
+                    raise SFTPOwnerInvalid('Invalid owner name: ' +
                         owner.decode('utf-8', 'backslashreplace')) from None
 
                 group = packet.get_string()
@@ -1802,7 +1802,7 @@ class SFTPAttrs(Record):
                 try:
                     attrs.group = group.decode('utf-8')
                 except UnicodeDecodeError:
-                    raise SFTPGroupInvalid('Invalid group name: %s' %
+                    raise SFTPGroupInvalid('Invalid group name: ' +
                         group.decode('utf-8', 'backslashreplace')) from None
 
         if flags & FILEXFER_ATTR_PERMISSIONS:
@@ -2531,7 +2531,7 @@ class SFTPClientHandler(SFTPHandler):
         return_type = self._return_types.get(pkttype)
 
         if resptype not in (FXP_STATUS, return_type):
-            raise SFTPBadMessage('Unexpected response type: %s' % resptype)
+            raise SFTPBadMessage(f'Unexpected response type: {resptype}')
 
         result = self._packet_handlers[resptype](self, resp)
 
@@ -2650,7 +2650,7 @@ class SFTPClientHandler(SFTPHandler):
             version = resp.get_uint32()
 
             if not MIN_SFTP_VERSION <= version <= MAX_SFTP_VERSION:
-                raise SFTPBadMessage('Unsupported version: %d' % version)
+                raise SFTPBadMessage(f'Unsupported version: {version}')
 
             rcvd_extensions: List[Tuple[bytes, bytes]] = []
 
@@ -2791,7 +2791,7 @@ class SFTPClientHandler(SFTPHandler):
 
         if self._version >= 4:
             flag_bytes = UInt32(flags)
-            flag_text = ', flags 0x%08x' % flags
+            flag_text = f', flags 0x{flags:08x}'
         else:
             flag_bytes = b''
             flag_text = ''
@@ -2812,7 +2812,7 @@ class SFTPClientHandler(SFTPHandler):
 
         if self._version >= 4:
             flag_bytes = UInt32(flags)
-            flag_text = ', flags 0x%08x' % flags
+            flag_text = f', flags 0x{flags:08x}'
         else:
             flag_bytes = b''
             flag_text = ''
@@ -2827,7 +2827,7 @@ class SFTPClientHandler(SFTPHandler):
 
         if self._version >= 4:
             flag_bytes = UInt32(flags)
-            flag_text = ', flags 0x%08x' % flags
+            flag_text = f', flags 0x{flags:08x}'
         else:
             flag_bytes = b''
             flag_text = ''
@@ -2914,7 +2914,7 @@ class SFTPClientHandler(SFTPHandler):
 
         if self._version >= 5:
             self.logger.debug1('Sending rename request from %s to %s%s',
-                               oldpath, newpath, ', flags=0x%x' % flags
+                               oldpath, newpath, f', flags=0x{flags:x}'
                                if flags else '')
 
             await self._make_request(FXP_RENAME, String(oldpath),
@@ -2991,12 +2991,12 @@ class SFTPClientHandler(SFTPHandler):
             checkmsg = ''
         else:
             try:
-                checkmsg = ', check=%s' % self._realpath_check_names[check]
+                checkmsg = f', check={self._realpath_check_names[check]}'
             except KeyError:
-                checkmsg = ', check=%d' % check
+                checkmsg = f', check={check}'
 
         self.logger.debug1('Sending realpath of %s%s%s', path,
-                           b', compose_path: %s' % b', '.join(compose_paths)
+                           b', compose_path: ' + b', '.join(compose_paths)
                            if compose_paths else b'', checkmsg)
 
         if self._version >= 6:
@@ -3712,8 +3712,8 @@ class SFTPClient:
                     exc = SFTPFileIsADirectory if self.version >= 6 \
                         else SFTPFailure
 
-                    raise exc('%s is a directory' %
-                              srcpath.decode('utf-8', 'backslashreplace'))
+                    raise exc(srcpath.decode('utf-8', 'backslashreplace') +
+                              ' is a directory')
 
                 self.logger.info('  Starting copy of directory %s to %s',
                                  srcpath, dstpath)
@@ -3825,8 +3825,8 @@ class SFTPClient:
             assert dstpath is not None
             exc = SFTPNotADirectory if self.version >= 6 else SFTPFailure
 
-            raise exc('%s must be a directory' %
-                       dstpath.decode('utf-8', 'backslashreplace'))
+            raise exc(dstpath.decode('utf-8', 'backslashreplace') +
+                      ' must be a directory')
 
         for srcname in srcnames:
             srcfile = cast(bytes, srcname.filename)
@@ -4353,7 +4353,7 @@ class SFTPClient:
                     exc = SFTPNotADirectory if self.version >= 6 \
                         else SFTPFailure
 
-                    raise exc('%s is not a directory' % curpath_str) from None
+                    raise exc(f'{curpath_str} is not a directory') from None
             except SFTPPermissionDenied:
                 if i == last:
                     raise
@@ -4361,8 +4361,8 @@ class SFTPClient:
         if exists and not exist_ok:
             exc = SFTPFileAlreadyExists if self.version >= 6 else SFTPFailure
 
-            raise exc('%s already exists' %
-                      curpath.decode('utf-8', 'backslashreplace'))
+            raise exc(curpath.decode('utf-8', 'backslashreplace') +
+                      ' already exists')
 
     async def rmtree(self, path: _SFTPPath, ignore_errors: bool = False,
                      onerror: _SFTPOnErrorHandler = None) -> None:
@@ -4457,8 +4457,8 @@ class SFTPClient:
 
         try:
             if await self.islink(path):
-                raise SFTPNoSuchFile('%s must not be a symlink' %
-                                     path.decode('utf-8', 'backslashreplace'))
+                raise SFTPNoSuchFile(path.decode('utf-8', 'backslashreplace') +
+                                     ' must not be a symlink')
         except SFTPError:
             onerror(self.islink, path, sys.exc_info())
             return
@@ -5641,8 +5641,7 @@ class SFTPServerHandler(SFTPHandler):
 
             handler = self._packet_handlers.get(handler_type)
             if not handler:
-                raise SFTPOpUnsupported('Unsupported request type: %s' %
-                                        pkttype)
+                raise SFTPOpUnsupported(f'Unsupported request type: {pkttype}')
 
             return_type = self._return_types.get(handler_type, FXP_STATUS)
             result = await handler(self, packet)
@@ -5724,7 +5723,7 @@ class SFTPServerHandler(SFTPHandler):
             self.logger.debug1('Sending operation not supported: %s', op_name)
 
             response = (UInt32(FX_OP_UNSUPPORTED) +
-                        String('Operation not supported: %s' % op_name) +
+                        String(f'Operation not supported: {op_name}') +
                         String(DEFAULT_LANG))
         except OSError as exc:
             return_type = FXP_STATUS
@@ -5774,7 +5773,7 @@ class SFTPServerHandler(SFTPHandler):
             response = SFTPError(code, reason).encode(self._version)
         except Exception as exc: # pragma: no cover
             return_type = FXP_STATUS
-            reason = 'Uncaught exception: %s' % str(exc)
+            reason = f'Uncaught exception: {exc}'
 
             self.logger.debug1('Sending failure: %s', reason,
                                exc_info=sys.exc_info)
@@ -5792,10 +5791,10 @@ class SFTPServerHandler(SFTPHandler):
         if self._version >= 5:
             desired_access = packet.get_uint32()
             flags = packet.get_uint32()
-            flagmsg = 'access=0x%04x, flags=0x%04x' % (desired_access, flags)
+            flagmsg = f'access=0x{desired_access:04x}, flags=0x{flags:04x}'
         else:
             pflags = packet.get_uint32()
-            flagmsg = 'pflags=0x%02x' % pflags
+            flagmsg = f'pflags=0x{pflags:02x}'
 
         attrs = SFTPAttrs.decode(packet, self._version)
 
@@ -5809,14 +5808,14 @@ class SFTPServerHandler(SFTPHandler):
             unsupported_access = desired_access & ~self._supported_access_mask
 
             if unsupported_access:
-                raise SFTPInvalidParameter('Unsupported access flags: 0x%08x' %
-                                           unsupported_access)
+                raise SFTPInvalidParameter(
+                    f'Unsupported access flags: 0x{unsupported_access:08x}')
 
             unsupported_flags = flags & ~self._supported_open_flags
 
             if unsupported_flags:
-                raise SFTPInvalidParameter('Unsupported open flags: 0x%08x' %
-                                           unsupported_flags)
+                raise SFTPInvalidParameter(
+                    f'Unsupported open flags: 0x{unsupported_flags:08x}')
 
             result = self._server.open56(path, desired_access, flags, attrs)
         else:
@@ -5928,7 +5927,7 @@ class SFTPServerHandler(SFTPHandler):
             packet.check_end()
 
         self.logger.debug1('Received lstat for %s%s', path,
-                           ', flags=0x%08x' % flags if flags else '')
+                           f', flags=0x{flags:08x}' if flags else '')
 
         # Ignore flags for now, returning all available fields
 
@@ -5952,7 +5951,7 @@ class SFTPServerHandler(SFTPHandler):
             packet.check_end()
 
         self.logger.debug1('Received fstat for handle %s%s', handle.hex(),
-                           ', flags=0x%08x' % flags if flags else '')
+                           f', flags=0x{flags:08x}' if flags else '')
 
         file_obj = self._file_handles.get(handle)
 
@@ -6124,14 +6123,14 @@ class SFTPServerHandler(SFTPHandler):
                 compose_paths.append(packet.get_string())
 
             try:
-                checkmsg = ', check=%s' % self._realpath_check_names[check]
+                checkmsg = f', check={self._realpath_check_names[check]}'
             except KeyError:
                 raise SFTPInvalidParameter('Invalid check value') from None
         else:
             check = FXRP_NO_CHECK
 
         self.logger.debug1('Received realpath for %s%s%s', path,
-                           b', compose_path: %s' % b', '.join(compose_paths)
+                           b', compose_path: ' + b', '.join(compose_paths)
                            if compose_paths else b'', checkmsg)
 
         for cpath in compose_paths:
@@ -6167,7 +6166,7 @@ class SFTPServerHandler(SFTPHandler):
             packet.check_end()
 
         self.logger.debug1('Received stat for %s%s', path,
-                           ', flags=0x%08x' % flags if flags else '')
+                           f', flags=0x{flags:08x}' if flags else '')
 
         # Ignore flags for now, returning all available fields
         result = self._server.stat(path)
@@ -6187,7 +6186,7 @@ class SFTPServerHandler(SFTPHandler):
 
         if self._version >= 5:
             flags = packet.get_uint32()
-            flag_text = ', flags=0x%08x' % flags
+            flag_text = f', flags=0x{flags:08x}'
         else:
             flags = 0
             flag_text = ''
@@ -6757,8 +6756,8 @@ class SFTPServer:
         else:
             modtime = ''
 
-        detail = '{:10s} {:>4s} {:8s} {:8s} {:>8s} {:12s} '.format(
-            mode, nlink, user, group, size, modtime)
+        detail = f'{mode:10s} {nlink:>4s} {user:8s} {group:8s} ' \
+                 f'{size:>8s} {modtime:12s} '
 
         name.longname = detail.encode('utf-8') + cast(bytes, name.filename)
 

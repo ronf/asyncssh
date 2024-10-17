@@ -429,7 +429,7 @@ class _SCPSource(_SCPHandler):
 
         assert attrs.permissions is not None
 
-        args = '%04o %d ' % (attrs.permissions & 0o7777, size)
+        args = f'{attrs.permissions & 0o7777:04o} {size} '
         await self.make_request(action, args.encode('ascii'),
                                 self._fs.basename(path))
 
@@ -442,7 +442,7 @@ class _SCPSource(_SCPHandler):
         assert attrs.mtime is not None
         assert attrs.atime is not None
 
-        args = '%d 0 %d 0' % (attrs.mtime, attrs.atime)
+        args = f'{attrs.mtime} 0 {attrs.atime} 0'
         await self.make_request(b'T', args.encode('ascii'))
 
     async def _send_file(self, srcpath: bytes,

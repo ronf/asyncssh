@@ -31,8 +31,8 @@
 import asyncio, asyncssh, sys
 
 def handle_client(process: asyncssh.SSHServerProcess) -> None:
-    process.stdout.write('Welcome to my SSH server, %s!\n' %
-                         process.get_extra_info('username'))
+    username = process.get_extra_info('username')
+    process.stdout.write(f'Welcome to my SSH server, {username}!\n')
     process.exit(0)
 
 class MySSHServer(asyncssh.SSHServer):
@@ -41,7 +41,7 @@ class MySSHServer(asyncssh.SSHServer):
 
     def begin_auth(self, username: str) -> bool:
         try:
-            self._conn.set_authorized_keys('authorized_keys/%s' % username)
+            self._conn.set_authorized_keys(f'authorized_keys/{username}')
         except OSError:
             pass
 

@@ -327,9 +327,9 @@ async def create_tcp_local_listener(
                 exc.strerror = str(exc) # type: ignore
 
             # pylint: disable=no-member
-            raise OSError(exc.errno, 'error while attempting ' # type: ignore
-                          'to bind on address %r: %s' %
-                          (sa, exc.strerror)) from None # type: ignore
+            raise OSError(exc.errno, f'error while attempting ' # type: ignore
+                          f'to bind on address {sa!r}: '
+                          f'{exc.strerror}') from None # type: ignore
 
         if listen_port == 0:
             listen_port = sock.getsockname()[1]

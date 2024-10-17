@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2021 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2024 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -169,8 +169,8 @@ class RawDERObject:
         self.content = content
 
     def __repr__(self) -> str:
-        return ('RawDERObject(%s, %s, %r)' %
-                (_asn1_class[self.asn1_class], self.tag, self.content))
+        return f'RawDERObject({_asn1_class[self.asn1_class]}, ' \
+               f'{self.tag}, {self.content!r})'
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, RawDERObject): # pragma: no cover
@@ -213,10 +213,10 @@ class TaggedDERObject:
 
     def __repr__(self) -> str:
         if self.asn1_class == CONTEXT_SPECIFIC:
-            return 'TaggedDERObject(%s, %r)' % (self.tag, self.value)
+            return f'TaggedDERObject({self.tag}, {self.value!r})'
         else:
-            return ('TaggedDERObject(%s, %s, %r)' %
-                    (_asn1_class[self.asn1_class], self.tag, self.value))
+            return f'TaggedDERObject({_asn1_class[self.asn1_class]}, ' \
+                   f'{self.tag}, {self.value!r})'
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, TaggedDERObject): # pragma: no cover
@@ -469,7 +469,7 @@ class BitString(DERType):
         return result
 
     def __repr__(self) -> str:
-        return "BitString('%s')" % self
+        return f"BitString('{self}')"
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, BitString): # pragma: no cover
@@ -508,10 +508,10 @@ class IA5String(DERType):
         self.value = value
 
     def __str__(self) -> str:
-        return '%s' % self.value.decode('ascii')
+        return self.value.decode('ascii')
 
     def __repr__(self) -> str:
-        return 'IA5String(%r)' % self.value
+        return f'IA5String({self.value!r})'
 
     def __eq__(self, other: object) -> bool: # pragma: no cover
         if not isinstance(other, IA5String):
@@ -569,7 +569,7 @@ class ObjectIdentifier(DERType):
         return self.value
 
     def __repr__(self) -> str:
-        return "ObjectIdentifier('%s')" % self.value
+        return f"ObjectIdentifier('{self.value}')"
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, ObjectIdentifier): # pragma: no cover
@@ -685,7 +685,7 @@ def der_encode(value: object) -> bytes:
         identifier = cls.identifier
         content = cls.encode(value)
     else:
-        raise ASN1EncodeError('Cannot DER encode type %s' % t.__name__)
+        raise ASN1EncodeError(f'Cannot DER encode type {t.__name__}')
 
     length = len(content)
     if length < 0x80:

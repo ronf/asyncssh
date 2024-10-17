@@ -1,4 +1,4 @@
-# Copyright (c) 2016-2023 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2016-2024 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -345,7 +345,7 @@ class SSHX11ServerListener:
 
         self._channels.add(chan)
 
-        return '%s.%s' % (self._display, screen)
+        return f'{self._display}.{screen}'
 
     def detach(self, chan: 'SSHChannel') -> bool:
         """Detach a channel from this listener"""
@@ -534,7 +534,7 @@ async def create_x11_server_listener(conn: 'SSHServerConnection',
         except OSError:
             continue
 
-        display = '%s:%d' % (X11_LISTEN_HOST, dpynum)
+        display = f'{X11_LISTEN_HOST}:{dpynum}'
 
         try:
             await update_xauth(auth_path, X11_LISTEN_HOST, str(dpynum),

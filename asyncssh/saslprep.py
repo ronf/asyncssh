@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2023 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2024 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -72,7 +72,7 @@ def _stringprep(s: str, check_unassigned: bool,
     if check_unassigned: # pragma: no branch
         for c in s:
             if stringprep.in_table_a1(c):
-                raise SASLPrepError('Unassigned character: %r' % c)
+                raise SASLPrepError(f'Unassigned character: {c!r}')
 
     if mapping: # pragma: no branch
         s = mapping(s)
@@ -84,7 +84,7 @@ def _stringprep(s: str, check_unassigned: bool,
         for c in s:
             for lookup in prohibited:
                 if lookup(c):
-                    raise SASLPrepError('Prohibited character: %r' % c)
+                    raise SASLPrepError(f'Prohibited character: {c!r}')
 
     if bidi: # pragma: no branch
         _check_bidi(s)

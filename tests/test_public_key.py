@@ -1,4 +1,4 @@
-# Copyright (c) 2014-2022 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2014-2024 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -408,7 +408,7 @@ class _TestPublicKey(TempDirTestCase):
             fp = newkey.get_fingerprint(hash_name)
 
             if self.use_openssh: # pragma: no branch
-                keygen_fp = run('ssh-keygen -l -E %s -f sshpub' % hash_name)
+                keygen_fp = run(f'ssh-keygen -l -E {hash_name} -f sshpub')
                 self.assertEqual(fp, keygen_fp.decode('ascii').split()[1])
 
         with self.assertRaises(ValueError):
@@ -504,15 +504,15 @@ class _TestPublicKey(TempDirTestCase):
     def import_pkcs1_private(self, fmt, cipher=None, args=None):
         """Check import of a PKCS#1 private key"""
 
-        format_name = 'pkcs1-%s' % fmt
+        format_name = f'pkcs1-{fmt}'
 
         if self.use_openssl: # pragma: no branch
             if cipher:
-                run('openssl %s %s -in priv -inform pem -out new -outform %s '
-                    '-passout pass:passphrase' % (self.keyclass, args, fmt))
+                run(f'openssl {self.keyclass} {args} -in priv -inform pem '
+                    f'-out new -outform {fmt} -passout pass:passphrase')
             else:
-                run('openssl %s -in priv -inform pem -out new -outform %s' %
-                    (self.keyclass, fmt))
+                run(f'openssl {self.keyclass} -in priv -inform pem '
+                    f'-out new -outform {fmt}')
         else: # pragma: no cover
             self.privkey.write_private_key('new', format_name,
                                            select_passphrase(cipher), cipher)
@@ -522,18 +522,18 @@ class _TestPublicKey(TempDirTestCase):
     def export_pkcs1_private(self, fmt, cipher=None, legacy_args=None):
         """Check export of a PKCS#1 private key"""
 
-        format_name = 'pkcs1-%s' % fmt
+        format_name = f'pkcs1-{fmt}'
         self.privkey.write_private_key('privout', format_name,
                                        select_passphrase(cipher), cipher)
 
         if self.use_openssl: # pragma: no branch
             if cipher:
-                run('openssl %s %s -in privout -inform %s -out new '
-                    '-outform pem -passin pass:passphrase' %
-                    (self.keyclass, legacy_args, fmt))
+                run(f'openssl {self.keyclass} {legacy_args} -in privout '
+                    f'-inform {fmt} -out new -outform pem '
+                    '-passin pass:passphrase')
             else:
-                run('openssl %s -in privout -inform %s -out new -outform pem' %
-                    (self.keyclass, fmt))
+                run(f'openssl {self.keyclass} -in privout -inform {fmt} '
+                    '-out new -outform pem')
         else: # pragma: no cover
             priv = asyncssh.read_private_key('privout',
                                              select_passphrase(cipher))
@@ -544,7 +544,7 @@ class _TestPublicKey(TempDirTestCase):
     def import_pkcs1_public(self, fmt):
         """Check import of a PKCS#1 public key"""
 
-        format_name = 'pkcs1-%s' % fmt
+        format_name = f'pkcs1-{fmt}'
 
         if (not self.use_openssl or self.keyclass == 'dsa' or
                 _openssl_version < b'OpenSSL 1.0.0'): # pragma: no cover
@@ -554,15 +554,15 @@ class _TestPublicKey(TempDirTestCase):
 
             self.pubkey.write_public_key('new', format_name)
         else:
-            run('openssl %s -pubin -in pub -inform pem -RSAPublicKey_out '
-                '-out new -outform %s' % (self.keyclass, fmt))
+            run(f'openssl {self.keyclass} -pubin -in pub -inform pem '
+                f'-RSAPublicKey_out -out new -outform {fmt}')
 
         self.check_public(format_name)
 
     def export_pkcs1_public(self, fmt):
         """Check export of a PKCS#1 public key"""
 
-        format_name = 'pkcs1-%s' % fmt
+        format_name = f'pkcs1-{fmt}'
         self.privkey.write_public_key('pubout', format_name)
 
         if not self.use_openssl or self.keyclass == 'dsa': # pragma: no cover
@@ -570,10 +570,10 @@ class _TestPublicKey(TempDirTestCase):
             # only test against ourselves.
 
             pub = asyncssh.read_public_key('pubout')
-            pub.write_public_key('new', 'pkcs1-%s' % fmt)
+            pub.write_public_key('new', format_name)
         else:
-            run('openssl %s -RSAPublicKey_in -in pubout -inform %s -out new '
-                '-outform pem' % (self.keyclass, fmt))
+            run(f'openssl {self.keyclass} -RSAPublicKey_in -in pubout '
+                f'-inform {fmt} -out new -outform pem')
 
         self.check_public(format_name)
 
@@ -581,15 +581,15 @@ class _TestPublicKey(TempDirTestCase):
                              hash_alg=None, pbe_version=None, args=None):
         """Check import of a PKCS#8 private key"""
 
-        format_name = 'pkcs8-%s' % fmt
+        format_name = f'pkcs8-{fmt}'
 
         if self.use_openssl and openssl_ok: # pragma: no branch
             if cipher:
-                run('openssl pkcs8 -topk8 %s -in priv -inform pem -out new '
-                    '-outform %s -passout pass:passphrase' % (args, fmt))
+                run(f'openssl pkcs8 -topk8 {args} -in priv -inform pem '
+                    f'-out new -outform {fmt} -passout pass:passphrase')
             else:
                 run('openssl pkcs8 -topk8 -nocrypt -in priv -inform pem '
-                    '-out new -outform %s' % fmt)
+                    f'-out new -outform {fmt}')
         else: # pragma: no cover
             self.privkey.write_private_key('new', format_name,
                                            select_passphrase(cipher,
@@ -603,23 +603,21 @@ class _TestPublicKey(TempDirTestCase):
                              legacy_args=None):
         """Check export of a PKCS#8 private key"""
 
-        format_name = 'pkcs8-%s' % fmt
+        format_name = f'pkcs8-{fmt}'
         self.privkey.write_private_key('privout', format_name,
                                        select_passphrase(cipher, pbe_version),
                                        cipher, hash_alg, pbe_version)
 
         if self.use_openssl and openssl_ok: # pragma: no branch
             if cipher:
-                run('openssl pkcs8 %s -in privout -inform %s -out new '
-                    '-outform pem -passin pass:passphrase' %
-                    (legacy_args, fmt))
+                run(f'openssl pkcs8 {legacy_args} -in privout -inform {fmt} '
+                    '-out new -outform pem -passin pass:passphrase')
             else:
-                run('openssl pkcs8 -nocrypt -in privout -inform %s -out new '
-                    '-outform pem' % fmt)
+                run(f'openssl pkcs8 -nocrypt -in privout -inform {fmt} '
+                    '-out new -outform pem')
         else: # pragma: no cover
-            priv = asyncssh.read_private_key('privout',
-                                             select_passphrase(cipher,
-                                                               pbe_version))
+            priv = asyncssh.read_private_key(
+                'privout', select_passphrase(cipher, pbe_version))
             priv.write_private_key('new', format_name)
 
         self.check_private(format_name)
@@ -627,15 +625,15 @@ class _TestPublicKey(TempDirTestCase):
     def import_pkcs8_public(self, fmt):
         """Check import of a PKCS#8 public key"""
 
-        format_name = 'pkcs8-%s' % fmt
+        format_name = f'pkcs8-{fmt}'
 
         if self.use_openssl:
             if _openssl_supports_pkey:
                 run('openssl pkey -pubin -in pub -inform pem -out new '
-                    '-outform %s' % fmt)
+                    f'-outform {fmt}')
             else: # pragma: no cover
-                run('openssl %s -pubin -in pub -inform pem -out new '
-                    '-outform %s' % (self.keyclass, fmt))
+                run(f'openssl {self.keyclass} -pubin -in pub -inform pem '
+                    f'-out new -outform {fmt}')
         else: # pragma: no cover
             self.pubkey.write_public_key('new', format_name)
 
@@ -644,16 +642,16 @@ class _TestPublicKey(TempDirTestCase):
     def export_pkcs8_public(self, fmt):
         """Check export of a PKCS#8 public key"""
 
-        format_name = 'pkcs8-%s' % fmt
+        format_name = f'pkcs8-{fmt}'
         self.privkey.write_public_key('pubout', format_name)
 
         if self.use_openssl:
             if _openssl_supports_pkey:
-                run('openssl pkey -pubin -in pubout -inform %s -out new '
-                    '-outform pem' % fmt)
+                run(f'openssl pkey -pubin -in pubout -inform {fmt} '
+                    '-out new -outform pem')
             else: # pragma: no cover
-                run('openssl %s -pubin -in pubout -inform %s -out new '
-                    '-outform pem' % (self.keyclass, fmt))
+                run(f'openssl {self.keyclass} -pubin -in pubout '
+                    f'-inform {fmt} -out new -outform pem')
         else: # pragma: no cover
             pub = asyncssh.read_public_key('pubout')
             pub.write_public_key('new', format_name)
@@ -667,8 +665,7 @@ class _TestPublicKey(TempDirTestCase):
             shutil.copy('priv', 'new')
 
             if cipher:
-                run('ssh-keygen -p -a 1 -N passphrase -Z %s -o -f new' %
-                    cipher)
+                run(f'ssh-keygen -p -a 1 -N passphrase -Z {cipher} -o -f new')
             else:
                 run('ssh-keygen -p -N "" -o -f new')
         else: # pragma: no cover
@@ -770,7 +767,7 @@ class _TestPublicKey(TempDirTestCase):
         """Check import of an RFC4716 certificate"""
 
         if self.use_openssh: # pragma: no branch
-            run('ssh-keygen -e -f %s -m rfc4716 > cert' % cert)
+            run(f'ssh-keygen -e -f {cert} -m rfc4716 > cert')
         else: # pragma: no cover
             if cert_type == CERT_TYPE_USER:
                 cert = self.usercert
@@ -863,7 +860,7 @@ class _TestPublicKey(TempDirTestCase):
 
         for fmt in ('pkcs1-der', 'pkcs1-pem', 'pkcs8-der', 'pkcs8-pem',
                     'openssh', 'rfc4716', 'xxx'):
-            with self.subTest('Encode private from public (%s)' % fmt):
+            with self.subTest(f'Encode private from public ({fmt})'):
                 with self.assertRaises(asyncssh.KeyExportError):
                     self.pubkey.export_private_key(fmt)
 
@@ -1224,23 +1221,23 @@ class _TestPublicKey(TempDirTestCase):
         ]
 
         for fmt, data in private_errors:
-            with self.subTest('Decode private (%s)' % fmt):
+            with self.subTest(f'Decode private ({fmt})'):
                 with self.assertRaises(asyncssh.KeyImportError):
                     asyncssh.import_private_key(data)
 
         for fmt, data in decrypt_errors:
-            with self.subTest('Decrypt private (%s)' % fmt):
+            with self.subTest('fDecrypt private ({fmt})'):
                 with self.assertRaises((asyncssh.KeyEncryptionError,
                                         asyncssh.KeyImportError)):
                     asyncssh.import_private_key(data, 'x')
 
         for fmt, data in public_errors:
-            with self.subTest('Decode public (%s)' % fmt):
+            with self.subTest(f'Decode public ({fmt})'):
                 with self.assertRaises(asyncssh.KeyImportError):
                     asyncssh.import_public_key(data)
 
         for fmt, key in keypair_errors:
-            with self.subTest('Load keypair (%s)' % fmt):
+            with self.subTest(f'Load keypair ({fmt})'):
                 with self.assertRaises(ValueError):
                     asyncssh.load_keypairs([key])
 
@@ -1567,10 +1564,10 @@ class _TestPublicKey(TempDirTestCase):
         for cipher, args, legacy in pkcs1_ciphers:
             legacy_args = _openssl_legacy if legacy else ''
 
-            with self.subTest('Import PKCS#1 PEM private (%s)' % cipher):
+            with self.subTest(f'Import PKCS#1 PEM private ({cipher})'):
                 self.import_pkcs1_private('pem', cipher, legacy_args + args)
 
-            with self.subTest('Export PKCS#1 PEM private (%s)' % cipher):
+            with self.subTest(f'Export PKCS#1 PEM private ({cipher})'):
                 self.export_pkcs1_private('pem', cipher, legacy_args)
 
     def check_pkcs1_public(self):
@@ -1607,25 +1604,25 @@ class _TestPublicKey(TempDirTestCase):
                 openssl_ok, legacy in pkcs8_ciphers:
             legacy_args = _openssl_legacy if legacy else ''
 
-            with self.subTest('Import PKCS#8 PEM private (%s-%s-v%s)' %
-                              (cipher, hash_alg, pbe_version)):
+            with self.subTest(f'Import PKCS#8 PEM private ({cipher}-'
+                              f'{hash_alg}-v{pbe_version})'):
                 self.import_pkcs8_private('pem', openssl_ok, cipher,
                                           hash_alg, pbe_version,
                                           legacy_args + args)
 
-            with self.subTest('Export PKCS#8 PEM private (%s-%s-v%s)' %
-                              (cipher, hash_alg, pbe_version)):
+            with self.subTest(f'Export PKCS#8 PEM private ({cipher}-'
+                              f'{hash_alg}-v{pbe_version})'):
                 self.export_pkcs8_private('pem', openssl_ok, cipher,
                                           hash_alg, pbe_version, legacy_args)
 
-            with self.subTest('Import PKCS#8 DER private (%s-%s-v%s)' %
-                              (cipher, hash_alg, pbe_version)):
+            with self.subTest(f'Import PKCS#8 DER private ({cipher}-'
+                              f'{hash_alg}-v{pbe_version})'):
                 self.import_pkcs8_private('der', openssl_ok, cipher,
                                           hash_alg, pbe_version,
                                           legacy_args + args)
 
-            with self.subTest('Export PKCS#8 DER private (%s-%s-v%s)' %
-                              (cipher, hash_alg, pbe_version)):
+            with self.subTest(f'Export PKCS#8 DER private ({cipher}-'
+                              f'{hash_alg}-v{pbe_version})'):
                 self.export_pkcs8_private('der', openssl_ok, cipher,
                                           hash_alg, pbe_version, legacy_args)
 
@@ -1658,10 +1655,10 @@ class _TestPublicKey(TempDirTestCase):
 
         if bcrypt_available: # pragma: no branch
             for cipher, openssh_ok in openssh_ciphers:
-                with self.subTest('Import OpenSSH private (%s)' % cipher):
+                with self.subTest(f'Import OpenSSH private ({cipher})'):
                     self.import_openssh_private(openssh_ok, cipher)
 
-                with self.subTest('Export OpenSSH private (%s)' % cipher):
+                with self.subTest(f'Export OpenSSH private ({cipher})'):
                     self.export_openssh_private(openssh_ok, cipher)
 
                 if self.single_cipher:
@@ -2278,8 +2275,8 @@ class _TestPublicKeyTopLevel(TempDirTestCase):
             for curve in ('secp256r1', 'secp384r1', 'secp521r1'):
                 with self.subTest('Import EC key with explicit parameters',
                                   curve=curve):
-                    run('openssl ecparam -out priv -noout -genkey -name %s '
-                        '-param_enc explicit' % curve)
+                    run('openssl ecparam -out priv -noout -genkey '
+                        f'-name {curve} -param_enc explicit')
                     asyncssh.read_private_key('priv')
 
     @unittest.skipIf(not _openssl_available, "openssl isn't available")

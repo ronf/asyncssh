@@ -37,7 +37,7 @@ class _TestSASLPrep(unittest.TestCase):
         """Test passing strings with unassigned code points"""
 
         for s in ('\u0221', '\u038b', '\u0510', '\u070e', '\u0900', '\u0a00'):
-            with self.assertRaises(SASLPrepError, msg='U+%08x' % ord(s)):
+            with self.assertRaises(SASLPrepError, msg=f'U+{ord(s):08x}'):
                 saslprep('abc' + s + 'def')
 
     def test_map_to_nothing(self):
@@ -45,19 +45,19 @@ class _TestSASLPrep(unittest.TestCase):
 
         for s in ('\u00ad', '\u034f', '\u1806', '\u200c', '\u2060', '\ufe00'):
             self.assertEqual(saslprep('abc' + s + 'def'), 'abcdef',
-                             msg='U+%08x' % ord(s))
+                             msg=f'U+{ord(s):08x}')
 
     def test_map_to_whitespace(self):
         """Test passing strings with characters that map to whitespace"""
         for s in ('\u00a0', '\u1680', '\u2000', '\u202f', '\u205f', '\u3000'):
             self.assertEqual(saslprep('abc' + s + 'def'), 'abc def',
-                             msg='U+%08x' % ord(s))
+                             msg=f'U+{ord(s):08x}')
 
     def test_normalization(self):
         """Test Unicode normalization form KC conversions"""
         for (s, n) in (('\u00aa', 'a'), ('\u2168', 'IX')):
             self.assertEqual(saslprep('abc' + s + 'def'), 'abc' + n + 'def',
-                             msg='U+%08x' % ord(s))
+                             msg=f'U+{ord(s):08x}')
 
     def test_prohibited(self):
         """Test passing strings with prohibited characters"""
@@ -65,7 +65,7 @@ class _TestSASLPrep(unittest.TestCase):
                   '\u2028', '\u202a', '\u206a', '\u2ff0', '\u2ffb', '\ud800',
                   '\udfff', '\ue000', '\ufdd0', '\ufef9', '\ufffc', '\uffff',
                   '\U0001d173', '\U000E0001', '\U00100000', '\U0010fffd'):
-            with self.assertRaises(SASLPrepError, msg='U+%08x' % ord(s)):
+            with self.assertRaises(SASLPrepError, msg=f'U+{ord(s):08x}'):
                 saslprep('abc' + s + 'def')
 
     def test_bidi(self):

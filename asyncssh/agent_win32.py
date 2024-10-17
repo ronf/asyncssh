@@ -78,7 +78,7 @@ class _PageantTransport:
     """Transport to connect to Pageant agent on Windows"""
 
     def __init__(self) -> None:
-        self._mapname = '%s%08x' % (_AGENT_NAME, win32api.GetCurrentThreadId())
+        self._mapname = f'{_AGENT_NAME}{win32api.GetCurrentThreadId():08x}'
 
         try:
             self._mapfile = mmapfile.mmapfile('', self._mapname,

@@ -298,7 +298,7 @@ class SSHAgentClient:
             resp.check_end()
             return result
         else:
-            raise ValueError('Unknown SSH agent response: %d' % resptype)
+            raise ValueError(f'Unknown SSH agent response: {resptype}')
 
     async def sign(self, key_blob: bytes, data: bytes,
                    flags: int = 0) -> bytes:
@@ -315,7 +315,7 @@ class SSHAgentClient:
         elif resptype == SSH_AGENT_FAILURE:
             raise ValueError('Unable to sign with requested key')
         else:
-            raise ValueError('Unknown SSH agent response: %d' % resptype)
+            raise ValueError(f'Unknown SSH agent response: {resptype}')
 
     async def add_keys(self, keylist: KeyPairListArg = (),
                        passphrase: Optional[str] = None,
@@ -397,7 +397,7 @@ class SSHAgentClient:
                 if not ignore_failures:
                     raise ValueError('Unable to add key')
             else:
-                raise ValueError('Unknown SSH agent response: %d' % resptype)
+                raise ValueError(f'Unknown SSH agent response: {resptype}')
 
     async def add_smartcard_keys(self, provider: str,
                                  pin: Optional[str] = None,
@@ -438,7 +438,7 @@ class SSHAgentClient:
         elif resptype == SSH_AGENT_FAILURE:
             raise ValueError('Unable to add keys')
         else:
-            raise ValueError('Unknown SSH agent response: %d' % resptype)
+            raise ValueError(f'Unknown SSH agent response: {resptype}')
 
     async def remove_keys(self, keylist: Sequence[SSHKeyPair]) -> None:
         """Remove a key stored in the agent
@@ -461,7 +461,7 @@ class SSHAgentClient:
             elif resptype == SSH_AGENT_FAILURE:
                 raise ValueError('Key not found')
             else:
-                raise ValueError('Unknown SSH agent response: %d' % resptype)
+                raise ValueError(f'Unknown SSH agent response: {resptype}')
 
     async def remove_smartcard_keys(self, provider: str,
                                     pin: Optional[str] = None) -> None:
@@ -487,7 +487,7 @@ class SSHAgentClient:
         elif resptype == SSH_AGENT_FAILURE:
             raise ValueError('Keys not found')
         else:
-            raise ValueError('Unknown SSH agent response: %d' % resptype)
+            raise ValueError(f'Unknown SSH agent response: {resptype}')
 
     async def remove_all(self) -> None:
         """Remove all keys stored in the agent
@@ -504,7 +504,7 @@ class SSHAgentClient:
         elif resptype == SSH_AGENT_FAILURE:
             raise ValueError('Unable to remove all keys')
         else:
-            raise ValueError('Unknown SSH agent response: %d' % resptype)
+            raise ValueError(f'Unknown SSH agent response: {resptype}')
 
     async def lock(self, passphrase: str) -> None:
         """Lock the agent using the specified passphrase
@@ -528,7 +528,7 @@ class SSHAgentClient:
         elif resptype == SSH_AGENT_FAILURE:
             raise ValueError('Unable to lock SSH agent')
         else:
-            raise ValueError('Unknown SSH agent response: %d' % resptype)
+            raise ValueError(f'Unknown SSH agent response: {resptype}')
 
     async def unlock(self, passphrase: str) -> None:
         """Unlock the agent using the specified passphrase
@@ -552,7 +552,7 @@ class SSHAgentClient:
         elif resptype == SSH_AGENT_FAILURE:
             raise ValueError('Unable to unlock SSH agent')
         else:
-            raise ValueError('Unknown SSH agent response: %d' % resptype)
+            raise ValueError(f'Unknown SSH agent response: {resptype}')
 
     async def query_extensions(self) -> Sequence[str]:
         """Return a list of extensions supported by the agent
@@ -581,7 +581,7 @@ class SSHAgentClient:
         elif resptype == SSH_AGENT_FAILURE:
             return []
         else:
-            raise ValueError('Unknown SSH agent response: %d' % resptype)
+            raise ValueError(f'Unknown SSH agent response: {resptype}')
 
     def close(self) -> None:
         """Close the SSH agent connection

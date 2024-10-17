@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2023 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2024 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -91,8 +91,8 @@ class _ECKey(SSHKey):
             try:
                 curve_id = _alg_oid_map[alg_params]
             except KeyError:
-                raise KeyImportError('Unknown elliptic curve OID %s' %
-                                     alg_params) from None
+                raise KeyImportError('Unknown elliptic curve OID '
+                                     f'{alg_params}') from None
         elif (isinstance(alg_params, tuple) and len(alg_params) >= 5 and
               alg_params[0] == 1 and isinstance(alg_params[1], tuple) and
               len(alg_params[1]) == 2 and alg_params[1][0] == PRIME_FIELD and

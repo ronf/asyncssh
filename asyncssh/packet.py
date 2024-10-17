@@ -193,14 +193,14 @@ class SSHPacketLogger:
             packet = packet.get_full_payload()
 
         try:
-            name = '%s (%d)' % (self._handler_names[pkttype], pkttype)
+            name = f'{self._handler_names[pkttype]} ({pkttype})'
         except KeyError:
-            name = 'packet type %d' % pkttype
+            name = f'packet type {pkttype}'
 
         count = plural(len(packet), 'byte')
 
         if note:
-            note = ' (%s)' % note
+            note = f' ({note})'
 
         self.logger.packet(pktid, packet, '%s %s, %s%s',
                            msg, name, count, note)

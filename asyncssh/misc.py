@@ -151,7 +151,7 @@ def encode_env(env: Env) -> Iterator[Tuple[bytes, bytes]]:
 
             yield key_bytes, value_bytes
     except (TypeError, ValueError) as exc:
-        raise ValueError('Invalid environment value: %s' % exc) from None
+        raise ValueError(f'Invalid environment value: {exc}') from None
 
 
 def lookup_env(patterns: EnvSeq) -> Iterator[Tuple[bytes, bytes]]:
@@ -193,7 +193,7 @@ def hide_empty(value: object, prefix: str = ', ') -> str:
 def plural(length: int, label: str, suffix: str = 's') -> str:
     """Return a label with an optional plural suffix"""
 
-    return '%d %s%s' % (length, label, suffix if length != 1 else '')
+    return f'{length} {label}{suffix if length != 1 else ""}'
 
 
 def all_ints(seq: Sequence[object]) -> bool:
@@ -443,8 +443,8 @@ class Options:
     def __init__(self, options: Optional['Options'] = None, **kwargs: object):
         if options:
             if not isinstance(options, type(self)):
-                raise TypeError('Invalid %s, got %s' %
-                                (type(self).__name__, type(options).__name__))
+                raise TypeError(f'Invalid {type(self).__name__}, '
+                                f'got {type(options).__name__}')
 
             self.kwargs = options.kwargs.copy()
         else:
@@ -495,15 +495,15 @@ class Record(metaclass=_RecordMeta):
             setattr(self, k, v)
 
     def __repr__(self) -> str:
-        return '%s(%s)' % (type(self).__name__,
-                           ', '.join('%s=%r' % (k, getattr(self, k))
-                                     for k in self.__slots__))
+        values = ', '.join(f'{k}={getattr(self, k)!r}' for k in self.__slots__)
+
+        return f'{type(self).__name__}({values})'
 
     def __str__(self) -> str:
         values = ((k, self._format(k, getattr(self, k)))
                   for k in self.__slots__)
 
-        return ', '.join('%s: %s' % (k, v) for k, v in values if v is not None)
+        return ', '.join(f'{k}: {v}' for k, v in values if v is not None)
 
     def _format(self, k: str, v: object) -> Optional[str]:
         """Format a field as a string"""
@@ -788,7 +788,7 @@ class PasswordChangeRequired(Exception):
     """
 
     def __init__(self, prompt: str, lang: str = DEFAULT_LANG):
-        super().__init__('Password change required: %s' % prompt)
+        super().__init__(f'Password change required: {prompt}')
         self.prompt = prompt
         self.lang = lang
 
@@ -806,7 +806,7 @@ class BreakReceived(Exception):
     """
 
     def __init__(self, msec: int):
-        super().__init__('Break for %s msec' % msec)
+        super().__init__(f'Break for {msec} msec')
         self.msec = msec
 
 
@@ -823,7 +823,7 @@ class SignalReceived(Exception):
     """
 
     def __init__(self, signal: str):
-        super().__init__('Signal: %s' % signal)
+        super().__init__(f'Signal: {signal}')
         self.signal = signal
 
 
@@ -861,8 +861,8 @@ class TerminalSizeChanged(Exception):
     """
 
     def __init__(self, width: int, height: int, pixwidth: int, pixheight: int):
-        super().__init__('Terminal size change: (%s, %s, %s, %s)' %
-                         (width, height, pixwidth, pixheight))
+        super().__init__(f'Terminal size change: ({width}, {height}, '
+                         f'{pixwidth}, {pixheight})')
         self.width = width
         self.height = height
         self.pixwidth = pixwidth
@@ -895,4 +895,4 @@ def construct_disc_error(code: int, reason: str, lang: str) -> DisconnectError:
     try:
         return _disc_error_map[code](reason, lang)
     except KeyError:
-        return DisconnectError(code, '%s (error %d)' % (reason, code), lang)
+        return DisconnectError(code, f'{reason} (error {code})', lang)

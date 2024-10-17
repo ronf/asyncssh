@@ -1,4 +1,4 @@
-# Copyright (c) 2015-2021 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2015-2024 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -61,8 +61,7 @@ class _ECKey(CryptoKey):
         try:
             return _curves[curve_id]
         except KeyError: # pragma: no cover, other curves not registered
-            raise ValueError('Unknown EC curve %s' %
-                             curve_id.decode()) from None
+            raise ValueError(f'Unknown EC curve {curve_id.decode()}') from None
 
     @property
     def curve_id(self) -> bytes:
@@ -181,8 +180,7 @@ class ECDH:
         try:
             curve = _curves[curve_id]
         except KeyError: # pragma: no cover, other curves not registered
-            raise ValueError('Unknown EC curve %s' %
-                             curve_id.decode()) from None
+            raise ValueError(f'Unknown EC curve {curve_id.decode()}') from None
 
         self._priv_key = ec.generate_private_key(curve())
 

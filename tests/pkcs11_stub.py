@@ -1,4 +1,4 @@
-# Copyright (c) 2020-2021 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2020-2024 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -65,7 +65,7 @@ class _PKCS11Key:
         """Return self-signed X.509 cert for this key"""
 
         return self._priv.generate_x509_user_certificate(
-            self._priv, 'OU=%s,CN=ckey' % self.label)
+            self._priv, f'OU={self.label},CN=ckey')
 
     def get_public(self):
         """Return public key corresponding to this key"""

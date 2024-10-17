@@ -557,8 +557,7 @@ def _expand_algs(alg_type: str, algs: str,
                    if pattern.matches(alg.decode('ascii'))]
 
         if not matches and strict_match:
-            raise ValueError('"%s" matches no valid %s algorithms' %
-                             (pat, alg_type))
+            raise ValueError(f'"{pat}" matches no valid {alg_type} algorithms')
 
         matched.extend(matches)
 
@@ -596,8 +595,8 @@ def _select_algs(alg_type: str, algs: _AlgsArg, config_algs: _AlgsArg,
 
         for alg in expanded_algs:
             if alg not in possible_algs:
-                raise ValueError('%s is not a valid %s algorithm' %
-                                 (alg.decode('ascii'), alg_type))
+                raise ValueError(f'{alg.decode("ascii")} is not a valid '
+                                 f'{alg_type} algorithm')
 
             if alg not in result:
                 result.append(alg)
@@ -606,7 +605,7 @@ def _select_algs(alg_type: str, algs: _AlgsArg, config_algs: _AlgsArg,
     elif none_value:
         return [none_value]
     else:
-        raise ValueError('No %s algorithms selected' % alg_type)
+        raise ValueError(f'No {alg_type} algorithms selected')
 
 
 def _select_host_key_algs(algs: _AlgsArg, config_algs: _AlgsArg,
@@ -929,8 +928,8 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         self._server_host_key_algs: Optional[Sequence[bytes]] = None
 
-        self._logger = logger.get_child(context='conn=%d' %
-                                        self._get_next_conn())
+        self._logger = logger.get_child(
+            context=f'conn={self._get_next_conn()}')
 
         self._login_timer: Optional[asyncio.TimerHandle]
 
@@ -1394,9 +1393,9 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
                 return alg
 
         raise KeyExchangeFailed(
-            'No matching %s algorithm found, sent %s and received %s' %
-            (alg_type, b','.join(local_algs).decode('ascii'),
-             b','.join(remote_algs).decode('ascii')))
+            f'No matching {alg_type} algorithm found, sent '
+            f'{b",".join(local_algs).decode("ascii")} and received '
+            f'{b",".join(remote_algs).decode("ascii")}')
 
     def _get_extra_kex_algs(self) -> List[bytes]:
         """Return the extra kex algs to add"""
@@ -1568,7 +1567,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
                 MSG_IGNORE <= pkttype <= MSG_DEBUG:
             skip_reason = 'strict kex violation'
             exc_reason = 'Strict key exchange violation: ' \
-                         'unexpected packet type %d received' % pkttype
+                         f'unexpected packet type {pkttype} received'
         elif MSG_USERAUTH_FIRST <= pkttype <= MSG_USERAUTH_LAST:
             if self._auth:
                 handler = self._auth
@@ -1592,8 +1591,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
                     handler = self._channels[recv_chan]
                 except KeyError:
                     skip_reason = 'invalid channel number'
-                    exc_reason = 'Invalid channel number %d ' \
-                                 'received' % recv_chan
+                    exc_reason = f'Invalid channel number {recv_chan} received'
 
         handler.log_received_packet(pkttype, seq, packet, skip_reason)
 
@@ -1615,7 +1613,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
             elif not result:
                 if self._strict_kex and not self._recv_encryption:
                     exc_reason = 'Strict key exchange violation: ' \
-                                 'unexpected packet type %d received' % pkttype
+                                 f'unexpected packet type {pkttype} received'
                 else:
                     self.logger.debug1('Unknown packet type %d received',
                                        pkttype)
@@ -6252,8 +6250,8 @@ class SSHServerConnection(SSHConnection):
            (dest_host, dest_port) not in permitted_opens and \
            (dest_host, None) not in permitted_opens:
             raise ChannelOpenError(OPEN_ADMINISTRATIVELY_PROHIBITED,
-                                   'Port forwarding not permitted to %s '
-                                   'port %s' % (dest_host, dest_port))
+                                   'Port forwarding not permitted to '
+                                   f'{dest_host} port {dest_port}')
 
         result = self._owner.connection_requested(dest_host, dest_port,
                                                   orig_host, orig_port)
