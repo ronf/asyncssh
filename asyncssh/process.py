@@ -1210,6 +1210,8 @@ class SSHProcess(SSHStreamSession, Generic[AnyStr]):
         for task in self._cleanup_tasks:
             await task
 
+        self._cleanup_tasks = []
+
 
 class SSHClientProcess(SSHProcess[AnyStr], SSHClientStreamSession[AnyStr]):
     """SSH client process handler"""
