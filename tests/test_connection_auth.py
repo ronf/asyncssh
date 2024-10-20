@@ -414,11 +414,11 @@ class _AsyncKbdintServer(_KbdintServer):
 class _UnknownAuthClientConnection(asyncssh.connection.SSHClientConnection):
     """Test getting back an unknown auth method from the SSH server"""
 
-    def try_next_auth(self):
+    def try_next_auth(self, *, next_method=False):
         """Attempt client authentication using an unknown method"""
 
         self._auth_methods = [b'unknown'] + self._auth_methods
-        super().try_next_auth()
+        super().try_next_auth(next_method=next_method)
 
 
 class _TestNullAuth(ServerTestCase):

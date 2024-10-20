@@ -3513,20 +3513,23 @@ class SSHClientConnection(SSHConnection):
 
         return [method.decode('ascii') for method in self._auth_methods]
 
-    def try_next_auth(self) -> None:
+    def try_next_auth(self, *, next_method: bool = False) -> None:
         """Attempt client authentication using the next compatible method"""
 
         if self._auth:
             self._auth.cancel()
             self._auth = None
 
-        while self._auth_methods:
-            method = self._auth_methods.pop(0)
+        if next_method:
+            self._auth_methods.pop(0)
 
-            self._auth = lookup_client_auth(self, method)
+        while self._auth_methods:
+            self._auth = lookup_client_auth(self, self._auth_methods[0])
 
             if self._auth:
                 return
+
+            self._auth_methods.pop(0)
 
         self.logger.info('Auth failed for user %s', self._username)
 

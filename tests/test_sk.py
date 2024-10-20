@@ -123,8 +123,9 @@ class _TestSKAuthCTAP1(_CheckSKAuth):
         """Test security key returning a CTAP 1 error"""
 
         with sk_error('err'):
-            with self.assertRaises(ValueError):
-                await self.connect(username='ckey', client_keys=[self._privkey])
+            with self.assertRaises(asyncssh.PermissionDenied):
+                await self.connect(username='ckey',
+                                   client_keys=[self._privkey])
 
 
 @unittest.skipUnless(sk_available, 'security key support not available')
@@ -169,8 +170,9 @@ class _TestSKAuthCTAP2(_CheckSKAuth):
         """Test security key returning a CTAP 2 error"""
 
         with sk_error('err'):
-            with self.assertRaises(ValueError):
-                await self.connect(username='ckey', client_keys=[self._privkey])
+            with self.assertRaises(asyncssh.PermissionDenied):
+                await self.connect(username='ckey',
+                                   client_keys=[self._privkey])
 
     @asynctest
     async def test_enroll_pin_invalid(self):
@@ -201,8 +203,9 @@ class _TestSKAuthMultipleKeys(_CheckSKAuth):
         """Test authenticating with security credential not found"""
 
         with sk_error('nocred'):
-            with self.assertRaises(ValueError):
-                await self.connect(username='ckey', client_keys=[self._privkey])
+            with self.assertRaises(asyncssh.PermissionDenied):
+                await self.connect(username='ckey',
+                                   client_keys=[self._privkey])
 
 
 @unittest.skipUnless(sk_available, 'security key support not available')
@@ -255,7 +258,7 @@ class _TestSKAuthResidentKeys(_CheckSKAuth):
         """Test getting resident keys returning a CTAP 2 error"""
 
         with sk_error('err'):
-            with self.assertRaises(ValueError):
+            with self.assertRaises(asyncssh.KeyImportError):
                 asyncssh.load_resident_keys(b'123456')
 
     @asynctest

@@ -147,6 +147,11 @@ def _ctap2_sign(dev: 'CtapHidDevice', message_hash: bytes,
     allow_creds = [{'type': 'public-key', 'id': key_handle}]
     options = {'up': touch_required}
 
+    # See if key handle exists before requiring touch
+    if touch_required:
+        ctap2.get_assertions(application, message_hash, allow_creds,
+                             options={'up': False})
+
     assertion = ctap2.get_assertions(application, message_hash, allow_creds,
                                      options=options)[0]
 

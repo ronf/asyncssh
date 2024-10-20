@@ -165,8 +165,10 @@ class _AuthClientStub(_AuthConnectionStub):
 
         return await self._auth_waiter
 
-    def try_next_auth(self):
+    def try_next_auth(self, *, next_method=False):
         """Handle a request to move to another form of auth"""
+
+        # pylint: disable=unused-argument
 
         # Report that the current auth attempt failed
         self._auth_waiter.set_result((False, self._password_changed))
