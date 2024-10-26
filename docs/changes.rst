@@ -3,10 +3,80 @@
 Change Log
 ==========
 
+Release 2.18.0 (26 Oct 2024)
+----------------------------
+
+* Added support for post-quantum ML-KEM key exchange algorithms,
+  interoperable with OpenSSH 9.9.
+
+* Added support for the OpenSSH "limits" extension, allowing the
+  client to query server limits such as the maximum supported read
+  and write sizes. The client will automatically default to the reported
+  maximum size on servers that support this extension.
+
+* Added more ways to specify environment variables via the `env` option.
+  Sequences of either 'key=value' strings or (key, value) tuples are now
+  supported, in addition to a dict.
+
+* Added support for getting/setting environment variables as byte strings
+  on platforms which support it. Previously, only Unicode strings were
+  accepted and they were always encoded on the wire using UTF-8.
+
+* Added support for non-TCP sockets (such as a socketpair) as the `sock`
+  parameter in connect calls. Thanks go to Christian Wendt for reporting
+  this problem and proposing a fix.
+
+* Changed compression to be disabled by default to avoid it becoming a
+  performance bottleneck on high-bandwidth connections. This now also
+  matches the OpenSSH default.
+
+* Improved speed of parallelized SFTP reads when read-ahead goes beyond
+  the end of the file. Thanks go to Maximilian Knespel for reporting
+  this issue and providing performance measurements on the code before
+  and after the change.
+
+* Improved cancellation handling during SCP transfers.
+
+* Improved support for selecting the currently available security key
+  when the application lists multiple keys to try. Thanks go to GitHub
+  user zanda8893 for reporting the issue and helping to work out the
+  details of the problem.
+
+* Improved handling of reverse DNS failures in host-based authentication.
+  Thanks go to GitHub user xBiggs for suggesting this change.
+
+* Improved debug logging of byte strings with non-printable characters.
+
+* Switched to using an executor on GSSAPI calls to avoid blocking the
+  event loop.
+
+* Fixed handling of "UserKnownHostsFile none" in config files. This
+  previously caused it to use the default known hosts, rather than
+  disabling known host checking.
+
+* Fixed a runtime warning about not awaiting a coroutine in unit tests.
+
+* Fixed a unit test failure on Windows when calling abort on a transport.
+
+* Fixed a problem where a "MAC verification failed" error was sometimes
+  sent on connection close.
+
+* Fixed SSHClientProcess code to not raise a runtime exception when
+  waiting more than once for a process to finish. Thanks go to GitHub
+  user starflows for reporting this issue.
+
+* Handled an error when attempting to import older verions of pyOpenSSL.
+  Thanks go to Maximilian Knespel for reporting this issue and testing
+  the fix.
+
+* Updated simple_server example code to switch from crypt to bcrypt,
+  since crypt has been removed in Python 3.13. Thanks go to Colin
+  Watson for providing this update.
+
 Release 2.17.0 (2 Sep 2024)
 ---------------------------
 
-* Add support for specifying a per-connection credential store for GSSAPI
+* Added support for specifying a per-connection credential store for GSSAPI
   authentication. Thanks go to GitHub user zarganum for suggesting this
   feature and proposing a detailed design.
 
