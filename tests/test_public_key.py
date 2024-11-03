@@ -1290,6 +1290,16 @@ class _TestPublicKey(TempDirTestCase):
                             with self.subTest('Bad signature'):
                                 self.assertFalse(self.pubkey.verify(data,
                                                  badsig))
+
+                            if sig_alg.startswith(b'webauthn-'):
+                                idx = sig.rfind(b'ssh:')
+                                badpfx = bytearray(sig)
+                                badpfx[idx] = ord('x')
+                                badpfx = bytes(badpfx)
+
+                                with self.subTest('Bad prefix'):
+                                    self.assertFalse(self.pubkey.verify(data,
+                                                     badpfx))
                         except UnsupportedAlgorithm: # pragma: no cover
                             pass
 

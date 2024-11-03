@@ -2171,6 +2171,7 @@ supported by AsyncSSH:
   | x509v3-ssh-rsa
   | sk-ssh-ed25519\@openssh.com
   | sk-ecdsa-sha2-nistp256\@openssh.com
+  | webauthn-sk-ecdsa-sha2-nistp256\@openssh.com
   | ssh-ed25519
   | ssh-ed448
   | ecdsa-sha2-nistp521

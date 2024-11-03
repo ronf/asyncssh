@@ -3463,6 +3463,9 @@ class SSHClientConnection(SSHConnection):
 
         if self._server_sig_algs:
             for alg in keypair.sig_algorithms:
+                if keypair.use_webauthn and not alg.startswith(b'webauthn-'):
+                    continue
+
                 if alg in self._sig_algs and alg in self._server_sig_algs:
                     keypair.set_sig_algorithm(alg)
                     return True

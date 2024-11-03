@@ -249,6 +249,7 @@ class SSHKey:
     pem_name: bytes = b''
     pkcs8_oid: Optional[ObjectIdentifier] = None
     use_executor: bool = False
+    use_webauthn: bool = False
 
     def __init__(self, key: Optional[CryptoKey] = None):
         self._key = key
@@ -2058,7 +2059,8 @@ class SSHKeyPair:
                  public_data: bytes, comment: _Comment,
                  cert: Optional[SSHCertificate] = None,
                  filename: Optional[bytes] = None,
-                 use_executor: bool = False):
+                 use_executor: bool = False,
+                 use_webauthn: bool = False):
         self.key_algorithm = algorithm
         self.key_public_data = public_data
 
@@ -2067,6 +2069,7 @@ class SSHKeyPair:
         self._filename = filename
 
         self.use_executor = use_executor
+        self.use_webauthn = use_webauthn
 
         if cert:
             if cert.key.public_data != self.key_public_data:
@@ -2250,8 +2253,9 @@ class SSHLocalKeyPair(SSHKeyPair):
             comment = None
 
         super().__init__(key.algorithm, key.algorithm, key.sig_algorithms,
-                         key.sig_algorithms, key.public_data, comment, cert,
-                         key.get_filename(), key.use_executor)
+                         key.sig_algorithms, key.public_data, comment,
+                         cert, key.get_filename(), key.use_executor,
+                         key.use_webauthn)
 
         self._key = key
 
@@ -3856,7 +3860,6 @@ def load_resident_keys(pin: str, *, application: str = 'ssh:',
 
     """
 
-    application = application.encode('utf-8')
     flags = SSH_SK_USER_PRESENCE_REQD if touch_required else 0
     reserved = b''
 

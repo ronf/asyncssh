@@ -27,7 +27,7 @@ import asyncssh
 from asyncssh.asn1 import der_encode, der_decode
 from asyncssh.crypto import ECDSAPrivateKey, EdDSAPrivateKey
 from asyncssh.packet import Byte, UInt32
-from asyncssh.sk import sk_available
+from asyncssh.sk import sk_available, sk_webauthn_prefix
 
 if sk_available: # pragma: no branch
     from asyncssh.sk import SSH_SK_ECDSA, SSH_SK_ED25519
@@ -86,16 +86,45 @@ class _Credential:
         self.auth_data = auth_data
 
 
+class _AttestationResponse:
+    """Security key attestation response"""
+
+    def __init__(self, attestation_object):
+        self.attestation_object = attestation_object
+
+
+class _AuthenticatorData:
+    """Security key authenticator data in aseertion"""
+
+    def __init__(self, flags, counter):
+        self.flags = flags
+        self.counter = counter
+
+
+class _AssertionResponse:
+    """Security key aseertion response"""
+
+    def __init__(self, client_data, auth_data, signature):
+        self.client_data = client_data
+        self.authenticator_data = auth_data
+        self.signature = signature
+
+
+class _AssertionSelection:
+    """Security key assertion response list"""
+
+    def __init__(self, assertions):
+        self._assertions = assertions
+
+    def get_response(self, index):
+        """Return the assertion at specified index"""
+
+        return self._assertions[index]
+
+
 class _CtapStub:
     """Stub for unit testing U2F security key support"""
 
-    _version = None
-
-    def __init__(self, dev):
-        if dev.version != self._version:
-            raise ValueError('Wrong protocol version')
-
-        self.dev = dev
 
     @staticmethod
     def _enroll(alg):
@@ -135,11 +164,8 @@ class _CtapStub:
 class Ctap1(_CtapStub):
     """Stub for unit testing U2F security keys using CTAP version 1"""
 
-    _version = 1
-
     def __init__(self, dev):
-        super().__init__(dev)
-
+        self.dev = dev
         self._polled = False
 
     def _poll(self):
@@ -182,7 +208,11 @@ class Ctap1(_CtapStub):
 class Ctap2(_CtapStub):
     """Stub for unit testing U2F security keys using CTAP version 2"""
 
-    _version = 2
+    def __init__(self, dev):
+        if dev.version != 2:
+            raise ValueError('Wrong protocol version')
+
+        self.dev = dev
 
     def make_credential(self, client_data_hash, rp, user, key_params,
                         options, pin_uv_param, pin_uv_protocol):
@@ -226,6 +256,50 @@ class Ctap2(_CtapStub):
                                          key_handle, flags)
 
         return [_Assertion(_AuthData(flags, counter), sig)]
+
+
+class WindowsClient(_CtapStub):
+    """Stub for unit testing U2F security keys via Windows WebAuthn"""
+
+    def __init__(self, origin, verify):
+        self._origin = origin
+        self._verify = verify
+
+    def make_credential(self, options):
+        """Make a credential using Windows WebAuthN API"""
+
+        self._verify(options['rp']['id'], self._origin)
+
+        alg = options['pubKeyCredParams'][0]['alg']
+
+        public_key, key_handle = self._enroll(alg)
+
+        cdata = _CredentialData(alg, public_key, key_handle)
+
+        return _AttestationResponse(_Credential(_CredentialAuthData(cdata)))
+
+    def get_assertion(self, options):
+        """Get assertion using Windows WebAuthN API"""
+
+        self._verify(options['rpId'], self._origin)
+
+        challenge = options['challenge']
+        application = options['rpId']
+        key_handle = options['allowCredentials'][0]['id']
+        flags = SSH_SK_USER_PRESENCE_REQD
+
+        app_hash = sha256(application.encode()).digest()
+
+        data = sk_webauthn_prefix(challenge, application) + b'}'
+        message_hash = sha256(data).digest()
+
+        flags, counter, sig = self._sign(message_hash, app_hash,
+                                         key_handle, flags)
+
+        auth_data = _AuthenticatorData(flags, counter)
+        assertion = _AssertionResponse(data, auth_data, sig)
+
+        return _AssertionSelection([assertion])
 
 
 class CredentialManagement:
@@ -301,13 +375,15 @@ class PinProtocolV1:
     VERSION = 1
 
 
-def stub_sk(devices):
+def stub_sk(devices, use_webauthn=False):
     """Stub out security key module functions for unit testing"""
 
     devices = list(map(Device, devices))
 
     old_ctap1 = asyncssh.sk.Ctap1
     old_ctap2 = asyncssh.sk.Ctap2
+    old_windows_client = asyncssh.sk.WindowsClient
+    old_use_webauthn = asyncssh.sk.sk_use_webauthn
     old_client_pin = asyncssh.sk.ClientPin
     old_cred_mgmt = asyncssh.sk.CredentialManagement
     old_pin_proto = asyncssh.sk.PinProtocolV1
@@ -315,21 +391,27 @@ def stub_sk(devices):
 
     asyncssh.sk.Ctap1 = Ctap1
     asyncssh.sk.Ctap2 = Ctap2
+    asyncssh.sk.WindowsClient = WindowsClient
+    asyncssh.sk.sk_use_webauthn = use_webauthn
+    asyncssh.sk_ecdsa.sk_use_webauthn = use_webauthn
     asyncssh.sk.ClientPin = ClientPin
     asyncssh.sk.CredentialManagement = CredentialManagement
     asyncssh.sk.PinProtocolV1 = PinProtocolV1
     asyncssh.sk.CtapHidDevice.list_devices = lambda: iter(devices)
 
-    return old_ctap1, old_ctap2, old_client_pin, \
-        old_cred_mgmt, old_pin_proto, old_list_devices
+    return old_ctap1, old_ctap2, old_windows_client, old_use_webauthn, \
+        old_client_pin, old_cred_mgmt, old_pin_proto, old_list_devices
 
 
-def unstub_sk(old_ctap1, old_ctap2, old_client_pin, old_cred_mgmt,
-              old_pin_proto, old_list_devices):
+def unstub_sk(old_ctap1, old_ctap2, old_windows_client, old_use_webauthn,
+              old_client_pin, old_cred_mgmt, old_pin_proto, old_list_devices):
     """Restore security key module functions"""
 
     asyncssh.sk.Ctap1 = old_ctap1
     asyncssh.sk.Ctap2 = old_ctap2
+    asyncssh.sk.WindowsClient = old_windows_client
+    asyncssh.sk.sk_use_webauthn = old_use_webauthn
+    asyncssh.sk_ecdsa.sk_use_webauthn = old_use_webauthn
     asyncssh.sk.ClientPin = old_client_pin
     asyncssh.sk.CredentialManagement = old_cred_mgmt
     asyncssh.sk.PinProtocolV1 = old_pin_proto

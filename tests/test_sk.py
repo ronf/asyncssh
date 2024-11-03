@@ -37,6 +37,7 @@ class _CheckSKAuth(ServerTestCase):
     _sk_resident = False
     _sk_touch_required = True
     _sk_auth_touch_required = True
+    _sk_use_webauthn = False
     _sk_cert = False
     _sk_host = False
 
@@ -44,10 +45,11 @@ class _CheckSKAuth(ServerTestCase):
     async def start_server(cls):
         """Start an SSH server which supports security key authentication"""
 
-        cls.addClassCleanup(unstub_sk, *stub_sk(cls._sk_devs))
+        cls.addClassCleanup(unstub_sk, *stub_sk(cls._sk_devs,
+                                                cls._sk_use_webauthn))
 
         cls._privkey = get_test_key(
-            cls._sk_alg, resident=cls._sk_resident,
+            cls._sk_alg, cls._sk_use_webauthn, resident=cls._sk_resident,
             touch_required=cls._sk_touch_required)
 
         if cls._sk_host:
@@ -191,6 +193,20 @@ class _TestSKAuthCTAP2(_CheckSKAuth):
             with self.assertRaises(ValueError):
                 asyncssh.generate_private_key('sk-ssh-ed25519@openssh.com')
 
+
+@unittest.skipUnless(sk_available, 'security key support not available')
+class _TestSKAuthWebAuthN(_CheckSKAuth):
+    """Unit tests for security key authentication with WebAuthN"""
+
+    _sk_alg = 'sk-ecdsa-sha2-nistp256@openssh.com'
+    _sk_use_webauthn = True
+
+    @asynctest
+    async def test_auth(self):
+        """Test authenticating with the Windows WebAuthN API"""
+
+        async with self.connect(username='ckey', client_keys=[self._privkey]):
+            pass
 
 @unittest.skipUnless(sk_available, 'security key support not available')
 class _TestSKAuthMultipleKeys(_CheckSKAuth):
