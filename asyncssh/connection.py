@@ -1222,7 +1222,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         return cert.key
 
     def _validate_host_key(self, host: str, addr: str, port: int,
-                           key_data: bytes) -> tuple[SSHCertificate, SSHKey]:
+                           key_data: bytes) -> Tuple[SSHCertificate, SSHKey]:
         """Validate and return a trusted host key"""
 
         cert = None
@@ -1232,10 +1232,10 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
             pass
         else:
             if cert.is_x509_chain:
-                return self._validate_x509_host_certificate_chain(
+                return cert, self._validate_x509_host_certificate_chain(
                     host, cast(SSHX509CertificateChain, cert))
             else:
-                return self._validate_openssh_host_certificate(
+                return cert, self._validate_openssh_host_certificate(
                     host, addr, port, cast(SSHOpenSSHCertificate, cert))
 
         try:
