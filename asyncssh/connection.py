@@ -1222,9 +1222,10 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         return cert.key
 
     def _validate_host_key(self, host: str, addr: str, port: int,
-                           key_data: bytes) -> SSHKey:
+                           key_data: bytes) -> tuple[SSHCertificate, SSHKey]:
         """Validate and return a trusted host key"""
 
+        cert = None
         try:
             cert = decode_ssh_certificate(key_data)
         except KeyImportError:
@@ -1254,7 +1255,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
                                                             port, key):
                     raise ValueError('Host key is not trusted')
 
-            return key
+            return cert, key
 
         raise ValueError('Unable to decode host key')
 
@@ -3298,6 +3299,7 @@ class SSHClientConnection(SSHConnection):
         self._known_hosts = options.known_hosts
         self._host_key_alias = options.host_key_alias
 
+        self._server_host_cert: Optional[SSHCertificate] = None
         self._server_host_key_algs: Optional[Sequence[bytes]] = None
         self._server_host_key: Optional[SSHKey] = None
 
@@ -3476,7 +3478,7 @@ class SSHClientConnection(SSHConnection):
         """Validate and return the server's host key"""
 
         try:
-            host_key = self._validate_host_key(
+            host_cert, host_key = self._validate_host_key(
                 self._host_key_alias or self._host,
                 self._peer_addr, self._port, key_data)
         except ValueError as exc:
@@ -3487,6 +3489,7 @@ class SSHClientConnection(SSHConnection):
 
             raise HostKeyNotVerifiable(f'{exc} for host {host}') from None
 
+        self._server_host_cert = host_cert
         self._server_host_key = host_key
         return host_key
 
@@ -5912,7 +5915,7 @@ class SSHServerConnection(SSHConnection):
                                     self._peer_addr, None)
 
         try:
-            key = self._validate_host_key(resolved_host, self._peer_addr,
+            cert, key = self._validate_host_key(resolved_host, self._peer_addr,
                                           self._peer_port, key_data)
         except ValueError as exc:
             self.logger.debug1('Invalid host key: %s', exc)
