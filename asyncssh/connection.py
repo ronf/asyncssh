@@ -1222,10 +1222,9 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         return cert.key
 
     def _validate_host_key(self, host: str, addr: str, port: int,
-                           key_data: bytes) -> Tuple[SSHCertificate, SSHKey]:
+                           key_data: bytes) -> Tuple[Optional[SSHCertificate], SSHKey]:
         """Validate and return a trusted host key"""
 
-        cert = None
         try:
             cert = decode_ssh_certificate(key_data)
         except KeyImportError:
@@ -1255,7 +1254,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
                                                             port, key):
                     raise ValueError('Host key is not trusted')
 
-            return cert, key
+            return None, key
 
         raise ValueError('Unable to decode host key')
 
