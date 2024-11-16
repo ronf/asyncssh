@@ -272,7 +272,8 @@ class _SFTPFSProtocol(Protocol):
         """Create a symbolic link"""
 
     @async_context_manager
-    async def open(self, path: bytes, mode: str) -> SFTPFileProtocol:
+    async def open(self, path: bytes, mode: str,
+                   block_size: int = -1) -> SFTPFileProtocol:
         """Open a file"""
 
 
@@ -797,8 +798,10 @@ class _SFTPFileCopier(_SFTPParallelIO[int]):
         """Perform parallel file copy"""
 
         try:
-            self._src = await self._srcfs.open(self._srcpath, 'rb')
-            self._dst = await self._dstfs.open(self._dstpath, 'wb')
+            self._src = await self._srcfs.open(self._srcpath, 'rb',
+                                               block_size=0)
+            self._dst = await self._dstfs.open(self._dstpath, 'wb',
+                                               block_size=0)
 
             if self._progress_handler and self._total_bytes == 0:
                 self._progress_handler(self._srcpath, self._dstpath, 0, 0)
@@ -3787,7 +3790,7 @@ class SFTPClient:
                           error_handler: SFTPErrorHandler) -> None:
         """Begin a new file upload, download, or copy"""
 
-        if block_size == -1:
+        if block_size <= 0:
             block_size = min(srcfs.limits.max_read_len,
                              dstfs.limits.max_write_len)
 
@@ -3989,7 +3992,7 @@ class SFTPClient:
            watch out for links that result in loops.
 
            The block_size argument specifies the size of read and write
-           requests issued when downloading the files, defaulting to
+           requests issued when uploading the files, defaulting to
            the maximum allowed by the server, or 16 KB if the server
            doesn't advertise limits.
 
@@ -4095,8 +4098,8 @@ class SFTPClient:
            watch out for links that result in loops.
 
            The block_size argument specifies the size of read and write
-           requests issued when downloading the files, defaulting to
-           the maximum allowed by the server, or 16 KB if the server
+           requests issued when copying the files, defaulting to the
+           maximum allowed by the server, or 16 KB if the server
            doesn't advertise limits.
 
            The max_requests argument specifies the maximum number of
@@ -7622,7 +7625,8 @@ class LocalFS:
         os.symlink(_to_local_path(oldpath), _to_local_path(newpath))
 
     @async_context_manager
-    async def open(self, path: bytes, mode: str) -> LocalFile:
+    async def open(self, path: bytes, mode: str,
+                   block_size: int = -1) -> LocalFile:
         """Open a local file"""
 
         # pylint: disable=unused-argument
