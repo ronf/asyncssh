@@ -20,15 +20,6 @@
 # Contributors:
 #     Ron Frederick - initial implementation, API, and documentation
 
-"""AsyncSSH: Asynchronous SSHv2 client and server library
-
-AsyncSSH is a Python package which provides an asynchronous client and
-server implementation of the SSHv2 protocol on top of the Python asyncio
-framework. It requires Python 3.6 or later and the PyCA library for some
-cryptographic functions.
-
-"""
-
 from os import path
 from setuptools import setup
 
