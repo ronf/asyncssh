@@ -2761,7 +2761,8 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
             await self._agent.wait_closed()
 
         await self._close_event.wait()
-        await asyncio.gather(*self._tasks, return_exceptions=True)
+        if self._tasks:
+            await asyncio.wait(self._tasks)
 
     def disconnect(self, code: int, reason: str,
                    lang: str = DEFAULT_LANG) -> None:
