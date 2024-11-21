@@ -926,6 +926,8 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         self._close_event = asyncio.Event()
 
+        self._tasks: Set[asyncio.Task[None]] = set()
+
         self._server_host_key_algs: Optional[Sequence[bytes]] = None
 
         self._logger = logger.get_child(
@@ -1083,6 +1085,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
                    task: 'asyncio.Task[None]') -> None:
         """Collect result of an async task, reporting errors"""
 
+        self._tasks.discard(task)
         # pylint: disable=broad-except
         try:
             task.result()
@@ -1101,6 +1104,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         task = asyncio.ensure_future(coro)
         task.add_done_callback(partial(self._reap_task, task_logger))
+        self._tasks.add(task)
         return task
 
     def is_client(self) -> bool:
@@ -2727,6 +2731,9 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         self.logger.info('Aborting connection')
 
+        # cancel all running tasks
+        for task in self._tasks:
+            task.cancel()
         self._force_close(None)
 
     def close(self) -> None:
@@ -2754,6 +2761,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
             await self._agent.wait_closed()
 
         await self._close_event.wait()
+        await asyncio.gather(*self._tasks, return_exceptions=True)
 
     def disconnect(self, code: int, reason: str,
                    lang: str = DEFAULT_LANG) -> None:
