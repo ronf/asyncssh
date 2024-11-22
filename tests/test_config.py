@@ -484,6 +484,19 @@ class _TestClientConfig(_TestConfig):
                 with self.assertRaises(asyncssh.ConfigParseError):
                     self._parse_config(config_data)
 
+    def test_match_final(self):
+        """Test a match block which always matches"""
+        config = self._parse_config('Match final host example.org\nPort 2221\nMatch host test\nHostName example.org\n', host="test")
+        self.assertEqual(config.get('Port'), 2221)
+
+
+    def _test_match_canonical(self):
+        """Test a match block which always matches"""
+        config = self._parse_config('Match canonical host final.example.org \nPort 2221\nMatch host test\nHostName final.example.org', host="test")
+        self.assertEqual(config.get('Hostname'), "final.example.org")
+        self.assertEqual(config.get('Port'), 2221)
+
+
 class _TestServerConfig(_TestConfig):
     """Unit tests for server config objects"""
 

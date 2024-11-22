@@ -31,6 +31,7 @@ from pathlib import Path, PurePath
 from subprocess import DEVNULL
 from typing import Callable, Dict, List, NoReturn, Optional, Sequence
 from typing import Set, Tuple, Union, cast
+from xml.etree.ElementTree import canonicalize
 
 from .constants import DEFAULT_PORT
 from .logging import logger
@@ -170,7 +171,7 @@ class SSHConfig:
             match_val = self._match_val(match)
 
             if match != 'exec' and match_val is None:
-                self._error('Invalid match condition')
+                self._error(f'Invalid match condition {match}')
 
             try:
                 if match == 'exec':
@@ -306,74 +307,56 @@ class SSHConfig:
         if option not in self._options:
             self._options[option] = byte_limit, time_limit
 
-    def parse(self, path: Path) -> None:
-        """Parse an OpenSSH config file and return matching declarations"""
+    def _parse_line(self, line):
+        self._line_no += 1
 
-        self._path = path
-        self._line_no = 0
-        self._matching = True
-        self._tokens = {'%': '%'}
+        line = line.strip()
+        if not line or line[0] == '#':
+            return
 
-        logger.debug1('Reading config from "%s"', path)
+        try:
+            split_args = shlex.split(line)
+        except ValueError as exc:
+            self._error(str(exc))
 
-        with open(path) as file:
-            for line in file:
-                self._line_no += 1
+        args = []
+        loption = ''
+        allow_equal = True
 
-                line = line.strip()
-                if not line or line[0] == '#':
-                    continue
+        for i, arg in enumerate(split_args, 1):
+            if arg.startswith('='):
+                if len(arg) > 1:
+                    args.append(arg[1:])
+            elif not allow_equal:
+                args.extend(split_args[i - 1:])
+                break
+            elif arg.endswith('='):
+                args.append(arg[:-1])
+            elif '=' in arg:
+                arg, val = arg.split('=', 1)
+                args.append(arg)
+                args.append(val)
+            else:
+                args.append(arg)
 
-                try:
-                    split_args = shlex.split(line)
-                except ValueError as exc:
-                    self._error(str(exc))
+            if i == 1:
+                loption = args.pop(0).lower()
+                allow_equal = loption in self._conditionals
 
-                args = []
-                loption = ''
-                allow_equal = True
+        if loption in self._no_split:
+            args = [line.lstrip()[len(loption):].strip()]
 
-                for i, arg in enumerate(split_args, 1):
-                    if arg.startswith('='):
-                        if len(arg) > 1:
-                            args.append(arg[1:])
-                    elif not allow_equal:
-                        args.extend(split_args[i-1:])
-                        break
-                    elif arg.endswith('='):
-                        args.append(arg[:-1])
-                    elif '=' in arg:
-                        arg, val = arg.split('=', 1)
-                        args.append(arg)
-                        args.append(val)
-                    else:
-                        args.append(arg)
+        if not self._matching and loption not in self._conditionals:
+            return
 
-                    if i == 1:
-                        loption = args.pop(0).lower()
-                        allow_equal = loption in self._conditionals
+        try:
+            option, handler = self._handlers[loption]
+        except KeyError:
+            return
 
-                if loption in self._no_split:
-                    args = [line.lstrip()[len(loption):].strip()]
+        return option, handler, args
 
-                if not self._matching and loption not in self._conditionals:
-                    continue
-
-                try:
-                    option, handler = self._handlers[loption]
-                except KeyError:
-                    continue
-
-                if not args:
-                    self._error(f'Missing {option} value')
-
-                handler(self, option, args)
-
-                if args:
-                    self._error(f'Extra data at end: {" ".join(args)}')
-
-        self._set_tokens()
-
+    def _expand_values(self):
         for option in self._percent_expand:
             try:
                 value = self._options[option]
@@ -386,6 +369,33 @@ class SSHConfig:
                     value = self._expand_val(value)
 
                 self._options[option] = value
+
+
+    def parse(self, path: Path) -> None:
+        """Parse an OpenSSH config file and return matching declarations"""
+
+        self._path = path
+        self._line_no = 0
+        self._matching = True
+        self._tokens = {'%': '%'}
+
+        logger.debug1('Reading config from "%s"', path)
+
+        with open(path) as file:
+            for line in file:
+                if (v := self._parse_line(line)) is not None:
+                    option, handler, args = v
+                    if not args:
+                        self._error(f'Missing {option} value')
+
+                    handler(self, option, args)
+
+                    if args:
+                        self._error(f'Extra data at end: {" ".join(args)}')
+
+        self._set_tokens()
+        self._expand_values()
+
 
     def get_options(self, reload: bool) -> Dict[str, object]:
         """Return options to base a new config object on"""
@@ -451,6 +461,111 @@ class SSHClientConfig(SSHConfig):
 
         if port != ():
             self._options['Port'] = port
+
+
+    def parse(self, path: Path, canonical=False, final=False) -> None:
+        """Parse an OpenSSH config file and return matching declarations"""
+
+        self._path = path
+        self._line_no = 0
+        self._matching = True
+        self._tokens = {'%': '%'}
+
+        logger.debug1('Reading config from "%s"', path)
+
+        with open(path) as file:
+            for line in file:
+                if (v := self._parse_line(line)) is not None:
+                    option, handler, args = v
+                    if not args:
+                        self._error(f'Missing {option} value')
+
+                    handler(self, option, args)
+
+                    if args:
+                        self._error(f'Extra data at end: {" ".join(args)}')
+
+
+            file.seek(0)
+            for line in file:
+                if (v := self._parse_line(line)) is not None:
+                    option, handler, args = v
+                    if handler == SSHClientConfig._match:
+                        handler(self, option, args, canonical=False, final=True)
+                    else:
+                        handler(self, option, args)
+
+
+        self._set_tokens()
+        self._expand_values()
+
+
+    def _match(self, option: str, args: List[str], canonical=False, final=False) -> None:
+        """Begin a conditional block"""
+
+        # pylint: disable=unused-argument
+
+        negate = False
+
+        f = "final" in args
+        c = "canonical" in args
+        if final != f or canonical != c:
+            args.clear()
+            self._matching = False
+            return
+
+        while args:
+            match = args.pop(0).lower()
+            if match[0] == "!":
+                negate = True
+                match = match[1:]
+
+            if match == "final":
+                if final is False:
+                    args.clear()
+                    self._matching = False
+                    return
+                continue
+
+            if match == "canonical":
+                if canonical is False:
+                    args.clear()
+                    self._matching = False
+                    return
+                continue
+
+            if match == 'all':
+                self._matching = True
+                continue
+
+            match_val = self._match_val(match)
+
+            if match != 'exec' and match_val is None:
+                self._error('Invalid match condition')
+
+            try:
+                if match == 'exec':
+                    self._matching = _exec(args.pop(0))
+                elif match in ('address', 'localaddress'):
+                    host_pat = HostPatternList(args.pop(0))
+                    ip = ip_address(cast(str, match_val)) \
+                        if match_val else None
+                    self._matching = host_pat.matches(None, match_val, ip)
+                else:
+                    wild_pat = WildcardPatternList(args.pop(0))
+                    self._matching = wild_pat.matches(match_val)
+            except IndexError:
+                self._error(f'Missing {match} match pattern')
+
+            if negate:
+                self._matching = not self._matching
+                negate = False
+
+
+            if not self._matching:
+                args.clear()
+                break
+
 
     def _match_val(self, match: str) -> object:
         """Return the value to match against in a match condition"""
@@ -537,7 +652,7 @@ class SSHClientConfig(SSHConfig):
 
     _handlers = {option.lower(): (option, handler) for option, handler in (
         ('Host',                            _match_host),
-        ('Match',                           SSHConfig._match),
+        ('Match',                           _match),
         ('Include',                         SSHConfig._include),
 
         ('AddressFamily',                   SSHConfig._set_address_family),
