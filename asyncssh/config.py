@@ -153,8 +153,15 @@ class SSHConfig:
 
         # pylint: disable=unused-argument
 
+        negate = False
+
         while args:
             match = args.pop(0).lower()
+
+            if match[0] == "!":
+                negate = True
+                match = match[1:]
+
 
             if match == 'all':
                 self._matching = True
@@ -178,6 +185,10 @@ class SSHConfig:
                     self._matching = wild_pat.matches(match_val)
             except IndexError:
                 self._error(f'Missing {match} match pattern')
+
+            if negate:
+                self._matching = not self._matching
+                negate = False
 
             if not self._matching:
                 args.clear()

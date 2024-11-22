@@ -182,6 +182,16 @@ class _TestConfig(TempDirTestCase):
         config = self._parse_config('Match user xxx\nMatch all\nPort 2222')
         self.assertEqual(config.get('Port'), 2222)
 
+    def test_match_negate(self):
+        """Test a match block uses negation"""
+        config = self._parse_config('Match !host example.com\nPort 2221\nMatch all\nPort 2222', host="example.org")
+        self.assertEqual(config.get('Port'), 2221)
+
+    def test_match_and_negate(self):
+        """Test a match block uses negation"""
+        config = self._parse_config('Match host *.example.org !host not.example.org\nPort 2221\nMatch all\nPort 2222', host="true.example.org")
+        self.assertEqual(config.get('Port'), 2221)
+
     def test_match_exec(self):
         """Test a match block which runs a subprocess"""
 
