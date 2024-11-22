@@ -144,7 +144,7 @@ class SSHConfig:
                 logger.debug1(f'Config pattern "{pattern}" matched no files')
 
             for path in paths:
-                self.parse(path)
+                self._parse(path)
 
         self._path = old_path
         args.clear()
@@ -370,10 +370,10 @@ class SSHConfig:
 
                 self._options[option] = value
 
-
     def parse(self, path: Path) -> None:
-        """Parse an OpenSSH config file and return matching declarations"""
+        return self._parse(path)
 
+    def _parse(self, path: Path) -> None:
         self._path = path
         self._line_no = 0
         self._matching = True
@@ -417,6 +417,7 @@ class SSHConfig:
                 paths = config_paths
 
             for path in paths:
+                config._matching = True
                 config.parse(Path(path))
 
             config.loaded = True
@@ -461,14 +462,18 @@ class SSHClientConfig(SSHConfig):
 
         if port != ():
             self._options['Port'] = port
+        self._matching = True
 
+    def parse(self, path: Path) -> None:
+        self._parse(path, canonical=False, final=False)
+        self._matching = False
+        self._parse(path, canonical=False, final=True)
 
-    def parse(self, path: Path, canonical=False, final=False) -> None:
+    def _parse(self, path: Path, canonical=False, final=False) -> None:
         """Parse an OpenSSH config file and return matching declarations"""
 
         self._path = path
         self._line_no = 0
-        self._matching = True
         self._tokens = {'%': '%'}
 
         logger.debug1('Reading config from "%s"', path)
@@ -477,27 +482,22 @@ class SSHClientConfig(SSHConfig):
             for line in file:
                 if (v := self._parse_line(line)) is not None:
                     option, handler, args = v
+
                     if not args:
                         self._error(f'Missing {option} value')
 
-                    handler(self, option, args)
+                    if handler == SSHClientConfig._match:
+                        handler(self, option, args, canonical=canonical, final=final)
+                    else:
+                        handler(self, option, args)
 
                     if args:
                         self._error(f'Extra data at end: {" ".join(args)}')
 
+        if not final:
+            self._set_tokens()
+            self._expand_values()
 
-            file.seek(0)
-            for line in file:
-                if (v := self._parse_line(line)) is not None:
-                    option, handler, args = v
-                    if handler == SSHClientConfig._match:
-                        handler(self, option, args, canonical=False, final=True)
-                    else:
-                        handler(self, option, args)
-
-
-        self._set_tokens()
-        self._expand_values()
 
 
     def _match(self, option: str, args: List[str], canonical=False, final=False) -> None:
