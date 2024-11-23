@@ -341,6 +341,7 @@ try:
                       not ctypes.windll.shell32.IsUserAnAdmin()
 except (ImportError, OSError, AttributeError): # pragma: no cover
     sk_available = False
+    sk_use_webauthn = False
 
     def _sk_not_available(*args: object, **kwargs: object) -> NoReturn:
         """Report that security key support is unavailable"""
