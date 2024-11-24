@@ -120,7 +120,7 @@ from .misc import parse_byte_count, parse_time_interval, split_args
 from .packet import Boolean, Byte, NameList, String, UInt32, PacketDecodeError
 from .packet import SSHPacket, SSHPacketHandler, SSHPacketLogger
 
-from .pattern import WildcardPattern
+from .pattern import WildcardPattern, WildcardPatternList
 
 from .pkcs11 import load_pkcs11_keys
 
@@ -223,6 +223,7 @@ _AuthArg = DefTuple[bool]
 _AuthKeysArg = DefTuple[Union[None, str, List[str], SSHAuthorizedKeys]]
 _ClientHostKey = Union[SSHKeyPair, SSHKeySignKeyPair]
 _ClientKeysArg = Union[KeyListArg, KeyPairListArg]
+_CNAMEArg = DefTuple[Union[Sequence[str], Sequence[Tuple[str, str]]]]
 
 _GlobalRequest = Tuple[Optional[_PacketHandler], SSHPacket, bool]
 _GlobalRequestResult = Tuple[int, SSHPacket]
@@ -271,6 +272,52 @@ _DEFAULT_MAX_PKTSIZE = 32768        # 32 kiB
 # Default line editor parameters
 _DEFAULT_LINE_HISTORY = 1000        # 1000 lines
 _DEFAULT_MAX_LINE_LENGTH = 1024     # 1024 characters
+
+
+async def _resolve_host(host, loop: asyncio.AbstractEventLoop) -> Optional[str]:
+    """Attempt to resolve a hostname, returning a canonical name"""
+
+    try:
+        addrinfo = await loop.getaddrinfo(host + '.', 0,
+                                          flags=socket.AI_CANONNAME)
+    except socket.gaierror:
+        return None
+    else:
+        return addrinfo[0][3]
+
+
+async def _canonicalize_host(loop: asyncio.AbstractEventLoop,
+                             options: 'SSHConnectionOptions') -> Optional[str]:
+    """Canonicalize a host name"""
+
+    host = options.host
+
+    if not options.canonicalize_hostname or not options.canonical_domains or \
+            host.count('.') > options.canonicalize_max_dots or \
+            (await _resolve_host(host, loop)):
+        return None
+
+    for domain in options.canonical_domains:
+        canon_host = f'{host}.{domain}'
+        cname = await _resolve_host(canon_host, loop)
+
+        if cname is not None:
+            if cname:
+                for patterns in options.canonicalize_permitted_cnames:
+                    host_pat, cname_pat = map(WildcardPatternList, patterns)
+
+                    if host_pat.matches(canon_host) and \
+                            cname_pat.matches(cname):
+                        canon_host = cname
+                        break
+
+            print(f'{host} => {canon_host}')
+            return canon_host
+
+    if not options.canonicalize_fallback_local:
+        raise OSError(f'Unable to canonicalize hostname "{host}"')
+
+    return None
 
 
 async def _open_proxy(
@@ -348,7 +395,7 @@ async def _open_proxy(
     return cast(_Conn, cast(_ProxyCommandTunnel, tunnel).get_conn())
 
 
-async def _open_tunnel(tunnels: object, passphrase: Optional[BytesOrStr],
+async def _open_tunnel(tunnels: object, options: '_Options',
                        config: DefTuple[ConfigPaths]) -> \
         Optional['SSHClientConnection']:
     """Parse and open connection to tunnel over"""
@@ -373,9 +420,12 @@ async def _open_tunnel(tunnels: object, passphrase: Optional[BytesOrStr],
 
             last_conn = conn
             conn = await connect(host, port, username=username,
-                                 passphrase=passphrase, tunnel=conn,
+                                 passphrase=options.passphrase, tunnel=conn,
                                  config=config)
             conn.set_tunnel(last_conn)
+
+            if options.canonicalize_hostname != 'always':
+                options.canonicalize_hostname = False
 
         return conn
     else:
@@ -388,6 +438,17 @@ async def _connect(options: '_Options', config: DefTuple[ConfigPaths],
                    conn_factory: Callable[[], _Conn], msg: str) -> _Conn:
     """Make outbound TCP or SSH tunneled connection"""
 
+    options.waiter = loop.create_future()
+
+    canon_host = await _canonicalize_host(loop, options)
+
+    host = canon_host if canon_host else options.host
+    canonical = bool(canon_host)
+    final = options.config.has_match_final()
+
+    if canonical or final:
+        options.update(host=host, reload=True, canonical=canonical, final=final)
+
     host = options.host
     port = options.port
     tunnel = options.tunnel
@@ -396,9 +457,7 @@ async def _connect(options: '_Options', config: DefTuple[ConfigPaths],
     proxy_command = options.proxy_command
     free_conn = True
 
-    options.waiter = loop.create_future()
-
-    new_tunnel = await _open_tunnel(tunnel, options.passphrase, config)
+    new_tunnel = await _open_tunnel(tunnel, options, config)
     tunnel: _TunnelConnectorProtocol
 
     try:
@@ -446,6 +505,8 @@ async def _connect(options: '_Options', config: DefTuple[ConfigPaths],
         options.waiter.cancel()
         raise
 
+    conn.set_extra_info(host=host, port=port)
+
     try:
         await options.waiter
         free_conn = False
@@ -474,7 +535,7 @@ async def _listen(options: '_Options', config: DefTuple[ConfigPaths],
     tunnel = options.tunnel
     family = options.family
 
-    new_tunnel = await _open_tunnel(tunnel, options.passphrase, config)
+    new_tunnel = await _open_tunnel(tunnel, options, config)
     tunnel: _TunnelListenerProtocol
 
     if sock:
@@ -761,7 +822,7 @@ class SSHAcceptor:
 
         """
 
-        self._options.update(kwargs)
+        self._options.update(**kwargs)
 
 
 class SSHConnection(SSHPacketHandler, asyncio.Protocol):
@@ -1267,7 +1328,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         if sock:
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE,
-                            self._tcp_keepalive)
+                            1 if self._tcp_keepalive else 0)
 
             if sock.family in (socket.AF_INET, socket.AF_INET6):
                 sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
@@ -2792,6 +2853,8 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
            it is established. Supported values include everything supported
            by a socket transport plus:
 
+             | host
+             | port
              | username
              | client_version
              | server_version
@@ -7102,6 +7165,11 @@ class SSHConnectionOptions(Options):
     family: int
     local_addr: HostPort
     tcp_keepalive: bool
+    canonicalize_hostname: Union[bool, str]
+    canonical_domains: Sequence[str]
+    canonicalize_fallback_local: bool
+    canonicalize_max_dots: int
+    canonicalize_permitted_cnames: Sequence[Tuple[str, str]]
     kex_algs: Sequence[bytes]
     encryption_algs: Sequence[bytes]
     mac_algs: Sequence[bytes]
@@ -7142,6 +7210,11 @@ class SSHConnectionOptions(Options):
                 passphrase: Optional[BytesOrStr],
                 proxy_command: DefTuple[_ProxyCommand], family: DefTuple[int],
                 local_addr: DefTuple[HostPort], tcp_keepalive: DefTuple[bool],
+                canonicalize_hostname: DefTuple[Union[bool, str]],
+                canonical_domains: DefTuple[Sequence[str]],
+                canonicalize_fallback_local: DefTuple[bool],
+                canonicalize_max_dots: DefTuple[int],
+                canonicalize_permitted_cnames: _CNAMEArg,
                 kex_algs: _AlgsArg, encryption_algs: _AlgsArg,
                 mac_algs: _AlgsArg, compression_algs: _AlgsArg,
                 signature_algs: _AlgsArg, host_based_auth: _AuthArg,
@@ -7156,6 +7229,20 @@ class SSHConnectionOptions(Options):
                 keepalive_interval: Union[float, str],
                 keepalive_count_max: int) -> None:
         """Prepare common connection configuration options"""
+
+        def _split_cname_patterns(
+                patterns: Union[str, Tuple[str, str]]) -> Tuple[str, str]:
+            """Split CNAME patterns"""
+
+            if isinstance(patterns, str):
+                domains = patterns.split(':')
+
+                if len(domains) == 2:
+                    patterns = cast(Tuple[str, str], tuple(domains))
+                else:
+                    raise ValueError('CNAME rules must contain two patterns')
+
+            return patterns
 
         self.config = config
         self.protocol_factory = protocol_factory
@@ -7186,6 +7273,32 @@ class SSHConnectionOptions(Options):
 
         self.tcp_keepalive = cast(bool, tcp_keepalive if tcp_keepalive != ()
             else config.get('TCPKeepAlive', True))
+
+        self.canonicalize_hostname = \
+            cast(Union[bool, str], canonicalize_hostname
+                 if canonicalize_hostname != ()
+                 else config.get('CanonicalizeHostname', False))
+
+        self.canonical_domains = \
+            cast(Sequence[str], canonical_domains if canonical_domains != ()
+                 else config.get('CanonicalDomains', ()))
+
+        self.canonicalize_fallback_local = \
+            cast(bool, canonicalize_fallback_local \
+                 if canonicalize_fallback_local != ()
+                 else config.get('CanonicalizeFallbackLocal', True))
+
+        self.canonicalize_max_dots = \
+            cast(int, canonicalize_max_dots if canonicalize_max_dots != ()
+                 else config.get('CanonicalizeMaxDots', 1))
+
+        permitted_cnames = \
+            cast(Sequence[str], canonicalize_permitted_cnames
+                 if canonicalize_permitted_cnames != ()
+                 else config.get('CanonicalizePermittedCNAMEs', ()))
+
+        self.canonicalize_permitted_cnames = \
+            [_split_cname_patterns(patterns) for patterns in permitted_cnames]
 
         self.kex_algs, self.encryption_algs, self.mac_algs, \
         self.compression_algs, self.signature_algs = \
@@ -7584,6 +7697,40 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
            without getting a response before disconnecting from the
            server. This defaults to 3, but only applies when
            keepalive_interval is non-zero.
+       :param tcp_keepalive: (optional)
+           Whether or not to enable keepalive probes at the TCP level to
+           detect broken connections, defaulting to `True`.
+       :param canonicalize_hostname: (optional)
+           Whether or not to enable hostname canonicalization, defaulting
+           to `False`, in which case hostnames are passed as-is to the
+           system resolver. If set to `True`, requests that don't involve
+           a proxy tunnel or command will attempt to canonicalize the hostname
+           using canonical_domains and rules in canonicalize_permitted_cnames.
+           If set to `'always'`, hostname canonicalization is also applied
+           to proxied requests.
+       :param canonical_domains: (optional)
+           When canonicalize_hostname is set, this specifies list of domain
+           suffixes in which to search for the hostname.
+       :param canonicalize_fallback_local: (optional)
+           Whether or not to fall back to looking up the hostname against
+           the system resolver's search domains when no matches are found
+           in canonical_domains, defaulting to `True`.
+       :param canonicalize_max_dots: (optional)
+           Tha maximum number of dots which can appear in a hostname
+           before hostname canonicalization is disabled, defaulting
+           to 1. Hostnames with more than this number of dots are
+           treated as already being fully qualified and passed as-is
+           to the system resolver.
+       :param canonicalize_permitted_cnames: (optional)
+           Patterns to match against to decide whether hostname
+           canonicalization should return a CNAME. This argument
+           contains a list of pairs of wildcard pattern lists. The
+           first pattern is matched against the hostname found after
+           adding one of the search domains from canonical_domains and
+           the second pattern is matched against the associated CNAME.
+           If a match can be found in the list for both patterns, the
+           CNAME is returned as the canonical hostname. The default
+           is an empty list, preventing CNAMEs from being returned.
        :param command: (optional)
            The default remote command to execute on client sessions.
            An interactive shell is started if no command or subsystem is
@@ -7724,6 +7871,12 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
        :type login_timeout: *see* :ref:`SpecifyingTimeIntervals`
        :type keepalive_interval: *see* :ref:`SpecifyingTimeIntervals`
        :type keepalive_count_max: `int`
+       :type tcp_keepalive: `bool`
+       :type canonicalize_hostname: `bool` or `'always'`
+       :type canonical_domains: `list` of `str`
+       :type canonicalize_fallback_local: `bool`
+       :type canonicalize_max_dots: `int`
+       :type canonicalize_permitted_cnames: `list` of `tuple` of 2 `str` values
        :type command: `str`
        :type subsystem: `str`
        :type env: `dict` with `str` keys and values
@@ -7796,6 +7949,7 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
                 loop: Optional[asyncio.AbstractEventLoop] = None,
                 last_config: Optional[SSHConfig] = None,
                 config: DefTuple[ConfigPaths] = None, reload: bool = False,
+                canonical: bool = False, final: bool = False,
                 client_factory: Optional[_ClientFactory] = None,
                 client_version: _VersionArg = (), host: str = '',
                 port: DefTuple[int] = (), tunnel: object = (),
@@ -7803,6 +7957,11 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
                 family: DefTuple[int] = (),
                 local_addr: DefTuple[HostPort] = (),
                 tcp_keepalive: DefTuple[bool] = (),
+                canonicalize_hostname: DefTuple[Union[bool, str]] = (),
+                canonical_domains: DefTuple[Sequence[str]] = (),
+                canonicalize_fallback_local: DefTuple[bool] = (),
+                canonicalize_max_dots: DefTuple[int] = (),
+                canonicalize_permitted_cnames: DefTuple[Sequence[str]] = (),
                 kex_algs: _AlgsArg = (), encryption_algs: _AlgsArg = (),
                 mac_algs: _AlgsArg = (), compression_algs: _AlgsArg = (),
                 signature_algs: _AlgsArg = (), host_based_auth: _AuthArg = (),
@@ -7870,8 +8029,9 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
             config = [default_config] if os.access(default_config,
                                                    os.R_OK) else []
 
-        config = SSHClientConfig.load(last_config, config, reload,
-                                      local_username, username, host, port)
+        config = SSHClientConfig.load(last_config, config, reload, canonical,
+                                      final, local_username, username, host,
+                                      port)
 
         if x509_trusted_certs == ():
             default_x509_certs = Path('~', '.ssh', 'ca-bundle.crt').expanduser()
@@ -7907,10 +8067,12 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
 
         super().prepare(config, client_factory or SSHClient, client_version,
                         host, port, tunnel, passphrase, proxy_command, family,
-                        local_addr, tcp_keepalive, kex_algs, encryption_algs,
-                        mac_algs, compression_algs, signature_algs,
-                        host_based_auth, public_key_auth, kbdint_auth,
-                        password_auth, x509_trusted_certs,
+                        local_addr, tcp_keepalive, canonicalize_hostname,
+                        canonical_domains, canonicalize_fallback_local,
+                        canonicalize_max_dots, canonicalize_permitted_cnames,
+                        kex_algs, encryption_algs, mac_algs, compression_algs,
+                        signature_algs, host_based_auth, public_key_auth,
+                        kbdint_auth, password_auth, x509_trusted_certs,
                         x509_trusted_cert_paths, x509_purposes, rekey_bytes,
                         rekey_seconds, connect_timeout, login_timeout,
                         keepalive_interval, keepalive_count_max)
@@ -8351,7 +8513,28 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
            non-zero.
        :param tcp_keepalive: (optional)
            Whether or not to enable keepalive probes at the TCP level to
-           detect broken connections, defaulting to `True`
+           detect broken connections, defaulting to `True`.
+       :param canonicalize_hostname: (optional)
+           Whether or not to enable hostname canonicalization, defaulting
+           to `False`, in which case hostnames are passed as-is to the
+           system resolver. If set to `True`, requests that don't involve
+           a proxy tunnel or command will attempt to canonicalize the hostname
+           using canonical_domains and rules in canonicalize_permitted_cnames.
+           If set to `'always'`, hostname canonicalization is also applied
+           to proxied requests.
+       :param canonical_domains: (optional)
+           When canonicalize_hostname is set, this specifies list of domain
+           suffixes in which to search for the hostname.
+       :param canonicalize_fallback_local: (optional)
+           Whether or not to fall back to looking up the hostname against
+           the system resolver's search domains when no matches are found
+           in canonical_domains, defaulting to `True`.
+       :param canonicalize_max_dots: (optional)
+           Tha maximum number of dots which can appear in a hostname
+           before hostname canonicalization is disabled, defaulting
+           to 1. Hostnames with more than this number of dots are
+           treated as already being fully qualified and passed as-is
+           to the system resolver.
        :param config: (optional)
            Paths to OpenSSH server configuration files to load. This
            configuration will be used as a fallback to override the
@@ -8426,6 +8609,12 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
        :type login_timeout: *see* :ref:`SpecifyingTimeIntervals`
        :type keepalive_interval: *see* :ref:`SpecifyingTimeIntervals`
        :type keepalive_count_max: `int`
+       :type tcp_keepalive: `bool`
+       :type canonicalize_hostname: `bool` or `'always'`
+       :type canonical_domains: `list` of `str`
+       :type canonicalize_fallback_local: `bool`
+       :type canonicalize_max_dots: `int`
+       :type canonicalize_permitted_cnames: `list` of `tuple` of 2 `str` values
        :type config: `list` of `str`
        :type options: :class:`SSHServerConnectionOptions`
 
@@ -8468,6 +8657,7 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
                 loop: Optional[asyncio.AbstractEventLoop] = None,
                 last_config: Optional[SSHConfig] = None,
                 config: DefTuple[ConfigPaths] = None, reload: bool = False,
+                canonical: bool = False, final: bool = False,
                 accept_addr: str = '', accept_port: int = 0,
                 username: str = '', client_host: str = '',
                 client_addr: str = '',
@@ -8478,6 +8668,11 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
                 family: DefTuple[int] = (),
                 local_addr: DefTuple[HostPort] = (),
                 tcp_keepalive: DefTuple[bool] = (),
+                canonicalize_hostname: DefTuple[Union[bool, str]] = (),
+                canonical_domains: DefTuple[Sequence[str]] = (),
+                canonicalize_fallback_local: DefTuple[bool] = (),
+                canonicalize_max_dots: DefTuple[int] = (),
+                canonicalize_permitted_cnames: DefTuple[Sequence[str]] = (),
                 kex_algs: _AlgsArg = (), encryption_algs: _AlgsArg = (),
                 mac_algs: _AlgsArg = (), compression_algs: _AlgsArg = (),
                 signature_algs: _AlgsArg = (), host_based_auth: _AuthArg = (),
@@ -8521,8 +8716,8 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
                 max_pktsize: int = _DEFAULT_MAX_PKTSIZE) -> None:
         """Prepare server connection configuration options"""
 
-        config = SSHServerConfig.load(last_config, config, reload,
-                                      accept_addr, accept_port, username,
+        config = SSHServerConfig.load(last_config, config, reload, canonical,
+                                      final, accept_addr, accept_port, username,
                                       client_host, client_addr)
 
         if login_timeout == ():
@@ -8548,10 +8743,12 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
 
         super().prepare(config, server_factory or SSHServer, server_version,
                         host, port, tunnel, passphrase, proxy_command, family,
-                        local_addr, tcp_keepalive, kex_algs, encryption_algs,
-                        mac_algs, compression_algs, signature_algs,
-                        host_based_auth, public_key_auth, kbdint_auth,
-                        password_auth, x509_trusted_certs,
+                        local_addr, tcp_keepalive, canonicalize_hostname,
+                        canonical_domains, canonicalize_fallback_local,
+                        canonicalize_max_dots, canonicalize_permitted_cnames,
+                        kex_algs, encryption_algs, mac_algs, compression_algs,
+                        signature_algs, host_based_auth, public_key_auth,
+                        kbdint_auth, password_auth, x509_trusted_certs,
                         x509_trusted_cert_paths, x509_purposes,
                         rekey_bytes, rekey_seconds, connect_timeout,
                         login_timeout, keepalive_interval, keepalive_count_max)

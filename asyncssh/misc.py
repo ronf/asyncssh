@@ -456,7 +456,7 @@ class Options:
     def prepare(self, **kwargs: object) -> None:
         """Pre-process configuration options"""
 
-    def update(self, kwargs: Dict[str, object]) -> None:
+    def update(self, **kwargs: object) -> None:
         """Update options based on keyword parameters passed in"""
 
         self.kwargs.update(kwargs)

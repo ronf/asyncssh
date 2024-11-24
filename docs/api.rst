@@ -1600,6 +1600,11 @@ The following OpenSSH client config options are currently supported:
 
   | AddressFamily
   | BindAddress
+  | CanonicalDomains
+  | CanonicalizeFallbackLocal
+  | CanonicalizeHostname
+  | CanonicalizeMaxDots
+  | CanonicalizePermittedCNAMEs
   | CASignatureAlgorithms
   | CertificateFile
   | ChallengeResponseAuthentication
@@ -1697,6 +1702,11 @@ The following OpenSSH server config options are currently supported:
   | AuthorizedKeysFile
   | AllowAgentForwarding
   | BindAddress
+  | CanonicalDomains
+  | CanonicalizeFallbackLocal
+  | CanonicalizeHostname
+  | CanonicalizeMaxDots
+  | CanonicalizePermittedCNAMEs
   | CASignatureAlgorithms
   | ChallengeResponseAuthentication
   | Ciphers

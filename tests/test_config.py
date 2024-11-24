@@ -108,6 +108,19 @@ class _TestConfig(TempDirTestCase):
                                     'AddressFamily inet6')
         self.assertEqual(config.get('AddressFamily'), socket.AF_INET)
 
+    def test_set_canonicaize_host(self):
+        """Test canonicalize host config option"""
+
+        for value, result in (('yes', True), ('true', True),
+                              ('no', False), ('false', False),
+                              ('always', 'always')):
+            config = self._parse_config(f'CanonicalizeHostname {value}')
+            self.assertEqual(config.get('CanonicalizeHostname'), result)
+
+        config = self._parse_config('CanonicalizeHostname yes\n'
+                                    'CanonicalizeHostname no')
+        self.assertEqual(config.get('CanonicalizeHostname'), True)
+
     def test_set_rekey_limit(self):
         """Test rekey limit config option"""
 
@@ -182,6 +195,24 @@ class _TestConfig(TempDirTestCase):
         config = self._parse_config('Match user xxx\nMatch all\nPort 2222')
         self.assertEqual(config.get('Port'), 2222)
 
+    def test_match_negated(self):
+        """Test a match block which never matches due to negation"""
+
+        config = self._parse_config('Match !all user xxx\nPort 2222')
+        self.assertEqual(config.get('Port'), None)
+
+    def test_match_canonical(self):
+        """Test a match block which matches when the host is canonicalized"""
+
+        config = self._parse_config('Match canonical\nPort 2222')
+        self.assertEqual(config.get('Port'), None)
+
+    def test_match_final(self):
+        """Test a match block which matches on the final parsing pass"""
+
+        config = self._parse_config('Match final\nPort 2222')
+        self.assertEqual(config.get('Port'), None)
+
     def test_match_exec(self):
         """Test a match block which runs a subprocess"""
 
@@ -231,6 +262,8 @@ class _TestConfig(TempDirTestCase):
                 ('Unbalanced quotes', 'BindAddress "foo'),
                 ('Extra data at end', 'BindAddress foo bar'),
                 ('Invalid address family', 'AddressFamily xxx'),
+                ('Invalid canonicalization option',
+                 'CanonicalizeHostname xxx'),
                 ('Invalid boolean', 'Compression xxx'),
                 ('Invalid integer', 'Port xxx'),
                 ('Invalid match condition', 'Match xxx')):
@@ -243,13 +276,14 @@ class _TestClientConfig(_TestConfig):
     """Unit tests for client config objects"""
 
     def _load_config(self, config, last_config=None, reload=False,
-                     local_user='user', user=(), host='host', port=()):
+                     canonical=False, final=False, local_user='user',
+                     user=(), host='host', port=()):
         """Load a client configuration"""
 
         # pylint: disable=arguments-differ
 
-        return SSHClientConfig.load(last_config, config, reload,
-                                    local_user, user, host, port)
+        return SSHClientConfig.load(last_config, config, reload, canonical,
+                                    final, local_user, user, host, port)
 
     def test_set_string_none(self):
         """Test string config option"""
@@ -478,14 +512,16 @@ class _TestServerConfig(_TestConfig):
     """Unit tests for server config objects"""
 
     def _load_config(self, config, last_config=None, reload=False,
+                     canonical=False, final=False,
                      local_addr='127.0.0.1', local_port=22,
                      user='user', host=None, addr='127.0.0.1'):
         """Load a server configuration"""
 
         # pylint: disable=arguments-differ
 
-        return SSHServerConfig.load(last_config, config, reload,
-                                    local_addr, local_port, user, host, addr)
+        return SSHServerConfig.load(last_config, config, reload, canonical,
+                                    final, local_addr, local_port, user,
+                                    host, addr)
 
     def test_match_local_address(self):
         """Test matching on local address"""

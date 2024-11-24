@@ -94,6 +94,34 @@ def asynctest(coro):
     return async_wrapper
 
 
+def patch_getaddrinfo(cls):
+    """Decorator for patching socket.getaddrinfo"""
+
+    # pylint: disable=redefined-builtin
+
+    cls.orig_getaddrinfo = socket.getaddrinfo
+
+    hosts = {'testhost.test': '',
+             'testcname.test': 'cname.test',
+             'cname.test': ''}
+
+    def getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
+        """Mock DNS lookup of server hostname"""
+
+        # pylint: disable=unused-argument
+
+        if host.endswith('.'):
+            host = host[:-1]
+
+        try:
+            return [(socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP,
+                     hosts[host], ('127.0.0.1', port))]
+        except KeyError:
+            return cls.orig_getaddrinfo(host, port, family, type, proto, flags)
+
+    return patch('socket.getaddrinfo', getaddrinfo)(cls)
+
+
 def patch_getnameinfo(cls):
     """Decorator for patching socket.getnameinfo"""
 

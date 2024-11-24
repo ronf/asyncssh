@@ -53,7 +53,8 @@ from asyncssh.public_key import get_default_x509_certificate_algs
 
 from .server import Server, ServerTestCase
 
-from .util import asynctest, patch_extra_kex, patch_getnameinfo, patch_gss
+from .util import asynctest, patch_extra_kex, patch_getaddrinfo
+from .util import patch_getnameinfo, patch_gss
 from .util import gss_available, nc_available, x509_available
 
 
@@ -2671,3 +2672,109 @@ class _TestListenerContextManager(ServerTestCase):
             async with asyncssh.connect('127.0.0.1', listen_port,
                                         known_hosts=(['skey.pub'], [], [])):
                 pass
+
+
+@patch_getaddrinfo
+class _TestCanonicalizeHost(ServerTestCase):
+    """Test hostname canonicalization"""
+
+    @classmethod
+    async def start_server(cls):
+        """Start an SSH server to connect to"""
+
+        #import logging
+        #logging.basicConfig(level='DEBUG')
+        #asyncssh.set_debug_level(2)
+        return await cls.create_server(_TunnelServer)
+
+    @asynctest
+    async def test_canonicalize(self):
+        """Test hostname canonicalization"""
+
+        async with self.connect('testhost', known_hosts=(['skey.pub'], [], []),
+                                canonicalize_hostname=True,
+                                canonical_domains=['test']) as conn:
+            self.assertEqual(conn.get_extra_info('host'), 'testhost.test')
+
+    @asynctest
+    async def test_canonicalize_proxy(self):
+        """Test hostname canonicalization with proxy"""
+
+        with open('config', 'w') as f:
+            f.write('UserKnownHostsFile none\n'
+                    'Match host localhost\nPubkeyAuthentication no')
+
+        async with self.connect('testhost', config='config',
+                                tunnel=f'localhost:{self._server_port}',
+                                canonicalize_hostname=True,
+                                canonical_domains=['test']) as conn:
+            self.assertEqual(conn.get_extra_info('host'), 'testhost.test')
+
+    @asynctest
+    async def test_canonicalize_always(self):
+        """Test hostname canonicalization for all connections"""
+
+        with open('config', 'w') as f:
+            f.write('UserKnownHostsFile none\n'
+                    'Match host localhost\nPubkeyAuthentication no')
+
+        async with self.connect('testhost', config='config',
+                                tunnel=f'localhost:{self._server_port}',
+                                canonicalize_hostname='always',
+                                canonical_domains=['test']) as conn:
+            self.assertEqual(conn.get_extra_info('host'), 'testhost.test')
+
+    @asynctest
+    async def test_canonicalize_failure(self):
+        """Test hostname canonicalization failure"""
+
+        with self.assertRaises(socket.gaierror):
+            await self.connect('unknown', known_hosts=(['skey.pub'], [], []),
+                               canonicalize_hostname=True,
+                               canonical_domains=['test'])
+
+    @asynctest
+    async def test_canonicalize_failed_no_fallback(self):
+        """Test hostname canonicalization"""
+
+        with self.assertRaises(OSError):
+            await self.connect('unknown', known_hosts=(['skey.pub'], [], []),
+                               canonicalize_hostname=True,
+                               canonical_domains=['test'],
+                               canonicalize_fallback_local=False)
+
+    @asynctest
+    async def test_cname_returned(self):
+        """Test hostname canonicalization with cname returned"""
+
+        async with self.connect('testcname',
+                                known_hosts=(['skey.pub'], [], []),
+                                canonicalize_hostname=True,
+                                canonical_domains=['test'],
+                                canonicalize_permitted_cnames= \
+                                    [('*.test', '*.test')]) as conn:
+            self.assertEqual(conn.get_extra_info('host'), 'cname.test')
+
+    @asynctest
+    async def test_cname_not_returned(self):
+        """Test hostname canonicalization with cname not returned"""
+
+        async with self.connect('testcname',
+                                known_hosts=(['skey.pub'], [], []),
+                                canonicalize_hostname=True,
+                                canonical_domains=['test'],
+                                canonicalize_permitted_cnames= \
+                                    ['*.xxx:*.test']) as conn:
+            self.assertEqual(conn.get_extra_info('host'), 'testcname.test')
+
+    @asynctest
+    async def test_bad_cname_rules(self):
+        """Test hostname canonicalization with bad cname rules"""
+
+        with self.assertRaises(ValueError):
+            await self.connect('testcname',
+                               known_hosts=(['skey.pub'], [], []),
+                               canonicalize_hostname=True,
+                               canonical_domains=['test'],
+                               canonicalize_permitted_cnames= \
+                                   ['*.xxx:*.test:*.xxx'])
