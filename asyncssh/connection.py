@@ -37,8 +37,8 @@ from functools import partial
 from pathlib import Path
 from types import TracebackType
 from typing import TYPE_CHECKING, Any, AnyStr, Awaitable, Callable, Dict
-from typing import List, Mapping, Optional, Sequence, Set, Tuple, Type
-from typing import TypeVar, Union, cast
+from typing import Generic, List, Mapping, Optional, Sequence, Set, Tuple
+from typing import Type, TypeVar, Union, cast
 from typing_extensions import Protocol, Self
 
 from .agent import SSHAgentClient, SSHAgentListener
@@ -395,7 +395,7 @@ async def _open_proxy(
     return cast(_Conn, cast(_ProxyCommandTunnel, tunnel).get_conn())
 
 
-async def _open_tunnel(tunnels: object, options: '_Options',
+async def _open_tunnel(tunnels: object, options: _Options,
                        config: DefTuple[ConfigPaths]) -> \
         Optional['SSHClientConnection']:
     """Parse and open connection to tunnel over"""
@@ -432,7 +432,7 @@ async def _open_tunnel(tunnels: object, options: '_Options',
         return None
 
 
-async def _connect(options: '_Options', config: DefTuple[ConfigPaths],
+async def _connect(options: _Options, config: DefTuple[ConfigPaths],
                    loop: asyncio.AbstractEventLoop, flags: int,
                    sock: Optional[socket.socket],
                    conn_factory: Callable[[], _Conn], msg: str) -> _Conn:
@@ -517,7 +517,7 @@ async def _connect(options: '_Options', config: DefTuple[ConfigPaths],
             await conn.wait_closed()
 
 
-async def _listen(options: '_Options', config: DefTuple[ConfigPaths],
+async def _listen(options: _Options, config: DefTuple[ConfigPaths],
                   loop: asyncio.AbstractEventLoop, flags: int,
                   backlog: int, sock: Optional[socket.socket],
                   reuse_address: bool, reuse_port: bool,
@@ -7151,7 +7151,7 @@ class SSHServerConnection(SSHConnection):
         return SSHReader[bytes](session, chan), SSHWriter[bytes](session, chan)
 
 
-class SSHConnectionOptions(Options):
+class SSHConnectionOptions(Options, Generic[_Options]):
     """SSH connection options"""
 
     config: SSHConfig
@@ -7189,12 +7189,12 @@ class SSHConnectionOptions(Options):
     keepalive_internal: float
     keepalive_count_max: int
 
-    def __init__(self, options: Optional['_Options'] = None, **kwargs: object):
+    def __init__(self, options: Optional[_Options] = None, **kwargs: object):
         last_config = options.config if options else None
         super().__init__(options=options, last_config=last_config, **kwargs)
 
     @classmethod
-    async def construct(cls, options: Optional['_Options'] = None,
+    async def construct(cls, options: Optional[_Options] = None,
                         **kwargs: object) -> _Options:
         """Construct a new options object from within an async task"""
 
@@ -7355,9 +7355,7 @@ class SSHConnectionOptions(Options):
         elif isinstance(rekey_bytes, str):
             rekey_bytes = parse_byte_count(rekey_bytes)
 
-        rekey_bytes: int
-
-        if rekey_bytes <= 0:
+        if cast(int, rekey_bytes) <= 0:
             raise ValueError('Rekey bytes cannot be negative or zero')
 
         if rekey_seconds == ():
@@ -7368,9 +7366,7 @@ class SSHConnectionOptions(Options):
         elif isinstance(rekey_seconds, str):
             rekey_seconds = parse_time_interval(rekey_seconds)
 
-        rekey_seconds: float
-
-        if rekey_seconds and rekey_seconds <= 0:
+        if rekey_seconds and cast(float, rekey_seconds) <= 0:
             raise ValueError('Rekey seconds cannot be negative or zero')
 
         if isinstance(connect_timeout, str):
@@ -7394,8 +7390,8 @@ class SSHConnectionOptions(Options):
         if keepalive_count_max <= 0:
             raise ValueError('Keepalive count max cannot be negative or zero')
 
-        self.rekey_bytes = rekey_bytes
-        self.rekey_seconds = rekey_seconds
+        self.rekey_bytes = cast(int, rekey_bytes)
+        self.rekey_seconds = cast(float, rekey_seconds)
         self.connect_timeout = connect_timeout or None
         self.login_timeout = login_timeout
         self.keepalive_interval = keepalive_interval

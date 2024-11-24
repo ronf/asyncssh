@@ -4341,6 +4341,8 @@ class SFTPClient:
         parts = path.split(b'/')
         last = len(parts) - 1
 
+        exc: Type[SFTPError]
+
         for i, part in enumerate(parts):
             curpath = posixpath.join(curpath, part)
 
