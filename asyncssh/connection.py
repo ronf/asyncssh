@@ -311,7 +311,6 @@ async def _canonicalize_host(loop: asyncio.AbstractEventLoop,
                         canon_host = cname
                         break
 
-            print(f'{host} => {canon_host}')
             return canon_host
 
     if not options.canonicalize_fallback_local:
