@@ -984,6 +984,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         self._x11_listener: Union[None, SSHX11ClientListener,
                                   SSHX11ServerListener] = None
 
+        self._tasks: Set[asyncio.Task[None]] = set()
         self._close_event = asyncio.Event()
 
         self._server_host_key_algs: Optional[Sequence[bytes]] = None
@@ -1143,6 +1144,8 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
                    task: 'asyncio.Task[None]') -> None:
         """Collect result of an async task, reporting errors"""
 
+        self._tasks.discard(task)
+
         # pylint: disable=broad-except
         try:
             task.result()
@@ -1161,6 +1164,8 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         task = asyncio.ensure_future(coro)
         task.add_done_callback(partial(self._reap_task, task_logger))
+        self._tasks.add(task)
+
         return task
 
     def is_client(self) -> bool:
