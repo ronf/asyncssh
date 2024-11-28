@@ -2682,9 +2682,6 @@ class _TestCanonicalizeHost(ServerTestCase):
     async def start_server(cls):
         """Start an SSH server to connect to"""
 
-        #import logging
-        #logging.basicConfig(level='DEBUG')
-        #asyncssh.set_debug_level(2)
         return await cls.create_server(_TunnelServer)
 
     @asynctest
