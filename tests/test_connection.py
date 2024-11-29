@@ -2688,18 +2688,27 @@ class _TestCanonicalizeHost(ServerTestCase):
     async def test_canonicalize(self):
         """Test hostname canonicalization"""
 
-        async with self.connect('testhost', known_hosts=(['skey.pub'], [], []),
+        async with self.connect('testhost', known_hosts=None,
                                 canonicalize_hostname=True,
                                 canonical_domains=['test']) as conn:
             self.assertEqual(conn.get_extra_info('host'), 'testhost.test')
+
+    @asynctest
+    async def test_canonicalize_ip_address(self):
+        """Test hostname canonicalization with IP address"""
+
+        async with self.connect('127.0.0.1', known_hosts=None,
+                                canonicalize_hostname=True,
+                                canonicalize_max_dots=3,
+                                canonical_domains=['test']) as conn:
+            self.assertEqual(conn.get_extra_info('host'), '127.0.0.1')
 
     @asynctest
     async def test_canonicalize_proxy(self):
         """Test hostname canonicalization with proxy"""
 
         with open('config', 'w') as f:
-            f.write('UserKnownHostsFile none\n'
-                    'Match host localhost\nPubkeyAuthentication no')
+            f.write('UserKnownHostsFile none\n')
 
         async with self.connect('testhost', config='config',
                                 tunnel=f'localhost:{self._server_port}',
@@ -2712,8 +2721,7 @@ class _TestCanonicalizeHost(ServerTestCase):
         """Test hostname canonicalization for all connections"""
 
         with open('config', 'w') as f:
-            f.write('UserKnownHostsFile none\n'
-                    'Match host localhost\nPubkeyAuthentication no')
+            f.write('UserKnownHostsFile none\n')
 
         async with self.connect('testhost', config='config',
                                 tunnel=f'localhost:{self._server_port}',

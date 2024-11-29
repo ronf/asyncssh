@@ -25,6 +25,7 @@ import functools
 import getpass
 import inspect
 import io
+import ipaddress
 import os
 import shlex
 import socket
@@ -274,18 +275,6 @@ _DEFAULT_LINE_HISTORY = 1000        # 1000 lines
 _DEFAULT_MAX_LINE_LENGTH = 1024     # 1024 characters
 
 
-async def _resolve_host(host, loop: asyncio.AbstractEventLoop) -> Optional[str]:
-    """Attempt to resolve a hostname, returning a canonical name"""
-
-    try:
-        addrinfo = await loop.getaddrinfo(host + '.', 0,
-                                          flags=socket.AI_CANONNAME)
-    except socket.gaierror:
-        return None
-    else:
-        return addrinfo[0][3]
-
-
 async def _canonicalize_host(loop: asyncio.AbstractEventLoop,
                              options: 'SSHConnectionOptions') -> Optional[str]:
     """Canonicalize a host name"""
@@ -293,25 +282,35 @@ async def _canonicalize_host(loop: asyncio.AbstractEventLoop,
     host = options.host
 
     if not options.canonicalize_hostname or not options.canonical_domains or \
-            host.count('.') > options.canonicalize_max_dots or \
-            (await _resolve_host(host, loop)):
+            host.count('.') > options.canonicalize_max_dots:
+        return None
+
+    try:
+        ipaddress.ip_address(host)
+    except ValueError:
+        pass
+    else:
         return None
 
     for domain in options.canonical_domains:
         canon_host = f'{host}.{domain}'
-        cname = await _resolve_host(canon_host, loop)
 
-        if cname is not None:
-            if cname:
-                for patterns in options.canonicalize_permitted_cnames:
-                    host_pat, cname_pat = map(WildcardPatternList, patterns)
+        try:
+            addrinfo = await loop.getaddrinfo(
+                canon_host, 0, flags=socket.AI_CANONNAME)
+        except socket.gaierror:
+            continue
 
-                    if host_pat.matches(canon_host) and \
-                            cname_pat.matches(cname):
-                        canon_host = cname
-                        break
+        cname = addrinfo[0][3]
 
-            return canon_host
+        if cname:
+            for patterns in options.canonicalize_permitted_cnames:
+                host_pat, cname_pat = map(WildcardPatternList, patterns)
+
+                if host_pat.matches(canon_host) and cname_pat.matches(cname):
+                    return cname
+
+        return canon_host
 
     if not options.canonicalize_fallback_local:
         raise OSError(f'Unable to canonicalize hostname "{host}"')

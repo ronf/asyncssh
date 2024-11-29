@@ -110,9 +110,6 @@ def patch_getaddrinfo(cls):
 
         # pylint: disable=unused-argument
 
-        if host.endswith('.'):
-            host = host[:-1]
-
         try:
             return [(socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP,
                      hosts[host], ('127.0.0.1', port))]
