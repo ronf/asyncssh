@@ -6428,7 +6428,7 @@ class SFTPServerHandler(SFTPHandler):
             await result
 
     async def _process_limits(self, packet: SSHPacket) -> SFTPLimits:
-        """Process an incoming SFTP fstatvfs request"""
+        """Process an incoming SFTP limits request"""
 
         packet.check_end()
 
