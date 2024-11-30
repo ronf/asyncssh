@@ -748,6 +748,26 @@ class _TestSFTP(_CheckSFTP):
                     finally:
                         remove('src dst')
 
+    def test_copy_non_remote(self):
+        """Test copying without using remote_copy function"""
+
+        @sftp_test
+        async def _test_copy_non_remote(self, sftp):
+            """Test copying without using remote_copy function"""
+
+            for src in ('src', b'src', Path('src')):
+                with self.subTest(src=type(src)):
+                    try:
+                        self._create_file('src')
+                        await sftp.copy(src, 'dst')
+                        self._check_file('src', 'dst')
+                    finally:
+                        remove('src dst')
+
+        with patch('asyncssh.sftp.SFTPServerHandler._extensions', []):
+            # pylint: disable=no-value-for-parameter
+            _test_copy_non_remote(self)
+
     @sftp_test
     async def test_copy_progress(self, sftp):
         """Test copying a file over SFTP with progress reporting"""
@@ -769,7 +789,9 @@ class _TestSFTP(_CheckSFTP):
                             progress_handler=_report_progress)
                         self._check_file('src', 'dst')
 
-                        self.assertEqual(len(reports), (size // 8192) + 1)
+                        if method != 'copy':
+                            self.assertEqual(len(reports), (size // 8192) + 1)
+
                         self.assertEqual(reports[-1], size)
                     finally:
                         remove('src dst')
@@ -1129,6 +1151,37 @@ class _TestSFTP(_CheckSFTP):
                     self._check_file('src1', 'dst/src1')
                 finally:
                     remove('src1 src2 dst')
+
+    @sftp_test
+    async def test_remote_copy_arguments(self, sftp):
+        """Test remote copy arguments"""
+
+        try:
+            self._create_file('src', os.urandom(2*1024*1024))
+
+            async with sftp.open('src', 'rb') as src:
+                async with sftp.open('dst', 'wb') as dst:
+                    await sftp.remote_copy(src, dst, 0, 1024*1024, 0)
+                    await sftp.remote_copy(src, dst, 1024*1024, 0, 1024*1024)
+
+            self._check_file('src', 'dst')
+        finally:
+            remove('src dst')
+
+    @sftp_test
+    async def test_remote_copy_closed_file(self, sftp):
+        """Test remote copy of a closed file"""
+
+        try:
+            self._create_file('file')
+
+            async with sftp.open('file', 'rb') as f:
+                await f.close()
+
+                with self.assertRaises(ValueError):
+                    await sftp.remote_copy(f, f)
+        finally:
+            remove('file')
 
     @sftp_test
     async def test_glob(self, sftp):
@@ -3174,6 +3227,9 @@ class _TestSFTP(_CheckSFTP):
                 await f.fsync()
 
             with self.assertRaises(SFTPFailure):
+                await sftp.remote_copy(f, f)
+
+            with self.assertRaises(SFTPFailure):
                 await f.close()
 
     @sftp_test_v6
@@ -4300,19 +4356,24 @@ class _TestSFTPIOError(_CheckSFTP):
 
         return await cls.create_server(sftp_factory=_IOErrorSFTPServer)
 
-    @sftp_test
-    async def test_put_error(self, sftp):
-        """Test error when putting a file to an SFTP server"""
+    def test_copy_error(self):
+        """Test error when copying a file on an SFTP server"""
 
-        for method in ('get', 'put', 'copy'):
-            with self.subTest(method=method):
-                try:
-                    self._create_file('src', 8*1024*1024*'\0')
+        @sftp_test
+        async def _test_copy_error(self, sftp):
+            """Test error when copying a file on an SFTP server"""
 
-                    with self.assertRaises(SFTPFailure):
-                        await getattr(sftp, method)('src', 'dst')
-                finally:
-                    remove('src dst')
+            try:
+                self._create_file('src', 8*1024*1024*'\0')
+
+                with self.assertRaises(SFTPFailure):
+                    await sftp.copy('src', 'dst')
+            finally:
+                remove('src dst')
+
+        with patch('asyncssh.sftp.SFTPServerHandler._extensions', []):
+            # pylint: disable=no-value-for-parameter
+            _test_copy_error(self)
 
     @sftp_test
     async def test_read_error(self, sftp):

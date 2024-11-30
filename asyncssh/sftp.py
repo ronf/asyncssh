@@ -161,6 +161,8 @@ MAX_SFTP_READ_LEN = 4*1024*1024                     # 4 MiB
 MAX_SFTP_WRITE_LEN = 4*1024*1024                    # 4 MiB
 MAX_SFTP_PACKET_LEN = MAX_SFTP_WRITE_LEN + 1024
 
+_COPY_DATA_BLOCK_SIZE = 256*1024                    # 256 KiB
+
 _MAX_SFTP_REQUESTS = 128
 _MAX_READDIR_NAMES = 128
 
@@ -806,6 +808,24 @@ class _SFTPFileCopier(_SFTPParallelIO[int]):
             if self._progress_handler and self._total_bytes == 0:
                 self._progress_handler(self._srcpath, self._dstpath, 0, 0)
 
+            if self._srcfs == self._dstfs and \
+                    isinstance(self._srcfs, SFTPClient):
+                try:
+                    await self._srcfs.remote_copy(
+                        cast(SFTPClientFile, self._src),
+                        cast(SFTPClientFile, self._dst))
+                except SFTPOpUnsupported:
+                    pass
+                else:
+                    self._bytes_copied = self._total_bytes
+
+                    if self._progress_handler:
+                        self._progress_handler(self._srcpath, self._dstpath,
+                                               self._bytes_copied,
+                                               self._total_bytes)
+
+                    return
+
             async for _, datalen in self.iter():
                 if datalen:
                     self._bytes_copied += datalen
@@ -822,8 +842,6 @@ class _SFTPFileCopier(_SFTPParallelIO[int]):
                 setattr(exc, 'offset', self._bytes_copied)
 
                 raise exc
-
-
         finally:
             if self._src: # pragma: no branch
                 await self._src.close()
@@ -2472,6 +2490,7 @@ class SFTPClientHandler(SFTPHandler):
         self._supports_fsync = False
         self._supports_lsetstat = False
         self._supports_limits = False
+        self._supports_copy_data = False
 
     @property
     def version(self) -> int:
@@ -2692,6 +2711,8 @@ class SFTPClientHandler(SFTPHandler):
                 self._supports_lsetstat = True
             elif name == b'limits@openssh.com' and data == b'1':
                 self._supports_limits = True
+            elif name == b'copy-data' and data == b'1':
+                self._supports_copy_data = True
 
         if version == 3:
             # Check if the server has a buggy SYMLINK implementation
@@ -3090,6 +3111,26 @@ class SFTPClientHandler(SFTPHandler):
         else:
             raise SFTPOpUnsupported('fsync not supported')
 
+    async def copy_data(self, read_from_handle: bytes, read_from_offset: int,
+                        read_from_length: int, write_to_handle: bytes,
+                        write_to_offset: int) -> None:
+        """Make an SFTP copy data request"""
+
+        if self._supports_copy_data:
+            self.logger.debug1('Sending copy-data from handle %s, '
+                               'offset %d, length %d to handle %s, '
+                               'offset %d', read_from_handle.hex(),
+                               read_from_offset, read_from_length,
+                               write_to_handle.hex(), write_to_offset)
+
+            await self._make_request(b'copy-data', String(read_from_handle),
+                                     UInt64(read_from_offset),
+                                     UInt64(read_from_length),
+                                     String(write_to_handle),
+                                     UInt64(write_to_offset))
+        else:
+            raise SFTPOpUnsupported('copy-data not supported')
+
     def exit(self) -> None:
         """Handle a request to close the SFTP session"""
 
@@ -3141,6 +3182,15 @@ class SFTPClientFile:
 
         await self.close()
         return False
+
+    @property
+    def handle(self) -> bytes:
+        """Return handle or raise an error if clsoed"""
+
+        if self._handle is None:
+            raise ValueError('I/O operation on closed file')
+
+        return self._handle
 
     async def _end(self) -> int:
         """Return the offset of the end of the file"""
@@ -4232,6 +4282,35 @@ class SFTPClient:
                                True, preserve, recurse, follow_symlinks,
                                block_size, max_requests, progress_handler,
                                error_handler)
+
+    async def remote_copy(self, src: SFTPClientFile, dst: SFTPClientFile,
+                          src_offset: int = 0, src_length: int = 0,
+                          dst_offset: int = 0) -> None:
+        """Copy data between remote files
+
+           :param src:
+               The remote file object to read data from
+           :param dst:
+               The remote file object to write data to
+           :param src_offset: (optional)
+               The offset to begin reading data from
+           :param src_length: (optional)
+               The number of bytes to attempt to copy
+           :param dst_offset: (optional)
+               The offset to begin writing data to
+           :type src: :class:`SSHClientFile`
+           :type dst: :class:`SSHClientFile`
+           :type src_offset: `int`
+           :type src_length: `int`
+           :type dst_offset: `int`
+
+           :raises: :exc:`SFTPError` if the server doesn't support this
+                    extension or returns an error
+
+        """
+
+        await self._handler.copy_data(src.handle, src_offset, src_length,
+                                      dst.handle, dst_offset)
 
     async def glob(self, patterns: _SFTPPaths,
                    error_handler: SFTPErrorHandler = None) -> \
@@ -5583,7 +5662,8 @@ class SFTPServerHandler(SFTPHandler):
         (b'hardlink@openssh.com', b'1'),
         (b'fsync@openssh.com', b'1'),
         (b'lsetstat@openssh.com', b'1'),
-        (b'limits@openssh.com', b'1')]
+        (b'limits@openssh.com', b'1'),
+        (b'copy-data', b'1')]
 
     _attrib_extensions: List[bytes] = []
 
@@ -6437,6 +6517,55 @@ class SFTPServerHandler(SFTPHandler):
         return SFTPLimits(MAX_SFTP_PACKET_LEN, MAX_SFTP_READ_LEN,
                           MAX_SFTP_WRITE_LEN, nfiles)
 
+    async def _process_copy_data(self, packet: SSHPacket) -> None:
+        """Process an incoming copy data request"""
+
+        read_from_handle = packet.get_string()
+        read_from_offset = packet.get_uint64()
+        read_from_length = packet.get_uint64()
+        write_to_handle = packet.get_string()
+        write_to_offset = packet.get_uint64()
+        packet.check_end()
+
+        self.logger.debug1('Received copy-data from handle %s, '
+                           'offset %d, length %d to handle %s, '
+                           'offset %d', read_from_handle.hex(),
+                           read_from_offset, read_from_length,
+                           write_to_handle.hex(), write_to_offset)
+
+        src = self._file_handles.get(read_from_handle)
+        dst = self._file_handles.get(write_to_handle)
+
+        if src and dst:
+            read_to_end = read_from_length == 0
+
+            while read_to_end or read_from_length:
+                if read_to_end:
+                    size = _COPY_DATA_BLOCK_SIZE
+                else:
+                    size = min(read_from_length, _COPY_DATA_BLOCK_SIZE)
+
+                data = self._server.read(src, read_from_offset, size)
+
+                if inspect.isawaitable(data):
+                    data = await cast(Awaitable[bytes], data)
+
+                result = self._server.write(dst, write_to_offset, data)
+
+                if inspect.isawaitable(result):
+                    await result
+
+                if len(data) < size:
+                    break
+
+                read_from_offset += size
+                write_to_offset += size
+
+                if not read_to_end:
+                    read_from_length -= size
+        else:
+            raise SFTPInvalidHandle('Invalid file handle')
+
     _packet_handlers: Dict[Union[int, bytes], _SFTPPacketHandler] = {
         FXP_OPEN:                     _process_open,
         FXP_CLOSE:                    _process_close,
@@ -6465,7 +6594,8 @@ class SFTPServerHandler(SFTPHandler):
         b'hardlink@openssh.com':      _process_openssh_link,
         b'fsync@openssh.com':         _process_fsync,
         b'lsetstat@openssh.com':      _process_lsetstat,
-        b'limits@openssh.com':        _process_limits
+        b'limits@openssh.com':        _process_limits,
+        b'copy-data':                 _process_copy_data
     }
 
     async def run(self) -> None:
