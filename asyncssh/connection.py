@@ -281,8 +281,12 @@ async def _canonicalize_host(loop: asyncio.AbstractEventLoop,
 
     host = options.host
 
-    if not options.canonicalize_hostname or not options.canonical_domains or \
-            host.count('.') > options.canonicalize_max_dots:
+    if not options.canonicalize_hostname or not options.canonical_domains:
+        logger.info('Host canonicalization disabled')
+        return None
+
+    if host.count('.') > options.canonicalize_max_dots:
+        logger.info('Host canonicalization skipped due to max dots')
         return None
 
     try:
@@ -290,9 +294,14 @@ async def _canonicalize_host(loop: asyncio.AbstractEventLoop,
     except ValueError:
         pass
     else:
+        logger.info('Hostname canonicalization skipped on IP address')
         return None
 
+    logger.debug1('Beginning hostname canonicalization')
+
     for domain in options.canonical_domains:
+        logger.debug1('  Checking domain %s', domain)
+
         canon_host = f'{host}.{domain}'
 
         try:
@@ -303,18 +312,28 @@ async def _canonicalize_host(loop: asyncio.AbstractEventLoop,
 
         cname = addrinfo[0][3]
 
-        if cname:
+        if cname and cname != canon_host:
+            logger.debug1('  Checking CNAME rules for hostname %s '
+                          'with CNAME %s', canon_host, cname)
+
             for patterns in options.canonicalize_permitted_cnames:
                 host_pat, cname_pat = map(WildcardPatternList, patterns)
 
                 if host_pat.matches(canon_host) and cname_pat.matches(cname):
+                    logger.info('Hostname canonicalization to CNAME '
+                                'applied: %s -> %s', options.host, cname)
                     return cname
+
+        logger.info('Hostname canonicalization applied: %s -> %s',
+                    options.host, canon_host)
 
         return canon_host
 
     if not options.canonicalize_fallback_local:
+        logger.info('Hostname canonicalization failed (fallback disabled)')
         raise OSError(f'Unable to canonicalize hostname "{host}"')
 
+    logger.info('Hostname canonicalization failed, using local resolver')
     return None
 
 

@@ -2694,6 +2694,16 @@ class _TestCanonicalizeHost(ServerTestCase):
             self.assertEqual(conn.get_extra_info('host'), 'testhost.test')
 
     @asynctest
+    async def test_canonicalize_max_dots(self):
+        """Test hostname canonicalization exceeding max_dots"""
+
+        async with self.connect('testhost.test', known_hosts=None,
+                                canonicalize_hostname=True,
+                                canonicalize_max_dots=0,
+                                canonical_domains=['test']) as conn:
+            self.assertEqual(conn.get_extra_info('host'), 'testhost.test')
+
+    @asynctest
     async def test_canonicalize_ip_address(self):
         """Test hostname canonicalization with IP address"""
 
