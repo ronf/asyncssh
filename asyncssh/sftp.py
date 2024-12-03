@@ -801,22 +801,6 @@ class _SFTPFileCopier(_SFTPParallelIO[int]):
     async def run(self) -> None:
         """Perform parallel file copy"""
 
-        if self._srcfs == self._dstfs and \
-                isinstance(self._srcfs, SFTPClient):
-            try:
-                await self._srcfs.remote_copy(self._srcpath, self._dstpath)
-            except SFTPOpUnsupported:
-                pass
-            else:
-                self._bytes_copied = self._total_bytes
-
-                if self._progress_handler:
-                    self._progress_handler(self._srcpath, self._dstpath,
-                                           self._bytes_copied,
-                                           self._total_bytes)
-
-                return
-
         try:
             self._src = await self._srcfs.open(self._srcpath, 'rb',
                                                block_size=0)
@@ -825,6 +809,24 @@ class _SFTPFileCopier(_SFTPParallelIO[int]):
 
             if self._progress_handler and self._total_bytes == 0:
                 self._progress_handler(self._srcpath, self._dstpath, 0, 0)
+
+            if self._srcfs == self._dstfs and \
+                    isinstance(self._srcfs, SFTPClient):
+                try:
+                    await self._srcfs.remote_copy(
+                        cast(SFTPClientFile, self._src),
+                        cast(SFTPClientFile, self._dst))
+                except SFTPOpUnsupported:
+                    pass
+                else:
+                    self._bytes_copied = self._total_bytes
+
+                    if self._progress_handler:
+                        self._progress_handler(self._srcpath, self._dstpath,
+                                               self._bytes_copied,
+                                               self._total_bytes)
+
+                    return
 
             async for _, datalen in self.iter():
                 if datalen:
