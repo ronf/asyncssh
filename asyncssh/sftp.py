@@ -4299,10 +4299,10 @@ class SFTPClient:
            :param dst_offset: (optional)
                The offset to begin writing data to
            :type src:
-               :class:`SSHClientFile`, :class:`PurePath <pathlib.PurePath>`,
+               :class:`SFTPClientFile`, :class:`PurePath <pathlib.PurePath>`,
                `str`, or `bytes`
            :type dst:
-               :class:`SSHClientFile`, :class:`PurePath <pathlib.PurePath>`,
+               :class:`SFTPClientFile`, :class:`PurePath <pathlib.PurePath>`,
                `str`, or `bytes`
            :type src_offset: `int`
            :type src_length: `int`
