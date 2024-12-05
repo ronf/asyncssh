@@ -755,11 +755,11 @@ class _TestSFTP(_CheckSFTP):
         async def _test_copy_non_remote(self, sftp):
             """Test copying without using remote_copy function"""
 
-            for src in ('src', b'src', Path('src')):
-                with self.subTest(src=type(src)):
+            for method in ('copy', 'mcopy'):
+                with self.subTest(method=method):
                     try:
                         self._create_file('src')
-                        await sftp.copy(src, 'dst')
+                        await sftp.copy('src', 'dst')
                         self._check_file('src', 'dst')
                     finally:
                         remove('src dst')
@@ -767,6 +767,23 @@ class _TestSFTP(_CheckSFTP):
         with patch('asyncssh.sftp.SFTPServerHandler._extensions', []):
             # pylint: disable=no-value-for-parameter
             _test_copy_non_remote(self)
+
+    def test_copy_remote_only(self):
+        """Test copying while allowing only remote copy"""
+
+        @sftp_test
+        async def _test_copy_remote_only(self, sftp):
+            """Test copying with only remote copy allowed"""
+
+            for method in ('copy', 'mcopy'):
+                with self.subTest(method=method):
+                    with self.assertRaises(SFTPOpUnsupported):
+                        await getattr(sftp, method)('src', 'dst',
+                                                    remote_only=True)
+
+        with patch('asyncssh.sftp.SFTPServerHandler._extensions', []):
+            # pylint: disable=no-value-for-parameter
+            _test_copy_remote_only(self)
 
     @sftp_test
     async def test_copy_progress(self, sftp):
@@ -1151,6 +1168,25 @@ class _TestSFTP(_CheckSFTP):
                     self._check_file('src1', 'dst/src1')
                 finally:
                     remove('src1 src2 dst')
+
+    def test_remote_copy_unsupported(self):
+        """Test remote copy on a server which doesn't support it"""
+
+        @sftp_test
+        async def _test_remote_copy_unsupported(self, sftp):
+            """Test remote copy not being supported"""
+
+            try:
+                self._create_file('src')
+
+                with self.assertRaises(SFTPOpUnsupported):
+                    await sftp.remote_copy('src', 'dst')
+            finally:
+                remove('src')
+
+        with patch('asyncssh.sftp.SFTPServerHandler._extensions', []):
+            # pylint: disable=no-value-for-parameter
+            _test_remote_copy_unsupported(self)
 
     @sftp_test
     async def test_remote_copy_arguments(self, sftp):

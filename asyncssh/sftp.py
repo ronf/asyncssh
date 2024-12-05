@@ -811,39 +811,34 @@ class _SFTPFileCopier(_SFTPParallelIO[int]):
                 self._progress_handler(self._srcpath, self._dstpath, 0, 0)
 
             if self._srcfs == self._dstfs and \
-                    isinstance(self._srcfs, SFTPClient):
-                try:
-                    await self._srcfs.remote_copy(
-                        cast(SFTPClientFile, self._src),
-                        cast(SFTPClientFile, self._dst))
-                except SFTPOpUnsupported:
-                    pass
-                else:
-                    self._bytes_copied = self._total_bytes
+                    isinstance(self._srcfs, SFTPClient) and \
+                    self._srcfs.supports_remote_copy:
+                await self._srcfs.remote_copy(cast(SFTPClientFile, self._src),
+                                              cast(SFTPClientFile, self._dst))
 
-                    if self._progress_handler:
-                        self._progress_handler(self._srcpath, self._dstpath,
-                                               self._bytes_copied,
-                                               self._total_bytes)
+                self._bytes_copied = self._total_bytes
 
-                    return
+                if self._progress_handler:
+                    self._progress_handler(self._srcpath, self._dstpath,
+                                           self._bytes_copied,
+                                           self._total_bytes)
+            else:
+                async for _, datalen in self.iter():
+                    if datalen:
+                        self._bytes_copied += datalen
 
-            async for _, datalen in self.iter():
-                if datalen:
-                    self._bytes_copied += datalen
+                        if self._progress_handler:
+                            self._progress_handler(self._srcpath, self._dstpath,
+                                                   self._bytes_copied,
+                                                   self._total_bytes)
 
-                    if self._progress_handler:
-                        self._progress_handler(self._srcpath, self._dstpath,
-                                               self._bytes_copied,
-                                               self._total_bytes)
+                if self._bytes_copied != self._total_bytes:
+                    exc = SFTPFailure('Unexpected EOF during file copy')
 
-            if self._bytes_copied != self._total_bytes:
-                exc = SFTPFailure('Unexpected EOF during file copy')
+                    setattr(exc, 'filename', self._srcpath)
+                    setattr(exc, 'offset', self._bytes_copied)
 
-                setattr(exc, 'filename', self._srcpath)
-                setattr(exc, 'offset', self._bytes_copied)
-
-                raise exc
+                    raise exc
         finally:
             if self._src: # pragma: no branch
                 await self._src.close()
@@ -2500,6 +2495,12 @@ class SFTPClientHandler(SFTPHandler):
 
         return self._version
 
+    @property
+    def supports_copy_data(self) -> bool:
+        """Return whether or not SFTP remote copy is supported"""
+
+        return self._supports_copy_data
+
     async def _cleanup(self, exc: Optional[Exception]) -> None:
         """Clean up this SFTP client session"""
 
@@ -3678,6 +3679,12 @@ class SFTPClient:
 
         return self._handler.limits
 
+    @property
+    def supports_remote_copy(self) -> bool:
+        """Return whether or not SFTP remote copy is supported"""
+
+        return self._handler.supports_copy_data
+
     @staticmethod
     def basename(path: bytes) -> bytes:
         """Return the final component of a POSIX-style path"""
@@ -4116,7 +4123,8 @@ class SFTPClient:
                    follow_symlinks: bool = False, block_size: int = -1,
                    max_requests: int = _MAX_SFTP_REQUESTS,
                    progress_handler: SFTPProgressHandler = None,
-                   error_handler: SFTPErrorHandler = None) -> None:
+                   error_handler: SFTPErrorHandler = None,
+                   remote_only: bool = False) -> None:
         """Copy remote files to a new location
 
            This method copies one or more files or directories on the
@@ -4193,6 +4201,8 @@ class SFTPClient:
                The function to call to report copy progress
            :param error_handler: (optional)
                The function to call when an error occurs
+           :param remote_only: (optional)
+               Whether or not to only allow this to be a remote copy
            :type srcpaths:
                :class:`PurePath <pathlib.PurePath>`, `str`, or `bytes`,
                or a sequence of these
@@ -4205,11 +4215,15 @@ class SFTPClient:
            :type max_requests: `int`
            :type progress_handler: `callable`
            :type error_handler: `callable`
+           :type remote_only: `bool`
 
            :raises: | :exc:`OSError` if a local file I/O error occurs
                     | :exc:`SFTPError` if the server returns an error
 
         """
+
+        if remote_only and not self.supports_remote_copy:
+            raise SFTPOpUnsupported('Remote copy not supported')
 
         await self._begin_copy(self, self, srcpaths, dstpath, 'remote copy',
                                False, preserve, recurse, follow_symlinks,
@@ -4268,8 +4282,9 @@ class SFTPClient:
                     follow_symlinks: bool = False, block_size: int = -1,
                     max_requests: int = _MAX_SFTP_REQUESTS,
                     progress_handler: SFTPProgressHandler = None,
-                    error_handler: SFTPErrorHandler = None) -> None:
-        """Download remote files with glob pattern match
+                    error_handler: SFTPErrorHandler = None,
+                    remote_only: bool = False) -> None:
+        """Copy remote files with glob pattern match
 
            This method copies files and directories on the remote
            system matching one or more glob patterns.
@@ -4279,6 +4294,9 @@ class SFTPClient:
            wildcard patterns.
 
         """
+
+        if remote_only and not self.supports_remote_copy:
+            raise SFTPOpUnsupported('Remote copy not supported')
 
         await self._begin_copy(self, self, srcpaths, dstpath, 'remote mcopy',
                                True, preserve, recurse, follow_symlinks,
