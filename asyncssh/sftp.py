@@ -3759,7 +3759,8 @@ class SFTPClient:
                     preserve: bool, recurse: bool, follow_symlinks: bool,
                     block_size: int, max_requests: int,
                     progress_handler: SFTPProgressHandler,
-                    error_handler: SFTPErrorHandler) -> None:
+                    error_handler: SFTPErrorHandler,
+                    remote_only: bool) -> None:
         """Copy a file, directory, or symbolic link"""
 
         try:
@@ -3795,7 +3796,8 @@ class SFTPClient:
                     await self._copy(srcfs, dstfs, srcfile, dstfile,
                                      srcname.attrs, preserve, recurse,
                                      follow_symlinks, block_size, max_requests,
-                                     progress_handler, error_handler)
+                                     progress_handler, error_handler,
+                                     remote_only)
 
                 self.logger.info('  Finished copy of directory %s to %s',
                                  srcpath, dstpath)
@@ -3809,6 +3811,9 @@ class SFTPClient:
                 await dstfs.symlink(targetpath, dstpath)
             else:
                 self.logger.info('  Copying file %s to %s', srcpath, dstpath)
+
+                if remote_only and not self.supports_remote_copy:
+                    raise SFTPOpUnsupported('Remote copy not supported')
 
                 await _SFTPFileCopier(block_size, max_requests, 0,
                                       srcattrs.size or 0, srcfs, dstfs,
@@ -3846,7 +3851,8 @@ class SFTPClient:
                           recurse: bool, follow_symlinks: bool,
                           block_size: int, max_requests: int,
                           progress_handler: SFTPProgressHandler,
-                          error_handler: SFTPErrorHandler) -> None:
+                          error_handler: SFTPErrorHandler,
+                          remote_only: bool = False) -> None:
         """Begin a new file upload, download, or copy"""
 
         if block_size <= 0:
@@ -3903,7 +3909,8 @@ class SFTPClient:
 
             await self._copy(srcfs, dstfs, srcfile, dstfile, srcname.attrs,
                              preserve, recurse, follow_symlinks, block_size,
-                             max_requests, progress_handler, error_handler)
+                             max_requests, progress_handler, error_handler,
+                             remote_only)
 
     async def get(self, remotepaths: _SFTPPaths,
                   localpath: Optional[_SFTPPath] = None, *,
@@ -4222,13 +4229,10 @@ class SFTPClient:
 
         """
 
-        if remote_only and not self.supports_remote_copy:
-            raise SFTPOpUnsupported('Remote copy not supported')
-
         await self._begin_copy(self, self, srcpaths, dstpath, 'remote copy',
                                False, preserve, recurse, follow_symlinks,
                                block_size, max_requests, progress_handler,
-                               error_handler)
+                               error_handler, remote_only)
 
     async def mget(self, remotepaths: _SFTPPaths,
                    localpath: Optional[_SFTPPath] = None, *,
@@ -4295,13 +4299,10 @@ class SFTPClient:
 
         """
 
-        if remote_only and not self.supports_remote_copy:
-            raise SFTPOpUnsupported('Remote copy not supported')
-
         await self._begin_copy(self, self, srcpaths, dstpath, 'remote mcopy',
                                True, preserve, recurse, follow_symlinks,
                                block_size, max_requests, progress_handler,
-                               error_handler)
+                               error_handler, remote_only)
 
     async def remote_copy(self, src: _SFTPClientFileOrPath,
                           dst: _SFTPClientFileOrPath, src_offset: int = 0,

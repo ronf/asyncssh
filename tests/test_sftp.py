@@ -777,9 +777,14 @@ class _TestSFTP(_CheckSFTP):
 
             for method in ('copy', 'mcopy'):
                 with self.subTest(method=method):
-                    with self.assertRaises(SFTPOpUnsupported):
-                        await getattr(sftp, method)('src', 'dst',
-                                                    remote_only=True)
+                    try:
+                        self._create_file('src')
+
+                        with self.assertRaises(SFTPOpUnsupported):
+                            await getattr(sftp, method)('src', 'dst',
+                                                        remote_only=True)
+                    finally:
+                        remove('src')
 
         with patch('asyncssh.sftp.SFTPServerHandler._extensions', []):
             # pylint: disable=no-value-for-parameter
