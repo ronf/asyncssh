@@ -3,6 +3,39 @@
 Change Log
 ==========
 
+Release 2.19.0 (12 Dec 2024)
+----------------------------
+
+* Added support for WebAuthN authentication with U2F security keys,
+  allowing non-admin Windows users to use these keys for authentication.
+  Previously, authentication with U2F keys worked on Windows, but only
+  for admin users.
+
+* Added support for hostname canonicalization, compatible with the
+  configuration parameters used in OpenSSH, as well as support for the
+  "canonical" and "final" match keywords and negation support for
+  match. Thanks go to GitHub user commonism who suggested this and
+  provided a proposed implementation for negation.
+
+* Added client and server support for SFTP copy-data extension and
+  a new SFTP remote_copy() function which allows data to be moved
+  between two remote files without downloading and re-uploading the
+  data. Thanks go to Ali Khosravi for suggesting this addition.
+
+* Moved project metadata from setup.py to pyproject.toml. Thanks go to
+  Marc Mueller for contributing this.
+
+* Updated SSH connection to keep strong references to outstanding
+  tasks, to avoid potential issues with the garbage collector while
+  the connection is active. Thanks go to GitHub user Birnendampf for
+  pointing out this potential issue and suggesting a simple fix.
+
+* Fixed some issues with block_size argument in SFTP copy functions.
+  Thanks go to Krzysztof Kotlenga for finding and reporting these issues.
+
+* Fixed an import error when fido2 package wasn't available. Thanks go
+  to GitHub user commonism for reporting this issue.
+
 Release 2.18.0 (26 Oct 2024)
 ----------------------------
 
