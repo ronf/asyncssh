@@ -748,6 +748,21 @@ class _TestSFTP(_CheckSFTP):
                     finally:
                         remove('src dst')
 
+    @sftp_test
+    async def test_copy_max_requests(self, sftp):
+        """Test copying a file over SFTP with max requests set"""
+
+        for method in ('get', 'put', 'copy'):
+            for src in ('src', b'src', Path('src')):
+                with self.subTest(method=method, src=type(src)):
+                    try:
+                        self._create_file('src', 16*1024*1024*'\0')
+                        await getattr(sftp, method)(src, 'dst',
+                                                    max_requests=4)
+                        self._check_file('src', 'dst')
+                    finally:
+                        remove('src dst')
+
     def test_copy_non_remote(self):
         """Test copying without using remote_copy function"""
 
@@ -2299,6 +2314,23 @@ class _TestSFTP(_CheckSFTP):
 
             f = await sftp.open('file')
             self.assertEqual(len(await f.read(64*1024)), 40*1024)
+        finally:
+            if f: # pragma: no branch
+                await f.close()
+
+            remove('file')
+
+    @sftp_test
+    async def test_open_read_max_requests(self, sftp):
+        """Test reading data from a file with max requests set"""
+
+        f = None
+
+        try:
+            self._create_file('file', 16*1024*1024*'\0')
+
+            f = await sftp.open('file', max_requests=4)
+            self.assertEqual(len(await f.read()), 16*1024*1024)
         finally:
             if f: # pragma: no branch
                 await f.close()

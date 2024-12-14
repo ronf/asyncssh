@@ -3165,13 +3165,21 @@ class SFTPClientFile:
         self._appending = appending
         self._encoding = encoding
         self._errors = errors
-        self._max_requests = max_requests
         self._offset = None if appending else 0
 
         self.read_len = \
             handler.limits.max_read_len if block_size == -1 else block_size
         self.write_len = \
             handler.limits.max_write_len if block_size == -1 else block_size
+
+        if max_requests <= 0:
+            if self.read_len:
+                max_requests = max(16, min(MAX_SFTP_READ_LEN //
+                                           self.read_len, 128))
+            else:
+                max_requests = 1
+
+        self._max_requests = max_requests
 
     async def __aenter__(self) -> Self:
         """Allow SFTPClientFile to be used as an async context manager"""
@@ -3859,6 +3867,9 @@ class SFTPClient:
             block_size = min(srcfs.limits.max_read_len,
                              dstfs.limits.max_write_len)
 
+        if max_requests <= 0:
+            max_requests = max(16, min(MAX_SFTP_READ_LEN // block_size, 128))
+
         if isinstance(srcpaths, (bytes, str, PurePath)):
             srcpaths = [srcpaths]
         elif not isinstance(srcpaths, list):
@@ -3916,7 +3927,7 @@ class SFTPClient:
                   localpath: Optional[_SFTPPath] = None, *,
                   preserve: bool = False, recurse: bool = False,
                   follow_symlinks: bool = False, block_size: int = -1,
-                  max_requests: int = _MAX_SFTP_REQUESTS,
+                  max_requests: int = -1,
                   progress_handler: SFTPProgressHandler = None,
                   error_handler: SFTPErrorHandler = None) -> None:
         """Download remote files
@@ -3957,7 +3968,9 @@ class SFTPClient:
            doesn't advertise limits.
 
            The max_requests argument specifies the maximum number of
-           parallel read or write requests issued, defaulting to 128.
+           parallel read or write requests issued, defaulting to a
+           value between 16 and 128 depending on the selected block
+           size to avoid excessive memory usage.
 
            If progress_handler is specified, it will be called after
            each block of a file is successfully downloaded. The arguments
@@ -4022,7 +4035,7 @@ class SFTPClient:
                   remotepath: Optional[_SFTPPath] = None, *,
                   preserve: bool = False, recurse: bool = False,
                   follow_symlinks: bool = False, block_size: int = -1,
-                  max_requests: int = _MAX_SFTP_REQUESTS,
+                  max_requests: int = -1,
                   progress_handler: SFTPProgressHandler = None,
                   error_handler: SFTPErrorHandler = None) -> None:
         """Upload local files
@@ -4063,7 +4076,9 @@ class SFTPClient:
            doesn't advertise limits.
 
            The max_requests argument specifies the maximum number of
-           parallel read or write requests issued, defaulting to 128.
+           parallel read or write requests issued, defaulting to a
+           value between 16 and 128 depending on the selected block
+           size to avoid excessive memory usage.
 
            If progress_handler is specified, it will be called after
            each block of a file is successfully uploaded. The arguments
@@ -4128,7 +4143,7 @@ class SFTPClient:
                    dstpath: Optional[_SFTPPath] = None, *,
                    preserve: bool = False, recurse: bool = False,
                    follow_symlinks: bool = False, block_size: int = -1,
-                   max_requests: int = _MAX_SFTP_REQUESTS,
+                   max_requests: int = -1,
                    progress_handler: SFTPProgressHandler = None,
                    error_handler: SFTPErrorHandler = None,
                    remote_only: bool = False) -> None:
@@ -4170,7 +4185,9 @@ class SFTPClient:
            doesn't advertise limits.
 
            The max_requests argument specifies the maximum number of
-           parallel read or write requests issued, defaulting to 128.
+           parallel read or write requests issued, defaulting to a
+           value between 16 and 128 depending on the selected block
+           size to avoid excessive memory usage.
 
            If progress_handler is specified, it will be called after
            each block of a file is successfully copied. The arguments
@@ -4238,7 +4255,7 @@ class SFTPClient:
                    localpath: Optional[_SFTPPath] = None, *,
                    preserve: bool = False, recurse: bool = False,
                    follow_symlinks: bool = False, block_size: int = -1,
-                   max_requests: int = _MAX_SFTP_REQUESTS,
+                   max_requests: int = -1,
                    progress_handler: SFTPProgressHandler = None,
                    error_handler: SFTPErrorHandler = None) -> None:
         """Download remote files with glob pattern match
@@ -4261,7 +4278,7 @@ class SFTPClient:
                    remotepath: Optional[_SFTPPath] = None, *,
                    preserve: bool = False, recurse: bool = False,
                    follow_symlinks: bool = False, block_size: int = -1,
-                   max_requests: int = _MAX_SFTP_REQUESTS,
+                   max_requests: int = -1,
                    progress_handler: SFTPProgressHandler = None,
                    error_handler: SFTPErrorHandler = None) -> None:
         """Upload local files with glob pattern match
@@ -4284,7 +4301,7 @@ class SFTPClient:
                     dstpath: Optional[_SFTPPath] = None, *,
                     preserve: bool = False, recurse: bool = False,
                     follow_symlinks: bool = False, block_size: int = -1,
-                    max_requests: int = _MAX_SFTP_REQUESTS,
+                    max_requests: int = -1,
                     progress_handler: SFTPProgressHandler = None,
                     error_handler: SFTPErrorHandler = None,
                     remote_only: bool = False) -> None:
@@ -4586,7 +4603,7 @@ class SFTPClient:
                    attrs: SFTPAttrs = SFTPAttrs(),
                    encoding: Optional[str] = 'utf-8', errors: str = 'strict',
                    block_size: int = -1,
-                   max_requests: int = _MAX_SFTP_REQUESTS) -> SFTPClientFile:
+                   max_requests: int = -1) -> SFTPClientFile:
         """Open a remote file
 
            This method opens a remote file and returns an
@@ -4662,7 +4679,9 @@ class SFTPClient:
                          default of using the server-advertised limits.
 
            The max_requests argument specifies the maximum number of
-           parallel read or write requests issued, defaulting to 128.
+           parallel read or write requests issued, defaulting to a
+           value between 16 and 128 depending on the selected block
+           size to avoid excessive memory usage.
 
            :param path:
                The name of the remote file to open
@@ -4718,7 +4737,7 @@ class SFTPClient:
                      attrs: SFTPAttrs = SFTPAttrs(),
                      encoding: Optional[str] = 'utf-8', errors: str = 'strict',
                      block_size: int = -1,
-                     max_requests: int = _MAX_SFTP_REQUESTS) -> SFTPClientFile:
+                     max_requests: int = -1) -> SFTPClientFile:
         """Open a remote file using SFTP v5/v6 flags
 
            This method is very similar to :meth:`open`, but the pflags_or_mode
