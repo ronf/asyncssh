@@ -862,14 +862,14 @@ class _TestChannel(ServerTestCase):
             chan.close()
 
     @asynctest
-    async def test_agent_forwarding(self):
-        """Test SSH agent forwarding"""
+    async def test_agent_forwarding_explicit(self):
+        """Test SSH agent forwarding with explicit path"""
 
         if not self.agent_available(): # pragma: no cover
             self.skipTest('ssh-agent not available')
 
         async with self.connect(username='ckey',
-                                agent_forwarding=True) as conn:
+                                agent_forwarding='agent') as conn:
             chan, session = await _create_session(conn, 'agent')
 
             await chan.wait_closed()

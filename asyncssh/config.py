@@ -219,6 +219,22 @@ class SSHConfig:
         if option not in self._options:
             self._options[option] = value
 
+    def _set_bool_or_str(self, option: str, args: List[str]) -> None:
+        """Set a boolean or string config option"""
+
+        value_str = args.pop(0)
+        value_lower = value_str.lower()
+
+        if value_lower in ('yes', 'true'):
+            value: Union[bool, str] = True
+        elif value_lower in ('no', 'false'):
+            value = False
+        else:
+            value = value_str
+
+        if option not in self._options:
+            self._options[option] = value
+
     def _set_int(self, option: str, args: List[str]) -> None:
         """Set an integer config option"""
 
@@ -468,7 +484,7 @@ class SSHClientConfig(SSHConfig):
 
     _conditionals = {'host', 'match'}
     _no_split = {'proxycommand', 'remotecommand'}
-    _percent_expand = {'CertificateFile', 'IdentityAgent',
+    _percent_expand = {'CertificateFile', 'ForwardAgent', 'IdentityAgent',
                        'IdentityFile', 'ProxyCommand', 'RemoteCommand'}
 
     def __init__(self, last_config: 'SSHConfig', reload: bool,
@@ -587,7 +603,7 @@ class SSHClientConfig(SSHConfig):
         ('Compression',                     SSHConfig._set_bool),
         ('ConnectTimeout',                  SSHConfig._set_int),
         ('EnableSSHKeySign',                SSHConfig._set_bool),
-        ('ForwardAgent',                    SSHConfig._set_bool),
+        ('ForwardAgent',                    SSHConfig._set_bool_or_str),
         ('ForwardX11Trusted',               SSHConfig._set_bool),
         ('GlobalKnownHostsFile',            SSHConfig._set_string_list),
         ('GSSAPIAuthentication',            SSHConfig._set_bool),

@@ -335,6 +335,18 @@ class _TestClientConfig(_TestConfig):
         config = self._parse_config('    RemoteCommand     foo  bar  baz')
         self.assertEqual(config.get('RemoteCommand'), 'foo  bar  baz')
 
+    def test_set_forward_agent(self):
+        """Test agent forwarding path config option"""
+
+        for value, result in (('yes', True), ('true', True),
+                              ('no', False), ('false', False),
+                              ('agent', 'agent'), ('%d/agent', './agent')):
+            config = self._parse_config(f'ForwardAgent {value}')
+            self.assertEqual(config.get('ForwardAgent'), result)
+
+        config = self._parse_config('ForwardAgent yes\nForwardAgent no')
+        self.assertEqual(config.get('ForwardAgent'), True)
+
     def test_set_request_tty(self):
         """Test pseudo-terminal request config option"""
 
