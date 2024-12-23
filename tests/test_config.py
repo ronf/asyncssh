@@ -514,11 +514,24 @@ class _TestClientConfig(_TestConfig):
 
         for desc, config_data in (
                 ('Bad token in hostname', 'Hostname %p'),
-                ('Invalid token', 'IdentityFile %x'),
-                ('Percent at end', 'IdentityFile %')):
+                ('Invalid token', 'IdentityFile %x')):
             with self.subTest(desc):
                 with self.assertRaises(asyncssh.ConfigParseError):
                     self._parse_config(config_data)
+
+    def test_env_expansion(self):
+        """Test environment variable expansion"""
+
+        config = self._parse_config('RemoteCommand ${HOME}/.ssh')
+
+        self.assertEqual(config.get('RemoteCommand'), './.ssh')
+
+    def test_invalid_env_expansion(self):
+        """Test invalid environment variable expansion"""
+
+        with self.assertRaises(asyncssh.ConfigParseError):
+            self._parse_config('RemoteCommand ${XXX}')
+
 
 class _TestServerConfig(_TestConfig):
     """Unit tests for server config objects"""

@@ -41,6 +41,10 @@ from .pattern import HostPatternList, WildcardPatternList
 ConfigPaths = Union[None, FilePath, Sequence[FilePath]]
 
 
+_token_pattern = re.compile(r'%(.)')
+_env_pattern = re.compile(r'\${(.*)}')
+
+
 def _exec(cmd: str) -> bool:
     """Execute a command and return if exit status is 0"""
 
@@ -93,36 +97,38 @@ class SSHConfig:
 
         raise NotImplementedError
 
+    def _expand_token(self, match):
+        """Expand a percent token reference"""
+
+        try:
+            token = match.group(1)
+            return self._tokens[token]
+        except KeyError:
+            if token == 'd':
+                raise ConfigParseError('Home directory is '
+                                       'not available') from None
+            elif token == 'i':
+                raise ConfigParseError('User id not available') from None
+            else:
+                raise ConfigParseError('Invalid token expansion: ' +
+                                       token) from None
+
+    @staticmethod
+    def _expand_env(match):
+        """Expand an environment variable reference"""
+
+        try:
+            var = match.group(1)
+            return os.environ[var]
+        except KeyError:
+            raise ConfigParseError('Invalid environment expansion: ' +
+                                   var) from None
+
     def _expand_val(self, value: str) -> str:
-        """Perform percent token expansion on a string"""
+        """Perform percent token and environment expansion on a string"""
 
-        last_idx = 0
-        result: List[str] = []
-
-        for match in re.finditer(r'%', value):
-            idx = match.start()
-
-            if idx < last_idx:
-                continue
-
-            try:
-                token = value[idx+1]
-                result.extend([value[last_idx:idx], self._tokens[token]])
-                last_idx = idx + 2
-            except IndexError:
-                raise ConfigParseError('Invalid token substitution') from None
-            except KeyError:
-                if token == 'd':
-                    raise ConfigParseError('Home directory is '
-                                           'not available') from None
-                elif token == 'i':
-                    raise ConfigParseError('User id not available') from None
-                else:
-                    raise ConfigParseError('Invalid token substitution: ' +
-                                           value[idx+1]) from None
-
-        result.append(value[last_idx:])
-        return ''.join(result)
+        return _env_pattern.sub(self._expand_env,
+                                _token_pattern.sub(self._expand_token, value))
 
     def _include(self, option: str, args: List[str]) -> None:
         """Read config from a list of other config files"""
