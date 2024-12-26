@@ -704,7 +704,12 @@ class _CheckSFTP(ServerTestCase):
     def _check_link(self, link, target):
         """Check if a symlink points to the right target"""
 
-        self.assertEqual(os.readlink(link), target)
+        link = os.readlink(link)
+
+        if link.startswith('\\\\?\\'): # pragma: no cover
+            link = link[4:]
+
+        self.assertEqual(link, target)
 
 
 class _TestSFTP(_CheckSFTP):

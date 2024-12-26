@@ -1280,7 +1280,8 @@ class _TestPublicKeyAuth(ServerTestCase):
     async def test_agent_auth_unset(self):
         """Test connecting with no local keys and no ssh-agent configured"""
 
-        with patch.dict(os.environ, HOME='xxx', SSH_AUTH_SOCK=''):
+        with patch.dict(os.environ, HOME='xxx', USERPROFILE='xxx',
+                        SSH_AUTH_SOCK=''):
             with self.assertRaises(asyncssh.PermissionDenied):
                 await self.connect(username='ckey',
                                    known_hosts='.ssh/known_hosts')

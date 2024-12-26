@@ -26,6 +26,7 @@ import shutil
 import signal
 import socket
 import subprocess
+import sys
 
 import asyncssh
 from asyncssh.misc import async_context_manager
@@ -269,17 +270,20 @@ class ServerTestCase(AsyncTestCase):
         if 'XAUTHORITY' in os.environ: # pragma: no cover
             del os.environ['XAUTHORITY']
 
-        try:
-            output = run('ssh-agent -a agent 2>/dev/null')
-        except subprocess.CalledProcessError: # pragma: no cover
+        if sys.platform != 'win32':
+            try:
+                output = run('ssh-agent -a agent 2>/dev/null')
+            except subprocess.CalledProcessError: # pragma: no cover
+                cls._agent_pid = None
+            else:
+                cls._agent_pid = int(output.splitlines()[2].split()[3][:-1])
+
+                os.environ['SSH_AUTH_SOCK'] = 'agent'
+
+                async with asyncssh.connect_agent() as agent:
+                    await agent.add_keys([ckey_ecdsa, (ckey, ckey_cert)])
+        else: # pragma: no cover
             cls._agent_pid = None
-        else:
-            cls._agent_pid = int(output.splitlines()[2].split()[3][:-1])
-
-            os.environ['SSH_AUTH_SOCK'] = 'agent'
-
-            async with asyncssh.connect_agent() as agent:
-                await agent.add_keys([ckey_ecdsa, (ckey, ckey_cert)])
 
         with open('ssh-keysign', 'wb'):
             pass
@@ -288,13 +292,13 @@ class ServerTestCase(AsyncTestCase):
     async def asyncTearDownClass(cls):
         """Shut down test server and agent"""
 
+        cls._server.close()
+        await cls._server.wait_closed()
+
         tasks = all_tasks()
         tasks.remove(current_task())
 
         await asyncio.gather(*tasks, return_exceptions=True)
-
-        cls._server.close()
-        await cls._server.wait_closed()
 
         if cls._agent_pid: # pragma: no branch
             os.kill(cls._agent_pid, signal.SIGTERM)

@@ -7534,6 +7534,11 @@ class SFTPServer:
         """
 
         path = os.readlink(_to_local_path(self.map_path(path)))
+
+        if sys.platform == 'win32' and \
+                path.startswith('\\\\?\\'): # pragma: no cover
+            path = path[4:]
+
         return self.reverse_map_path(_from_local_path(path))
 
     def symlink(self, oldpath: bytes, newpath: bytes) -> MaybeAwait[None]:
@@ -7799,7 +7804,13 @@ class LocalFS:
     async def readlink(self, path: bytes) -> bytes:
         """Return the target of a local symbolic link"""
 
-        return _from_local_path(os.readlink(_to_local_path(path)))
+        path = os.readlink(_to_local_path(path))
+
+        if sys.platform == 'win32' and \
+                path.startswith('\\\\?\\'): # pragma: no cover
+            path = path[4:]
+
+        return _from_local_path(path)
 
     async def symlink(self, oldpath: bytes, newpath: bytes) -> None:
         """Create a local symbolic link"""

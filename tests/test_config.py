@@ -502,7 +502,7 @@ class _TestClientConfig(_TestConfig):
         def mock_hasattr(obj, attr):
             if obj == os and attr == 'getuid':
                 return False
-            else:
+            else: # pragma: no cover
                 return orig_hasattr(obj, attr)
 
         with self.assertRaises(asyncssh.ConfigParseError):
