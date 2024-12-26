@@ -156,7 +156,7 @@ class _TestConfig(TempDirTestCase):
         with open('.ssh/include', 'w') as f:
             f.write('Port 2222')
 
-        for path in ('include', Path('.ssh/include').absolute().as_posix()):
+        for path in ('include', Path('.ssh/include').resolve().as_posix()):
             config = self._parse_config(f'Include {path}')
             self.assertEqual(config.get('Port'), 2222)
 

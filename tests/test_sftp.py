@@ -709,7 +709,7 @@ class _CheckSFTP(ServerTestCase):
         if link.startswith('\\\\?\\'): # pragma: no cover
             link = link[4:]
 
-        self.assertEqual(link, target)
+        self.assertEqual(Path(link).resolve(), Path(target).resolve())
 
 
 class _TestSFTP(_CheckSFTP):

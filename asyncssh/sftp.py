@@ -7539,6 +7539,9 @@ class SFTPServer:
                 path.startswith('\\\\?\\'): # pragma: no cover
             path = path[4:]
 
+        if self._chroot:
+            path = os.path.realpath(path)
+
         return self.reverse_map_path(_from_local_path(path))
 
     def symlink(self, oldpath: bytes, newpath: bytes) -> MaybeAwait[None]:
