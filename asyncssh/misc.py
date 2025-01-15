@@ -466,17 +466,18 @@ class Options:
 class _RecordMeta(type):
     """Metaclass for general-purpose record type"""
 
+    __slots__: Dict[str, object] = {}
+
     def __new__(mcs: Type['_RecordMeta'], name: str, bases: Tuple[type, ...],
                 ns: Dict[str, object]) -> '_RecordMeta':
+        cls = cast(_RecordMeta, super().__new__(mcs, name, bases, ns))
+
         if name != 'Record':
-            fields = cast(Mapping[str, str],
-                          ns.get('__annotations__', {})).keys()
+            fields = cast(Mapping[str, str], cls.__annotations__.keys())
             defaults = {k: ns.get(k) for k in fields}
+            cls.__slots__ = defaults
 
-            ns = {k: v for k, v in ns.items() if k not in fields}
-            ns['__slots__'] = defaults
-
-        return cast(_RecordMeta, super().__new__(mcs, name, bases, ns))
+        return cls
 
 
 class Record(metaclass=_RecordMeta):

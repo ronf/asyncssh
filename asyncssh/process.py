@@ -928,7 +928,7 @@ class SSHProcess(SSHStreamSession, Generic[AnyStr]):
                 file = source
 
             if hasattr(file, 'read') and \
-                    (asyncio.iscoroutinefunction(file.read) or
+                    (inspect.iscoroutinefunction(file.read) or
                      inspect.isgeneratorfunction(file.read)):
                 reader = _AsyncFileReader(self, cast(_AsyncFileProtocol, file),
                                           bufsize, datatype, self._encoding,
@@ -997,7 +997,7 @@ class SSHProcess(SSHStreamSession, Generic[AnyStr]):
                 needs_close = recv_eof
 
             if hasattr(file, 'write') and \
-                    (asyncio.iscoroutinefunction(file.write) or
+                    (inspect.iscoroutinefunction(file.write) or
                      inspect.isgeneratorfunction(file.write)):
                 writer = _AsyncFileWriter(
                     self, cast(_AsyncFileProtocol, file), needs_close,
