@@ -1741,7 +1741,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
             self._send_kexinit()
             self._kexinit_sent = True
 
-        if (((pkttype in {MSG_SERVICE_REQUEST, MSG_SERVICE_ACCEPT} or
+        if (((pkttype in {MSG_DEBUG, MSG_SERVICE_REQUEST, MSG_SERVICE_ACCEPT} or
               pkttype > MSG_KEX_LAST) and not self._kex_complete) or
                 (pkttype == MSG_USERAUTH_BANNER and
                  not (self._auth_in_progress or self._auth_complete)) or
@@ -1751,7 +1751,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         # If we're encrypting and we have no data outstanding, insert an
         # ignore packet into the stream
-        if self._send_encryption and pkttype not in (MSG_IGNORE, MSG_EXT_INFO):
+        if self._send_encryption and pkttype > MSG_KEX_LAST:
             self.send_packet(MSG_IGNORE, String(b''))
 
         orig_payload = Byte(pkttype) + b''.join(args)
