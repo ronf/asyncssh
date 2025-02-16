@@ -2292,6 +2292,9 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
             self._auth_in_progress = True
 
+            if self._owner: # pragma: no branch
+                self._owner.begin_auth(self._username)
+
             # This method is only in SSHClientConnection
             # pylint: disable=no-member
             cast('SSHClientConnection', self).try_next_auth()

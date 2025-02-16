@@ -220,6 +220,15 @@ class SSHClient:
 
         """
 
+    def begin_auth(self, username: str) -> None:
+        """Begin client authentication
+
+           This method is called when client authentication is about to
+           begin, Applications may store the username passed here to
+           be used in future authentication callbacks.
+
+        """
+
     def auth_completed(self) -> None:
         """Authentication was completed successfully
 
