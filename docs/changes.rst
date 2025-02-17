@@ -3,6 +3,36 @@
 Change Log
 ==========
 
+Release 2.20.0 (17 Feb 2025)
+----------------------------
+
+* Added support for specifying an explicit path when configuring
+  agent forwarding. Thanks go to Aleksandr Ilin for pointing out
+  that this options supports more than just a boolean value.
+
+* Added support for environment variable expansion in SSH config,
+  for options which support percent expansion.
+
+* Added a new begin_auth callback in SSHClient, reporting the
+  username being sent during SSH client authentication. This can be
+  useful when the user is conditionally set via an SSH config file.
+
+* Improved strict-kex interoperability during re-keying. Thanks go
+  to GitHub user emeryalden for reporting this issue and helping
+  to track down the source of the problem.
+
+* Updated SFTP max_requests default to reduce memory usage when
+  using large block sizes.
+
+* Updated testing to add Python 3.13 and drop Python 3.7, avoiding
+  deprecation warnings from the cryptography package.
+
+* Fixed unit test issues under Windows, allowing unit tests to run
+  on Windows on all supported versions of Python.
+
+* Fixed a couple of issues with Python 3.14. Thanks go to Georg
+  Sauthoff for initially reporting this.
+
 Release 2.19.0 (12 Dec 2024)
 ----------------------------
 
