@@ -2095,7 +2095,6 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
             result = self._acceptor(self)
 
             if inspect.isawaitable(result):
-                assert result is not None
                 self.create_task(result)
 
             self._acceptor = None
@@ -2606,7 +2605,6 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
                 result = self._acceptor(self)
 
                 if inspect.isawaitable(result):
-                    assert result is not None
                     self.create_task(result)
 
                 self._acceptor = None

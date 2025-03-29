@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2024 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2025 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -771,7 +771,6 @@ class SSHServerStreamSession(SSHStreamSession[AnyStr],
 
         if inspect.isawaitable(handler):
             assert self._conn is not None
-            assert handler is not None
             self._conn.create_task(handler, stdin.logger)
 
     def exception_received(self, exc: Exception) -> None:
@@ -824,7 +823,6 @@ class SSHSocketStreamSession(SSHStreamSession[AnyStr]):
 
             if inspect.isawaitable(handler):
                 assert self._conn is not None
-                assert handler is not None
                 self._conn.create_task(handler, reader.logger)
 
 

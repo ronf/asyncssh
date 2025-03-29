@@ -6317,7 +6317,6 @@ class SFTPServerHandler(SFTPHandler):
                     longname_result = self._server.format_longname(name)
 
                     if inspect.isawaitable(longname_result):
-                        assert longname_result is not None
                         await longname_result
 
                 result.append(name)
