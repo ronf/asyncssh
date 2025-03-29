@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2024 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2025 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -548,10 +548,10 @@ class ServerAuth(Auth):
 
         self._conn.send_userauth_failure(partial_success)
 
-    def send_success(self) -> None:
+    async def send_success(self) -> None:
         """Send a user authentication success response"""
 
-        self._conn.send_userauth_success()
+        await self._conn.send_userauth_success()
 
 
 class _ServerNullAuth(ServerAuth):
@@ -596,7 +596,7 @@ class _ServerGSSKexAuth(ServerAuth):
                 (await self._conn.validate_gss_principal(self._username,
                                                          self._gss.user,
                                                          self._gss.host))):
-            self.send_success()
+            await self.send_success()
         else:
             self.send_failure()
 
@@ -650,7 +650,7 @@ class _ServerGSSMICAuth(ServerAuth):
         if (await self._conn.validate_gss_principal(self._username,
                                                     self._gss.user,
                                                     self._gss.host)):
-            self.send_success()
+            await self.send_success()
         else:
             self.send_failure()
 
@@ -757,7 +757,7 @@ class _ServerHostBasedAuth(ServerAuth):
                                                       key_data, client_host,
                                                       client_username,
                                                       msg, signature)):
-            self.send_success()
+            await self.send_success()
         else:
             self.send_failure()
 
@@ -795,7 +795,7 @@ class _ServerPublicKeyAuth(ServerAuth):
         if (await self._conn.validate_public_key(self._username, key_data,
                                                  msg, signature)):
             if sig_present:
-                self.send_success()
+                await self.send_success()
             else:
                 self.send_packet(MSG_USERAUTH_PK_OK, String(algorithm),
                                  String(key_data))
@@ -832,9 +832,9 @@ class _ServerKbdIntAuth(ServerAuth):
 
         challenge = await self._conn.get_kbdint_challenge(self._username,
                                                           lang, submethods)
-        self._send_challenge(challenge)
+        await self._send_challenge(challenge)
 
-    def _send_challenge(self, challenge: KbdIntChallenge) -> None:
+    async def _send_challenge(self, challenge: KbdIntChallenge) -> None:
         """Send a keyboard interactive authentication request"""
 
         if isinstance(challenge, (tuple, list)):
@@ -848,7 +848,7 @@ class _ServerKbdIntAuth(ServerAuth):
                              String(instruction), String(lang),
                              UInt32(num_prompts), *prompts_bytes)
         elif challenge:
-            self.send_success()
+            await self.send_success()
         else:
             self.send_failure()
 
@@ -857,7 +857,7 @@ class _ServerKbdIntAuth(ServerAuth):
 
         next_challenge = \
             await self._conn.validate_kbdint_response(self._username, responses)
-        self._send_challenge(next_challenge)
+        await self._send_challenge(next_challenge)
 
     def _process_info_response(self, _pkttype: int, _pktid: int,
                                packet: SSHPacket) -> None:
@@ -922,7 +922,7 @@ class _ServerPasswordAuth(ServerAuth):
                     await self._conn.validate_password(self._username, password)
 
             if result:
-                self.send_success()
+                await self.send_success()
             else:
                 self.send_failure()
         except PasswordChangeRequired as exc:

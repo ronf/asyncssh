@@ -1,4 +1,4 @@
-# Copyright (c) 2015-2022 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2015-2025 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -326,7 +326,7 @@ class _AuthServerStub(_AuthConnectionStub):
         self.send_userauth_packet(MSG_USERAUTH_FAILURE, NameList([]),
                                   Boolean(partial_success))
 
-    def send_userauth_success(self):
+    async def send_userauth_success(self):
         """Send a user authentication success response"""
 
         self._auth = None

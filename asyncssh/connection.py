@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2024 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2025 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -2069,7 +2069,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         self.send_packet(MSG_USERAUTH_FAILURE, NameList(methods),
                          Boolean(partial_success))
 
-    def send_userauth_success(self) -> None:
+    async def send_userauth_success(self) -> None:
         """Send a user authentication success response"""
 
         self.logger.info('Auth for user %s succeeded', self._username)
@@ -2086,7 +2086,10 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         self._set_keepalive_timer()
 
         if self._owner: # pragma: no branch
-            self._owner.auth_completed()
+            result = self._owner.auth_completed()
+
+            if inspect.isawaitable(result):
+                await result
 
         if self._acceptor:
             result = self._acceptor(self)
@@ -2506,7 +2509,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
                 result = await cast(Awaitable[bool], result)
 
             if not result:
-                self.send_userauth_success()
+                await self.send_userauth_success()
                 return
 
         if not self._owner: # pragma: no cover
@@ -4130,7 +4133,6 @@ class SSHClientConnection(SSHConnection):
                                                 retained, revoked)
 
         if inspect.isawaitable(result):
-            assert result is not None
             await result
 
         self._report_global_response(True)

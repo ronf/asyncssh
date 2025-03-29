@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2024 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2025 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -157,7 +157,7 @@ class SSHServer:
 
         return True # pragma: no cover
 
-    def auth_completed(self) -> None:
+    def auth_completed(self) -> MaybeAwait[None]:
         """Authentication was completed successfully
 
            This method is called when authentication has completed
@@ -166,6 +166,9 @@ class SSHServer:
            the authorized keys list or certificate associated with the
            user before any sessions are opened or forwarding requests
            are handled.
+
+           If blocking operations need to be performed when authentication
+           completes, this method may be defined as a coroutine.
 
         """
 
