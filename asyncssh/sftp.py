@@ -646,7 +646,8 @@ async def _request_ranges(file_obj: _SFTPFileObj, offset: int,
             if exc.errno != errno.ENXIO:
                 raise
     else: # pragma: no cover
-        yield offset, length
+        if length:
+            yield offset, length
 
 
 class _SFTPParallelIO(Generic[_T]):
