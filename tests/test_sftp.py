@@ -1,4 +1,4 @@
-# Copyright (c) 2015-2024 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2015-2025 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -632,7 +632,7 @@ class _CheckSFTP(ServerTestCase):
         except OSError: # pragma: no cover
             cls._symlink_supported = False
 
-    def _create_file(self, name, data=(), mode=None, utime=None):
+    def _create_file(self, name, data=(), offsets=(0,), mode=None, utime=None):
         """Create a test file"""
 
         if data == ():
@@ -641,7 +641,9 @@ class _CheckSFTP(ServerTestCase):
         binary = 'b' if isinstance(data, bytes) else ''
 
         with open(name, 'w' + binary) as f:
-            f.write(data)
+            for offset in offsets:
+                f.seek(offset)
+                f.write(data)
 
         if mode is not None:
             os.chmod(name, mode)
@@ -754,6 +756,47 @@ class _TestSFTP(_CheckSFTP):
                         remove('src dst')
 
     @sftp_test
+    async def test_sparse_copy(self, sftp):
+        """Test putting a sparse file over SFTP"""
+
+        for method in ('get', 'put', 'copy'):
+            with self.subTest(method=method):
+                try:
+                    self._create_file(
+                        'src', offsets=(i*1024*1024 for i in
+                                        range(24, 3840, 24)))
+                    await getattr(sftp, method)('src', 'dst')
+                    self._check_file('src', 'dst')
+                finally:
+                    remove('src dst')
+
+    @sftp_test
+    async def test_empty_request_range(self, sftp):
+        """Test getting ranges from an empty file"""
+
+        try:
+            self._create_file('file', data=b'')
+
+            async with sftp.open('file', 'rb') as f:
+                result = [data_range async for data_range in
+                          f.request_ranges(0, 0)]
+                self.assertEqual(result, [])
+        finally:
+            remove('file')
+
+    @sftp_test
+    async def test_nonsparse_put(self, sftp):
+        """Test putting a sparse file over SFTP with sparse mode disabled"""
+
+        try:
+            self._create_file(
+                'src', offsets=(i*1024*1024 for i in range(24, 72, 24)))
+            await sftp.put('src', 'dst', sparse=False)
+            self._check_file('src', 'dst')
+        finally:
+            remove('src dst')
+
+    @sftp_test
     async def test_copy_max_requests(self, sftp):
         """Test copying a file over SFTP with max requests set"""
 
@@ -779,7 +822,7 @@ class _TestSFTP(_CheckSFTP):
                 with self.subTest(method=method):
                     try:
                         self._create_file('src')
-                        await sftp.copy('src', 'dst')
+                        await getattr(sftp, method)('src', 'dst')
                         self._check_file('src', 'dst')
                     finally:
                         remove('src dst')
@@ -3283,6 +3326,9 @@ class _TestSFTP(_CheckSFTP):
             f = await sftp.open('file')
 
             with self.assertRaises(SFTPFailure):
+                _ = [_ async for _ in f.request_ranges(0, 0)]
+
+            with self.assertRaises(SFTPFailure):
                 await f.read()
 
             with self.assertRaises(SFTPFailure):
@@ -4537,7 +4583,7 @@ class _TestSFTPEOFDuringCopy(_CheckSFTP):
             self._create_file('src', 8*1024*1024*'\0')
 
             with self.assertRaises(SFTPFailure):
-                await sftp.get('src', 'dst')
+                await sftp.get('src', 'dst', sparse=False)
         finally:
             remove('src dst')
 

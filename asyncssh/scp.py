@@ -1,4 +1,4 @@
-# Copyright (c) 2017-2024 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2017-2025 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -40,9 +40,8 @@ from .logging import SSHLogger
 from .misc import BytesOrStr, FilePath, HostPort, MaybeAwait
 from .misc import async_context_manager, plural
 from .sftp import SFTPAttrs, SFTPGlob, SFTPName, SFTPServer, SFTPServerFS
-from .sftp import SFTPFileProtocol, SFTPError, SFTPFailure, SFTPBadMessage
-from .sftp import SFTPConnectionLost, SFTPErrorHandler, SFTPProgressHandler
-from .sftp import local_fs
+from .sftp import SFTPError, SFTPFailure, SFTPBadMessage, SFTPConnectionLost
+from .sftp import SFTPErrorHandler, SFTPProgressHandler, local_fs
 
 
 if TYPE_CHECKING:
@@ -58,6 +57,27 @@ _SCPConnPath = Union[Tuple[_SCPConn, _SCPPath], _SCPConn, _SCPPath]
 
 
 _SCP_BLOCK_SIZE = 256*1024    # 256 KiB
+
+
+class _SCPFileProtocol(Protocol):
+    """Protocol for accessing a file during an SCP copy"""
+
+    async def __aenter__(self) -> Self:
+        """Allow _SCPFileProtocol to be used as an async context manager"""
+
+    async def __aexit__(self, _exc_type: Optional[Type[BaseException]],
+                        _exc_value: Optional[BaseException],
+                        _traceback: Optional[TracebackType]) -> bool:
+        """Wait for file close when used as an async context manager"""
+
+    async def read(self, size: int, offset: int) -> bytes:
+        """Read data from the local file"""
+
+    async def write(self, data: bytes, offset: int) -> int:
+        """Write data to the local file"""
+
+    async def close(self) -> None:
+        """Close the local file"""
 
 
 class _SCPFSProtocol(Protocol):
@@ -86,7 +106,7 @@ class _SCPFSProtocol(Protocol):
         """Create a directory"""
 
     @async_context_manager
-    async def open(self, path: bytes, mode: str) -> SFTPFileProtocol:
+    async def open(self, path: bytes, mode: str) -> _SCPFileProtocol:
         """Open a file"""
 
 
