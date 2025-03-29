@@ -5881,7 +5881,6 @@ class SFTPServerHandler(SFTPHandler):
                 result = self._server.close(file_obj)
 
                 if inspect.isawaitable(result):
-                    assert result is not None
                     await result
 
             self._server.exit()
@@ -6121,7 +6120,6 @@ class SFTPServerHandler(SFTPHandler):
             result = self._server.close(file_obj)
 
             if inspect.isawaitable(result):
-                assert result is not None
                 await result
 
             return
@@ -6260,7 +6258,6 @@ class SFTPServerHandler(SFTPHandler):
         result = self._server.setstat(path, attrs)
 
         if inspect.isawaitable(result):
-            assert result is not None
             await result
 
     async def _process_fsetstat(self, packet: SSHPacket) -> None:
@@ -6281,7 +6278,6 @@ class SFTPServerHandler(SFTPHandler):
             result = self._server.fsetstat(file_obj, attrs)
 
             if inspect.isawaitable(result):
-                assert result is not None
                 await result
         else:
             raise SFTPInvalidHandle('Invalid file handle')
@@ -6350,7 +6346,6 @@ class SFTPServerHandler(SFTPHandler):
         result = self._server.remove(path)
 
         if inspect.isawaitable(result):
-            assert result is not None
             await result
 
     async def _process_mkdir(self, packet: SSHPacket) -> None:
@@ -6367,7 +6362,6 @@ class SFTPServerHandler(SFTPHandler):
         result = self._server.mkdir(path, attrs)
 
         if inspect.isawaitable(result):
-            assert result is not None
             await result
 
     async def _process_rmdir(self, packet: SSHPacket) -> None:
@@ -6383,7 +6377,6 @@ class SFTPServerHandler(SFTPHandler):
         result = self._server.rmdir(path)
 
         if inspect.isawaitable(result):
-            assert result is not None
             await result
 
     async def _process_realpath(self, packet: SSHPacket) -> _SFTPNames:
@@ -6481,7 +6474,6 @@ class SFTPServerHandler(SFTPHandler):
             result = self._server.rename(oldpath, newpath)
 
         if inspect.isawaitable(result):
-            assert result is not None
             await result
 
     async def _process_readlink(self, packet: SSHPacket) -> _SFTPNames:
@@ -6521,7 +6513,6 @@ class SFTPServerHandler(SFTPHandler):
         result = self._server.symlink(oldpath, newpath)
 
         if inspect.isawaitable(result):
-            assert result is not None
             await result
 
     async def _process_link(self, packet: SSHPacket) -> None:
@@ -6543,7 +6534,6 @@ class SFTPServerHandler(SFTPHandler):
             result = self._server.link(oldpath, newpath)
 
         if inspect.isawaitable(result):
-            assert result is not None
             await result
 
     async def _process_lock(self, packet: SSHPacket) -> None:
@@ -6565,7 +6555,6 @@ class SFTPServerHandler(SFTPHandler):
             result = self._server.lock(file_obj, offset, length, flags)
 
             if inspect.isawaitable(result): # pragma: no branch
-                assert result is not None
                 await result
         else:
             raise SFTPInvalidHandle('Invalid file handle')
@@ -6587,7 +6576,6 @@ class SFTPServerHandler(SFTPHandler):
             result = self._server.unlock(file_obj, offset, length)
 
             if inspect.isawaitable(result): # pragma: no branch
-                assert result is not None
                 await result
         else:
             raise SFTPInvalidHandle('Invalid file handle')
@@ -6605,7 +6593,6 @@ class SFTPServerHandler(SFTPHandler):
         result = self._server.posix_rename(oldpath, newpath)
 
         if inspect.isawaitable(result):
-            assert result is not None
             await result
 
     async def _process_statvfs(self, packet: SSHPacket) -> _SFTPOSVFSAttrs:
@@ -6660,7 +6647,6 @@ class SFTPServerHandler(SFTPHandler):
         result = self._server.link(oldpath, newpath)
 
         if inspect.isawaitable(result):
-            assert result is not None
             await result
 
     async def _process_fsync(self, packet: SSHPacket) -> None:
@@ -6677,7 +6663,6 @@ class SFTPServerHandler(SFTPHandler):
             result = self._server.fsync(file_obj)
 
             if inspect.isawaitable(result):
-                assert result is not None
                 await result
         else:
             raise SFTPInvalidHandle('Invalid file handle')
@@ -6697,7 +6682,6 @@ class SFTPServerHandler(SFTPHandler):
         result = self._server.lsetstat(path, attrs)
 
         if inspect.isawaitable(result):
-            assert result is not None
             await result
 
     async def _process_limits(self, packet: SSHPacket) -> SFTPLimits:
@@ -8065,7 +8049,6 @@ class SFTPServerFile:
         result = self._server.close(self._file_obj)
 
         if inspect.isawaitable(result):
-            assert result is not None
             await result
 
 
@@ -8102,7 +8085,6 @@ class SFTPServerFS:
         result = self._server.setstat(path, attrs)
 
         if inspect.isawaitable(result):
-            assert result is not None
             await result
 
     async def _type(self, path: bytes) -> int:
@@ -8139,7 +8121,6 @@ class SFTPServerFS:
         result = self._server.mkdir(path, SFTPAttrs())
 
         if inspect.isawaitable(result):
-            assert result is not None
             await result
 
     @async_context_manager
