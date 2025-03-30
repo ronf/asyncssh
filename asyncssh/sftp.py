@@ -106,12 +106,26 @@ from .logging import SSHLogger
 
 from .misc import BytesOrStr, Error, FilePath, MaybeAwait, OptExcInfo, Record
 from .misc import ConnectionLost
-from .misc import async_context_manager, get_symbol_names, hide_empty, plural
+from .misc import async_context_manager, get_symbol_names, hide_empty
+from .misc import make_sparse_file, plural
 
 from .packet import Boolean, Byte, String, UInt16, UInt32, UInt64
 from .packet import PacketDecodeError, SSHPacket, SSHPacketLogger
 
 from .version import __author__, __version__
+
+_pywin32_available = False
+
+if sys.platform == 'win32': # pragma: no cover
+    try:
+        import msvcrt
+        import pywintypes
+        import win32file
+        import winerror
+        import winioctlcon
+        _pywin32_available = True
+    except ImportError:
+        pass
 
 
 if TYPE_CHECKING:
@@ -629,11 +643,39 @@ def _setstat(path: Union[int, _SFTPPath], attrs: 'SFTPAttrs', *,
             pass
 
 
-async def _request_ranges(file_obj: _SFTPFileObj, offset: int,
-                          length: int) -> AsyncIterator[Tuple[int, int]]:
-    """Return file ranges containing data"""
+if sys.platform == 'win32' and _pywin32_available: # pragma: no cover
+    async def _request_ranges(file_obj: _SFTPFileObj, offset: int,
+                              length: int) -> AsyncIterator[Tuple[int, int]]:
+        """Return file ranges containing data on Windows"""
 
-    if hasattr(os, 'SEEK_DATA'):
+        handle = msvcrt.get_osfhandle(file_obj.fileno())
+        bufsize = _MAX_SPARSE_RANGES * 16
+
+        while True:
+            try:
+                query_range = offset.to_bytes(8, 'little') + \
+                              length.to_bytes(8, 'little')
+
+                ranges = win32file.DeviceIoControl(
+                    handle, winioctlcon.FSCTL_QUERY_ALLOCATED_RANGES,
+                    query_range, bufsize, None)
+            except pywintypes.error as exc:
+                if exc.args[0] == winerror.ERROR_MORE_DATA:
+                    bufsize *= 2
+                else:
+                    raise
+            else:
+                break
+
+        for pos in range(0, len(ranges), 16):
+            offset = int.from_bytes(ranges[pos:pos+8], 'little')
+            length = int.from_bytes(ranges[pos+8:pos+16], 'little')
+            yield offset, length
+elif hasattr(os, 'SEEK_DATA'):
+    async def _request_ranges(file_obj: _SFTPFileObj, offset: int,
+                              length: int) -> AsyncIterator[Tuple[int, int]]:
+        """Return file ranges containing data"""
+
         end = offset
         limit = offset + length
 
@@ -645,7 +687,13 @@ async def _request_ranges(file_obj: _SFTPFileObj, offset: int,
         except OSError as exc: # pragma: no cover
             if exc.errno != errno.ENXIO:
                 raise
-    else: # pragma: no cover
+else: # pragma: no cover
+    async def _request_ranges(file_obj: _SFTPFileObj, offset: int,
+                              length: int) -> AsyncIterator[Tuple[int, int]]:
+        """Sparse files aren't supported - return the full input range"""
+
+        # pylint: disable=unused-argument
+
         if length:
             yield offset, length
 
@@ -847,6 +895,9 @@ class _SFTPFileCopier(_SFTPParallelIO[int]):
 
             if self._sparse:
                 ranges = self._src.request_ranges(0, self._total_bytes)
+
+                if self._dstfs == local_fs:
+                    cast(LocalFile, self._dst).make_sparse()
             else:
                 ranges = _request_nonsparse_range(0, self._total_bytes)
 
@@ -7869,6 +7920,11 @@ class LocalFile:
 
         await self.close()
         return False
+
+    def make_sparse(self) -> None:
+        """Enable sparse file support on a file"""
+
+        return make_sparse_file(self._file)
 
     def request_ranges(self, offset: int, length: int) -> \
             AsyncIterator[Tuple[int, int]]:

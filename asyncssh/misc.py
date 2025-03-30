@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2024 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2025 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -45,6 +45,17 @@ from .constants import DISC_KEY_EXCHANGE_FAILED, DISC_MAC_ERROR
 from .constants import DISC_NO_MORE_AUTH_METHODS_AVAILABLE
 from .constants import DISC_PROTOCOL_ERROR, DISC_PROTOCOL_VERSION_NOT_SUPPORTED
 from .constants import DISC_SERVICE_NOT_AVAILABLE
+
+_pywin32_available = False
+
+if sys.platform == 'win32': # pragma: no cover
+    try:
+        import msvcrt
+        import win32file
+        import winioctlcon
+        _pywin32_available = True
+    except ImportError:
+        pass
 
 if sys.platform != 'win32': # pragma: no branch
     import fcntl
@@ -303,6 +314,19 @@ def write_file(filename: FilePath, data: bytes, mode: str = 'wb') -> int:
 
     with open_file(filename, mode) as f:
         return f.write(data)
+
+
+if sys.platform == 'win32' and _pywin32_available: # pragma: no cover
+    def make_sparse_file(file_obj: IO) -> None:
+        """Enable sparse file support on a file on Windows"""
+
+        handle = msvcrt.get_osfhandle(file_obj.fileno())
+
+        win32file.DeviceIoControl(handle, winioctlcon.FSCTL_SET_SPARSE,
+                                  b'', 0, None)
+else:
+    def make_sparse_file(_file_obj: IO) -> None:
+        """Sparse files are automatically enabled on non-Windows systems"""
 
 
 def _parse_units(value: str, suffixes: Mapping[str, int], label: str) -> float:

@@ -67,6 +67,8 @@ from asyncssh import FILEXFER_TYPE_FIFO
 from asyncssh import FILEXFER_ATTR_BITS_READONLY, FILEXFER_ATTR_KNOWN_TEXT
 from asyncssh import FX_OK, scp
 
+from asyncssh.misc import make_sparse_file
+
 from asyncssh.packet import SSHPacket, String, UInt32
 
 from asyncssh.sftp import SAFE_SFTP_READ_LEN, SAFE_SFTP_WRITE_LEN
@@ -641,6 +643,8 @@ class _CheckSFTP(ServerTestCase):
         binary = 'b' if isinstance(data, bytes) else ''
 
         with open(name, 'w' + binary) as f:
+            make_sparse_file(f)
+
             for offset in offsets:
                 f.seek(offset)
                 f.write(data)
