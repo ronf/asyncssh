@@ -665,6 +665,7 @@ class _CheckSFTP(ServerTestCase):
 
         self.assertEqual(stat.S_IMODE(attrs1.st_mode),
                          stat.S_IMODE(attrs2.st_mode))
+        self.assertEqual(attrs1.st_size, attrs2.st_size)
         self.assertEqual(int(attrs1.st_mtime), int(attrs2.st_mtime))
 
         if check_atime:
@@ -680,6 +681,22 @@ class _CheckSFTP(ServerTestCase):
         with open(name1, 'rb') as file1:
             with open(name2, 'rb') as file2:
                 self.assertEqual(file1.read(), file2.read())
+
+    async def _check_sparse_file(self, name1, name2):
+        """Check if two sparse files are equal"""
+
+        size1 = os.stat(name1).st_size
+        size2 = os.stat(name2).st_size
+        self.assertEqual(size1, size2)
+
+        with open(name1, 'rb') as file1:
+            with open(name2, 'rb') as file2:
+                ranges1 = [range async for range in
+                           LocalFile(file1).request_ranges(0, size1)]
+                ranges2 = [range async for range in
+                           LocalFile(file2).request_ranges(0, size2)]
+
+                self.assertEqual(ranges1, ranges2)
 
     def _check_stat(self, sftp_stat, local_stat):
         """Check if file attributes are equal"""
@@ -770,7 +787,7 @@ class _TestSFTP(_CheckSFTP):
                         'src', offsets=(i*1024*1024 for i in
                                         range(24, 3840, 24)))
                     await getattr(sftp, method)('src', 'dst')
-                    self._check_file('src', 'dst')
+                    await self._check_sparse_file('src', 'dst')
                 finally:
                     remove('src dst')
 

@@ -682,7 +682,7 @@ elif hasattr(os, 'SEEK_DATA'):
         try:
             while end < limit:
                 start = file_obj.seek(end, os.SEEK_DATA)
-                end = file_obj.seek(start, os.SEEK_HOLE)
+                end = min(file_obj.seek(start, os.SEEK_HOLE), limit)
                 yield start, end - start
         except OSError as exc: # pragma: no cover
             if exc.errno != errno.ENXIO:
@@ -895,9 +895,6 @@ class _SFTPFileCopier(_SFTPParallelIO[int]):
 
             if self._sparse:
                 ranges = self._src.request_ranges(0, self._total_bytes)
-
-                if self._dstfs == local_fs:
-                    cast(LocalFile, self._dst).make_sparse()
             else:
                 ranges = _request_nonsparse_range(0, self._total_bytes)
 
@@ -7289,8 +7286,14 @@ class SFTPServer:
             pass
 
         perms = 0o666 if attrs.permissions is None else attrs.permissions
-        return open(_to_local_path(self.map_path(path)), mode, buffering=0,
-                    opener=lambda path, _: os.open(path, flags, perms))
+
+        file_obj = open(_to_local_path(self.map_path(path)), mode, buffering=0,
+                        opener=lambda path, _: os.open(path, flags, perms))
+
+        if mode[0] in 'wx':
+            make_sparse_file(file_obj)
+
+        return file_obj
 
     def open56(self, path: bytes, desired_access: int, flags: int,
                attrs: SFTPAttrs) -> MaybeAwait[object]:
@@ -7386,8 +7389,14 @@ class SFTPServer:
             pass
 
         perms = 0o666 if attrs.permissions is None else attrs.permissions
-        return open(_to_local_path(self.map_path(path)), mode, buffering=0,
-                    opener=lambda path, _: os.open(path, open_flags, perms))
+
+        file_obj = open(_to_local_path(self.map_path(path)), mode, buffering=0,
+                        opener=lambda path, _: os.open(path, open_flags, perms))
+
+        if mode[0] in 'wx':
+            make_sparse_file(file_obj)
+
+        return file_obj
 
     def close(self, file_obj: object) -> MaybeAwait[None]:
         """Close an open file or directory
@@ -7921,11 +7930,6 @@ class LocalFile:
         await self.close()
         return False
 
-    def make_sparse(self) -> None:
-        """Enable sparse file support on a file"""
-
-        return make_sparse_file(self._file)
-
     def request_ranges(self, offset: int, length: int) -> \
             AsyncIterator[Tuple[int, int]]:
         """Return data ranges containing data in a local file"""
@@ -8048,7 +8052,13 @@ class LocalFS:
 
         # pylint: disable=unused-argument
 
-        return LocalFile(open(_to_local_path(path), mode))
+        file_obj = open(_to_local_path(path), mode)
+
+        if mode[0] in 'wx':
+            make_sparse_file(file_obj)
+
+        return LocalFile(file_obj)
+
 
 local_fs = LocalFS()
 
