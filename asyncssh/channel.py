@@ -26,6 +26,7 @@ import codecs
 import inspect
 import re
 import signal as _signal
+import sys
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, AnyStr, Awaitable, Callable
 from typing import Dict, Generic, Iterable, List, Mapping, Optional
@@ -225,7 +226,13 @@ class SSHChannel(Generic[AnyStr], SSHPacketHandler):
             self._request_waiters = []
 
         if self._session is not None:
-            self._session.connection_lost(exc)
+            # pylint: disable=broad-except
+            try:
+                self._session.connection_lost(exc)
+            except Exception:
+                self.logger.debug1('Uncaught exception in session ignored',
+                                   exc_info=sys.exc_info)
+
             self._session = None
 
         self._close_event.set()

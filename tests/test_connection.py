@@ -282,6 +282,17 @@ class _InternalErrorClient(asyncssh.SSHClient):
         raise RuntimeError('Exception handler test')
 
 
+class _ClientCleanupError(asyncssh.SSHClient):
+    """Test of exception during client cleanup"""
+
+    def connection_lost(self, exc):
+        """Raise an error when a client is cleaned up"""
+
+        # pylint: disable=unused-argument
+
+        raise RuntimeError('Exception in cleanup test')
+
+
 class _TunnelServer(Server):
     """Allow forwarding to test server host key request tunneling"""
 
@@ -1718,6 +1729,13 @@ class _TestConnection(ServerTestCase):
 
         with self.assertRaises(RuntimeError):
             await self.create_connection(_InternalErrorClient)
+
+    @asynctest
+    async def test_client_cleanup_error(self):
+        """Test error in client cleanup"""
+
+        async with self.connect(client_factory=_ClientCleanupError):
+            pass
 
 
 @patch_extra_kex

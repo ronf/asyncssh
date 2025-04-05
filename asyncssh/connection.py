@@ -1075,7 +1075,13 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
             self._wait = None
 
         if self._owner: # pragma: no branch
-            self._owner.connection_lost(exc)
+            # pylint: disable=broad-except
+            try:
+                self._owner.connection_lost(exc)
+            except Exception:
+                self.logger.debug1('Uncaught exception in owner ignored',
+                                   exc_info=sys.exc_info)
+
             self._owner = None
 
         self._cancel_login_timer()

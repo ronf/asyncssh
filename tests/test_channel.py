@@ -247,6 +247,15 @@ class _PTYServerSession(asyncssh.SSHServerSession):
         chan.close()
 
 
+class _ClientSessionCleanupError(asyncssh.SSHClientSession):
+    """Test of exception during client session cleanup"""
+
+    def connection_lost(self, exc):
+        """Raise an error when a client session is cleaned up"""
+
+        raise RuntimeError('Exception in session cleanup test')
+
+
 class _ChannelServer(Server):
     """Server for testing the AsyncSSH channel API"""
 
@@ -1760,6 +1769,13 @@ class _TestChannel(ServerTestCase):
 
             await chan.wait_closed()
             self.assertEqual(session.exit_status, 255)
+
+    @asynctest
+    async def test_client_session_cleanup_error(self):
+        """Test error in client session cleanup"""
+
+        async with self.connect() as conn:
+            await conn.create_session(_ClientSessionCleanupError)
 
 
 class _TestChannelNoPTY(ServerTestCase):
