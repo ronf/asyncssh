@@ -5931,7 +5931,10 @@ class SFTPServerHandler(SFTPHandler):
                 if inspect.isawaitable(result):
                     await result
 
-            self._server.exit()
+            result = self._server.exit()
+
+            if inspect.isawaitable(result):
+                await result
 
             self._file_handles = {}
             self._dir_handles = {}

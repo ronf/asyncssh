@@ -617,6 +617,11 @@ class _AsyncSFTPServer(SFTPServer):
 
         super().fsync(file_obj)
 
+    async def exit(self):
+        """Shut down this SFTP server"""
+
+        super().exit()
+
 
 class _CheckSFTP(ServerTestCase):
     """Utility functions for AsyncSSH SFTP unit tests"""
