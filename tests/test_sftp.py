@@ -4221,10 +4221,33 @@ class _TestSFTPCallable(_CheckSFTP):
     async def start_server(cls):
         """Start an SFTP server using a callable"""
 
-        def sftp_factory(conn):
+        def sftp_factory(chan):
             """Return an SFTP server"""
 
-            return SFTPServer(conn)
+            return SFTPServer(chan)
+
+        return await cls.create_server(sftp_factory=sftp_factory)
+
+    @sftp_test
+    async def test_stat(self, sftp):
+        """Test getting attributes on a file"""
+
+        # pylint: disable=no-self-use
+
+        await sftp.stat('.')
+
+
+class _TestSFTPCoroutine(_CheckSFTP):
+    """Unit tests for AsyncSSH SFTP factory being a coroutine"""
+
+    @classmethod
+    async def start_server(cls):
+        """Start an SFTP server using a coroutine"""
+
+        async def sftp_factory(chan):
+            """Return an SFTP server"""
+
+            return SFTPServer(chan)
 
         return await cls.create_server(sftp_factory=sftp_factory)
 
@@ -5570,6 +5593,22 @@ class _TestSCPAsync(_TestSCP):
         """Start an SFTP server with async callbacks"""
 
         return await cls.create_server(sftp_factory=_AsyncSFTPServer,
+                                       allow_scp=True)
+
+
+class _TestSCPCoroutine(_TestSCP):
+    """Unit test for AsyncSSH SCP with the SFTP factory being a coroutine"""
+
+    @classmethod
+    async def start_server(cls):
+        """Start an SFTP server with async callbacks"""
+
+        async def sftp_factory(chan):
+            """Return an SFTP server"""
+
+            return SFTPServer(chan)
+
+        return await cls.create_server(sftp_factory=sftp_factory,
                                        allow_scp=True)
 
 

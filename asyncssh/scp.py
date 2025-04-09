@@ -24,8 +24,9 @@
 
 import argparse
 import asyncio
-import posixpath
+import inspect
 from pathlib import PurePath
+import posixpath
 import shlex
 import string
 import sys
@@ -1086,22 +1087,46 @@ async def scp(srcpaths: Union[_SCPConnPath, Sequence[_SCPConnPath]],
             await dstconn.wait_closed()
 
 
-def run_scp_server(sftp_server: SFTPServer, command: str,
+async def _scp_handler(sftp_server: MaybeAwait[SFTPServer],
+                       args: _SCPArgs, reader: 'SSHReader[bytes]',
+                       writer: 'SSHWriter[bytes]') -> None:
+    """Run an SCP server to handle this request"""
+
+    if inspect.isawaitable(sftp_server):
+        sftp_server = await sftp_server
+
+    fs = SFTPServerFS(sftp_server)
+
+    handler: Union[_SCPSource, _SCPSink]
+
+    if args.source:
+        handler = _SCPSource(fs, reader, writer, args.preserve,
+                             args.recurse, error_handler=False, server=True)
+    else:
+        handler = _SCPSink(fs, reader, writer, args.must_be_dir,
+                           args.preserve, args.recurse,
+                           error_handler=False, server=True)
+
+    try:
+        await handler.run(args.path)
+    finally:
+        result = sftp_server.exit()
+
+        if inspect.isawaitable(result):
+            await result
+
+
+def run_scp_server(sftp_server: MaybeAwait[SFTPServer], command: str,
                    stdin: 'SSHReader[bytes]', stdout: 'SSHWriter[bytes]',
                    stderr: 'SSHWriter[bytes]') -> MaybeAwait[None]:
     """Return a handler for an SCP server session"""
 
-    async def _run_handler() -> None:
-        """Run an SCP server to handle this request"""
-
-        try:
-            await handler.run(args.path)
-        finally:
-            sftp_server.exit()
-
     try:
         args = _SCPArgParser().parse(command)
     except ValueError as exc:
+        if inspect.iscoroutine(sftp_server):
+            sftp_server.close()
+
         stdin.logger.info('Error starting SCP server: %s', str(exc))
         stderr.write(b'scp: ' + str(exc).encode('utf-8') + b'\n')
         cast('SSHServerChannel', stderr.channel).exit(1)
@@ -1109,15 +1134,4 @@ def run_scp_server(sftp_server: SFTPServer, command: str,
 
     stdin.logger.info('Starting SCP server, args: %s', command[4:].strip())
 
-    fs = SFTPServerFS(sftp_server)
-
-    handler: Union[_SCPSource, _SCPSink]
-
-    if args.source:
-        handler = _SCPSource(fs, stdin, stdout, args.preserve, args.recurse,
-                             error_handler=False, server=True)
-    else:
-        handler = _SCPSink(fs, stdin, stdout, args.must_be_dir, args.preserve,
-                           args.recurse, error_handler=False, server=True)
-
-    return _run_handler()
+    return _scp_handler(sftp_server, args, stdin, stdout)

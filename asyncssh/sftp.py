@@ -8225,13 +8225,25 @@ async def start_sftp_client(conn: 'SSHClientConnection',
     return SFTPClient(handler, path_encoding, path_errors)
 
 
-def run_sftp_server(sftp_server: SFTPServer, reader: 'SSHReader[bytes]',
-                    writer: 'SSHWriter[bytes]',
-                    sftp_version: int) -> Awaitable[None]:
-    """Return a handler for an SFTP server session"""
+async def _sftp_handler(sftp_server: MaybeAwait[SFTPServer],
+                        reader: 'SSHReader[bytes]',
+                        writer: 'SSHWriter[bytes]',
+                        sftp_version: int) -> None:
+    """Run an SFTP server to handle this request"""
+
+    if inspect.isawaitable(sftp_server):
+        sftp_server = await sftp_server
 
     handler = SFTPServerHandler(sftp_server, reader, writer, sftp_version)
 
-    handler.logger.info('Starting SFTP server')
+    await handler.run()
 
-    return handler.run()
+
+def run_sftp_server(sftp_server: MaybeAwait[SFTPServer],
+                    reader: 'SSHReader[bytes]', writer: 'SSHWriter[bytes]',
+                    sftp_version: int) -> Awaitable[None]:
+    """Return a handler for an SFTP server session"""
+
+    reader.logger.info('Starting SFTP server')
+
+    return _sftp_handler(sftp_server, reader, writer, sftp_version)

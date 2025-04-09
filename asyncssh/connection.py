@@ -8479,11 +8479,11 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
            errors of data exchanged on sessions on this server, defaulting
            to 'strict'.
        :param sftp_factory: (optional)
-           A `callable` which returns an :class:`SFTPServer` object that
-           will be created each time an SFTP session is requested by the
-           client, or `True` to use the base :class:`SFTPServer` class
-           to handle SFTP requests. If not specified, SFTP sessions are
-           rejected by default.
+           A `callable` or coroutine which returns an :class:`SFTPServer`
+           object that will be created each time an SFTP session is
+           requested by the client, or `True` to use the base
+           :class:`SFTPServer` class to handle SFTP requests. If not
+           specified, SFTP sessions are rejected by default.
        :param sftp_version: (optional)
            The maximum version of the SFTP protocol to support, currently
            either 3 or 4, defaulting to 3.
@@ -8630,7 +8630,7 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
        :type session_factory: `callable` or coroutine
        :type encoding: `str` or `None`
        :type errors: `str`
-       :type sftp_factory: `callable`
+       :type sftp_factory: `callable` or coroutine
        :type sftp_version: `int`
        :type allow_scp: `bool`
        :type window: `int`
