@@ -1202,7 +1202,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         return self._server
 
-    def is_closed(self):
+    def is_closed(self) -> bool:
         """Return whether the connection is closed"""
 
         return self._close_event.is_set()
