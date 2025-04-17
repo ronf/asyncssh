@@ -1,4 +1,4 @@
-# Copyright (c) 2015-2020 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2015-2025 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -35,8 +35,8 @@ from asyncssh.kex_dh import MSG_KEXDH_INIT, MSG_KEXDH_REPLY
 from asyncssh.kex_dh import MSG_KEX_DH_GEX_REQUEST, MSG_KEX_DH_GEX_GROUP
 from asyncssh.kex_dh import MSG_KEX_DH_GEX_INIT, MSG_KEX_DH_GEX_REPLY, _KexDHGex
 from asyncssh.kex_dh import MSG_KEX_ECDH_INIT, MSG_KEX_ECDH_REPLY
-from asyncssh.kex_dh import MSG_KEXGSS_INIT, MSG_KEXGSS_COMPLETE
-from asyncssh.kex_dh import MSG_KEXGSS_ERROR
+from asyncssh.kex_dh import MSG_KEXGSS_INIT, MSG_KEXGSS_HOSTKEY
+from asyncssh.kex_dh import MSG_KEXGSS_COMPLETE, MSG_KEXGSS_ERROR
 from asyncssh.kex_rsa import MSG_KEXRSA_PUBKEY, MSG_KEXRSA_SECRET
 from asyncssh.kex_rsa import MSG_KEXRSA_DONE
 from asyncssh.gss import GSSClient, GSSServer
@@ -51,12 +51,13 @@ from .util import AsyncTestCase, ConnectionStub
 class _KexConnectionStub(ConnectionStub):
     """Connection stub class to test key exchange"""
 
-    def __init__(self, alg, gss, peer, server=False):
+    def __init__(self, alg, gss, duplicate=0, peer=None, server=False):
         super().__init__(peer, server)
 
         self._gss = gss
         self._key_waiter = asyncio.Future()
 
+        self._duplicate = duplicate
         self._kex = get_kex(self, alg)
 
     async def start(self):
@@ -103,6 +104,14 @@ class _KexConnectionStub(ConnectionStub):
         """Return the GSS context associated with this connection"""
 
         return self._gss
+
+    def send_packet(self, pkttype, *args, **kwargs):
+        """Duplicate sending packets of a specific type"""
+
+        super().send_packet(pkttype, *args)
+
+        if pkttype == self._duplicate:
+            super().send_packet(pkttype, *args, **kwargs)
 
     async def simulate_dh_init(self, e):
         """Simulate receiving a DH init packet"""
@@ -176,21 +185,21 @@ class _KexClientStub(_KexConnectionStub):
     """Stub class for client connection"""
 
     @classmethod
-    def make_pair(cls, alg, gss_host=None):
+    def make_pair(cls, alg, gss_host=None, duplicate=0):
         """Make a client and server connection pair to test key exchange"""
 
-        client_conn = cls(alg, gss_host)
+        client_conn = cls(alg, gss_host, duplicate)
         return client_conn, client_conn.get_peer()
 
-    def __init__(self, alg, gss_host):
-        server_conn = _KexServerStub(alg, gss_host, self)
+    def __init__(self, alg, gss_host, duplicate):
+        server_conn = _KexServerStub(alg, gss_host, duplicate, peer=self)
 
         if gss_host:
             gss = GSSClient(gss_host, None, 'delegate' in gss_host)
         else:
             gss = None
 
-        super().__init__(alg, gss, server_conn)
+        super().__init__(alg, gss, duplicate, peer=server_conn)
 
     def connection_lost(self, exc):
         """Handle the closing of a connection"""
@@ -211,9 +220,9 @@ class _KexClientStub(_KexConnectionStub):
 class _KexServerStub(_KexConnectionStub):
     """Stub class for server connection"""
 
-    def __init__(self, alg, gss_host, peer):
+    def __init__(self, alg, gss_host, duplicate, peer):
         gss = GSSServer(gss_host, None) if gss_host else None
-        super().__init__(alg, gss, peer, True)
+        super().__init__(alg, gss, duplicate, peer, True)
 
         if gss_host and 'no_host_key' in gss_host:
             self._server_host_key = None
@@ -381,6 +390,21 @@ class _TestKex(AsyncTestCase):
         client_conn.close()
         server_conn.close()
 
+    @asynctest
+    async def test_dh_gex_multiple_messages(self):
+        """Unit test duplicate messages in DH group exchange"""
+
+        for pkttype in (MSG_KEX_DH_GEX_REQUEST, MSG_KEX_DH_GEX_GROUP):
+            client_conn, server_conn = _KexClientStub.make_pair(
+                b'diffie-hellman-group-exchange-sha1', duplicate=pkttype)
+
+            with self.assertRaises(asyncssh.ProtocolError):
+                await client_conn.start()
+                await client_conn.get_key()
+
+            client_conn.close()
+            server_conn.close()
+
     @unittest.skipUnless(gss_available, 'GSS not available')
     @asynctest
     async def test_gss_errors(self):
@@ -392,6 +416,15 @@ class _TestKex(AsyncTestCase):
         with self.subTest('Init sent to client'):
             with self.assertRaises(asyncssh.ProtocolError):
                 await client_conn.process_packet(Byte(MSG_KEXGSS_INIT))
+
+        with self.subTest('Host key sent to server'):
+            with self.assertRaises(asyncssh.ProtocolError):
+                await server_conn.process_packet(Byte(MSG_KEXGSS_HOSTKEY))
+
+        with self.subTest('Host key sent twice to client'):
+            with self.assertRaises(asyncssh.ProtocolError):
+                await client_conn.process_packet(Byte(MSG_KEXGSS_HOSTKEY))
+                await client_conn.process_packet(Byte(MSG_KEXGSS_HOSTKEY))
 
         with self.subTest('Complete sent to server'):
             with self.assertRaises(asyncssh.ProtocolError):

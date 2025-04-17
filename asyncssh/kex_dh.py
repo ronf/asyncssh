@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2024 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2025 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -343,6 +343,9 @@ class _KexDHGex(_KexDHBase):
         if self._conn.is_client():
             raise ProtocolError('Unexpected kex request msg')
 
+        if self._p:
+            raise ProtocolError('Kex DH group already requested')
+
         self._gex_data = packet.get_remaining_payload()
 
         if pkttype == MSG_KEX_DH_GEX_REQUEST_OLD:
@@ -376,6 +379,9 @@ class _KexDHGex(_KexDHBase):
 
         if self._conn.is_server():
             raise ProtocolError('Unexpected kex group msg')
+
+        if self._p:
+            raise ProtocolError('Kex DH group already sent')
 
         p = packet.get_mpint()
         g = packet.get_mpint()
@@ -529,6 +535,7 @@ class _KexGSSBase(_KexDHBase):
 
         self._gss = conn.get_gss_context()
         self._token: Optional[bytes] = None
+        self._host_key_msg_ok = False
         self._host_key_data = b''
 
     def _check_secure(self) -> None:
@@ -621,6 +628,8 @@ class _KexGSSBase(_KexDHBase):
         if self._conn.is_client() and self._gss.complete:
             raise ProtocolError('Unexpected kexgss continue msg')
 
+        self._host_key_msg_ok = False
+
         await self._process_token(token)
 
         if self._conn.is_server() and self._gss.complete:
@@ -635,6 +644,8 @@ class _KexGSSBase(_KexDHBase):
 
         if self._conn.is_server():
             raise ProtocolError('Unexpected kexgss complete msg')
+
+        self._host_key_msg_ok = False
 
         self._parse_server_key(packet)
         mic = packet.get_string()
@@ -662,6 +673,10 @@ class _KexGSSBase(_KexDHBase):
                          packet: SSHPacket) -> None:
         """Process a GSS hostkey message"""
 
+        if not self._host_key_msg_ok:
+            raise ProtocolError('Unexpected kexgss hostkey msg')
+
+        self._host_key_msg_ok = False
         self._host_key_data = packet.get_string()
         packet.check_end()
 
@@ -685,6 +700,7 @@ class _KexGSSBase(_KexDHBase):
         """Start GSS key exchange"""
 
         if self._conn.is_client():
+            self._host_key_msg_ok = True
             await self._process_token()
             await super().start()
 
