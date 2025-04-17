@@ -20,7 +20,7 @@
 
 """SSH server protocol handler"""
 
-from typing import TYPE_CHECKING, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Awaitable, Optional, Tuple, Union
 
 from .auth import KbdIntChallenge, KbdIntResponse
 from .listener import SSHListener
@@ -39,18 +39,26 @@ if TYPE_CHECKING:
 
 
 _NewSession = Union[bool, 'SSHServerSession', SSHServerSessionFactory,
+                    Awaitable['SSHServerSession'],
                     Tuple['SSHServerChannel', 'SSHServerSession'],
+                    Tuple['SSHServerChannel', Awaitable['SSHServerSession']],
                     Tuple['SSHServerChannel', SSHServerSessionFactory]]
 _NewTCPSession = Union[bool, 'SSHTCPSession', SSHSocketSessionFactory,
+                       Awaitable['SSHTCPSession'],
                        Tuple['SSHTCPChannel', 'SSHTCPSession'],
+                       Tuple['SSHTCPChannel', Awaitable['SSHTCPSession']],
                        Tuple['SSHTCPChannel', SSHSocketSessionFactory]]
 _NewUNIXSession = Union[bool, 'SSHUNIXSession', SSHSocketSessionFactory,
+                        Awaitable['SSHUNIXSession'],
                         Tuple['SSHUNIXChannel', 'SSHUNIXSession'],
+                        Tuple['SSHUNIXChannel', Awaitable['SSHUNIXSession']],
                         Tuple['SSHUNIXChannel', SSHSocketSessionFactory]]
 _NewTunTapSession = Union[bool, 'SSHTunTapSession', SSHSocketSessionFactory,
+                          Awaitable['SSHTunTapSession'],
                           Tuple['SSHTunTapChannel', 'SSHTunTapSession'],
+                          Tuple['SSHTunTapChannel', Awaitable['SSHTunTapSession']],
                           Tuple['SSHTunTapChannel', SSHSocketSessionFactory]]
-_NewListener = Union[bool, 'SSHAcceptHandler', SSHListener]
+_NewListener = Union[bool, 'SSHAcceptHandler', SSHListener, Awaitable['SSHListener']]
 
 
 class SSHServer:
