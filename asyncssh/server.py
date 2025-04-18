@@ -38,19 +38,23 @@ if TYPE_CHECKING:
     from .session import SSHTunTapSession
 
 
-_NewSession = Union[bool, 'SSHServerSession', SSHServerSessionFactory,
-                    Tuple['SSHServerChannel', 'SSHServerSession'],
-                    Tuple['SSHServerChannel', SSHServerSessionFactory]]
-_NewTCPSession = Union[bool, 'SSHTCPSession', SSHSocketSessionFactory,
-                       Tuple['SSHTCPChannel', 'SSHTCPSession'],
-                       Tuple['SSHTCPChannel', SSHSocketSessionFactory]]
-_NewUNIXSession = Union[bool, 'SSHUNIXSession', SSHSocketSessionFactory,
-                        Tuple['SSHUNIXChannel', 'SSHUNIXSession'],
-                        Tuple['SSHUNIXChannel', SSHSocketSessionFactory]]
-_NewTunTapSession = Union[bool, 'SSHTunTapSession', SSHSocketSessionFactory,
-                          Tuple['SSHTunTapChannel', 'SSHTunTapSession'],
-                          Tuple['SSHTunTapChannel', SSHSocketSessionFactory]]
-_NewListener = Union[bool, 'SSHAcceptHandler', SSHListener]
+_NewSession = \
+    Union[bool, MaybeAwait['SSHServerSession'], SSHServerSessionFactory,
+    Tuple['SSHServerChannel', MaybeAwait['SSHServerSession']],
+    Tuple['SSHServerChannel', SSHServerSessionFactory]]
+_NewTCPSession = \
+    Union[bool, MaybeAwait['SSHTCPSession'], SSHSocketSessionFactory,
+    Tuple['SSHTCPChannel', MaybeAwait['SSHTCPSession']],
+    Tuple['SSHTCPChannel', SSHSocketSessionFactory]]
+_NewUNIXSession = \
+    Union[bool, MaybeAwait['SSHUNIXSession'], SSHSocketSessionFactory,
+    Tuple['SSHUNIXChannel', MaybeAwait['SSHUNIXSession']],
+    Tuple['SSHUNIXChannel', SSHSocketSessionFactory]]
+_NewTunTapSession = \
+    Union[bool, MaybeAwait['SSHTunTapSession'], SSHSocketSessionFactory,
+    Tuple['SSHTunTapChannel', MaybeAwait['SSHTunTapSession']],
+    Tuple['SSHTunTapChannel', SSHSocketSessionFactory]]
+_NewListener = Union[bool, 'SSHAcceptHandler', MaybeAwait[SSHListener]]
 
 
 class SSHServer:
