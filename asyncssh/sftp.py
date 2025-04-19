@@ -5262,7 +5262,7 @@ class SFTPClient:
 
         """
 
-        return (await self._type(path)) != FILEXFER_TYPE_UNKNOWN
+        return await self._type(path) != FILEXFER_TYPE_UNKNOWN
 
     async def lexists(self, path: _SFTPPath) -> bool:
         """Return if the remote path exists, without following symbolic links
@@ -5275,7 +5275,7 @@ class SFTPClient:
 
         """
 
-        return (await self._type(path, statfunc=self.lstat)) != \
+        return await self._type(path, statfunc=self.lstat) != \
             FILEXFER_TYPE_UNKNOWN
 
     async def getatime(self, path: _SFTPPath) -> Optional[float]:
@@ -5404,7 +5404,7 @@ class SFTPClient:
 
         """
 
-        return (await self._type(path)) == FILEXFER_TYPE_DIRECTORY
+        return await self._type(path) == FILEXFER_TYPE_DIRECTORY
 
     async def isfile(self, path: _SFTPPath) -> bool:
         """Return if the remote path refers to a regular file
@@ -5417,7 +5417,7 @@ class SFTPClient:
 
         """
 
-        return (await self._type(path)) == FILEXFER_TYPE_REGULAR
+        return await self._type(path) == FILEXFER_TYPE_REGULAR
 
     async def islink(self, path: _SFTPPath) -> bool:
         """Return if the remote path refers to a symbolic link
@@ -5430,7 +5430,7 @@ class SFTPClient:
 
         """
 
-        return (await self._type(path, statfunc=self.lstat)) == \
+        return await self._type(path, statfunc=self.lstat) == \
             FILEXFER_TYPE_SYMLINK
 
     async def remove(self, path: _SFTPPath) -> None:
@@ -8171,12 +8171,12 @@ class SFTPServerFS:
     async def exists(self, path: bytes) -> bool:
         """Return if a path exists"""
 
-        return (await self._type(path)) != FILEXFER_TYPE_UNKNOWN
+        return await self._type(path) != FILEXFER_TYPE_UNKNOWN
 
     async def isdir(self, path: bytes) -> bool:
         """Return if the path refers to a directory"""
 
-        return (await self._type(path)) == FILEXFER_TYPE_DIRECTORY
+        return await self._type(path) == FILEXFER_TYPE_DIRECTORY
 
     def scandir(self, path: bytes) -> AsyncIterator[SFTPName]:
         """Return names and attributes of the files in a directory"""

@@ -3236,9 +3236,8 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
                     raise ChannelOpenError(OPEN_ADMINISTRATIVELY_PROHIBITED,
                                            'Connection forwarding denied')
 
-            return (await self.create_connection(session_factory,
-                                                 dest_host, dest_port,
-                                                 orig_host, orig_port))
+            return await self.create_connection(session_factory, dest_host,
+                                                dest_port, orig_host, orig_port)
 
         if (listen_host, listen_port) == (dest_host, dest_port):
             self.logger.info('Creating local TCP forwarder on %s',
@@ -5058,8 +5057,8 @@ class SSHClientConnection(SSHConnection):
 
         """
 
-        return (await create_connection(client_factory, host, port,
-                                        tunnel=self, **kwargs)) # type: ignore
+        return await create_connection(client_factory, host, port,
+                                       tunnel=self, **kwargs) # type: ignore
 
     @async_context_manager
     async def connect_ssh(self, host: str, port: DefTuple[int] = (),
@@ -5327,8 +5326,7 @@ class SSHClientConnection(SSHConnection):
                     raise ChannelOpenError(OPEN_ADMINISTRATIVELY_PROHIBITED,
                                            'Connection forwarding denied')
 
-            return (await self.create_unix_connection(session_factory,
-                                                      dest_path))
+            return await self.create_unix_connection(session_factory, dest_path)
 
         self.logger.info('Creating local TCP forwarder from %s to %s',
                          (listen_host, listen_port), dest_path)

@@ -2065,16 +2065,16 @@ class SSHTCPChannel(SSHForwardChannel, Generic[AnyStr]):
             SSHTCPSession[AnyStr]:
         """Create a new outbound TCP session"""
 
-        return (await self._open_tcp(session_factory, b'direct-tcpip',
-                                     host, port, orig_host, orig_port))
+        return await self._open_tcp(session_factory, b'direct-tcpip',
+                                    host, port, orig_host, orig_port)
 
     async def accept(self, session_factory: SSHTCPSessionFactory[AnyStr],
                      host: str, port: int, orig_host: str,
                      orig_port: int) -> SSHTCPSession[AnyStr]:
         """Create a new forwarded TCP session"""
 
-        return (await self._open_tcp(session_factory, b'forwarded-tcpip',
-                                     host, port, orig_host, orig_port))
+        return await self._open_tcp(session_factory, b'forwarded-tcpip',
+                                    host, port, orig_host, orig_port)
 
     def set_inbound_peer_names(self, dest_host: str, dest_port: int,
                                orig_host: str, orig_port: int) -> None:
