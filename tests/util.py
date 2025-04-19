@@ -448,8 +448,6 @@ class AsyncTestCase(TempDirTestCase):
         else:
             cls.loop = asyncio.new_event_loop()
 
-        asyncio.set_event_loop(cls.loop)
-
         try:
             cls.loop.run_until_complete(cls.asyncSetUpClass())
         except AttributeError:
