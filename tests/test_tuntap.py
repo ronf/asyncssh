@@ -368,7 +368,29 @@ class _TunTapServer(Server):
     def tap_requested(self, unit):
         """Handle TAP requests"""
 
-        return True
+        if unit == 33:
+            return _EchoSession()
+        else:
+            return True
+
+
+class _UpstreamForwardingServer(Server):
+    """Server for testing forwarding between SSH connections"""
+
+    def __init__(self, upstream_conn):
+        super().__init__()
+
+        self._upstream_conn = upstream_conn
+
+    def tun_requested(self, unit):
+        """Handle a request to create a new layer 3 tunnel"""
+
+        return self._upstream_conn
+
+    def tap_requested(self, unit):
+        """Handle a request to create a new layer 2 tunnel"""
+
+        return self._upstream_conn
 
 
 @skipIf(sys.platform == 'win32', 'skip TUN/TAP tests on Windows')
@@ -657,6 +679,42 @@ class _TestTunTap(ServerTestCase):
 
         async with self.connect() as conn:
             await self._check_tuntap_echo(conn.open_tun(33))
+
+    @asynctest
+    async def test_upstream_open_tun_echo_session(self):
+        """Test an echo session on a forwarded layer 3 tunnel"""
+
+        def upstream_server():
+            """Return a server capable of forwarding between SSH connections"""
+
+            return _UpstreamForwardingServer(upstream_conn)
+
+        async with self.connect() as upstream_conn:
+            upstream_listener = await self.create_server(upstream_server)
+            upstream_port = upstream_listener.get_port()
+
+            async with self.connect('127.0.0.1', upstream_port) as conn:
+                await self._check_tuntap_echo(conn.open_tun(33))
+
+            upstream_listener.close()
+
+    @asynctest
+    async def test_upstream_open_tap_echo_session(self):
+        """Test an echo session on a forwarded layer 2 tunnel"""
+
+        def upstream_server():
+            """Return a server capable of forwarding between SSH connections"""
+
+            return _UpstreamForwardingServer(upstream_conn)
+
+        async with self.connect() as upstream_conn:
+            upstream_listener = await self.create_server(upstream_server)
+            upstream_port = upstream_listener.get_port()
+
+            async with self.connect('127.0.0.1', upstream_port) as conn:
+                await self._check_tuntap_echo(conn.open_tap(33))
+
+            upstream_listener.close()
 
     @asynctest
     async def test_open_tun_echo_session_channel(self):

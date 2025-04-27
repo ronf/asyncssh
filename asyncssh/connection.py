@@ -6305,6 +6305,9 @@ class SSHServerConnection(SSHConnection):
             if not result:
                 raise ChannelOpenError(OPEN_CONNECT_FAILED, 'Session refused')
 
+            if isinstance(result, SSHClientConnection):
+                result = self.forward_tunneled_session(result)
+
             if isinstance(result, tuple):
                 chan, result = result
             else:
@@ -6360,6 +6363,10 @@ class SSHServerConnection(SSHConnection):
         if result is True:
             result = cast(SSHTCPSession[bytes],
                           self.forward_connection(dest_host, dest_port))
+        elif isinstance(result, SSHClientConnection):
+            result = cast(Awaitable[SSHTCPSession[bytes]],
+                          self.forward_tunneled_connection(
+                              result, dest_host, dest_port))
 
         if isinstance(result, tuple):
             chan, result = result
@@ -6506,6 +6513,10 @@ class SSHServerConnection(SSHConnection):
         if result is True:
             result = cast(SSHUNIXSession[bytes],
                           self.forward_unix_connection(dest_path))
+        elif isinstance(result, SSHClientConnection):
+            result = cast(Awaitable[SSHUNIXSession[bytes]],
+                          self.forward_tunneled_unix_connection(
+                              result, dest_path))
 
         if isinstance(result, tuple):
             chan, result = result
@@ -6621,10 +6632,14 @@ class SSHServerConnection(SSHConnection):
             result = False
 
         if not result:
-            raise ChannelOpenError(OPEN_CONNECT_FAILED, 'Connection refused')
+            raise ChannelOpenError(OPEN_CONNECT_FAILED,
+                                   'TUN/TAP request refused')
 
         if result is True:
             result = cast(SSHTunTapSession, self.forward_tuntap(mode, unit))
+        elif isinstance(result, SSHClientConnection):
+            result = cast(Awaitable[SSHTunTapSession],
+                          self.forward_tunneled_tuntap(result, mode, unit))
 
         if isinstance(result, tuple):
             chan, result = result
@@ -7178,6 +7193,76 @@ class SSHServerConnection(SSHConnection):
         session: SSHUNIXStreamSession[bytes]
 
         return SSHReader[bytes](session, chan), SSHWriter[bytes](session, chan)
+
+    async def forward_tunneled_session(
+            self, conn: SSHClientConnection) -> SSHServerProcess:
+        """Forward a tunneled session between SSH connections"""
+
+        async def process_factory(process: SSHServerProcess) -> None:
+            """Return an upstream process used to forward the session"""
+
+            encoding, errors = process.channel.get_encoding()
+
+            upstream_process: SSHClientProcess = await conn.create_process(
+                command=process.command, subsystem=process.subsystem,
+                env=process.env, term_type=process.term_type,
+                term_size=process.term_size, term_modes=process.term_modes,
+                encoding=encoding, errors=errors, stdin=process.stdin,
+                stdout=process.stdout, stderr=process.stderr)
+
+            await upstream_process.wait_closed()
+
+        self.logger.info('  Forwarding session via SSH tunnel')
+
+        return SSHServerProcess(process_factory, None, MIN_SFTP_VERSION, False)
+
+    async def forward_tunneled_connection(
+            self, conn: SSHClientConnection,
+            dest_host: str, dest_port: int) -> SSHForwarder:
+        """Forward a tunneled TCP connection between SSH connections"""
+
+        _, peer = await conn.create_connection(
+            cast(SSHTCPSessionFactory[bytes], SSHForwarder),
+            dest_host, dest_port)
+
+        self.logger.info('  Forwarding TCP connection to %s via SSH tunnel',
+                         (dest_host, dest_port))
+
+        return SSHForwarder(cast(SSHForwarder, peer))
+
+    async def forward_tunneled_unix_connection(
+            self, conn: SSHClientConnection,
+            dest_path: str) -> SSHForwarder:
+        """Forward a tunneled UNIX connection between SSH connections"""
+
+        _, peer = await conn.create_unix_connection(
+            cast(SSHUNIXSessionFactory[bytes], SSHForwarder), dest_path)
+
+        self.logger.info('  Forwarding UNIX connection to %s via SSH tunnel',
+                         dest_path)
+
+        return SSHForwarder(cast(SSHForwarder, peer))
+
+    async def forward_tunneled_tuntap(
+            self, conn: SSHClientConnection,
+            mode: int, unit: Optional[int]) -> SSHForwarder:
+        """Forward a TUN/TAP connection between SSH connections"""
+
+        if mode == SSH_TUN_MODE_POINTTOPOINT:
+            create_func = conn.create_tun
+            layer = 3
+        else:
+            create_func = conn.create_tap
+            layer = 2
+
+        transport, peer = await create_func(
+            cast(SSHTunTapSessionFactory, SSHForwarder), unit)
+        interface = transport.get_extra_info('interface')
+
+        self.logger.info('  Forwarding layer %d traffic to %s via SSH tunnel',
+                         layer, interface)
+
+        return SSHForwarder(cast(SSHForwarder, peer))
 
 
 class SSHConnectionOptions(Options, Generic[_Options]):

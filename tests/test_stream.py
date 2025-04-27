@@ -95,6 +95,20 @@ class _StreamServer(Server):
             return False
 
 
+class _UpstreamForwardingServer(Server):
+    """Server for testing forwarding between SSH connections"""
+
+    def __init__(self, upstream_conn):
+        super().__init__()
+
+        self._upstream_conn = upstream_conn
+
+    def session_requested(self):
+        """Handle a request to create a new session"""
+
+        return self._upstream_conn
+
+
 class _TestStream(ServerTestCase):
     """Unit tests for AsyncSSH stream API"""
 
@@ -129,9 +143,9 @@ class _TestStream(ServerTestCase):
         self.assertEqual(data, stdout_data)
         self.assertEqual(data, stderr_data)
 
-        await stdin.channel.wait_closed()
         await stdin.drain()
         stdin.close()
+        await stdin.channel.wait_closed()
 
 
     @asynctest
@@ -140,6 +154,24 @@ class _TestStream(ServerTestCase):
 
         async with self.connect() as conn:
             await self._check_session(conn)
+
+    @asynctest
+    async def test_upstream_shell(self):
+        """Test upstream forwarding of a shell request"""
+
+        def upstream_server():
+            """Return a server capable of forwarding between SSH connections"""
+
+            return _UpstreamForwardingServer(upstream_conn)
+
+        async with self.connect() as upstream_conn:
+            upstream_listener = await self.create_server(upstream_server)
+            upstream_port = upstream_listener.get_port()
+
+            async with self.connect('127.0.0.1', upstream_port) as conn:
+                await self._check_session(conn)
+
+            upstream_listener.close()
 
     @asynctest
     async def test_shell_failure(self):

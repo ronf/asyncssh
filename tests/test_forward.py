@@ -229,6 +229,25 @@ class _UNIXAsyncConnectionServer(_UNIXConnectionServer):
             return listen_path != 'fail'
 
 
+class _UpstreamForwardingServer(Server):
+    """Server for testing forwarding between SSH connections"""
+
+    def __init__(self, upstream_conn):
+        super().__init__()
+
+        self._upstream_conn = upstream_conn
+
+    def connection_requested(self, dest_host, dest_port, orig_host, orig_port):
+        """Handle a request to create a new connection"""
+
+        return self._upstream_conn
+
+    def unix_connection_requested(self, dest_path):
+        """Handle a request to create a new UNIX domain connection"""
+
+        return self._upstream_conn
+
+
 class _CheckForwarding(ServerTestCase):
     """Utility functions for AsyncSSH forwarding unit tests"""
 
@@ -296,8 +315,8 @@ class _TestTCPForwarding(_CheckForwarding):
     async def start_server(cls):
         """Start an SSH server which supports TCP connection forwarding"""
 
-        return (await cls.create_server(
-            _TCPConnectionServer, authorized_client_keys='authorized_keys'))
+        return await cls.create_server(
+            _TCPConnectionServer, authorized_client_keys='authorized_keys')
 
     async def _check_connection(self, conn, dest_host='',
                                 dest_port=7, **kwargs):
@@ -877,6 +896,25 @@ class _TestTCPForwarding(_CheckForwarding):
                 self.assertEqual(pkttype, asyncssh.MSG_REQUEST_FAILURE)
 
     @asynctest
+    async def test_upstream_forward_local_port(self):
+        """Test upstream forwarding of a local port"""
+
+        def upstream_server():
+            """Return a server capable of forwarding between SSH connections"""
+
+            return _UpstreamForwardingServer(upstream_conn)
+
+        async with self.connect() as upstream_conn:
+            upstream_listener = await self.create_server(upstream_server)
+            upstream_port = upstream_listener.get_port()
+
+            async with self.connect('127.0.0.1', upstream_port) as conn:
+                async with conn.forward_local_port('', 0, '', 7) as listener:
+                    await self._check_local_connection(listener.get_port())
+
+            upstream_listener.close()
+
+    @asynctest
     async def test_add_channel_after_close(self):
         """Test opening a connection after a close"""
 
@@ -963,8 +1001,8 @@ class _TestUNIXForwarding(_CheckForwarding):
     async def start_server(cls):
         """Start an SSH server which supports UNIX connection forwarding"""
 
-        return (await cls.create_server(
-            _UNIXConnectionServer, authorized_client_keys='authorized_keys'))
+        return await cls.create_server(
+            _UNIXConnectionServer, authorized_client_keys='authorized_keys')
 
     async def _check_unix_connection(self, conn, dest_path='/echo', **kwargs):
         """Open a UNIX connection and test if an input line is echoed back"""
@@ -1233,6 +1271,25 @@ class _TestUNIXForwarding(_CheckForwarding):
 
                 self.assertEqual(pkttype, asyncssh.MSG_REQUEST_FAILURE)
 
+    @asynctest
+    async def test_upstream_forward_local_path(self):
+        """Test upstream forwarding of a local path"""
+
+        def upstream_server():
+            """Return a server capable of forwarding between SSH connections"""
+
+            return _UpstreamForwardingServer(upstream_conn)
+
+        async with self.connect() as upstream_conn:
+            upstream_listener = await self.create_server(upstream_server)
+            upstream_port = upstream_listener.get_port()
+
+            async with self.connect('127.0.0.1', upstream_port) as conn:
+                async with conn.forward_local_path('local', '/echo'):
+                    await self._check_local_unix_connection('local')
+
+            upstream_listener.close()
+
 
 class _TestAsyncUNIXForwarding(_TestUNIXForwarding):
     """Unit tests for AsyncSSH UNIX connection forwarding with async return"""
@@ -1253,8 +1310,8 @@ class _TestSOCKSForwarding(_CheckForwarding):
     async def start_server(cls):
         """Start an SSH server which supports TCP connection forwarding"""
 
-        return (await cls.create_server(
-            _TCPConnectionServer, authorized_client_keys='authorized_keys'))
+        return await cls.create_server(
+            _TCPConnectionServer, authorized_client_keys='authorized_keys')
 
     async def _check_early_error(self, reader, writer, data):
         """Check errors in the initial SOCKS message"""
