@@ -3,6 +3,44 @@
 Change Log
 ==========
 
+Release 2.21.0 (2 May 2025)
+---------------------------
+
+* Added sparse file support for SFTP, allowing file copying which
+  automatically skips over any "holes" in a source file, transferring
+  only the data ranges which are actually present.
+
+* Added support for applications to request that session, connection,
+  or TUN/TAP requests arriving on an SSHServerConnection be forwarded
+  out some other established SSHClientConnection. Callback methods on
+  SSHServer which decide how to handle these requests can now return
+  an SSHClientConnection to set up this tunneling, instead of having
+  to accept the request and implement their own forwarding logic.
+
+* Further hardened the SSH key exchange process to make AsyncSSH
+  more strict when accepting messages during key exchange. Thanks
+  go to Fabian Bäumer and Marcus Brinkmann for identifying potential
+  issues here.
+
+* Added support for the auth_completed callback in SSHServer to
+  be either a callable or a coroutine, allowing async operations
+  to be performed when user authentication completes successfully,
+  prior to accepting session requests.
+
+* Added support for the sftp_factory config argument be either a
+  callable or a coroutine, allowing async operations to be performed
+  when starting up a new SFTP server session.
+
+* Fixed a bug where the exit() method of SFTPServer didn't handle
+  being declared as a coroutine. Thanks go to C. R. Oldham for
+  reporting this issue.
+
+* Improved handling of exceptions in connection_lost() callbacks.
+  Exceptions in connection_lost() will now be reported in the
+  debug log, but other cleanup code in AsyncSSH will continue,
+  ignoring those exceptions. Thanks go to Danil Slinchuk for
+  reporting this issue.
+
 Release 2.20.0 (17 Feb 2025)
 ----------------------------
 
