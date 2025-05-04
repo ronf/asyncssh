@@ -142,7 +142,7 @@ def encode_env(env: Env) -> Iterator[Tuple[bytes, bytes]]:
     """Convert environemnt dict or list to bytes-based dictionary"""
 
     env = cast(Sequence[Tuple[BytesOrStr, BytesOrStr]],
-               env.items() if isinstance(env, dict) else env)
+               env.items() if hasattr(env, 'items') else env)
 
     try:
         for item in env:
