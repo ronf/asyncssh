@@ -125,7 +125,7 @@ SockAddr = Union[Tuple[str, int], Tuple[str, int, int, int]]
 EnvMap = Mapping[BytesOrStr, BytesOrStr]
 EnvItems = Sequence[Tuple[BytesOrStr, BytesOrStr]]
 EnvSeq = Sequence[BytesOrStr]
-Env = Optional[Union[EnvMap, EnvItems, EnvSeq]]
+Env = Union[EnvMap, EnvItems, EnvSeq]
 
 # Define a version of randrange which is based on SystemRandom(), so that
 # we get back numbers suitable for cryptographic use.
@@ -141,8 +141,8 @@ _time_units = {'': 1, 's': 1, 'm': 60, 'h': 60*60,
 def encode_env(env: Env) -> Iterator[Tuple[bytes, bytes]]:
     """Convert environemnt dict or list to bytes-based dictionary"""
 
-    env = cast(Sequence[Tuple[BytesOrStr, BytesOrStr]],
-               env.items() if isinstance(env, dict) else env)
+    if hasattr(env, 'items'):
+        env = cast(Env, env.items())
 
     try:
         for item in env:

@@ -4169,7 +4169,7 @@ class SSHClientConnection(SSHConnection):
     async def create_session(self, session_factory: SSHClientSessionFactory,
                              command: DefTuple[Optional[str]] = (), *,
                              subsystem: DefTuple[Optional[str]]= (),
-                             env: DefTuple[Env] = (),
+                             env: DefTuple[Optional[Env]] = (),
                              send_env: DefTuple[Optional[EnvSeq]] = (),
                              request_pty: DefTuple[Union[bool, str]] = (),
                              term_type: DefTuple[Optional[str]] = (),
@@ -5687,7 +5687,7 @@ class SSHClientConnection(SSHConnection):
         return cast(SSHForwarder, peer)
 
     @async_context_manager
-    async def start_sftp_client(self, env: DefTuple[Env] = (),
+    async def start_sftp_client(self, env: DefTuple[Optional[Env]] = (),
                                 send_env: DefTuple[Optional[EnvSeq]] = (),
                                 path_encoding: Optional[str] = 'utf-8',
                                 path_errors = 'strict',
@@ -8042,7 +8042,7 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
     pkcs11_pin: Optional[str]
     command: Optional[str]
     subsystem: Optional[str]
-    env: Env
+    env: Optional[Env]
     send_env: Optional[EnvSeq]
     request_pty: _RequestPTY
     term_type: Optional[str]
@@ -8115,7 +8115,8 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
                 pkcs11_provider: DefTuple[Optional[str]] = (),
                 pkcs11_pin: Optional[str] = None,
                 command: DefTuple[Optional[str]] = (),
-                subsystem: Optional[str] = None, env: DefTuple[Env] = (),
+                subsystem: Optional[str] = None,
+                env: DefTuple[Optional[Env]] = (),
                 send_env: DefTuple[Optional[EnvSeq]] = (),
                 request_pty: DefTuple[_RequestPTY] = (),
                 term_type: Optional[str] = None,
@@ -8354,7 +8355,8 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
 
         self.subsystem = subsystem
 
-        self.env = cast(Env, env if env != () else config.get('SetEnv'))
+        self.env = cast(Optional[Env], env if env != () else
+            config.get('SetEnv'))
 
         self.send_env = cast(Optional[EnvSeq], send_env if send_env != () else
             config.get('SendEnv'))
