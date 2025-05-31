@@ -1135,7 +1135,7 @@ class _TestPublicKeyAuth(ServerTestCase):
             return 'passphrase'
 
         async with self.connect(username='ckey', client_keys='ckey_encrypted',
-                                passphrase=_passphrase):
+                                agent_path=None, passphrase=_passphrase):
             pass
 
     @asynctest
@@ -1147,7 +1147,7 @@ class _TestPublicKeyAuth(ServerTestCase):
             return 'passphrase'
 
         async with self.connect(username='ckey', client_keys='ckey_encrypted',
-                                passphrase=_passphrase):
+                                agent_path=None,passphrase=_passphrase):
             pass
 
     @asynctest
@@ -1160,7 +1160,7 @@ class _TestPublicKeyAuth(ServerTestCase):
 
         async with self.connect(username='ckey',
                                 client_keys=['ckey_encrypted'],
-                                passphrase=_passphrase):
+                                agent_path=None, passphrase=_passphrase):
             pass
 
     @asynctest
@@ -1173,7 +1173,7 @@ class _TestPublicKeyAuth(ServerTestCase):
 
         async with self.connect(username='ckey',
                                 client_keys=['ckey_encrypted'],
-                                passphrase=_passphrase):
+                                agent_path=None, passphrase=_passphrase):
             pass
 
     @asynctest
@@ -1182,7 +1182,7 @@ class _TestPublicKeyAuth(ServerTestCase):
 
         with self.assertRaises(asyncssh.KeyEncryptionError):
             await self.connect(username='ckey', client_keys='ckey_encrypted',
-                               passphrase='xxx')
+                               agent_path=None, passphrase='xxx')
 
     @asynctest
     async def test_encrypted_client_key_missing_passphrase(self):

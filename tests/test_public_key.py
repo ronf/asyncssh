@@ -1,4 +1,4 @@
-# Copyright (c) 2014-2024 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2014-2025 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -322,6 +322,7 @@ class _TestPublicKey(TempDirTestCase):
         else:
             newkey.write_private_key('list', format_name)
             newkey.append_private_key('list', format_name)
+            write_file('list', b'Extra text at end of key list\n', 'ab')
 
             keylist = asyncssh.read_private_key_list('list')
             self.assertEqual(keylist[0].public_data, pubdata)

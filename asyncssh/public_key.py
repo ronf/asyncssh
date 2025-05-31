@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2024 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2025 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -97,6 +97,8 @@ CertListArg = Union[_CertArg, Sequence[_CertArg]]
 _KeyPairArg = Union['SSHKeyPair', _KeyArg, Tuple[_KeyArg, _CertArg]]
 KeyPairListArg = Union[_KeyPairArg, Sequence[_KeyPairArg]]
 
+_PassphraseCallable = Callable[[str], BytesOrStr]
+_PassphraseArg = Optional[Union[_PassphraseCallable, BytesOrStr]]
 
 # Default file names in .ssh directory to read private keys from
 _DEFAULT_KEY_FILES = (
@@ -190,6 +192,51 @@ def _wrap_base64(data: bytes, wrap: int = 64) -> bytes:
     data = binascii.b2a_base64(data)[:-1]
     return b'\n'.join(data[i:i+wrap]
                       for i in range(0, len(data), wrap)) + b'\n'
+
+
+def _resolve_passphrase(
+        passphrase: _PassphraseArg, filename: str,
+        loop: Optional[asyncio.AbstractEventLoop]) -> Optional[BytesOrStr]:
+    """Resolve a passphrase used to encrypt/decrypt SSH private keys"""
+
+    resolved_passphrase: Optional[BytesOrStr]
+
+    if callable(passphrase):
+        resolved_passphrase = passphrase(filename)
+    else:
+        resolved_passphrase = passphrase
+
+    if loop and inspect.isawaitable(resolved_passphrase):
+        resolved_passphrase = asyncio.run_coroutine_threadsafe(
+            resolved_passphrase, loop).result()
+
+    return resolved_passphrase
+
+
+class _EncryptedKey:
+    """Encrypted SSH private key, decrypted just prior to use"""
+
+    def __init__(self, key_data: bytes, filename: str,
+                 passphrase: _PassphraseArg,
+                 loop: Optional[asyncio.AbstractEventLoop],
+                 unsafe_skip_rsa_key_validation: bool):
+        self._key_data = key_data
+        self._filename = filename
+        self._passphrase = passphrase
+        self._loop = loop
+        self._unsafe_skip_rsa_key_validation = unsafe_skip_rsa_key_validation
+
+    def decrypt(self) -> 'SSHKey':
+        """Decrypt this encrypted key data and return an SSH private key"""
+
+        resolved_passphrase = _resolve_passphrase(self._passphrase,
+                                                  self._filename, self._loop)
+
+        key = import_private_key(self._key_data, resolved_passphrase,
+                                 self._unsafe_skip_rsa_key_validation)
+        key.set_filename(self._filename)
+
+        return key
 
 
 class KeyGenerationError(ValueError):
@@ -2238,8 +2285,9 @@ class SSHLocalKeyPair(SSHKeyPair):
 
     _key_type = 'local'
 
-    def __init__(self, key: SSHKey, pubkey: Optional[SSHKey] = None,
-                 cert: Optional[SSHCertificate] = None):
+    def __init__(self, key: SSHKey, pubkey: Optional[SSHKey],
+                 cert: Optional[SSHCertificate],
+                 enc_key: Optional[_EncryptedKey]):
         if pubkey and pubkey.public_data != key.public_data:
             raise ValueError('Public key mismatch')
 
@@ -2254,10 +2302,11 @@ class SSHLocalKeyPair(SSHKeyPair):
 
         super().__init__(key.algorithm, key.algorithm, key.sig_algorithms,
                          key.sig_algorithms, key.public_data, comment,
-                         cert, key.get_filename(), key.use_executor,
-                         key.use_webauthn)
+                         cert, key.get_filename(), key.use_executor or
+                         bool(enc_key), key.use_webauthn)
 
         self._key = key
+        self._enc_key = enc_key
 
     def get_agent_private_key(self) -> bytes:
         """Return binary encoding of keypair for upload to SSH agent"""
@@ -2272,6 +2321,12 @@ class SSHLocalKeyPair(SSHKeyPair):
 
     def sign(self, data: bytes) -> bytes:
         """Sign a block of data with this private key"""
+
+        if self._enc_key:
+            self._key = self._enc_key.decrypt()
+            self._enc_key = None
+
+            self.use_executor = self._key.use_executor
 
         return self._key.sign(data, self.sig_algorithm)
 
@@ -2368,7 +2423,7 @@ def _match_block(data: bytes, start: int, header: bytes,
     """Match a block of data wrapped in a header/footer"""
 
     match = re.compile(b'^' + header[:5] + b'END' + header[10:] +
-                       rb'[ \t\r\f\v]*$', re.M).search(data, start)
+                       rb'[ \t\n\r\f\v]*$', re.M).search(data, start)
 
     if not match:
         raise KeyImportError(f'Missing {fmt} footer')
@@ -3203,21 +3258,6 @@ def import_private_key(
         raise KeyImportError('Invalid private key')
 
 
-def import_private_key_and_certs(
-        data: bytes, passphrase: Optional[BytesOrStr] = None,
-        unsafe_skip_rsa_key_validation: Optional[bool] = None) -> \
-            Tuple[SSHKey, Optional[SSHX509CertificateChain]]:
-    """Import a private key and optional certificate chain"""
-
-    key, end = _decode_private(data, passphrase,
-                               unsafe_skip_rsa_key_validation)
-
-    if key:
-        return key, import_certificate_chain(data[end:])
-    else:
-        raise KeyImportError('Invalid private key')
-
-
 def import_public_key(data: BytesOrStr) -> SSHKey:
     """Import a public key
 
@@ -3337,20 +3377,6 @@ def read_private_key(
     key.set_filename(filename)
 
     return key
-
-
-def read_private_key_and_certs(
-        filename: FilePath, passphrase: Optional[BytesOrStr] = None,
-        unsafe_skip_rsa_key_validation: Optional[bool] = None) -> \
-            Tuple[SSHKey, Optional[SSHX509CertificateChain]]:
-    """Read a private key and optional certificate chain from a file"""
-
-    key, cert = import_private_key_and_certs(read_file(filename), passphrase,
-                                             unsafe_skip_rsa_key_validation)
-
-    key.set_filename(filename)
-
-    return key, cert
 
 
 def read_public_key(filename: FilePath) -> SSHKey:
@@ -3512,31 +3538,37 @@ def load_keypairs(
     """
 
     keys_to_load: Sequence[_KeyPairArg]
+    key_data: Optional[bytes]
+    key: Union['SSHKey', 'SSHKeyPair']
     result: List[SSHKeyPair] = []
 
     certlist = load_certificates(certlist)
     certdict = {cert.key.public_data: cert for cert in certlist}
 
     if isinstance(keylist, (PurePath, str)):
-        try:
-            if callable(passphrase):
-                resolved_passphrase = passphrase(str(keylist))
-            else:
-                resolved_passphrase = passphrase
+        data = read_file(keylist)
+        key_data_list: List[bytes] = []
 
-            if loop and inspect.isawaitable(resolved_passphrase):
-                resolved_passphrase = asyncio.run_coroutine_threadsafe(
-                    resolved_passphrase, loop).result()
+        while data:
+            fmt, _, end = _match_next(data, b'PRIVATE KEY')
+            if fmt:
+                key_data_list.append(data[:end])
 
-            priv_keys = read_private_key_list(keylist, resolved_passphrase,
-                                              unsafe_skip_rsa_key_validation)
+            data = data[end:]
 
-            if len(priv_keys) <= 1:
-                keys_to_load = [keylist]
-                passphrase = resolved_passphrase
-            else:
-                keys_to_load = priv_keys
-        except KeyImportError:
+        if len(key_data_list) > 1:
+            resolved_passphrase = _resolve_passphrase(passphrase,
+                                                      str(keylist), loop)
+
+            keys_to_load = []
+
+            for key_data in key_data_list:
+                key = import_private_key(key_data, resolved_passphrase,
+                                         unsafe_skip_rsa_key_validation)
+                key.set_filename(keylist)
+
+                keys_to_load.append(key)
+        else:
             keys_to_load = [keylist]
     elif isinstance(keylist, (tuple, bytes, SSHKey, SSHKeyPair)):
         keys_to_load = [cast(_KeyPairArg, keylist)]
@@ -3545,61 +3577,37 @@ def load_keypairs(
 
     for key_to_load in keys_to_load:
         allow_certs = False
-        key_prefix = None
-        saved_exc = None
+        key_data = None
+        key_prefix = ''
         pubkey_or_certs = None
-        pubkey_to_load: Optional[_KeyArg] = None
         certs_to_load: Optional[_CertArg] = None
-        key: Union['SSHKey', 'SSHKeyPair']
+        pubkey_to_load: Optional[_KeyArg] = None
+        saved_exc = None
+        enc_key: Optional[_EncryptedKey] = None
 
         if isinstance(key_to_load, (PurePath, str, bytes)):
             allow_certs = True
         elif isinstance(key_to_load, tuple):
             key_to_load, pubkey_or_certs = key_to_load
 
-        try:
-            if isinstance(key_to_load, (PurePath, str)):
-                key_prefix = str(key_to_load)
-
-                if callable(passphrase):
-                    resolved_passphrase = passphrase(key_prefix)
-                else:
-                    resolved_passphrase = passphrase
-
-                if loop and inspect.isawaitable(resolved_passphrase):
-                    resolved_passphrase = asyncio.run_coroutine_threadsafe(
-                        resolved_passphrase, loop).result()
-
-                if allow_certs:
-                    key, certs_to_load = read_private_key_and_certs(
-                        key_to_load, resolved_passphrase,
-                        unsafe_skip_rsa_key_validation)
-
-                    if not certs_to_load:
-                        certs_to_load = key_prefix + '-cert.pub'
-                else:
-                    key = read_private_key(key_to_load, resolved_passphrase,
-                                           unsafe_skip_rsa_key_validation)
-
-                pubkey_to_load = key_prefix + '.pub'
-            elif isinstance(key_to_load, bytes):
-                if allow_certs:
-                    key, certs_to_load = import_private_key_and_certs(
-                        key_to_load, passphrase,
-                        unsafe_skip_rsa_key_validation)
-                else:
-                    key = import_private_key(key_to_load, passphrase,
-                                             unsafe_skip_rsa_key_validation)
-            else:
-                key = key_to_load
-        except KeyImportError as exc:
-            if skip_public or \
-                    (ignore_encrypted and str(exc).startswith('Passphrase')):
-                continue
-
-            raise
+        if isinstance(key_to_load, (PurePath, str)):
+            key_prefix = str(key_to_load)
+            key_data = read_file(key_to_load)
+        elif isinstance(key_to_load, bytes):
+            key_data = key_to_load
 
         certs: Optional[Sequence[SSHCertificate]]
+
+        if allow_certs:
+            assert key_data is not None
+
+            _, _, end = _match_next(key_data, b'PRIVATE KEY')
+
+            certs_to_load = import_certificate_chain(key_data[end:])
+            key_data = key_data[:end]
+
+            if not certs_to_load:
+                certs_to_load = key_prefix + '-cert.pub'
 
         if pubkey_or_certs:
             try:
@@ -3613,7 +3621,7 @@ def load_keypairs(
         elif certs_to_load:
             try:
                 certs = load_certificates(certs_to_load)
-            except (OSError, KeyImportError):
+            except (OSError, KeyImportError) as exc:
                 certs = None
         else:
             certs = None
@@ -3628,15 +3636,57 @@ def load_keypairs(
                     pubkey = import_public_key(pubkey_to_load)
                 else:
                     pubkey = pubkey_to_load
+
+                saved_exc = None
             except (OSError, KeyImportError):
                 pubkey = None
-            else:
+        elif key_prefix:
+            try:
+                pubkey = read_public_key(key_prefix + '.pub')
                 saved_exc = None
+            except (OSError, KeyImportError):
+                try:
+                    pubkey = read_public_key(key_prefix)
+                    saved_exc = None
+                except (OSError, KeyImportError):
+                    pubkey = None
         else:
             pubkey = None
 
         if saved_exc:
             raise saved_exc # pylint: disable=raising-bad-type
+
+        if key_data is not None:
+            try:
+                unencrypted_key = import_private_key(
+                    key_data, None, unsafe_skip_rsa_key_validation)
+                unencrypted_key.set_filename(key_prefix)
+            except KeyImportError:
+                unencrypted_key = None
+
+            if unencrypted_key:
+                key = unencrypted_key
+            elif callable(passphrase) and key_prefix and (certs or pubkey):
+                enc_key = _EncryptedKey(key_data, key_prefix, passphrase, loop,
+                                        unsafe_skip_rsa_key_validation)
+
+                key = certs[0].key if certs else pubkey
+            else:
+                try:
+                    resolved_passphrase = _resolve_passphrase(passphrase,
+                                                              key_prefix, loop)
+
+                    key = import_private_key(key_data, passphrase,
+                                             unsafe_skip_rsa_key_validation)
+                    key.set_filename(key_prefix)
+                except KeyImportError as exc:
+                    if skip_public or (ignore_encrypted and
+                                       str(exc).startswith('Passphrase')):
+                        continue
+
+                    raise
+        else:
+            key = cast(Union[SSHKey, SSHKeyPair], key_to_load)
 
         if not certs:
             if isinstance(key, SSHKeyPair):
@@ -3660,9 +3710,9 @@ def load_keypairs(
             result.append(key)
         else:
             if cert:
-                result.append(SSHLocalKeyPair(key, pubkey, cert))
+                result.append(SSHLocalKeyPair(key, pubkey, cert, enc_key))
 
-            result.append(SSHLocalKeyPair(key, pubkey))
+            result.append(SSHLocalKeyPair(key, pubkey, None, enc_key))
 
     return result
 
