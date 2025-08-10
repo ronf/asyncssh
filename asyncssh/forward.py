@@ -91,7 +91,8 @@ class SSHForwarder(asyncio.BaseProtocol):
     def write_eof(self) -> None:
         """Write end of file to the transport"""
 
-        assert self._transport is not None
+        if not self._transport:
+            return # pragma: no cover
 
         try:
             self._transport.write_eof()
