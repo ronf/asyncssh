@@ -4656,7 +4656,8 @@ class SFTPClient:
         parts = path.split(b'/')
         last = len(parts) - 1
 
-        exc: Type[SFTPError]
+        exc: Union[Type[SFTPNotADirectory], Type[SFTPFailure],
+                   Type[SFTPFileAlreadyExists]]
 
         for i, part in enumerate(parts):
             curpath = posixpath.join(curpath, part)
@@ -6775,7 +6776,9 @@ class SFTPServerHandler(SFTPHandler):
                 data = self._server.read(src, read_from_offset, size)
 
                 if inspect.isawaitable(data):
-                    data = await cast(Awaitable[bytes], data)
+                    data = await data
+
+                data: bytes
 
                 result = self._server.write(dst, write_to_offset, data)
 
@@ -8233,6 +8236,8 @@ async def _sftp_handler(sftp_server: MaybeAwait[SFTPServer],
 
     if inspect.isawaitable(sftp_server):
         sftp_server = await sftp_server
+
+    sftp_server: SFTPServer
 
     handler = SFTPServerHandler(sftp_server, reader, writer, sftp_version)
 

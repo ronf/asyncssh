@@ -1095,6 +1095,8 @@ async def _scp_handler(sftp_server: MaybeAwait[SFTPServer],
     if inspect.isawaitable(sftp_server):
         sftp_server = await sftp_server
 
+    sftp_server: SFTPServer
+
     fs = SFTPServerFS(sftp_server)
 
     handler: Union[_SCPSource, _SCPSink]
