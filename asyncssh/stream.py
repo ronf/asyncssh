@@ -557,6 +557,11 @@ class SSHStreamSession(Generic[AnyStr]):
                         self._recv_buf_len -= n
                         n = 0
                         break
+                    elif l > 0 and n == -1:
+                        data.append(recv_buf[-1])
+                        n = 0
+                        break
+
 
                     data.append(cast(AnyStr, recv_buf.pop(0)))
                     self._recv_buf_len -= l
