@@ -134,7 +134,7 @@ class SSHReader(Generic[AnyStr]):
 
         self._session.eof_received()
 
-    async def read(self, n: int = -1) -> AnyStr:
+    async def read(self, n: int = -1, timeout: int = 10) -> AnyStr:
         """Read data from the stream
 
            This method is a coroutine which reads up to `n` bytes
@@ -147,6 +147,10 @@ class SSHReader(Generic[AnyStr]):
            If the next data in the stream is a signal, the signal is
            delivered as a raised exception.
 
+           Args:
+            n: int - Number of bytes or characters to read upto.
+            timeout: int - Number of seconds after which read will return, default is 10
+
            .. note:: Unlike traditional `asyncio` stream readers,
                      the data will be delivered as either `bytes` or
                      a `str` depending on whether an encoding was
@@ -154,7 +158,7 @@ class SSHReader(Generic[AnyStr]):
 
         """
 
-        return await self._session.read(self._datatype, n, exact=False)
+        return await self._session.read(self._datatype, n, exact=False, timeout=timeout)
 
     async def readline(self) -> AnyStr:
         """Read one line from the stream
@@ -526,7 +530,7 @@ class SSHStreamSession(Generic[AnyStr]):
         for datatype in self._drain_waiters:
             self._unblock_drain(datatype)
 
-    async def read(self, datatype: DataType, n: int, exact: bool) -> AnyStr:
+    async def read(self, datatype: DataType, n: int, exact: bool, timeout: int = 10) -> AnyStr:
         """Read data from the channel"""
 
         recv_buf = self._recv_buf[datatype]
@@ -575,7 +579,11 @@ class SSHStreamSession(Generic[AnyStr]):
                         self._eof_received or break_read:
                     break
 
-                await self._block_read(datatype)
+                try:
+                    await asyncio.wait_for(self._block_read(datatype), timeout)
+                except asyncio.TimeoutError:
+                    n = 0
+                    break
 
         result = cast(AnyStr, '' if self._encoding else b'').join(data)
 
