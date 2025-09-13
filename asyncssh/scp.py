@@ -579,8 +579,9 @@ class _SCPSource(_SCPHandler):
             for name in await SFTPGlob(self._fs).match(srcpath):
                 await self._send_files(cast(bytes, name.filename),
                                             b'', name.attrs)
-        except asyncio.CancelledError:
+        except (KeyboardInterrupt, asyncio.CancelledError):
             cancelled = True
+            raise
         except (OSError, SFTPError) as exc:
             self.handle_error(exc)
         finally:
@@ -745,8 +746,9 @@ class _SCPSink(_SCPHandler):
                                              dstpath))
             else:
                 await self._recv_files(b'', dstpath)
-        except asyncio.CancelledError:
+        except (KeyboardInterrupt, asyncio.CancelledError):
             cancelled = True
+            raise
         except (OSError, SFTPError, ValueError) as exc:
             self.handle_error(exc)
         finally:
@@ -911,8 +913,9 @@ class _SCPCopier:
 
         try:
             await self._copy_files()
-        except asyncio.CancelledError:
+        except (KeyboardInterrupt, asyncio.CancelledError):
             cancelled = True
+            raise
         except (OSError, SFTPError) as exc:
             self._handle_error(exc)
         finally:

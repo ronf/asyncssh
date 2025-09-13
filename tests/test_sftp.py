@@ -5047,9 +5047,10 @@ class _CheckSCP(_CheckSFTP):
             self._create_file('src', 1024*8192 * 'a')
 
             coro = scp(src, dst, block_size=8192, progress_handler=_cancel)
-
             task = asyncio.create_task(coro)
-            await task
+
+            with self.assertRaises(asyncio.CancelledError):
+                await task
         finally:
             remove('src dst')
 
