@@ -3,6 +3,27 @@
 Change Log
 ==========
 
+Release 2.21.1 (28 Sep 2025)
+----------------------------
+
+* Added the capability to defer invoking passphrase callback until
+  an encrypted private key is actually used in a signing operation,
+  rather than triggering the callback when keys are loaded. This
+  will only work when a public key is provided with an encrypted
+  private key either explicitly or as part of the key format (such
+  as in OpenSSH's private key format).
+
+* Improved handling of KeyboardInterrupt and task cancellation in
+  SCP. Thanks go to Viktor Kertesz for reporting this issue and
+  helping to understand the behavior in various versions of Python.
+
+* Fixed the env option to support mappings other than dict. Thanks
+  go to Boris Pavlovic for reporting this issue.
+
+* Fixed a potential race condition in SSHForwarder cleanup. Thanks
+  go to GitHub user misa-hase for reporting this issue and helping
+  to test the fix.
+
 Release 2.21.0 (2 May 2025)
 ---------------------------
 
