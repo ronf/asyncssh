@@ -99,12 +99,6 @@ except subprocess.CalledProcessError: # pragma: no cover
 
 _openssh_available = _openssh_version != b''
 
-# GCM & Chacha tests require OpenSSH 6.9 due to a bug in earlier versions:
-#     https://bugzilla.mindrot.org/show_bug.cgi?id=2366
-_openssh_supports_gcm_chacha = _openssh_version >= b'OpenSSH_6.9'
-_openssh_supports_arcfour_blowfish_cast = (_openssh_available and
-                                           _openssh_version < b'OpenSSH_7.6')
-
 pkcs1_ciphers = (('aes128-cbc', '-aes128', False),
                  ('aes192-cbc', '-aes192', False),
                  ('aes256-cbc', '-aes256', False),
@@ -148,13 +142,8 @@ pkcs8_ciphers = (
                               _openssl_available,      False))
 
 openssh_ciphers = (
-    ('aes128-gcm@openssh.com',  _openssh_supports_gcm_chacha),
-    ('aes256-gcm@openssh.com',  _openssh_supports_gcm_chacha),
-    ('arcfour',                 _openssh_supports_arcfour_blowfish_cast),
-    ('arcfour128',              _openssh_supports_arcfour_blowfish_cast),
-    ('arcfour256',              _openssh_supports_arcfour_blowfish_cast),
-    ('blowfish-cbc',            _openssh_supports_arcfour_blowfish_cast),
-    ('cast128-cbc',             _openssh_supports_arcfour_blowfish_cast),
+    ('aes128-gcm@openssh.com',  _openssh_available),
+    ('aes256-gcm@openssh.com',  _openssh_available),
     ('aes128-cbc',              _openssh_available),
     ('aes192-cbc',              _openssh_available),
     ('aes256-cbc',              _openssh_available),
@@ -165,8 +154,7 @@ openssh_ciphers = (
 )
 
 if chacha_available: # pragma: no branch
-    openssh_ciphers += (('chacha20-poly1305@openssh.com',
-                         _openssh_supports_gcm_chacha),)
+    openssh_ciphers += (('chacha20-poly1305@openssh.com', _openssh_available),)
 
 
 def select_passphrase(cipher, pbe_version=0):
