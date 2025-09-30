@@ -33,14 +33,16 @@ async def run_multiple_clients() -> None:
     tasks = (run_client(host, 'ls abc') for host in hosts)
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
-    for i, result in enumerate(results, 1):
+    for i, result in enumerate(results):
+        task = f'Task {i+1} to host {hosts[i]}'
+
         if isinstance(result, Exception):
-            print(f'Task {i} failed: {result}')
+            print(f'{task} failed: {result}')
         elif result.exit_status != 0:
-            print(f'Task {i} exited with status {result.exit_status}:')
+            print(f'{task} exited with status {result.exit_status}:')
             print(result.stderr, end='')
         else:
-            print(f'Task {i} succeeded:')
+            print(f'{task} succeeded:')
             print(result.stdout, end='')
 
         print(75*'-')
