@@ -93,6 +93,13 @@ class _AttestationResponse:
         self.attestation_object = attestation_object
 
 
+class _RegistrationResponse:
+    """Security key registration response"""
+
+    def __init__(self, attestation_response):
+        self.response = attestation_response
+
+
 class _AuthenticatorData:
     """Security key authenticator data in aseertion"""
 
@@ -108,6 +115,13 @@ class _AssertionResponse:
         self.client_data = client_data
         self.authenticator_data = auth_data
         self.signature = signature
+
+
+class _AuthenticationResponse:
+    """Security key authentication response"""
+
+    def __init__(self, response):
+        self.response = response
 
 
 class _AssertionSelection:
@@ -261,9 +275,9 @@ class Ctap2(_CtapStub):
 class WindowsClient(_CtapStub):
     """Stub for unit testing U2F security keys via Windows WebAuthn"""
 
-    def __init__(self, origin, verify):
-        self._origin = origin
-        self._verify = verify
+    def __init__(self, data_collector):
+        self._origin = data_collector._origin
+        self._verify = data_collector._verify
 
     def make_credential(self, options):
         """Make a credential using Windows WebAuthN API"""
@@ -275,8 +289,9 @@ class WindowsClient(_CtapStub):
         public_key, key_handle = self._enroll(alg)
 
         cdata = _CredentialData(alg, public_key, key_handle)
+        attestation_object = _Credential(_CredentialAuthData(cdata))
 
-        return _AttestationResponse(_Credential(_CredentialAuthData(cdata)))
+        return _RegistrationResponse(_AttestationResponse(attestation_object))
 
     def get_assertion(self, options):
         """Get assertion using Windows WebAuthN API"""
@@ -297,7 +312,8 @@ class WindowsClient(_CtapStub):
                                          key_handle, flags)
 
         auth_data = _AuthenticatorData(flags, counter)
-        assertion = _AssertionResponse(data, auth_data, sig)
+        response = _AssertionResponse(data, auth_data, sig)
+        assertion = _AuthenticationResponse(response)
 
         return _AssertionSelection([assertion])
 

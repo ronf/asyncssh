@@ -128,7 +128,9 @@ def _ctap2_enroll(dev: 'CtapHidDevice', alg: int, application: str,
 def _win_enroll(alg: int, application: str, user: str) -> Tuple[bytes, bytes]:
     """Enroll a new security key using Windows WebAuthn API"""
 
-    client = WindowsClient(application, verify=_verify_rp_id)
+    data_collector = DefaultClientDataCollector(origin=application,
+                                                verify=_verify_rp_id)
+    client = WindowsClient(data_collector)
 
     rp = {'id': application, 'name': application}
     user_cred = {'id': user.encode('utf-8'), 'name': user}
@@ -137,7 +139,8 @@ def _win_enroll(alg: int, application: str, user: str) -> Tuple[bytes, bytes]:
                'pubKeyCredParams': key_params}
 
     result = client.make_credential(options)
-    cdata = result.attestation_object.auth_data.credential_data
+    response = result.response
+    cdata = response.attestation_object.auth_data.credential_data
 
     # pylint: disable=no-member
     return _decode_public_key(alg, cdata.public_key), cdata.credential_id
@@ -188,17 +191,20 @@ def _win_sign(data: bytes, application: str,
               key_handle: bytes) -> Tuple[int, int, bytes, bytes]:
     """Sign a message with a security key using Windows WebAuthn API"""
 
-    client = WindowsClient(application, verify=_verify_rp_id)
+    data_collector = DefaultClientDataCollector(origin=application,
+                                                verify=_verify_rp_id)
+    client = WindowsClient(data_collector)
 
     creds = [{'type': 'public-key', 'id': key_handle}]
     options = {'challenge': data, 'rpId': application,
                'allowCredentials': creds}
 
     result = client.get_assertion(options).get_response(0)
-    auth_data = result.authenticator_data
+    response = result.response
+    auth_data = response.authenticator_data
 
     return auth_data.flags, auth_data.counter, \
-           result.signature, bytes(result.client_data)
+           response.signature, bytes(response.client_data)
 
 
 def sk_webauthn_prefix(data: bytes, application: str) -> bytes:
@@ -327,7 +333,7 @@ def sk_get_resident(application: str, user: Optional[str],
 
 
 try:
-    from fido2.client import WindowsClient
+    from fido2.client import DefaultClientDataCollector
     from fido2.ctap import CtapError
     from fido2.ctap1 import Ctap1, APDU, ApduError
     from fido2.ctap2 import Ctap2, ClientPin, PinProtocolV1
@@ -335,13 +341,8 @@ try:
     from fido2.hid import CtapHidDevice
 
     sk_available = True
-
-    sk_use_webauthn = WindowsClient.is_available() and \
-                      hasattr(ctypes, 'windll') and \
-                      not ctypes.windll.shell32.IsUserAnAdmin()
 except (ImportError, OSError, AttributeError): # pragma: no cover
     sk_available = False
-    sk_use_webauthn = False
 
     def _sk_not_available(*args: object, **kwargs: object) -> NoReturn:
         """Report that security key support is unavailable"""
@@ -351,3 +352,13 @@ except (ImportError, OSError, AttributeError): # pragma: no cover
     sk_enroll = _sk_not_available
     sk_sign = _sk_not_available
     sk_get_resident = _sk_not_available
+
+try:
+    from fido2.client.windows import WindowsClient
+
+    sk_use_webauthn = WindowsClient.is_available() and \
+                      hasattr(ctypes, 'windll') and \
+                      not ctypes.windll.shell32.IsUserAnAdmin()
+except ImportError:
+    WindowsClient = None
+    sk_use_webauthn = False
