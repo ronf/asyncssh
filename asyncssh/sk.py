@@ -353,12 +353,12 @@ except (ImportError, OSError, AttributeError): # pragma: no cover
     sk_sign = _sk_not_available
     sk_get_resident = _sk_not_available
 
-try:
+try: # pragma: no cover
     from fido2.client.windows import WindowsClient
 
     sk_use_webauthn = WindowsClient.is_available() and \
                       hasattr(ctypes, 'windll') and \
                       not ctypes.windll.shell32.IsUserAnAdmin()
 except ImportError:
-    WindowsClient = None
+    WindowsClient = None # type: ignore
     sk_use_webauthn = False
