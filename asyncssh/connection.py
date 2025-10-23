@@ -1550,8 +1550,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         self._inpbuf = self._inpbuf[idx+1:]
 
-        if (version.startswith(b'SSH-2.0-') or
-                (self.is_client() and version.startswith(b'SSH-1.99-'))):
+        if version.startswith(b'SSH-2.0-') or version.startswith(b'SSH-1.99-'):
             if len(version) > _MAX_VERSION_LINE_LEN:
                 self._force_close(ProtocolError('Version too long'))
 
