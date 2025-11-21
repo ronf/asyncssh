@@ -146,7 +146,7 @@ class SSHConfig:
             else:
                 path = self._default_path
 
-            paths = list(path.glob(pattern))
+            paths = list(p for p in path.glob(pattern) if p.is_file())
 
             if not paths:
                 logger.debug1(f'Config pattern "{pattern}" matched no files')
