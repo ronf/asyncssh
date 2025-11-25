@@ -2638,8 +2638,8 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         packet.check_end()
 
         try:
-            msg = msg_bytes.decode('utf-8')
-            lang = lang_bytes.decode('ascii')
+            msg = msg_bytes.decode('utf-8', errors='replace')
+            lang = lang_bytes.decode('ascii', errors='replace')
         except UnicodeDecodeError:
             raise ProtocolError('Invalid userauth banner') from None
 
