@@ -1210,10 +1210,9 @@ class _TestAsyncFileRedirection(_TestProcess):
         with open('stdin', 'w') as file:
             file.write(data)
 
-        file = await aiofiles.open('stdin', 'r')
-
-        async with self.connect() as conn:
-            result = await conn.run('echo', stdin=file)
+        async with aiofiles.open('stdin', 'r') as file:
+            async with self.connect() as conn:
+                result = await conn.run('echo', stdin=file)
 
         self.assertEqual(result.stdout, data)
         self.assertEqual(result.stderr, data)
@@ -1227,10 +1226,9 @@ class _TestAsyncFileRedirection(_TestProcess):
         with open('stdin', 'wb') as file:
             file.write(data)
 
-        file = await aiofiles.open('stdin', 'rb')
-
-        async with self.connect() as conn:
-            result = await conn.run('echo', stdin=file, encoding=None)
+        async with aiofiles.open('stdin', 'rb') as file:
+            async with self.connect() as conn:
+                result = await conn.run('echo', stdin=file, encoding=None)
 
         self.assertEqual(result.stdout, data)
         self.assertEqual(result.stderr, data)
@@ -1241,10 +1239,9 @@ class _TestAsyncFileRedirection(_TestProcess):
 
         data = str(id(self))
 
-        file = await aiofiles.open('stdout', 'w')
-
-        async with self.connect() as conn:
-            result = await conn.run('echo', input=data, stdout=file)
+        async with aiofiles.open('stdout', 'w') as file:
+            async with self.connect() as conn:
+                result = await conn.run('echo', input=data, stdout=file)
 
         with open('stdout') as file:
             stdout_data = file.read()
@@ -1275,11 +1272,10 @@ class _TestAsyncFileRedirection(_TestProcess):
 
         data = str(id(self)).encode() + b'\xff'
 
-        file = await aiofiles.open('stdout', 'wb')
-
-        async with self.connect() as conn:
-            result = await conn.run('echo', input=data, stdout=file,
-                                    encoding=None)
+        async with aiofiles.open('stdout', 'wb') as file:
+            async with self.connect() as conn:
+                result = await conn.run('echo', input=data, stdout=file,
+                                        encoding=None)
 
         with open('stdout', 'rb') as file:
             stdout_data = file.read()
@@ -1297,11 +1293,10 @@ class _TestAsyncFileRedirection(_TestProcess):
         with open('stdin', 'w') as file:
             file.write(data)
 
-        file = await aiofiles.open('stdin', 'r')
-
-        async with self.connect() as conn:
-            result = await conn.run('delay', stdin=file,
-                                    stderr=asyncssh.DEVNULL)
+        async with aiofiles.open('stdin', 'r') as file:
+            async with self.connect() as conn:
+                result = await conn.run('delay', stdin=file,
+                                        stderr=asyncssh.DEVNULL)
 
         self.assertEqual(result.stdout, data)
 
