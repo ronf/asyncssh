@@ -1256,10 +1256,7 @@ Public Key Support
 
 AsyncSSH has extensive public key and certificate support.
 
-Supported public key types include DSA, RSA, and ECDSA. In addition, Ed25519
-and Ed448 keys are supported if OpenSSL 1.1.1b or later is installed.
-Alternately, Ed25519 support is available when the libnacl package and
-libsodium library are installed.
+Supported public key types include DSA, RSA, ECDSA, Ed25519, and Ed448.
 
 Supported certificate types include OpenSSH version 01 certificates for
 DSA, RSA, ECDSA, Ed25519, and Ed448 keys and X.509 certificates for DSA,
@@ -2078,10 +2075,6 @@ disabled by default:
 GSS authentication support is only available when the gssapi package is
 installed on UNIX or the pywin32 package is installed on Windows.
 
-Curve25519 and Curve448 support is available when OpenSSL 1.1.1 or
-later is installed. Alternately, Curve25519 is available when the
-libnacl package and libsodium library are installed.
-
 SNTRUP support is available when the Open Quantum Safe (liboqs)
 dynamic library is installed.
 
@@ -2114,9 +2107,6 @@ disabled by default:
   | arcfour256
   | arcfour128
   | arcfour
-
-Chacha20-Poly1305 support is available when either OpenSSL 1.1.1b or later
-or the libnacl package and libsodium library are installed.
 
 .. index:: MAC algorithms
 .. _MACAlgs:
@@ -2265,10 +2255,6 @@ AsyncSSH, but disabled by default:
   | x509v3-ssh-dss
   | ssh-dss-cert-v01\@openssh.com
   | ssh-dss
-
-Ed25519 and Ed448 support is available when OpenSSL 1.1.1b or later is
-installed. Alternately, Ed25519 is available when the libnacl package
-and libsodium library are installed.
 
 .. index:: Constants
 .. _Constants:
