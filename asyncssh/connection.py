@@ -196,6 +196,9 @@ class _TunnelProtocol(Protocol):
     def close(self) -> None:
         """Close this tunnel"""
 
+    async def wait_closed(self):
+        """Wait for this tunnel to close"""
+
 class _TunnelConnectorProtocol(_TunnelProtocol, Protocol):
     """Protocol to open a connection to tunnel an SSH connection over"""
 
@@ -387,6 +390,11 @@ async def _open_proxy(
 
             self._conn.connection_lost(exc)
 
+        def process_exited(self):
+            """Called when the child process has exited"""
+
+            self._close_event.set()
+
         def write(self, data: bytes) -> None:
             """Write data to this tunnel"""
 
@@ -403,13 +411,20 @@ async def _open_proxy(
 
             if self._transport: # pragma: no cover
                 self._transport.close()
+                self._transport = None
 
-            self._close_event.set()
+        async def wait_closed(self):
+            """Wait for this subprocess to exit"""
 
+            await self._close_event.wait()
 
-    _, tunnel = await loop.subprocess_exec(_ProxyCommandTunnel, *command)
+    _, tunnel = await loop.subprocess_exec(_ProxyCommandTunnel, *command,
+                                           start_new_session=True)
 
-    return cast(_Conn, cast(_ProxyCommandTunnel, tunnel).get_conn())
+    conn = cast(_Conn, cast(_ProxyCommandTunnel, tunnel).get_conn())
+    conn.set_tunnel(tunnel)
+
+    return conn
 
 
 async def _open_tunnel(tunnels: object, options: _Options,
@@ -1090,14 +1105,14 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
             self._owner = None
 
+        if self._tunnel:
+            self._tunnel.close()
+            self._tunnel = None
+
         self._cancel_login_timer()
         self._close_event.set()
 
         self._inpbuf = b''
-
-        if self._tunnel:
-            self._tunnel.close()
-            self._tunnel = None
 
     def _cancel_login_timer(self) -> None:
         """Cancel the login timer"""
@@ -2850,6 +2865,9 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         if self._agent:
             await self._agent.wait_closed()
+
+        if self._tunnel:
+            await self._tunnel.wait_closed()
 
         await self._close_event.wait()
 
