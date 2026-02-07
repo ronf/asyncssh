@@ -380,6 +380,30 @@ class _TestTCPForwarding(_CheckForwarding):
             os.remove('.ssh/config')
 
     @asynctest
+    async def test_proxy_jump_user(self):
+        """Test connecting a tunnneled SSH connection using ProxyJump
+        with a User
+        """
+
+        write_file('.ssh/config', 'Host target\n'
+                   '  Hostname localhost\n'
+                   f'  Port {self._server_port}\n'
+                   f'  ProxyJump jump\n'
+                    '\n'
+                   f'Host jump\n'
+                   f'  Hostname localhost\n'
+                   f'  Port {self._server_port}\n'
+                   f'  User jumper\n'
+                   'IdentityFile ckey\n',
+                  'w')
+        try:
+            async with self.connect(host='target', username='ckey'):
+                pass
+        finally:
+            os.remove('.ssh/config')
+
+
+    @asynctest
     async def test_proxy_jump_multiple(self):
         """Test connecting a tunnneled SSH connection using ProxyJump"""
 
