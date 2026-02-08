@@ -247,6 +247,17 @@ class _UpstreamForwardingServer(Server):
 
         return self._upstream_conn
 
+class _JumpServer(Server):
+    def __init__(self, remote_port):
+        self._remote_port = remote_port
+
+    def begin_auth(self, username):
+        """user jumper is allowed to use this server"""
+        return username != "jumper"
+
+    def connection_requested(self, dest_host, dest_port, orig_host, orig_port):
+        return dest_port == self._remote_port
+
 
 class _CheckForwarding(ServerTestCase):
     """Utility functions for AsyncSSH forwarding unit tests"""
@@ -384,6 +395,12 @@ class _TestTCPForwarding(_CheckForwarding):
         """Test connecting a tunnneled SSH connection using ProxyJump
         with a User
         """
+        def jump_server():
+            return _JumpServer(self._server_port)
+
+
+        jump_listener = await self.create_server(jump_server)
+        jump_port = jump_listener.get_port()
 
         write_file('.ssh/config', 'Host target\n'
                    '  Hostname localhost\n'
@@ -392,7 +409,7 @@ class _TestTCPForwarding(_CheckForwarding):
                     '\n'
                    f'Host jump\n'
                    f'  Hostname localhost\n'
-                   f'  Port {self._server_port}\n'
+                   f'  Port {jump_port}\n'
                    f'  User jumper\n'
                    'IdentityFile ckey\n',
                   'w')
@@ -401,7 +418,8 @@ class _TestTCPForwarding(_CheckForwarding):
                 pass
         finally:
             os.remove('.ssh/config')
-
+        jump_listener.close()
+        await jump_listener.wait_closed()
 
     @asynctest
     async def test_proxy_jump_multiple(self):
