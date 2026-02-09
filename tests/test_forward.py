@@ -397,7 +397,9 @@ class _TestTCPForwarding(_CheckForwarding):
         """
         import logging
         logging.basicConfig(level=logging.DEBUG, stream=sys.stdout)
+        logging.getLogger('asyncssh').setLevel(logging.DEBUG)
         asyncssh.set_log_level('DEBUG')
+        asyncssh.set_debug_level(3)
 
         def jump_server():
             return _JumpServer(self._server_port)
