@@ -395,19 +395,11 @@ class _TestTCPForwarding(_CheckForwarding):
         """Test connecting a tunnneled SSH connection using ProxyJump
         with a User
         """
-        import logging
-        logging.basicConfig(level=logging.DEBUG, stream=sys.stdout)
-        logging.getLogger('asyncssh').setLevel(logging.DEBUG)
-        asyncssh.set_log_level('DEBUG')
-        asyncssh.set_debug_level(3)
-
         def jump_server():
             return _JumpServer(self._server_port)
 
-
         jump_listener = await self.create_server(jump_server)
         jump_port = jump_listener.get_port()
-
 
         write_file('.ssh/config',
 f"""
