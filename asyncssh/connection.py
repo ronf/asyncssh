@@ -459,7 +459,10 @@ async def _connect(options: _Options, config: DefTuple[ConfigPaths],
 
     canon_host = await _canonicalize_host(loop, options)
 
-    host = canon_host if canon_host else options.host
+    if isinstance(options.config, SSHServerConfig):
+        host = canon_host if canon_host else options.host
+    else:
+        host = canon_host if canon_host else options.config._orig_host
     canonical = bool(canon_host)
     final = options.config.has_match_final()
 
