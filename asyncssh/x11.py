@@ -491,20 +491,19 @@ async def update_xauth(auth_path: Optional[str], host: str, dpynum: str,
     if not new_file:
         raise ValueError('Unable to acquire Xauthority lock')
 
-    try:
+    with new_file:
         new_entry = SSHXAuthorityEntry(XAUTH_FAMILY_HOSTNAME, host,
                                        dpynum, auth_proto, auth_data)
 
         new_file.write(bytes(new_entry))
 
         for entry in walk_xauth(auth_path):
-            if (entry.family != new_entry.family or entry.addr != new_entry.addr or
+            if (entry.family != new_entry.family or
+                    entry.addr != new_entry.addr or
                     entry.dpynum != new_entry.dpynum):
                 new_file.write(bytes(entry))
 
         os.replace(new_auth_path, auth_path)
-    finally:
-        new_file.close()
 
 
 async def create_x11_client_listener(loop: asyncio.AbstractEventLoop,
