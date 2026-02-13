@@ -436,6 +436,30 @@ class _TestTCPForwarding(_CheckForwarding):
             os.remove('.ssh/config')
 
     @asynctest
+    async def test_proxy_jump_config(self):
+        """Test ProxyJump to a host with config options"""
+
+        jump_host = await self.create_server(
+            _TCPConnectionServer, authorized_client_keys='authorized_keys')
+        jump_port = jump_host.get_port()
+
+        try:
+            write_file('.ssh/config',
+                       'Host jumphost\n'
+                       '  Hostname localhost\n'
+                       f'  Port {jump_port}\n'
+                       'Match final host  target\n'
+                       '  Hostname localhost\n'
+                       f'  Port {self._server_port}\n'
+                       '  ProxyJump jumphost\n', 'w')
+
+            async with self.connect(host='target', username='ckey'):
+                pass
+        finally:
+            jump_host.close()
+            os.remove('.ssh/config')
+
+    @asynctest
     async def test_ssh_connect_reverse_tunnel(self):
         """Test creating a tunneled reverse direction SSH connection"""
 

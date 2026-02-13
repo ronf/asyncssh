@@ -282,7 +282,7 @@ async def _canonicalize_host(loop: asyncio.AbstractEventLoop,
                              options: 'SSHConnectionOptions') -> Optional[str]:
     """Canonicalize a host name"""
 
-    host = options.host
+    host = options.orig_host
 
     if not options.canonicalize_hostname or not options.canonical_domains:
         logger.info('Host canonicalization disabled')
@@ -474,7 +474,7 @@ async def _connect(options: _Options, config: DefTuple[ConfigPaths],
 
     canon_host = await _canonicalize_host(loop, options)
 
-    host = canon_host if canon_host else options.host
+    host = canon_host if canon_host else options.orig_host
     canonical = bool(canon_host)
     final = options.config.has_match_final()
 
@@ -7295,6 +7295,7 @@ class SSHConnectionOptions(Options, Generic[_Options]):
     waiter: Optional[asyncio.Future]
     protocol_factory: _ProtocolFactory
     version: bytes
+    orig_host: str
     host: str
     port: int
     tunnel: object
@@ -7387,6 +7388,7 @@ class SSHConnectionOptions(Options, Generic[_Options]):
         self.protocol_factory = protocol_factory
         self.version = _validate_version(version)
 
+        self.orig_host = host
         self.host = cast(str, config.get('Hostname', host))
         self.port = cast(int, port if port != () else
             config.get('Port', DEFAULT_PORT))
