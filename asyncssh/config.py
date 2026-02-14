@@ -1,4 +1,4 @@
-# Copyright (c) 2020-2024 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2020-2026 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -29,13 +29,19 @@ import subprocess
 from hashlib import sha1
 from pathlib import Path, PurePath
 from subprocess import DEVNULL
-from typing import Callable, Dict, List, NoReturn, Optional, Sequence
-from typing import Set, Tuple, Union, cast
+from typing import Callable, Dict, Iterator, List, NoReturn, Optional
+from typing import Sequence, Set, Tuple, Union, cast
 
 from .constants import DEFAULT_PORT
 from .logging import logger
 from .misc import DefTuple, FilePath, ip_address
 from .pattern import HostPatternList, WildcardPatternList
+
+try:
+    import ifaddr
+    _ifaddr_available = True
+except ImportError: # pragma: no cover
+    _ifaddr_available = False
 
 
 ConfigPaths = Union[None, FilePath, Sequence[FilePath]]
@@ -50,6 +56,18 @@ def _exec(cmd: str) -> bool:
 
     return subprocess.run(cmd, check=False, shell=True, stdin=DEVNULL,
                           stdout=DEVNULL, stderr=DEVNULL).returncode == 0
+
+
+def _get_local_ips() -> Iterator[str]:
+    """Return local IP addresses of the system"""
+
+    for adapter in ifaddr.get_adapters():
+        for ip in adapter.ips:
+            if isinstance(ip.ip, tuple):
+                addr, _, scope_id = ip.ip
+                yield f'{addr}%{scope_id}' if scope_id else addr
+            else:
+                yield ip.ip
 
 
 class ConfigParseError(ValueError):
@@ -183,6 +201,10 @@ class SSHConfig:
             elif match == 'final':
                 result = cast(bool, self._final)
             else:
+                if (match == 'localnetwork' and
+                        not _ifaddr_available): # pragma: no cover
+                    self._error('Local network match requires ifaddr module')
+
                 match_val = self._match_val(match)
 
                 if match != 'exec' and match_val is None:
@@ -201,6 +223,15 @@ class SSHConfig:
                         ip = ip_address(cast(str, match_val)) \
                             if match_val else None
                         result = host_pat.matches(None, match_val, ip)
+                    elif match == 'localnetwork':
+                        host_pat = HostPatternList(arg)
+
+                        for addr in cast(Iterator[str], match_val):
+                            if host_pat.matches(None, addr, ip_address(addr)):
+                                result = True
+                                break
+                        else:
+                            result = False
                     else:
                         wild_pat = WildcardPatternList(arg)
                         result = wild_pat.matches(match_val)
@@ -514,6 +545,8 @@ class SSHClientConfig(SSHConfig):
             return self._options.get('Hostname', self._orig_host)
         elif match == 'originalhost':
             return self._orig_host
+        elif match == 'localnetwork':
+            return _get_local_ips()
         elif match == 'localuser':
             return self._local_user
         elif match == 'user':

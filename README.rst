@@ -150,6 +150,9 @@ functionality:
 * Install fido2 from https://pypi.org/project/fido2 if you want support
   for key exchange and authentication with U2F/FIDO2 security keys.
 
+* Install ifaddr from https://pypi.org/project/ifaddr/ if you want
+  support for matching on local network IP addresses.
+
 * Install python-pkcs11 from https://pypi.org/project/python-pkcs11 if
   you want support for accessing PIV keys on PKCS#11 security tokens.
 
@@ -175,24 +178,25 @@ easy to install any or all of these dependencies:
 
   | bcrypt
   | fido2
+  | ifaddr
   | gssapi
   | pkcs11
   | pyOpenSSL
   | pywin32
 
-For example, to install bcrypt, fido2, gssapi, pkcs11, and pyOpenSSL
+For example, to install bcrypt, fido2, gssapi, ifaddr, pkcs11, and pyOpenSSL
 on UNIX, you can run:
 
   ::
 
-    pip install 'asyncssh[bcrypt,fido2,gssapi,pkcs11,pyOpenSSL]'
+    pip install 'asyncssh[bcrypt,fido2,gssapi,ifaddr,pkcs11,pyOpenSSL]'
 
-To install bcrypt, fido2, pkcs11, pyOpenSSL, and pywin32 on Windows,
+To install bcrypt, fido2, ifaddr, pkcs11, pyOpenSSL, and pywin32 on Windows,
 you can run:
 
   ::
 
-    pip install 'asyncssh[bcrypt,fido2,pkcs11,pyOpenSSL,pywin32]'
+    pip install 'asyncssh[bcrypt,fido2,ifaddr,pkcs11,pyOpenSSL,pywin32]'
 
 Note that you will still need to manually install the libnettle library
 for UMAC support. Unfortunately, since liboqs and libnettle are not
