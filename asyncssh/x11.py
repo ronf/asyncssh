@@ -503,6 +503,8 @@ async def update_xauth(auth_path: Optional[str], host: str, dpynum: str,
                     entry.dpynum != new_entry.dpynum):
                 new_file.write(bytes(entry))
 
+        new_file.close()
+
         os.replace(new_auth_path, auth_path)
 
 
