@@ -854,6 +854,10 @@ class SSHServer:
                      * An :class:`SSHListener` object
                      * `True` to set up standard port forwarding
                      * `False` to reject the request
+                     * A callable to use as an accept handler, taking
+                       arguments of the original host and port of the
+                       client and returning a boolean to indicate
+                       whether or not to allow connection forwarding.
                      * A coroutine object which returns one of the above
 
         """
