@@ -452,8 +452,8 @@ async def _open_tunnel(tunnels: object, options: _Options,
 
             last_conn = conn
             conn = await connect(host, port, username=username,
-                                 passphrase=options.passphrase, tunnel=conn,
-                                 config=config)
+                                 passphrase=options.passphrase,
+                                 tunnel=conn or (), config=config)
             conn.set_tunnel(last_conn)
 
             if options.canonicalize_hostname != 'always':
