@@ -121,9 +121,7 @@ class SSHAgentKeyPair(SSHKeyPair):
         else:
             sig_algorithm = algorithm
 
-        # Neither Pageant nor the Win10 OpenSSH agent seems to support the
-        # ssh-agent protocol flags used to request RSA SHA2 signatures yet
-        if sig_algorithm == b'ssh-rsa' and sys.platform != 'win32':
+        if sig_algorithm == b'ssh-rsa':
             sig_algorithms: Sequence[bytes] = \
                 (b'rsa-sha2-256', b'rsa-sha2-512', b'ssh-rsa')
         else:
