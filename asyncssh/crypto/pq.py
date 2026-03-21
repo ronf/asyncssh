@@ -58,10 +58,12 @@ class PQDH:
             self.pubkey_bytes, self.privkey_bytes, \
             self.ciphertext_bytes, self.secret_bytes, \
             oqs_name = _pq_algs[alg_name]
-        except KeyError: # pragma: no cover, other algs not registered
-            raise ValueError(f'Unknown PQ algorithm {alg_name.decode()}') from None
+        except KeyError:
+            raise ValueError('Unknown PQ algorithm ' +
+                             alg_name.decode()) from None
 
-        if not hasattr(_oqs, 'OQS_' + oqs_name + '_keypair'): # pragma: no cover
+        if not hasattr(_oqs, 'OQS_' + oqs_name + # pragma: no cover
+                       '_keypair'):
             oqs_name += '_ipd'
 
         self._keypair = getattr(_oqs, 'OQS_' + oqs_name + '_keypair')
