@@ -59,7 +59,7 @@ class PQDH:
             self.ciphertext_bytes, self.secret_bytes, \
             oqs_name = _pq_algs[alg_name]
         except KeyError: # pragma: no cover, other algs not registered
-            raise ValueError(f'Unknown PQ algorithm {oqs_name}') from None
+            raise ValueError(f'Unknown PQ algorithm {alg_name.decode()}') from None
 
         if not hasattr(_oqs, 'OQS_' + oqs_name + '_keypair'): # pragma: no cover
             oqs_name += '_ipd'
