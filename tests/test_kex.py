@@ -650,3 +650,9 @@ class _TestKex(AsyncTestCase):
 
         client_conn.close()
         server_conn.close()
+
+    def test_invalid_pq_alg(self):
+        """Test providing an invalid PQ algorithm"""
+
+        with self.assertRaisesRegex(ValueError, 'Unknown PQ algorithm invalid'):
+            PQDH(b'invalid')
