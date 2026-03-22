@@ -47,6 +47,12 @@ class Encryption:
         raise NotImplementedError
 
     @classmethod
+    def needs_mac(cls) -> bool:
+        """Return whether a MAC algorithm is needed for this encryption"""
+
+        return True
+
+    @classmethod
     def get_mac_params(cls, mac_alg: bytes) -> Tuple[int, int, bool]:
         """Get parameters of the MAC algorithm used with this encryption"""
 
@@ -162,6 +168,12 @@ class GCMEncryption(Encryption):
         return cls(GCMCipher(cipher_name, key, iv))
 
     @classmethod
+    def needs_mac(cls) -> bool:
+        """GCM encryption doesn't need an external MAC algorithm"""
+
+        return False
+
+    @classmethod
     def get_mac_params(cls, mac_alg: bytes) -> Tuple[int, int, bool]:
         """Get parameters of the MAC algorithm used with this encryption"""
 
@@ -199,6 +211,12 @@ class ChachaEncryption(Encryption):
         """Construct a new SSH packet encryption object for Chacha ciphers"""
 
         return cls(ChachaCipher(key))
+
+    @classmethod
+    def needs_mac(cls) -> bool:
+        """Chacha20 encryption doesn't need an external MAC algorithm"""
+
+        return False
 
     @classmethod
     def get_mac_params(cls, mac_alg: bytes) -> Tuple[int, int, bool]:
@@ -258,8 +276,14 @@ def get_default_encryption_algs() -> List[bytes]:
     return _default_enc_algs
 
 
-def get_encryption_params(enc_alg: bytes,
-                          mac_alg: bytes = b'') -> _EncParams:
+def encryption_needs_mac(enc_alg: bytes) -> bool:
+    """Return whether an encryption algorithm needs a MAC algorithm"""
+
+    encryption, _ = _enc_params[enc_alg]
+    return encryption.needs_mac()
+
+
+def get_encryption_params(enc_alg: bytes, mac_alg: bytes = b'') -> _EncParams:
     """Get parameters of an encryption and MAC algorithm"""
 
     encryption, cipher_name = _enc_params[enc_alg]

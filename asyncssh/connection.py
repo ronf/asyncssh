@@ -82,6 +82,7 @@ from .constants import OPEN_UNKNOWN_CHANNEL_TYPE
 
 from .encryption import Encryption, get_encryption_algs
 from .encryption import get_default_encryption_algs
+from .encryption import encryption_needs_mac
 from .encryption import get_encryption_params, get_encryption
 
 from .forward import SSHForwarder
@@ -666,7 +667,8 @@ def _expand_algs(alg_type: str, algs: str,
 
 def _select_algs(alg_type: str, algs: _AlgsArg, config_algs: _AlgsArg,
                  possible_algs: List[bytes], default_algs: List[bytes],
-                 none_value: Optional[bytes] = None) -> Sequence[bytes]:
+                 none_value: Optional[bytes] = None,
+                 allow_empty: bool = False) -> Sequence[bytes]:
     """Select a set of allowed algorithms"""
 
     if algs == ():
@@ -697,6 +699,8 @@ def _select_algs(alg_type: str, algs: _AlgsArg, config_algs: _AlgsArg,
         return result
     elif none_value:
         return [none_value]
+    elif allow_empty:
+        return []
     else:
         raise ValueError(f'No {alg_type} algorithms selected')
 
@@ -729,7 +733,7 @@ def _validate_algs(config: SSHConfig, kex_algs_arg: _AlgsArg,
                             get_default_encryption_algs())
     mac_algs = _select_algs('MAC', mac_algs_arg,
                             cast(_AlgsArg, config.get('MACs', ())),
-                            get_mac_algs(), get_default_mac_algs())
+                            get_mac_algs(), get_default_mac_algs(), None, True)
     cmp_algs = _select_algs('compression', cmp_algs_arg,
                             cast(_AlgsArg, config.get_compression_algs()),
                             get_compression_algs(),
@@ -1504,8 +1508,8 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         raise KeyExchangeFailed(
             f'No matching {alg_type} algorithm found, sent '
-            f'{b",".join(local_algs).decode("ascii")} and received '
-            f'{b",".join(remote_algs).decode("ascii")}')
+            f'{b",".join(local_algs).decode("ascii") or "<None>"} and received '
+            f'{b",".join(remote_algs).decode("ascii") or "<None>"}')
 
     def _get_extra_kex_algs(self) -> List[bytes]:
         """Return the extra kex algs to add"""
@@ -1867,7 +1871,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         self.logger.debug2('  Key exchange algs: %s', kex_algs)
         self.logger.debug2('  Host key algs: %s', host_key_algs)
         self.logger.debug2('  Encryption algs: %s', self._enc_algs)
-        self.logger.debug2('  MAC algs: %s', self._mac_algs)
+        self.logger.debug2('  MAC algs: %s', self._mac_algs or '<None>')
         self.logger.debug2('  Compression algs: %s', self._cmp_algs)
 
         cookie = os.urandom(16)
@@ -1919,12 +1923,6 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         enc_keysize_sc, enc_ivsize_sc, enc_blocksize_sc, \
         mac_keysize_sc, mac_hashsize_sc, etm_sc = \
             get_encryption_params(self._enc_alg_sc, self._mac_alg_sc)
-
-        if mac_keysize_cs == 0:
-            self._mac_alg_cs = self._enc_alg_cs
-
-        if mac_keysize_sc == 0:
-            self._mac_alg_sc = self._enc_alg_sc
 
         cmp_after_auth_cs = get_compression_params(self._cmp_alg_cs)
         cmp_after_auth_sc = get_compression_params(self._cmp_alg_sc)
@@ -2421,11 +2419,11 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         self.logger.debug2('  Host key algs: %s', peer_host_key_algs)
         self.logger.debug2('  Client to server:')
         self.logger.debug2('    Encryption algs: %s', enc_algs_cs)
-        self.logger.debug2('    MAC algs: %s', mac_algs_cs)
+        self.logger.debug2('    MAC algs: %s', mac_algs_cs or '<None>')
         self.logger.debug2('    Compression algs: %s', cmp_algs_cs)
         self.logger.debug2('  Server to client:')
         self.logger.debug2('    Encryption algs: %s', enc_algs_sc)
-        self.logger.debug2('    MAC algs: %s', mac_algs_sc)
+        self.logger.debug2('    MAC algs: %s', mac_algs_sc or '<None>')
         self.logger.debug2('    Compression algs: %s', cmp_algs_sc)
 
         kex_alg = self._choose_alg('key exchange', kex_algs, peer_kex_algs)
@@ -2446,8 +2444,17 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         self._enc_alg_sc = self._choose_alg('encryption', self._enc_algs,
                                             enc_algs_sc)
 
-        self._mac_alg_cs = self._choose_alg('MAC', self._mac_algs, mac_algs_cs)
-        self._mac_alg_sc = self._choose_alg('MAC', self._mac_algs, mac_algs_sc)
+        if encryption_needs_mac(self._enc_alg_cs):
+            self._mac_alg_cs = self._choose_alg('MAC', self._mac_algs,
+                                                mac_algs_cs)
+        else:
+            self._mac_alg_cs = self._enc_alg_cs
+
+        if encryption_needs_mac(self._enc_alg_sc):
+            self._mac_alg_sc = self._choose_alg('MAC', self._mac_algs,
+                                                mac_algs_sc)
+        else:
+            self._mac_alg_sc = self._enc_alg_sc
 
         self._cmp_alg_cs = self._choose_alg('compression', self._cmp_algs,
                                             cmp_algs_cs)
