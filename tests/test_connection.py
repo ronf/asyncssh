@@ -1944,6 +1944,25 @@ class _TestConnectionListenSock(ServerTestCase):
                 pass
 
 
+class _TestConnectionEmptyServerMACAlgs(ServerTestCase):
+    """Unit test server with empty list of MAC algs and AEAD cipher"""
+
+    @classmethod
+    async def start_server(cls):
+        """Start an SSH server to connect to"""
+
+        return await cls.create_server(
+            _TunnelServer, encryption_algs=['chacha20-poly1305@openssh.com'],
+            mac_algs=[])
+
+    @asynctest
+    async def test_connect(self):
+        """Test connecting to server advertizing empty MAC algs"""
+
+        async with self.connect():
+            pass
+
+
 class _TestConnectionAsyncAcceptor(ServerTestCase):
     """Unit test for async acceptor"""
 
