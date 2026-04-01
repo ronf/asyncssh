@@ -145,6 +145,7 @@ if sys.platform == 'win32': # pragma: no cover
 else:
     _LocalPath = bytes
 
+_SFTPExtensions = Sequence[Tuple[bytes, bytes]]
 _SFTPFileObj = IO[bytes]
 _SFTPPath = Union[bytes, FilePath]
 _SFTPPaths = Union[_SFTPPath, Sequence[_SFTPPath]]
@@ -1718,7 +1719,7 @@ class SFTPAttrs(Record):
     untrans_name: Optional[bytes]
     extended: Sequence[Tuple[bytes, bytes]] = ()
 
-    def _format_ns(self, k: str):
+    def _format_ns(self, k: str) -> str:
         """Convert epoch seconds & nanoseconds to a string date & time"""
 
         result = time.ctime(getattr(self, k))
@@ -2241,7 +2242,7 @@ class SFTPRanges(Record):
 class SFTPGlob:
     """SFTP glob matcher"""
 
-    def __init__(self, fs: _SFTPGlobProtocol, multiple=False):
+    def __init__(self, fs: _SFTPGlobProtocol, multiple: bool = False):
         self._fs = fs
         self._multiple = multiple
         self._prev_matches: Set[bytes] = set()
@@ -2280,7 +2281,7 @@ class SFTPGlob:
 
         return path, patlist
 
-    def _report_match(self, path, attrs):
+    def _report_match(self, path: bytes, attrs: SFTPAttrs) -> None:
         """Report a matching name"""
 
         self._matched = True
@@ -2293,7 +2294,7 @@ class SFTPGlob:
 
         self._new_matches.append(SFTPName(path, attrs=attrs))
 
-    async def _stat(self, path) -> Optional[SFTPAttrs]:
+    async def _stat(self, path: bytes) -> Optional[SFTPAttrs]:
         """Cache results of calls to stat"""
 
         try:
@@ -2309,7 +2310,7 @@ class SFTPGlob:
         self._stat_cache[path] = attrs
         return attrs
 
-    async def _scandir(self, path) -> AsyncIterator[SFTPName]:
+    async def _scandir(self, path: bytes) -> AsyncIterator[SFTPName]:
         """Cache results of calls to scandir"""
 
         try:
@@ -2392,7 +2393,7 @@ class SFTPGlob:
 
     async def match(self, pattern: bytes,
                     error_handler: SFTPErrorHandler = None,
-                    sftp_version = MIN_SFTP_VERSION) -> Sequence[SFTPName]:
+                    sftp_version: int = MIN_SFTP_VERSION) -> Sequence[SFTPName]:
         """Match against a glob pattern"""
 
         self._new_matches = []
@@ -2476,7 +2477,7 @@ class SFTPHandler(SSHPacketLogger):
             self._reader = None
             self._writer = None
 
-    def _log_extensions(self, extensions: Sequence[Tuple[bytes, bytes]]):
+    def _log_extensions(self, extensions: _SFTPExtensions) -> None:
         """Dump a formatted list of extensions to the debug log"""
 
         for name, data in extensions:
@@ -3628,7 +3629,7 @@ class SFTPClientFile:
 
         return self._offset
 
-    async def stat(self, flags = FILEXFER_ATTR_DEFINED_V4) -> SFTPAttrs:
+    async def stat(self, flags: int = FILEXFER_ATTR_DEFINED_V4) -> SFTPAttrs:
         """Return file attributes of the remote file
 
            This method queries file attributes of the currently open file.
@@ -7289,10 +7290,8 @@ class SFTPServer:
         if pflags & FXF_EXCL:
             flags |= os.O_EXCL
 
-        try:
-            flags |= os.O_BINARY
-        except AttributeError: # pragma: no cover
-            pass
+        if sys.platform == 'win32': # pragma: no cover
+            flags |= os.O_BINARY # pylint: disable=no-member
 
         perms = 0o666 if attrs.permissions is None else attrs.permissions
 
@@ -7392,10 +7391,8 @@ class SFTPServer:
                 desired_access & ACE4_WRITE_DATA:
             mode += '+'
 
-        try:
-            open_flags |= os.O_BINARY
-        except AttributeError: # pragma: no cover
-            pass
+        if sys.platform == 'win32': # pragma: no cover
+            open_flags |= os.O_BINARY # pylint: disable=no-member
 
         perms = 0o666 if attrs.permissions is None else attrs.permissions
 
@@ -7604,7 +7601,7 @@ class SFTPServer:
             # information.
 
             # pylint: disable=no-member
-            listdir_result = self.listdir(path) # type: ignore
+            listdir_result = self.listdir(path)
 
             if inspect.isawaitable(listdir_result):
                 listdir_result = await cast(

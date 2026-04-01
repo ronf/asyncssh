@@ -346,7 +346,8 @@ class _SCPHandler:
 
         if isinstance(exc, SFTPError):
             reason = exc.reason.encode('utf-8')
-        elif isinstance(exc, OSError): # pragma: no branch (win32)
+        elif isinstance(exc, OSError) and \
+                exc.strerror: # pragma: no branch (win32)
             reason = exc.strerror.encode('utf-8')
 
             filename = cast(BytesOrStr, exc.filename)

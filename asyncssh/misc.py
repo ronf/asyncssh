@@ -251,7 +251,7 @@ def _normalize_scoped_ip(addr: str) -> str:
 
     if addrinfo[0] == socket.AF_INET6:
         sa = addrinfo[4]
-        addr = sa[0]
+        addr = cast(str, sa[0])
 
         idx = addr.find('%')
         if idx >= 0: # pragma: no cover

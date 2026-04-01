@@ -35,7 +35,7 @@ if TYPE_CHECKING:
 
 
 _KexAlgList = List[bytes]
-_KexAlgMap = Dict[bytes, Tuple[Type['Kex'], HashType, object]]
+_KexAlgMap = Dict[bytes, Tuple[Type['Kex'], HashType, Tuple]]
 
 
 _kex_algs: _KexAlgList = []
