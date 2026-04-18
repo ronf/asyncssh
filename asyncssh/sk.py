@@ -359,6 +359,6 @@ try: # pragma: no cover
     sk_use_webauthn = WindowsClient.is_available() and \
                       hasattr(ctypes, 'windll') and \
                       not ctypes.windll.shell32.IsUserAnAdmin()
-except ImportError:
+except (AttributeError, ImportError):
     WindowsClient = None # type: ignore
     sk_use_webauthn = False
