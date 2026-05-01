@@ -5738,6 +5738,14 @@ class SFTPClient:
                     else:
                         raise
 
+            names[0].filename =  self.decode(cast(bytes, names[0].filename),
+                                             isinstance(path, (str, PurePath)))
+
+            if names[0].longname is not None:
+                names[0].longname =  \
+                    self.decode(cast(bytes, names[0].longname),
+                                isinstance(path, (str, PurePath)))
+
             return names[0]
         else:
             return self.decode(cast(bytes, names[0].filename),
