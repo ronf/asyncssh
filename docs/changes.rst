@@ -3,7 +3,7 @@
 Change Log
 ==========
 
-Release 2.23.0 (8 Feb 2026)
+Release 2.23.0 (8 May 2026)
 ---------------------------
 
 * Added support for "Match localnetwork". Thanks go to Théophile Bastian
