@@ -3,6 +3,46 @@
 Change Log
 ==========
 
+Release 2.23.0 (8 Feb 2026)
+---------------------------
+
+* Added support for "Match localnetwork". Thanks go to Théophile Bastian
+  for reporting this new match type, added in OpenSSH 9.4.
+
+* Enabled support for RSA with SHA-2 signatures in ssh-agent and Pageant.
+  Thanks go to GitHub user Netzvamp for reporting this.
+
+* Changed MAC algorithm negotation to be skipped when using AEAD ciphers.
+  Thanks go to GitHub user LilleCarl for reporting this issue and
+  suggesting a potential fix.
+
+* Improved graceful termination when using ProxyCommand, waiting for
+  the ProxyCommand tunnel to close when cleaning up a connection. Thanks
+  go to Simon Liétar for reporting this issue and helping to investigate
+  possible solutions.
+
+* Blocked unsafe user substitutions from being used in server config.
+  Thanks go to GitHub user 0xHunSec for reporting this problem and
+  providing reproduction code.
+
+* Fixed an issue with config evaluation when "Match final" was combined
+  with Hostname directives. Thanks go to GitHub user commonism for
+  reporting this issue and coming up with a reproducible test case and a
+  potential fix.
+
+* Fixed a resource leak in xauth support. Thanks go to GitHub user
+  taovinci0 for reporting this problem and providing an initial version
+  of a fix.
+
+* Fixed issue with multi-hop ProxyJump directives in a config file
+  not working correctly. Thanks go to Rémi Benoit for reporting this
+  problem and providing a detailed root cause analysis.
+
+* Fixed string encoding in SFTPName objects returned by realpath().
+  Thanks go to GitHub user vivodi for reporting this and providing
+  reproduction code.
+
+
 Release 2.22.0 (21 Dec 2025)
 ----------------------------
 
