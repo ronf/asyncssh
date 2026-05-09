@@ -1,4 +1,4 @@
-# Copyright (c) 2020-2024 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2020-2026 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -597,6 +597,13 @@ class _TestServerConfig(_TestConfig):
 
         config = self._parse_config('Match address 127.0.0.0/8\nPermitTTY no')
         self.assertEqual(config.get('PermitTTY'), False)
+
+    def test_illegal_user(self):
+        """Test update of match options"""
+
+        for user in ('..', '/xxx', '\\xxx'):
+            with self.assertRaises(asyncssh.IllegalUserName):
+                self._parse_config('AuthorizedKeysFile %u', user=user)
 
     def test_reload(self):
         """Test update of match options"""

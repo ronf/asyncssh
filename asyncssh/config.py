@@ -34,7 +34,7 @@ from typing import Sequence, Set, Tuple, Union, cast
 
 from .constants import DEFAULT_PORT
 from .logging import logger
-from .misc import DefTuple, FilePath, ip_address
+from .misc import DefTuple, FilePath, IllegalUserName, ip_address
 from .pattern import HostPatternList, WildcardPatternList
 
 try:
@@ -711,6 +711,9 @@ class SSHServerConfig(SSHConfig):
 
     def _set_tokens(self) -> None:
         """Set the tokens available for percent expansion"""
+
+        if self._user == '..' or '/' in self._user or '\\' in self._user:
+            raise IllegalUserName('Unsafe username substitution')
 
         self._tokens.update({'u': self._user})
 
