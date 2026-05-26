@@ -7009,6 +7009,14 @@ class SFTPServer:
        tree. This will also affect path names returned by the
        :meth:`realpath` and :meth:`readlink` methods.
 
+
+           .. note:: AsyncSSH prevents creation of links to files outside
+                     of the selected chroot directory. However, pre-existing
+                     links inside the chroot which point outside of it will
+                     be followed. To completely isolate access to only the
+                     specified chroot, pre-existing links like this should
+                     be avoided.
+
     """
 
     # The default implementation of a number of these methods don't need self
