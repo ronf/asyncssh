@@ -553,7 +553,7 @@ async def _connect(options: _Options, config: DefTuple[ConfigPaths],
 async def _listen(options: _Options, config: DefTuple[ConfigPaths],
                   loop: asyncio.AbstractEventLoop, flags: int,
                   backlog: int, sock: Optional[socket.socket],
-                  reuse_address: bool, reuse_port: bool,
+                  reuse_address: Optional[bool], reuse_port: Optional[bool],
                   conn_factory: Callable[[], _Conn],
                   msg: str) -> 'SSHAcceptor':
     """Make inbound TCP or SSH tunneled listener"""
@@ -9353,7 +9353,8 @@ async def listen(host = '', port: DefTuple[int] = (), *,
                  tunnel: DefTuple[_TunnelListener] = (),
                  family: DefTuple[int] = (), flags:int = socket.AI_PASSIVE,
                  backlog: int = 100, sock: Optional[socket.socket] = None,
-                 reuse_address: bool = False, reuse_port: bool = False,
+                 reuse_address: Optional[bool] = None,
+                 reuse_port: Optional[bool] = None,
                  acceptor: _AcceptHandler = None,
                  error_handler: _ErrorHandler = None,
                  config: DefTuple[ConfigPaths] = (),
@@ -9411,7 +9412,7 @@ async def listen(host = '', port: DefTuple[int] = (), *,
            port other existing sockets are bound to, so long as they all
            set this flag when being created. If not specified, the
            default is to not allow this. This option is not supported
-           on Windows or Python versions prior to 3.4.4.
+           on Windows.
        :param acceptor: (optional)
            A `callable` or coroutine which will be called when the
            SSH handshake completes on an accepted connection, taking
@@ -9441,8 +9442,8 @@ async def listen(host = '', port: DefTuple[int] = (), *,
        :type flags: flags to pass to :meth:`getaddrinfo() <socket.getaddrinfo>`
        :type backlog: `int`
        :type sock: :class:`socket.socket` or `None`
-       :type reuse_address: `bool`
-       :type reuse_port: `bool`
+       :type reuse_address: `bool` or `None`
+       :type reuse_port: `bool` or `None`
        :type acceptor: `callable` or coroutine
        :type error_handler: `callable`
        :type config: `list` of `str`
@@ -9478,7 +9479,8 @@ async def listen_reverse(host = '', port: DefTuple[int] = (), *,
                          family: DefTuple[int] = (),
                          flags: int = socket.AI_PASSIVE, backlog: int = 100,
                          sock: Optional[socket.socket] = None,
-                         reuse_address: bool = False, reuse_port: bool = False,
+                         reuse_address: Optional[bool] = None,
+                         reuse_port: Optional[bool] = None,
                          acceptor: _AcceptHandler = None,
                          error_handler: _ErrorHandler = None,
                          config: DefTuple[ConfigPaths] = (),
@@ -9545,7 +9547,7 @@ async def listen_reverse(host = '', port: DefTuple[int] = (), *,
            port other existing sockets are bound to, so long as they all
            set this flag when being created. If not specified, the
            default is to not allow this. This option is not supported
-           on Windows or Python versions prior to 3.4.4.
+           on Windows.
        :param acceptor: (optional)
            A `callable` or coroutine which will be called when the
            SSH handshake completes on an accepted connection, taking
@@ -9580,8 +9582,8 @@ async def listen_reverse(host = '', port: DefTuple[int] = (), *,
        :type flags: flags to pass to :meth:`getaddrinfo() <socket.getaddrinfo>`
        :type backlog: `int`
        :type sock: :class:`socket.socket` or `None`
-       :type reuse_address: `bool`
-       :type reuse_port: `bool`
+       :type reuse_address: `bool` or `None`
+       :type reuse_port: `bool` or `None`
        :type acceptor: `callable` or coroutine
        :type error_handler: `callable`
        :type config: `list` of `str`
