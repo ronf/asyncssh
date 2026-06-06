@@ -547,9 +547,10 @@ class _TestClientConfig(_TestConfig):
     def test_env_expansion(self):
         """Test environment variable expansion"""
 
-        config = self._parse_config('RemoteCommand ${HOME}/.ssh')
+        config = self._parse_config(
+            'RemoteCommand ${HOME}/${USERPROFILE}/.ssh')
 
-        self.assertEqual(config.get('RemoteCommand'), './.ssh')
+        self.assertEqual(config.get('RemoteCommand'), '././.ssh')
 
     def test_invalid_env_expansion(self):
         """Test invalid environment variable expansion"""
@@ -598,10 +599,13 @@ class _TestServerConfig(_TestConfig):
         config = self._parse_config('Match address 127.0.0.0/8\nPermitTTY no')
         self.assertEqual(config.get('PermitTTY'), False)
 
-    def test_illegal_user(self):
-        """Test update of match options"""
+    def test_unsafe_user(self):
+        """Test unsafe characters in username"""
 
-        for user in ('..', '/xxx', '\\xxx'):
+        for user in ('xxx..yyy', 'xxx~yyy', 'Cxxx:'):
+            self._parse_config('AuthorizedKeysFile %u', user=user)
+
+        for user in ('..', '~xxx', 'C:xxx', '/xxx', '\\xxx', '${xxx}'):
             with self.assertRaises(asyncssh.IllegalUserName):
                 self._parse_config('AuthorizedKeysFile %u', user=user)
 

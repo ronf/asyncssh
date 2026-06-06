@@ -48,7 +48,8 @@ ConfigPaths = Union[None, FilePath, Sequence[FilePath]]
 
 
 _token_pattern = re.compile(r'%(.)')
-_env_pattern = re.compile(r'\${(.*)}')
+_env_pattern = re.compile(r'\${(.*?)}')
+_unsafe_user_pattern = re.compile(r'^\.\.$|^~|^[A-Za-z]:|[/\\]|\$\{.*?\}')
 
 
 def _exec(cmd: str) -> bool:
@@ -710,9 +711,22 @@ class SSHServerConfig(SSHConfig):
             return None
 
     def _set_tokens(self) -> None:
-        """Set the tokens available for percent expansion"""
+        """Set the tokens available for percent expansion
 
-        if self._user == '..' or '/' in self._user or '\\' in self._user:
+           Only allow "safe" username substitutions. Unsafe usernames are:
+
+               - a username of exactly ".."
+               - a username beginning with a "~"
+               - a username beginning with a Windows drive letter and a ":"
+               - a username containing forward or backward slashes
+               - a username containing an env substitution like "${...}"
+
+           Note: this code assumes that saslprep has already been performed
+           on the username before it is accessed here.
+
+        """
+
+        if _unsafe_user_pattern.search(self._user):
             raise IllegalUserName('Unsafe username substitution')
 
         self._tokens.update({'u': self._user})
