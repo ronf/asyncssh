@@ -136,6 +136,10 @@ def _parse_cd_args(args: bytes) -> Tuple[int, int, bytes]:
 
     try:
         permissions, size, name = args.split(None, 2)
+
+        if b'/' in name or b'\\' in name or name == b'..':
+            raise _scp_error(SFTPBadMessage, 'Invalid filename')
+
         return int(permissions, 8), int(size), name
     except ValueError:
         raise _scp_error(SFTPBadMessage,

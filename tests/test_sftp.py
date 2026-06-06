@@ -5737,6 +5737,9 @@ class _TestSCPErrors(_CheckSCP):
 
                 if command.endswith('get_connection_lost'):
                     pass
+                elif command.endswith('get_invalid_filename_response'):
+                    await process.stdin.read(1)
+                    process.stdout.write('C0644 0 ../src\n')
                 elif command.endswith('get_dir_no_recurse'):
                     await process.stdin.read(1)
                     process.stdout.write('D0755 0 src\n')
@@ -5771,6 +5774,17 @@ class _TestSCPErrors(_CheckSCP):
                     process.exit(255)
 
         return await cls.create_server(process_factory=_handle_client)
+
+    @asynctest
+    async def test_get_invalid_filename_response(self):
+        """Test receiving directory when recurse wasn't requested"""
+
+        try:
+            with self.assertRaises((SFTPBadMessage, SFTPConnectionLost)):
+                await scp((self._scp_server, 'get_invalid_filename_response'),
+                          'dst')
+        finally:
+            remove('dst')
 
     @asynctest
     async def test_get_directory_without_recurse(self):
