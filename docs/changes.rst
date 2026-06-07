@@ -3,6 +3,20 @@
 Change Log
 ==========
 
+Release 2.23.1 (6 Jun 2026)
+---------------------------
+
+* Fixed an SCP path traversal issue. Thanks go to Jaden Furtado for
+  reporting this issue.
+
+* Expanded previous fix to block unsafe user substitutions in server
+  config. Thanks go to GitHub user cesabici-bit for reporting this
+  issue.
+
+* Fixed default value for reuse_address and reuse_port, matching
+  the behaavior of asyncio.create_server(). Thanks go to Alexander
+  Shlemin for reporting the inconsistency.
+
 Release 2.23.0 (8 May 2026)
 ---------------------------
 
