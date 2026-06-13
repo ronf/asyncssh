@@ -155,6 +155,7 @@ class SSHConfig:
         # pylint: disable=unused-argument
 
         old_path = self._path
+        old_line_no = self._line_no
 
         for pattern in args:
             path = Path(pattern).expanduser()
@@ -174,6 +175,8 @@ class SSHConfig:
                 self.parse(path)
 
         self._path = old_path
+        self._line_no = old_line_no
+        self._matching = True
         args.clear()
 
     def _match(self, option: str, args: List[str]) -> None:

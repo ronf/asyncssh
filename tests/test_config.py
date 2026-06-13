@@ -178,6 +178,7 @@ class _TestConfig(TempDirTestCase):
 
         with open('.ssh/dir1/include2', 'w') as f:
             f.write('Include dir1/include3\n')
+            f.write('Host no-match\n')
 
         with open('.ssh/dir1/include3', 'w') as f:
             f.write('AddressFamily inet\n')
