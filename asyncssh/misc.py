@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2025 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2026 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -21,6 +21,7 @@
 """Miscellaneous utility classes and functions"""
 
 import asyncio
+import binascii
 import fnmatch
 import functools
 import ipaddress
@@ -29,12 +30,14 @@ import re
 import shlex
 import socket
 import sys
+import time
 
+from datetime import datetime, timezone
 from pathlib import Path, PurePath
 from random import SystemRandom
 from types import TracebackType
 from typing import Any, AsyncContextManager, Awaitable, Callable, Dict
-from typing import Generator, Generic, IO, Iterator, Mapping, Optional
+from typing import Generator, Generic, IO, Iterator, List, Mapping, Optional
 from typing import Sequence, Tuple, Type, TypeVar, Union, cast, overload
 from typing_extensions import Literal, Protocol
 
@@ -62,10 +65,18 @@ if sys.platform != 'win32': # pragma: no branch
     import struct
     import termios
 
+
+AbsTime = Union[int, float, datetime, str]
+
 TermModes = Mapping[int, int]
 TermModesArg = Optional[TermModes]
 TermSize = Tuple[int, int, int, int]
 TermSizeArg = Union[None, Tuple[int, int], TermSize]
+
+
+_abs_time_pattern = re.compile(r'(\d{8,14})(Z?)')
+
+_DEFAULT_WRAP_LEN = 70
 
 
 class _Hash(Protocol):
@@ -116,7 +127,10 @@ OptExcInfo = Union[ExcInfo, Tuple[None, None, None]]
 
 BytesOrStr = Union[bytes, str]
 BytesOrStrDict = Dict[BytesOrStr, BytesOrStr]
+
 FilePath = Union[str, PurePath]
+BytesOrFilePath = Union[bytes, FilePath]
+
 HostPort = Tuple[str, int]
 IPAddress = Union[ipaddress.IPv4Address, ipaddress.IPv6Address]
 IPNetwork = Union[ipaddress.IPv4Network, ipaddress.IPv6Network]
@@ -358,6 +372,38 @@ def parse_time_interval(value: str) -> float:
     return _parse_units(value, _time_units, 'time interval')
 
 
+def parse_time(t: AbsTime) -> int:
+    """Parse a time value"""
+
+
+    if isinstance(t, int):
+        return t
+    elif isinstance(t, float):
+        return int(t)
+    elif isinstance(t, datetime):
+        return int(t.timestamp())
+    elif isinstance(t, str):
+        if t == 'now':
+            return int(time.time())
+
+        match = _abs_time_pattern.fullmatch(t)
+        if match:
+            dt = datetime.strptime(match.group(1).ljust(14, '0'),
+                                   '%Y%m%d%H%M%S')
+
+            if match.group(2):
+                dt = dt.replace(tzinfo=timezone.utc)
+
+            return int(dt.timestamp())
+
+        try:
+            return int(time.time() + parse_time_interval(t))
+        except ValueError:
+            pass
+
+    raise ValueError('Unrecognized time value')
+
+
 def split_args(command: str) -> Sequence[str]:
     """Split a command string into a list of arguments"""
 
@@ -368,6 +414,33 @@ def split_args(command: str) -> Sequence[str]:
         lex.escape = []
 
     return list(lex)
+
+
+def match_base64(data: bytes, start: int, header: bytes) -> Tuple[bytes, int]:
+    """Match a block of base64 data wrapped in a header/footer"""
+
+    match = re.compile(b'^' + header[:5] + b'END' + header[10:] +
+                       rb'[ \t\n\r\f\v]*$', re.M).search(data, start)
+
+    if not match:
+        raise ValueError('Missing' + header[10:-5].decode('ascii') + ' footer')
+
+    return data[start:match.start()], match.end()
+
+
+def wrap_base64(data: bytes, block_type: bytes, headers: bytes = b'',
+                space: bool = False, wrap: int = _DEFAULT_WRAP_LEN) -> bytes:
+    """Return a base64 block split across lines with a header/footer"""
+
+    last_hyphen = b' ' if space else b'-'
+
+    data = binascii.b2a_base64(data)[:-1]
+
+    return b'----' + last_hyphen + b'BEGIN ' + block_type + \
+           last_hyphen + b'----\n' + headers + \
+           b'\n'.join(data[i:i+wrap] for i in range(0, len(data), wrap)) + \
+           b'\n----' + last_hyphen + b'END ' + block_type + \
+           last_hyphen + b'----\n'
 
 
 _ACM = TypeVar('_ACM', bound=AsyncContextManager, covariant=True)
@@ -457,6 +530,69 @@ def set_terminal_size(tty: IO, width: int, height: int,
 
     fcntl.ioctl(tty, termios.TIOCSWINSZ,
                 struct.pack('hhhh', height, width, pixwidth, pixheight))
+
+
+class OptionsParser:
+    """Parser for comma-separated key-value pairs with quoting"""
+
+    def __init__(self) -> None:
+        self.options: Dict[str, object] = {}
+
+    _handlers: Mapping[str, Callable[[Any, str, str], None]] = {}
+
+    def _add_option(self, option: str) -> None:
+        """Add an option value"""
+
+        if option.startswith('='):
+            raise ValueError('Missing option name in options')
+
+        if '=' in option:
+            option, value = option.split('=', 1)
+
+            handler = self._handlers.get(option)
+            if handler:
+                handler(self, option, value)
+            else:
+                values = cast(List[str], self.options.setdefault(option, []))
+                values.append(value)
+        else:
+            self.options[option] = True
+
+    def _parse_options(self, line: str) -> str:
+        """Parse options in this entry"""
+
+        idx = 0
+        quoted = False
+        escaped = False
+        option = ''
+
+        for idx, ch in enumerate(line):
+            if escaped:
+                option += ch
+                escaped = False
+            elif ch == '\\':
+                escaped = True
+            elif ch == '"':
+                quoted = not quoted
+            elif quoted:
+                option += ch
+            elif ch in ' \t':
+                break
+            elif ch == ',':
+                self._add_option(option)
+                option = ''
+            else:
+                option += ch
+
+        self._add_option(option)
+        option = ''
+
+        if quoted:
+            raise ValueError('Unbalanced quote in options')
+        elif escaped:
+            raise ValueError('Unbalanced backslash in options')
+
+        return line[idx:].strip()
 
 
 class Options:

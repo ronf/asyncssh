@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2025 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2026 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -27,7 +27,6 @@ import os
 import re
 import time
 
-from datetime import datetime
 from hashlib import md5, sha1, sha256, sha384, sha512
 from pathlib import Path, PurePath
 from typing import Callable, Dict, List, Mapping, Optional, Sequence, Set
@@ -56,8 +55,9 @@ from .asn1 import ASN1DecodeError, BitString, ObjectIdentifier
 from .asn1 import der_encode, der_decode, der_decode_partial
 from .crypto import CryptoKey, PyCAKey
 from .encryption import get_encryption_params, get_encryption
-from .misc import BytesOrStr, DefTuple, FilePath, IPNetwork
-from .misc import ip_network, read_file, write_file, parse_time_interval
+from .misc import AbsTime, BytesOrStr, DefTuple, FilePath, IPNetwork
+from .misc import ip_network, parse_time, read_file, write_file
+from .misc import match_base64, wrap_base64
 from .packet import NameList, String, UInt32, UInt64
 from .packet import PacketDecodeError, SSHPacket
 from .pbe import KeyEncryptionError, pkcs1_encrypt, pkcs8_encrypt
@@ -67,7 +67,6 @@ from .sk import SSH_SK_USER_PRESENCE_REQD, sk_get_resident
 
 _Comment = Optional[BytesOrStr]
 _CertPrincipals = Union[str, Sequence[str]]
-_Time = Union[int, float, datetime, str]
 
 _PubKeyAlgMap = Dict[bytes, Type['SSHKey']]
 _CertAlgMap = Dict[bytes, Tuple[Optional[Type['SSHKey']],
@@ -139,13 +138,11 @@ _pem_map: _PEMMap = {}
 _pkcs8_oid_map: _PKCS8OIDMap = {}
 _sk_alg_map: _SKAlgMap = {}
 
-_abs_date_pattern = re.compile(r'\d{8}')
-_abs_time_pattern = re.compile(r'\d{14}')
-
 _subject_pattern = re.compile(r'(?:Distinguished[ -_]?Name|Subject|DN)[=:]?\s?',
                               re.IGNORECASE)
 
 # SSH certificate types
+CERT_TYPE_ANY  = 0
 CERT_TYPE_USER = 1
 CERT_TYPE_HOST = 2
 
@@ -154,44 +151,8 @@ OMIT = object()
 
 _OPENSSH_KEY_V1 = b'openssh-key-v1\0'
 _OPENSSH_SALT_LEN = 16
-_OPENSSH_WRAP_LEN = 70
 
-
-def _parse_time(t: _Time) -> int:
-    """Parse a time value"""
-
-    if isinstance(t, int):
-        return t
-    elif isinstance(t, float):
-        return int(t)
-    elif isinstance(t, datetime):
-        return int(t.timestamp())
-    elif isinstance(t, str):
-        if t == 'now':
-            return int(time.time())
-
-        match = _abs_date_pattern.fullmatch(t)
-        if match:
-            return int(datetime.strptime(t, '%Y%m%d').timestamp())
-
-        match = _abs_time_pattern.fullmatch(t)
-        if match:
-            return int(datetime.strptime(t, '%Y%m%d%H%M%S').timestamp())
-
-        try:
-            return int(time.time() + parse_time_interval(t))
-        except ValueError:
-            pass
-
-    raise ValueError('Unrecognized time value')
-
-
-def _wrap_base64(data: bytes, wrap: int = 64) -> bytes:
-    """Break a Base64 value into multiple lines."""
-
-    data = binascii.b2a_base64(data)[:-1]
-    return b'\n'.join(data[i:i+wrap]
-                      for i in range(0, len(data), wrap)) + b'\n'
+_PEM_WRAP_LEN = 64
 
 
 def _resolve_passphrase(
@@ -368,7 +329,7 @@ class SSHKey:
     def _generate_certificate(self, key: 'SSHKey', version: int, serial: int,
                               cert_type: int, key_id: str,
                               principals: _CertPrincipals,
-                              valid_after: _Time, valid_before: _Time,
+                              valid_after: AbsTime, valid_before: AbsTime,
                               cert_options: _OpenSSHCertOptions,
                               sig_alg_name: DefTuple[str],
                               comment: DefTuple[_Comment]) -> \
@@ -380,8 +341,8 @@ class SSHKey:
         else:
             principals = list(principals)
 
-        valid_after = _parse_time(valid_after)
-        valid_before = _parse_time(valid_before)
+        valid_after = parse_time(valid_after)
+        valid_before = parse_time(valid_before)
 
         if valid_before <= valid_after:
             raise ValueError('Valid before time must be later than '
@@ -411,7 +372,7 @@ class SSHKey:
     def _generate_x509_certificate(self, key: 'SSHKey', subject: str,
                                    issuer: Optional[str],
                                    serial: Optional[int],
-                                   valid_after: _Time, valid_before: _Time,
+                                   valid_after: AbsTime, valid_before: AbsTime,
                                    ca: bool, ca_path_len: Optional[int],
                                    purposes: X509CertPurposes,
                                    user_principals: _CertPrincipals,
@@ -430,8 +391,8 @@ class SSHKey:
                                      'supported for ' + self.get_algorithm() +
                                      ' keys')
 
-        valid_after = _parse_time(valid_after)
-        valid_before = _parse_time(valid_before)
+        valid_after = parse_time(valid_after)
+        valid_before = parse_time(valid_before)
 
         if valid_before <= valid_after:
             raise ValueError('Valid before time must be later than '
@@ -689,7 +650,8 @@ class SSHKey:
     def generate_user_certificate(
             self, user_key: 'SSHKey', key_id: str, version: int = 1,
             serial: int = 0, principals: _CertPrincipals = (),
-            valid_after: _Time = 0, valid_before: _Time = 0xffffffffffffffff,
+            valid_after: AbsTime = 0,
+            valid_before: AbsTime = 0xffffffffffffffff,
             force_command: Optional[str] = None,
             source_address: Optional[Sequence[str]] = None,
             permit_x11_forwarding: bool = True,
@@ -812,8 +774,8 @@ class SSHKey:
     def generate_host_certificate(self, host_key: 'SSHKey', key_id: str,
                                   version: int = 1, serial: int = 0,
                                   principals: _CertPrincipals = (),
-                                  valid_after: _Time = 0,
-                                  valid_before: _Time = 0xffffffffffffffff,
+                                  valid_after: AbsTime = 0,
+                                  valid_before: AbsTime = 0xffffffffffffffff,
                                   sig_alg: DefTuple[str] = (),
                                   comment: DefTuple[_Comment] = ()) -> \
             'SSHOpenSSHCertificate':
@@ -873,8 +835,8 @@ class SSHKey:
     def generate_x509_user_certificate(
             self, user_key: 'SSHKey', subject: str,
             issuer: Optional[str] = None, serial: Optional[int] = None,
-            principals: _CertPrincipals = (), valid_after: _Time = 0,
-            valid_before: _Time = 0xffffffffffffffff,
+            principals: _CertPrincipals = (), valid_after: AbsTime = 0,
+            valid_before: AbsTime = 0xffffffffffffffff,
             purposes: X509CertPurposes = 'secureShellClient',
             hash_alg: DefTuple[str] = (),
             comment: DefTuple[_Comment] = ()) -> 'SSHX509Certificate':
@@ -944,8 +906,8 @@ class SSHKey:
     def generate_x509_host_certificate(
             self, host_key: 'SSHKey', subject: str,
             issuer: Optional[str] = None, serial: Optional[int] = None,
-            principals: _CertPrincipals = (), valid_after: _Time = 0,
-            valid_before: _Time = 0xffffffffffffffff,
+            principals: _CertPrincipals = (), valid_after: AbsTime = 0,
+            valid_before: AbsTime = 0xffffffffffffffff,
             purposes: X509CertPurposes = 'secureShellServer',
             hash_alg: DefTuple[str] = (),
             comment: DefTuple[_Comment] = ()) -> 'SSHX509Certificate':
@@ -1014,8 +976,8 @@ class SSHKey:
     def generate_x509_ca_certificate(self, ca_key: 'SSHKey', subject: str,
                                      issuer: Optional[str] = None,
                                      serial: Optional[int] = None,
-                                     valid_after: _Time = 0,
-                                     valid_before: _Time = 0xffffffffffffffff,
+                                     valid_after: AbsTime = 0,
+                                     valid_before: AbsTime = 0xffffffffffffffff,
                                      ca_path_len: Optional[int] = None,
                                      hash_alg: DefTuple[str] = (),
                                      comment: DefTuple[_Comment] = ()) -> \
@@ -1176,9 +1138,7 @@ class SSHKey:
 
             if format_name == 'pkcs1-pem':
                 keytype = self.pem_name + b' PRIVATE KEY'
-                data = (b'-----BEGIN ' + keytype + b'-----\n' +
-                        headers + _wrap_base64(data) +
-                        b'-----END ' + keytype + b'-----\n')
+                data = wrap_base64(data, keytype, headers, wrap=_PEM_WRAP_LEN)
 
             return data
         elif format_name in ('pkcs8-der', 'pkcs8-pem'):
@@ -1199,9 +1159,7 @@ class SSHKey:
                 else:
                     keytype = b'PRIVATE KEY'
 
-                data = (b'-----BEGIN ' + keytype + b'-----\n' +
-                        _wrap_base64(data) +
-                        b'-----END ' + keytype + b'-----\n')
+                data = wrap_base64(data, keytype, wrap=_PEM_WRAP_LEN)
 
             return data
         elif format_name == 'openssh':
@@ -1259,9 +1217,7 @@ class SSHKey:
                              String(kdf_data), UInt32(nkeys),
                              String(self.public_data), String(data), mac))
 
-            return (b'-----BEGIN OPENSSH PRIVATE KEY-----\n' +
-                    _wrap_base64(data, _OPENSSH_WRAP_LEN) +
-                    b'-----END OPENSSH PRIVATE KEY-----\n')
+            return wrap_base64(data, b'OPENSSH PRIVATE KEY')
         else:
             raise KeyExportError('Unknown export format')
 
@@ -1288,9 +1244,7 @@ class SSHKey:
 
             if format_name == 'pkcs1-pem':
                 keytype = self.pem_name + b' PUBLIC KEY'
-                data = (b'-----BEGIN ' + keytype + b'-----\n' +
-                        _wrap_base64(data) +
-                        b'-----END ' + keytype + b'-----\n')
+                data = wrap_base64(data, keytype, wrap=_PEM_WRAP_LEN)
 
             return data
         elif format_name in ('pkcs8-der', 'pkcs8-pem'):
@@ -1303,9 +1257,7 @@ class SSHKey:
                 data = der_encode(((self.pkcs8_oid, alg_params), pkcs8_data))
 
             if format_name == 'pkcs8-pem':
-                data = (b'-----BEGIN PUBLIC KEY-----\n' +
-                        _wrap_base64(data) +
-                        b'-----END PUBLIC KEY-----\n')
+                data = wrap_base64(data, b'PUBLIC KEY', wrap=_PEM_WRAP_LEN)
 
             return data
         elif format_name == 'openssh':
@@ -1323,9 +1275,8 @@ class SSHKey:
             else:
                 comment = b''
 
-            return (b'---- BEGIN SSH2 PUBLIC KEY ----\n' +
-                    comment + _wrap_base64(self.public_data) +
-                    b'---- END SSH2 PUBLIC KEY ----\n')
+            return wrap_base64(self.public_data, b'SSH2 PUBLIC KEY',
+                               comment, space=True)
         else:
             raise KeyExportError('Unknown export format')
 
@@ -1531,9 +1482,7 @@ class SSHCertificate:
         if format_name == 'der':
             return self.public_data
         elif format_name == 'pem':
-            return (b'-----BEGIN CERTIFICATE-----\n' +
-                    _wrap_base64(self.public_data) +
-                    b'-----END CERTIFICATE-----\n')
+            return wrap_base64(self.public_data, b'CERTIFICATE')
         elif format_name == 'openssh':
             if self._comment:
                 comment = b' ' + self._comment
@@ -1549,9 +1498,8 @@ class SSHCertificate:
             else:
                 comment = b''
 
-            return (b'---- BEGIN SSH2 PUBLIC KEY ----\n' +
-                    comment + _wrap_base64(self.public_data) +
-                    b'---- END SSH2 PUBLIC KEY ----\n')
+            return wrap_base64(self.public_data, b'SSH2 PUBLIC KEY',
+                               comment, space=True)
         else:
             raise KeyExportError('Unknown export format')
 
@@ -1818,7 +1766,7 @@ class SSHOpenSSHCertificate(SSHCertificate):
     def validate(self, cert_type: int, principal: Optional[str]) -> None:
         """Validate an OpenSSH certificate"""
 
-        if self._cert_type != cert_type:
+        if cert_type not in (CERT_TYPE_ANY, self._cert_type):
             raise ValueError('Invalid certificate type')
 
         now = time.time()
@@ -2418,19 +2366,6 @@ def _parse_rfc4716(data: bytes) -> Tuple[Optional[bytes], bytes]:
         raise KeyImportError('Invalid RFC 4716 data') from None
 
 
-def _match_block(data: bytes, start: int, header: bytes,
-                 fmt: str) -> Tuple[bytes, int]:
-    """Match a block of data wrapped in a header/footer"""
-
-    match = re.compile(b'^' + header[:5] + b'END' + header[10:] +
-                       rb'[ \t\n\r\f\v]*$', re.M).search(data, start)
-
-    if not match:
-        raise KeyImportError(f'Missing {fmt} footer')
-
-    return data[start:match.start()], match.end()
-
-
 def _match_next(data: bytes, keytype: bytes, public: bool = False) -> \
         Tuple[Optional[str], Tuple, Optional[int]]:
     """Find the next key/certificate and call the appropriate decode"""
@@ -2456,12 +2391,21 @@ def _match_next(data: bytes, keytype: bytes, public: bool = False) -> \
         if (line.startswith(b'-----BEGIN ') and
                 line.endswith(b' ' + keytype + b'-----')):
             pem_name = line[11:-(6+len(keytype))].strip()
-            data, end = _match_block(data, end, line, 'PEM')
+
+            try:
+                data, end = match_base64(data, end, line)
+            except ValueError:
+                raise KeyImportError('Missing PEM footer') from None
+
             headers, data = _parse_pem(data)
             return 'pem', (pem_name, headers, data), end
         elif public:
             if line == b'---- BEGIN SSH2 PUBLIC KEY ----':
-                data, end = _match_block(data, end, line, 'RFC 4716')
+                try:
+                    data, end = match_base64(data, end, line)
+                except ValueError:
+                    raise KeyImportError('Missing RFC 4716 footer') from None
+
                 return 'rfc4716', _parse_rfc4716(data), end
             else:
                 try:

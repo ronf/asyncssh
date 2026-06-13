@@ -78,9 +78,13 @@ Features
 
 * Support for accessing keys managed by PuTTY's Pageant agent on Windows
 * Support for accessing host keys via OpenSSH's ssh-keysign
+* Partial support for `OpenSSH-style configuration files`__
 * OpenSSH-style `known_hosts file`__ support
 * OpenSSH-style `authorized_keys file`__ support
-* Partial support for `OpenSSH-style configuration files`__
+* Support for `creating and validating SSHSIG signatures`__
+
+  * Including support for OpenSSH-style allowed signers files
+
 * Compatibility with OpenSSH "Encrypt then MAC" option for better security
 * Time and byte-count based session key renegotiation
 * Designed to be easy to extend to support new forms of key exchange,
@@ -92,16 +96,17 @@ __ http://asyncssh.readthedocs.io/en/stable/api.html#mac-algorithms
 __ http://asyncssh.readthedocs.io/en/stable/api.html#compression-algorithms
 __ http://asyncssh.readthedocs.io/en/stable/api.html#public-key-support
 __ http://asyncssh.readthedocs.io/en/stable/api.html#ssh-agent-support
+__ http://asyncssh.readthedocs.io/en/stable/api.html#config-file-support
 __ http://asyncssh.readthedocs.io/en/stable/api.html#known-hosts
 __ http://asyncssh.readthedocs.io/en/stable/api.html#authorized-keys
-__ http://asyncssh.readthedocs.io/en/stable/api.html#config-file-support
+__ http://asyncssh.readthedocs.io/en/stable/api.html#sshsig-support
 
 License
 -------
 
 This package is released under the following terms:
 
-  Copyright (c) 2013-2025 by Ron Frederick <ronf@timeheart.net> and others.
+  Copyright (c) 2013-2026 by Ron Frederick <ronf@timeheart.net> and others.
 
   This program and the accompanying materials are made available under
   the terms of the Eclipse Public License v2.0 which accompanies this

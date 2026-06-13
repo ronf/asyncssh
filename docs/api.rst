@@ -1902,6 +1902,56 @@ Authorized keys classes/functions
 .. autofunction:: import_authorized_keys
 .. autofunction:: read_authorized_keys
 
+.. index:: SSHSIG support
+.. _SSHSIGSupport:
+
+SSHSIG Support
+==============
+
+AsyncSSH supports the creation and validation of SSHSIG signatures as
+well as OpenSSH-style allowed signers files which specify the set of
+keys allowed to perform signing as a given principal. SSH certificates
+can also be used for signing by using the "cert-authority" option in
+the signers file. Other supported options include a "namespaces" option
+to restrict which namespaces a signing key can be used for, and
+"valid-after" and "valid-before" options to restrict how long a signing
+key is valid for.
+
+When using SSH certificates in allowed signers, the principal is also
+matched against the principals listed in the certificate and the
+certificate's validity period is also enforced.
+
+.. index:: Specifying allowed signers
+.. _SpecifyingAllowedSigners:
+
+Specifying allowed signers
+--------------------------
+
+Allowed signers may be passed into AsyncSSH via the `allowed_signers`
+argument to :func:`validate_sshsig`.
+
+Allowed signers can be provided as a byte string in allowed signers format,
+the name of a file or list of files to read allowed signers from, or an
+:class:`SSHAllowedSigners` object which was previously imported from a
+string by calling :func:`import_allowed_signers` or read from files by
+calling :func:`read_allowed_signers`.
+
+Each line in allowed signers should consist of a wildcard pattern of
+principal names, an optional comma-separate list of options and a
+public key or certificate in OpenSSH format. These fields should be
+separated by whitespace.
+
+SSHSIG classes/functions
+------------------------
+
+.. autoclass:: SSHAllowedSigners()
+
+.. autofunction:: import_allowed_signers
+.. autofunction:: read_allowed_signers
+
+.. autofunction:: create_sshsig
+.. autofunction:: validate_sshsig
+
 .. index:: Logging
 .. _Logging:
 

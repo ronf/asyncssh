@@ -1,4 +1,4 @@
-# Copyright (c) 2014-2025 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2014-2026 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -1781,6 +1781,9 @@ class _TestPublicKey(TempDirTestCase):
                                           (datetime.now(), '+1m'),
                                           ('20160101', '20160102'),
                                           ('20160101000000', '20160102235959'),
+                                          ('20160101Z', '20160102Z'),
+                                          ('20160101000000Z',
+                                           '20160102235959Z'),
                                           ('now', '1w2d3h4m5s'),
                                           ('-52w', '+52w')):
 

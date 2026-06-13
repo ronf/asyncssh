@@ -1,4 +1,4 @@
-# Copyright (c) 2015-2024 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2015-2026 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -20,6 +20,7 @@
 
 """Parser for SSH authorized_keys files"""
 
+from pathlib import PurePath
 from typing import Dict, List, Mapping, Optional, Sequence
 from typing import Set, Tuple, Union, cast
 
@@ -30,7 +31,7 @@ try:
 except ImportError: # pragma: no cover
     _x509_available = False
 
-from .misc import ip_address, read_file
+from .misc import FilePath, OptionsParser, ip_address, read_file
 from .pattern import HostPatternList, WildcardPatternList
 from .public_key import KeyImportError, SSHKey
 from .public_key import SSHX509Certificate, SSHX509CertificateChain
@@ -40,13 +41,15 @@ from .public_key import import_certificate_subject
 
 _EntryOptions = Mapping[str, object]
 
-class _SSHAuthorizedKeyEntry:
+
+class _SSHAuthorizedKeyEntry(OptionsParser):
     """An entry in an SSH authorized_keys list"""
 
     def __init__(self, line: str):
+        super().__init__()
+
         self.key: Optional[SSHKey] = None
         self.cert: Optional[SSHX509Certificate] = None
-        self.options: Dict[str, object] = {}
 
         try:
             self._import_key_or_cert(line)
@@ -151,60 +154,6 @@ class _SSHAuthorizedKeyEntry:
         'subject':     _add_subject
     }
 
-    def _add_option(self) -> None:
-        """Add an option value"""
-
-        if self._option.startswith('='):
-            raise ValueError('Missing option name in authorized_keys')
-
-        if '=' in self._option:
-            option, value = self._option.split('=', 1)
-
-            handler = self._handlers.get(option)
-            if handler:
-                handler(self, option, value)
-            else:
-                values = cast(List[str], self.options.setdefault(option, []))
-                values.append(value)
-        else:
-            self.options[self._option] = True
-
-    def _parse_options(self, line: str) -> str:
-        """Parse options in this entry"""
-
-        self._option = ''
-
-        idx = 0
-        quoted = False
-        escaped = False
-
-        for idx, ch in enumerate(line):
-            if escaped:
-                self._option += ch
-                escaped = False
-            elif ch == '\\':
-                escaped = True
-            elif ch == '"':
-                quoted = not quoted
-            elif quoted:
-                self._option += ch
-            elif ch in ' \t':
-                break
-            elif ch == ',':
-                self._add_option()
-                self._option = ''
-            else:
-                self._option += ch
-
-        self._add_option()
-
-        if quoted:
-            raise ValueError('Unbalanced quote in authorized_keys')
-        elif escaped:
-            raise ValueError('Unbalanced backslash in authorized_keys')
-
-        return line[idx:].strip()
-
     def match_options(self, client_host: str, client_addr: str,
                       cert_principals: Optional[Sequence[str]],
                       cert_subject: Optional['X509Name'] = None) -> bool:
@@ -277,7 +226,7 @@ class SSHAuthorizedKeys:
 
     def validate(self, key: SSHKey, client_host: str, client_addr: str,
                  cert_principals: Optional[Sequence[str]] = None,
-                 ca: bool = False) -> Optional[Mapping[str, object]]:
+                 ca: bool = False) -> Optional[_EntryOptions]:
         """Return whether a public key or CA is valid for authentication"""
 
         for entry in self._ca_entries if ca else self._user_entries:
@@ -322,7 +271,7 @@ def import_authorized_keys(data: str) -> SSHAuthorizedKeys:
     return SSHAuthorizedKeys(data)
 
 
-def read_authorized_keys(filelist: Union[str, Sequence[str]]) -> \
+def read_authorized_keys(filelist: Union[FilePath, Sequence[FilePath]]) -> \
         SSHAuthorizedKeys:
     """Read SSH authorized keys from a file or list of files
 
@@ -331,7 +280,7 @@ def read_authorized_keys(filelist: Union[str, Sequence[str]]) -> \
 
        :param filelist:
            The file or list of files to read the keys from.
-       :type filenlist: `str` or `list` of `str`
+       :type filelist: `PurePath`, `str`, or a list of these
 
        :returns: An :class:`SSHAuthorizedKeys` object
 
@@ -339,8 +288,8 @@ def read_authorized_keys(filelist: Union[str, Sequence[str]]) -> \
 
     authorized_keys = SSHAuthorizedKeys()
 
-    if isinstance(filelist, str):
-        files: Sequence[str] = [filelist]
+    if isinstance(filelist, (PurePath, str)):
+        files: Sequence[FilePath] = [filelist]
     else:
         files = filelist
 

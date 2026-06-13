@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2024 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2026 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -112,6 +112,10 @@ from .sftp import SFTPConnectionLost, SFTPOpUnsupported
 from .sftp import SFTPAttrs, SFTPVFSAttrs, SFTPName, SFTPLimits
 from .sftp import SEEK_SET, SEEK_CUR, SEEK_END
 
+from .sshsig import SSHAllowedSigners
+from .sshsig import import_allowed_signers, read_allowed_signers
+from .sshsig import create_sshsig, validate_sshsig
+
 from .stream import SSHSocketSessionFactory, SSHServerSessionFactory
 from .stream import SFTPServerFactory, SSHReader, SSHWriter
 
@@ -159,8 +163,8 @@ __all__ = [
     'SSHUNIXChannel', 'SSHUNIXSession', 'SSHWriter',
     'STDOUT', 'ServiceNotAvailable', 'SignalReceived', 'TerminalSizeChanged',
     'TimeoutError', 'connect', 'connect_agent', 'connect_reverse',
-    'create_connection', 'create_server', 'generate_private_key',
-    'get_server_auth_methods', 'get_server_host_key',
+    'create_connection', 'create_server', 'create_sshsig',
+    'generate_private_key', 'get_server_auth_methods', 'get_server_host_key',
     'import_authorized_keys', 'import_certificate', 'import_known_hosts',
     'import_private_key', 'import_public_key', 'listen', 'listen_reverse',
     'load_certificates', 'load_keypairs', 'load_pkcs11_keys',
@@ -169,5 +173,5 @@ __all__ = [
     'read_known_hosts', 'read_private_key', 'read_private_key_list',
     'read_public_key', 'read_public_key_list', 'run_client', 'run_server',
     'scp', 'set_debug_level', 'set_default_skip_rsa_key_validation',
-    'set_log_level', 'set_sftp_log_level'
+    'set_log_level', 'set_sftp_log_level', 'validate_sshsig'
 ]
