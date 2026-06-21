@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2025 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2026 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -21,11 +21,12 @@
 """SSH Diffie-Hellman, ECDH, and Edwards DH key exchange handlers"""
 
 from hashlib import sha1, sha224, sha256, sha384, sha512
-from typing import TYPE_CHECKING, Callable, Mapping, Optional, cast
+from typing import TYPE_CHECKING, Callable, Mapping, Optional
+from typing import Tuple, Type, cast
 from typing_extensions import Protocol
 
 from .constants import DEFAULT_LANG
-from .crypto import Curve25519DH, Curve448DH, DH, ECDH, PQDH
+from .crypto import Curve25519DH, Curve448DH, DH, ECDH, PQClass, MLKEM, SNTRUP
 from .crypto import curve25519_available, curve448_available
 from .crypto import mlkem_available, sntrup_available
 from .gss import GSSError
@@ -42,7 +43,7 @@ if TYPE_CHECKING:
     from .connection import SSHServerConnection
 
 
-class DHKey(Protocol):
+class _ECDHKey(Protocol):
     """Protocol for performing Diffie-Hellman key exchange"""
 
     def get_public(self) -> bytes:
@@ -55,7 +56,7 @@ class DHKey(Protocol):
         """Return the shared key from the peer's public key"""
 
 
-_ECDHClass = Callable[..., DHKey]
+_ECDHClass = Type[_ECDHKey]
 
 
 # pylint: disable=line-too-long
@@ -478,14 +479,14 @@ class _KexHybridECDH(_KexECDH):
     """Handler for post-quantum key exchange"""
 
     def __init__(self, alg: bytes, conn: 'SSHConnection', hash_alg: HashType,
-                 pq_alg_name: bytes, ecdh_class: _ECDHClass, *args: object):
+                 pq_class: PQClass, pq_alg_name: bytes,
+                 ecdh_class: _ECDHClass, *args: object):
         super().__init__(alg, conn, hash_alg, ecdh_class, *args)
 
-        self._pq = PQDH(pq_alg_name)
+        self._pq = pq_class(pq_alg_name)
 
         if conn.is_client():
-            pq_pub, self._pq_priv = self._pq.keypair()
-            self._client_pub = pq_pub + self._client_pub
+            self._client_pub = self._pq.get_public() + self._client_pub
 
     def _compute_client_shared(self) -> bytes:
         """Compute client shared key"""
@@ -494,7 +495,7 @@ class _KexHybridECDH(_KexECDH):
         ec_pub = self._server_pub[self._pq.ciphertext_bytes:]
 
         try:
-            pq_secret = self._pq.decaps(pq_ciphertext, self._pq_priv)
+            pq_secret = self._pq.decaps(pq_ciphertext)
         except ValueError:
             raise ProtocolError('Invalid PQ server ciphertext') from None
 
@@ -755,19 +756,19 @@ class _KexGSSECDH(_KexGSSBase, _KexECDH):
 if mlkem_available: # pragma: no branch
     if curve25519_available: # pragma: no branch
         register_kex_alg(b'mlkem768x25519-sha256', _KexHybridECDH,
-                         sha256, (b'mlkem768', Curve25519DH), True)
+                         sha256, (MLKEM, b'mlkem768', Curve25519DH), True)
 
     register_kex_alg(b'mlkem768nistp256-sha256', _KexHybridECDH,
-                     sha256, (b'mlkem768', ECDH, b'nistp256'), True)
+                     sha256, (MLKEM, b'mlkem768', ECDH, b'nistp256'), True)
     register_kex_alg(b'mlkem1024nistp384-sha384', _KexHybridECDH,
-                     sha384, (b'mlkem1024', ECDH, b'nistp384'), True)
+                     sha384, (MLKEM, b'mlkem1024', ECDH, b'nistp384'), True)
 
 if curve25519_available: # pragma: no branch
     if sntrup_available: # pragma: no branch
         register_kex_alg(b'sntrup761x25519-sha512', _KexHybridECDH,
-                         sha512, (b'sntrup761', Curve25519DH), True)
+                         sha512, (SNTRUP, b'sntrup761', Curve25519DH), True)
         register_kex_alg(b'sntrup761x25519-sha512@openssh.com', _KexHybridECDH,
-                         sha512, (b'sntrup761', Curve25519DH), True)
+                         sha512, (SNTRUP, b'sntrup761', Curve25519DH), True)
 
     register_kex_alg(b'curve25519-sha256', _KexECDH, sha256,
                      (Curve25519DH,), True)

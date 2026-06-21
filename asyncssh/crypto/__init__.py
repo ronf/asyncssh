@@ -1,4 +1,4 @@
-# Copyright (c) 2014-2021 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2014-2026 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -40,7 +40,7 @@ from .misc import CryptoKey, PyCAKey
 
 from .rsa import RSAPrivateKey, RSAPublicKey
 
-from .pq import mlkem_available, sntrup_available, PQDH
+from .pq import mlkem_available, sntrup_available, PQClass, MLKEM, SNTRUP
 
 # Import chacha20-poly1305 cipher if available
 from .chacha import ChachaCipher, chacha_available
@@ -61,11 +61,11 @@ except (ImportError, AttributeError): # pragma: no cover
 __all__ = [
     'BasicCipher', 'ChachaCipher', 'CryptoKey', 'Curve25519DH', 'Curve448DH',
     'DH', 'DSAPrivateKey', 'DSAPublicKey', 'ECDH', 'ECDSAPrivateKey',
-    'ECDSAPublicKey', 'EdDSAPrivateKey', 'EdDSAPublicKey', 'GCMCipher', 'PQDH',
-    'PyCAKey', 'RSAPrivateKey', 'RSAPublicKey', 'X509Certificate',
-    'X509Name', 'X509NamePattern', 'chacha_available', 'curve25519_available',
-    'curve448_available', 'ed25519_available', 'ed448_available',
-    'generate_x509_certificate', 'get_cipher_params',
+    'ECDSAPublicKey', 'EdDSAPrivateKey', 'EdDSAPublicKey', 'GCMCipher', 'MLKEM',
+    'PQClass', 'PyCAKey', 'RSAPrivateKey', 'RSAPublicKey', 'SNTRUP',
+    'X509Certificate', 'X509Name', 'X509NamePattern', 'chacha_available',
+    'curve25519_available', 'curve448_available', 'ed25519_available',
+    'ed448_available', 'generate_x509_certificate', 'get_cipher_params',
     'import_x509_certificate', 'lookup_ec_curve_by_params', 'mlkem_available',
     'pbkdf2_hmac', 'register_cipher', 'sntrup_available', 'umac32', 'umac64',
     'umac96', 'umac128'

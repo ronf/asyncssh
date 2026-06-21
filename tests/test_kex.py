@@ -29,8 +29,8 @@ from hashlib import sha1
 import asyncssh
 
 from asyncssh.crypto import curve25519_available, curve448_available
-from asyncssh.crypto import sntrup_available
-from asyncssh.crypto import Curve25519DH, Curve448DH, ECDH, PQDH
+from asyncssh.crypto import mlkem_available, sntrup_available
+from asyncssh.crypto import Curve25519DH, Curve448DH, ECDH, MLKEM, SNTRUP
 from asyncssh.kex_dh import MSG_KEXDH_INIT, MSG_KEXDH_REPLY
 from asyncssh.kex_dh import MSG_KEX_DH_GEX_REQUEST, MSG_KEX_DH_GEX_GROUP
 from asyncssh.kex_dh import MSG_KEX_DH_GEX_INIT, MSG_KEX_DH_GEX_REPLY, _KexDHGex
@@ -577,15 +577,50 @@ class _TestKex(AsyncTestCase):
         client_conn.close()
         server_conn.close()
 
+    @unittest.skipUnless(mlkem_available, 'ML-KEM not available')
+    @asynctest
+    async def test_mlkemdh_errors(self):
+        """Unit test error conditions in ML-KEM key exchange"""
+
+        mlkem = MLKEM(b'mlkem768')
+
+        client_conn, server_conn = \
+            _KexClientStub.make_pair(b'mlkem768x25519-sha256')
+
+        with self.subTest('Invalid client ML-KEM public key'):
+            with self.assertRaises(asyncssh.ProtocolError):
+                await server_conn.simulate_ecdh_init(b'')
+
+        with self.subTest('Invalid client Curve25519 public key'):
+            with self.assertRaises(asyncssh.ProtocolError):
+                pub = mlkem.pubkey_bytes * b'\0'
+                await server_conn.simulate_ecdh_init(pub)
+
+        with self.subTest('Invalid server ML-KEM public key'):
+            with self.assertRaises(asyncssh.ProtocolError):
+                host_key = server_conn.get_server_host_key()
+                await client_conn.simulate_ecdh_reply(host_key.public_data,
+                                                      b'', b'')
+
+        with self.subTest('Invalid server Curve25519 public key'):
+            with self.assertRaises(asyncssh.ProtocolError):
+                host_key = server_conn.get_server_host_key()
+                ciphertext = mlkem.ciphertext_bytes * b'\0'
+                await client_conn.simulate_ecdh_reply(host_key.public_data,
+                                                      ciphertext, b'')
+
+        client_conn.close()
+        server_conn.close()
+
     @unittest.skipUnless(sntrup_available, 'SNTRUP761 not available')
     @asynctest
     async def test_sntrup761dh_errors(self):
         """Unit test error conditions in SNTRUP761 key exchange"""
 
-        pqdh = PQDH(b'sntrup761')
+        sntrup = SNTRUP(b'sntrup761')
 
         client_conn, server_conn = \
-            _KexClientStub.make_pair(b'sntrup761x25519-sha512@openssh.com')
+            _KexClientStub.make_pair(b'sntrup761x25519-sha512')
 
         with self.subTest('Invalid client SNTRUP761 public key'):
             with self.assertRaises(asyncssh.ProtocolError):
@@ -593,7 +628,7 @@ class _TestKex(AsyncTestCase):
 
         with self.subTest('Invalid client Curve25519 public key'):
             with self.assertRaises(asyncssh.ProtocolError):
-                pub = pqdh.pubkey_bytes * b'\0'
+                pub = sntrup.pubkey_bytes * b'\0'
                 await server_conn.simulate_ecdh_init(pub)
 
         with self.subTest('Invalid server SNTRUP761 public key'):
@@ -605,7 +640,7 @@ class _TestKex(AsyncTestCase):
         with self.subTest('Invalid server Curve25519 public key'):
             with self.assertRaises(asyncssh.ProtocolError):
                 host_key = server_conn.get_server_host_key()
-                ciphertext = pqdh.ciphertext_bytes * b'\0'
+                ciphertext = sntrup.ciphertext_bytes * b'\0'
                 await client_conn.simulate_ecdh_reply(host_key.public_data,
                                                       ciphertext, b'')
 
@@ -655,4 +690,4 @@ class _TestKex(AsyncTestCase):
         """Test providing an invalid PQ algorithm"""
 
         with self.assertRaisesRegex(ValueError, 'Unknown PQ algorithm invalid'):
-            PQDH(b'invalid')
+            MLKEM(b'invalid')
