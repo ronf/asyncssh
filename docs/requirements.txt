@@ -1,2 +1,2 @@
-cryptography >= 39.0
+cryptography >= 48.0.1
 typing_extensions >= 3.6
