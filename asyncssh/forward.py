@@ -316,8 +316,9 @@ class SSHLocalForwarder(SSHForwarder):
         try:
             self._tracker = self._tracker_factory()
         except Exception: # pylint: disable=broad-exception-caught
-            # A buggy factory must not break forwarding.
-            self._tracker = None
+            # A buggy factory must not break forwarding;
+            # self._tracker remains the __init__ default of None.
+            pass
 
     def data_received(self, data: bytes,
                       datatype: Optional[int] = None) -> None:
@@ -343,11 +344,20 @@ class SSHLocalForwarder(SSHForwarder):
         super().write(data)
 
     def connection_lost(self, exc: Optional[Exception]) -> None:
-        """Handle a closed local connection"""
+        """Handle a closed local connection
 
-        if self._tracker is not None:
+           This is also called manually from `_forward()` on a channel
+           open failure, so the local transport's eventual close fires
+           a second `connection_lost(None)` on the protocol. The tracker
+           reference is cleared on the first call so the hook fires
+           exactly once per connection.
+        """
+
+        tracker, self._tracker = self._tracker, None
+
+        if tracker is not None:
             try:
-                self._tracker.connection_lost(exc)
+                tracker.connection_lost(exc)
             except Exception: # pylint: disable=broad-exception-caught
                 pass
 
