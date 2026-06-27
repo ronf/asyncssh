@@ -3,6 +3,26 @@
 Change Log
 ==========
 
+Release 2.24.0 (27 Jun 2026)
+----------------------------
+
+* Added support for creating and validating SSHSIG signatures, as well
+  as OpenSSH "allowed signers" files.
+
+* Added support for ML-KEM key exchange from the PyCA cryptography
+  package when it is available. This avoids the need to have the
+  liboqs library installed to use ML-KEM. However, liboqs is still
+  required to support SNTRUP kex exchange.
+
+* Fixed an issue with handling of SSH maximum packet size when opening
+  a new SSH channel, aborting with a protocol error if a peer attempts
+  to set this size to 0. Thanks go to GitHub user afldl for reporting
+  this issue and providing analysis and reproduction code.
+
+* Fixed an issue with include directives in OpenSSH config files.
+  Thanks go to GitHub users sethholmes and tazle for reporting this
+  issue and providing analysis and a proposed fix.
+
 Release 2.23.1 (6 Jun 2026)
 ---------------------------
 
