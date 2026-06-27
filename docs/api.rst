@@ -1433,9 +1433,11 @@ methods. These values can be specified in any of the following ways:
       :func:`time.time`.
     * A :class:`datetime.datetime` value.
     * A string value of ``now`` to request the current time.
-    * A string value in the form ``YYYYMMDD`` to specify an absolute date.
-    * A string value in the form ``YYYYMMDDHHMMSS`` to specify an
-      absolute date and time.
+    * A string value in the form ``YYYYMMDD[Z]`` to specify midnight on the
+      requested date. If Z is present, the time will be based on the UTC time
+      zone. Otherwise, it will be based on the system's local time zone.
+    * A string value in the form ``YYYYMMDDHHMMSS[Z]`` to specify an
+      absolute date and time with the optional Z meaning the same as above.
     * A time interval described in :ref:`SpecifyingTimeIntervals` which is
       interpreted as a relative time from now. This value can be negative
       to refer to times in the past or positive to refer to times in the
@@ -1940,6 +1942,30 @@ Each line in allowed signers should consist of a wildcard pattern of
 principal names, an optional comma-separate list of options and a
 public key or certificate in OpenSSH format. These fields should be
 separated by whitespace.
+
+Supported options are:
+
+  * **cert-authority**
+
+    An indicator that this entry's public key is a certificate authority
+    and that signatures created using certificates signed by this CA
+    should be trusted.
+
+  * **namespaces**
+
+    The set of namespaces this entry's key is trusted for. Signatures
+    using this key should only be trusted if the namespace in the signature
+    matches the namespace patterns specified here.
+
+  * **valid-after**
+
+    An indicator that this entry's key is only valid after the specified
+    time. See :ref:`SpecifyingTimeValues` for allowed time specifications.
+
+  * **valid-before**
+
+    An indicator that this entry's key is only valid before the specified
+    time. See :ref:`SpecifyingTimeValues` for allowed time specifications.
 
 SSHSIG classes/functions
 ------------------------
