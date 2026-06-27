@@ -697,6 +697,162 @@ class _TestTCPForwarding(_CheckForwarding):
                 writer.close()
                 await maybe_wait_closed(writer)
 
+    @asynctest
+    async def test_forward_local_port_tracker_factory_fires_made_and_lost(self):
+        """A port tracker sees connection_made and connection_lost"""
+
+        events = []
+        lost = asyncio.Event()
+
+        class _RecordingTracker(asyncssh.SSHPortForwardTracker):
+            def connection_made(self, forwarder, orig_host, orig_port):
+                events.append(('made', forwarder, orig_host, orig_port))
+
+            def connection_lost(self, exc):
+                events.append(('lost', exc))
+                lost.set()
+
+        async with self.connect() as conn:
+            async with conn.forward_local_port(
+                    '', 0, '', 7,
+                    tracker_factory=_RecordingTracker) as listener:
+                await self._check_local_connection(listener.get_port())
+                await asyncio.wait_for(lost.wait(), timeout=1.0)
+
+        kinds = [event[0] for event in events]
+        self.assertIn('made', kinds)
+        self.assertIn('lost', kinds)
+
+        made = next(event for event in events if event[0] == 'made')
+        self.assertIsInstance(made[1], asyncssh.SSHForwarder)
+        self.assertEqual(made[2], '127.0.0.1')
+        self.assertIsInstance(made[3], int)
+
+    @asynctest
+    async def test_forward_local_port_tracker_factory_per_connection(self):
+        """The factory is called once per accepted connection"""
+
+        trackers = []
+        lost_events = []
+
+        class _CountingTracker(asyncssh.SSHPortForwardTracker):
+            def __init__(self):
+                trackers.append(self)
+                lost_events.append(asyncio.Event())
+
+            def connection_lost(self, exc):
+                lost_events[trackers.index(self)].set()
+
+        def factory():
+            return _CountingTracker()
+
+        async with self.connect() as conn:
+            async with conn.forward_local_port(
+                    '', 0, '', 7, tracker_factory=factory) as listener:
+                listen_port = listener.get_port()
+                await self._check_local_connection(listen_port)
+                await self._check_local_connection(listen_port)
+                await asyncio.wait_for(
+                    asyncio.gather(*(e.wait() for e in lost_events)),
+                    timeout=1.0)
+
+        self.assertEqual(len(trackers), 2)
+
+    @asynctest
+    async def test_forward_local_port_tracker_byte_hooks(self):
+        """Byte hooks observe both forwarding directions"""
+
+        local_bytes = bytearray()
+        remote_bytes = bytearray()
+        lost = asyncio.Event()
+
+        class _ByteTracker(asyncssh.SSHPortForwardTracker):
+            def forward_local_bytes(self, data):
+                local_bytes.extend(data)
+
+            def forward_remote_bytes(self, data):
+                remote_bytes.extend(data)
+
+            def connection_lost(self, exc):
+                lost.set()
+
+        async with self.connect() as conn:
+            async with conn.forward_local_port(
+                    '', 0, '', 7,
+                    tracker_factory=_ByteTracker) as listener:
+                await self._check_local_connection(listener.get_port())
+                await asyncio.wait_for(lost.wait(), timeout=1.0)
+
+        line = (str(id(self)) + '\n').encode('utf-8')
+        self.assertEqual(bytes(local_bytes), line)
+        self.assertEqual(bytes(remote_bytes), line)
+
+    @asynctest
+    async def test_forward_local_port_tracker_factory_exception_swallowed(self):
+        """A factory that raises does not break forwarding"""
+
+        def factory():
+            raise RuntimeError('factory boom')
+
+        async with self.connect() as conn:
+            async with conn.forward_local_port(
+                    '', 0, '', 7, tracker_factory=factory) as listener:
+                await self._check_local_connection(listener.get_port(),
+                                                   delay=0.1)
+
+    @asynctest
+    async def test_forward_local_port_tracker_hook_exception_swallowed(self):
+        """A tracker whose hooks raise does not break forwarding"""
+
+        class _BuggyTracker(asyncssh.SSHPortForwardTracker):
+            def connection_made(self, forwarder, orig_host, orig_port):
+                raise RuntimeError('made boom')
+
+            def connection_lost(self, exc):
+                raise RuntimeError('lost boom')
+
+            def forward_local_bytes(self, data):
+                raise RuntimeError('local boom')
+
+            def forward_remote_bytes(self, data):
+                raise RuntimeError('remote boom')
+
+        async with self.connect() as conn:
+            async with conn.forward_local_port(
+                    '', 0, '', 7,
+                    tracker_factory=_BuggyTracker) as listener:
+                await self._check_local_connection(listener.get_port(),
+                                                    delay=0.1)
+
+    @asynctest
+    async def test_forward_local_port_tracker_lost_fires_exactly_once(self):
+        """connection_lost fires once even when ChannelOpenError triggers
+           a manual notify in _forward() followed by the asyncio close path."""
+
+        lost_count = 0
+
+        class _Counting(asyncssh.SSHPortForwardTracker):
+            def connection_lost(self, exc):
+                nonlocal lost_count
+                lost_count += 1
+
+        async def deny(_h, _p):
+            return False
+
+        async with self.connect() as conn:
+            async with conn.forward_local_port(
+                    '', 0, '', 7,
+                    accept_handler=deny,
+                    tracker_factory=_Counting) as listener:
+                reader, writer = await asyncio.open_connection(
+                    '127.0.0.1', listener.get_port())
+                self.assertEqual((await reader.read()), b'')
+                writer.close()
+                await maybe_wait_closed(writer)
+                await asyncio.sleep(0.1)  # bounded: upper-bound for any spurious duplicate
+
+        self.assertEqual(lost_count, 1)
+
     @unittest.skipIf(sys.platform == 'win32',
                      'skip UNIX domain socket tests on Windows')
     @asynctest
@@ -1148,6 +1304,37 @@ class _TestUNIXForwarding(_CheckForwarding):
                 await self._check_local_unix_connection('local')
 
         try_remove('local')
+
+    @asynctest
+    async def test_forward_local_path_tracker_factory(self):
+        """A path tracker sees connection_made (no addr) and connection_lost"""
+
+        events = []
+        lost = asyncio.Event()
+
+        class _RecordingTracker(asyncssh.SSHPathForwardTracker):
+            def connection_made(self, forwarder):
+                events.append(('made', forwarder))
+
+            def connection_lost(self, exc):
+                events.append(('lost', exc))
+                lost.set()
+
+        async with self.connect() as conn:
+            async with conn.forward_local_path(
+                    'local', '/echo',
+                    tracker_factory=_RecordingTracker):
+                await self._check_local_unix_connection('local')
+                await asyncio.wait_for(lost.wait(), timeout=1.0)
+
+        try_remove('local')
+
+        kinds = [event[0] for event in events]
+        self.assertIn('made', kinds)
+        self.assertIn('lost', kinds)
+
+        made = next(event for event in events if event[0] == 'made')
+        self.assertIsInstance(made[1], asyncssh.SSHForwarder)
 
     @asynctest
     async def test_forward_local_port_to_path_accept_handler(self):

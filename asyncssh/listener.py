@@ -28,7 +28,7 @@ from typing import TYPE_CHECKING, AnyStr, Callable, Generic, List, Optional
 from typing import Sequence, Set, Tuple, Type, Union
 from typing_extensions import Self
 
-from .forward import SSHForwarderCoro
+from .forward import SSHForwarderCoro, SSHForwardTrackerFactory
 from .forward import SSHLocalPortForwarder, SSHLocalPathForwarder
 from .misc import HostPort, MaybeAwait
 from .session import SSHTCPSession, SSHUNIXSession
@@ -345,14 +345,16 @@ async def create_tcp_local_listener(
 async def create_tcp_forward_listener(conn: 'SSHConnection',
                                       loop: asyncio.AbstractEventLoop,
                                       coro: SSHForwarderCoro, listen_host: str,
-                                      listen_port: int) -> \
-        'SSHForwardListener':
+                                      listen_port: int,
+                                      tracker_factory:
+                                          Optional[SSHForwardTrackerFactory] =
+                                          None) -> 'SSHForwardListener':
     """Create a listener to forward traffic from a local TCP port over SSH"""
 
     def protocol_factory() -> asyncio.BaseProtocol:
         """Start a port forwarder for each new local connection"""
 
-        return SSHLocalPortForwarder(conn, coro)
+        return SSHLocalPortForwarder(conn, coro, tracker_factory)
 
     return await create_tcp_local_listener(conn, loop, protocol_factory,
                                            listen_host, listen_port)
@@ -361,14 +363,16 @@ async def create_tcp_forward_listener(conn: 'SSHConnection',
 async def create_unix_forward_listener(conn: 'SSHConnection',
                                        loop: asyncio.AbstractEventLoop,
                                        coro: SSHForwarderCoro,
-                                       listen_path: str) -> \
-        'SSHForwardListener':
+                                       listen_path: str,
+                                       tracker_factory:
+                                           Optional[SSHForwardTrackerFactory] =
+                                           None) -> 'SSHForwardListener':
     """Create a listener to forward a local UNIX domain socket over SSH"""
 
     def protocol_factory() -> asyncio.BaseProtocol:
         """Start a path forwarder for each new local connection"""
 
-        return SSHLocalPathForwarder(conn, coro)
+        return SSHLocalPathForwarder(conn, coro, tracker_factory)
 
     server = await loop.create_unix_server(protocol_factory, listen_path)
 
