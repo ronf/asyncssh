@@ -38,7 +38,7 @@ class PQKey(Protocol):
 
     # pylint: disable=super-init-not-called
     def __init__(self, alg_name: bytes) -> None:
-        ...
+        """Construct a PQKey"""
 
     def get_public(self) -> bytes:
         """Return the public key to send in the handshake"""
