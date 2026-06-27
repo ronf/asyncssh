@@ -21,8 +21,7 @@
 """SSH Diffie-Hellman, ECDH, and Edwards DH key exchange handlers"""
 
 from hashlib import sha1, sha224, sha256, sha384, sha512
-from typing import TYPE_CHECKING, Callable, Mapping, Optional
-from typing import Tuple, Type, cast
+from typing import TYPE_CHECKING, Callable, Mapping, Optional, Type, cast
 from typing_extensions import Protocol
 
 from .constants import DEFAULT_LANG
