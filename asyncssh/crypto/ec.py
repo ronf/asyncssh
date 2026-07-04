@@ -140,8 +140,6 @@ class ECDSAPrivateKey(_ECKey):
     def sign(self, data: bytes, hash_name: str = '') -> bytes:
         """Sign a block of data"""
 
-        # pylint: disable=unused-argument
-
         priv_key = cast('ec.EllipticCurvePrivateKey', self.pyca_key)
         return priv_key.sign(data, ec.ECDSA(hashes[hash_name]()))
 
