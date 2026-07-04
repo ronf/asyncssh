@@ -26,10 +26,6 @@ from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.backends.openssl import backend
 from cryptography.hazmat.primitives.asymmetric import ed25519, ed448
 from cryptography.hazmat.primitives.asymmetric import x25519, x448
-from cryptography.hazmat.primitives.serialization import Encoding
-from cryptography.hazmat.primitives.serialization import PrivateFormat
-from cryptography.hazmat.primitives.serialization import PublicFormat
-from cryptography.hazmat.primitives.serialization import NoEncryption
 
 from .misc import CryptoKey, PyCAKey
 
@@ -85,7 +81,7 @@ class EdDSAPrivateKey(_EdDSAKey):
         priv_cls = cast('_EdPrivateKey', cls._priv_classes[curve_id])
         priv_key = priv_cls.from_private_bytes(priv)
         pub_key = priv_key.public_key()
-        pub = pub_key.public_bytes(Encoding.Raw, PublicFormat.Raw)
+        pub = pub_key.public_bytes_raw()
 
         return cls(priv_key, pub, priv)
 
@@ -95,11 +91,10 @@ class EdDSAPrivateKey(_EdDSAKey):
 
         priv_cls = cast('_EdPrivateKey', cls._priv_classes[curve_id])
         priv_key = priv_cls.generate()
-        priv = priv_key.private_bytes(Encoding.Raw, PrivateFormat.Raw,
-                                      NoEncryption())
+        priv = priv_key.private_bytes_raw()
 
         pub_key = priv_key.public_key()
-        pub = pub_key.public_bytes(Encoding.Raw, PublicFormat.Raw)
+        pub = pub_key.public_bytes_raw()
 
         return cls(priv_key, pub, priv)
 
@@ -151,8 +146,7 @@ class Curve25519DH:
     def get_public(self) -> bytes:
         """Return the public key to send in the handshake"""
 
-        return self._priv_key.public_key().public_bytes(Encoding.Raw,
-                                                        PublicFormat.Raw)
+        return self._priv_key.public_key().public_bytes_raw()
 
     def get_shared_bytes(self, peer_public: bytes) -> bytes:
         """Return the shared key from the peer's public key as bytes"""
@@ -175,8 +169,7 @@ class Curve448DH:
     def get_public(self) -> bytes:
         """Return the public key to send in the handshake"""
 
-        return self._priv_key.public_key().public_bytes(Encoding.Raw,
-                                                        PublicFormat.Raw)
+        return self._priv_key.public_key().public_bytes_raw()
 
     def get_shared(self, peer_public: bytes) -> int:
         """Return the shared key from the peer's public key"""
