@@ -23,10 +23,14 @@
 import asyncio
 import errno
 import socket
+import sys
 from types import TracebackType
 from typing import TYPE_CHECKING, AnyStr, Callable, Generic, List, Optional
 from typing import Sequence, Set, Tuple, Type, Union
-from typing_extensions import Self
+if sys.version_info >= (3, 11):
+    from typing import Self
+else:
+    from typing_extensions import Self
 
 from .forward import SSHForwarderCoro
 from .forward import SSHLocalPortForwarder, SSHLocalPathForwarder

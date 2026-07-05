@@ -29,11 +29,15 @@ import os
 from pathlib import PurePath
 import socket
 import stat
+import sys
 from types import TracebackType
 from typing import Any, AnyStr, Awaitable, Callable, Dict, Generic, IO
 from typing import Iterable, List, Mapping, Optional, Set, TextIO
 from typing import Tuple, Type, TypeVar, Union, cast
-from typing_extensions import Protocol, Self
+if sys.version_info >= (3, 11):
+    from typing import Protocol, Self
+else:
+    from typing_extensions import Protocol, Self
 
 from .channel import SSHChannel, SSHClientChannel, SSHServerChannel
 

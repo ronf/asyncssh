@@ -40,7 +40,10 @@ from types import TracebackType
 from typing import TYPE_CHECKING, Any, AnyStr, Awaitable, Callable, Dict
 from typing import Generic, List, Mapping, Optional, Sequence, Set, Tuple
 from typing import Type, TypeVar, Union, cast
-from typing_extensions import Protocol, Self
+if sys.version_info >= (3, 11):
+    from typing import Protocol, Self
+else:
+    from typing_extensions import Protocol, Self
 
 from .agent import SSHAgentClient, SSHAgentListener
 

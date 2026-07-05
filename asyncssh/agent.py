@@ -25,7 +25,10 @@ import os
 import sys
 from types import TracebackType
 from typing import TYPE_CHECKING, List, Optional, Sequence, Tuple, Type, Union
-from typing_extensions import Protocol, Self
+if sys.version_info >= (3, 11):
+    from typing import Protocol, Self
+else:
+    from typing_extensions import Protocol, Self
 
 from .listener import SSHForwardListener
 from .misc import async_context_manager, maybe_wait_closed

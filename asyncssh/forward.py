@@ -22,10 +22,14 @@
 
 import asyncio
 import socket
+import sys
 from types import TracebackType
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, Dict, Optional
 from typing import Type, cast
-from typing_extensions import Self
+if sys.version_info >= (3, 11):
+    from typing import Self
+else:
+    from typing_extensions import Self
 
 from .misc import ChannelOpenError, SockAddr
 

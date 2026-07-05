@@ -33,7 +33,10 @@ import sys
 from types import TracebackType
 from typing import TYPE_CHECKING, AsyncIterator, List, NoReturn, Optional
 from typing import Sequence, Tuple, Type, Union, cast
-from typing_extensions import Protocol, Self
+if sys.version_info >= (3, 11):
+    from typing import Protocol, Self
+else:
+    from typing_extensions import Protocol, Self
 
 from .constants import DEFAULT_LANG
 from .constants import FILEXFER_TYPE_REGULAR, FILEXFER_TYPE_DIRECTORY
