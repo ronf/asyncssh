@@ -1,4 +1,4 @@
-# Copyright (c) 2015-2025 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2015-2026 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -35,9 +35,10 @@ import sys
 import time
 from types import TracebackType
 from typing import TYPE_CHECKING, AnyStr, AsyncIterator, Awaitable, Callable
-from typing import Dict, Generic, IO, Iterable, List, Mapping, Optional
-from typing import Sequence, Set, Tuple, Type, TypeVar, Union, cast, overload
-from typing_extensions import Literal, Protocol, Self
+from typing import Dict, Generic, IO, Iterable, List, Literal, Mapping
+from typing import Optional, Protocol, Sequence, Set, Tuple, Type, TypeVar
+from typing import Union, cast, overload
+from typing_extensions import Self
 
 from . import constants
 from .constants import DEFAULT_LANG

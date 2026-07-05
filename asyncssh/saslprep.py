@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2024 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2026 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -33,8 +33,7 @@ import stringprep
 # pylint: enable=deprecated-module
 import unicodedata
 
-from typing import Callable, Optional, Sequence
-from typing_extensions import Literal
+from typing import Callable, Literal, Optional, Sequence
 
 
 class SASLPrepError(ValueError):

@@ -1,4 +1,4 @@
-# Copyright (c) 2017-2025 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2017-2026 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -32,8 +32,8 @@ import string
 import sys
 from types import TracebackType
 from typing import TYPE_CHECKING, AsyncIterator, List, NoReturn, Optional
-from typing import Sequence, Tuple, Type, Union, cast
-from typing_extensions import Protocol, Self
+from typing import Protocol, Sequence, Tuple, Type, Union, cast
+from typing_extensions import Self
 
 from .constants import DEFAULT_LANG
 from .constants import FILEXFER_TYPE_REGULAR, FILEXFER_TYPE_DIRECTORY
