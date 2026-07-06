@@ -35,12 +35,13 @@ import sys
 import time
 from types import TracebackType
 from typing import TYPE_CHECKING, AnyStr, AsyncIterator, Awaitable, Callable
-from typing import Dict, Generic, IO, Iterable, List, Mapping, Optional
-from typing import Sequence, Set, Tuple, Type, TypeVar, Union, cast, overload
+from typing import Dict, Generic, IO, Iterable, List, Literal, Mapping
+from typing import Optional, Protocol, Sequence, Set, Tuple, Type, TypeVar
+from typing import Union, cast, overload
 if sys.version_info >= (3, 11):
-    from typing import Literal, Protocol, Self
+    from typing import Self
 else:
-    from typing_extensions import Literal, Protocol, Self
+    from typing_extensions import Self
 
 from . import constants
 from .constants import DEFAULT_LANG

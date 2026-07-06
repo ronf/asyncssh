@@ -32,12 +32,12 @@ import stat
 import sys
 from types import TracebackType
 from typing import Any, AnyStr, Awaitable, Callable, Dict, Generic, IO
-from typing import Iterable, List, Mapping, Optional, Set, TextIO
+from typing import Iterable, List, Mapping, Optional, Protocol, Set, TextIO
 from typing import Tuple, Type, TypeVar, Union, cast
 if sys.version_info >= (3, 11):
-    from typing import Protocol, Self
+    from typing import Self
 else:
-    from typing_extensions import Protocol, Self
+    from typing_extensions import Self
 
 from .channel import SSHChannel, SSHClientChannel, SSHServerChannel
 

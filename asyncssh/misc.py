@@ -37,9 +37,9 @@ from pathlib import Path, PurePath
 from random import SystemRandom
 from types import TracebackType
 from typing import Any, AsyncContextManager, Awaitable, Callable, Dict
-from typing import Generator, Generic, IO, Iterator, List, Mapping, Optional
-from typing import Sequence, Tuple, Type, TypeVar, Union, cast, overload
-from typing_extensions import Literal, Protocol
+from typing import Generator, Generic, IO, Iterator, List, Literal, Mapping
+from typing import Optional, Protocol, Sequence, Tuple, Type, TypeVar, Union
+from typing import cast, overload
 
 from .constants import DEFAULT_LANG
 from .constants import DISC_COMPRESSION_ERROR, DISC_CONNECTION_LOST

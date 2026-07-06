@@ -33,8 +33,7 @@ import stringprep
 # pylint: enable=deprecated-module
 import unicodedata
 
-from typing import Callable, Optional, Sequence
-from typing_extensions import Literal
+from typing import Callable, Literal, Optional, Sequence
 
 
 class SASLPrepError(ValueError):
