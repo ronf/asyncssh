@@ -42,7 +42,8 @@ import asyncssh
 
 from asyncssh.asn1 import der_encode, BitString, ObjectIdentifier
 from asyncssh.asn1 import TaggedDERObject
-from asyncssh.crypto import chacha_available, ed25519_available, ed448_available
+from asyncssh.crypto import chacha_available, ed25519_available
+from asyncssh.crypto import ed448_available, mldsa_available
 from asyncssh.misc import write_file
 from asyncssh.packet import MPInt, String, UInt32
 from asyncssh.pbe import pkcs1_decrypt
@@ -2191,6 +2192,28 @@ class TestEd448(_TestPublicKey):
     use_openssl = _openssl_supports_pkey
 
 
+@unittest.skipUnless(mldsa_available, 'mldsa not available')
+class TestMLDSA(_TestPublicKey):
+    """Test MLDSA keys"""
+
+    keyclass = 'mldsa'
+    base_format = 'pkcs8-pem'
+    private_formats = ('pkcs8', 'openssh')
+    public_formats = ('pkcs8', 'openssh', 'rfc4716')
+    generate_args = (('ssh-mldsa-44', {}),
+                     ('ssh-mldsa-65', {}),
+                     ('ssh-mldsa-87', {}))
+    single_cipher = False
+    use_openssh = False
+    use_openssl = _openssl_supports_pkey
+
+    @property
+    def default_cert_version(self):
+        """Return default SSH certificate version"""
+
+        return self.privkey.algorithm.decode('ascii') + '-cert-v01@openssh.com'
+
+
 @unittest.skipUnless(sk_available, 'security key support not available')
 class TestSKECDSA(_TestPublicKey):
     """Test U2F ECDSA keys"""
@@ -2301,7 +2324,8 @@ class _TestPublicKeyTopLevel(TempDirTestCase):
                                  ('ssh-rsa', {'xxx': 0}),
                                  ('ecdsa-sha2-nistp256', {'xxx': 0}),
                                  ('ssh-ed25519', {'xxx': 0}),
-                                 ('ssh-ed448', {'xxx': 0})):
+                                 ('ssh-ed448', {'xxx': 0}),
+                                 ('ssh-mldsa-44', {'xxx': 0})):
             with self.subTest(alg_name=alg_name, **kwargs):
                 with self.assertRaises(asyncssh.KeyGenerationError):
                     asyncssh.generate_private_key(alg_name, **kwargs)

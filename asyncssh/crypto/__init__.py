@@ -38,6 +38,8 @@ from .kdf import pbkdf2_hmac
 
 from .misc import CryptoKey, PyCAKey
 
+from .mldsa import mldsa_available, MLDSAPrivateKey, MLDSAPublicKey
+
 from .rsa import RSAPrivateKey, RSAPublicKey
 
 from .pq import mlkem_available, sntrup_available, PQClass, MLKEM, SNTRUP

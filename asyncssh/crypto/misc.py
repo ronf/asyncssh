@@ -22,8 +22,8 @@
 
 from typing import Callable, Mapping, Union
 
-from cryptography.hazmat.primitives.asymmetric import dsa, ec, rsa
-from cryptography.hazmat.primitives.asymmetric import ed25519, ed448
+from cryptography.hazmat.primitives.asymmetric import dsa, ec, ed25519, ed448
+from cryptography.hazmat.primitives.asymmetric import mldsa, rsa
 from cryptography.hazmat.primitives.hashes import HashAlgorithm
 from cryptography.hazmat.primitives.hashes import MD5, SHA1, SHA224
 from cryptography.hazmat.primitives.hashes import SHA256, SHA384, SHA512
@@ -31,11 +31,15 @@ from cryptography.hazmat.primitives.hashes import SHA256, SHA384, SHA512
 
 PyCAPrivateKey = Union[dsa.DSAPrivateKey, rsa.RSAPrivateKey,
                        ec.EllipticCurvePrivateKey,
-                       ed25519.Ed25519PrivateKey, ed448.Ed448PrivateKey]
+                       ed25519.Ed25519PrivateKey, ed448.Ed448PrivateKey,
+                       mldsa.MLDSA44PrivateKey, mldsa.MLDSA65PrivateKey,
+                       mldsa.MLDSA87PrivateKey]
 
 PyCAPublicKey = Union[dsa.DSAPublicKey, rsa.RSAPublicKey,
                       ec.EllipticCurvePublicKey,
-                      ed25519.Ed25519PublicKey, ed448.Ed448PublicKey]
+                      ed25519.Ed25519PublicKey, ed448.Ed448PublicKey,
+                      mldsa.MLDSA44PublicKey, mldsa.MLDSA65PublicKey,
+                      mldsa.MLDSA87PublicKey]
 
 PyCAKey = Union[PyCAPrivateKey, PyCAPublicKey]
 

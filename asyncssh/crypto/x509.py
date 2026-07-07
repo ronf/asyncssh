@@ -25,6 +25,8 @@ import re
 import sys
 from typing import Iterable, List, Optional, Sequence, Set, Union, cast
 
+from cryptography.hazmat.primitives.asymmetric import dsa, ec, ed25519, ed448
+from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives.serialization import Encoding
 from cryptography.hazmat.primitives.serialization import PublicFormat
 from cryptography import x509
@@ -34,7 +36,7 @@ from OpenSSL import crypto
 from ..asn1 import IA5String, der_decode, der_encode
 from ..misc import ip_address
 
-from .misc import PyCAKey, PyCAPrivateKey, PyCAPublicKey, hashes
+from .misc import PyCAKey, hashes
 
 
 _Comment = Union[None, bytes, str]
@@ -43,6 +45,14 @@ _Purposes = Union[None, str, Sequence[str]]
 _PurposeOIDs = Union[None, Set[x509.ObjectIdentifier]]
 _GeneralNameList = List[x509.GeneralName]
 _NameInit = Union[str, x509.Name, Iterable[x509.RelativeDistinguishedName]]
+
+PyCAX509PrivateKey = Union[dsa.DSAPrivateKey, rsa.RSAPrivateKey,
+                           ec.EllipticCurvePrivateKey,
+                           ed25519.Ed25519PrivateKey, ed448.Ed448PrivateKey]
+
+PyCAX509PublicKey = Union[dsa.DSAPublicKey, rsa.RSAPublicKey,
+                          ec.EllipticCurvePublicKey,
+                          ed25519.Ed25519PublicKey, ed448.Ed448PublicKey]
 
 
 _purpose_to_oid = {
@@ -339,7 +349,7 @@ def generate_x509_certificate(signing_key: PyCAKey, key: PyCAKey,
     builder = builder.not_valid_before(_to_generalized_time(valid_after))
     builder = builder.not_valid_after(_to_generalized_time(valid_before))
 
-    builder = builder.public_key(cast(PyCAPublicKey, key))
+    builder = builder.public_key(cast(PyCAX509PublicKey, key))
 
     if ca:
         basic_constraints = x509.BasicConstraints(ca=True,
@@ -372,12 +382,13 @@ def generate_x509_certificate(signing_key: PyCAKey, key: PyCAKey,
         builder = builder.add_extension(x509.ExtendedKeyUsage(purpose_oids),
                                         critical=False)
 
-    skid = x509.SubjectKeyIdentifier.from_public_key(cast(PyCAPublicKey, key))
+    subject_pk = cast(PyCAX509PublicKey, key)
+    skid = x509.SubjectKeyIdentifier.from_public_key(subject_pk)
 
     builder = builder.add_extension(skid, critical=False)
 
     if not self_signed:
-        issuer_pk = cast(PyCAPrivateKey, signing_key).public_key()
+        issuer_pk = cast(PyCAX509PrivateKey, signing_key).public_key()
         akid = x509.AuthorityKeyIdentifier.from_issuer_public_key(issuer_pk)
         builder = builder.add_extension(akid, critical=False)
 
@@ -404,7 +415,7 @@ def generate_x509_certificate(signing_key: PyCAKey, key: PyCAKey,
     except KeyError:
         raise ValueError('Unknown hash algorithm') from None
 
-    cert = builder.sign(cast(PyCAPrivateKey, signing_key),
+    cert = builder.sign(cast(PyCAX509PrivateKey, signing_key),
                         hash_alg) # type: ignore
     data = cert.public_bytes(Encoding.DER)
 
