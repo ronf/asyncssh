@@ -84,6 +84,7 @@ _openssl_supports_v2prf = _openssl_version >= b'OpenSSL 1.0.2'
 
 # Ed25519/Ed448 support via "pkey" is only available in OpenSSL 1.1.1 or later
 _openssl_supports_pkey = _openssl_version >= b'OpenSSL 1.1.1'
+_openssl_supports_mldsa = _openssl_version >= b'OpenSSL 3.5'
 
 if _openssl_version >= b'OpenSSL 3': # pragma: no branch
     _openssl_legacy = '-provider default -provider legacy '
@@ -2205,7 +2206,7 @@ class TestMLDSA(_TestPublicKey):
                      ('ssh-mldsa-87', {}))
     single_cipher = False
     use_openssh = False
-    use_openssl = _openssl_supports_pkey
+    use_openssl = _openssl_supports_mldsa
 
     @property
     def default_cert_version(self):
