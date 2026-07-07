@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2024 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2026 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -163,7 +163,8 @@ class RawDERObject:
 
     """
 
-    def __init__(self, tag: int, content: bytes, asn1_class: int):
+    def __init__(self, tag: int, content: bytes,
+                 asn1_class: int = CONTEXT_SPECIFIC):
         self.asn1_class = asn1_class
         self.tag = tag
         self.content = content
