@@ -153,7 +153,7 @@ _time_units = {'': 1, 's': 1, 'm': 60, 'h': 60*60,
 
 
 def encode_env(env: Env) -> Iterator[Tuple[bytes, bytes]]:
-    """Convert environemnt dict or list to bytes-based dictionary"""
+    """Convert environment dict or list to bytes-based dictionary"""
 
     if hasattr(env, 'items'):
         env = cast(Env, env.items())
@@ -180,7 +180,7 @@ def encode_env(env: Env) -> Iterator[Tuple[bytes, bytes]]:
 
 
 def lookup_env(patterns: EnvSeq) -> Iterator[Tuple[bytes, bytes]]:
-    """Look up environemnt variables with wildcard matches"""
+    """Look up environment variables with wildcard matches"""
 
     for pattern in patterns:
         if isinstance(pattern, str):
@@ -199,7 +199,7 @@ def lookup_env(patterns: EnvSeq) -> Iterator[Tuple[bytes, bytes]]:
 
 
 def decode_env(env: Dict[bytes, bytes]) -> Iterator[Tuple[str, str]]:
-    """Convert bytes-based environemnt dict to Unicode strings"""
+    """Convert bytes-based environment dict to Unicode strings"""
 
     for key, value in env.items():
         try:

@@ -1,0 +1,23 @@
+ci:
+  autoupdate_schedule: monthly
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+    -   id: check-added-large-files
+    -   id: check-toml
+    -   id: check-yaml
+        args:
+        -   --unsafe
+    -   id: end-of-file-fixer
+        files: tortoise/
+    -   id: trailing-whitespace
+        exclude: '^LICENSE$'
+
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.4.2
+    hooks:
+      - id: codespell  # See pyproject.toml for args
+        additional_dependencies:
+          - tomli
+        exclude: '^docs/changes\.rst$|^\.?pylintrc$'

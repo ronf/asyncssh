@@ -1196,7 +1196,7 @@ class _TestChannel(ServerTestCase):
 
     @asynctest
     async def test_env_invalid_str(self):
-        """Test trying to access binary envionment value as a Unicode string"""
+        """Test trying to access binary environment value as a Unicode string"""
 
         async with self.connect() as conn:
             chan, session = await _create_session(conn, 'env_str',

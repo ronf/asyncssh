@@ -246,7 +246,7 @@ def create_sshsig(key: KeyPairListArg, data: BytesOrFilePath, *,
            passed in. This can be useful when signing large blocks of data
            which have already had a hash calculated on them. If set to
            `True`, the `data` argument must be a byte string of the length
-           required by the specified `hash_name`. This defualts to `False`,
+           required by the specified `hash_name`. This defaults to `False`,
            meaning that hashing will be performed on the data before signing.
        :param hash_name: (optional)
            The name of the hash algorithm to use. This can currently be
@@ -333,7 +333,7 @@ def validate_sshsig(data: BytesOrFilePath, sig: BytesOrFilePath,
            passed in. This can be useful when signing large blocks of data
            which have already had a hash calculated on them. If set to
            `True`, the `data` argument must be a byte string of the length
-           required by the specified `hash_name`. This defualts to `False`,
+           required by the specified `hash_name`. This defaults to `False`,
            meaning that hashing will be performed on the data before signing.
        :type data: `PurePath`, `str`, or `bytes`
        :type sig: `PurePath`, `str`, or `bytes`

@@ -5,7 +5,22 @@ permissions:
   contents: read
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    strategy:
+        python-version: ["3.10"]
+    steps:
+      - name: Checkout asyncssh
+        uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+      - name: Run checks
+        run: uvx prek run --all-files
+
   run-tests:
+    needs: lint
     name: Run tests
     permissions:
       contents: read
