@@ -15,5 +15,7 @@ repos:
     rev: v2.4.2
     hooks:
       - id: codespell  # See pyproject.toml for args
-        additional_dependencies:
-          - tomli
+        name: Check spelling with codespell
+        entry: uvx --python 3.10 --with tomli codespell
+        language: system
+        pass_filenames: true
