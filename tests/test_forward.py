@@ -705,6 +705,8 @@ class _TestTCPForwarding(_CheckForwarding):
         lost = asyncio.Event()
 
         class _RecordingTracker(asyncssh.SSHPortForwardTracker):
+            """Tracker which records connection_made and connection_lost"""
+
             def connection_made(self, forwarder, orig_host, orig_port):
                 events.append(('made', forwarder, orig_host, orig_port))
 
@@ -729,13 +731,16 @@ class _TestTCPForwarding(_CheckForwarding):
         self.assertIsInstance(made[3], int)
 
     @asynctest
-    async def test_forward_local_port_tracker_factory_per_connection(self):
-        """The factory is called once per accepted connection"""
+    async def test_tracker_factory_invoked_once_per_connection(self):
+        """A distinct tracker instance is created for each accepted
+           connection, and each instance's connection_lost fires once"""
 
         trackers = []
         lost_events = []
 
         class _CountingTracker(asyncssh.SSHPortForwardTracker):
+            """Tracker which records each instance created by the factory"""
+
             def __init__(self):
                 trackers.append(self)
                 lost_events.append(asyncio.Event())
@@ -767,6 +772,8 @@ class _TestTCPForwarding(_CheckForwarding):
         lost = asyncio.Event()
 
         class _ByteTracker(asyncssh.SSHPortForwardTracker):
+            """Tracker which records bytes seen in both forwarding directions"""
+
             def forward_local_bytes(self, data):
                 local_bytes.extend(data)
 
@@ -805,6 +812,8 @@ class _TestTCPForwarding(_CheckForwarding):
         """A tracker whose hooks raise does not break forwarding"""
 
         class _BuggyTracker(asyncssh.SSHPortForwardTracker):
+            """Tracker whose hooks all raise, to verify they're swallowed"""
+
             def connection_made(self, forwarder, orig_host, orig_port):
                 raise RuntimeError('made boom')
 
@@ -832,11 +841,13 @@ class _TestTCPForwarding(_CheckForwarding):
         lost_count = 0
 
         class _Counting(asyncssh.SSHPortForwardTracker):
+            """Tracker which counts how many times connection_lost fires"""
+
             def connection_lost(self, exc):
                 nonlocal lost_count
                 lost_count += 1
 
-        async def deny(_h, _p):
+        async def deny(_orig_host, _orig_port):
             return False
 
         async with self.connect() as conn:
@@ -1313,6 +1324,8 @@ class _TestUNIXForwarding(_CheckForwarding):
         lost = asyncio.Event()
 
         class _RecordingTracker(asyncssh.SSHPathForwardTracker):
+            """Tracker which records connection_made and connection_lost"""
+
             def connection_made(self, forwarder):
                 events.append(('made', forwarder))
 
@@ -1335,6 +1348,26 @@ class _TestUNIXForwarding(_CheckForwarding):
 
         made = next(event for event in events if event[0] == 'made')
         self.assertIsInstance(made[1], asyncssh.SSHForwarder)
+
+    @asynctest
+    async def test_forward_local_path_tracker_hook_exception_swallowed(self):
+        """A path tracker whose connection_made raises does not break
+           forwarding"""
+
+        class _BuggyTracker(asyncssh.SSHPathForwardTracker):
+            """Tracker whose connection_made hook raises, to verify it's
+               swallowed"""
+
+            def connection_made(self, forwarder):
+                raise RuntimeError('made boom')
+
+        async with self.connect() as conn:
+            async with conn.forward_local_path(
+                    'local', '/echo',
+                    tracker_factory=_BuggyTracker):
+                await self._check_local_unix_connection('local')
+
+        try_remove('local')
 
     @asynctest
     async def test_forward_local_port_to_path_accept_handler(self):

@@ -85,7 +85,8 @@ from .encryption import get_default_encryption_algs
 from .encryption import encryption_needs_mac
 from .encryption import get_encryption_params, get_encryption
 
-from .forward import SSHForwarder, SSHForwardTrackerFactory
+from .forward import SSHForwarder
+from .forward import SSHPortForwardTrackerFactory, SSHPathForwardTrackerFactory
 
 from .gss import GSSBase, GSSClient, GSSServer, GSSError
 
@@ -3212,7 +3213,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
             dest_host: str, dest_port: int,
             accept_handler: Optional[SSHAcceptHandler] = None,
             tracker_factory:
-                Optional[SSHForwardTrackerFactory] = None) -> SSHListener:
+                Optional[SSHPortForwardTrackerFactory] = None) -> SSHListener:
         """Set up local port forwarding
 
            This method is a coroutine which attempts to set up port
@@ -3246,7 +3247,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
            :type dest_host: `str`
            :type dest_port: `int`
            :type accept_handler: `callable` or coroutine
-           :type tracker_factory: `callable` or `None`
+           :type tracker_factory: :class:`SSHPortForwardTrackerFactory`
 
            :returns: :class:`SSHListener`
 
@@ -3289,7 +3290,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         try:
             listener = await create_tcp_forward_listener(
                 self, self._loop, tunnel_connection, listen_host, listen_port,
-                tracker_factory=tracker_factory)
+                tracker_factory)
         except OSError as exc:
             self.logger.debug1('Failed to create local TCP listener: %s', exc)
             raise
@@ -3308,7 +3309,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
     async def forward_local_path(
             self, listen_path: str, dest_path: str,
             tracker_factory:
-                Optional[SSHForwardTrackerFactory] = None) -> SSHListener:
+                Optional[SSHPathForwardTrackerFactory] = None) -> SSHListener:
         """Set up local UNIX domain socket forwarding
 
            This method is a coroutine which attempts to set up UNIX domain
@@ -3329,7 +3330,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
                with no overhead.
            :type listen_path: `str`
            :type dest_path: `str`
-           :type tracker_factory: `callable` or `None`
+           :type tracker_factory: :class:`SSHPathForwardTrackerFactory`
 
            :returns: :class:`SSHListener`
 
@@ -3351,7 +3352,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         try:
             listener = await create_unix_forward_listener(
                 self, self._loop, tunnel_connection, listen_path,
-                tracker_factory=tracker_factory)
+                tracker_factory)
         except OSError as exc:
             self.logger.debug1('Failed to create local UNIX listener: %s', exc)
             raise
@@ -5323,7 +5324,7 @@ class SSHClientConnection(SSHConnection):
             self, listen_host: str, listen_port: int, dest_path: str,
             accept_handler: Optional[SSHAcceptHandler] = None,
             tracker_factory:
-                Optional[SSHForwardTrackerFactory] = None) -> SSHListener:
+                Optional[SSHPortForwardTrackerFactory] = None) -> SSHListener:
         """Set up local TCP port forwarding to a remote UNIX domain socket
 
            This method is a coroutine which attempts to set up port
@@ -5354,7 +5355,7 @@ class SSHClientConnection(SSHConnection):
            :type listen_port: `int`
            :type dest_path: `str`
            :type accept_handler: `callable` or coroutine
-           :type tracker_factory: `callable` or `None`
+           :type tracker_factory: :class:`SSHPortForwardTrackerFactory`
 
            :returns: :class:`SSHListener`
 
@@ -5390,7 +5391,7 @@ class SSHClientConnection(SSHConnection):
         try:
             listener = await create_tcp_forward_listener(
                 self, self._loop, tunnel_connection, listen_host, listen_port,
-                tracker_factory=tracker_factory)
+                tracker_factory)
         except OSError as exc:
             self.logger.debug1('Failed to create local TCP listener: %s', exc)
             raise
@@ -5406,7 +5407,7 @@ class SSHClientConnection(SSHConnection):
     async def forward_local_path_to_port(
             self, listen_path: str, dest_host: str, dest_port: int,
             tracker_factory:
-                Optional[SSHForwardTrackerFactory] = None) -> SSHListener:
+                Optional[SSHPathForwardTrackerFactory] = None) -> SSHListener:
         """Set up local UNIX domain socket forwarding to a remote TCP port
 
            This method is a coroutine which attempts to set up UNIX domain
@@ -5430,7 +5431,7 @@ class SSHClientConnection(SSHConnection):
            :type listen_path: `str`
            :type dest_host: `str`
            :type dest_port: `int`
-           :type tracker_factory: `callable` or `None`
+           :type tracker_factory: :class:`SSHPathForwardTrackerFactory`
 
            :returns: :class:`SSHListener`
 
@@ -5452,7 +5453,7 @@ class SSHClientConnection(SSHConnection):
         try:
             listener = await create_unix_forward_listener(
                 self, self._loop, tunnel_connection, listen_path,
-                tracker_factory=tracker_factory)
+                tracker_factory)
         except OSError as exc:
             self.logger.debug1('Failed to create local UNIX listener: %s', exc)
             raise

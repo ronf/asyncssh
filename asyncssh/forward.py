@@ -24,7 +24,7 @@ import asyncio
 import socket
 from types import TracebackType
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, Dict, Optional
-from typing import Type, cast
+from typing import Type, Union, cast
 from typing_extensions import Self
 
 from .misc import ChannelOpenError, SockAddr
@@ -142,7 +142,8 @@ class SSHPathForwardTracker(SSHForwardTracker):
         """
 
 
-SSHForwardTrackerFactory = Callable[[], SSHForwardTracker]
+SSHPortForwardTrackerFactory = Callable[[], SSHPortForwardTracker]
+SSHPathForwardTrackerFactory = Callable[[], SSHPathForwardTracker]
 
 
 class SSHForwarder(asyncio.BaseProtocol):
@@ -300,7 +301,9 @@ class SSHLocalForwarder(SSHForwarder):
     """Local forwarding connection handler"""
 
     def __init__(self, conn: 'SSHConnection', coro: SSHForwarderCoro,
-                 tracker_factory: Optional[SSHForwardTrackerFactory] = None):
+                 tracker_factory:
+                     Optional[Union[SSHPortForwardTrackerFactory,
+                                    SSHPathForwardTrackerFactory]] = None):
         super().__init__()
         self._conn = conn
         self._coro = coro
@@ -315,7 +318,7 @@ class SSHLocalForwarder(SSHForwarder):
 
         try:
             self._tracker = self._tracker_factory()
-        except Exception: # pylint: disable=broad-exception-caught
+        except Exception: # pylint: disable=broad-except
             # A buggy factory must not break forwarding;
             # self._tracker remains the __init__ default of None.
             pass
@@ -327,7 +330,7 @@ class SSHLocalForwarder(SSHForwarder):
         if self._tracker is not None:
             try:
                 self._tracker.forward_local_bytes(data)
-            except Exception: # pylint: disable=broad-exception-caught
+            except Exception: # pylint: disable=broad-except
                 pass
 
         super().data_received(data, datatype)
@@ -338,7 +341,7 @@ class SSHLocalForwarder(SSHForwarder):
         if self._tracker is not None:
             try:
                 self._tracker.forward_remote_bytes(data)
-            except Exception: # pylint: disable=broad-exception-caught
+            except Exception: # pylint: disable=broad-except
                 pass
 
         super().write(data)
@@ -358,7 +361,7 @@ class SSHLocalForwarder(SSHForwarder):
         if tracker is not None:
             try:
                 tracker.connection_lost(exc)
-            except Exception: # pylint: disable=broad-exception-caught
+            except Exception: # pylint: disable=broad-except
                 pass
 
         super().connection_lost(exc)
@@ -412,7 +415,7 @@ class SSHLocalPortForwarder(SSHLocalForwarder):
             try:
                 cast(SSHPortForwardTracker, self._tracker).connection_made(
                     self, orig_host, orig_port)
-            except Exception: # pylint: disable=broad-exception-caught
+            except Exception: # pylint: disable=broad-except
                 pass
 
         self.forward(orig_host, orig_port)
@@ -431,7 +434,7 @@ class SSHLocalPathForwarder(SSHLocalForwarder):
         if self._tracker is not None:
             try:
                 cast(SSHPathForwardTracker, self._tracker).connection_made(self)
-            except Exception: # pylint: disable=broad-exception-caught
+            except Exception: # pylint: disable=broad-except
                 pass
 
         self.forward()

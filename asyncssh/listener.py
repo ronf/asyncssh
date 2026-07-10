@@ -28,7 +28,8 @@ from typing import TYPE_CHECKING, AnyStr, Callable, Generic, List, Optional
 from typing import Sequence, Set, Tuple, Type, Union
 from typing_extensions import Self
 
-from .forward import SSHForwarderCoro, SSHForwardTrackerFactory
+from .forward import SSHForwarderCoro
+from .forward import SSHPortForwardTrackerFactory, SSHPathForwardTrackerFactory
 from .forward import SSHLocalPortForwarder, SSHLocalPathForwarder
 from .misc import HostPort, MaybeAwait
 from .session import SSHTCPSession, SSHUNIXSession
@@ -347,7 +348,7 @@ async def create_tcp_forward_listener(conn: 'SSHConnection',
                                       coro: SSHForwarderCoro, listen_host: str,
                                       listen_port: int,
                                       tracker_factory:
-                                          Optional[SSHForwardTrackerFactory] =
+                                          Optional[SSHPortForwardTrackerFactory] =
                                           None) -> 'SSHForwardListener':
     """Create a listener to forward traffic from a local TCP port over SSH"""
 
@@ -365,7 +366,7 @@ async def create_unix_forward_listener(conn: 'SSHConnection',
                                        coro: SSHForwarderCoro,
                                        listen_path: str,
                                        tracker_factory:
-                                           Optional[SSHForwardTrackerFactory] =
+                                           Optional[SSHPathForwardTrackerFactory] =
                                            None) -> 'SSHForwardListener':
     """Create a listener to forward a local UNIX domain socket over SSH"""
 

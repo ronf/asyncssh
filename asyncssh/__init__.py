@@ -40,7 +40,7 @@ from .client import SSHClient
 
 from .config import ConfigParseError
 
-from .forward import SSHForwarder, SSHForwardTracker
+from .forward import SSHForwarder
 from .forward import SSHPortForwardTracker, SSHPathForwardTracker
 
 from .connection import SSHAcceptor, SSHClientConnection, SSHServerConnection
@@ -148,7 +148,7 @@ __all__ = [
     'SSHAgentKeyPair', 'SSHAuthorizedKeys', 'SSHCertificate', 'SSHClient',
     'SSHClientChannel', 'SSHClientConnection', 'SSHClientConnectionOptions',
     'SSHClientProcess', 'SSHClientSession', 'SSHCompletedProcess',
-    'SSHForwarder', 'SSHForwardTracker', 'SSHPortForwardTracker',
+    'SSHForwarder', 'SSHPortForwardTracker',
     'SSHPathForwardTracker', 'SSHKey', 'SSHKeyPair', 'SSHKnownHosts',
     'SSHLineEditorChannel', 'SSHListener', 'SSHReader', 'SSHServer',
     'SSHServerChannel', 'SSHServerConnection',
