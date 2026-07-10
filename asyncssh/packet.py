@@ -20,12 +20,19 @@
 
 """SSH packet encoding and decoding functions"""
 
-from typing import Any, Awaitable, Callable, Iterable, Mapping, Optional
-from typing import Sequence, Union
+from typing import (
+    Any,
+    Awaitable,
+    Callable,
+    Iterable,
+    Mapping,
+    Optional,
+    Sequence,
+    Union,
+)
 
 from .logging import SSHLogger
 from .misc import MaybeAwait, plural
-
 
 _LoggedPacket = Union[bytes, 'SSHPacket']
 _PacketHandler = Callable[[Any, int, int, 'SSHPacket'], MaybeAwait[None]]

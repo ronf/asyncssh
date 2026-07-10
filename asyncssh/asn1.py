@@ -32,9 +32,7 @@
 
 """
 
-from typing import Dict, FrozenSet, Sequence, Set, Tuple, Type, TypeVar, Union
-from typing import cast
-
+from typing import Dict, FrozenSet, Sequence, Set, Tuple, Type, TypeVar, Union, cast
 
 _DERClass = Type['DERType']
 _DERClassVar = TypeVar('_DERClassVar', bound='_DERClass')

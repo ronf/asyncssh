@@ -21,14 +21,21 @@
 """Input line editor"""
 
 import re
-
 from functools import partial
-from typing import TYPE_CHECKING, Callable, Dict, List
-from typing import Optional, Set, Tuple, Union, cast
+from typing import (
+    TYPE_CHECKING,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Set,
+    Tuple,
+    Union,
+    cast,
+)
 from unicodedata import east_asian_width
 
 from .session import DataType
-
 
 if TYPE_CHECKING:
     # pylint: disable=cyclic-import

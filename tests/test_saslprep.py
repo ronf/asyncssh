@@ -22,7 +22,8 @@
 
 import unittest
 
-from asyncssh.saslprep import saslprep, SASLPrepError
+from asyncssh.saslprep import SASLPrepError, saslprep
+
 
 class _TestSASLPrep(unittest.TestCase):
     """Unit tests for saslprep module"""

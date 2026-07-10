@@ -24,8 +24,12 @@ import os
 import random
 import unittest
 
-from asyncssh.encryption import register_encryption_alg, get_encryption_algs
-from asyncssh.encryption import get_encryption_params, get_encryption
+from asyncssh.encryption import (
+    get_encryption,
+    get_encryption_algs,
+    get_encryption_params,
+    register_encryption_alg,
+)
 from asyncssh.mac import get_mac_algs
 
 

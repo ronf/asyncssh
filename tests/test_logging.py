@@ -21,7 +21,6 @@
 """Unit tests for AsyncSSH logging API"""
 
 import asyncssh
-
 from asyncssh.logging import logger
 from asyncssh.session import SSHClientSession
 from asyncssh.sftp import SFTPServer

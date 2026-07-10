@@ -25,7 +25,6 @@ import ctypes
 import ctypes.util
 from typing import TYPE_CHECKING, Callable, Optional
 
-
 if TYPE_CHECKING:
     _ByteArray = ctypes.Array[ctypes.c_char]
     _SetKey = Callable[[_ByteArray, bytes], None]

@@ -25,25 +25,52 @@
 import argparse
 import asyncio
 import inspect
-from pathlib import PurePath
 import posixpath
 import shlex
 import string
 import sys
+from pathlib import PurePath
 from types import TracebackType
-from typing import TYPE_CHECKING, AsyncIterator, List, NoReturn, Optional
-from typing import Protocol, Sequence, Tuple, Type, Union, cast
+from typing import (
+    TYPE_CHECKING,
+    AsyncIterator,
+    List,
+    NoReturn,
+    Optional,
+    Protocol,
+    Sequence,
+    Tuple,
+    Type,
+    Union,
+    cast,
+)
+
 from typing_extensions import Self
 
-from .constants import DEFAULT_LANG
-from .constants import FILEXFER_TYPE_REGULAR, FILEXFER_TYPE_DIRECTORY
+from .constants import DEFAULT_LANG, FILEXFER_TYPE_DIRECTORY, FILEXFER_TYPE_REGULAR
 from .logging import SSHLogger
-from .misc import BytesOrStr, FilePath, HostPort, MaybeAwait
-from .misc import async_context_manager, plural
-from .sftp import SFTPAttrs, SFTPGlob, SFTPName, SFTPServer, SFTPServerFS
-from .sftp import SFTPError, SFTPFailure, SFTPBadMessage, SFTPConnectionLost
-from .sftp import SFTPErrorHandler, SFTPProgressHandler, local_fs
-
+from .misc import (
+    BytesOrStr,
+    FilePath,
+    HostPort,
+    MaybeAwait,
+    async_context_manager,
+    plural,
+)
+from .sftp import (
+    SFTPAttrs,
+    SFTPBadMessage,
+    SFTPConnectionLost,
+    SFTPError,
+    SFTPErrorHandler,
+    SFTPFailure,
+    SFTPGlob,
+    SFTPName,
+    SFTPProgressHandler,
+    SFTPServer,
+    SFTPServerFS,
+    local_fs,
+)
 
 if TYPE_CHECKING:
     # pylint: disable=cyclic-import

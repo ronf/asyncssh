@@ -22,10 +22,9 @@
 
 from typing import Dict, List, Optional, Tuple, Type
 
-from .crypto import BasicCipher, GCMCipher, ChachaCipher, get_cipher_params
-from .mac import MAC, get_mac_params, get_mac
+from .crypto import BasicCipher, ChachaCipher, GCMCipher, get_cipher_params
+from .mac import MAC, get_mac, get_mac_params
 from .packet import UInt64
-
 
 _EncParams = Tuple[int, int, int, int, int, bool]
 _EncParamsMap = Dict[bytes, Tuple[Type['Encryption'], str]]

@@ -21,41 +21,59 @@
 """Unit tests for AsyncSSH connection API"""
 
 import asyncio
-from copy import copy
 import os
-from pathlib import Path
 import socket
 import sys
 import unittest
+from copy import copy
+from pathlib import Path
 from unittest.mock import patch
 
 import asyncssh
-from asyncssh.constants import MSG_IGNORE, MSG_DEBUG
-from asyncssh.constants import MSG_SERVICE_REQUEST, MSG_SERVICE_ACCEPT
-from asyncssh.constants import MSG_KEXINIT, MSG_NEWKEYS
-from asyncssh.constants import MSG_KEX_FIRST, MSG_KEX_LAST
-from asyncssh.constants import MSG_USERAUTH_REQUEST, MSG_USERAUTH_SUCCESS
-from asyncssh.constants import MSG_USERAUTH_FAILURE, MSG_USERAUTH_BANNER
-from asyncssh.constants import MSG_USERAUTH_FIRST
-from asyncssh.constants import MSG_GLOBAL_REQUEST
-from asyncssh.constants import MSG_CHANNEL_OPEN, MSG_CHANNEL_OPEN_CONFIRMATION
-from asyncssh.constants import MSG_CHANNEL_OPEN_FAILURE, MSG_CHANNEL_DATA
 from asyncssh.compression import get_compression_algs
+from asyncssh.constants import (
+    MSG_CHANNEL_DATA,
+    MSG_CHANNEL_OPEN,
+    MSG_CHANNEL_OPEN_CONFIRMATION,
+    MSG_CHANNEL_OPEN_FAILURE,
+    MSG_DEBUG,
+    MSG_GLOBAL_REQUEST,
+    MSG_IGNORE,
+    MSG_KEX_FIRST,
+    MSG_KEX_LAST,
+    MSG_KEXINIT,
+    MSG_NEWKEYS,
+    MSG_SERVICE_ACCEPT,
+    MSG_SERVICE_REQUEST,
+    MSG_USERAUTH_BANNER,
+    MSG_USERAUTH_FAILURE,
+    MSG_USERAUTH_FIRST,
+    MSG_USERAUTH_REQUEST,
+    MSG_USERAUTH_SUCCESS,
+)
 from asyncssh.crypto.cipher import GCMCipher
 from asyncssh.encryption import get_encryption_algs
 from asyncssh.kex import get_kex_algs
 from asyncssh.kex_dh import MSG_KEX_ECDH_REPLY
 from asyncssh.mac import _HMAC, _mac_handler, get_mac_algs
-from asyncssh.packet import SSHPacket, Boolean, NameList, String, UInt32
-from asyncssh.public_key import get_default_public_key_algs
-from asyncssh.public_key import get_default_certificate_algs
-from asyncssh.public_key import get_default_x509_certificate_algs
+from asyncssh.packet import Boolean, NameList, SSHPacket, String, UInt32
+from asyncssh.public_key import (
+    get_default_certificate_algs,
+    get_default_public_key_algs,
+    get_default_x509_certificate_algs,
+)
 
 from .server import Server, ServerTestCase
-
-from .util import asynctest, patch_extra_kex, patch_getaddrinfo
-from .util import patch_getnameinfo, patch_gss
-from .util import gss_available, nc_available, x509_available
+from .util import (
+    asynctest,
+    gss_available,
+    nc_available,
+    patch_extra_kex,
+    patch_getaddrinfo,
+    patch_getnameinfo,
+    patch_gss,
+    x509_available,
+)
 
 
 class _CheckAlgsClientConnection(asyncssh.SSHClientConnection):

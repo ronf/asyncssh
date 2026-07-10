@@ -27,16 +27,21 @@ from typing import Optional, Sequence, Union
 
 from sspi import ClientAuth, ServerAuth
 from sspi import error as SSPIError
-
-from sspicon import ISC_REQ_DELEGATE, ISC_REQ_INTEGRITY, ISC_REQ_MUTUAL_AUTH
-from sspicon import ISC_RET_INTEGRITY, ISC_RET_MUTUAL_AUTH
-from sspicon import ASC_REQ_INTEGRITY, ASC_REQ_MUTUAL_AUTH
-from sspicon import ASC_RET_INTEGRITY, ASC_RET_MUTUAL_AUTH
-from sspicon import SECPKG_ATTR_NATIVE_NAMES
+from sspicon import (
+    ASC_REQ_INTEGRITY,
+    ASC_REQ_MUTUAL_AUTH,
+    ASC_RET_INTEGRITY,
+    ASC_RET_MUTUAL_AUTH,
+    ISC_REQ_DELEGATE,
+    ISC_REQ_INTEGRITY,
+    ISC_REQ_MUTUAL_AUTH,
+    ISC_RET_INTEGRITY,
+    ISC_RET_MUTUAL_AUTH,
+    SECPKG_ATTR_NATIVE_NAMES,
+)
 
 from .asn1 import ObjectIdentifier, der_encode
 from .misc import BytesOrStrDict
-
 
 _krb5_oid = der_encode(ObjectIdentifier('1.2.840.113554.1.2.2'))
 

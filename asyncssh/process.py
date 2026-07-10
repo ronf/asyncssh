@@ -21,35 +21,65 @@
 """SSH process handlers"""
 
 import asyncio
-from asyncio.subprocess import DEVNULL, PIPE, STDOUT
 import codecs
 import inspect
 import io
 import os
-from pathlib import PurePath
 import socket
 import stat
+from asyncio.subprocess import DEVNULL, PIPE, STDOUT
+from pathlib import PurePath
 from types import TracebackType
-from typing import Any, AnyStr, Awaitable, Callable, Dict, Generic, IO
-from typing import Iterable, List, Mapping, Optional, Protocol, Set
-from typing import TextIO, Tuple, Type, TypeVar, Union, cast
+from typing import (
+    IO,
+    Any,
+    AnyStr,
+    Awaitable,
+    Callable,
+    Dict,
+    Generic,
+    Iterable,
+    List,
+    Mapping,
+    Optional,
+    Protocol,
+    Set,
+    TextIO,
+    Tuple,
+    Type,
+    TypeVar,
+    Union,
+    cast,
+)
+
 from typing_extensions import Self
 
 from .channel import SSHChannel, SSHClientChannel, SSHServerChannel
-
 from .constants import DEFAULT_LANG, EXTENDED_DATA_STDERR
-
 from .logging import SSHLogger
-
-from .misc import BytesOrStr, Error, MaybeAwait, TermModes, TermSize
-from .misc import ProtocolError, Record, open_file, set_terminal_size
-from .misc import BreakReceived, SignalReceived, TerminalSizeChanged
-
+from .misc import (
+    BreakReceived,
+    BytesOrStr,
+    Error,
+    MaybeAwait,
+    ProtocolError,
+    Record,
+    SignalReceived,
+    TerminalSizeChanged,
+    TermModes,
+    TermSize,
+    open_file,
+    set_terminal_size,
+)
 from .session import DataType
-
-from .stream import SSHReader, SSHWriter, SSHStreamSession
-from .stream import SSHClientStreamSession, SSHServerStreamSession
-from .stream import SFTPServerFactory
+from .stream import (
+    SFTPServerFactory,
+    SSHClientStreamSession,
+    SSHReader,
+    SSHServerStreamSession,
+    SSHStreamSession,
+    SSHWriter,
+)
 
 _AnyStrContra = TypeVar('_AnyStrContra', bytes, str, contravariant=True)
 

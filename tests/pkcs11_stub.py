@@ -23,6 +23,7 @@
 import asyncssh
 from asyncssh.asn1 import der_decode
 from asyncssh.pkcs11 import pkcs11_available
+
 from .util import get_test_key
 
 if pkcs11_available: # pragma: no branch

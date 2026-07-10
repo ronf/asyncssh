@@ -20,7 +20,11 @@
 # Contributors:
 #     Ron Frederick - initial implementation, API, and documentation
 
-import asyncio, asyncssh, sys
+import asyncio
+import sys
+
+import asyncssh
+
 
 async def handle_connection(reader, writer):
     while not reader.at_eof():

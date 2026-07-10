@@ -22,7 +22,7 @@
 
 import asyncssh
 from asyncssh.keysign import KEYSIGN_VERSION
-from asyncssh.packet import Byte, String, SSHPacket
+from asyncssh.packet import Byte, SSHPacket, String
 
 
 class SSHKeysignStub:

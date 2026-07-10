@@ -25,7 +25,6 @@ from typing import Union
 
 from .misc import IPAddress, ip_network
 
-
 _HostPattern = Union['WildcardHostPattern', 'CIDRHostPattern']
 _AnyPattern = Union['WildcardPattern', _HostPattern]
 

@@ -20,9 +20,13 @@
 # Contributors:
 #     Ron Frederick - initial implementation, API, and documentation
 
-import asyncio, asyncssh, sys
+import asyncio
+import sys
 from functools import partial
 from typing import Awaitable
+
+import asyncssh
+
 
 def connection_requested(conn: asyncssh.SSHClientConnection, orig_host: str,
                          orig_port: int) -> Awaitable[asyncssh.SSHForwarder]:

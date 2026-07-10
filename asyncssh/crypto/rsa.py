@@ -23,12 +23,10 @@
 from typing import Optional, cast
 
 from cryptography.exceptions import InvalidSignature
-from cryptography.hazmat.primitives.asymmetric.padding import MGF1, OAEP
-from cryptography.hazmat.primitives.asymmetric.padding import PKCS1v15
 from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives.asymmetric.padding import MGF1, OAEP, PKCS1v15
 
 from .misc import CryptoKey, PyCAKey, hashes
-
 
 # Short variable names are used here, matching names in the spec
 # pylint: disable=invalid-name

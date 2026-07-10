@@ -20,25 +20,37 @@
 
 """SSH authentication handlers"""
 
-from typing import TYPE_CHECKING, Awaitable, Dict, List, Optional
-from typing import Sequence, Tuple, Type, Union, cast
+from typing import (
+    TYPE_CHECKING,
+    Awaitable,
+    Dict,
+    List,
+    Optional,
+    Sequence,
+    Tuple,
+    Type,
+    Union,
+    cast,
+)
 
 from .constants import DEFAULT_LANG
 from .gss import GSSBase, GSSError
 from .logging import SSHLogger
-from .misc import ProtocolError, PasswordChangeRequired, get_symbol_names
-from .misc import run_in_executor
-from .packet import Boolean, String, UInt32, SSHPacket, SSHPacketHandler
+from .misc import (
+    PasswordChangeRequired,
+    ProtocolError,
+    get_symbol_names,
+    run_in_executor,
+)
+from .packet import Boolean, SSHPacket, SSHPacketHandler, String, UInt32
 from .public_key import SigningKey
-from .saslprep import saslprep, SASLPrepError
-
+from .saslprep import SASLPrepError, saslprep
 
 if TYPE_CHECKING:
     import asyncio
 
     # pylint: disable=cyclic-import
-    from .connection import SSHConnection, SSHClientConnection
-    from .connection import SSHServerConnection
+    from .connection import SSHClientConnection, SSHConnection, SSHServerConnection
 
 
 KbdIntPrompts = Sequence[Tuple[str, bool]]

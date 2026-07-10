@@ -26,7 +26,6 @@ from typing import TYPE_CHECKING, Callable, Optional
 from .forward import SSHForwarderCoro, SSHLocalForwarder
 from .session import DataType
 
-
 if TYPE_CHECKING:
     # pylint: disable=cyclic-import
     from .connection import SSHConnection

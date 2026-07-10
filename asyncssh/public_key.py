@@ -26,20 +26,34 @@ import inspect
 import os
 import re
 import time
-
 from hashlib import md5, sha1, sha256, sha384, sha512
 from pathlib import Path, PurePath
-from typing import Callable, Dict, List, Mapping, Optional, Protocol
-from typing import Sequence, Set, Tuple, Type, Union, cast
+from typing import (
+    Callable,
+    Dict,
+    List,
+    Mapping,
+    Optional,
+    Protocol,
+    Sequence,
+    Set,
+    Tuple,
+    Type,
+    Union,
+    cast,
+)
 
-from .crypto import ed25519_available, ed448_available
+from .crypto import ed448_available, ed25519_available
 from .encryption import Encryption
 from .sk import sk_available
 
 try:
     # pylint: disable=unused-import
-    from .crypto import X509Certificate
-    from .crypto import generate_x509_certificate, import_x509_certificate
+    from .crypto import (
+        X509Certificate,
+        generate_x509_certificate,
+        import_x509_certificate,
+    )
     _x509_available = True
 except ImportError: # pragma: no cover
     _x509_available = False
@@ -50,19 +64,38 @@ try:
 except ImportError: # pragma: no cover
     _bcrypt_available = False
 
-from .asn1 import ASN1DecodeError, BitString, ObjectIdentifier
-from .asn1 import der_encode, der_decode, der_decode_partial
+from .asn1 import (
+    ASN1DecodeError,
+    BitString,
+    ObjectIdentifier,
+    der_decode,
+    der_decode_partial,
+    der_encode,
+)
 from .crypto import CryptoKey, PyCAKey
-from .encryption import get_encryption_params, get_encryption
-from .misc import AbsTime, BytesOrStr, DefTuple, FilePath, IPNetwork
-from .misc import ip_network, parse_time, read_file, write_file
-from .misc import match_base64, wrap_base64
-from .packet import NameList, String, UInt32, UInt64
-from .packet import PacketDecodeError, SSHPacket
-from .pbe import KeyEncryptionError, pkcs1_encrypt, pkcs8_encrypt
-from .pbe import pkcs1_decrypt, pkcs8_decrypt
+from .encryption import get_encryption, get_encryption_params
+from .misc import (
+    AbsTime,
+    BytesOrStr,
+    DefTuple,
+    FilePath,
+    IPNetwork,
+    ip_network,
+    match_base64,
+    parse_time,
+    read_file,
+    wrap_base64,
+    write_file,
+)
+from .packet import NameList, PacketDecodeError, SSHPacket, String, UInt32, UInt64
+from .pbe import (
+    KeyEncryptionError,
+    pkcs1_decrypt,
+    pkcs1_encrypt,
+    pkcs8_decrypt,
+    pkcs8_encrypt,
+)
 from .sk import SSH_SK_USER_PRESENCE_REQD, sk_get_resident
-
 
 _Comment = Optional[BytesOrStr]
 _CertPrincipals = Union[str, Sequence[str]]

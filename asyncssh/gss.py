@@ -21,19 +21,17 @@
 """GSSAPI wrapper"""
 
 import sys
-
 from typing import Optional
 
 from .misc import BytesOrStrDict
-
 
 try:
     # pylint: disable=unused-import
 
     if sys.platform == 'win32': # pragma: no cover
-        from .gss_win32 import GSSBase, GSSClient, GSSServer, GSSError
+        from .gss_win32 import GSSBase, GSSClient, GSSError, GSSServer
     else:
-        from .gss_unix import GSSBase, GSSClient, GSSServer, GSSError
+        from .gss_unix import GSSBase, GSSClient, GSSError, GSSServer
 
     gss_available = True
 except ImportError: # pragma: no cover

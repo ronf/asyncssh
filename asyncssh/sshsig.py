@@ -23,20 +23,33 @@
 
 import binascii
 import time
-
 from hashlib import sha256, sha512
 from pathlib import PurePath
 from typing import List, Optional, Sequence, Union, cast
 
-from .misc import BytesOrFilePath, FilePath, OptionsParser
-from .misc import open_file, read_file, match_base64, wrap_base64, parse_time
-from .packet import String, UInt32, PacketDecodeError, SSHPacket
+from .misc import (
+    BytesOrFilePath,
+    FilePath,
+    OptionsParser,
+    match_base64,
+    open_file,
+    parse_time,
+    read_file,
+    wrap_base64,
+)
+from .packet import PacketDecodeError, SSHPacket, String, UInt32
 from .pattern import WildcardPatternList
-from .public_key import CERT_TYPE_ANY, KeyImportError, KeyPairListArg
-from .public_key import SSHKey, SSHOpenSSHCertificate
-from .public_key import decode_ssh_public_key, decode_ssh_certificate
-from .public_key import import_public_key, load_keypairs
-
+from .public_key import (
+    CERT_TYPE_ANY,
+    KeyImportError,
+    KeyPairListArg,
+    SSHKey,
+    SSHOpenSSHCertificate,
+    decode_ssh_certificate,
+    decode_ssh_public_key,
+    import_public_key,
+    load_keypairs,
+)
 
 _SSHSIG_MAGIC = b'SSHSIG'
 _SSHSIG_VERSION = 1

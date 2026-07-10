@@ -20,14 +20,22 @@
 
 """U2F security key handler"""
 
-from base64 import urlsafe_b64encode
 import ctypes
-from hashlib import sha256
 import hmac
 import time
-from typing import Callable, List, Mapping, NoReturn, Optional
-from typing import Sequence, Tuple, TypeVar, cast
-
+from base64 import urlsafe_b64encode
+from hashlib import sha256
+from typing import (
+    Callable,
+    List,
+    Mapping,
+    NoReturn,
+    Optional,
+    Sequence,
+    Tuple,
+    TypeVar,
+    cast,
+)
 
 _PollResult = TypeVar('_PollResult')
 _SKResidentKey = Tuple[int, str, bytes, bytes]
@@ -335,9 +343,8 @@ def sk_get_resident(application: str, user: Optional[str],
 try:
     from fido2.client import DefaultClientDataCollector
     from fido2.ctap import CtapError
-    from fido2.ctap1 import Ctap1, APDU, ApduError
-    from fido2.ctap2 import Ctap2, ClientPin, PinProtocolV1
-    from fido2.ctap2 import CredentialManagement
+    from fido2.ctap1 import APDU, ApduError, Ctap1
+    from fido2.ctap2 import ClientPin, CredentialManagement, Ctap2, PinProtocolV1
     from fido2.hid import CtapHidDevice
 
     sk_available = True

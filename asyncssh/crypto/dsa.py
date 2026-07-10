@@ -27,7 +27,6 @@ from cryptography.hazmat.primitives.asymmetric import dsa
 
 from .misc import CryptoKey, PyCAKey, hashes
 
-
 # Short variable names are used here, matching names in the spec
 # pylint: disable=invalid-name
 

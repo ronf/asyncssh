@@ -22,11 +22,20 @@
 
 import asyncio
 import os
-from pathlib import Path
 import socket
 import time
-from typing import TYPE_CHECKING, Callable, Dict, Iterable
-from typing import NamedTuple, Optional, Sequence, Set, Tuple
+from pathlib import Path
+from typing import (
+    TYPE_CHECKING,
+    Callable,
+    Dict,
+    Iterable,
+    NamedTuple,
+    Optional,
+    Sequence,
+    Set,
+    Tuple,
+)
 
 from .constants import OPEN_CONNECT_FAILED
 from .forward import SSHForwarder, SSHForwarderCoro
@@ -34,7 +43,6 @@ from .listener import SSHListener, create_tcp_forward_listener
 from .logging import logger
 from .misc import ChannelOpenError
 from .session import DataType
-
 
 if TYPE_CHECKING:
     # pylint: disable=cyclic-import

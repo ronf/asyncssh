@@ -22,12 +22,16 @@
 
 from typing import Callable, Mapping, Union
 
-from cryptography.hazmat.primitives.asymmetric import dsa, ec, rsa
-from cryptography.hazmat.primitives.asymmetric import ed25519, ed448
-from cryptography.hazmat.primitives.hashes import HashAlgorithm
-from cryptography.hazmat.primitives.hashes import MD5, SHA1, SHA224
-from cryptography.hazmat.primitives.hashes import SHA256, SHA384, SHA512
-
+from cryptography.hazmat.primitives.asymmetric import dsa, ec, ed448, ed25519, rsa
+from cryptography.hazmat.primitives.hashes import (
+    MD5,
+    SHA1,
+    SHA224,
+    SHA256,
+    SHA384,
+    SHA512,
+    HashAlgorithm,
+)
 
 PyCAPrivateKey = Union[dsa.DSAPrivateKey, rsa.RSAPrivateKey,
                        ec.EllipticCurvePrivateKey,

@@ -28,46 +28,84 @@ import re
 import signal as _signal
 import sys
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, AnyStr, Awaitable, Callable
-from typing import Dict, Generic, Iterable, List, Mapping, Optional
-from typing import Set, Tuple, Union, cast
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    AnyStr,
+    Awaitable,
+    Callable,
+    Dict,
+    Generic,
+    Iterable,
+    List,
+    Mapping,
+    Optional,
+    Set,
+    Tuple,
+    Union,
+    cast,
+)
 
 from . import constants
-from .constants import DEFAULT_LANG, EXTENDED_DATA_STDERR
-from .constants import MSG_CHANNEL_OPEN, MSG_CHANNEL_WINDOW_ADJUST
-from .constants import MSG_CHANNEL_DATA, MSG_CHANNEL_EXTENDED_DATA
-from .constants import MSG_CHANNEL_EOF, MSG_CHANNEL_CLOSE, MSG_CHANNEL_REQUEST
-from .constants import MSG_CHANNEL_SUCCESS, MSG_CHANNEL_FAILURE
-from .constants import OPEN_CONNECT_FAILED, PTY_OP_RESERVED, PTY_OP_END
-from .constants import OPEN_REQUEST_X11_FORWARDING_FAILED
-from .constants import OPEN_REQUEST_PTY_FAILED, OPEN_REQUEST_SESSION_FAILED
-
+from .constants import (
+    DEFAULT_LANG,
+    EXTENDED_DATA_STDERR,
+    MSG_CHANNEL_CLOSE,
+    MSG_CHANNEL_DATA,
+    MSG_CHANNEL_EOF,
+    MSG_CHANNEL_EXTENDED_DATA,
+    MSG_CHANNEL_FAILURE,
+    MSG_CHANNEL_OPEN,
+    MSG_CHANNEL_REQUEST,
+    MSG_CHANNEL_SUCCESS,
+    MSG_CHANNEL_WINDOW_ADJUST,
+    OPEN_CONNECT_FAILED,
+    OPEN_REQUEST_PTY_FAILED,
+    OPEN_REQUEST_SESSION_FAILED,
+    OPEN_REQUEST_X11_FORWARDING_FAILED,
+    PTY_OP_END,
+    PTY_OP_RESERVED,
+)
 from .editor import SSHLineEditorChannel, SSHLineEditorSession
-
 from .logging import SSHLogger
-
-from .misc import ChannelOpenError, EnvMap, MaybeAwait, ProtocolError
-from .misc import TermModes, TermSize, TermSizeArg
-from .misc import decode_env, encode_env, get_symbol_names, map_handler_name
-
-from .packet import Boolean, Byte, String, UInt32, SSHPacket, SSHPacketHandler
-
-from .session import SSHSession, SSHClientSession, SSHServerSession
-from .session import SSHTCPSession, SSHUNIXSession, SSHTunTapSession
-from .session import SSHSessionFactory, SSHClientSessionFactory
-from .session import SSHTCPSessionFactory, SSHUNIXSessionFactory
-from .session import SSHTunTapSessionFactory
-
+from .misc import (
+    ChannelOpenError,
+    EnvMap,
+    MaybeAwait,
+    ProtocolError,
+    TermModes,
+    TermSize,
+    TermSizeArg,
+    decode_env,
+    encode_env,
+    get_symbol_names,
+    map_handler_name,
+)
+from .packet import Boolean, Byte, SSHPacket, SSHPacketHandler, String, UInt32
+from .session import (
+    SSHClientSession,
+    SSHClientSessionFactory,
+    SSHServerSession,
+    SSHSession,
+    SSHSessionFactory,
+    SSHTCPSession,
+    SSHTCPSessionFactory,
+    SSHTunTapSession,
+    SSHTunTapSessionFactory,
+    SSHUNIXSession,
+    SSHUNIXSessionFactory,
+)
 from .stream import DataType
-
-from .tuntap import SSH_TUN_MODE_POINTTOPOINT, SSH_TUN_UNIT_ANY
-from .tuntap import SSH_TUN_AF_INET, SSH_TUN_AF_INET6
-
+from .tuntap import (
+    SSH_TUN_AF_INET,
+    SSH_TUN_AF_INET6,
+    SSH_TUN_MODE_POINTTOPOINT,
+    SSH_TUN_UNIT_ANY,
+)
 
 if TYPE_CHECKING:
     # pylint: disable=cyclic-import
-    from .connection import SSHConnection, SSHClientConnection
-    from .connection import SSHServerConnection
+    from .connection import SSHClientConnection, SSHConnection, SSHServerConnection
 
 
 _const_dict: Mapping[str, int] = constants.__dict__

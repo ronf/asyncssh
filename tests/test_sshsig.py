@@ -24,7 +24,6 @@ import hashlib
 import os
 
 import asyncssh
-
 from asyncssh.packet import String, UInt32
 
 from .util import TempDirTestCase, get_test_key

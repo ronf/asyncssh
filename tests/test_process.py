@@ -23,11 +23,11 @@
 import asyncio
 import io
 import os
-from pathlib import Path
-from signal import SIGINT
 import socket
 import sys
 import unittest
+from pathlib import Path
+from signal import SIGINT
 
 import asyncssh
 

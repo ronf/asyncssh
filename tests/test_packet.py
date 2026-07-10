@@ -23,8 +23,17 @@
 import codecs
 import unittest
 
-from asyncssh.packet import Byte, Boolean, UInt32, UInt64, String, MPInt
-from asyncssh.packet import NameList, PacketDecodeError, SSHPacket
+from asyncssh.packet import (
+    Boolean,
+    Byte,
+    MPInt,
+    NameList,
+    PacketDecodeError,
+    SSHPacket,
+    String,
+    UInt32,
+    UInt64,
+)
 
 
 class _TestPacket(unittest.TestCase):

@@ -21,14 +21,13 @@
 """SSH keysign client"""
 
 import asyncio
-from pathlib import Path
 import subprocess
+from pathlib import Path
 from typing import Iterable, Sequence, Union, cast
 
 from .misc import FilePath
-from .packet import Byte, String, UInt32, PacketDecodeError, SSHPacket
-from .public_key import SSHKey, SSHKeyPair, SSHCertificate
-
+from .packet import Byte, PacketDecodeError, SSHPacket, String, UInt32
+from .public_key import SSHCertificate, SSHKey, SSHKeyPair
 
 _KeySignKey = Union[SSHKey, SSHCertificate]
 KeySignPath = Union[None, bool, FilePath]

@@ -24,11 +24,9 @@ from typing import Dict, Optional, Union, cast
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.backends.openssl import backend
-from cryptography.hazmat.primitives.asymmetric import ed25519, ed448
-from cryptography.hazmat.primitives.asymmetric import x25519, x448
+from cryptography.hazmat.primitives.asymmetric import ed448, ed25519, x448, x25519
 
 from .misc import CryptoKey, PyCAKey
-
 
 _EdPrivateKey = Union[ed25519.Ed25519PrivateKey, ed448.Ed448PrivateKey]
 _EdPublicKey = Union[ed25519.Ed25519PublicKey, ed448.Ed448PublicKey]

@@ -20,14 +20,26 @@
 
 """SSH session handlers"""
 
-from typing import TYPE_CHECKING, Any, AnyStr, Callable, Generic
-from typing import Mapping, Optional, Tuple
-
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    AnyStr,
+    Callable,
+    Generic,
+    Mapping,
+    Optional,
+    Tuple,
+)
 
 if TYPE_CHECKING:
     # pylint: disable=cyclic-import
-    from .channel import SSHClientChannel, SSHServerChannel
-    from .channel import SSHTCPChannel, SSHUNIXChannel,  SSHTunTapChannel
+    from .channel import (
+        SSHClientChannel,
+        SSHServerChannel,
+        SSHTCPChannel,
+        SSHTunTapChannel,
+        SSHUNIXChannel,
+    )
 
 DataType = Optional[int]
 

@@ -25,12 +25,22 @@ import re
 import shlex
 import socket
 import subprocess
-
 from hashlib import sha1
 from pathlib import Path, PurePath
 from subprocess import DEVNULL
-from typing import Callable, Dict, Iterator, List, NoReturn, Optional
-from typing import Sequence, Set, Tuple, Union, cast
+from typing import (
+    Callable,
+    Dict,
+    Iterator,
+    List,
+    NoReturn,
+    Optional,
+    Sequence,
+    Set,
+    Tuple,
+    Union,
+    cast,
+)
 
 from .constants import DEFAULT_PORT
 from .logging import logger

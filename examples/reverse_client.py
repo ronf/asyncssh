@@ -30,8 +30,12 @@
 # trusted to sign server keys if certificates are used. This file should
 # be in "authorized_keys" format.
 
-import asyncio, asyncssh, sys
+import asyncio
+import sys
 from asyncio.subprocess import PIPE
+
+import asyncssh
+
 
 async def handle_request(process: asyncssh.SSHServerProcess) -> None:
     """Run a command on the client, piping I/O over an SSH session"""

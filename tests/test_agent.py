@@ -23,19 +23,21 @@
 import asyncio
 import functools
 import os
-from pathlib import Path
 import signal
 import subprocess
 import unittest
+from pathlib import Path
 
 import asyncssh
-
-from asyncssh.agent import SSH_AGENT_SUCCESS, SSH_AGENT_FAILURE
-from asyncssh.agent import SSH_AGENT_IDENTITIES_ANSWER
+from asyncssh.agent import (
+    SSH_AGENT_FAILURE,
+    SSH_AGENT_IDENTITIES_ANSWER,
+    SSH_AGENT_SUCCESS,
+)
 from asyncssh.crypto import ed25519_available
 from asyncssh.packet import Byte, String, UInt32
 
-from .sk_stub import sk_available, patch_sk
+from .sk_stub import patch_sk, sk_available
 from .util import AsyncTestCase, asynctest, get_test_key, run, try_remove
 
 

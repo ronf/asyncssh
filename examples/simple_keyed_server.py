@@ -28,7 +28,11 @@
 # files in it named based on the username containing the client keys
 # and certificate authority keys which are accepted for that user.
 
-import asyncio, asyncssh, sys
+import asyncio
+import sys
+
+import asyncssh
+
 
 def handle_client(process: asyncssh.SSHServerProcess) -> None:
     username = process.get_extra_info('username')

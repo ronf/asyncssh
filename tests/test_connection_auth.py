@@ -24,7 +24,6 @@ import asyncio
 import os
 import sys
 import unittest
-
 from unittest.mock import patch
 
 from cryptography.exceptions import UnsupportedAlgorithm
@@ -32,13 +31,20 @@ from cryptography.exceptions import UnsupportedAlgorithm
 import asyncssh
 from asyncssh.misc import async_context_manager, write_file
 from asyncssh.packet import String
-from asyncssh.public_key import CERT_TYPE_USER, CERT_TYPE_HOST
+from asyncssh.public_key import CERT_TYPE_HOST, CERT_TYPE_USER
 
 from .keysign_stub import create_subprocess_exec_stub
 from .server import Server, ServerTestCase
-from .util import asynctest, gss_available, patch_getnameinfo
-from .util import patch_getnameinfo_error, patch_gss
-from .util import make_certificate, nc_available, x509_available
+from .util import (
+    asynctest,
+    gss_available,
+    make_certificate,
+    nc_available,
+    patch_getnameinfo,
+    patch_getnameinfo_error,
+    patch_gss,
+    x509_available,
+)
 
 
 class _FailValidateHostSSHServerConnection(asyncssh.SSHServerConnection):

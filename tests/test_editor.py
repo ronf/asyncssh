@@ -21,6 +21,7 @@
 """Unit tests for AsyncSSH line editor"""
 
 import asyncio
+
 import asyncssh
 
 from .server import ServerTestCase

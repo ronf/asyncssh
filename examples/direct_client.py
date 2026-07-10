@@ -20,8 +20,12 @@
 # Contributors:
 #     Ron Frederick - initial implementation, API, and documentation
 
-import asyncio, asyncssh, sys
+import asyncio
+import sys
 from typing import Optional
+
+import asyncssh
+
 
 class MySSHTCPSession(asyncssh.SSHTCPSession):
     def data_received(self, data: bytes, datatype: asyncssh.DataType) -> None:

@@ -24,7 +24,6 @@
 import logging
 from typing import MutableMapping, Optional, Tuple, Union, cast
 
-
 _LogArg = object
 _ObjDict = MutableMapping[str, object]
 

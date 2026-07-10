@@ -24,9 +24,13 @@ import unittest
 
 import asyncssh
 
-from .pkcs11_stub import pkcs11_available
-from .pkcs11_stub import get_pkcs11_public_keys, get_pkcs11_certs
-from .pkcs11_stub import stub_pkcs11, unstub_pkcs11
+from .pkcs11_stub import (
+    get_pkcs11_certs,
+    get_pkcs11_public_keys,
+    pkcs11_available,
+    stub_pkcs11,
+    unstub_pkcs11,
+)
 from .server import ServerTestCase
 from .util import asynctest
 

@@ -25,7 +25,7 @@ import unittest
 import asyncssh
 
 from .server import ServerTestCase
-from .sk_stub import sk_available, stub_sk, unstub_sk, patch_sk, sk_error
+from .sk_stub import patch_sk, sk_available, sk_error, stub_sk, unstub_sk
 from .util import asynctest, get_test_key
 
 

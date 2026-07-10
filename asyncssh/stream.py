@@ -23,19 +23,43 @@
 import asyncio
 import inspect
 import re
-from typing import TYPE_CHECKING, Any, AnyStr, AsyncIterator
-from typing import Callable, Dict, Generic, Iterable, List
-from typing import Optional, Pattern, Set, Tuple, Union, cast
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    AnyStr,
+    AsyncIterator,
+    Callable,
+    Dict,
+    Generic,
+    Iterable,
+    List,
+    Optional,
+    Pattern,
+    Set,
+    Tuple,
+    Union,
+    cast,
+)
 
 from .constants import EXTENDED_DATA_STDERR
 from .logging import SSHLogger
-from .misc import MaybeAwait, BreakReceived, SignalReceived
-from .misc import SoftEOFReceived, TerminalSizeChanged
-from .session import DataType, SSHClientSession, SSHServerSession
-from .session import SSHTCPSession, SSHUNIXSession, SSHTunTapSession
-from .sftp import SFTPServer, run_sftp_server
+from .misc import (
+    BreakReceived,
+    MaybeAwait,
+    SignalReceived,
+    SoftEOFReceived,
+    TerminalSizeChanged,
+)
 from .scp import run_scp_server
-
+from .session import (
+    DataType,
+    SSHClientSession,
+    SSHServerSession,
+    SSHTCPSession,
+    SSHTunTapSession,
+    SSHUNIXSession,
+)
+from .sftp import SFTPServer, run_sftp_server
 
 if TYPE_CHECKING:
     # pylint: disable=cyclic-import

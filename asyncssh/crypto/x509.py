@@ -20,22 +20,18 @@
 
 """A shim around PyCA and PyOpenSSL for X.509 certificates"""
 
-from datetime import datetime, timezone
 import re
 import sys
+from datetime import datetime, timezone
 from typing import Iterable, List, Optional, Sequence, Set, Union, cast
 
-from cryptography.hazmat.primitives.serialization import Encoding
-from cryptography.hazmat.primitives.serialization import PublicFormat
 from cryptography import x509
-
+from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 from OpenSSL import crypto
 
 from ..asn1 import IA5String, der_decode, der_encode
 from ..misc import ip_address
-
 from .misc import PyCAKey, PyCAPrivateKey, PyCAPublicKey, hashes
-
 
 _Comment = Union[None, bytes, str]
 _Principals = Union[str, Sequence[str]]

@@ -22,15 +22,19 @@
 
 from typing import Optional, Tuple, Union, cast
 
-from .asn1 import ASN1DecodeError, ObjectIdentifier, der_encode, der_decode
-from .crypto import EdDSAPrivateKey, EdDSAPublicKey
-from .crypto import ed25519_available, ed448_available
-from .packet import String, SSHPacket
-from .public_key import OMIT, SSHKey, SSHOpenSSHCertificateV01
-from .public_key import KeyImportError, KeyExportError
-from .public_key import register_public_key_alg, register_certificate_alg
-from .public_key import register_x509_certificate_alg
-
+from .asn1 import ASN1DecodeError, ObjectIdentifier, der_decode, der_encode
+from .crypto import EdDSAPrivateKey, EdDSAPublicKey, ed448_available, ed25519_available
+from .packet import SSHPacket, String
+from .public_key import (
+    OMIT,
+    KeyExportError,
+    KeyImportError,
+    SSHKey,
+    SSHOpenSSHCertificateV01,
+    register_certificate_alg,
+    register_public_key_alg,
+    register_x509_certificate_alg,
+)
 
 _PrivateKeyArgs = Tuple[bytes]
 _PublicKeyArgs = Tuple[bytes]

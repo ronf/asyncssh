@@ -26,15 +26,18 @@ import os
 import socket
 import sys
 import unittest
-
 from unittest.mock import patch
 
 import asyncssh
 from asyncssh.misc import maybe_wait_closed, write_file
 from asyncssh.packet import String, UInt32
 from asyncssh.public_key import CERT_TYPE_USER
-from asyncssh.socks import SOCKS5, SOCKS5_AUTH_NONE
-from asyncssh.socks import SOCKS4_OK_RESPONSE, SOCKS5_OK_RESPONSE_HDR
+from asyncssh.socks import (
+    SOCKS4_OK_RESPONSE,
+    SOCKS5,
+    SOCKS5_AUTH_NONE,
+    SOCKS5_OK_RESPONSE_HDR,
+)
 
 from .server import Server, ServerTestCase
 from .util import asynctest, echo, make_certificate, try_remove

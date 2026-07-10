@@ -24,18 +24,25 @@ from hashlib import sha1, sha256
 from typing import TYPE_CHECKING, Optional, cast
 
 from .kex import Kex, register_kex_alg
-from .misc import HashType, KeyExchangeFailed, ProtocolError
-from .misc import get_symbol_names, randrange
-from .packet import MPInt, String, SSHPacket
-from .public_key import KeyImportError, SSHKey
-from .public_key import decode_ssh_public_key, generate_private_key
+from .misc import (
+    HashType,
+    KeyExchangeFailed,
+    ProtocolError,
+    get_symbol_names,
+    randrange,
+)
+from .packet import MPInt, SSHPacket, String
+from .public_key import (
+    KeyImportError,
+    SSHKey,
+    decode_ssh_public_key,
+    generate_private_key,
+)
 from .rsa import RSAKey
-
 
 if TYPE_CHECKING:
     # pylint: disable=cyclic-import
-    from .connection import SSHConnection, SSHClientConnection
-    from .connection import SSHServerConnection
+    from .connection import SSHClientConnection, SSHConnection, SSHServerConnection
 
 
 # SSH KEXRSA message values

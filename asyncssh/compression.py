@@ -20,8 +20,8 @@
 
 """SSH compression handlers"""
 
-from typing import Callable, List, Optional
 import zlib
+from typing import Callable, List, Optional
 
 _cmp_algs: List[bytes] = []
 _default_cmp_algs: List[bytes] = []

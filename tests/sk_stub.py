@@ -24,15 +24,20 @@ from contextlib import contextmanager
 from hashlib import sha256
 
 import asyncssh
-from asyncssh.asn1 import der_encode, der_decode
+from asyncssh.asn1 import der_decode, der_encode
 from asyncssh.crypto import ECDSAPrivateKey, EdDSAPrivateKey
 from asyncssh.packet import Byte, UInt32
 from asyncssh.sk import sk_available, sk_webauthn_prefix
 
 if sk_available: # pragma: no branch
-    from asyncssh.sk import SSH_SK_ECDSA, SSH_SK_ED25519
-    from asyncssh.sk import SSH_SK_USER_PRESENCE_REQD
-    from asyncssh.sk import APDU, ApduError, CtapError
+    from asyncssh.sk import (
+        APDU,
+        SSH_SK_ECDSA,
+        SSH_SK_ED25519,
+        SSH_SK_USER_PRESENCE_REQD,
+        ApduError,
+        CtapError,
+    )
 
 
 class _Registration:

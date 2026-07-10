@@ -26,17 +26,23 @@ from .auth import KbdIntChallenge, KbdIntResponse
 from .listener import SSHListener
 from .misc import MaybeAwait
 from .public_key import SSHKey
-from .stream import SSHSocketSessionFactory, SSHServerSessionFactory
-
+from .stream import SSHServerSessionFactory, SSHSocketSessionFactory
 
 if TYPE_CHECKING:
     # pylint: disable=cyclic-import
-    from .connection import SSHClientConnection, SSHServerConnection
-    from .connection import SSHAcceptHandler
-    from .channel import SSHServerChannel, SSHTCPChannel, SSHUNIXChannel
-    from .channel import SSHTunTapChannel
-    from .session import SSHServerSession, SSHTCPSession, SSHUNIXSession
-    from .session import SSHTunTapSession
+    from .channel import (
+        SSHServerChannel,
+        SSHTCPChannel,
+        SSHTunTapChannel,
+        SSHUNIXChannel,
+    )
+    from .connection import SSHAcceptHandler, SSHClientConnection, SSHServerConnection
+    from .session import (
+        SSHServerSession,
+        SSHTCPSession,
+        SSHTunTapSession,
+        SSHUNIXSession,
+    )
 
 
 _NewSession = Union[

@@ -22,14 +22,18 @@
 
 from typing import Optional, Tuple, Union, cast
 
-from .asn1 import ASN1DecodeError, ObjectIdentifier, der_encode, der_decode
+from .asn1 import ASN1DecodeError, ObjectIdentifier, der_decode, der_encode
 from .crypto import RSAPrivateKey, RSAPublicKey
 from .misc import all_ints
-from .packet import MPInt, String, SSHPacket
-from .public_key import SSHKey, SSHOpenSSHCertificateV01, KeyExportError
-from .public_key import register_public_key_alg, register_certificate_alg
-from .public_key import register_x509_certificate_alg
-
+from .packet import MPInt, SSHPacket, String
+from .public_key import (
+    KeyExportError,
+    SSHKey,
+    SSHOpenSSHCertificateV01,
+    register_certificate_alg,
+    register_public_key_alg,
+    register_x509_certificate_alg,
+)
 
 _hash_algs = {b'ssh-rsa':                'sha1',
               b'rsa-sha2-256':           'sha256',

@@ -20,110 +20,184 @@
 
 """An asynchronous SSH2 library for Python"""
 
-from .version import __author__, __author_email__, __url__, __version__
-
-# pylint: disable=wildcard-import
-
-from .constants import *
+# Import these explicitly to trigger register calls in them
+from . import dsa, ecdsa, eddsa, kex_dh, kex_rsa, rsa, sk_ecdsa, sk_eddsa
 
 # pylint: enable=wildcard-import
-
 from .agent import SSHAgentClient, SSHAgentKeyPair, connect_agent
-
-from .auth_keys import SSHAuthorizedKeys
-from .auth_keys import import_authorized_keys, read_authorized_keys
-
-from .channel import SSHClientChannel, SSHServerChannel
-from .channel import SSHTCPChannel, SSHUNIXChannel, SSHTunTapChannel
-
+from .auth_keys import SSHAuthorizedKeys, import_authorized_keys, read_authorized_keys
+from .channel import (
+    SSHClientChannel,
+    SSHServerChannel,
+    SSHTCPChannel,
+    SSHTunTapChannel,
+    SSHUNIXChannel,
+)
 from .client import SSHClient
-
 from .config import ConfigParseError
+from .connection import (
+    SSHAcceptHandler,
+    SSHAcceptor,
+    SSHClientConnection,
+    SSHClientConnectionOptions,
+    SSHServerConnection,
+    SSHServerConnectionOptions,
+    connect,
+    connect_reverse,
+    create_connection,
+    create_server,
+    get_server_auth_methods,
+    get_server_host_key,
+    listen,
+    listen_reverse,
+    run_client,
+    run_server,
+)
 
-from .forward import SSHForwarder
-
-from .connection import SSHAcceptor, SSHClientConnection, SSHServerConnection
-from .connection import SSHClientConnectionOptions, SSHServerConnectionOptions
-from .connection import SSHAcceptHandler
-from .connection import create_connection, create_server, connect, listen
-from .connection import connect_reverse, listen_reverse, get_server_host_key
-from .connection import get_server_auth_methods, run_client, run_server
-
+# pylint: disable=wildcard-import
+from .constants import *
 from .editor import SSHLineEditorChannel
-
-from .known_hosts import SSHKnownHosts
-from .known_hosts import import_known_hosts, read_known_hosts
-from .known_hosts import match_known_hosts
-
+from .forward import SSHForwarder
+from .known_hosts import (
+    SSHKnownHosts,
+    import_known_hosts,
+    match_known_hosts,
+    read_known_hosts,
+)
 from .listener import SSHListener
-
-from .logging import logger, set_log_level, set_sftp_log_level, set_debug_level
-
-from .misc import BytesOrStr
-from .misc import Error, DisconnectError, ChannelOpenError, ChannelListenError
-from .misc import ConnectionLost, CompressionError, HostKeyNotVerifiable
-from .misc import KeyExchangeFailed, IllegalUserName, MACError
-from .misc import PermissionDenied, ProtocolError, ProtocolNotSupported
-from .misc import ServiceNotAvailable, PasswordChangeRequired
-from .misc import BreakReceived, SignalReceived, TerminalSizeChanged
-
+from .logging import logger, set_debug_level, set_log_level, set_sftp_log_level
+from .misc import (
+    BreakReceived,
+    BytesOrStr,
+    ChannelListenError,
+    ChannelOpenError,
+    CompressionError,
+    ConnectionLost,
+    DisconnectError,
+    Error,
+    HostKeyNotVerifiable,
+    IllegalUserName,
+    KeyExchangeFailed,
+    MACError,
+    PasswordChangeRequired,
+    PermissionDenied,
+    ProtocolError,
+    ProtocolNotSupported,
+    ServiceNotAvailable,
+    SignalReceived,
+    TerminalSizeChanged,
+)
 from .pbe import KeyEncryptionError
-
 from .pkcs11 import load_pkcs11_keys
-
-from .process import SSHServerProcessFactory
-from .process import SSHClientProcess, SSHServerProcess
-from .process import SSHCompletedProcess, ProcessError
-from .process import TimeoutError # pylint: disable=redefined-builtin
-from .process import DEVNULL, PIPE, STDOUT
-
-from .public_key import SSHKey, SSHKeyPair, SSHCertificate
-from .public_key import KeyGenerationError, KeyImportError, KeyExportError
-from .public_key import generate_private_key, import_private_key
-from .public_key import import_public_key, import_certificate
-from .public_key import read_private_key, read_public_key, read_certificate
-from .public_key import read_private_key_list, read_public_key_list
-from .public_key import read_certificate_list
-from .public_key import load_keypairs, load_public_keys, load_certificates
-from .public_key import load_resident_keys
-
+from .process import (
+    DEVNULL,
+    PIPE,
+    STDOUT,
+    ProcessError,
+    SSHClientProcess,
+    SSHCompletedProcess,
+    SSHServerProcess,
+    SSHServerProcessFactory,
+    TimeoutError,  # pylint: disable=redefined-builtin
+)
+from .public_key import (
+    KeyExportError,
+    KeyGenerationError,
+    KeyImportError,
+    SSHCertificate,
+    SSHKey,
+    SSHKeyPair,
+    generate_private_key,
+    import_certificate,
+    import_private_key,
+    import_public_key,
+    load_certificates,
+    load_keypairs,
+    load_public_keys,
+    load_resident_keys,
+    read_certificate,
+    read_certificate_list,
+    read_private_key,
+    read_private_key_list,
+    read_public_key,
+    read_public_key_list,
+)
 from .rsa import set_default_skip_rsa_key_validation
-
 from .scp import scp
-
-from .session import DataType, SSHClientSession, SSHServerSession
-from .session import SSHTCPSession, SSHUNIXSession, SSHTunTapSession
-
 from .server import SSHServer
-
-from .sftp import SFTPClient, SFTPClientFile, SFTPServer, SFTPError
-from .sftp import SFTPEOFError, SFTPNoSuchFile, SFTPPermissionDenied
-from .sftp import SFTPFailure, SFTPBadMessage, SFTPNoConnection
-from .sftp import SFTPInvalidHandle, SFTPNoSuchPath, SFTPFileAlreadyExists
-from .sftp import SFTPWriteProtect, SFTPNoMedia, SFTPNoSpaceOnFilesystem
-from .sftp import SFTPQuotaExceeded, SFTPUnknownPrincipal, SFTPLockConflict
-from .sftp import SFTPDirNotEmpty, SFTPNotADirectory, SFTPInvalidFilename
-from .sftp import SFTPLinkLoop, SFTPCannotDelete, SFTPInvalidParameter
-from .sftp import SFTPFileIsADirectory, SFTPByteRangeLockConflict
-from .sftp import SFTPByteRangeLockRefused, SFTPDeletePending
-from .sftp import SFTPFileCorrupt, SFTPOwnerInvalid, SFTPGroupInvalid
-from .sftp import SFTPNoMatchingByteRangeLock
-from .sftp import SFTPConnectionLost, SFTPOpUnsupported
-from .sftp import SFTPAttrs, SFTPVFSAttrs, SFTPName, SFTPLimits
-from .sftp import SEEK_SET, SEEK_CUR, SEEK_END
-
-from .sshsig import SSHAllowedSigners
-from .sshsig import import_allowed_signers, read_allowed_signers
-from .sshsig import create_sshsig, validate_sshsig
-
-from .stream import SSHSocketSessionFactory, SSHServerSessionFactory
-from .stream import SFTPServerFactory, SSHReader, SSHWriter
-
-from .subprocess import SSHSubprocessReadPipe, SSHSubprocessWritePipe
-from .subprocess import SSHSubprocessProtocol, SSHSubprocessTransport
-
-# Import these explicitly to trigger register calls in them
-from . import sk_eddsa, sk_ecdsa, eddsa, ecdsa, rsa, dsa, kex_dh, kex_rsa
+from .session import (
+    DataType,
+    SSHClientSession,
+    SSHServerSession,
+    SSHTCPSession,
+    SSHTunTapSession,
+    SSHUNIXSession,
+)
+from .sftp import (
+    SEEK_CUR,
+    SEEK_END,
+    SEEK_SET,
+    SFTPAttrs,
+    SFTPBadMessage,
+    SFTPByteRangeLockConflict,
+    SFTPByteRangeLockRefused,
+    SFTPCannotDelete,
+    SFTPClient,
+    SFTPClientFile,
+    SFTPConnectionLost,
+    SFTPDeletePending,
+    SFTPDirNotEmpty,
+    SFTPEOFError,
+    SFTPError,
+    SFTPFailure,
+    SFTPFileAlreadyExists,
+    SFTPFileCorrupt,
+    SFTPFileIsADirectory,
+    SFTPGroupInvalid,
+    SFTPInvalidFilename,
+    SFTPInvalidHandle,
+    SFTPInvalidParameter,
+    SFTPLimits,
+    SFTPLinkLoop,
+    SFTPLockConflict,
+    SFTPName,
+    SFTPNoConnection,
+    SFTPNoMatchingByteRangeLock,
+    SFTPNoMedia,
+    SFTPNoSpaceOnFilesystem,
+    SFTPNoSuchFile,
+    SFTPNoSuchPath,
+    SFTPNotADirectory,
+    SFTPOpUnsupported,
+    SFTPOwnerInvalid,
+    SFTPPermissionDenied,
+    SFTPQuotaExceeded,
+    SFTPServer,
+    SFTPUnknownPrincipal,
+    SFTPVFSAttrs,
+    SFTPWriteProtect,
+)
+from .sshsig import (
+    SSHAllowedSigners,
+    create_sshsig,
+    import_allowed_signers,
+    read_allowed_signers,
+    validate_sshsig,
+)
+from .stream import (
+    SFTPServerFactory,
+    SSHReader,
+    SSHServerSessionFactory,
+    SSHSocketSessionFactory,
+    SSHWriter,
+)
+from .subprocess import (
+    SSHSubprocessProtocol,
+    SSHSubprocessReadPipe,
+    SSHSubprocessTransport,
+    SSHSubprocessWritePipe,
+)
+from .version import __author__, __author_email__, __url__, __version__
 
 __all__ = [
     '__author__', '__author_email__', '__url__', '__version__',

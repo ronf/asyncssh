@@ -25,19 +25,22 @@ from typing import Dict, List, Optional, Sequence, Tuple, Type, Union, cast
 
 try:
     import pkcs11
-    from pkcs11 import Attribute, KeyType, Mechanism, ObjectClass
-    from pkcs11 import PrivateKey, Token
-    from pkcs11.util.rsa import encode_rsa_public_key
+    from pkcs11 import Attribute, KeyType, Mechanism, ObjectClass, PrivateKey, Token
     from pkcs11.util.ec import encode_ec_public_key
+    from pkcs11.util.rsa import encode_rsa_public_key
     pkcs11_available = True
 except (ImportError, ModuleNotFoundError): # pragma: no cover
     pkcs11_available = False
 
 from .misc import BytesOrStr
 from .packet import MPInt, String
-from .public_key import SSHCertificate, SSHKey, SSHKeyPair
-from .public_key import import_certificate_chain, import_public_key
-
+from .public_key import (
+    SSHCertificate,
+    SSHKey,
+    SSHKeyPair,
+    import_certificate_chain,
+    import_public_key,
+)
 
 _AttrDict = Dict['Attribute', Union[bool, bytes, str, 'ObjectClass']]
 _TokenID = Tuple[str, bytes]

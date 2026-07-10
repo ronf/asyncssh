@@ -18,3 +18,10 @@ repos:
         additional_dependencies:
           - tomli
         exclude: '^docs/changes\.rst$|^\.?pylintrc$'
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: 'v0.15.21'
+    hooks:
+      - id: ruff
+        args: [--select=I, --fix, --exit-non-zero-on-fix, --show-fixes]
+        types: [python]

@@ -28,6 +28,7 @@ import asyncssh
 from .server import Server, ServerTestCase
 from .util import asynctest, echo
 
+
 class _SubprocessProtocol(asyncssh.SSHSubprocessProtocol):
     """Unit test SSH subprocess protocol"""
 

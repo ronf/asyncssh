@@ -21,8 +21,7 @@
 """Parser for SSH authorized_keys files"""
 
 from pathlib import PurePath
-from typing import Dict, List, Mapping, Optional, Sequence
-from typing import Set, Tuple, Union, cast
+from typing import Dict, List, Mapping, Optional, Sequence, Set, Tuple, Union, cast
 
 try:
     # pylint: disable=unused-import
@@ -33,11 +32,15 @@ except ImportError: # pragma: no cover
 
 from .misc import FilePath, OptionsParser, ip_address, read_file
 from .pattern import HostPatternList, WildcardPatternList
-from .public_key import KeyImportError, SSHKey
-from .public_key import SSHX509Certificate, SSHX509CertificateChain
-from .public_key import import_public_key, import_certificate
-from .public_key import import_certificate_subject
-
+from .public_key import (
+    KeyImportError,
+    SSHKey,
+    SSHX509Certificate,
+    SSHX509CertificateChain,
+    import_certificate,
+    import_certificate_subject,
+    import_public_key,
+)
 
 _EntryOptions = Mapping[str, object]
 

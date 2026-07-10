@@ -27,7 +27,12 @@
 # The file ``ssh_user_ca`` must exist with a cert-authority entry of
 # the certificate authority which can sign valid client certificates.
 
-import asyncio, asyncssh, subprocess, sys
+import asyncio
+import subprocess
+import sys
+
+import asyncssh
+
 
 async def handle_client(process: asyncssh.SSHServerProcess) -> None:
     bc_proc = subprocess.Popen('bc', shell=True, stdin=subprocess.PIPE,

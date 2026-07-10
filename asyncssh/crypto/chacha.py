@@ -30,7 +30,6 @@ from cryptography.hazmat.primitives.poly1305 import Poly1305
 
 from .cipher import register_cipher
 
-
 chacha_available = backend.poly1305_supported()
 
 

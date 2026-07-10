@@ -24,15 +24,20 @@ import asyncio
 import os
 import sys
 from types import TracebackType
-from typing import TYPE_CHECKING, List, Optional, Protocol, Sequence, Tuple
-from typing import Type, Union
+from typing import TYPE_CHECKING, List, Optional, Protocol, Sequence, Tuple, Type, Union
+
 from typing_extensions import Self
 
 from .listener import SSHForwardListener
 from .misc import async_context_manager, maybe_wait_closed
-from .packet import Byte, String, UInt32, PacketDecodeError, SSHPacket
-from .public_key import KeyPairListArg, SSHCertificate, SSHKeyPair
-from .public_key import load_default_keypairs, load_keypairs
+from .packet import Byte, PacketDecodeError, SSHPacket, String, UInt32
+from .public_key import (
+    KeyPairListArg,
+    SSHCertificate,
+    SSHKeyPair,
+    load_default_keypairs,
+    load_keypairs,
+)
 
 if TYPE_CHECKING:
     from tempfile import TemporaryDirectory

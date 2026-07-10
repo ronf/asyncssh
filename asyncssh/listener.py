@@ -24,21 +24,31 @@ import asyncio
 import errno
 import socket
 from types import TracebackType
-from typing import TYPE_CHECKING, AnyStr, Callable, Generic, List, Optional
-from typing import Sequence, Set, Tuple, Type, Union
+from typing import (
+    TYPE_CHECKING,
+    AnyStr,
+    Callable,
+    Generic,
+    List,
+    Optional,
+    Sequence,
+    Set,
+    Tuple,
+    Type,
+    Union,
+)
+
 from typing_extensions import Self
 
-from .forward import SSHForwarderCoro
-from .forward import SSHLocalPortForwarder, SSHLocalPathForwarder
+from .forward import SSHForwarderCoro, SSHLocalPathForwarder, SSHLocalPortForwarder
 from .misc import HostPort, MaybeAwait
 from .session import SSHTCPSession, SSHUNIXSession
 from .socks import SSHSOCKSForwarder
 
-
 if TYPE_CHECKING:
     # pylint: disable=cyclic-import
     from .channel import SSHTCPChannel, SSHUNIXChannel
-    from .connection import SSHConnection, SSHClientConnection
+    from .connection import SSHClientConnection, SSHConnection
 
 
 _LocalListenerFactory = Callable[[], asyncio.BaseProtocol]

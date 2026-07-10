@@ -24,12 +24,16 @@ from hashlib import sha256
 from typing import Optional, Tuple, cast
 
 from .crypto import EdDSAPublicKey, ed25519_available
-from .packet import Byte, String, UInt32, SSHPacket
-from .public_key import KeyExportError, SSHKey, SSHOpenSSHCertificateV01
-from .public_key import register_public_key_alg, register_certificate_alg
-from .public_key import register_sk_alg
+from .packet import Byte, SSHPacket, String, UInt32
+from .public_key import (
+    KeyExportError,
+    SSHKey,
+    SSHOpenSSHCertificateV01,
+    register_certificate_alg,
+    register_public_key_alg,
+    register_sk_alg,
+)
 from .sk import SSH_SK_ED25519, SSH_SK_USER_PRESENCE_REQD, sk_enroll, sk_sign
-
 
 _PrivateKeyArgs = Tuple[bytes, str, int, bytes, bytes]
 _PublicKeyArgs = Tuple[bytes, str]

@@ -26,7 +26,6 @@ from .auth import KbdIntPrompts, KbdIntResponse, PasswordChangeResponse
 from .misc import MaybeAwait
 from .public_key import KeyPairListArg, SSHKey
 
-
 if TYPE_CHECKING:
     # pylint: disable=cyclic-import
     from .connection import SSHClientConnection

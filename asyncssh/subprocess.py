@@ -20,13 +20,20 @@
 
 """SSH subprocess handlers"""
 
-from typing import TYPE_CHECKING, Any, AnyStr, Callable
-from typing import Dict, Generic, Iterable, Optional
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    AnyStr,
+    Callable,
+    Dict,
+    Generic,
+    Iterable,
+    Optional,
+)
 
 from .constants import EXTENDED_DATA_STDERR
 from .process import SSHClientProcess
 from .session import DataType
-
 
 if TYPE_CHECKING:
     # pylint: disable=cyclic-import

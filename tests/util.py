@@ -30,7 +30,6 @@ import subprocess
 import sys
 import tempfile
 import unittest
-
 from unittest.mock import patch
 
 from asyncssh import set_default_skip_rsa_key_validation
@@ -39,7 +38,6 @@ from asyncssh.logging import logger
 from asyncssh.misc import ConnectionLost, SignalReceived
 from asyncssh.packet import Byte, String, UInt32, UInt64
 from asyncssh.public_key import generate_private_key
-
 
 # pylint: disable=ungrouped-imports, unused-import
 
@@ -173,8 +171,7 @@ def patch_gss(cls):
         cls = patch('asyncssh.gss_win32.ClientAuth', SSPIAuth)(cls)
         cls = patch('asyncssh.gss_win32.ServerAuth', SSPIAuth)(cls)
     else:
-        from .gssapi_stub import Name, Credentials, RequirementFlag
-        from .gssapi_stub import SecurityContext
+        from .gssapi_stub import Credentials, Name, RequirementFlag, SecurityContext
 
         cls = patch('asyncssh.gss_unix.Name', Name)(cls)
         cls = patch('asyncssh.gss_unix.Credentials', Credentials)(cls)

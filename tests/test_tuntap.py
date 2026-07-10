@@ -26,7 +26,6 @@ import errno
 import socket
 import struct
 import sys
-
 from unittest import skipIf, skipUnless
 from unittest.mock import patch
 

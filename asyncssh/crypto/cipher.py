@@ -20,16 +20,15 @@
 
 """A shim around PyCA for accessing symmetric ciphers needed by AsyncSSH"""
 
+import warnings
 from types import ModuleType
 from typing import Any, MutableMapping, Optional, Tuple
-import warnings
 
+import cryptography.hazmat.primitives.ciphers.algorithms as _algs
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers import Cipher, CipherContext
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.ciphers.modes import CBC, CTR
-
-import cryptography.hazmat.primitives.ciphers.algorithms as _algs
 
 _decrepit_algs: Optional[ModuleType]
 

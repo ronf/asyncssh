@@ -20,9 +20,9 @@
 
 """SSH message authentication handlers"""
 
-from hashlib import md5, sha1, sha224, sha256, sha384, sha512
 import hmac
-from typing import Dict, Callable, List, Tuple
+from hashlib import md5, sha1, sha224, sha256, sha384, sha512
+from typing import Callable, Dict, List, Tuple
 
 from .packet import UInt32, UInt64
 

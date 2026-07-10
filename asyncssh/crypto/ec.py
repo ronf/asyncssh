@@ -24,11 +24,9 @@ from typing import Mapping, Optional, Type, cast
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric import ec
-from cryptography.hazmat.primitives.serialization import Encoding
-from cryptography.hazmat.primitives.serialization import PublicFormat
+from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
 from .misc import CryptoKey, PyCAKey, hashes
-
 
 # Short variable names are used here, matching names in the spec
 # pylint: disable=invalid-name

@@ -27,7 +27,12 @@
 # The file ``ssh_user_ca`` must exist with a cert-authority entry of
 # the certificate authority which can sign valid client certificates.
 
-import asyncio, asyncssh, os, sys
+import asyncio
+import os
+import sys
+
+import asyncssh
+
 
 class MySFTPServer(asyncssh.SFTPServer):
     def __init__(self, chan: asyncssh.SSHServerChannel):

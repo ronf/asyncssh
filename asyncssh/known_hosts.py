@@ -25,10 +25,9 @@
 """Parser for SSH known_hosts files"""
 
 import binascii
-from hashlib import sha1
 import hmac
-from typing import Callable, Dict, List, Optional
-from typing import Sequence, Tuple, Union, cast
+from hashlib import sha1
+from typing import Callable, Dict, List, Optional, Sequence, Tuple, Union, cast
 
 try:
     from .crypto import X509NamePattern
@@ -38,12 +37,17 @@ except ImportError: # pragma: no cover
 
 from .misc import IPAddress, ip_address, read_file
 from .pattern import HostPatternList
-from .public_key import KeyImportError
-from .public_key import SSHKey, SSHCertificate, SSHX509Certificate
-from .public_key import import_public_key, import_certificate
-from .public_key import import_certificate_subject
-from .public_key import load_public_keys, load_certificates
-
+from .public_key import (
+    KeyImportError,
+    SSHCertificate,
+    SSHKey,
+    SSHX509Certificate,
+    import_certificate,
+    import_certificate_subject,
+    import_public_key,
+    load_certificates,
+    load_public_keys,
+)
 
 _HostPattern = Union['_PlainHost', '_HashedHost']
 _HostEntry = Tuple[Optional[str], Optional[SSHKey],

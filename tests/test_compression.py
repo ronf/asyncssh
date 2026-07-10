@@ -23,8 +23,12 @@
 import os
 import unittest
 
-from asyncssh.compression import get_compression_algs, get_compression_params
-from asyncssh.compression import get_compressor, get_decompressor
+from asyncssh.compression import (
+    get_compression_algs,
+    get_compression_params,
+    get_compressor,
+    get_decompressor,
+)
 
 
 class TestCompression(unittest.TestCase):

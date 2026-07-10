@@ -20,8 +20,12 @@
 # Contributors:
 #     Ron Frederick - initial implementation, API, and documentation
 
-import asyncio, asyncssh, sys
+import asyncio
+import sys
 from typing import Optional
+
+import asyncssh
+
 
 class MySSHClientSession(asyncssh.SSHClientSession):
     def data_received(self, data: str, datatype: asyncssh.DataType) -> None:

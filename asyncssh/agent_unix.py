@@ -24,7 +24,6 @@ import asyncio
 import errno
 from typing import TYPE_CHECKING, Tuple
 
-
 if TYPE_CHECKING:
     # pylint: disable=cyclic-import
     from .agent import AgentReader, AgentWriter

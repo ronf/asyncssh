@@ -21,25 +21,37 @@
 """SSH Diffie-Hellman, ECDH, and Edwards DH key exchange handlers"""
 
 from hashlib import sha1, sha224, sha256, sha384, sha512
-from typing import TYPE_CHECKING, Callable, Mapping, Optional
-from typing import Protocol, Type, cast
+from typing import TYPE_CHECKING, Callable, Mapping, Optional, Protocol, Type, cast
 
 from .constants import DEFAULT_LANG
-from .crypto import Curve25519DH, Curve448DH, DH, ECDH, PQClass, MLKEM, SNTRUP
-from .crypto import curve25519_available, curve448_available
-from .crypto import mlkem_available, sntrup_available
+from .crypto import (
+    DH,
+    ECDH,
+    MLKEM,
+    SNTRUP,
+    Curve448DH,
+    Curve25519DH,
+    PQClass,
+    curve448_available,
+    curve25519_available,
+    mlkem_available,
+    sntrup_available,
+)
 from .gss import GSSError
-from .kex import Kex, register_kex_alg, register_gss_kex_alg
-from .misc import HashType, KeyExchangeFailed, ProtocolError
-from .misc import get_symbol_names, run_in_executor
-from .packet import Boolean, MPInt, String, UInt32, SSHPacket
+from .kex import Kex, register_gss_kex_alg, register_kex_alg
+from .misc import (
+    HashType,
+    KeyExchangeFailed,
+    ProtocolError,
+    get_symbol_names,
+    run_in_executor,
+)
+from .packet import Boolean, MPInt, SSHPacket, String, UInt32
 from .public_key import SigningKey, VerifyingKey
-
 
 if TYPE_CHECKING:
     # pylint: disable=cyclic-import
-    from .connection import SSHConnection, SSHClientConnection
-    from .connection import SSHServerConnection
+    from .connection import SSHClientConnection, SSHConnection, SSHServerConnection
 
 
 class _ECDHKey(Protocol):

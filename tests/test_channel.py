@@ -25,24 +25,29 @@ import os
 import tempfile
 import unittest
 from signal import SIGINT
-
 from unittest.mock import patch
 
 import asyncssh
-
-from asyncssh.constants import DEFAULT_LANG, MSG_USERAUTH_REQUEST
-from asyncssh.constants import MSG_CHANNEL_OPEN_CONFIRMATION
-from asyncssh.constants import MSG_CHANNEL_OPEN_FAILURE
-from asyncssh.constants import MSG_CHANNEL_WINDOW_ADJUST
-from asyncssh.constants import MSG_CHANNEL_DATA
-from asyncssh.constants import MSG_CHANNEL_EXTENDED_DATA
-from asyncssh.constants import MSG_CHANNEL_EOF, MSG_CHANNEL_CLOSE
-from asyncssh.constants import MSG_CHANNEL_SUCCESS
+from asyncssh.constants import (
+    DEFAULT_LANG,
+    MSG_CHANNEL_CLOSE,
+    MSG_CHANNEL_DATA,
+    MSG_CHANNEL_EOF,
+    MSG_CHANNEL_EXTENDED_DATA,
+    MSG_CHANNEL_OPEN_CONFIRMATION,
+    MSG_CHANNEL_OPEN_FAILURE,
+    MSG_CHANNEL_SUCCESS,
+    MSG_CHANNEL_WINDOW_ADJUST,
+    MSG_USERAUTH_REQUEST,
+)
 from asyncssh.packet import Byte, String, UInt32
 from asyncssh.public_key import CERT_TYPE_USER
-from asyncssh.stream import SSHTCPStreamSession, SSHUNIXStreamSession
-from asyncssh.stream import SSHTunTapStreamSession
-from asyncssh.tuntap import SSH_TUN_MODE_POINTTOPOINT, SSH_TUN_MODE_ETHERNET
+from asyncssh.stream import (
+    SSHTCPStreamSession,
+    SSHTunTapStreamSession,
+    SSHUNIXStreamSession,
+)
+from asyncssh.tuntap import SSH_TUN_MODE_ETHERNET, SSH_TUN_MODE_POINTTOPOINT
 
 from .server import Server, ServerTestCase
 from .util import asynctest, echo, make_certificate

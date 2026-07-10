@@ -23,15 +23,25 @@
 from hashlib import sha256
 from typing import Optional, Tuple, cast
 
-from .asn1 import der_encode, der_decode
+from .asn1 import der_decode, der_encode
 from .crypto import ECDSAPublicKey
-from .packet import Byte, MPInt, String, UInt32, SSHPacket
-from .public_key import KeyExportError, SSHKey, SSHOpenSSHCertificateV01
-from .public_key import register_public_key_alg, register_certificate_alg
-from .public_key import register_sk_alg
-from .sk import SSH_SK_ECDSA, SSH_SK_USER_PRESENCE_REQD
-from .sk import sk_enroll, sk_sign, sk_webauthn_prefix, sk_use_webauthn
-
+from .packet import Byte, MPInt, SSHPacket, String, UInt32
+from .public_key import (
+    KeyExportError,
+    SSHKey,
+    SSHOpenSSHCertificateV01,
+    register_certificate_alg,
+    register_public_key_alg,
+    register_sk_alg,
+)
+from .sk import (
+    SSH_SK_ECDSA,
+    SSH_SK_USER_PRESENCE_REQD,
+    sk_enroll,
+    sk_sign,
+    sk_use_webauthn,
+    sk_webauthn_prefix,
+)
 
 _PrivateKeyArgs = Tuple[bytes, bytes, str, int, bytes, bytes]
 _PublicKeyArgs = Tuple[bytes, bytes, str]

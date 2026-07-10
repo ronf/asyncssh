@@ -31,7 +31,6 @@ from typing import TYPE_CHECKING, Tuple, Union, cast
 
 from .misc import open_file
 
-
 if TYPE_CHECKING:
     # pylint: disable=cyclic-import
     from .agent import AgentReader, AgentWriter

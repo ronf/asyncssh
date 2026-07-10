@@ -31,8 +31,14 @@ import sys
 import asyncssh
 from asyncssh.misc import async_context_manager
 
-from .util import AsyncTestCase, all_tasks, current_task, get_test_key
-from .util import run, x509_available
+from .util import (
+    AsyncTestCase,
+    all_tasks,
+    current_task,
+    get_test_key,
+    run,
+    x509_available,
+)
 
 
 class Server(asyncssh.SSHServer):

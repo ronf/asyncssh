@@ -23,12 +23,10 @@
 import os
 import socket
 import unittest
-
 from pathlib import Path
 from unittest.mock import patch
 
 import asyncssh
-
 from asyncssh.config import SSHClientConfig, SSHServerConfig
 
 from .util import TempDirTestCase

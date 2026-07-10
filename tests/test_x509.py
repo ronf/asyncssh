@@ -28,9 +28,12 @@ from cryptography import x509
 from .util import get_test_key, x509_available
 
 if x509_available: # pragma: no branch
-    from asyncssh.crypto import X509Name, X509NamePattern
-    from asyncssh.crypto import generate_x509_certificate
-    from asyncssh.crypto import import_x509_certificate
+    from asyncssh.crypto import (
+        X509Name,
+        X509NamePattern,
+        generate_x509_certificate,
+        import_x509_certificate,
+    )
 
 _purpose_secureShellClient = x509.ObjectIdentifier('1.3.6.1.5.5.7.3.21')
 

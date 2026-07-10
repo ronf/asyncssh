@@ -23,20 +23,27 @@
 import asyncio
 import os
 import socket
-
 from unittest.mock import patch
 
 import asyncssh
-
 from asyncssh.misc import maybe_wait_closed
 from asyncssh.packet import Boolean, String, UInt32
-
-from asyncssh.x11 import XAUTH_FAMILY_IPV4, XAUTH_FAMILY_DECNET
-from asyncssh.x11 import XAUTH_FAMILY_IPV6, XAUTH_FAMILY_HOSTNAME
-from asyncssh.x11 import XAUTH_FAMILY_WILD, XAUTH_PROTO_COOKIE
-from asyncssh.x11 import XAUTH_COOKIE_LEN, X11_BASE_PORT, X11_LISTEN_HOST
-from asyncssh.x11 import SSHXAuthorityEntry, SSHX11ClientListener
-from asyncssh.x11 import walk_xauth, lookup_xauth, update_xauth
+from asyncssh.x11 import (
+    X11_BASE_PORT,
+    X11_LISTEN_HOST,
+    XAUTH_COOKIE_LEN,
+    XAUTH_FAMILY_DECNET,
+    XAUTH_FAMILY_HOSTNAME,
+    XAUTH_FAMILY_IPV4,
+    XAUTH_FAMILY_IPV6,
+    XAUTH_FAMILY_WILD,
+    XAUTH_PROTO_COOKIE,
+    SSHX11ClientListener,
+    SSHXAuthorityEntry,
+    lookup_xauth,
+    update_xauth,
+    walk_xauth,
+)
 
 from .server import Server, ServerTestCase
 from .util import asynctest

@@ -23,10 +23,19 @@
 import codecs
 import unittest
 
-from asyncssh.asn1 import der_encode, der_decode
-from asyncssh.asn1 import ASN1EncodeError, ASN1DecodeError
-from asyncssh.asn1 import BitString, IA5String, ObjectIdentifier
-from asyncssh.asn1 import RawDERObject, TaggedDERObject, PRIVATE
+from asyncssh.asn1 import (
+    PRIVATE,
+    ASN1DecodeError,
+    ASN1EncodeError,
+    BitString,
+    IA5String,
+    ObjectIdentifier,
+    RawDERObject,
+    TaggedDERObject,
+    der_decode,
+    der_encode,
+)
+
 
 class _TestASN1(unittest.TestCase):
     """Unit tests for ASN.1 module"""

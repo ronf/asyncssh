@@ -20,14 +20,13 @@
 
 """Asymmetric key password based encryption functions"""
 
-from hashlib import md5, sha1
 import os
+from hashlib import md5, sha1
 from typing import Callable, Dict, Sequence, Tuple, Union
 
-from .asn1 import ASN1DecodeError, ObjectIdentifier, der_encode, der_decode
+from .asn1 import ASN1DecodeError, ObjectIdentifier, der_decode, der_encode
 from .crypto import BasicCipher, get_cipher_params, pbkdf2_hmac
 from .misc import BytesOrStr, HashType
-
 
 _Cipher = Union[BasicCipher, '_RFC1423Pad']
 

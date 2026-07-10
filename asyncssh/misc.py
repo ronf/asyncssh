@@ -31,29 +31,54 @@ import shlex
 import socket
 import sys
 import time
-
 from datetime import datetime, timezone
 from pathlib import Path, PurePath
 from random import SystemRandom
 from types import TracebackType
-from typing import Any, AsyncContextManager, Awaitable, Callable, Dict
-from typing import Generator, Generic, IO, Iterator, List, Literal, Mapping
-from typing import Sequence, Optional, Protocol, Tuple, Type, TypeVar, Union
-from typing import cast, overload
+from typing import (
+    IO,
+    Any,
+    AsyncContextManager,
+    Awaitable,
+    Callable,
+    Dict,
+    Generator,
+    Generic,
+    Iterator,
+    List,
+    Literal,
+    Mapping,
+    Optional,
+    Protocol,
+    Sequence,
+    Tuple,
+    Type,
+    TypeVar,
+    Union,
+    cast,
+    overload,
+)
 
-from .constants import DEFAULT_LANG
-from .constants import DISC_COMPRESSION_ERROR, DISC_CONNECTION_LOST
-from .constants import DISC_HOST_KEY_NOT_VERIFIABLE, DISC_ILLEGAL_USER_NAME
-from .constants import DISC_KEY_EXCHANGE_FAILED, DISC_MAC_ERROR
-from .constants import DISC_NO_MORE_AUTH_METHODS_AVAILABLE
-from .constants import DISC_PROTOCOL_ERROR, DISC_PROTOCOL_VERSION_NOT_SUPPORTED
-from .constants import DISC_SERVICE_NOT_AVAILABLE
+from .constants import (
+    DEFAULT_LANG,
+    DISC_COMPRESSION_ERROR,
+    DISC_CONNECTION_LOST,
+    DISC_HOST_KEY_NOT_VERIFIABLE,
+    DISC_ILLEGAL_USER_NAME,
+    DISC_KEY_EXCHANGE_FAILED,
+    DISC_MAC_ERROR,
+    DISC_NO_MORE_AUTH_METHODS_AVAILABLE,
+    DISC_PROTOCOL_ERROR,
+    DISC_PROTOCOL_VERSION_NOT_SUPPORTED,
+    DISC_SERVICE_NOT_AVAILABLE,
+)
 
 _pywin32_available = False
 
 if sys.platform == 'win32': # pragma: no cover
     try:
         import msvcrt
+
         import win32file
         import winioctlcon
         _pywin32_available = True

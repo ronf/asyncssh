@@ -28,7 +28,6 @@ from .logging import SSHLogger
 from .misc import HashType
 from .packet import SSHPacketHandler
 
-
 if TYPE_CHECKING:
     # pylint: disable=cyclic-import
     from .connection import SSHConnection

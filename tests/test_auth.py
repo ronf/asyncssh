@@ -25,17 +25,29 @@ import inspect
 import unittest
 
 import asyncssh
-
-from asyncssh.auth import MSG_USERAUTH_PK_OK, lookup_client_auth
-from asyncssh.auth import get_supported_server_auth_methods, lookup_server_auth
-from asyncssh.auth import MSG_USERAUTH_GSSAPI_RESPONSE
-from asyncssh.constants import MSG_USERAUTH_REQUEST, MSG_USERAUTH_FAILURE
-from asyncssh.constants import MSG_USERAUTH_SUCCESS
+from asyncssh.auth import (
+    MSG_USERAUTH_GSSAPI_RESPONSE,
+    MSG_USERAUTH_PK_OK,
+    get_supported_server_auth_methods,
+    lookup_client_auth,
+    lookup_server_auth,
+)
+from asyncssh.constants import (
+    MSG_USERAUTH_FAILURE,
+    MSG_USERAUTH_REQUEST,
+    MSG_USERAUTH_SUCCESS,
+)
 from asyncssh.gss import GSSClient, GSSServer
-from asyncssh.packet import SSHPacket, Boolean, Byte, NameList, String
+from asyncssh.packet import Boolean, Byte, NameList, SSHPacket, String
 
-from .util import asynctest, gss_available, patch_gss
-from .util import AsyncTestCase, ConnectionStub, get_test_key
+from .util import (
+    AsyncTestCase,
+    ConnectionStub,
+    asynctest,
+    get_test_key,
+    gss_available,
+    patch_gss,
+)
 
 
 class _AuthConnectionStub(ConnectionStub):

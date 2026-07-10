@@ -27,7 +27,11 @@
 # The file ``ssh_user_ca`` must exist with a cert-authority entry of
 # the certificate authority which can sign valid client certificates.
 
-import asyncio, asyncssh, sys
+import asyncio
+import sys
+
+import asyncssh
+
 
 def handle_client(process: asyncssh.SSHServerProcess) -> None:
     username = process.get_extra_info('username')

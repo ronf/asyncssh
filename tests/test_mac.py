@@ -23,7 +23,7 @@
 import os
 import unittest
 
-from asyncssh.mac import get_mac_algs, get_mac_params, get_mac
+from asyncssh.mac import get_mac, get_mac_algs, get_mac_params
 
 
 class _TestMAC(unittest.TestCase):
