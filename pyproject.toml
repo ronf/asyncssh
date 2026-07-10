@@ -61,12 +61,12 @@ asyncssh = ['py.typed']
 # Separated by commas, specifies files or directories to skip
 skip = "*.json,*.csv,./docs/build"
 
-# A list of comma-separated words that codespell should ignore
-ignore-words-list = "foo,bar,teh"
-
 # Choose the dictionary confidence level (1-4, default is 3)
 # 1 = low confidence (more false positives), 4 = high confidence
 check-filenames = true
 
 # If you use a custom dictionary file for project-specific jargon
-user-write-by-word = true
+user-write-words = true
+
+# A list of comma-separated words that codespell should ignore
+ignore-words-list = ""
