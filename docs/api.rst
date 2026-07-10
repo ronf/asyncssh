@@ -1014,11 +1014,13 @@ Forward Tracker Classes
 
 The ``forward_local_*`` methods on :class:`SSHClientConnection` accept an
 optional ``tracker_factory`` argument: a zero-argument callable invoked
-once per accepted connection which returns a new
-:class:`SSHForwardTracker` instance. asyncssh then calls that instance's
-hooks for the life of the connection, giving applications a passive view
-of per-connection lifecycle and byte flow -- useful for idle-based
-auto-shutdown, connection counting, or traffic metrics.
+once per accepted connection which returns a tracker instance --
+:class:`SSHPortForwardTracker` for TCP listeners or
+:class:`SSHPathForwardTracker` for UNIX domain listeners. asyncssh then
+calls that instance's hooks for the life of the connection, giving
+applications a passive view of per-connection lifecycle and byte flow --
+useful for idle-based auto-shutdown, connection counting, or traffic
+metrics.
 
 The hooks are pure observers: they run inside the asyncio event loop,
 must not block, and never alter the forwarded data (return values are
@@ -1033,8 +1035,9 @@ Use :class:`SSHPortForwardTracker` with the TCP-listener methods
 :class:`SSHPathForwardTracker` with the UNIX-domain-listener methods
 (:meth:`forward_local_path() <SSHClientConnection.forward_local_path>` and
 :meth:`forward_local_path_to_port()
-<SSHClientConnection.forward_local_path_to_port>`). The two differ only in
-the signature of ``connection_made``.
+<SSHClientConnection.forward_local_path_to_port>`). The two classes share
+the same set of hooks and differ only in the signature of
+``connection_made``.
 
    .. code-block:: python
 
@@ -1052,25 +1055,23 @@ the signature of ``connection_made``.
           '', 0, 'remote-host', 80,
           tracker_factory=lambda: ConnCounter(counter))
 
-.. autoclass:: SSHForwardTracker()
+.. autoclass:: SSHPortForwardTracker()
 
-   ============================== =
+   ==================================== =
+   .. automethod:: connection_made
    .. automethod:: connection_lost
    .. automethod:: forward_local_bytes
    .. automethod:: forward_remote_bytes
-   ============================== =
-
-.. autoclass:: SSHPortForwardTracker()
-
-   ============================== =
-   .. automethod:: connection_made
-   ============================== =
+   ==================================== =
 
 .. autoclass:: SSHPathForwardTracker()
 
-   ============================== =
+   ==================================== =
    .. automethod:: connection_made
-   ============================== =
+   .. automethod:: connection_lost
+   .. automethod:: forward_local_bytes
+   .. automethod:: forward_remote_bytes
+   ==================================== =
 
 
 Listener Classes
