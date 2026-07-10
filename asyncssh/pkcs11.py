@@ -207,7 +207,7 @@ if pkcs11_available:
         """Load PIV keys and X.509 certificates from a PKCS#11 token
 
            This function loads a list of SSH keypairs with optional X.509
-           cerificates from attached PKCS#11 security tokens. The PKCS#11
+           certificates from attached PKCS#11 security tokens. The PKCS#11
            provider must be specified, along with a user PIN if the
            tokens are set to require one.
 

@@ -3350,7 +3350,7 @@ class SFTPClientFile:
 
     @property
     def handle(self) -> bytes:
-        """Return handle or raise an error if clsoed"""
+        """Return handle or raise an error if closed"""
 
         if self._handle is None:
             raise ValueError('I/O operation on closed file')
@@ -4645,7 +4645,7 @@ class SFTPClient:
                The file attributes to use when creating the directory or
                any intermediate directories
            :param exist_ok: (optional)
-               Whether or not to raise an error if thet target directory
+               Whether or not to raise an error if the target directory
                already exists
            :type path: :class:`PurePath <pathlib.PurePath>`, `str`, or `bytes`
            :type attrs: :class:`SFTPAttrs`

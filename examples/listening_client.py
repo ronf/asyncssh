@@ -42,7 +42,7 @@ async def run_client() -> None:
         if server:
             await server.wait_closed()
         else:
-            print('Listener couldn\'t be opened.', file=sys.stderr)
+            print("Listener couldn't be opened.", file=sys.stderr)
 
 try:
     asyncio.run(run_client())

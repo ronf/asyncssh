@@ -7630,7 +7630,7 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
        :param x509_purposes: (optional)
            A list of purposes allowed in the ExtendedKeyUsage of a
            certificate used for X.509 server certificate authentication,
-           defulting to 'secureShellServer'. If this argument is explicitly
+           defaulting to 'secureShellServer'. If this argument is explicitly
            set to `None`, the server certificate's ExtendedKeyUsage will
            not be checked.
        :param username: (optional)
@@ -7878,7 +7878,7 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
            the system resolver's search domains when no matches are found
            in canonical_domains, defaulting to `True`.
        :param canonicalize_max_dots: (optional)
-           Tha maximum number of dots which can appear in a hostname
+           The maximum number of dots which can appear in a hostname
            before hostname canonicalization is disabled, defaulting
            to 1. Hostnames with more than this number of dots are
            treated as already being fully qualified and passed as-is
@@ -8522,7 +8522,7 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
        :param x509_purposes: (optional)
            A list of purposes allowed in the ExtendedKeyUsage of a
            certificate used for X.509 client certificate authentication,
-           defulting to 'secureShellClient'. If this argument is explicitly
+           defaulting to 'secureShellClient'. If this argument is explicitly
            set to `None`, the client certificate's ExtendedKeyUsage will
            not be checked.
        :param host_based_auth: (optional)
@@ -8712,7 +8712,7 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
            the system resolver's search domains when no matches are found
            in canonical_domains, defaulting to `True`.
        :param canonicalize_max_dots: (optional)
-           Tha maximum number of dots which can appear in a hostname
+           The maximum number of dots which can appear in a hostname
            before hostname canonicalization is disabled, defaulting
            to 1. Hostnames with more than this number of dots are
            treated as already being fully qualified and passed as-is
