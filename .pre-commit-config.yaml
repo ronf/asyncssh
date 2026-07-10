@@ -17,4 +17,3 @@ repos:
       - id: codespell  # See pyproject.toml for args
         additional_dependencies:
           - tomli
-        exclude: '^docs/changes\.rst$|^\.?pylintrc$'

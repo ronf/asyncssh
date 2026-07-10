@@ -46,7 +46,7 @@ Release 2.23.0 (8 May 2026)
 * Enabled support for RSA with SHA-2 signatures in ssh-agent and Pageant.
   Thanks go to GitHub user Netzvamp for reporting this.
 
-* Changed MAC algorithm negotation to be skipped when using AEAD ciphers.
+* Changed MAC algorithm negotiation to be skipped when using AEAD ciphers.
   Thanks go to GitHub user LilleCarl for reporting this issue and
   suggesting a potential fix.
 
@@ -107,7 +107,7 @@ Release 2.22.0 (21 Dec 2025)
 * Fixed issue with the OpenSSL legacy provider on Windows and
   re-enabled OpenSSL use in unit tests on Windows.
 
-* Inproved "run multiple clients" example to show the hostname being
+* Improved "run multiple clients" example to show the hostname being
   accessed by each task.
 
 * Added unit testing for Python 3.14 and dropped 3.8 and 3.9.
@@ -296,7 +296,7 @@ Release 2.18.0 (26 Oct 2024)
   waiting more than once for a process to finish. Thanks go to GitHub
   user starflows for reporting this issue.
 
-* Handled an error when attempting to import older verions of pyOpenSSL.
+* Handled an error when attempting to import older versions of pyOpenSSL.
   Thanks go to Maximilian Knespel for reporting this issue and testing
   the fix.
 
@@ -681,7 +681,7 @@ Release 2.11.0 (4 Jun 2022)
   * Added a cache of directory listing and stat results to improve
     performance when matching patterns with overlapping paths.
   * Fixed an "index out of range" bug in recursive glob matching
-    and aligned it better with results reeturned by UNIX shells.
+    and aligned it better with results returned by UNIX shells.
   * Changed matching to ignore inaccessible or non-existent paths
     in a glob pattern, to allow accessible paths to be fully
     explored before returning an error. The error handler will now
