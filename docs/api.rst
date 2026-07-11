@@ -475,12 +475,13 @@ Process Classes
    .. autoattribute:: stderr
    ============================== =
 
-   ============================== =
+   ================================ =
    Other server process methods
-   ============================== =
+   ================================ =
    .. automethod:: get_extra_info
    .. automethod:: redirect
-   ============================== =
+   .. automethod:: set_redirect_pid
+   ================================ =
 
    ================================ =
    Server process close methods

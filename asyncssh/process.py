@@ -27,6 +27,7 @@ import inspect
 import io
 import os
 from pathlib import PurePath
+import signal
 import socket
 import stat
 from types import TracebackType
@@ -461,10 +462,25 @@ class _PipeWriter(_UnicodeWriter[AnyStr], asyncio.BaseProtocol):
         self._transport.write(self.encode(data))
 
     def write_exception(self, exc: Exception) -> None:
-        """Write terminal size changes to the pipe if it is a TTY"""
+        """Write signals and terminal size changes to the local process/tty"""
 
-        if isinstance(exc, TerminalSizeChanged) and self._tty:
-            set_terminal_size(self._tty, *exc.term_size)
+        if isinstance(exc, BreakReceived):
+            if self._process.redirect_pid:
+                os.kill(self._process.redirect_pid, signal.SIGINT)
+        elif isinstance(exc, SignalReceived):
+            if self._process.redirect_pid:
+                try:
+                    sig = getattr(signal, f'SIG{exc.signal}')
+                except AttributeError:
+                    pass
+                else:
+                    os.kill(self._process.redirect_pid, sig)
+        elif isinstance(exc, TerminalSizeChanged): # pragma: no branch
+            if self._tty:
+                set_terminal_size(self._tty, *exc.term_size)
+
+            if self._process.redirect_pid:
+                os.kill(self._process.redirect_pid, signal.SIGWINCH)
 
     def write_eof(self) -> None:
         """Write EOF to the pipe"""
@@ -728,8 +744,8 @@ class ProcessError(Error):
         self.stderr = stderr
 
         if exit_signal:
-            signal, core_dumped, msg, lang = exit_signal
-            reason = 'Process exited with signal ' + signal + \
+            sig, core_dumped, msg, lang = exit_signal
+            reason = 'Process exited with signal ' + sig + \
                      (': ' + msg if msg else '') + \
                      (' (core dumped)' if core_dumped else '')
         elif exit_status:
@@ -816,6 +832,8 @@ class SSHProcess(SSHStreamSession, Generic[AnyStr]):
 
         self._paused_write_streams: Set[Optional[int]] = set()
 
+        self._redirect_pid: Optional[int] = None
+
     async def __aenter__(self) -> Self:
         """Allow SSHProcess to be used as an async context manager"""
 
@@ -887,6 +905,12 @@ class SSHProcess(SSHStreamSession, Generic[AnyStr]):
 
         assert self._chan is not None
         return self._chan.get_extra_info(name, default)
+
+    @property
+    def redirect_pid(self) -> Optional[int]:
+        """The pid that signals and terminal changes should be sent to"""
+
+        return self._redirect_pid
 
     async def _create_reader(self, source: ProcessSource, bufsize: int,
                              send_eof: bool, recv_eof: bool,
@@ -1492,6 +1516,7 @@ class SSHClientProcess(SSHProcess[AnyStr], SSHClientStreamSession[AnyStr]):
 
         self._chan.send_break(msec)
 
+    # pylint: disable=redefined-outer-name
     def send_signal(self, signal: str) -> None:
         """Send a signal to the process
 
@@ -1777,6 +1802,11 @@ class SSHServerProcess(SSHProcess[AnyStr], SSHServerStreamSession[AnyStr]):
 
         await self.redirect(None, None, source, bufsize, send_eof, True)
 
+    def set_redirect_pid(self, pid: Optional[int]) -> None:
+        """Set the pid that signals and terminal changes should be sent to"""
+
+        self._redirect_pid = pid
+
     def get_terminal_type(self) -> Optional[str]:
         """Return the terminal type set by the client for the process
 
@@ -1841,6 +1871,7 @@ class SSHServerProcess(SSHProcess[AnyStr], SSHServerStreamSession[AnyStr]):
 
         self._chan.exit(status)
 
+    # pylint: disable=redefined-outer-name
     def exit_with_signal(self, signal: str, core_dumped: bool = False,
                          msg: str = '', lang: str = DEFAULT_LANG) -> None:
         """Send exit signal and close the channel

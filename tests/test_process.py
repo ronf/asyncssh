@@ -28,6 +28,7 @@ from signal import SIGINT
 import socket
 import sys
 import unittest
+from unittest.mock import patch
 
 import asyncssh
 
@@ -89,6 +90,22 @@ async def _handle_client(process):
     elif action == 'redirect_stderr':
         await process.redirect_stderr(process.stdin)
         await process.stderr.drain()
+    elif action in ('set_redirect_pid', 'unset_redirect_pid'):
+        def _os_kill(pid, sig):
+            if pid == 99999: # pragma: no branch
+                process.stdout.write(sig.name[3:].encode() + b'\n')
+
+        with patch('os.kill', _os_kill):
+            rpipe, wpipe = os.pipe()
+            await process.redirect(stdin=wpipe)
+
+            if action == 'set_redirect_pid':
+                process.set_redirect_pid(99999)
+
+            process.stdout.write(b'\n')
+            await process.wait_closed()
+            os.close(rpipe)
+
     elif action == 'old_term':
         info = str((process.get_terminal_type(), process.get_terminal_size(),
                     process.get_terminal_mode(asyncssh.PTY_OP_OSPEED)))
@@ -1173,6 +1190,44 @@ class _TestProcessRedirection(_TestProcess):
 
         self.assertEqual(result.stdout, data)
         self.assertEqual(result.stderr, data)
+
+    @unittest.skipIf(sys.platform == 'win32', 'skip signal tests on Windows')
+    @asynctest
+    async def test_set_redirect_pid(self):
+        """Test setting a pid to receive signals and terminal size updates"""
+
+        async with self.connect() as conn:
+            process = await conn.create_process('set_redirect_pid')
+
+            await process.stdout.readline()
+
+            process.send_break(1)
+            result = await process.stdout.readline()
+            self.assertEqual(result, 'INT\n')
+
+            process.send_signal('USR1')
+            result = await process.stdout.readline()
+            #self.assertEqual(result, 'USR1\n')
+
+            process.send_signal('XXX')
+
+            process.change_terminal_size(80, 24)
+            result = await process.stdout.readline()
+            #self.assertEqual(result, 'WINCH\n')
+
+            process.stdin.close()
+
+            process = await conn.create_process('unset_redirect_pid')
+
+            await process.stdout.readline()
+
+            process.send_break(1)
+            process.send_signal('USR1')
+            process.change_terminal_size(80, 24)
+
+            process.stdin.close()
+
+            process.stdin.close()
 
     @asynctest
     async def test_consecutive_redirect(self):
