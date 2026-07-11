@@ -412,7 +412,7 @@ Release 2.15.0 (3 Jul 2024)
   to reproduce it.
 
 * Fixed a regression from 2.14.1 related to rekeying an SSH connection
-  when there's acitivty on the connection in the middle of rekeying.
+  when there's activity on the connection in the middle of rekeying.
   Thanks go to GitHub user eyalgolan1337 for helping to narrow down
   this problem and test the fix.
 

@@ -1411,7 +1411,7 @@ does not contain an ExtendedKeyUsage or if the ExtendedKeyUsage contains
 the OID 2.5.29.37.0, which indicates the certificate can be used for any
 purpose.
 
-This check defaults to requiring a purpose of 'secureShellCient' for
+This check defaults to requiring a purpose of 'secureShellClient' for
 client certificates and 'secureShellServer' for server certificates
 and should not normally need to be changed. However, certificates which
 contain other purposes can be supported by providing alternate values to
