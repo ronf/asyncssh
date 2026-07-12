@@ -3238,9 +3238,8 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
                reject and close it.
            :param tracker_factory:
                An optional callable invoked once per accepted connection
-               which returns a new :class:`SSHPortForwardTracker` (or
-               :class:`SSHForwardTracker` subclass) for observing that
-               connection's lifecycle. `None` (default) disables tracking
+               which returns a new :class:`SSHPortForwardTracker` for observing
+               that connection's lifecycle. `None` (default) disables tracking
                with no overhead.
            :type listen_host: `str`
            :type listen_port: `int`
@@ -3324,9 +3323,8 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
                The path on the remote host to forward the connections to
            :param tracker_factory:
                An optional callable invoked once per accepted connection
-               which returns a new :class:`SSHPathForwardTracker` (or
-               :class:`SSHForwardTracker` subclass) for observing that
-               connection's lifecycle. `None` (default) disables tracking
+               which returns a new :class:`SSHPathForwardTracker` for observing
+               that connection's lifecycle. `None` (default) disables tracking
                with no overhead.
            :type listen_path: `str`
            :type dest_path: `str`
@@ -5347,9 +5345,8 @@ class SSHClientConnection(SSHConnection):
                reject and close it.
            :param tracker_factory:
                An optional callable invoked once per accepted connection
-               which returns a new :class:`SSHPortForwardTracker` (or
-               :class:`SSHForwardTracker` subclass) for observing that
-               connection's lifecycle. `None` (default) disables tracking
+               which returns a new :class:`SSHPortForwardTracker` for observing
+               that connection's lifecycle. `None` (default) disables tracking
                with no overhead.
            :type listen_host: `str`
            :type listen_port: `int`
@@ -5424,9 +5421,8 @@ class SSHClientConnection(SSHConnection):
                The port number to forward the connections to
            :param tracker_factory:
                An optional callable invoked once per accepted connection
-               which returns a new :class:`SSHPathForwardTracker` (or
-               :class:`SSHForwardTracker` subclass) for observing that
-               connection's lifecycle. `None` (default) disables tracking
+               which returns a new :class:`SSHPathForwardTracker` for observing
+               that connection's lifecycle. `None` (default) disables tracking
                with no overhead.
            :type listen_path: `str`
            :type dest_host: `str`
