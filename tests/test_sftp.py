@@ -482,6 +482,17 @@ class _SFTPAttrsSFTPServer(SFTPServer):
             yield name
 
 
+class _InvalidFilenameSFTPServer(SFTPServer):
+    """Have scandir send invalid filenames with path separators"""
+
+    async def scandir(self, path):
+        """Add a leading slash to names being returned"""
+
+        async for name in super().scandir(path):
+            name.filename = b'/' + name.filename
+            yield name
+
+
 class _AsyncSFTPServer(SFTPServer):
     """Implement all SFTP callbacks as async methods"""
 
@@ -5010,6 +5021,28 @@ class _TestSFTPAsync(_TestSFTP):
 
         name = await sftp.realpath('dir/../file1', check=FXRP_STAT_ALWAYS)
         self.assertEqual(name.attrs.type, FILEXFER_TYPE_REGULAR)
+
+
+class _TestSFTPInvalidFilename(_CheckSFTP):
+    """Test a server sending back an invalid filename in scandir"""
+
+    @classmethod
+    async def start_server(cls):
+        """Start an SFTP server for the tests to use"""
+
+        return await cls.create_server(sftp_factory=_InvalidFilenameSFTPServer)
+
+    @sftp_test
+    async def test_invalid_filename(self, sftp):
+        """Test a server returning an invalid filename in scandir"""
+
+        try:
+            os.mkdir('src')
+
+            with self.assertRaises(SFTPBadMessage):
+                await sftp.get('src', 'dst', recurse=True)
+        finally:
+            remove('src dst')
 
 
 class _CheckSCP(_CheckSFTP):

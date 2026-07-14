@@ -3980,6 +3980,9 @@ class SFTPClient:
                     if filename in (b'.', b'..'):
                         continue
 
+                    if b'/' in filename or b'\\' in filename:
+                        raise SFTPBadMessage('Invalid filename')
+
                     srcfile = posixpath.join(srcpath, filename)
                     dstfile = posixpath.join(dstpath, filename)
 
