@@ -324,26 +324,30 @@ class SSHLocalForwarder(SSHForwarder, Generic[_Tracker]):
             # self._tracker remains the __init__ default of None.
             pass
 
+    def _notify_tracker(self, tracker: Optional[_Tracker],
+                         notify: Callable[[_Tracker], None]) -> None:
+        """Invoke a tracker hook, swallowing exceptions from buggy trackers"""
+
+        if tracker is not None:
+            try:
+                notify(tracker)
+            except Exception: # pylint: disable=broad-except
+                pass
+
     def data_received(self, data: bytes,
                       datatype: Optional[int] = None) -> None:
         """Handle incoming data from the local transport"""
 
-        if self._tracker is not None:
-            try:
-                self._tracker.forward_local_bytes(data)
-            except Exception: # pylint: disable=broad-except
-                pass
+        self._notify_tracker(
+            self._tracker, lambda t: t.forward_local_bytes(data))
 
         super().data_received(data, datatype)
 
     def write(self, data: bytes) -> None:
         """Write tunnel data out to the local transport"""
 
-        if self._tracker is not None:
-            try:
-                self._tracker.forward_remote_bytes(data)
-            except Exception: # pylint: disable=broad-except
-                pass
+        self._notify_tracker(
+            self._tracker, lambda t: t.forward_remote_bytes(data))
 
         super().write(data)
 
@@ -359,11 +363,7 @@ class SSHLocalForwarder(SSHForwarder, Generic[_Tracker]):
 
         tracker, self._tracker = self._tracker, None
 
-        if tracker is not None:
-            try:
-                tracker.connection_lost(exc)
-            except Exception: # pylint: disable=broad-except
-                pass
+        self._notify_tracker(tracker, lambda t: t.connection_lost(exc))
 
         super().connection_lost(exc)
 
@@ -411,11 +411,9 @@ class SSHLocalPortForwarder(SSHLocalForwarder[SSHPortForwardTracker]):
         else: # pragma: no cover
             orig_host, orig_port = '', 0
 
-        if self._tracker is not None:
-            try:
-                self._tracker.connection_made(self, orig_host, orig_port)
-            except Exception: # pylint: disable=broad-except
-                pass
+        self._notify_tracker(
+            self._tracker,
+            lambda t: t.connection_made(self, orig_host, orig_port))
 
         self.forward(orig_host, orig_port)
 
@@ -428,10 +426,7 @@ class SSHLocalPathForwarder(SSHLocalForwarder[SSHPathForwardTracker]):
 
         super().connection_made(transport)
 
-        if self._tracker is not None:
-            try:
-                self._tracker.connection_made(self)
-            except Exception: # pylint: disable=broad-except
-                pass
+        self._notify_tracker(
+            self._tracker, lambda t: t.connection_made(self))
 
         self.forward()
