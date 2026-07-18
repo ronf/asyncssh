@@ -698,7 +698,7 @@ class _TestTCPForwarding(_CheckForwarding):
                 await maybe_wait_closed(writer)
 
     @asynctest
-    async def test_forward_local_port_tracker_factory_fires_made_and_lost(self):
+    async def test_port_tracker_made_and_lost(self):
         """A port tracker sees connection_made and connection_lost"""
 
         events = []

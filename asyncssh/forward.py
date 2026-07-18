@@ -23,8 +23,8 @@
 import asyncio
 import socket
 from types import TracebackType
-from typing import TYPE_CHECKING, Any, Awaitable, Callable, Dict, Optional
-from typing import Type, Union, cast
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Dict, Generic
+from typing import Optional, Type, TypeVar, cast
 from typing_extensions import Self
 
 from .misc import ChannelOpenError, SockAddr
@@ -41,8 +41,8 @@ SSHForwarderCoro = Callable[..., Awaitable]
 class SSHForwardTracker:
     """Base class for observing the lifecycle of a forwarded connection
 
-       A tracker observes a single forwarded connection on a local
-       listener. A `tracker_factory` passed to one of the
+       A tracker observes a single forwarded connection. A
+       `tracker_factory` passed to one of the
        :meth:`forward_local_port() <SSHClientConnection.forward_local_port>`
        family of methods is called once per accepted connection and must
        return a new tracker instance, on which asyncssh then calls the
@@ -144,6 +144,8 @@ class SSHPathForwardTracker(SSHForwardTracker):
 
 SSHPortForwardTrackerFactory = Callable[[], SSHPortForwardTracker]
 SSHPathForwardTrackerFactory = Callable[[], SSHPathForwardTracker]
+
+_Tracker = TypeVar('_Tracker', bound=SSHForwardTracker)
 
 
 class SSHForwarder(asyncio.BaseProtocol):
@@ -297,27 +299,26 @@ class SSHForwarder(asyncio.BaseProtocol):
             peer.close()
 
 
-class SSHLocalForwarder(SSHForwarder):
+class SSHLocalForwarder(SSHForwarder, Generic[_Tracker]):
     """Local forwarding connection handler"""
 
     def __init__(self, conn: 'SSHConnection', coro: SSHForwarderCoro,
-                 tracker_factory:
-                     Optional[Union[SSHPortForwardTrackerFactory,
-                                    SSHPathForwardTrackerFactory]] = None):
+                 tracker_factory: Optional[Callable[[], _Tracker]] = None):
         super().__init__()
         self._conn = conn
         self._coro = coro
-        self._tracker_factory = tracker_factory
-        self._tracker: Optional[SSHForwardTracker] = None
+        self._tracker: Optional[_Tracker] = None
+        self._create_tracker(tracker_factory)
 
-    def _create_tracker(self) -> None:
+    def _create_tracker(
+            self, tracker_factory: Optional[Callable[[], _Tracker]]) -> None:
         """Instantiate this connection's tracker from the factory, if any"""
 
-        if self._tracker_factory is None:
+        if tracker_factory is None:
             return
 
         try:
-            self._tracker = self._tracker_factory()
+            self._tracker = tracker_factory()
         except Exception: # pylint: disable=broad-except
             # A buggy factory must not break forwarding;
             # self._tracker remains the __init__ default of None.
@@ -395,7 +396,7 @@ class SSHLocalForwarder(SSHForwarder):
         self._conn.create_task(self._forward(*args))
 
 
-class SSHLocalPortForwarder(SSHLocalForwarder):
+class SSHLocalPortForwarder(SSHLocalForwarder[SSHPortForwardTracker]):
     """Local TCP port forwarding connection handler"""
 
     def connection_made(self, transport: asyncio.BaseTransport) -> None:
@@ -403,25 +404,23 @@ class SSHLocalPortForwarder(SSHLocalForwarder):
 
         super().connection_made(transport)
 
-        orig_host, orig_port = '', 0
         peername = cast(SockAddr, transport.get_extra_info('peername'))
 
         if peername: # pragma: no branch
             orig_host, orig_port = peername[:2]
-
-        self._create_tracker()
+        else: # pragma: no cover
+            orig_host, orig_port = '', 0
 
         if self._tracker is not None:
             try:
-                cast(SSHPortForwardTracker, self._tracker).connection_made(
-                    self, orig_host, orig_port)
+                self._tracker.connection_made(self, orig_host, orig_port)
             except Exception: # pylint: disable=broad-except
                 pass
 
         self.forward(orig_host, orig_port)
 
 
-class SSHLocalPathForwarder(SSHLocalForwarder):
+class SSHLocalPathForwarder(SSHLocalForwarder[SSHPathForwardTracker]):
     """Local UNIX domain socket forwarding connection handler"""
 
     def connection_made(self, transport: asyncio.BaseTransport) -> None:
@@ -429,11 +428,9 @@ class SSHLocalPathForwarder(SSHLocalForwarder):
 
         super().connection_made(transport)
 
-        self._create_tracker()
-
         if self._tracker is not None:
             try:
-                cast(SSHPathForwardTracker, self._tracker).connection_made(self)
+                self._tracker.connection_made(self)
             except Exception: # pylint: disable=broad-except
                 pass
 
