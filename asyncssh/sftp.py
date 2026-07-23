@@ -7205,7 +7205,7 @@ class SFTPServer:
 
         if self._chroot:
             normpath = posixpath.normpath(posixpath.join(b'/', path))
-            return posixpath.join(self._chroot, normpath[1:])
+            return posixpath.join(self._chroot, normpath.lstrip(b'/'))
         else:
             return path
 
