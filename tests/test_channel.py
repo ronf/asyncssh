@@ -379,7 +379,7 @@ class _ChannelServer(Server):
                 stdin.channel.exit(1)
         elif action == 'invalid_open_confirm':
             stdin.channel.send_packet(MSG_CHANNEL_OPEN_CONFIRMATION,
-                                      UInt32(0), UInt32(0), UInt32(0))
+                                      UInt32(0), UInt32(1), UInt32(1))
         elif action == 'invalid_open_failure':
             stdin.channel.send_packet(MSG_CHANNEL_OPEN_FAILURE,
                                       UInt32(0), String(''), String(''))
@@ -754,6 +754,14 @@ class _TestChannel(ServerTestCase):
 
                 result = await chan.make_request(b'keepalive@openssh.com')
                 self.assertFalse(result)
+
+    @asynctest
+    async def test_invalid_open_max_pktsize(self):
+        """Test sending an open with invalid max packet size"""
+
+        async with self.connect() as conn:
+            with self.assertRaises(asyncssh.ChannelOpenError):
+                await _create_session(conn, 'echo', max_pktsize=0)
 
     @asynctest
     async def test_invalid_open_confirmation(self):
@@ -1802,6 +1810,24 @@ class _TestChannel(ServerTestCase):
 
         async with self.connect() as conn:
             await conn.create_session(_ClientSessionCleanupError)
+
+
+class _TestInvalidMaxPktsizeServer(ServerTestCase):
+    """Unit tests for testing a server responding with max_pktsuze of 0"""
+
+    @classmethod
+    async def start_server(cls):
+        """Start an SSH server to connect to"""
+
+        return await cls.create_server(_ChannelServer, max_pktsize=0)
+
+    @asynctest
+    async def test_invalid_max_pktsize_server(self):
+        """Test connecting to a server which sends max_pktsize of 0"""
+
+        async with self.connect() as conn:
+            with self.assertRaises(asyncssh.ChannelOpenError):
+                await _create_session(conn, 'echo')
 
 
 class _TestChannelNoPTY(ServerTestCase):

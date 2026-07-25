@@ -2720,8 +2720,8 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         send_window = packet.get_uint32()
         send_pktsize = packet.get_uint32()
 
-        #if send_pktsize == 0:
-        #    raise ProtocolError('Invalid maximum packet size')
+        if send_pktsize == 0:
+            raise ProtocolError('Invalid maximum packet size')
 
         # Work around an off-by-one error in dropbear introduced in
         # https://github.com/mkj/dropbear/commit/49263b5
@@ -2760,8 +2760,8 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         send_window = packet.get_uint32()
         send_pktsize = packet.get_uint32()
 
-        #if send_pktsize == 0:
-        #    raise ProtocolError('Invalid maximum packet size')
+        if send_pktsize == 0:
+            raise ProtocolError('Invalid maximum packet size')
 
         # Work around an off-by-one error in dropbear introduced in
         # https://github.com/mkj/dropbear/commit/49263b5

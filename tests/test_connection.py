@@ -1657,7 +1657,7 @@ class _TestConnection(ServerTestCase):
         conn = await self.connect()
 
         conn.send_packet(MSG_CHANNEL_OPEN, String(b'\xff'),
-                         UInt32(0), UInt32(0), UInt32(0))
+                         UInt32(0), UInt32(1), UInt32(1))
 
         await conn.wait_closed()
 
@@ -1668,7 +1668,7 @@ class _TestConnection(ServerTestCase):
         conn = await self.connect()
 
         conn.send_packet(MSG_CHANNEL_OPEN, String('xxx'),
-                         UInt32(0), UInt32(0), UInt32(0))
+                         UInt32(0), UInt32(1), UInt32(1))
 
         await conn.wait_closed()
 
@@ -1679,7 +1679,7 @@ class _TestConnection(ServerTestCase):
         conn = await self.connect()
 
         conn.send_packet(MSG_CHANNEL_OPEN_CONFIRMATION, UInt32(0xff),
-                         UInt32(0), UInt32(0), UInt32(0))
+                         UInt32(0), UInt32(1), UInt32(1))
 
         await conn.wait_closed()
 
