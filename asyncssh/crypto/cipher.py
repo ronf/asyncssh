@@ -55,6 +55,11 @@ class BasicCipher:
     def __init__(self, cipher_name: str, key: bytes, iv: bytes):
         cipher, mode, initial_bytes = _cipher_algs[cipher_name]
 
+        if cipher_name == 'des-cbc':
+            key *= 3
+        elif cipher_name == 'des2-cbc':
+            key += key[:8]
+
         self._cipher = Cipher(cipher(key), mode(iv) if mode else None)
         self._initial_bytes = initial_bytes
         self._encryptor: Optional[CipherContext] = None
