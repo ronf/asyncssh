@@ -326,7 +326,7 @@ class SSHLocalForwarder(SSHForwarder, Generic[_Tracker]):
 
     @staticmethod
     def _notify_tracker(tracker: Optional[_Tracker],
-                         notify: Callable[[_Tracker], None]) -> None:
+                        notify: Callable[[_Tracker], None]) -> None:
         """Invoke a tracker hook, swallowing exceptions from buggy trackers"""
 
         if tracker is not None:
