@@ -324,7 +324,8 @@ class SSHLocalForwarder(SSHForwarder, Generic[_Tracker]):
             # self._tracker remains the __init__ default of None.
             pass
 
-    def _notify_tracker(self, tracker: Optional[_Tracker],
+    @staticmethod
+    def _notify_tracker(tracker: Optional[_Tracker],
                          notify: Callable[[_Tracker], None]) -> None:
         """Invoke a tracker hook, swallowing exceptions from buggy trackers"""
 
@@ -338,16 +339,24 @@ class SSHLocalForwarder(SSHForwarder, Generic[_Tracker]):
                       datatype: Optional[int] = None) -> None:
         """Handle incoming data from the local transport"""
 
-        self._notify_tracker(
-            self._tracker, lambda t: t.forward_local_bytes(data))
+        def notify(tracker: _Tracker) -> None:
+            """Report locally forwarded bytes to the tracker"""
+
+            tracker.forward_local_bytes(data)
+
+        self._notify_tracker(self._tracker, notify)
 
         super().data_received(data, datatype)
 
     def write(self, data: bytes) -> None:
         """Write tunnel data out to the local transport"""
 
-        self._notify_tracker(
-            self._tracker, lambda t: t.forward_remote_bytes(data))
+        def notify(tracker: _Tracker) -> None:
+            """Report remotely forwarded bytes to the tracker"""
+
+            tracker.forward_remote_bytes(data)
+
+        self._notify_tracker(self._tracker, notify)
 
         super().write(data)
 
@@ -363,7 +372,12 @@ class SSHLocalForwarder(SSHForwarder, Generic[_Tracker]):
 
         tracker, self._tracker = self._tracker, None
 
-        self._notify_tracker(tracker, lambda t: t.connection_lost(exc))
+        def notify(tracker: _Tracker) -> None:
+            """Report the closed connection to the tracker"""
+
+            tracker.connection_lost(exc)
+
+        self._notify_tracker(tracker, notify)
 
         super().connection_lost(exc)
 
@@ -411,9 +425,12 @@ class SSHLocalPortForwarder(SSHLocalForwarder[SSHPortForwardTracker]):
         else: # pragma: no cover
             orig_host, orig_port = '', 0
 
-        self._notify_tracker(
-            self._tracker,
-            lambda t: t.connection_made(self, orig_host, orig_port))
+        def notify(tracker: SSHPortForwardTracker) -> None:
+            """Report the new connection to the tracker"""
+
+            tracker.connection_made(self, orig_host, orig_port)
+
+        self._notify_tracker(self._tracker, notify)
 
         self.forward(orig_host, orig_port)
 
@@ -426,7 +443,11 @@ class SSHLocalPathForwarder(SSHLocalForwarder[SSHPathForwardTracker]):
 
         super().connection_made(transport)
 
-        self._notify_tracker(
-            self._tracker, lambda t: t.connection_made(self))
+        def notify(tracker: SSHPathForwardTracker) -> None:
+            """Report the new connection to the tracker"""
+
+            tracker.connection_made(self)
+
+        self._notify_tracker(self._tracker, notify)
 
         self.forward()

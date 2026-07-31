@@ -731,7 +731,7 @@ class _TestTCPForwarding(_CheckForwarding):
         self.assertIsInstance(made[3], int)
 
     @asynctest
-    async def test_tracker_factory_invoked_once_per_connection(self):
+    async def test_tracker_factory_per_connection(self):
         """A distinct tracker instance is created for each accepted
            connection, and each instance's connection_lost fires once"""
 
@@ -764,7 +764,7 @@ class _TestTCPForwarding(_CheckForwarding):
         self.assertEqual(len(trackers), 2)
 
     @asynctest
-    async def test_forward_local_port_tracker_byte_hooks(self):
+    async def test_port_tracker_byte_hooks(self):
         """Byte hooks observe both forwarding directions"""
 
         local_bytes = bytearray()
@@ -795,7 +795,7 @@ class _TestTCPForwarding(_CheckForwarding):
         self.assertEqual(bytes(remote_bytes), line)
 
     @asynctest
-    async def test_forward_local_port_tracker_factory_exception_swallowed(self):
+    async def test_port_tracker_factory_exception_swallowed(self):
         """A factory that raises does not break forwarding"""
 
         def factory():
@@ -808,7 +808,7 @@ class _TestTCPForwarding(_CheckForwarding):
                                                    delay=0.1)
 
     @asynctest
-    async def test_forward_local_port_tracker_hook_exception_swallowed(self):
+    async def test_port_tracker_hook_exception_swallowed(self):
         """A tracker whose hooks raise does not break forwarding"""
 
         class _BuggyTracker(asyncssh.SSHPortForwardTracker):
@@ -834,7 +834,7 @@ class _TestTCPForwarding(_CheckForwarding):
                                                     delay=0.1)
 
     @asynctest
-    async def test_forward_local_port_tracker_lost_fires_exactly_once(self):
+    async def test_port_tracker_lost_fires_once(self):
         """connection_lost fires once even when ChannelOpenError triggers
            a manual notify in _forward() followed by the asyncio close path."""
 
@@ -1317,7 +1317,7 @@ class _TestUNIXForwarding(_CheckForwarding):
         try_remove('local')
 
     @asynctest
-    async def test_forward_local_path_tracker_factory(self):
+    async def test_path_tracker_made_and_lost(self):
         """A path tracker sees connection_made (no addr) and connection_lost"""
 
         events = []
@@ -1350,7 +1350,7 @@ class _TestUNIXForwarding(_CheckForwarding):
         self.assertIsInstance(made[1], asyncssh.SSHForwarder)
 
     @asynctest
-    async def test_forward_local_path_tracker_hook_exception_swallowed(self):
+    async def test_path_tracker_hook_exception_swallowed(self):
         """A path tracker whose connection_made raises does not break
            forwarding"""
 
