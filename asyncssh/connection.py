@@ -259,6 +259,9 @@ _MAX_VERSION_LINE_LEN = 255
 # Max allowed username length
 _MAX_USERNAME_LEN = 1024
 
+# Max receive packet length (including framing and padding)
+_DEFAULT_RECV_PKTLEN = 256*1024     # 256 KiB
+
 # Default rekey parameters
 _DEFAULT_REKEY_BYTES = 1 << 30      # 1 GiB
 _DEFAULT_REKEY_SECONDS = 3600       # 1 hour
@@ -1012,6 +1015,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         self._channels: Dict[int, SSHChannel] = {}
         self._next_recv_chan = 0
+        self._max_recv_pktlen = _DEFAULT_RECV_PKTLEN
 
         self._global_request_queue: List[_GlobalRequest] = []
         self._global_request_waiters: \
@@ -1066,6 +1070,11 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         """Decode UTF-8 bytes, honoring utf8_decode_errors setting"""
 
         return msg_bytes.decode('utf-8', self._utf8_decode_errors)
+
+    def _update_recv_pktlen(self, max_pktsize: int) -> None:
+        """Update max receive packet len based on per-channel max_pktsize"""
+
+        self._max_recv_pktlen = max(self._max_recv_pktlen, max_pktsize + 1024)
 
     def _cleanup(self, exc: Optional[Exception]) -> None:
         """Clean up this connection"""
@@ -1623,6 +1632,10 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
             pktlen = self._packet[:4]
 
         self._pktlen = int.from_bytes(pktlen, 'big')
+
+        if self._pktlen > self._max_recv_pktlen:
+            raise ProtocolError('Max packet size exceeded')
+
         self._recv_handler = self._recv_packet
         return True
 
@@ -3056,6 +3069,8 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         """
 
+        self._update_recv_pktlen(max_pktsize)
+
         return SSHTCPChannel(self, self._loop, encoding,
                              errors, window, max_pktsize)
 
@@ -3091,6 +3106,8 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         """
 
+        self._update_recv_pktlen(max_pktsize)
+
         return SSHUNIXChannel(self, self._loop, encoding,
                               errors, window, max_pktsize)
 
@@ -3116,6 +3133,8 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         """
 
+        self._update_recv_pktlen(max_pktsize)
+
         return SSHTunTapChannel(self, self._loop, None, 'strict',
                                 window, max_pktsize)
 
@@ -3124,6 +3143,8 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
             max_pktsize: int = _DEFAULT_MAX_PKTSIZE) -> SSHX11Channel:
         """Create an SSH X11 channel to use in X11 forwarding"""
 
+        self._update_recv_pktlen(max_pktsize)
+
         return SSHX11Channel(self, self._loop, None, 'strict',
                              window, max_pktsize)
 
@@ -3131,6 +3152,8 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
             self, window: int = _DEFAULT_WINDOW,
             max_pktsize: int = _DEFAULT_MAX_PKTSIZE) -> SSHAgentChannel:
         """Create an SSH agent channel to use in agent forwarding"""
+
+        self._update_recv_pktlen(max_pktsize)
 
         return SSHAgentChannel(self, self._loop, None, 'strict',
                                window, max_pktsize)
@@ -4409,6 +4432,8 @@ class SSHClientConnection(SSHConnection):
         errors: str
         window: int
         max_pktsize: int
+
+        self._update_recv_pktlen(max_pktsize)
 
         chan = SSHClientChannel(self, self._loop, self._utf8_decode_errors,
                                 encoding, errors, window, max_pktsize)
@@ -6993,13 +7018,17 @@ class SSHServerConnection(SSHConnection):
 
         """
 
+        if not max_pktsize:
+            max_pktsize = self._max_pktsize
+
+        self._update_recv_pktlen(max_pktsize)
+
         return SSHServerChannel(self, self._loop, self._allow_pty,
                                 self._line_editor, self._line_echo,
                                 self._line_history, self._max_line_length,
                                 self._encoding if encoding == '' else encoding,
                                 self._errors if errors == '' else errors,
-                                window or self._window,
-                                max_pktsize or self._max_pktsize)
+                                window or self._window, max_pktsize)
 
     async def create_connection(
             self, session_factory: SSHTCPSessionFactory[AnyStr],

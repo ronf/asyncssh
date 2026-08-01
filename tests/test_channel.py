@@ -450,10 +450,10 @@ class _ChannelServer(Server):
             stdin.channel.send_packet(MSG_CHANNEL_DATA, String(data[:3]))
         elif action == 'unicode_error':
             stdin.channel.send_packet(MSG_CHANNEL_DATA, String(b'\xff'))
-        elif action == 'data_past_window':
+        elif action == 'large_data':
             stdin.channel.send_packet(MSG_CHANNEL_DATA,
                                       String(2*1025*1024*'\0'))
-        elif action == 'ext_data_past_window':
+        elif action == 'large_ext_data':
             stdin.channel.send_packet(MSG_CHANNEL_EXTENDED_DATA,
                                       UInt32(asyncssh.EXTENDED_DATA_STDERR),
                                       String(2*1025*1024*'\0'))
@@ -1689,11 +1689,21 @@ class _TestChannel(ServerTestCase):
             self.assertIsInstance(session.exc, asyncssh.ProtocolError)
 
     @asynctest
+    async def test_oversized_data(self):
+        """Test receiving a data packet larger than the maximum length"""
+
+        async with self.connect() as conn:
+            chan, _ = await _create_session(conn, 'large_data')
+
+            await chan.wait_closed()
+
+    @asynctest
     async def test_data_past_window(self):
         """Test receiving a data packet past the advertised window"""
 
         async with self.connect() as conn:
-            chan, _ = await _create_session(conn, 'data_past_window')
+            chan, _ = await _create_session(conn, 'large_data',
+                                            max_pktsize=4*1024*1024)
 
             await chan.wait_closed()
 
@@ -1702,7 +1712,8 @@ class _TestChannel(ServerTestCase):
         """Test receiving an extended data packet past the advertised window"""
 
         async with self.connect() as conn:
-            chan, _ = await _create_session(conn, 'ext_data_past_window')
+            chan, _ = await _create_session(conn, 'large_ext_data',
+                                            max_pktsize=4*1024*1024)
 
             await chan.wait_closed()
 
