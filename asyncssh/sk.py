@@ -25,12 +25,12 @@ import ctypes
 from hashlib import sha256
 import hmac
 import time
-from typing import Callable, List, Mapping, NoReturn, Optional
-from typing import Sequence, Tuple, TypeVar, cast
+from collections.abc import Callable, Mapping, Sequence
+from typing import NoReturn, TypeVar, cast
 
 
 _PollResult = TypeVar('_PollResult')
-_SKResidentKey = Tuple[int, str, bytes, bytes]
+_SKResidentKey = tuple[int, str, bytes, bytes]
 
 
 _CTAP1_POLL_INTERVAL = 0.1
@@ -77,7 +77,7 @@ def _ctap1_poll(poll_interval: float, func: Callable[..., _PollResult],
 
 
 def _ctap1_enroll(dev: 'CtapHidDevice', alg: int,
-                  application: str) -> Tuple[bytes, bytes]:
+                  application: str) -> tuple[bytes, bytes]:
     """Enroll a new security key using CTAP version 1"""
 
     ctap1 = Ctap1(dev)
@@ -93,8 +93,8 @@ def _ctap1_enroll(dev: 'CtapHidDevice', alg: int,
 
 
 def _ctap2_enroll(dev: 'CtapHidDevice', alg: int, application: str,
-                  user: str, pin: Optional[str],
-                  resident: bool) -> Tuple[bytes, bytes]:
+                  user: str, pin: str | None,
+                  resident: bool) -> tuple[bytes, bytes]:
     """Enroll a new security key using CTAP version 2"""
 
     ctap2 = Ctap2(dev)
@@ -104,8 +104,8 @@ def _ctap2_enroll(dev: 'CtapHidDevice', alg: int, application: str,
     key_params = [{'type': 'public-key', 'alg': alg}]
     options = {'rk': resident}
 
-    pin_protocol: Optional[PinProtocolV1]
-    pin_auth: Optional[bytes]
+    pin_protocol: PinProtocolV1 | None
+    pin_auth: bytes | None
 
     if pin:
         pin_protocol = PinProtocolV1()
@@ -125,7 +125,7 @@ def _ctap2_enroll(dev: 'CtapHidDevice', alg: int, application: str,
     return _decode_public_key(alg, cdata.public_key), cdata.credential_id
 
 
-def _win_enroll(alg: int, application: str, user: str) -> Tuple[bytes, bytes]:
+def _win_enroll(alg: int, application: str, user: str) -> tuple[bytes, bytes]:
     """Enroll a new security key using Windows WebAuthn API"""
 
     data_collector = DefaultClientDataCollector(origin=application,
@@ -147,7 +147,7 @@ def _win_enroll(alg: int, application: str, user: str) -> Tuple[bytes, bytes]:
 
 
 def _ctap1_sign(dev: 'CtapHidDevice', message_hash: bytes, application: str,
-                key_handle: bytes) -> Tuple[int, int, bytes]:
+                key_handle: bytes) -> tuple[int, int, bytes]:
     """Sign a message with a security key using CTAP version 1"""
 
     ctap1 = Ctap1(dev)
@@ -166,7 +166,7 @@ def _ctap1_sign(dev: 'CtapHidDevice', message_hash: bytes, application: str,
 
 def _ctap2_sign(dev: 'CtapHidDevice', message_hash: bytes,
                 application: str, key_handle: bytes,
-                touch_required: bool) -> Tuple[int, int, bytes]:
+                touch_required: bool) -> tuple[int, int, bytes]:
     """Sign a message with a security key using CTAP version 2"""
 
     ctap2 = Ctap2(dev)
@@ -188,7 +188,7 @@ def _ctap2_sign(dev: 'CtapHidDevice', message_hash: bytes,
 
 
 def _win_sign(data: bytes, application: str,
-              key_handle: bytes) -> Tuple[int, int, bytes, bytes]:
+              key_handle: bytes) -> tuple[int, int, bytes, bytes]:
     """Sign a message with a security key using Windows WebAuthn API"""
 
     data_collector = DefaultClientDataCollector(origin=application,
@@ -215,8 +215,8 @@ def sk_webauthn_prefix(data: bytes, application: str) -> bytes:
            application.encode('utf-8') + b'"'
 
 
-def sk_enroll(alg: int, application: str, user: str, pin: Optional[str],
-              resident: bool) -> Tuple[bytes, bytes]:
+def sk_enroll(alg: int, application: str, user: str, pin: str | None,
+              resident: bool) -> tuple[bytes, bytes]:
     """Enroll a new security key"""
 
     if sk_use_webauthn:
@@ -246,7 +246,7 @@ def sk_enroll(alg: int, application: str, user: str, pin: Optional[str],
 
 
 def sk_sign(data: bytes, application: str, key_handle: bytes, flags: int,
-            is_webauthn: bool = False) -> Tuple[int, int, bytes, bytes]:
+            is_webauthn: bool = False) -> tuple[int, int, bytes, bytes]:
     """Sign a message with a security key"""
 
     touch_required = bool(flags & SSH_SK_USER_PRESENCE_REQD)
@@ -283,12 +283,12 @@ def sk_sign(data: bytes, application: str, key_handle: bytes, flags: int,
     raise ValueError('Security key credential not found')
 
 
-def sk_get_resident(application: str, user: Optional[str],
+def sk_get_resident(application: str, user: str | None,
                     pin: str) -> Sequence[_SKResidentKey]:
     """Get keys resident on a security key"""
 
     app_hash = sha256(application.encode('utf-8')).digest()
-    result: List[_SKResidentKey] = []
+    result: list[_SKResidentKey] = []
 
     for dev in CtapHidDevice.list_devices():
         try:
