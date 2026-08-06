@@ -3185,6 +3185,11 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
             forwarder.connection_lost(open_error)
 
             raise open_error from None
+        except BaseException as exc:
+            forwarder.connection_lost(
+                exc if isinstance(exc, Exception) else None)
+
+            raise
 
         dest_forwarder = cast(SSHForwarder, peer)
 
@@ -3218,6 +3223,11 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
             forwarder.connection_lost(open_error)
 
             raise open_error from None
+        except BaseException as exc:
+            forwarder.connection_lost(
+                exc if isinstance(exc, Exception) else None)
+
+            raise
 
         dest_forwarder = cast(SSHForwarder, peer)
 

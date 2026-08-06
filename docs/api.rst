@@ -1069,9 +1069,12 @@ what the local destination sent back.
           def connection_lost(self, exc):
               self._counter.active -= 1
 
+      def tracker_factory():
+          return ConnCounter(counter)
+
       listener = await conn.forward_local_port(
           '', 0, 'remote-host', 80,
-          tracker_factory=lambda: ConnCounter(counter))
+          tracker_factory=tracker_factory)
 
       # The same tracker class works for a remote TCP listener, where
       # connection_made reports the client which connected to the
@@ -1079,7 +1082,7 @@ what the local destination sent back.
 
       listener = await conn.forward_remote_port(
           '', 8080, 'localhost', 80,
-          tracker_factory=lambda: ConnCounter(counter))
+          tracker_factory=tracker_factory)
 
 .. autoclass:: SSHPortForwardTracker()
 
