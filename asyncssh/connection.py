@@ -3152,6 +3152,79 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         raise NotImplementedError
 
+    async def _forward_tcp_connection(
+            self, forwarder_factory: Callable[[], SSHForwarder],
+            dest_host: str, dest_port: int) -> SSHForwarder:
+        """Pair a new forwarder with a local TCP destination connection
+
+           The forwarder returned by `forwarder_factory` becomes the SSH
+           side of the tunnel and is paired with a plain
+           :class:`SSHForwarder` on the newly opened local connection.
+
+           The forwarder is created before the local connection is opened
+           so that a tracked forwarder reports exactly one tracker per
+           connection accepted on the listener, even when the local
+           destination turns out to be unreachable. In that case the
+           forwarder is told the connection was lost before the
+           :exc:`ChannelOpenError` is raised.
+
+        """
+
+        forwarder = forwarder_factory()
+
+        try:
+            _, peer = await self._loop.create_connection(SSHForwarder,
+                                                         dest_host, dest_port)
+
+            self.logger.info('  Forwarding TCP connection to %s',
+                             (dest_host, dest_port))
+        except OSError as exc:
+            open_error = ChannelOpenError(OPEN_CONNECT_FAILED, str(exc))
+
+            forwarder.connection_lost(open_error)
+
+            raise open_error from None
+
+        dest_forwarder = cast(SSHForwarder, peer)
+
+        forwarder.set_peer(dest_forwarder)
+        dest_forwarder.set_peer(forwarder)
+
+        return forwarder
+
+    async def _forward_unix_connection(
+            self, forwarder_factory: Callable[[], SSHForwarder],
+            dest_path: str) -> SSHForwarder:
+        """Pair a new forwarder with a local UNIX destination connection
+
+           This is the UNIX domain socket equivalent of
+           :meth:`_forward_tcp_connection`, with the same ordering
+           between creating the forwarder and opening the local
+           destination connection.
+
+        """
+
+        forwarder = forwarder_factory()
+
+        try:
+            _, peer = \
+                await self._loop.create_unix_connection(SSHForwarder, dest_path)
+
+            self.logger.info('  Forwarding UNIX connection to %s', dest_path)
+        except OSError as exc:
+            open_error = ChannelOpenError(OPEN_CONNECT_FAILED, str(exc))
+
+            forwarder.connection_lost(open_error)
+
+            raise open_error from None
+
+        dest_forwarder = cast(SSHForwarder, peer)
+
+        forwarder.set_peer(dest_forwarder)
+        dest_forwarder.set_peer(forwarder)
+
+        return forwarder
+
     async def forward_connection(
             self, dest_host: str, dest_port: int) -> SSHForwarder:
         """Forward a tunneled TCP connection
@@ -3171,16 +3244,8 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         """
 
-        try:
-            _, peer = await self._loop.create_connection(SSHForwarder,
-                                                         dest_host, dest_port)
-
-            self.logger.info('  Forwarding TCP connection to %s',
-                             (dest_host, dest_port))
-        except OSError as exc:
-            raise ChannelOpenError(OPEN_CONNECT_FAILED, str(exc)) from None
-
-        return SSHForwarder(cast(SSHForwarder, peer))
+        return await self._forward_tcp_connection(SSHForwarder, dest_host,
+                                                  dest_port)
 
     async def forward_unix_connection(self, dest_path: str) -> SSHForwarder:
         """Forward a tunneled UNIX domain socket connection
@@ -3197,15 +3262,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         """
 
-        try:
-            _, peer = \
-                await self._loop.create_unix_connection(SSHForwarder, dest_path)
-
-            self.logger.info('  Forwarding UNIX connection to %s', dest_path)
-        except OSError as exc:
-            raise ChannelOpenError(OPEN_CONNECT_FAILED, str(exc)) from None
-
-        return SSHForwarder(cast(SSHForwarder, peer))
+        return await self._forward_unix_connection(SSHForwarder, dest_path)
 
     @async_context_manager
     async def forward_local_port(
