@@ -2575,6 +2575,9 @@ class SFTPHandler(SSHPacketLogger):
         pktlen = await self._reader.readexactly(4)
         pktlen = int.from_bytes(pktlen, 'big')
 
+        if pktlen > MAX_SFTP_PACKET_LEN:
+            raise SFTPBadMessage('Max packet size exceeded')
+
         packet = await self._reader.readexactly(pktlen)
         return SSHPacket(packet)
 

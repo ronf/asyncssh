@@ -1325,6 +1325,17 @@ class _TestSFTP(_CheckSFTP):
             remove('file')
 
     @sftp_test
+    async def test_oversized_sftp_write(self, sftp):
+        """Test an oversized write to a remote file"""
+
+        try:
+            async with sftp.open('file', 'wb', block_size=0) as f:
+                with self.assertRaises(SFTPConnectionLost):
+                    await f.write(8*1024*1024*b'\0')
+        finally:
+            remove('file')
+
+    @sftp_test
     async def test_glob(self, sftp):
         """Test a glob pattern match over SFTP"""
 
