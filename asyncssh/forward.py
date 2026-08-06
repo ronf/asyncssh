@@ -529,9 +529,9 @@ class SSHRemoteForwarder(SSHTrackedForwarder[_Tracker]):
 class SSHRemotePortForwarder(SSHRemoteForwarder[SSHPortForwardTracker]):
     """Remote TCP port forwarding connection handler"""
 
-    def __init__(self,
-                 tracker_factory: Optional[SSHPortForwardTrackerFactory],
-                 orig_host: str, orig_port: int):
+    def __init__(
+            self, tracker_factory: Optional[SSHPortForwardTrackerFactory],
+            orig_host: str, orig_port: int):
         super().__init__(tracker_factory)
 
         def notify(tracker: SSHPortForwardTracker) -> None:
@@ -545,8 +545,8 @@ class SSHRemotePortForwarder(SSHRemoteForwarder[SSHPortForwardTracker]):
 class SSHRemotePathForwarder(SSHRemoteForwarder[SSHPathForwardTracker]):
     """Remote UNIX domain socket forwarding connection handler"""
 
-    def __init__(self,
-                 tracker_factory: Optional[SSHPathForwardTrackerFactory]):
+    def __init__(
+            self, tracker_factory: Optional[SSHPathForwardTrackerFactory]):
         super().__init__(tracker_factory)
 
         def notify(tracker: SSHPathForwardTracker) -> None:
