@@ -767,6 +767,7 @@ class _SFTPParallelIO(Generic[_T]):
                 for task in self._pending:
                     task.cancel()
 
+                await asyncio.gather(*self._pending, return_exceptions=True)
                 raise exceptions[0]
 
             self._start_tasks()
@@ -2369,6 +2370,9 @@ class SFTPGlob:
             if filename in (b'.', b'..'):
                 continue
 
+            if b'/' in filename or b'\\' in filename:
+                raise SFTPBadMessage('Invalid filename')
+
             if not pattern or fnmatch(filename, pattern):
                 newpath = posixpath.join(path, filename)
                 attrs = entry.attrs
@@ -2554,13 +2558,12 @@ class SFTPHandler(SSHPacketLogger):
 
         if not self._writer:
             raise SFTPNoConnection('Connection not open')
+        elif self._writer.channel.is_closing():
+            return
 
         payload = Byte(pkttype) + b''.join(args)
 
-        try:
-            self._writer.write(UInt32(len(payload)) + payload)
-        except ConnectionError as exc:
-            raise SFTPConnectionLost(str(exc)) from None
+        self._writer.write(UInt32(len(payload)) + payload)
 
         self.log_sent_packet(pkttype, pktid, payload)
 
@@ -4746,6 +4749,9 @@ class SFTPClient:
                         if filename in (b'.', b'..'):
                             continue
 
+                        if b'/' in filename or b'\\' in filename:
+                            raise SFTPBadMessage('Invalid filename')
+
                         filename = posixpath.join(path, filename)
 
                         if entry.attrs.type == FILEXFER_TYPE_DIRECTORY:
@@ -5572,7 +5578,10 @@ class SFTPClient:
         except SFTPEOFError:
             pass
         finally:
-            await self._handler.close(handle)
+            try:
+                await self._handler.close(handle)
+            except SFTPError:
+                pass
 
     async def readdir(self, path: _SFTPPath = '.') -> Sequence[SFTPName]:
         """Read the contents of a remote directory
@@ -6958,12 +6967,8 @@ class SFTPServerHandler(SFTPHandler):
         sent_extensions: Iterable[bytes] = \
             (String(name) + String(data) for name, data in extensions)
 
-        try:
-            self.send_packet(FXP_VERSION, None, UInt32(self._version),
-                             *sent_extensions)
-        except SFTPError as exc:
-            await self._cleanup(exc)
-            return
+        self.send_packet(FXP_VERSION, None, UInt32(self._version),
+                         *sent_extensions)
 
         if self._version == 3:
             # Check if the client has a buggy SYMLINK implementation

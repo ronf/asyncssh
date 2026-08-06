@@ -5044,6 +5044,30 @@ class _TestSFTPInvalidFilename(_CheckSFTP):
         finally:
             remove('src dst')
 
+    @sftp_test
+    async def test_invalid_filename_glob(self, sftp):
+        """Test a server returning an invalid filename from glob in scandir"""
+
+        try:
+            os.mkdir('src')
+
+            with self.assertRaises(SFTPBadMessage):
+                await sftp.mget('src/*', 'dst', recurse=True)
+        finally:
+            remove('src dst')
+
+    @sftp_test
+    async def test_invalid_filename_rmtree(self, sftp):
+        """Test a server returning an invalid filename in scandir in rmtree"""
+
+        try:
+            os.mkdir('src')
+
+            with self.assertRaises(SFTPBadMessage):
+                await sftp.rmtree('src')
+        finally:
+            remove('src')
+
 
 class _CheckSCP(_CheckSFTP):
     """Utility functions for AsyncSSH SCP unit tests"""
