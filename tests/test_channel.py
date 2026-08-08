@@ -38,7 +38,7 @@ from asyncssh.constants import MSG_CHANNEL_DATA
 from asyncssh.constants import MSG_CHANNEL_EXTENDED_DATA
 from asyncssh.constants import MSG_CHANNEL_EOF, MSG_CHANNEL_CLOSE
 from asyncssh.constants import MSG_CHANNEL_SUCCESS
-from asyncssh.packet import Byte, String, UInt32
+from asyncssh.packet import Boolean, Byte, String, UInt32
 from asyncssh.public_key import CERT_TYPE_USER
 from asyncssh.stream import SSHTCPStreamSession, SSHUNIXStreamSession
 from asyncssh.stream import SSHTunTapStreamSession
@@ -61,6 +61,10 @@ class _ClientChannel(asyncssh.SSHClientChannel):
                 args = args[:5] + (String(args[5][4:-5]),)
             elif args[5][-6:-5] == Byte(PTY_OP_NO_END):
                 args = args[:5] + (String(args[5][4:-6]),)
+            elif args[0].endswith(b'_multiple'):
+                super()._send_request(request, *args)
+        elif request == b'exec' and args[0].endswith(b'_multiple'):
+            super()._send_request(request, *args)
 
         super()._send_request(request, *args, want_reply=want_reply)
 
@@ -152,6 +156,11 @@ class _ServerChannel(asyncssh.SSHServerChannel):
                 args = args[:3] + (String(b'\xff'),)
 
         super()._send_request(request, *args, want_reply=want_reply)
+
+    def send_request(self, request, *args):
+        """Send a custom request (for unit testing)"""
+
+        self._send_request(request, *args)
 
     def _process_delayed_request(self, packet):
         """Process a request that delays before responding"""
@@ -420,11 +429,18 @@ class _ChannelServer(Server):
                 stdin.channel.exit_with_signal('ABRT', False, str(size))
         elif action == 'exit_status':
             stdin.channel.exit(1)
+        elif action == 'multiple_exit_statuses':
+            stdin.channel.send_request(b'exit-status', UInt32(1))
+            stdin.channel.exit(1)
         elif action == 'closed_status':
             stdin.channel.close()
             stdin.channel.exit(1)
         elif action == 'exit_signal':
             stdin.channel.exit_with_signal('INT', False, 'exit_signal')
+        elif action == 'multiple_exit_signals':
+            stdin.channel.send_request(b'exit-signal', String('INT'),
+                                       Boolean(False), String(''), String(''))
+            stdin.channel.exit_with_signal('INT', False, '')
         elif action == 'unknown_signal':
             stdin.channel.exit_with_signal('unknown', False, 'unknown_signal')
         elif action == 'closed_signal':
@@ -618,6 +634,15 @@ class _TestChannel(ServerTestCase):
         async with self.connect() as conn:
             await self._check_session(conn, 'echo', window=1024*1024,
                                       max_pktsize=16384)
+
+    @asynctest
+    async def test_multiple_exec(self):
+        """Test multiple exec requests on the same channel"""
+
+        with patch('asyncssh.connection.SSHClientChannel', _ClientChannel):
+            async with self.connect() as conn:
+                with self.assertRaises(asyncssh.ChannelOpenError):
+                    await _create_session(conn, 'exec_multiple')
 
     @asynctest
     async def test_exec_from_connect(self):
@@ -1039,7 +1064,7 @@ class _TestChannel(ServerTestCase):
 
     @asynctest
     async def test_request_pty(self):
-        """Test reuquesting a PTY with terminal information"""
+        """Test requesting a PTY with terminal information"""
 
         modes = {asyncssh.PTY_OP_OSPEED: 9600}
 
@@ -1052,6 +1077,15 @@ class _TestChannel(ServerTestCase):
 
             result = ''.join(session.recv_buf[None])
             self.assertEqual(result, "Req: ('ansi', (80, 24, 0, 0), 9600)\r\n")
+
+    @asynctest
+    async def test_request_pty_multiple_times(self):
+        """Test requesting multiple a PTY multiple times"""
+
+        with patch('asyncssh.connection.SSHClientChannel', _ClientChannel):
+            async with self.connect() as conn:
+                with self.assertRaises(asyncssh.ChannelOpenError):
+                    await _create_session(conn, term_type='ansi_multiple')
 
     @asynctest
     async def test_terminal_full_size(self):
@@ -1543,6 +1577,13 @@ class _TestChannel(ServerTestCase):
             self.assertEqual(chan.get_returncode(), 1)
 
     @asynctest
+    async def test_multiple_exit_statuses(self):
+        """Test receiving multiple exit statuses"""
+
+        async with self.connect() as conn:
+            await _create_session(conn, 'multiple_exit_statuses')
+
+    @asynctest
     async def test_exit_status_after_close(self):
         """Test delivery of exit status after remote close"""
 
@@ -1569,6 +1610,13 @@ class _TestChannel(ServerTestCase):
                                                       'exit_signal',
                                                       DEFAULT_LANG))
             self.assertEqual(chan.get_returncode(), -SIGINT)
+
+    @asynctest
+    async def test_multiple_exit_signals(self):
+        """Test receiving multiple exit signals"""
+
+        async with self.connect() as conn:
+            await _create_session(conn, 'multiple_exit_signals')
 
     @asynctest
     async def test_exit_signal_after_close(self):

@@ -654,6 +654,24 @@ class _TestX11(ServerTestCase):
         self.assertFalse(result)
 
     @asynctest
+    async def test_multiple_x11_forwarding_requests(self):
+        """Test multiple X11 forwarding requests"""
+
+        with patch('asyncssh.connection.SSHClientChannel', _X11ClientChannel):
+            async with self.connect() as conn:
+                stdin, _, _ = await conn.open_session('sleep')
+
+                result = await stdin.channel.make_x11_forwarding_request(
+                    '', '', 0)
+
+                self.assertTrue(result)
+
+                result = await stdin.channel.make_x11_forwarding_request(
+                    '', '', 0)
+
+                self.assertFalse(result)
+
+    @asynctest
     async def test_unknown_action(self):
         """Test unknown action"""
 

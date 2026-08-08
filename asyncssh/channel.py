@@ -1284,6 +1284,9 @@ class SSHClientChannel(SSHChannel, Generic[AnyStr]):
         status = packet.get_uint32() & 0xff
         packet.check_end()
 
+        if self._exit_status is not None or self._exit_signal is not None:
+            raise ProtocolError('Multiple exit results not allowed')
+
         self.logger.info('Received exit status %d', status)
 
         self._exit_status = status
@@ -1305,6 +1308,9 @@ class SSHClientChannel(SSHChannel, Generic[AnyStr]):
             lang = lang_bytes.decode('ascii')
         except UnicodeDecodeError:
             raise ProtocolError('Invalid exit signal request') from None
+
+        if self._exit_status is not None or self._exit_signal is not None:
+            raise ProtocolError('Multiple exit results not allowed')
 
         self.logger.info('Received exit signal %s', signal)
         self.logger.debug1('  Core dumped: %s', core_dumped)
@@ -1513,6 +1519,7 @@ class SSHServerChannel(SSHChannel, Generic[AnyStr]):
         self._line_echo = line_echo
         self._line_history = line_history
         self._max_line_length = max_line_length
+        self._session_started = False
         self._term_type: Optional[str] = None
         self._term_size = (0, 0, 0, 0)
         self._term_modes: TermModes = {}
@@ -1556,6 +1563,10 @@ class SSHServerChannel(SSHChannel, Generic[AnyStr]):
            not self._conn.check_key_permission('pty') or \
            not self._conn.check_certificate_permission('pty'):
             self.logger.info('PTY request denied: PTY not permitted')
+            return False
+
+        if self._term_type is not None:
+            self.logger.info('PTY already requested')
             return False
 
         try:
@@ -1630,6 +1641,11 @@ class SSHServerChannel(SSHChannel, Generic[AnyStr]):
                                       auth_data: bytes, screen: int) -> None:
         """Finish processing request to enable X11 forwarding"""
 
+        if self._x11_display:
+            self.logger.debug1('  X11 forwarding already requested')
+            self._report_response(False)
+            return
+
         self._x11_display = await self._conn.attach_x11_listener(
             self, auth_proto, auth_data, screen)
 
@@ -1683,6 +1699,12 @@ class SSHServerChannel(SSHChannel, Generic[AnyStr]):
             self.logger.info('  Forced command override: %s', forced_command)
 
             command = forced_command
+
+        if self._session_started:
+            self.logger.info('Session already requested')
+            return False
+
+        self._session_started = True
 
         if command is not None:
             self._command = command
