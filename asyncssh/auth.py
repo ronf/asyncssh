@@ -78,7 +78,7 @@ class Auth(SSHPacketHandler):
     def __init__(self, conn: 'SSHConnection', coro: Awaitable[None]):
         self._conn = conn
         self._logger = conn.logger
-        self._coro: Optional['asyncio.Task[None]'] = conn.create_task(coro)
+        self._task: Optional['asyncio.Task[None]'] = conn.create_task(coro)
 
     def send_packet(self, pkttype: int, *args: bytes,
                     trivial: bool = True) -> None:
@@ -93,18 +93,24 @@ class Auth(SSHPacketHandler):
 
         return self._logger
 
+    @property
+    def task(self) -> Optional['asyncio.Task[None]']:
+        """The task associaated with this session"""
+
+        return self._task
+
     def create_task(self, coro: Awaitable[None]) -> None:
         """Create an asynchronous auth task"""
 
         self.cancel()
-        self._coro = self._conn.create_task(coro)
+        self._task = self._conn.create_task(coro)
 
     def cancel(self) -> None:
         """Cancel any authentication in progress"""
 
-        if self._coro: # pragma: no branch
-            self._coro.cancel()
-            self._coro = None
+        if self._task: # pragma: no branch
+            self._task.cancel()
+            self._task = None
 
 
 class ClientAuth(Auth):
@@ -543,15 +549,24 @@ class ServerAuth(Auth):
         # Provided by subclass
         raise NotImplementedError
 
+    def send_packet(self, pkttype: int, *args: bytes,
+                    trivial: bool = True) -> None:
+        """Send an auth packet only for the active server auth handler"""
+
+        if self._conn.auth is self:
+            super().send_packet(pkttype, *args, trivial=trivial)
+
     def send_failure(self, partial_success: bool = False) -> None:
         """Send a user authentication failure response"""
 
-        self._conn.send_userauth_failure(partial_success)
+        if self._conn.auth is self:
+            self._conn.send_userauth_failure(partial_success)
 
     async def send_success(self) -> None:
         """Send a user authentication success response"""
 
-        await self._conn.send_userauth_success()
+        if self._conn.auth is self:
+            await self._conn.send_userauth_success()
 
 
 class _ServerNullAuth(ServerAuth):

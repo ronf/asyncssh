@@ -24,11 +24,13 @@ import asyncio
 import inspect
 import unittest
 
+from unittest.mock import AsyncMock, patch
+
 import asyncssh
 
-from asyncssh.auth import MSG_USERAUTH_PK_OK, lookup_client_auth
-from asyncssh.auth import get_supported_server_auth_methods, lookup_server_auth
-from asyncssh.auth import MSG_USERAUTH_GSSAPI_RESPONSE
+from asyncssh.auth import MSG_USERAUTH_GSSAPI_RESPONSE, MSG_USERAUTH_PK_OK
+from asyncssh.auth import ServerAuth, lookup_client_auth, lookup_server_auth
+from asyncssh.auth import get_supported_server_auth_methods
 from asyncssh.constants import MSG_USERAUTH_REQUEST, MSG_USERAUTH_FAILURE
 from asyncssh.constants import MSG_USERAUTH_SUCCESS
 from asyncssh.gss import GSSClient, GSSServer
@@ -283,6 +285,16 @@ class _AuthServerStub(_AuthConnectionStub):
 
         self._auth = None
 
+    @property
+    def auth(self):
+        """The current authentication session for this connection"""
+
+        return self._auth
+
+    @auth.setter
+    def auth(self, new_value):
+        self._auth = new_value
+
     def connection_lost(self, exc=None):
         """Handle the closing of a connection"""
 
@@ -410,6 +422,48 @@ class _AuthServerStub(_AuthConnectionStub):
         """Validate keyboard-interactive responses"""
 
         return self._success
+
+
+class _SuspendedServerAuth(ServerAuth):
+    """Keep an authentication handler alive until its request is replaced"""
+
+    @classmethod
+    def supported(cls, conn):
+        return True # pragma: no cover
+
+    async def _start(self, packet):
+        await asyncio.Future()
+
+
+class _CancellationResistantServerAuth(ServerAuth):
+    """Model an application callback which catches task cancellation"""
+
+    def __init__(self, conn, action):
+        self.action = action
+        self.started = asyncio.Event()
+        self.cancelled = asyncio.Event()
+        self.release = asyncio.Event()
+        super().__init__(conn, 'alice', b'publickey', SSHPacket(b''))
+
+    @classmethod
+    def supported(cls, conn):
+        return True # pragma: no cover
+
+    async def _start(self, packet):
+        self.started.set()
+
+        try:
+            await self.release.wait()
+        except asyncio.CancelledError:
+            self.cancelled.set()
+            await self.release.wait()
+
+        if self.action == 'success':
+            await self.send_success()
+        elif self.action == 'failure':
+            self.send_failure()
+        else:
+            self.send_packet(MSG_USERAUTH_PK_OK, b'')
 
 
 @patch_gss
@@ -676,3 +730,141 @@ class _TestAuth(AsyncTestCase):
                                   kbdint_auth=True, kbdint_submethods='',
                                   kbdint_challenge=True, kbdint_response=True,
                                   success=True)
+
+
+class TestAuthenticationGenerationRegression(unittest.IsolatedAsyncioTestCase):
+    """Stale authentication handlers must have no protocol side effects."""
+
+    # Pylint doesn't like mixed case method names, but this was chosen to
+    # match the convention used in the unittest module.
+
+    # pylint: disable=invalid-name
+
+    async def asyncSetUp(self):
+        """Set up auth sessions for the tests to use"""
+
+        # pylint: disable=attribute-defined-outside-init
+        self.conn = _AuthServerStub()
+        self.stale = _SuspendedServerAuth(self.conn, 'alice', b'publickey',
+                                          SSHPacket(b''))
+        self.conn.auth = self.stale
+        await asyncio.sleep(0)
+
+        self.stale.cancel()
+        self.conn.auth = object()
+
+    async def asyncTearDown(self):
+        """Clean up test sessions"""
+
+        self.stale.cancel()
+        self.conn.auth = None
+
+    async def test_replaced_handler_cannot_publish_success(self):
+        """Test that a replaced handler can't return success"""
+
+        with patch.object(self.conn, 'send_userauth_success',
+                          new_callable=AsyncMock) as send_success:
+            await self.stale.send_success()
+
+        send_success.assert_not_awaited()
+
+    async def test_replaced_handler_cannot_publish_failure(self):
+        """Test that a replaced handler can't return failure"""
+
+        with patch.object(self.conn, 'send_userauth_failure') as send_failure:
+            self.stale.send_failure()
+
+        send_failure.assert_not_called()
+
+    async def test_replaced_handler_cannot_publish_method_packets(self):
+        """Test that a replaced handler can't send userauth packets"""
+
+        with patch.object(self.conn, 'send_userauth_packet') as send_packet:
+            self.stale.send_packet(MSG_USERAUTH_PK_OK, b'')
+
+        send_packet.assert_not_called()
+
+    async def test_active_handler_can_publish_success(self):
+        """Test that the active handler can return success"""
+
+        self.conn.auth = self.stale
+
+        with patch.object(self.conn, 'send_userauth_success',
+                          new_callable=AsyncMock) as send_success:
+            await self.stale.send_success()
+
+        send_success.assert_awaited_once()
+
+    async def test_active_handler_can_publish_failure(self):
+        """Test that the active handler can return failure"""
+
+        self.conn.auth = self.stale
+
+        with patch.object(self.conn, 'send_userauth_failure') as send_failure:
+            self.stale.send_failure()
+
+        send_failure.assert_called_once_with(False)
+
+    async def test_active_handler_can_publish_method_packets(self):
+        """Test that the active handler can send userauth packets"""
+
+        self.conn.auth = self.stale
+
+        with patch.object(self.conn, 'send_userauth_packet') as send_packet:
+            self.stale.send_packet(MSG_USERAUTH_PK_OK, b'')
+
+        send_packet.assert_called_once_with(MSG_USERAUTH_PK_OK, b'',
+                                            handler=self.stale,
+                                            trivial=True)
+
+    async def test_cancellation_resistant_handler_cannot_publish_success(self):
+        """Test that a cancellation-resistant handler can't return success"""
+
+        handler = _CancellationResistantServerAuth(self.conn, 'success')
+        self.conn.auth = handler
+        await asyncio.wait_for(handler.started.wait(), 1)
+        task = handler.task
+        self.conn.auth = object()
+
+        with patch.object(self.conn, 'send_userauth_success',
+                          new_callable=AsyncMock) as send_success:
+            handler.cancel()
+            await asyncio.wait_for(handler.cancelled.wait(), 1)
+            handler.release.set()
+            await asyncio.wait_for(task, 1)
+
+        send_success.assert_not_awaited()
+
+    async def test_cancellation_resistant_handler_cannot_publish_failure(self):
+        """Test that a cancellation-resistant handler can't return failure"""
+
+        handler = _CancellationResistantServerAuth(self.conn, 'failure')
+        self.conn.auth = handler
+        await asyncio.wait_for(handler.started.wait(), 1)
+        task = handler.task
+        self.conn.auth = object()
+
+        with patch.object(self.conn, 'send_userauth_failure') as send_failure:
+            handler.cancel()
+            await asyncio.wait_for(handler.cancelled.wait(), 1)
+            handler.release.set()
+            await asyncio.wait_for(task, 1)
+
+        send_failure.assert_not_called()
+
+    async def test_cancellation_resistant_handler_cannot_publish_packets(self):
+        """Test that a cancellation-resistant handler can't send packets"""
+
+        handler = _CancellationResistantServerAuth(self.conn, 'packet')
+        self.conn.auth = handler
+        await asyncio.wait_for(handler.started.wait(), 1)
+        task = handler.task
+        self.conn.auth = object()
+
+        with patch.object(self.conn, 'send_userauth_packet') as send_packet:
+            handler.cancel()
+            await asyncio.wait_for(handler.cancelled.wait(), 1)
+            handler.release.set()
+            await asyncio.wait_for(task, 1)
+
+        send_packet.assert_not_called()

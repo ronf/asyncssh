@@ -1061,6 +1061,12 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         return False
 
     @property
+    def auth(self) -> Optional[Auth]:
+        """The current authentication session for this connection"""
+
+        return self._auth
+
+    @property
     def logger(self) -> SSHLogger:
         """A logger associated with this connection"""
 
@@ -2500,7 +2506,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         self.logger.debug1('Completed key exchange')
 
     def _process_userauth_request(self, _pkttype: int, _pktid: int,
-                                  packet: SSHPacket) -> None:
+                                  packet: SSHPacket) -> MaybeAwait[None]:
         """Process a user authentication request"""
 
         username_bytes = packet.get_string()
@@ -2526,6 +2532,11 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
             if self._auth_final:
                 raise ProtocolError('Unexpected userauth request')
         else:
+            if self._auth:
+                auth = self._auth
+                self._auth = None
+                auth.cancel()
+
             if username != self._username:
                 self.logger.info('Beginning auth for user %s', username)
 
@@ -2534,7 +2545,9 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
             else:
                 begin_auth = False
 
-            self.create_task(self._finish_userauth(begin_auth, method, packet))
+            return self._finish_userauth(begin_auth, method, packet)
+
+        return None
 
     async def _finish_userauth(self, begin_auth: bool, method: bytes,
                                packet: SSHPacket) -> None:
@@ -2560,11 +2573,11 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         if not self._owner: # pragma: no cover
             return
 
-        if self._auth:
+        if self._auth: # pragma: no cover
             self._auth.cancel()
 
         self._auth = lookup_server_auth(cast(SSHServerConnection, self),
-                                             self._username, method, packet)
+                                        self._username, method, packet)
 
     def _process_userauth_failure(self, _pkttype: int, _pktid: int,
                                   packet: SSHPacket) -> None:
