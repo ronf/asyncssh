@@ -2545,6 +2545,10 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
             else:
                 begin_auth = False
 
+            conn = cast(SSHServerConnection, self)
+            conn._key_options = {}
+            conn._cert_options = None
+
             return self._finish_userauth(begin_auth, method, packet)
 
         return None
