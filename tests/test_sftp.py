@@ -4257,6 +4257,77 @@ class _TestSFTP(_CheckSFTP):
             with self.assertRaises(SFTPPermissionDenied):
                 await sftp.makedirs(os.path.join(root, 'dir/dir1'))
 
+    @sftp_test
+    async def test_set_size_no_follow_symlinks_error(self, sftp):
+        """Test setting file size on a symlink with follow_symlinks off"""
+
+        try:
+            self._create_file('dst')
+            os.symlink('dst', 'link')
+
+            with self.assertRaises(SFTPOpUnsupported):
+                await sftp.setstat('link', SFTPAttrs(size=0),
+                                   follow_symlinks=False)
+        finally:
+            remove('dst link')
+
+    @sftp_test
+    async def test_set_uid_gid_no_follow_symlinks_error(self, sftp):
+        """Test setting uid/gid on a symlink with follow_symlinks off"""
+
+        def chown_error(path, uid, gid, *, follow_symlinks=True):
+            """Raise an error when attempting to call chown"""
+
+            raise NotImplementedError
+
+        try:
+            self._create_file('dst')
+            os.symlink('dst', 'link')
+
+            with patch('os.chown', chown_error):
+                with self.assertRaises(SFTPOpUnsupported):
+                    await sftp.chown('link', 0, 0, follow_symlinks=False)
+        finally:
+            remove('dst link')
+
+    @sftp_test
+    async def test_set_permissions_no_follow_symlinks_error(self, sftp):
+        """Test setting permissions on a symlink with follow_symlinks off"""
+
+        def chmod_error(path, mode, *, follow_symlinks=True):
+            """Raise an error when attempting to call chown"""
+
+            raise NotImplementedError
+
+        try:
+            self._create_file('dst')
+            os.symlink('dst', 'link')
+
+            with patch('os.chmod', chmod_error):
+                with self.assertRaises(SFTPOpUnsupported):
+                    await sftp.chmod('link', 0o666, follow_symlinks=False)
+        finally:
+            remove('dst link')
+
+    @sftp_test
+    async def test_set_times_no_follow_symlinks_error(self, sftp):
+        """Test setting times on a symlink with follow_symlinks off"""
+
+        def utime_error(path, *, ns, follow_symlinks=True):
+            """Raise an error when attempting to call chown"""
+
+            raise NotImplementedError
+
+        try:
+            self._create_file('dst')
+            os.symlink('dst', 'link')
+
+            with patch('os.utime', utime_error):
+                with self.assertRaises(SFTPOpUnsupported):
+                    await sftp.utime('link', ns=(0, 1), follow_symlinks=False)
+        finally:
+            remove('dst link')
+
 
 class _TestSFTPCallable(_CheckSFTP):
     """Unit tests for AsyncSSH SFTP factory being a callable"""

@@ -601,7 +601,11 @@ def _setstat(path: Union[int, _SFTPPath], attrs: 'SFTPAttrs', *,
     """Utility function to set file attributes"""
 
     if attrs.size is not None:
-        os.truncate(path, attrs.size)
+        if follow_symlinks:
+            os.truncate(path, attrs.size)
+        else:
+            raise SFTPOpUnsupported('setting size with '
+                                    'follow_symlinks disabled')
 
     uid = _lookup_uid(attrs.owner) if attrs.uid is None else attrs.uid
     gid = _lookup_gid(attrs.group) if attrs.gid is None else attrs.gid
@@ -625,24 +629,23 @@ def _setstat(path: Union[int, _SFTPPath], attrs: 'SFTPAttrs', *,
     if uid is not None and gid is not None:
         try:
             os.chown(path, uid, gid, follow_symlinks=follow_symlinks)
-        except NotImplementedError: # pragma: no cover
-            pass
-        except AttributeError: # pragma: no cover
-            raise NotImplementedError from None
+        except (AttributeError, NotImplementedError):
+            raise SFTPOpUnsupported('setting uid/gid on a symlink') from None
 
     if attrs.permissions is not None:
         try:
             os.chmod(path, stat.S_IMODE(attrs.permissions),
                      follow_symlinks=follow_symlinks)
-        except NotImplementedError: # pragma: no cover
-            pass
+        except NotImplementedError:
+            raise SFTPOpUnsupported('setting permissions '
+                                    'on a symlink') from None
 
     if atime_ns is not None and mtime_ns is not None:
         try:
             os.utime(path, ns=(atime_ns, mtime_ns),
                      follow_symlinks=follow_symlinks)
-        except NotImplementedError: # pragma: no cover
-            pass
+        except NotImplementedError:
+            raise SFTPOpUnsupported('setting times on a symlink') from None
 
 
 if sys.platform == 'win32' and _pywin32_available: # pragma: no cover
