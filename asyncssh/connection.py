@@ -2545,6 +2545,8 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
             else:
                 begin_auth = False
 
+            # pylint: disable=attribute-defined-outside-init
+            # pylint: disable=protected-access
             conn = cast(SSHServerConnection, self)
             conn._key_options = {}
             conn._cert_options = None
