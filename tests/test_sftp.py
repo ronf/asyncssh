@@ -4284,7 +4284,7 @@ class _TestSFTP(_CheckSFTP):
             self._create_file('dst')
             os.symlink('dst', 'link')
 
-            with patch('os.chown', chown_error):
+            with patch('os.chown', chown_error, create=True):
                 with self.assertRaises(SFTPOpUnsupported):
                     await sftp.chown('link', 0, 0, follow_symlinks=False)
         finally:
