@@ -7219,6 +7219,9 @@ class SFTPServer:
         """
 
         if self._chroot:
+            if sys.platform == 'win32': # pragma: no cover
+                path = path.replace(b'\\', b'/')
+
             normpath = posixpath.normpath(posixpath.join(b'/', path))
             return posixpath.join(self._chroot, normpath.lstrip(b'/'))
         else:
