@@ -4569,6 +4569,20 @@ class _TestSFTPChroot(_CheckSFTP):
         finally:
             remove('chroot/dir')
 
+    @unittest.skipUnless(sys.platform == 'win32',
+                         'backslash escape only applies on Windows')
+    @sftp_test
+    async def test_chroot_backslash(self, sftp): # pragma: no cover
+        """Backslash paths must not escape the chroot on Windows"""
+
+        try:
+            self._create_file('secret')  # outside the jail
+
+            with self.assertRaises(SFTPNoSuchFile):
+                await sftp.open(rb'/..\secret', 'r')
+        finally:
+            remove('secret')
+
 
 class _TestSFTPReadEOFWithAttrs(_CheckSFTP):
     """Unit test for SFTP server read EOF flags with SFTPAttrs from fstat"""
