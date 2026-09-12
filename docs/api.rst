@@ -1010,6 +1010,100 @@ Forwarder Classes
    ============================== =
 
 
+Forward Tracker Classes
+=======================
+
+The ``forward_local_*`` and ``forward_remote_*`` methods on
+:class:`SSHClientConnection` accept an optional ``tracker_factory``
+argument: a zero-argument callable invoked once per connection accepted
+on that listener which returns a tracker instance --
+:class:`SSHPortForwardTracker` for TCP listeners or
+:class:`SSHPathForwardTracker` for UNIX domain listeners. asyncssh then
+calls that instance's hooks for the life of the connection, giving
+applications a passive view of per-connection lifecycle and byte flow --
+useful for idle-based auto-shutdown, connection counting, or traffic
+metrics.
+
+The hooks are pure observers: they run inside the asyncio event loop,
+must not block, and never alter the forwarded data (return values are
+ignored). Every hook has a no-op default, so a subclass overrides only
+what it needs, and exceptions raised by a hook or factory are caught and
+discarded so a buggy tracker cannot break forwarding.
+
+Which tracker class to use is decided by the listener endpoint, not by
+the destination. Use :class:`SSHPortForwardTracker` with the methods
+which listen on a TCP port (:meth:`forward_local_port()
+<SSHClientConnection.forward_local_port>`,
+:meth:`forward_local_port_to_path()
+<SSHClientConnection.forward_local_port_to_path>`,
+:meth:`forward_remote_port() <SSHClientConnection.forward_remote_port>`,
+and :meth:`forward_remote_port_to_path()
+<SSHClientConnection.forward_remote_port_to_path>`) and
+:class:`SSHPathForwardTracker` with the methods which listen on a UNIX
+domain socket (:meth:`forward_local_path()
+<SSHClientConnection.forward_local_path>`,
+:meth:`forward_local_path_to_port()
+<SSHClientConnection.forward_local_path_to_port>`,
+:meth:`forward_remote_path() <SSHClientConnection.forward_remote_path>`,
+and :meth:`forward_remote_path_to_port()
+<SSHClientConnection.forward_remote_path_to_port>`). The two classes
+share the same set of hooks and differ only in the signature of
+``connection_made``.
+
+The two byte hooks are named after the host where the bytes were
+generated, not after the direction the connection was set up in. For a
+local forward, ``forward_local_bytes`` sees what the client of the local
+listener sent and ``forward_remote_bytes`` sees what came back over the
+SSH connection. For a remote forward, ``forward_remote_bytes`` sees what
+the client of the remote listener sent and ``forward_local_bytes`` sees
+what the local destination sent back.
+
+   .. code-block:: python
+
+      class ConnCounter(asyncssh.SSHPortForwardTracker):
+          def __init__(self, counter):
+              self._counter = counter
+
+          def connection_made(self, forwarder, orig_host, orig_port):
+              self._counter.active += 1
+
+          def connection_lost(self, exc):
+              self._counter.active -= 1
+
+      def tracker_factory():
+          return ConnCounter(counter)
+
+      listener = await conn.forward_local_port(
+          '', 0, 'remote-host', 80,
+          tracker_factory=tracker_factory)
+
+      # The same tracker class works for a remote TCP listener, where
+      # connection_made reports the client which connected to the
+      # listening port opened on the SSH server
+
+      listener = await conn.forward_remote_port(
+          '', 8080, 'localhost', 80,
+          tracker_factory=tracker_factory)
+
+.. autoclass:: SSHPortForwardTracker()
+
+   ==================================== =
+   .. automethod:: connection_made
+   .. automethod:: connection_lost
+   .. automethod:: forward_local_bytes
+   .. automethod:: forward_remote_bytes
+   ==================================== =
+
+.. autoclass:: SSHPathForwardTracker()
+
+   ==================================== =
+   .. automethod:: connection_made
+   .. automethod:: connection_lost
+   .. automethod:: forward_local_bytes
+   .. automethod:: forward_remote_bytes
+   ==================================== =
+
+
 Listener Classes
 ================
 

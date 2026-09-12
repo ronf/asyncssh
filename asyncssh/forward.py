@@ -23,8 +23,8 @@
 import asyncio
 import socket
 from types import TracebackType
-from typing import TYPE_CHECKING, Any, Awaitable, Callable, Dict, Optional
-from typing import Type, cast
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Dict, Generic
+from typing import Optional, Type, TypeVar, cast
 from typing_extensions import Self
 
 from .misc import ChannelOpenError, SockAddr
@@ -36,6 +36,126 @@ if TYPE_CHECKING:
 
 
 SSHForwarderCoro = Callable[..., Awaitable]
+
+
+class SSHForwardTracker:
+    """Base class for observing the lifecycle of a forwarded connection
+
+       A tracker observes a single forwarded connection. A
+       `tracker_factory` passed to one of the
+       :meth:`forward_local_port() <SSHClientConnection.forward_local_port>`
+       or :meth:`forward_remote_port()
+       <SSHClientConnection.forward_remote_port>` family of methods is
+       called once per connection accepted on that listener and must
+       return a new tracker instance, on which asyncssh then calls the
+       hooks below for the life of that connection.
+
+       All hooks run inside the asyncio event loop and **must not block**
+       (no I/O, no sleeps). They are pure observers: return values are
+       ignored and the forwarded data is never altered. Each hook has a
+       no-op default, so a subclass need only override the ones it cares
+       about. Exceptions raised by a hook are caught and discarded, so a
+       buggy tracker can never break forwarding.
+
+       This base class defines the hooks shared by all forward types.
+       Use :class:`SSHPortForwardTracker` when the listener is a TCP port
+       and :class:`SSHPathForwardTracker` when it is a UNIX domain socket;
+       they differ only in the signature of `connection_made`.
+
+    """
+
+    def connection_lost(self, exc: Optional[Exception]) -> None:
+        """Called when the forwarded connection has closed
+
+           :param exc:
+               The exception which caused the connection to close, or
+               `None` if the connection closed cleanly.
+           :type exc: :class:`Exception` or `None`
+
+        """
+
+    def forward_local_bytes(self, data: bytes) -> None:
+        """Called for data forwarded from the local side into the tunnel
+
+           :param data:
+               A block of bytes received on the local connection and
+               about to be sent over the SSH connection. This is called
+               once per received block, not once per byte.
+           :type data: `bytes`
+
+        """
+
+    def forward_remote_bytes(self, data: bytes) -> None:
+        """Called for data forwarded from the tunnel to the local side
+
+           :param data:
+               A block of bytes received over the SSH connection and
+               about to be written to the local connection. This is
+               called once per received block, not once per byte.
+           :type data: `bytes`
+
+        """
+
+
+class SSHPortForwardTracker(SSHForwardTracker):
+    """Tracker for forwards with a TCP port listener
+
+       Used with
+       :meth:`forward_local_port() <SSHClientConnection.forward_local_port>`,
+       :meth:`forward_local_port_to_path()
+       <SSHClientConnection.forward_local_port_to_path>`,
+       :meth:`forward_remote_port()
+       <SSHClientConnection.forward_remote_port>`, and
+       :meth:`forward_remote_port_to_path()
+       <SSHClientConnection.forward_remote_port_to_path>`.
+
+    """
+
+    def connection_made(self, forwarder: 'SSHForwarder',
+                        orig_host: str, orig_port: int) -> None:
+        """Called when a new TCP connection is accepted on the listener
+
+           :param forwarder:
+               The forwarder handling this connection.
+           :param orig_host:
+               The originating client host.
+           :param orig_port:
+               The originating client port.
+           :type forwarder: :class:`SSHForwarder`
+           :type orig_host: `str`
+           :type orig_port: `int`
+
+        """
+
+
+class SSHPathForwardTracker(SSHForwardTracker):
+    """Tracker for forwards with a UNIX domain socket listener
+
+       Used with
+       :meth:`forward_local_path() <SSHClientConnection.forward_local_path>`,
+       :meth:`forward_local_path_to_port()
+       <SSHClientConnection.forward_local_path_to_port>`,
+       :meth:`forward_remote_path()
+       <SSHClientConnection.forward_remote_path>`, and
+       :meth:`forward_remote_path_to_port()
+       <SSHClientConnection.forward_remote_path_to_port>`.
+
+    """
+
+    def connection_made(self, forwarder: 'SSHForwarder') -> None:
+        """Called when a new UNIX domain connection is accepted
+
+           :param forwarder:
+               The forwarder handling this connection.
+           :type forwarder: :class:`SSHForwarder`
+
+        """
+
+
+SSHPortForwardTrackerFactory = Callable[[], SSHPortForwardTracker]
+SSHPathForwardTrackerFactory = Callable[[], SSHPathForwardTracker]
+
+_Tracker = TypeVar('_Tracker', bound=SSHForwardTracker)
 
 
 class SSHForwarder(asyncio.BaseProtocol):
@@ -189,13 +309,109 @@ class SSHForwarder(asyncio.BaseProtocol):
             peer.close()
 
 
-class SSHLocalForwarder(SSHForwarder):
+class SSHTrackedForwarder(SSHForwarder, Generic[_Tracker]):
+    """Forwarding connection handler which reports to a tracker
+
+       This is the shared base for the forwarders which sit at the local
+       end of a tracked connection, whether that connection was accepted
+       on a local or on a remote listener. It owns the per-connection
+       tracker, guards every hook call against exceptions raised by a
+       buggy tracker, and reports the closed connection exactly once.
+
+       Subclasses decide which of their methods report which byte hook,
+       since that depends on which end of the tunnel they sit on, and
+       report `connection_made` once they know their listener's arguments.
+
+    """
+
+    def __init__(
+            self, tracker_factory: Optional[Callable[[], _Tracker]] = None):
+        super().__init__()
+        self._tracker: Optional[_Tracker] = None
+        self._create_tracker(tracker_factory)
+
+    def _create_tracker(
+            self, tracker_factory: Optional[Callable[[], _Tracker]]) -> None:
+        """Instantiate this connection's tracker from the factory, if any"""
+
+        if tracker_factory is None:
+            return
+
+        try:
+            self._tracker = tracker_factory()
+        except Exception: # pylint: disable=broad-except
+            # A buggy factory must not break forwarding;
+            # self._tracker remains the __init__ default of None.
+            pass
+
+    @staticmethod
+    def _notify_tracker(tracker: Optional[_Tracker],
+                        notify: Callable[[_Tracker], None]) -> None:
+        """Invoke a tracker hook, swallowing exceptions from buggy trackers"""
+
+        if tracker is not None:
+            try:
+                notify(tracker)
+            except Exception: # pylint: disable=broad-except
+                pass
+
+    def connection_lost(self, exc: Optional[Exception]) -> None:
+        """Handle a closed connection
+
+           This is also called manually when the connection could not be
+           fully set up -- on a channel open failure for a local forward
+           and on a local destination open failure for a remote one -- so
+           the transport's eventual close fires a second
+           `connection_lost(None)` on the protocol. The tracker reference
+           is cleared on the first call so the hook fires exactly once
+           per connection.
+        """
+
+        tracker, self._tracker = self._tracker, None
+
+        def notify(tracker: _Tracker) -> None:
+            """Report the closed connection to the tracker"""
+
+            tracker.connection_lost(exc)
+
+        self._notify_tracker(tracker, notify)
+
+        super().connection_lost(exc)
+
+
+class SSHLocalForwarder(SSHTrackedForwarder[_Tracker]):
     """Local forwarding connection handler"""
 
-    def __init__(self, conn: 'SSHConnection', coro: SSHForwarderCoro):
-        super().__init__()
+    def __init__(self, conn: 'SSHConnection', coro: SSHForwarderCoro,
+                 tracker_factory: Optional[Callable[[], _Tracker]] = None):
+        super().__init__(tracker_factory)
         self._conn = conn
         self._coro = coro
+
+    def data_received(self, data: bytes,
+                      datatype: Optional[int] = None) -> None:
+        """Handle incoming data from the local transport"""
+
+        def notify(tracker: _Tracker) -> None:
+            """Report locally forwarded bytes to the tracker"""
+
+            tracker.forward_local_bytes(data)
+
+        self._notify_tracker(self._tracker, notify)
+
+        super().data_received(data, datatype)
+
+    def write(self, data: bytes) -> None:
+        """Write tunnel data out to the local transport"""
+
+        def notify(tracker: _Tracker) -> None:
+            """Report remotely forwarded bytes to the tracker"""
+
+            tracker.forward_remote_bytes(data)
+
+        self._notify_tracker(self._tracker, notify)
+
+        super().write(data)
 
     async def _forward(self, *args: object) -> None:
         """Begin local forwarding"""
@@ -226,7 +442,7 @@ class SSHLocalForwarder(SSHForwarder):
         self._conn.create_task(self._forward(*args))
 
 
-class SSHLocalPortForwarder(SSHLocalForwarder):
+class SSHLocalPortForwarder(SSHLocalForwarder[SSHPortForwardTracker]):
     """Local TCP port forwarding connection handler"""
 
     def connection_made(self, transport: asyncio.BaseTransport) -> None:
@@ -238,15 +454,104 @@ class SSHLocalPortForwarder(SSHLocalForwarder):
 
         if peername: # pragma: no branch
             orig_host, orig_port = peername[:2]
+        else: # pragma: no cover
+            orig_host, orig_port = '', 0
+
+        def notify(tracker: SSHPortForwardTracker) -> None:
+            """Report the new connection to the tracker"""
+
+            tracker.connection_made(self, orig_host, orig_port)
+
+        self._notify_tracker(self._tracker, notify)
 
         self.forward(orig_host, orig_port)
 
 
-class SSHLocalPathForwarder(SSHLocalForwarder):
+class SSHLocalPathForwarder(SSHLocalForwarder[SSHPathForwardTracker]):
     """Local UNIX domain socket forwarding connection handler"""
 
     def connection_made(self, transport: asyncio.BaseTransport) -> None:
         """Handle a newly opened connection"""
 
         super().connection_made(transport)
+
+        def notify(tracker: SSHPathForwardTracker) -> None:
+            """Report the new connection to the tracker"""
+
+            tracker.connection_made(self)
+
+        self._notify_tracker(self._tracker, notify)
+
         self.forward()
+
+
+class SSHRemoteForwarder(SSHTrackedForwarder[_Tracker]):
+    """Remote forwarding connection handler
+
+       This handles the SSH channel opened when the remote listener
+       accepts a connection, paired with a plain :class:`SSHForwarder`
+       on the local destination connection.
+
+       Its byte hooks are the mirror image of :class:`SSHLocalForwarder`,
+       because the hook names say where the bytes were generated rather
+       than which method carried them. Data delivered here by the SSH
+       channel was generated on the remote host, and data written here on
+       behalf of the local destination connection was generated locally.
+
+    """
+
+    def data_received(self, data: bytes,
+                      datatype: Optional[int] = None) -> None:
+        """Handle incoming data from the SSH channel"""
+
+        def notify(tracker: _Tracker) -> None:
+            """Report remotely forwarded bytes to the tracker"""
+
+            tracker.forward_remote_bytes(data)
+
+        self._notify_tracker(self._tracker, notify)
+
+        super().data_received(data, datatype)
+
+    def write(self, data: bytes) -> None:
+        """Write local destination data out to the SSH channel"""
+
+        def notify(tracker: _Tracker) -> None:
+            """Report locally forwarded bytes to the tracker"""
+
+            tracker.forward_local_bytes(data)
+
+        self._notify_tracker(self._tracker, notify)
+
+        super().write(data)
+
+
+class SSHRemotePortForwarder(SSHRemoteForwarder[SSHPortForwardTracker]):
+    """Remote TCP port forwarding connection handler"""
+
+    def __init__(
+            self, tracker_factory: Optional[SSHPortForwardTrackerFactory],
+            orig_host: str, orig_port: int):
+        super().__init__(tracker_factory)
+
+        def notify(tracker: SSHPortForwardTracker) -> None:
+            """Report the new connection to the tracker"""
+
+            tracker.connection_made(self, orig_host, orig_port)
+
+        self._notify_tracker(self._tracker, notify)
+
+
+class SSHRemotePathForwarder(SSHRemoteForwarder[SSHPathForwardTracker]):
+    """Remote UNIX domain socket forwarding connection handler"""
+
+    def __init__(
+            self, tracker_factory: Optional[SSHPathForwardTrackerFactory]):
+        super().__init__(tracker_factory)
+
+        def notify(tracker: SSHPathForwardTracker) -> None:
+            """Report the new connection to the tracker"""
+
+            tracker.connection_made(self)
+
+        self._notify_tracker(self._tracker, notify)
