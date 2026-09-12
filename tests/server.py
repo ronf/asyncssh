@@ -282,7 +282,7 @@ class ServerTestCase(AsyncTestCase):
 
                 async with asyncssh.connect_agent() as agent:
                     await agent.add_keys([ckey_ecdsa, (ckey, ckey_cert)])
-        else: # pragma: no cover
+        else: # pragma: cover only win32
             cls._agent_pid = None
 
         with open('ssh-keysign', 'wb'):

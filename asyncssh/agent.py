@@ -58,7 +58,7 @@ class AgentWriter(Protocol):
         """Wait for the connection to the SSH agent to close"""
 
 
-if sys.platform == 'win32': # pragma: no cover
+if sys.platform == 'win32': # pragma: cover only win32
     from .agent_win32 import open_agent
 else:
     from .agent_unix import open_agent

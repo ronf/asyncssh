@@ -167,7 +167,7 @@ def patch_gss(cls):
 
     # pylint: disable=import-outside-toplevel
 
-    if sys.platform == 'win32': # pragma: no cover
+    if sys.platform == 'win32': # pragma: cover only win32
         from .sspi_stub import SSPIAuth
 
         cls = patch('asyncssh.gss_win32.ClientAuth', SSPIAuth)(cls)

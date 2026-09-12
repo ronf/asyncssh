@@ -117,7 +117,7 @@ from .version import __author__, __version__
 
 _pywin32_available = False
 
-if sys.platform == 'win32': # pragma: no cover
+if sys.platform == 'win32': # pragma: cover only win32
     try:
         import msvcrt
         import pywintypes
@@ -141,7 +141,7 @@ if TYPE_CHECKING:
 else:
     _RequestWaiter = asyncio.Future
 
-if sys.platform == 'win32': # pragma: no cover
+if sys.platform == 'win32': # pragma: cover only win32
     _LocalPath = str
     _LocalSep: _LocalPath = os.sep
 else:
@@ -573,7 +573,7 @@ def _from_local_path(path: _SFTPPath) -> bytes:
 
     path = os.fsencode(path)
 
-    if sys.platform == 'win32': # pragma: no cover
+    if sys.platform == 'win32': # pragma: cover only win32
         path = path.replace(b'\\', b'/')
 
         if path[:1] != b'/' and path[1:2] == b':':
@@ -585,7 +585,7 @@ def _from_local_path(path: _SFTPPath) -> bytes:
 def _to_local_path(path: bytes) -> _LocalPath:
     """Convert SFTP path to local path"""
 
-    if sys.platform == 'win32': # pragma: no cover
+    if sys.platform == 'win32': # pragma: cover only win32
         path = os.fsdecode(path)
 
         if path[:1] == '/' and path[2:3] == ':':
@@ -654,7 +654,7 @@ def _setstat(path: Union[int, _SFTPPath], attrs: 'SFTPAttrs', *,
                                 'without following symlinks')
 
 
-if sys.platform == 'win32' and _pywin32_available: # pragma: no cover
+if sys.platform == 'win32' and _pywin32_available: # pragma: cover only win32
     async def _request_ranges(file_obj: _SFTPFileObj, offset: int,
                               length: int) -> AsyncIterator[Tuple[int, int]]:
         """Return file ranges containing data on Windows"""
@@ -2006,7 +2006,7 @@ class SFTPAttrs(Record):
         mode = result.st_mode
         filetype = _stat_mode_to_filetype(mode)
 
-        if sys.platform == 'win32': # pragma: no cover
+        if sys.platform == 'win32': # pragma: cover only win32
             uid = 0
             gid = 0
             owner = ''
@@ -2021,7 +2021,7 @@ class SFTPAttrs(Record):
         mtime, mtime_ns = _nsec_to_tuple(result.st_mtime_ns)
         ctime, ctime_ns = _nsec_to_tuple(result.st_ctime_ns)
 
-        if sys.platform == 'win32': # pragma: no cover
+        if sys.platform == 'win32': # pragma: cover only win32
             crtime, crtime_ns = ctime, ctime_ns
         elif hasattr(result, 'st_birthtime'): # pragma: no cover
             crtime, crtime_ns = _float_sec_to_tuple(result.st_birthtime)
@@ -7243,7 +7243,7 @@ class SFTPServer:
         """
 
         if self._chroot:
-            if sys.platform == 'win32': # pragma: no cover
+            if sys.platform == 'win32': # pragma: cover only win32
                 path = path.replace(b'\\', b'/')
 
             normpath = posixpath.normpath(posixpath.join(b'/', path))
@@ -7351,7 +7351,7 @@ class SFTPServer:
         if pflags & FXF_EXCL:
             flags |= os.O_EXCL
 
-        if sys.platform == 'win32': # pragma: no cover
+        if sys.platform == 'win32': # pragma: cover only win32
             flags |= os.O_BINARY # pylint: disable=no-member
 
         perms = 0o666 if attrs.permissions is None else attrs.permissions
@@ -7452,7 +7452,7 @@ class SFTPServer:
                 desired_access & ACE4_WRITE_DATA:
             mode += '+'
 
-        if sys.platform == 'win32': # pragma: no cover
+        if sys.platform == 'win32': # pragma: cover only win32
             open_flags |= os.O_BINARY # pylint: disable=no-member
 
         perms = 0o666 if attrs.permissions is None else attrs.permissions
@@ -7631,7 +7631,7 @@ class SFTPServer:
         file_obj = cast(_SFTPFileObj, file_obj)
         file_obj.flush()
 
-        if sys.platform == 'win32': # pragma: no cover
+        if sys.platform == 'win32': # pragma: cover only win32
             _setstat(file_obj.name, attrs)
         else:
             _setstat(file_obj.fileno(), attrs)
@@ -7684,7 +7684,7 @@ class SFTPServer:
                 for entry in entries:
                     filename = entry.name
 
-                    if sys.platform == 'win32': # pragma: no cover
+                    if sys.platform == 'win32': # pragma: cover only win32
                         filename = os.fsencode(filename)
 
                     attrs = SFTPAttrs.from_local(
@@ -7822,7 +7822,7 @@ class SFTPServer:
         path = os.readlink(_to_local_path(self.map_path(path)))
 
         if sys.platform == 'win32' and \
-                path.startswith('\\\\?\\'): # pragma: no cover
+                path.startswith('\\\\?\\'): # pragma: cover only win32
             path = path[4:]
 
         if self._chroot:
@@ -8085,7 +8085,7 @@ class LocalFS:
             for entry in entries:
                 filename = entry.name
 
-                if sys.platform == 'win32': # pragma: no cover
+                if sys.platform == 'win32': # pragma: cover only win32
                     filename = os.fsencode(filename)
 
                 attrs = SFTPAttrs.from_local(entry.stat(follow_symlinks=False))
@@ -8102,7 +8102,7 @@ class LocalFS:
         path = os.readlink(_to_local_path(path))
 
         if sys.platform == 'win32' and \
-                path.startswith('\\\\?\\'): # pragma: no cover
+                path.startswith('\\\\?\\'): # pragma: cover only win32
             path = path[4:]
 
         return _from_local_path(path)

@@ -4261,7 +4261,7 @@ class _TestSFTP(_CheckSFTP):
             await sftp.realpath('.')
             await sftp.stat('.')
 
-            if sys.platform != 'win32': # pragma: no cover
+            if sys.platform != 'win32': # pragma: no branch
                 await sftp.statvfs('.')
 
         asyncssh.set_sftp_log_level('WARNING')
@@ -4610,7 +4610,7 @@ class _TestSFTPChroot(_CheckSFTP):
     @unittest.skipUnless(sys.platform == 'win32',
                          'backslash escape only applies on Windows')
     @sftp_test
-    async def test_chroot_backslash(self, sftp): # pragma: no cover
+    async def test_chroot_backslash(self, sftp): # pragma: cover only win32
         """Backslash paths must not escape the chroot on Windows"""
 
         try:
@@ -5644,7 +5644,7 @@ class _TestSCP(_CheckSCP):
         def err_handler(exc):
             """Catch error for non-recursive copy of directory"""
 
-            if sys.platform == 'win32': # pragma: no cover
+            if sys.platform == 'win32': # pragma: cover only win32
                 self.assertEqual(exc.reason,
                                  'scp: Permission denied: dst\\src2')
             else:

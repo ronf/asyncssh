@@ -51,7 +51,7 @@ from .constants import DISC_SERVICE_NOT_AVAILABLE
 
 _pywin32_available = False
 
-if sys.platform == 'win32': # pragma: no cover
+if sys.platform == 'win32': # pragma: cover only win32
     try:
         import msvcrt
         import win32file
@@ -59,8 +59,7 @@ if sys.platform == 'win32': # pragma: no cover
         _pywin32_available = True
     except ImportError:
         pass
-
-if sys.platform != 'win32': # pragma: no branch
+else:
     import fcntl
     import struct
     import termios
@@ -330,7 +329,7 @@ def write_file(filename: FilePath, data: bytes, mode: str = 'wb') -> int:
         return f.write(data)
 
 
-if sys.platform == 'win32' and _pywin32_available: # pragma: no cover
+if sys.platform == 'win32' and _pywin32_available: # pragma: cover only win32
     def make_sparse_file(file_obj: IO) -> None:
         """Enable sparse file support on a file on Windows"""
 
@@ -410,7 +409,7 @@ def split_args(command: str) -> Sequence[str]:
     lex = shlex.shlex(command, posix=True)
     lex.whitespace_split = True
 
-    if sys.platform == 'win32': # pragma: no cover
+    if sys.platform == 'win32': # pragma: cover only win32
         lex.escape = []
 
     return list(lex)

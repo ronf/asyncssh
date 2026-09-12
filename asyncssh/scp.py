@@ -169,7 +169,7 @@ async def _parse_path(path: _SCPConnPath, **kwargs) -> \
         conn, path = cast(Tuple[_SCPConn, _SCPPath], path)
     elif isinstance(path, str) and sys.platform == 'win32' and \
             path[:1] in string.ascii_letters and \
-            path[1:2] == ':': # pragma: no cover (win32)
+            path[1:2] == ':': # pragma: cover only win32
         conn = None
     elif isinstance(path, str) and ':' in path:
         conn, path = path.split(':', 1)

@@ -1,9 +1,17 @@
 [run]
 branch = True
 relative_files = True
+plugins =
+    coverage_conditional_plugin
 source =
     asyncssh
     tests
+omit =
+    $OMIT_FILES
+
+[coverage_conditional_plugin]
+    rules =
+        "sys_platform != 'win32'":  cover only win32
 
 [report]
 exclude_lines =

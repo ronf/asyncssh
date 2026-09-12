@@ -92,7 +92,7 @@ else: # pragma: no cover
 try:
     if sys.platform != 'win32':
         _openssh_version = run('ssh -V')
-    else: # pragma: no cover
+    else: # pragma: cover only win32
         _openssh_version = b''
 except subprocess.CalledProcessError: # pragma: no cover
     _openssh_version = b''
