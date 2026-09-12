@@ -493,6 +493,44 @@ class _InvalidFilenameSFTPServer(SFTPServer):
             yield name
 
 
+class _AbsoluteSymlinkSFTPServer(SFTPServer):
+    """Return an absolute symlink target for testing path validation"""
+
+    async def readlink(self, path):
+        """Return an absolute path as the symlink target"""
+
+        return b'/etc/passwd'
+
+    async def scandir(self, path):
+        """Inject a symlink entry with an absolute target"""
+
+        async for name in super().scandir(path):
+            yield name
+
+        yield SFTPName(b'abslink',
+                       attrs=SFTPAttrs(type=FILEXFER_TYPE_SYMLINK,
+                                       permissions=stat.S_IFLNK | 0o777))
+
+
+class _DuplicateSymlinkSFTPServer(SFTPServer):
+    """Return a symlink entry followed by a regular file with the same name
+
+       Readdir results are not deduplicated, so the client must handle
+       a symlink entry reappearing as a regular file gracefully.
+    """
+
+    async def scandir(self, path):
+        """Emit each symlink entry a second time as a regular file"""
+
+        async for name in super().scandir(path):
+            yield name
+
+            if name.attrs.type == FILEXFER_TYPE_SYMLINK:
+                yield SFTPName(name.filename,
+                               attrs=SFTPAttrs(type=FILEXFER_TYPE_REGULAR,
+                                               size=0))
+
+
 class _AsyncSFTPServer(SFTPServer):
     """Implement all SFTP callbacks as async methods"""
 
@@ -6055,3 +6093,136 @@ class _TestSCPErrors(_CheckSCP):
 
         with self.assertRaises(SFTPConnectionLost):
             await scp('src', (self._scp_server, 'unknown'))
+
+
+class _TestSFTPSymlinkTraversal(_CheckSFTP):
+    """Tests for symlink target validation in recursive download
+
+       Verify that recursive downloads reject symlink targets that escape
+       the download directory while allowing those that stay within it.
+    """
+
+    @classmethod
+    async def start_server(cls):
+        """Start a standard SFTP server for the tests to use"""
+
+        return await cls.create_server(sftp_factory=True)
+
+    @sftp_test
+    async def test_symlink_escaping_download_dir_rejected(self, sftp):
+        """A symlink target that escapes the download dir must be rejected"""
+
+        if not self._symlink_supported: # pragma: no cover
+            raise unittest.SkipTest('symlink not available')
+
+        try:
+            os.mkdir('src')
+            self._create_file('src/file1')
+            os.symlink(os.path.join('..', '..', 'escape'), 'src/evil')
+
+            with self.assertRaises(SFTPBadMessage):
+                await sftp.get('src', 'dst', recurse=True)
+
+            # The escaping symlink must not have been created locally.
+            self.assertFalse(os.path.lexists('dst/evil'))
+        finally:
+            remove('src dst')
+
+    @sftp_test
+    async def test_symlink_with_parent_ref_within_dir_allowed(self, sftp):
+        """A '..' symlink that stays within the download dir must be allowed"""
+
+        if not self._symlink_supported: # pragma: no cover
+            raise unittest.SkipTest('symlink not available')
+
+        try:
+            os.mkdir('src')
+            self._create_file('src/file1')
+            os.mkdir('src/sub')
+            # From src/sub, '../file1' resolves back inside the download tree.
+            os.symlink(os.path.join('..', 'file1'), 'src/sub/link')
+
+            await sftp.get('src', 'dst', recurse=True)
+
+            self.assertTrue(os.path.islink('dst/sub/link'))
+        finally:
+            remove('src dst')
+
+    @sftp_test
+    async def test_symlink_within_download_dir_allowed(self, sftp):
+        """A simple relative symlink target within the dir must be allowed"""
+
+        if not self._symlink_supported: # pragma: no cover
+            raise unittest.SkipTest('symlink not available')
+
+        try:
+            os.mkdir('src')
+            self._create_file('src/file1')
+            os.symlink('file1', 'src/good')
+
+            await sftp.get('src', 'dst', recurse=True)
+
+            self.assertTrue(os.path.islink('dst/good'))
+        finally:
+            remove('src dst')
+
+
+class _TestSFTPAbsoluteSymlink(_CheckSFTP):
+    """Tests that absolute symlink targets are rejected"""
+
+    @classmethod
+    async def start_server(cls):
+        """Start a server that returns absolute symlink targets"""
+
+        return await cls.create_server(
+            sftp_factory=_AbsoluteSymlinkSFTPServer)
+
+    @sftp_test
+    async def test_absolute_symlink_target_rejected(self, sftp):
+        """A symlink with an absolute target path must be rejected"""
+
+        try:
+            os.mkdir('src')
+            self._create_file('src/file1')
+
+            with self.assertRaises(SFTPBadMessage):
+                await sftp.get('src', 'dst', recurse=True)
+
+            self.assertFalse(os.path.lexists('dst/abslink'))
+        finally:
+            remove('src dst')
+
+
+class _TestSFTPDuplicateSymlink(_CheckSFTP):
+    """Tests for a downloaded file landing on a local symlink
+
+       When the server returns a symlink entry and then a regular-file
+       entry with the same name, the client must not blindly write the
+       file through the symlink.
+    """
+
+    @classmethod
+    async def start_server(cls):
+        """Start a server whose readdir returns duplicate symlink entries"""
+
+        return await cls.create_server(
+            sftp_factory=_DuplicateSymlinkSFTPServer)
+
+    @sftp_test
+    async def test_plain_file_over_in_root_symlink_allowed(self, sftp):
+        """Writing through a symlink whose target is within root is allowed"""
+
+        if not self._symlink_supported: # pragma: no cover
+            raise unittest.SkipTest('symlink not available')
+
+        try:
+            os.mkdir('src')
+            self._create_file('src/file1', 'legitimate')
+            os.symlink('file1', 'src/data')
+
+            await sftp.get('src', 'dst', recurse=True)
+
+            self.assertTrue(os.path.islink('dst/data'))
+            self.assertTrue(os.path.exists('dst/file1'))
+        finally:
+            remove('src dst')

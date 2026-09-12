@@ -143,8 +143,10 @@ else:
 
 if sys.platform == 'win32': # pragma: no cover
     _LocalPath = str
+    _LocalSep: _LocalPath = os.sep
 else:
     _LocalPath = bytes
+    _LocalSep = os.sep.encode('utf-8')
 
 _SFTPExtensions = Sequence[Tuple[bytes, bytes]]
 _SFTPFileObj = IO[bytes]
@@ -3958,7 +3960,8 @@ class SFTPClient:
             return FILEXFER_TYPE_UNKNOWN
 
     async def _copy(self, srcfs: _SFTPFSProtocol, dstfs: _SFTPFSProtocol,
-                    srcpath: bytes, dstpath: bytes, srcattrs: SFTPAttrs,
+                    srcpath: bytes, dstpath: bytes, dstroot: bytes,
+                    srcattrs: SFTPAttrs,
                     preserve: bool, recurse: bool, follow_symlinks: bool,
                     sparse: bool, block_size: int, max_requests: int,
                     progress_handler: SFTPProgressHandler,
@@ -3999,7 +4002,7 @@ class SFTPClient:
                     srcfile = posixpath.join(srcpath, filename)
                     dstfile = posixpath.join(dstpath, filename)
 
-                    await self._copy(srcfs, dstfs, srcfile, dstfile,
+                    await self._copy(srcfs, dstfs, srcfile, dstfile, dstroot,
                                      srcname.attrs, preserve, recurse,
                                      follow_symlinks, sparse, block_size,
                                      max_requests, progress_handler,
@@ -4010,6 +4013,27 @@ class SFTPClient:
 
             elif filetype == FILEXFER_TYPE_SYMLINK:
                 targetpath = await srcfs.readlink(srcpath)
+
+                # For local downloads, a symlink created inside the download
+                # tree must not point outside that tree, rooted at dstroot.
+
+                if isinstance(dstfs, LocalFS) and dstpath != dstroot:
+                    local_target = _to_local_path(targetpath)
+
+                    if os.path.isabs(local_target):
+                        raise SFTPBadMessage('Symlink target is '
+                                             'an absolute path')
+
+                    parent = os.path.realpath(os.path.dirname(
+                        _to_local_path(dstpath)))
+                    resolved = os.path.normpath(os.path.join(
+                        parent, local_target))
+                    root = os.path.realpath(_to_local_path(dstroot))
+
+                    if not (resolved == root or
+                            resolved.startswith(root + _LocalSep)):
+                        raise SFTPBadMessage('Symlink target is outside '
+                                             'download directory')
 
                 self.logger.info('  Copying symlink %s to %s', srcpath, dstpath)
                 self.logger.info('    Target path: %s', targetpath)
@@ -4117,9 +4141,9 @@ class SFTPClient:
             else:
                 dstfile = dstpath
 
-            await self._copy(srcfs, dstfs, srcfile, dstfile, srcname.attrs,
-                             preserve, recurse, follow_symlinks, sparse,
-                             block_size, max_requests, progress_handler,
+            await self._copy(srcfs, dstfs, srcfile, dstfile, dstfile,
+                             srcname.attrs, preserve, recurse, follow_symlinks,
+                             sparse, block_size, max_requests, progress_handler,
                              error_handler, remote_only)
 
     async def get(self, remotepaths: _SFTPPaths,
