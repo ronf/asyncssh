@@ -493,10 +493,10 @@ class SSHLocalPathForwarder(SSHLocalForwarder[SSHPathForwardTracker]):
         self.forward()
 
 
-def track_remote_port(conn: 'SSHConnection',
-                      tracker_factory: Optional[SSHPortForwardTrackerFactory],
-                      orig_host: str, orig_port: int,
-                      coro: SSHForwarderCoro, *args: object) -> Awaitable:
+def _track_remote_port(conn: 'SSHConnection',
+                       tracker_factory: Optional[SSHPortForwardTrackerFactory],
+                       orig_host: str, orig_port: int, coro: SSHForwarderCoro,
+                       *args: object) -> Awaitable[SSHForwarder]:
     """Forward a connection from a remote TCP listener, tracking it"""
 
     if tracker_factory is None:
@@ -512,9 +512,10 @@ def track_remote_port(conn: 'SSHConnection',
     return forwarder.forward_remote(notify, *args)
 
 
-def track_remote_path(conn: 'SSHConnection',
-                      tracker_factory: Optional[SSHPathForwardTrackerFactory],
-                      coro: SSHForwarderCoro, *args: object) -> Awaitable:
+def _track_remote_path(conn: 'SSHConnection',
+                       tracker_factory: Optional[SSHPathForwardTrackerFactory],
+                       coro: SSHForwarderCoro,
+                       *args: object) -> Awaitable[SSHForwarder]:
     """Forward a connection from a remote UNIX listener, tracking it"""
 
     if tracker_factory is None:

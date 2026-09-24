@@ -85,7 +85,7 @@ from .encryption import get_default_encryption_algs
 from .encryption import encryption_needs_mac
 from .encryption import get_encryption_params, get_encryption
 
-from .forward import SSHForwarder, track_remote_path, track_remote_port
+from .forward import SSHForwarder, _track_remote_path, _track_remote_port
 from .forward import SSHPortForwardTrackerFactory, SSHPathForwardTrackerFactory
 
 from .gss import GSSBase, GSSClient, GSSServer, GSSError
@@ -3165,8 +3165,11 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
                The hostname or address to forward the connections to
            :param dest_port:
                The port number to forward the connections to
+           :param peer_factory: (optional)
+               Returns the local end's protocol, defaulting to `SSHForwarder`
            :type dest_host: `str` or `None`
            :type dest_port: `int`
+           :type peer_factory: `callable`
 
            :returns: :class:`asyncio.BaseProtocol`
 
@@ -3194,7 +3197,10 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
            :param dest_path:
                The path to forward the connection to
+           :param peer_factory: (optional)
+               Returns the local end's protocol, defaulting to `SSHForwarder`
            :type dest_path: `str`
+           :type peer_factory: `callable`
 
            :returns: :class:`asyncio.BaseProtocol`
 
@@ -5483,9 +5489,8 @@ class SSHClientConnection(SSHConnection):
                The hostname or address to forward connections to
            :param dest_port:
                The port number to forward connections to
-           :param tracker_factory:
-               An optional callable invoked once per forwarded connection
-               which returns a new :class:`SSHPortForwardTracker` for it
+           :param tracker_factory: (optional)
+               Called once per forwarded connection to return a new tracker
            :type listen_host: `str`
            :type listen_port: `int`
            :type dest_host: `str`
@@ -5502,7 +5507,7 @@ class SSHClientConnection(SSHConnection):
                             orig_port: int) -> Awaitable[SSHTCPSession]:
             """Return an SSHTCPSession used to do remote port forwarding"""
 
-            return cast(Awaitable[SSHTCPSession], track_remote_port(
+            return cast(Awaitable[SSHTCPSession], _track_remote_port(
                 self, tracker_factory, orig_host, orig_port,
                 self.forward_connection, dest_host, dest_port))
 
@@ -5529,9 +5534,8 @@ class SSHClientConnection(SSHConnection):
                The path on the remote host to listen on
            :param dest_path:
                The path on the local host to forward connections to
-           :param tracker_factory:
-               An optional callable invoked once per forwarded connection
-               which returns a new :class:`SSHPathForwardTracker` for it
+           :param tracker_factory: (optional)
+               Called once per forwarded connection to return a new tracker
            :type listen_path: `str`
            :type dest_path: `str`
            :type tracker_factory: :class:`SSHPathForwardTrackerFactory`
@@ -5545,7 +5549,7 @@ class SSHClientConnection(SSHConnection):
         def session_factory() -> Awaitable[SSHUNIXSession[bytes]]:
             """Return an SSHUNIXSession used to do remote path forwarding"""
 
-            return cast(Awaitable[SSHUNIXSession[bytes]], track_remote_path(
+            return cast(Awaitable[SSHUNIXSession[bytes]], _track_remote_path(
                 self, tracker_factory, self.forward_unix_connection, dest_path))
 
         self.logger.info('Creating remote UNIX forwarder from %s to %s',
@@ -5573,9 +5577,8 @@ class SSHClientConnection(SSHConnection):
                The port number on the remote host to listen on
            :param dest_path:
                The path on the local host to forward connections to
-           :param tracker_factory:
-               An optional callable invoked once per forwarded connection
-               which returns a new :class:`SSHPortForwardTracker` for it
+           :param tracker_factory: (optional)
+               Called once per forwarded connection to return a new tracker
            :type listen_host: `str`
            :type listen_port: `int`
            :type dest_path: `str`
@@ -5591,7 +5594,7 @@ class SSHClientConnection(SSHConnection):
                             orig_port: int) -> Awaitable[SSHUNIXSession]:
             """Return an SSHTCPSession used to do remote port forwarding"""
 
-            return cast(Awaitable[SSHUNIXSession], track_remote_port(
+            return cast(Awaitable[SSHUNIXSession], _track_remote_port(
                 self, tracker_factory, orig_host, orig_port,
                 self.forward_unix_connection, dest_path))
 
@@ -5621,9 +5624,8 @@ class SSHClientConnection(SSHConnection):
                The hostname or address to forward connections to
            :param dest_port:
                The port number to forward connections to
-           :param tracker_factory:
-               An optional callable invoked once per forwarded connection
-               which returns a new :class:`SSHPathForwardTracker` for it
+           :param tracker_factory: (optional)
+               Called once per forwarded connection to return a new tracker
            :type listen_path: `str`
            :type dest_host: `str`
            :type dest_port: `int`
@@ -5638,7 +5640,7 @@ class SSHClientConnection(SSHConnection):
         def session_factory() -> Awaitable[SSHTCPSession[bytes]]:
             """Return an SSHUNIXSession used to do remote path forwarding"""
 
-            return cast(Awaitable[SSHTCPSession[bytes]], track_remote_path(
+            return cast(Awaitable[SSHTCPSession[bytes]], _track_remote_path(
                 self, tracker_factory, self.forward_connection,
                 dest_host, dest_port))
 
