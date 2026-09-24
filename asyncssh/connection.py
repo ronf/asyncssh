@@ -85,7 +85,7 @@ from .encryption import get_default_encryption_algs
 from .encryption import encryption_needs_mac
 from .encryption import get_encryption_params, get_encryption
 
-from .forward import SSHForwarder
+from .forward import SSHForwarder, track_remote_path, track_remote_port
 from .forward import SSHPortForwardTrackerFactory, SSHPathForwardTrackerFactory
 
 from .gss import GSSBase, GSSClient, GSSServer, GSSError
@@ -3153,7 +3153,8 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         raise NotImplementedError
 
     async def forward_connection(
-            self, dest_host: str, dest_port: int) -> SSHForwarder:
+            self, dest_host: str, dest_port: int, peer_factory: Callable[
+                [], SSHForwarder] = SSHForwarder) -> SSHForwarder:
         """Forward a tunneled TCP connection
 
            This method is a coroutine which can be returned by a
@@ -3172,7 +3173,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         """
 
         try:
-            _, peer = await self._loop.create_connection(SSHForwarder,
+            _, peer = await self._loop.create_connection(peer_factory,
                                                          dest_host, dest_port)
 
             self.logger.info('  Forwarding TCP connection to %s',
@@ -3182,7 +3183,9 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         return SSHForwarder(cast(SSHForwarder, peer))
 
-    async def forward_unix_connection(self, dest_path: str) -> SSHForwarder:
+    async def forward_unix_connection(
+            self, dest_path: str, peer_factory: Callable[
+                [], SSHForwarder] = SSHForwarder) -> SSHForwarder:
         """Forward a tunneled UNIX domain socket connection
 
            This method is a coroutine which can be returned by a
@@ -3199,7 +3202,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         try:
             _, peer = \
-                await self._loop.create_unix_connection(SSHForwarder, dest_path)
+                await self._loop.create_unix_connection(peer_factory, dest_path)
 
             self.logger.info('  Forwarding UNIX connection to %s', dest_path)
         except OSError as exc:
@@ -5459,9 +5462,10 @@ class SSHClientConnection(SSHConnection):
         return listener
 
     @async_context_manager
-    async def forward_remote_port(self, listen_host: str,
-                                  listen_port: int, dest_host: str,
-                                  dest_port: int) -> SSHListener:
+    async def forward_remote_port(
+            self, listen_host: str, listen_port: int, dest_host: str,
+            dest_port: int, tracker_factory: Optional[
+                SSHPortForwardTrackerFactory] = None) -> SSHListener:
         """Set up remote port forwarding
 
            This method is a coroutine which attempts to set up port
@@ -5479,10 +5483,14 @@ class SSHClientConnection(SSHConnection):
                The hostname or address to forward connections to
            :param dest_port:
                The port number to forward connections to
+           :param tracker_factory:
+               An optional callable invoked once per forwarded connection
+               which returns a new :class:`SSHPortForwardTracker` for it
            :type listen_host: `str`
            :type listen_port: `int`
            :type dest_host: `str`
            :type dest_port: `int`
+           :type tracker_factory: :class:`SSHPortForwardTrackerFactory`
 
            :returns: :class:`SSHListener`
 
@@ -5490,12 +5498,13 @@ class SSHClientConnection(SSHConnection):
 
         """
 
-        def session_factory(_orig_host: str,
-                            _orig_port: int) -> Awaitable[SSHTCPSession]:
+        def session_factory(orig_host: str,
+                            orig_port: int) -> Awaitable[SSHTCPSession]:
             """Return an SSHTCPSession used to do remote port forwarding"""
 
-            return cast(Awaitable[SSHTCPSession],
-                        self.forward_connection(dest_host, dest_port))
+            return cast(Awaitable[SSHTCPSession], track_remote_port(
+                self, tracker_factory, orig_host, orig_port,
+                self.forward_connection, dest_host, dest_port))
 
         self.logger.info('Creating remote TCP forwarder from %s to %s',
                          (listen_host, listen_port), (dest_host, dest_port))
@@ -5504,8 +5513,9 @@ class SSHClientConnection(SSHConnection):
                                         listen_port)
 
     @async_context_manager
-    async def forward_remote_path(self, listen_path: str,
-                                  dest_path: str) -> SSHListener:
+    async def forward_remote_path(
+            self, listen_path: str, dest_path: str, tracker_factory: Optional[
+                SSHPathForwardTrackerFactory] = None) -> SSHListener:
         """Set up remote UNIX domain socket forwarding
 
            This method is a coroutine which attempts to set up UNIX domain
@@ -5519,8 +5529,12 @@ class SSHClientConnection(SSHConnection):
                The path on the remote host to listen on
            :param dest_path:
                The path on the local host to forward connections to
+           :param tracker_factory:
+               An optional callable invoked once per forwarded connection
+               which returns a new :class:`SSHPathForwardTracker` for it
            :type listen_path: `str`
            :type dest_path: `str`
+           :type tracker_factory: :class:`SSHPathForwardTrackerFactory`
 
            :returns: :class:`SSHListener`
 
@@ -5531,8 +5545,8 @@ class SSHClientConnection(SSHConnection):
         def session_factory() -> Awaitable[SSHUNIXSession[bytes]]:
             """Return an SSHUNIXSession used to do remote path forwarding"""
 
-            return cast(Awaitable[SSHUNIXSession[bytes]],
-                        self.forward_unix_connection(dest_path))
+            return cast(Awaitable[SSHUNIXSession[bytes]], track_remote_path(
+                self, tracker_factory, self.forward_unix_connection, dest_path))
 
         self.logger.info('Creating remote UNIX forwarder from %s to %s',
                          listen_path, dest_path)
@@ -5540,9 +5554,10 @@ class SSHClientConnection(SSHConnection):
         return await self.create_unix_server(session_factory, listen_path)
 
     @async_context_manager
-    async def forward_remote_port_to_path(self, listen_host: str,
-                                          listen_port: int,
-                                          dest_path: str) -> SSHListener:
+    async def forward_remote_port_to_path(
+            self, listen_host: str, listen_port: int, dest_path: str,
+            tracker_factory: Optional[
+                SSHPortForwardTrackerFactory] = None) -> SSHListener:
         """Set up remote TCP port forwarding to a local UNIX domain socket
 
            This method is a coroutine which attempts to set up port
@@ -5558,9 +5573,13 @@ class SSHClientConnection(SSHConnection):
                The port number on the remote host to listen on
            :param dest_path:
                The path on the local host to forward connections to
+           :param tracker_factory:
+               An optional callable invoked once per forwarded connection
+               which returns a new :class:`SSHPortForwardTracker` for it
            :type listen_host: `str`
            :type listen_port: `int`
            :type dest_path: `str`
+           :type tracker_factory: :class:`SSHPortForwardTrackerFactory`
 
            :returns: :class:`SSHListener`
 
@@ -5568,12 +5587,13 @@ class SSHClientConnection(SSHConnection):
 
         """
 
-        def session_factory(_orig_host: str,
-                            _orig_port: int) -> Awaitable[SSHUNIXSession]:
+        def session_factory(orig_host: str,
+                            orig_port: int) -> Awaitable[SSHUNIXSession]:
             """Return an SSHTCPSession used to do remote port forwarding"""
 
-            return cast(Awaitable[SSHUNIXSession],
-                        self.forward_unix_connection(dest_path))
+            return cast(Awaitable[SSHUNIXSession], track_remote_port(
+                self, tracker_factory, orig_host, orig_port,
+                self.forward_unix_connection, dest_path))
 
         self.logger.info('Creating remote TCP forwarder from %s to %s',
                          (listen_host, listen_port), dest_path)
@@ -5582,9 +5602,10 @@ class SSHClientConnection(SSHConnection):
                                         listen_port)
 
     @async_context_manager
-    async def forward_remote_path_to_port(self, listen_path: str,
-                                          dest_host: str,
-                                          dest_port: int) -> SSHListener:
+    async def forward_remote_path_to_port(
+            self, listen_path: str, dest_host: str, dest_port: int,
+            tracker_factory: Optional[
+                SSHPathForwardTrackerFactory] = None) -> SSHListener:
         """Set up remote UNIX domain socket forwarding to a local TCP port
 
            This method is a coroutine which attempts to set up UNIX domain
@@ -5600,9 +5621,13 @@ class SSHClientConnection(SSHConnection):
                The hostname or address to forward connections to
            :param dest_port:
                The port number to forward connections to
+           :param tracker_factory:
+               An optional callable invoked once per forwarded connection
+               which returns a new :class:`SSHPathForwardTracker` for it
            :type listen_path: `str`
            :type dest_host: `str`
            :type dest_port: `int`
+           :type tracker_factory: :class:`SSHPathForwardTrackerFactory`
 
            :returns: :class:`SSHListener`
 
@@ -5613,8 +5638,9 @@ class SSHClientConnection(SSHConnection):
         def session_factory() -> Awaitable[SSHTCPSession[bytes]]:
             """Return an SSHUNIXSession used to do remote path forwarding"""
 
-            return cast(Awaitable[SSHTCPSession[bytes]],
-                        self.forward_connection(dest_host, dest_port))
+            return cast(Awaitable[SSHTCPSession[bytes]], track_remote_path(
+                self, tracker_factory, self.forward_connection,
+                dest_host, dest_port))
 
         self.logger.info('Creating remote UNIX forwarder from %s to %s',
                          listen_path, (dest_host, dest_port))

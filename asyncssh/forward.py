@@ -27,6 +27,7 @@ from typing import TYPE_CHECKING, Any, Awaitable, Callable, Dict, Generic
 from typing import Optional, Type, TypeVar, cast
 from typing_extensions import Self
 
+from .constants import OPEN_ADMINISTRATIVELY_PROHIBITED
 from .misc import ChannelOpenError, SockAddr
 
 
@@ -44,9 +45,11 @@ class SSHForwardTracker:
        A tracker observes a single forwarded connection. A
        `tracker_factory` passed to one of the
        :meth:`forward_local_port() <SSHClientConnection.forward_local_port>`
-       family of methods is called once per accepted connection and must
-       return a new tracker instance, on which asyncssh then calls the
-       hooks below for the life of that connection.
+       or :meth:`forward_remote_port()
+       <SSHClientConnection.forward_remote_port>` families of methods
+       is called once per forwarded connection and must return a new
+       tracker instance, on which asyncssh then calls the hooks below
+       for the life of that connection.
 
        All hooks run inside the asyncio event loop and **must not block**
        (no I/O, no sleeps). They are pure observers: return values are
@@ -56,9 +59,10 @@ class SSHForwardTracker:
        buggy tracker can never break forwarding.
 
        This base class defines the hooks shared by all forward types.
-       Use :class:`SSHPortForwardTracker` for TCP local forwards and
-       :class:`SSHPathForwardTracker` for UNIX domain socket local
-       forwards; they differ only in the signature of `connection_made`.
+       Use :class:`SSHPortForwardTracker` for forwards with a TCP
+       listener and :class:`SSHPathForwardTracker` for forwards with a
+       UNIX domain socket listener; they differ only in the signature
+       of `connection_made`.
 
     """
 
@@ -96,12 +100,15 @@ class SSHForwardTracker:
 
 
 class SSHPortForwardTracker(SSHForwardTracker):
-    """Tracker for local TCP port forwards
+    """Tracker for forwards with a TCP listener
 
        Used with
-       :meth:`forward_local_port() <SSHClientConnection.forward_local_port>`
-       and :meth:`forward_local_port_to_path()
-       <SSHClientConnection.forward_local_port_to_path>`.
+       :meth:`forward_local_port() <SSHClientConnection.forward_local_port>`,
+       :meth:`forward_local_port_to_path()
+       <SSHClientConnection.forward_local_port_to_path>`,
+       :meth:`forward_remote_port() <SSHClientConnection.forward_remote_port>`
+       and :meth:`forward_remote_port_to_path()
+       <SSHClientConnection.forward_remote_port_to_path>`.
 
     """
 
@@ -123,12 +130,15 @@ class SSHPortForwardTracker(SSHForwardTracker):
 
 
 class SSHPathForwardTracker(SSHForwardTracker):
-    """Tracker for local UNIX domain socket forwards
+    """Tracker for forwards with a UNIX domain socket listener
 
        Used with
-       :meth:`forward_local_path() <SSHClientConnection.forward_local_path>`
-       and :meth:`forward_local_path_to_port()
-       <SSHClientConnection.forward_local_path_to_port>`.
+       :meth:`forward_local_path() <SSHClientConnection.forward_local_path>`,
+       :meth:`forward_local_path_to_port()
+       <SSHClientConnection.forward_local_path_to_port>`,
+       :meth:`forward_remote_path() <SSHClientConnection.forward_remote_path>`
+       and :meth:`forward_remote_path_to_port()
+       <SSHClientConnection.forward_remote_path_to_port>`.
 
     """
 
@@ -409,6 +419,36 @@ class SSHLocalForwarder(SSHForwarder, Generic[_Tracker]):
 
         self._conn.create_task(self._forward(*args))
 
+    async def forward_remote(self, notify: Callable[[_Tracker], None],
+                             *args: object) -> SSHForwarder:
+        """Open the local end of a remotely forwarded connection
+
+           The tracker is notified once the local socket is connected,
+           or just before `connection_lost` if it can't be. Closing
+           the forwarder from `connection_made` rejects the channel.
+
+        """
+
+        def peer_factory() -> SSHForwarder:
+            """Return this forwarder as the local socket's protocol"""
+
+            return self
+
+        try:
+            forwarder = await self._coro(*args, peer_factory)
+        except ChannelOpenError as exc:
+            self._notify_tracker(self._tracker, notify)
+            self.connection_lost(exc)
+            raise
+
+        self._notify_tracker(self._tracker, notify)
+
+        if not self._transport:
+            raise ChannelOpenError(OPEN_ADMINISTRATIVELY_PROHIBITED,
+                                   'Connection forwarding closed')
+
+        return forwarder
+
 
 class SSHLocalPortForwarder(SSHLocalForwarder[SSHPortForwardTracker]):
     """Local TCP port forwarding connection handler"""
@@ -451,3 +491,40 @@ class SSHLocalPathForwarder(SSHLocalForwarder[SSHPathForwardTracker]):
         self._notify_tracker(self._tracker, notify)
 
         self.forward()
+
+
+def track_remote_port(conn: 'SSHConnection',
+                      tracker_factory: Optional[SSHPortForwardTrackerFactory],
+                      orig_host: str, orig_port: int,
+                      coro: SSHForwarderCoro, *args: object) -> Awaitable:
+    """Forward a connection from a remote TCP listener, tracking it"""
+
+    if tracker_factory is None:
+        return coro(*args)
+
+    forwarder = SSHLocalForwarder(conn, coro, tracker_factory)
+
+    def notify(tracker: SSHPortForwardTracker) -> None:
+        """Report the new connection to the tracker"""
+
+        tracker.connection_made(forwarder, orig_host, orig_port)
+
+    return forwarder.forward_remote(notify, *args)
+
+
+def track_remote_path(conn: 'SSHConnection',
+                      tracker_factory: Optional[SSHPathForwardTrackerFactory],
+                      coro: SSHForwarderCoro, *args: object) -> Awaitable:
+    """Forward a connection from a remote UNIX listener, tracking it"""
+
+    if tracker_factory is None:
+        return coro(*args)
+
+    forwarder = SSHLocalForwarder(conn, coro, tracker_factory)
+
+    def notify(tracker: SSHPathForwardTracker) -> None:
+        """Report the new connection to the tracker"""
+
+        tracker.connection_made(forwarder)
+
+    return forwarder.forward_remote(notify, *args)
