@@ -5489,8 +5489,11 @@ class SSHClientConnection(SSHConnection):
                The hostname or address to forward connections to
            :param dest_port:
                The port number to forward connections to
-           :param tracker_factory: (optional)
-               Called once per forwarded connection to return a new tracker
+           :param tracker_factory:
+               An optional callable invoked once per forwarded connection
+               which returns a new :class:`SSHPortForwardTracker` for observing
+               that connection's lifecycle. `None` (default) disables tracking
+               with no overhead.
            :type listen_host: `str`
            :type listen_port: `int`
            :type dest_host: `str`
@@ -5534,8 +5537,11 @@ class SSHClientConnection(SSHConnection):
                The path on the remote host to listen on
            :param dest_path:
                The path on the local host to forward connections to
-           :param tracker_factory: (optional)
-               Called once per forwarded connection to return a new tracker
+           :param tracker_factory:
+               An optional callable invoked once per forwarded connection
+               which returns a new :class:`SSHPathForwardTracker` for observing
+               that connection's lifecycle. `None` (default) disables tracking
+               with no overhead.
            :type listen_path: `str`
            :type dest_path: `str`
            :type tracker_factory: :class:`SSHPathForwardTrackerFactory`
@@ -5577,8 +5583,11 @@ class SSHClientConnection(SSHConnection):
                The port number on the remote host to listen on
            :param dest_path:
                The path on the local host to forward connections to
-           :param tracker_factory: (optional)
-               Called once per forwarded connection to return a new tracker
+           :param tracker_factory:
+               An optional callable invoked once per forwarded connection
+               which returns a new :class:`SSHPortForwardTracker` for observing
+               that connection's lifecycle. `None` (default) disables tracking
+               with no overhead.
            :type listen_host: `str`
            :type listen_port: `int`
            :type dest_path: `str`
@@ -5624,8 +5633,11 @@ class SSHClientConnection(SSHConnection):
                The hostname or address to forward connections to
            :param dest_port:
                The port number to forward connections to
-           :param tracker_factory: (optional)
-               Called once per forwarded connection to return a new tracker
+           :param tracker_factory:
+               An optional callable invoked once per forwarded connection
+               which returns a new :class:`SSHPathForwardTracker` for observing
+               that connection's lifecycle. `None` (default) disables tracking
+               with no overhead.
            :type listen_path: `str`
            :type dest_host: `str`
            :type dest_port: `int`
