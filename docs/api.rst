@@ -90,6 +90,10 @@ to a UNIX domain socket or vice-versa can be set up using the functions
 <SSHClientConnection.forward_remote_path_to_port>`. In these cases, data
 transfer on the channels is managed automatically by AsyncSSH whenever new
 connections are opened, so custom session objects are not required.
+All of these methods also accept an optional ``tracker_factory`` which
+creates a per-connection :class:`SSHPortForwardTracker` or
+:class:`SSHPathForwardTracker` to observe each forwarded connection, as
+described in `Forward Tracker Classes`_.
 
 Dynamic TCP port forwarding can be set up by calling :meth:`forward_socks()
 <SSHClientConnection.forward_socks>`. The SOCKS listener set up by
@@ -1012,9 +1016,10 @@ Forwarder Classes
 Forward Tracker Classes
 =======================
 
-The ``forward_local_*`` methods on :class:`SSHClientConnection` accept an
-optional ``tracker_factory`` argument: a zero-argument callable invoked
-once per accepted connection which returns a tracker instance --
+The ``forward_local_*`` and ``forward_remote_*`` methods on
+:class:`SSHClientConnection` accept an optional ``tracker_factory``
+argument: a zero-argument callable invoked once per forwarded connection
+which returns a tracker instance --
 :class:`SSHPortForwardTracker` for TCP listeners or
 :class:`SSHPathForwardTracker` for UNIX domain listeners. asyncssh then
 calls that instance's hooks for the life of the connection, giving
@@ -1029,15 +1034,29 @@ what it needs, and exceptions raised by a hook or factory are caught and
 discarded so a buggy tracker cannot break forwarding.
 
 Use :class:`SSHPortForwardTracker` with the TCP-listener methods
-(:meth:`forward_local_port() <SSHClientConnection.forward_local_port>` and
+(:meth:`forward_local_port() <SSHClientConnection.forward_local_port>`,
 :meth:`forward_local_port_to_path()
-<SSHClientConnection.forward_local_port_to_path>`) and
+<SSHClientConnection.forward_local_port_to_path>`,
+:meth:`forward_remote_port() <SSHClientConnection.forward_remote_port>` and
+:meth:`forward_remote_port_to_path()
+<SSHClientConnection.forward_remote_port_to_path>`) and
 :class:`SSHPathForwardTracker` with the UNIX-domain-listener methods
-(:meth:`forward_local_path() <SSHClientConnection.forward_local_path>` and
+(:meth:`forward_local_path() <SSHClientConnection.forward_local_path>`,
 :meth:`forward_local_path_to_port()
-<SSHClientConnection.forward_local_path_to_port>`). The two classes share
-the same set of hooks and differ only in the signature of
-``connection_made``.
+<SSHClientConnection.forward_local_path_to_port>`,
+:meth:`forward_remote_path() <SSHClientConnection.forward_remote_path>` and
+:meth:`forward_remote_path_to_port()
+<SSHClientConnection.forward_remote_path_to_port>`). The tracker type
+follows the listener, not the destination. The two classes share the
+same set of hooks and differ only in the signature of ``connection_made``.
+
+In both directions, ``forward_local_bytes`` reports bytes generated on
+the local host and ``forward_remote_bytes`` reports bytes received over
+the SSH connection. For a remote forward, ``connection_made`` is called
+once the local destination is connected. If it can't be opened,
+``connection_made`` is still called, immediately followed by
+``connection_lost`` with the :exc:`ChannelOpenError`. Closing the
+forwarder from ``connection_made`` rejects the forwarded connection.
 
    .. code-block:: python
 
@@ -1051,9 +1070,14 @@ the same set of hooks and differ only in the signature of
           def connection_lost(self, exc):
               self._counter.active -= 1
 
+      def tracker_factory():
+          return ConnCounter(counter)
+
       listener = await conn.forward_local_port(
-          '', 0, 'remote-host', 80,
-          tracker_factory=lambda: ConnCounter(counter))
+          '', 0, 'remote-host', 80, tracker_factory=tracker_factory)
+
+      remote_listener = await conn.forward_remote_port(
+          '', 8080, 'localhost', 80, tracker_factory=tracker_factory)
 
 .. autoclass:: SSHPortForwardTracker()
 
