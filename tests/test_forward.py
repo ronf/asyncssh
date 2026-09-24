@@ -1274,6 +1274,24 @@ class _TestTCPForwarding(_CheckForwarding):
         self.assertEqual(tracker.events[1][1].code, OPEN_CONNECT_FAILED)
 
     @asynctest
+    async def test_remote_port_refused_recovery(self):
+        """Test that a refused remote forward leaves the connection usable"""
+
+        trackers, factory = _recording(_PortRecorder)
+
+        async with self.connect() as conn:
+            async with conn.forward_remote_port(
+                    '', 0, '127.0.0.1', _closed_port(), factory) as listener:
+                reader, writer = await asyncio.open_connection(
+                    '127.0.0.1', listener.get_port())
+
+                await self._check_closed(reader, writer)
+
+            self._check_made_lost(trackers, asyncssh.ChannelOpenError)
+
+            await self._check_connection(conn)
+
+    @asynctest
     async def test_remote_port_close(self):
         """Test closing a remote port forward from connection_made"""
 
