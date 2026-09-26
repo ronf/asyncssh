@@ -4017,7 +4017,7 @@ class SFTPClient:
                 # For local downloads, a symlink created inside the download
                 # tree must not point outside that tree, rooted at dstroot.
 
-                if isinstance(dstfs, LocalFS) and dstpath != dstroot:
+                if isinstance(dstfs, LocalFS):
                     local_target = _to_local_path(targetpath)
 
                     if os.path.isabs(local_target):
@@ -4118,6 +4118,9 @@ class SFTPClient:
 
         if dstpath:
             dstpath = dstfs.encode(dstpath)
+            dstroot = dstpath
+        else:
+            dstroot = ''
 
         dstpath: Optional[bytes]
 
@@ -4141,7 +4144,7 @@ class SFTPClient:
             else:
                 dstfile = dstpath
 
-            await self._copy(srcfs, dstfs, srcfile, dstfile, dstfile,
+            await self._copy(srcfs, dstfs, srcfile, dstfile, dstroot,
                              srcname.attrs, preserve, recurse, follow_symlinks,
                              sparse, block_size, max_requests, progress_handler,
                              error_handler, remote_only)

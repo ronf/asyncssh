@@ -977,13 +977,16 @@ class _TestSFTP(_CheckSFTP):
         for method in ('get', 'put', 'copy'):
             with self.subTest(method=method):
                 try:
-                    os.symlink('file', 'link1')
-                    os.utime('link1', times=(1, 2), follow_symlinks=False)
-                    await getattr(sftp, method)(
-                        'link1', 'link2', preserve=True, follow_symlinks=False)
-                    self.assertEqual(os.lstat('link2').st_mtime, 2)
+                    os.mkdir('src')
+                    os.mkdir('dst')
+                    os.symlink('file', 'src/link')
+                    os.utime('src/link', times=(1, 2), follow_symlinks=False)
+                    await getattr(sftp, method)('src/link', 'dst',
+                                                preserve=True,
+                                                follow_symlinks=False)
+                    self.assertEqual(os.lstat('dst/link').st_mtime, 2)
                 finally:
-                    remove('link1 link2')
+                    remove('src dst')
 
     @unittest.skipIf(sys.platform == 'win32', 'skip lsetstat tests on Windows')
     def test_copy_preserve_link_unsupported(self):
@@ -6107,6 +6110,27 @@ class _TestSFTPSymlinkTraversal(_CheckSFTP):
         """Start a standard SFTP server for the tests to use"""
 
         return await cls.create_server(sftp_factory=True)
+
+    @sftp_test
+    async def test_symlink_escaping_download_root_rejected(self, sftp):
+        """A symlink target that escapes the download root must be rejected"""
+
+        if not self._symlink_supported: # pragma: no cover
+            raise unittest.SkipTest('symlink not available')
+
+        try:
+            os.mkdir('src')
+            os.mkdir('dst')
+            self._create_file('src/file1')
+            os.symlink(os.path.join('..', '..', 'escape'), 'src/evil')
+
+            with self.assertRaises(SFTPBadMessage):
+                await sftp.get('src/evil', 'dst/evil')
+
+            # The escaping symlink must not have been created locally.
+            self.assertFalse(os.path.lexists('dst/evil'))
+        finally:
+            remove('src dst')
 
     @sftp_test
     async def test_symlink_escaping_download_dir_rejected(self, sftp):
