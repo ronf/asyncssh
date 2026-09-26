@@ -5934,6 +5934,9 @@ class _TestSCPErrors(_CheckSCP):
                 elif command.endswith('get_invalid_filename_response'):
                     await process.stdin.read(1)
                     process.stdout.write('C0644 0 ../src\n')
+                elif command.endswith('get_dot_filename_response'):
+                    await process.stdin.read(1)
+                    process.stdout.write('C0644 0 .\n')
                 elif command.endswith('get_dir_no_recurse'):
                     await process.stdin.read(1)
                     process.stdout.write('D0755 0 src\n')
@@ -5976,6 +5979,17 @@ class _TestSCPErrors(_CheckSCP):
         try:
             with self.assertRaises((SFTPBadMessage, SFTPConnectionLost)):
                 await scp((self._scp_server, 'get_invalid_filename_response'),
+                          'dst')
+        finally:
+            remove('dst')
+
+    @asynctest
+    async def test_get_dot_filename_response(self):
+        """Test receiving single dot filename is rejected"""
+
+        try:
+            with self.assertRaises((SFTPBadMessage, SFTPConnectionLost)):
+                await scp((self._scp_server, 'get_dot_filename_response'),
                           'dst')
         finally:
             remove('dst')
