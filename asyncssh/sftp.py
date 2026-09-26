@@ -4120,7 +4120,7 @@ class SFTPClient:
             dstpath = dstfs.encode(dstpath)
             dstroot = dstpath
         else:
-            dstroot = ''
+            dstroot = b''
 
         dstpath: Optional[bytes]
 
