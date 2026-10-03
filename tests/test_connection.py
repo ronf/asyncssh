@@ -879,6 +879,16 @@ class _TestConnection(ServerTestCase):
             await self.connect(known_hosts=([], ['ckey.pub'], ['skey.pub']))
 
     @asynctest
+    async def test_revoked_known_hosts_key_in_cert(self):
+        """Test revoked server host key in a certificate"""
+
+        self._server.update(server_host_keys=['skey_cross'])
+
+        with self.assertRaises(asyncssh.HostKeyNotVerifiable):
+            await self.connect(known_hosts=([], ['skey.pub'],
+                                            ['skey_ecdsa.pub']))
+
+    @asynctest
     async def test_empty_known_hosts(self):
         """Test empty known hosts list"""
 

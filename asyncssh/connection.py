@@ -1308,6 +1308,9 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
             if cert.signing_key in self._revoked_host_keys:
                 raise ValueError('Host CA key is revoked')
 
+            if cert.key in self._revoked_host_keys:
+                raise ValueError('Host key is revoked')
+
             if not self._owner: # pragma: no cover
                 raise ValueError('Connection closed')
 
