@@ -365,8 +365,6 @@ class SSHChannel(Generic[AnyStr], SSHPacketHandler):
     def _deliver_data(self, data: bytes, datatype: DataType) -> None:
         """Deliver incoming data to the session"""
 
-        self._recv_window -= len(data)
-
         if self._recv_window < self._init_recv_window / 2:
             adjust = self._init_recv_window - self._recv_window
 
@@ -405,6 +403,8 @@ class SSHChannel(Generic[AnyStr], SSHPacketHandler):
 
         if self._send_state in {'close_pending', 'closed'}:
             return
+
+        self._recv_window -= len(data)
 
         if self._recv_paused:
             self._recv_buf.append((data, datatype))
