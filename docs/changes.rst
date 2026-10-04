@@ -3,6 +3,69 @@
 Change Log
 ==========
 
+Release 2.24.1 (3 Oct 2026)
+---------------------------
+
+* Fixed a potential "short read/write" issue in SFTP, potentially
+  requiring multiple calls to successfully read or write all the data
+  an application requests. Thanks go to Landon Peng for reporting
+  this issue.
+
+* Added protection against unreasonable packet lengths when parsing
+  SSH and SFTP packets, avoiding a potential denial of service attack.
+  Thanks go to zhangph (GitHub user afldl) for suggesting this change.
+
+* Added restrictions on which SSH channel requests are allowed to be
+  sent more than once on a channel. Thanks go to zhangph (GitHub user
+  afldl) for reporting this issue for shell/exec/subsystem requests.
+
+* Improved error reporting of a client trying to set multiple attributes
+  on a file, when some of the operations aren't supported. Thanks go to
+  Kevin O'Neil for reporting this issue and helping to test this fix.
+
+* Improved path sanitizaation for SCP, to protect against additional
+  "path traversal" attacks. Thanks go to GitHub user jankesec for
+  reporting the issue and providing a proposed fix.
+
+* Fixed a race condition in server authentication that could result
+  in the wrong username being set as the authenticated user.
+
+* Fixed a possible leak of options across authentication attempts when
+  multiple authentication requests are attempted on a connection.
+  Thanks go to GitHub user 0xW41th for reporting this issue and
+  providing a suggested fix.
+
+* Fixed multiple SFTP "path traversal" issues, where a malicious SFTP
+  server could trick an SFTP client into writing outside of the
+  requested target directory. Thanks go to Youjoon Yoon, Khizar
+  Ali Shah, and GitHub user L1nq0 for reporting these issues and
+  suggesting possible fixes.
+
+* Fixed multiple SFTP chroot escape issues, where a client could read
+  and write files outside of a chroot'd AsyncSSH SFTP server. Thanks
+  go to GitHub user LorenzMap, Arpit Jain, and Mario Madersbacher for
+  reporting these issues and suggesting possible fixes.
+
+* Fixed revocation checking to handle the case where a host certificate
+  is sent with a trusted CA but where the host key within the
+  certificate is marked as revoked. Thanks go to Mohammad Thabet Hassan
+  for reporting this issue.
+
+* Fixed SSH channels receive window updates to be properly tracked
+  when reading on the channel is paused. Thanks go to GitHub user
+  Sumit-2004 for reporting this issue.
+
+* Changed SSH config file username token substitution to disallow
+  the username from being an empty string, avoiding a possible
+  vulnerability. Thanks go to GitHub user L1nq0 for reporting this
+  issue and proposing possible fixes.
+
+* Fixed deprecation errors on des-cbc and des2-cbc ciphers.
+
+* Added pre-commit hooks, including spell checking, and fixed various
+  errors found by that. Thanks go to Waket Zheng for providing an
+  initial versiosn of this.
+
 Release 2.24.0 (27 Jun 2026)
 ----------------------------
 
