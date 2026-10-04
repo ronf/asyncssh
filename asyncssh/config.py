@@ -128,6 +128,8 @@ class SSHConfig:
                                        'not available') from None
             elif token == 'i':
                 raise ConfigParseError('User id not available') from None
+            elif token == 'u':
+                raise IllegalUserName('Unsafe username substitution') from None
             else:
                 raise ConfigParseError('Invalid token expansion: ' +
                                        token) from None
@@ -724,6 +726,9 @@ class SSHServerConfig(SSHConfig):
                - a username containing forward or backward slashes
                - a username containing an env substitution like "${...}"
 
+           A username of empty string is allowed here, but will later be
+           rejected if used as a substitution value.
+
            Note: this code assumes that saslprep has already been performed
            on the username before it is accessed here.
 
@@ -732,7 +737,8 @@ class SSHServerConfig(SSHConfig):
         if _unsafe_user_pattern.search(self._user):
             raise IllegalUserName('Unsafe username substitution')
 
-        self._tokens.update({'u': self._user})
+        if self._user:
+            self._tokens.update({'u': self._user})
 
     _handlers = {option.lower(): (option, handler) for option, handler in (
         ('Match',                           SSHConfig._match),

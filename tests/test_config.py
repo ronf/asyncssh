@@ -606,7 +606,7 @@ class _TestServerConfig(_TestConfig):
         for user in ('xxx..yyy', 'xxx~yyy', 'Cxxx:'):
             self._parse_config('AuthorizedKeysFile %u', user=user)
 
-        for user in ('..', '~xxx', 'C:xxx', '/xxx', '\\xxx', '${xxx}'):
+        for user in ('', '..', '~xxx', 'C:xxx', '/xxx', '\\xxx', '${xxx}'):
             with self.assertRaises(asyncssh.IllegalUserName):
                 self._parse_config('AuthorizedKeysFile %u', user=user)
 
