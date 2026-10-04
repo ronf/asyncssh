@@ -28,7 +28,9 @@ Release 2.24.1 (3 Oct 2026)
   reporting the issue and providing a proposed fix.
 
 * Fixed a race condition in server authentication that could result
-  in the wrong username being set as the authenticated user.
+  in the wrong username being set as the authenticated user. Thanks
+  go to OpenAI security team for reporting this issue and providing
+  a suggested fix.
 
 * Fixed a possible leak of options across authentication attempts when
   multiple authentication requests are attempted on a connection.
