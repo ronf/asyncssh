@@ -559,6 +559,13 @@ class _TestClientConfig(_TestConfig):
         with self.assertRaises(asyncssh.ConfigParseError):
             self._parse_config('RemoteCommand ${XXX}')
 
+    def test_equals_no_split(self):
+        """Test no-split config option with equals instead of space"""
+
+        for delimiter in ('=', ' =', '= ', ' = '):
+            config = self._parse_config(f'ProxyCommand{delimiter}cmd')
+            self.assertEqual(config.get('ProxyCommand'), 'cmd')
+
 
 class _TestServerConfig(_TestConfig):
     """Unit tests for server config objects"""

@@ -445,7 +445,13 @@ class SSHConfig:
                         allow_equal = loption in self._conditionals
 
                 if loption in self._no_split:
-                    args = [line.lstrip()[len(loption):].strip()]
+                    rest = line[len(loption):].lstrip()
+
+                    if rest.startswith('='):
+                        rest = rest[1:].lstrip()
+
+                    args = [rest]
+
 
                 if not self._matching and loption not in self._conditionals:
                     continue
