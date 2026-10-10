@@ -20,14 +20,27 @@
 
 """A shim around PyCA for Diffie Hellman key exchange"""
 
-from cryptography.hazmat.primitives.asymmetric import dh
+import warnings
+from cryptography.utils import CryptographyDeprecationWarning
+
+with warnings.catch_warnings():
+    warnings.simplefilter('ignore', CryptographyDeprecationWarning)
+
+    try:
+        from cryptography.hazmat.primitives.asymmetric.dh import \
+            DHParameterNumbers as _DHParameterNumbers, \
+            DHPublicNumbers as _DHPublicNumbers
+    except (ImportError, AttributeError):
+        from cryptography.hazmat.decrepit.asymmetric.dh import \
+            DHParameterNumbers as _DHParameterNumbers, \
+            DHPublicNumbers as _DHPublicNumbers
 
 
 class DH:
     """A shim around PyCA for Diffie Hellman key exchange"""
 
     def __init__(self, g: int, p: int):
-        self._pn = dh.DHParameterNumbers(p, g)
+        self._pn = _DHParameterNumbers(p, g)
         self._priv_key = self._pn.parameters().generate_private_key()
 
     def get_public(self) -> int:
@@ -40,7 +53,7 @@ class DH:
     def get_shared(self, peer_public: int) -> int:
         """Return the shared key from the peer's public key"""
 
-        peer_key = dh.DHPublicNumbers(peer_public, self._pn).public_key()
+        peer_key = _DHPublicNumbers(peer_public, self._pn).public_key()
         shared_key = self._priv_key.exchange(peer_key)
 
         return int.from_bytes(shared_key, 'big')
