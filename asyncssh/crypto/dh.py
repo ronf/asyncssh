@@ -30,7 +30,7 @@ with warnings.catch_warnings():
         from cryptography.hazmat.primitives.asymmetric.dh import \
             DHParameterNumbers as _DHParameterNumbers, \
             DHPublicNumbers as _DHPublicNumbers
-    except (ImportError, AttributeError):
+    except (ImportError, AttributeError): # pragma: no cover
         from cryptography.hazmat.decrepit.asymmetric.dh import \
             DHParameterNumbers as _DHParameterNumbers, \
             DHPublicNumbers as _DHPublicNumbers
