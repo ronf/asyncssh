@@ -17,6 +17,7 @@
 #
 # Contributors:
 #     Ron Frederick - initial implementation, API, and documentation
+#     Sean Li - close forwarded peers after local disconnects during setup
 
 """SSH port forwarding handlers"""
 
@@ -209,6 +210,10 @@ class SSHLocalForwarder(SSHForwarder):
             await self._coro(session_factory, *args)
         except ChannelOpenError as exc:
             self.connection_lost(exc)
+            return
+
+        if not self._transport:
+            self.close()
             return
 
         assert self._peer is not None
