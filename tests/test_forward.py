@@ -17,6 +17,7 @@
 #
 # Contributors:
 #     Ron Frederick - initial implementation, API, and documentation
+#     Sean Li - regression test for disconnects during forwarding setup
 
 """Unit tests for AsyncSSH forwarding API"""
 
@@ -27,9 +28,10 @@ import socket
 import sys
 import unittest
 
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import asyncssh
+from asyncssh.forward import SSHLocalForwarder
 from asyncssh.misc import maybe_wait_closed, write_file
 from asyncssh.packet import String, UInt32
 from asyncssh.public_key import CERT_TYPE_USER
@@ -663,6 +665,33 @@ class _TestTCPForwarding(_CheckForwarding):
             async with conn.forward_local_port('', 0, '', 7) as listener:
                 await self._check_local_connection(listener.get_port(),
                                                    delay=0.1)
+
+    @asynctest
+    async def test_forward_local_disconnect_while_opening(self):
+        """Test closing a peer opened after its local transport closes"""
+
+        started = asyncio.Event()
+        finish_open = asyncio.Event()
+
+        async def open_channel(session_factory):
+            started.set()
+            await finish_open.wait()
+            session_factory()
+
+        forwarder = SSHLocalForwarder(Mock(), open_channel)
+        transport = Mock()
+        transport.get_extra_info.return_value = None
+        forwarder.connection_made(transport)
+
+        task = asyncio.create_task(forwarder._forward())
+        await started.wait()
+
+        forwarder.connection_lost(None)
+        finish_open.set()
+        await task
+
+        self.assertIsNone(forwarder._transport)
+        self.assertIsNone(forwarder._peer)
 
     @asynctest
     async def test_forward_local_port_accept_handler(self):
