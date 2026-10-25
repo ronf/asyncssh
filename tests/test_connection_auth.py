@@ -786,6 +786,19 @@ class _TestHostBasedAuth(ServerTestCase):
                 pass
 
     @asynctest
+    async def test_shared_client_host_key_signature_alg(self):
+        """Test that signing doesn't change a shared client host key"""
+
+        skey = asyncssh.load_keypairs('skey')[0]
+        sig_algorithm = skey.sig_algorithm
+
+        for alg in ('rsa-sha2-256', 'rsa-sha2-512'):
+            async with self.connect(username='user', client_host_keys=[skey],
+                                    client_username='user',
+                                    signature_algs=[alg]):
+                self.assertEqual(skey.sig_algorithm, sig_algorithm)
+
+    @asynctest
     async def test_no_server_signature_algs(self):
         """Test a server which doesn't advertise signature algorithms"""
 
@@ -1361,6 +1374,18 @@ class _TestPublicKeyAuth(ServerTestCase):
             async with self.connect(username='ckey', agent_path=None,
                                     client_keys='ckey', signature_algs=[alg]):
                 pass
+
+    @asynctest
+    async def test_shared_client_key_signature_alg(self):
+        """Test that signing doesn't change a shared client key"""
+
+        ckey = asyncssh.load_keypairs('ckey')[0]
+        sig_algorithm = ckey.sig_algorithm
+
+        for alg in ('rsa-sha2-256', 'rsa-sha2-512'):
+            async with self.connect(username='ckey', agent_path=None,
+                                    client_keys=[ckey], signature_algs=[alg]):
+                self.assertEqual(ckey.sig_algorithm, sig_algorithm)
 
     @asynctest
     async def test_no_server_signature_algs(self):

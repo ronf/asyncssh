@@ -632,6 +632,35 @@ class _TestConnection(ServerTestCase):
             pass
 
     @asynctest
+    async def test_server_host_key_signature_alg_per_connection(self):
+        """Test connections on a listener using different RSA signature algs"""
+
+        server_conns = []
+
+        class _RecordingServer(Server):
+            """Server which records its connections"""
+
+            def connection_made(self, conn):
+                """Record the server connection"""
+
+                super().connection_made(conn)
+                server_conns.append(conn)
+
+        async with self.listen(server_factory=_RecordingServer) as server:
+            port = server.get_port()
+
+            async with self.connect(port=port,
+                                    known_hosts=(['skey.pub'], [], []),
+                                    server_host_key_algs=['rsa-sha2-256']):
+                async with self.connect(port=port,
+                                        known_hosts=(['skey.pub'], [], []),
+                                        server_host_key_algs=['rsa-sha2-512']):
+                    self.assertEqual(
+                        [conn.get_server_host_key().sig_algorithm
+                         for conn in server_conns],
+                        [b'rsa-sha2-256', b'rsa-sha2-512'])
+
+    @asynctest
     async def test_get_server_host_key(self):
         """Test retrieving a server host key"""
 
