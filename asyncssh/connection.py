@@ -21,6 +21,7 @@
 """SSH connection handlers"""
 
 import asyncio
+import copy
 import functools
 import getpass
 import inspect
@@ -3749,7 +3750,7 @@ class SSHClientConnection(SSHConnection):
                 self._saved_rsa_key = None
             else:
                 try:
-                    key = self._client_host_keys.pop(0)
+                    key = copy.copy(self._client_host_keys.pop(0))
                 except IndexError:
                     key = None
                     break
@@ -3843,7 +3844,7 @@ class SSHClientConnection(SSHConnection):
                 key.algorithm = key.sig_algorithm + b'-cert-v01@openssh.com'
                 self._saved_rsa_key = None
             else:
-                key = self._client_keys.pop(0)
+                key = copy.copy(self._client_keys.pop(0))
 
             if self._choose_signature_alg(key):
                 if key.algorithm == b'ssh-rsa-cert-v01@openssh.com' and \
@@ -5991,6 +5992,9 @@ class SSHServerConnection(SSHConnection):
             keypair = self._server_host_keys.get(alg)
             if keypair:
                 if alg != keypair.algorithm:
+                    # Server host keys are shared by all connections on
+                    # a listener, so set the algorithm on a copy
+                    keypair = copy.copy(keypair)
                     keypair.set_sig_algorithm(alg)
 
                 self._server_host_key = keypair
