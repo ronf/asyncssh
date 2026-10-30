@@ -26,14 +26,9 @@ from cryptography.utils import CryptographyDeprecationWarning
 with warnings.catch_warnings():
     warnings.simplefilter('ignore', CryptographyDeprecationWarning)
 
-    try:
-        from cryptography.hazmat.primitives.asymmetric.dh import \
-            DHParameterNumbers as _DHParameterNumbers, \
-            DHPublicNumbers as _DHPublicNumbers
-    except (ImportError, AttributeError): # pragma: no cover
-        from cryptography.hazmat.decrepit.asymmetric.dh import \
-            DHParameterNumbers as _DHParameterNumbers, \
-            DHPublicNumbers as _DHPublicNumbers
+    from cryptography.hazmat.primitives.asymmetric.dh import \
+        DHParameterNumbers as _DHParameterNumbers, \
+        DHPublicNumbers as _DHPublicNumbers
 
 
 class DH:
