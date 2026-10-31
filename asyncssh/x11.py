@@ -350,10 +350,7 @@ class SSHX11ServerListener:
     def detach(self, chan: 'SSHChannel') -> bool:
         """Detach a channel from this listener"""
 
-        try:
-            self._channels.remove(chan)
-        except KeyError:
-            pass
+        self._channels.discard(chan)
 
         if not self._channels:
             self._tcp_listener.close()
