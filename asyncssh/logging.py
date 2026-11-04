@@ -61,6 +61,9 @@ class SSHLogger(logging.LoggerAdapter):
     def log(self, level: int, msg: object, *args, **kwargs) -> None:
         """Log a message to the underlying logger"""
 
+        if not self.isEnabledFor(level):
+            return
+
         def _item_text(item: _LogArg) -> str:
             """Convert a list item to text"""
 
