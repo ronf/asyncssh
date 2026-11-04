@@ -20,9 +20,14 @@
 
 """Unit tests for AsyncSSH logging API"""
 
+import logging
+import unittest
+
+from unittest.mock import MagicMock
+
 import asyncssh
 
-from asyncssh.logging import logger
+from asyncssh.logging import SSHLogger, logger
 from asyncssh.session import SSHClientSession
 from asyncssh.sftp import SFTPServer
 
@@ -47,6 +52,41 @@ class _SFTPServer(SFTPServer):
         self.logger.info('stat called')
 
         return super().stat(path)
+
+
+class _TestSSHLogger(unittest.TestCase):
+    """Unit tests for log argument conversion"""
+
+    def test_disabled_logging(self):
+        """Disabled messages should not convert their arguments"""
+
+        for level, disabled in ((logging.WARNING, False), (logging.INFO, True)):
+            with self.subTest(level=level, disabled=disabled):
+                parent = logging.Logger('test', level)
+                parent.disabled = disabled
+                ssh_logger = SSHLogger(parent)
+                item = MagicMock()
+
+                ssh_logger.info('Test %s', [item])
+
+                self.assertEqual(item.mock_calls, [])
+
+    def test_enabled_logging(self):
+        """Enabled messages should retain argument conversion and context"""
+
+        parent = logging.Logger('test', logging.INFO)
+        ssh_logger = SSHLogger(parent, context='test context')
+        item = MagicMock()
+        item.__str__.return_value = 'item'
+
+        with self.assertLogs(parent, level='INFO') as log:
+            ssh_logger.info('Test %s %s %s', [b'bytes', item],
+                            ('localhost', 22), b'line\n')
+
+        self.assertEqual(len(item.mock_calls), 1)
+        self.assertEqual(log.records[0].getMessage(),
+                         '[test context] Test bytes,item localhost, port 22 '
+                         'line\\n')
 
 
 class _TestLogging(ServerTestCase):
