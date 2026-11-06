@@ -7133,6 +7133,25 @@ class SFTPServer:
         attrs = await self.convert_attrs(self.lstat(path))
         return SFTPName(name, attrs=attrs)
 
+    def _contain_symlink(self, target, newpath):
+        """Upsate target to stay within the chroot if there is one"""
+
+        if posixpath.isabs(target):
+            target = os.path.realpath(self.map_path(target))
+        else:
+            newdir = posixpath.dirname(posixpath.normpath(newpath))
+            abs_newdir = os.path.realpath(self.map_path(newdir))
+
+            target = posixpath.join(newdir, target)
+            abs_target = os.path.realpath(self.map_path(target))
+
+            # Make sure the symlink doesn't point outside the chroot
+            self.reverse_map_path(abs_target)
+
+            target = os.path.relpath(abs_target, start=abs_newdir)
+
+        return target
+
     def format_user(self, uid: Optional[int]) -> str:
         """Return the user name associated with a uid
 
@@ -7800,13 +7819,20 @@ class SFTPServer:
 
         """
 
-        oldpath = _to_local_path(self.map_path(oldpath))
-        newpath = _to_local_path(self.map_path(newpath))
+        oldpath = self.map_path(oldpath)
 
-        if os.path.exists(newpath):
-            raise SFTPFileAlreadyExists('File already exists')
+        if self._chroot and os.path.islink(oldpath):
+            target = self._contain_symlink(os.readlink(oldpath), newpath)
+            self.symlink(_to_local_path(target), _to_local_path(newpath))
+            os.remove(_to_local_path(oldpath))
+        else:
+            newpath = self.map_path(newpath)
 
-        os.rename(oldpath, newpath)
+            if os.path.exists(newpath):
+                raise SFTPFileAlreadyExists('File already exists')
+
+            os.rename(_to_local_path(oldpath), _to_local_path(newpath))
+
         return None
 
     def readlink(self, path: bytes) -> MaybeAwait[bytes]:
@@ -7847,19 +7873,7 @@ class SFTPServer:
 
         """
 
-        if posixpath.isabs(oldpath):
-            oldpath = self.map_path(oldpath)
-        else:
-            newdir = posixpath.dirname(newpath)
-            abspath1 = self.map_path(posixpath.join(newdir, oldpath))
-
-            mapped_newdir = self.map_path(newdir)
-            abspath2 = os.path.join(mapped_newdir, oldpath)
-
-            # Make sure the symlink doesn't point outside the chroot
-            if os.path.realpath(abspath1) != os.path.realpath(abspath2):
-                oldpath = os.path.relpath(abspath1, start=mapped_newdir)
-
+        oldpath = self._contain_symlink(oldpath, newpath)
         newpath = self.map_path(newpath)
 
         os.symlink(_to_local_path(oldpath), _to_local_path(newpath))
@@ -7914,10 +7928,16 @@ class SFTPServer:
 
         """
 
-        oldpath = _to_local_path(self.map_path(oldpath))
-        newpath = _to_local_path(self.map_path(newpath))
+        oldpath = self.map_path(oldpath)
 
-        os.replace(oldpath, newpath)
+        if self._chroot and os.path.islink(oldpath):
+            target = self._contain_symlink(os.readlink(oldpath), newpath)
+            self.symlink(_to_local_path(target), _to_local_path(newpath))
+            os.remove(_to_local_path(oldpath))
+        else:
+            newpath = self.map_path(newpath)
+            os.replace(_to_local_path(oldpath), _to_local_path(newpath))
+
         return None
 
     def statvfs(self, path: bytes) -> MaybeAwait[_SFTPOSVFSAttrs]:

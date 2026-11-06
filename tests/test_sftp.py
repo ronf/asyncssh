@@ -4563,6 +4563,28 @@ class _TestSFTPChroot(_CheckSFTP):
             remove('chroot/link1 chroot/link2')
 
     @sftp_test
+    async def test_chroot_rename_symlink(self, sftp):
+        """Test renaming a symlink on an SFTP server with a changed root"""
+
+        if not self._symlink_supported: # pragma: no cover
+            raise unittest.SkipTest('symlink not available')
+
+        try:
+            os.mkdir('chroot/dir1')
+            os.mkdir('chroot/dir1/dir2')
+
+            await sftp.symlink('..', 'dir1/link1')
+            await sftp.symlink('../../file', 'dir1/dir2/link2')
+
+            await sftp.rename('dir1/link1', 'link1')
+            self._check_link('chroot/link1', '.')
+
+            await sftp.posix_rename('dir1/dir2/link2', 'dir1/link2')
+            self._check_link('chroot/dir1/link2', '../file')
+        finally:
+            remove('chroot/dir1 chroot/link1 chroot/link2')
+
+    @sftp_test
     async def test_chroot_makedirs(self, sftp):
         """Test creating a directory path"""
 
