@@ -676,22 +676,33 @@ class _TestTCPForwarding(_CheckForwarding):
         async def open_channel(session_factory):
             started.set()
             await finish_open.wait()
-            session_factory()
 
-        forwarder = SSHLocalForwarder(Mock(), open_channel)
+            peer = session_factory()
+            self.assertIsNotNone(peer)
+
+        conn = Mock()
+
+        def start_task(coro):
+            conn.task = asyncio.create_task(coro)
+            return conn.task
+
+        conn.create_task.side_effect = start_task
+
+        forwarder = SSHLocalForwarder(conn, open_channel)
+
         transport = Mock()
         transport.get_extra_info.return_value = None
-        forwarder.connection_made(transport)
 
-        task = asyncio.create_task(forwarder._forward())
+        forwarder.connection_made(transport)
+        forwarder.forward()
+
         await started.wait()
 
         forwarder.connection_lost(None)
         finish_open.set()
-        await task
 
-        self.assertIsNone(forwarder._transport)
-        self.assertIsNone(forwarder._peer)
+        await conn.task
+        forwarder.close()
 
     @asynctest
     async def test_forward_local_port_accept_handler(self):
