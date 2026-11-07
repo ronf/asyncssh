@@ -7133,17 +7133,20 @@ class SFTPServer:
         attrs = await self.convert_attrs(self.lstat(path))
         return SFTPName(name, attrs=attrs)
 
-    def _contain_symlink(self, target, newpath):
+    def _contain_symlink(self, target: bytes, newpath: bytes) -> bytes:
         """Upsate target to stay within the chroot if there is one"""
 
         if posixpath.isabs(target):
-            target = os.path.realpath(self.map_path(target))
+            target = _to_local_path(self.map_path(target))
+            target = _from_local_path(os.path.realpath(target))
         else:
             newdir = posixpath.dirname(posixpath.normpath(newpath))
-            abs_newdir = os.path.realpath(self.map_path(newdir))
+            abs_newdir = _to_local_path(self.map_path(newdir))
+            abs_newdir = _from_local_path(os.path.realpath(abs_newdir))
 
             target = posixpath.join(newdir, target)
-            abs_target = os.path.realpath(self.map_path(target))
+            abs_target = _to_local_path(self.map_path(target))
+            abs_target = _from_local_path(os.path.realpath(abs_target))
 
             # Make sure the symlink doesn't point outside the chroot
             self.reverse_map_path(abs_target)
@@ -7821,9 +7824,11 @@ class SFTPServer:
 
         oldpath = self.map_path(oldpath)
 
-        if self._chroot and os.path.islink(oldpath):
-            target = self._contain_symlink(os.readlink(oldpath), newpath)
-            self.symlink(_to_local_path(target), _to_local_path(newpath))
+        if self._chroot and os.path.islink(_to_local_path(oldpath)):
+            target = _from_local_path(os.readlink(_to_local_path(oldpath)))
+            target = self._contain_symlink(target, newpath)
+
+            self.symlink(target, newpath)
             os.remove(_to_local_path(oldpath))
         else:
             newpath = self.map_path(newpath)
@@ -7930,9 +7935,11 @@ class SFTPServer:
 
         oldpath = self.map_path(oldpath)
 
-        if self._chroot and os.path.islink(oldpath):
-            target = self._contain_symlink(os.readlink(oldpath), newpath)
-            self.symlink(_to_local_path(target), _to_local_path(newpath))
+        if self._chroot and os.path.islink(_to_local_path(oldpath)):
+            target = _from_local_path(os.readlink(_to_local_path(oldpath)))
+            target = self._contain_symlink(target, newpath)
+
+            self.symlink(target, newpath)
             os.remove(_to_local_path(oldpath))
         else:
             newpath = self.map_path(newpath)
