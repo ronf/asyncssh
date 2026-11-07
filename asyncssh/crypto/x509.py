@@ -282,7 +282,8 @@ class X509Certificate:
     def __hash__(self) -> int:
         return hash(self.data)
 
-    def validate(self, trust_store: Sequence['X509Certificate'],
+    def validate(self, trust_chain: Sequence['X509Certificate'],
+                 trust_store: Sequence['X509Certificate'],
                  purposes: _Purposes, user_principal: str,
                  host_principal: str) -> None:
         """Validate an X.509 certificate"""
@@ -298,6 +299,9 @@ class X509Certificate:
         if host_principal and host_principal not in self.host_principals:
             raise ValueError('Certificate host principal mismatch')
 
+        openssl_chain = [c.openssl_cert for c in trust_chain
+                         if c.subject_hash != c.issuer_hash]
+
         x509_store = crypto.X509Store()
 
         for c in trust_store:
@@ -305,7 +309,7 @@ class X509Certificate:
 
         try:
             x509_ctx = crypto.X509StoreContext(x509_store, self.openssl_cert,
-                                               None)
+                                               openssl_chain)
             x509_ctx.verify_certificate()
         except crypto.X509StoreContextError as exc:
             raise ValueError(f'X.509 chain validation error: {exc}') from None

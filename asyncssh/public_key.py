@@ -1936,8 +1936,7 @@ class SSHX509Certificate(SSHCertificate):
                        host_principal: str = '') -> None:
         """Validate an X.509 certificate chain"""
 
-        trust_store = {c for c in trust_chain if c.subject != c.issuer} | \
-            set(trusted_certs)
+        trust_store = set(trusted_certs)
 
         if trusted_cert_paths:
             self._expand_trust_store(self, trusted_cert_paths, trust_store)
@@ -1945,7 +1944,8 @@ class SSHX509Certificate(SSHCertificate):
             for c in trust_chain:
                 self._expand_trust_store(c, trusted_cert_paths, trust_store)
 
-        self.x509_cert.validate([c.x509_cert for c in trust_store],
+        self.x509_cert.validate([c.x509_cert for c in trust_chain],
+                                [c.x509_cert for c in trust_store],
                                 purposes, user_principal, host_principal)
 
 

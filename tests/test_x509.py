@@ -129,7 +129,7 @@ class _TestX509(unittest.TestCase):
         """Test validation of X.509 self-signed certificate"""
 
         cert = self.generate_certificate()
-        self.assertIsNone(cert.validate([cert], None, None, None))
+        self.assertIsNone(cert.validate([], [cert], None, None, None))
 
     def test_untrusted_self(self):
         """Test failed validation of untrusted X.509 self-signed certificate"""
@@ -138,7 +138,7 @@ class _TestX509(unittest.TestCase):
         cert2 = self.generate_certificate()
 
         with self.assertRaises(ValueError):
-            cert1.validate([cert2], None, None, None)
+            cert1.validate([], [cert2], None, None, None)
 
     def test_valid_chain(self):
         """Test validation of X.509 certificate chain"""
@@ -150,7 +150,7 @@ class _TestX509(unittest.TestCase):
 
         cert = self.generate_certificate('OU=user', 'OU=int')
 
-        self.assertIsNone(cert.validate([int_ca, root_ca], None, None, None))
+        self.assertIsNone(cert.validate([int_ca], [root_ca], None, None, None))
 
     def test_incomplete_chain(self):
         """Test failed validation of incomplete X.509 certificate chain"""
@@ -163,7 +163,7 @@ class _TestX509(unittest.TestCase):
         cert = self.generate_certificate('OU=user', 'OU=int2')
 
         with self.assertRaises(ValueError):
-            cert.validate([int_ca, root_ca], None, None, None)
+            cert.validate([int_ca], [root_ca], None, None, None)
 
     def test_not_yet_valid_self(self):
         """Test failed validation of not-yet-valid X.509 certificate"""
@@ -171,7 +171,7 @@ class _TestX509(unittest.TestCase):
         cert = self.generate_certificate(valid_after=time.time() + 60)
 
         with self.assertRaises(ValueError):
-            cert.validate([cert], None, None, None)
+            cert.validate([], [cert], None, None, None)
 
     def test_expired_self(self):
         """Test failed validation of expired X.509 certificate"""
@@ -179,7 +179,7 @@ class _TestX509(unittest.TestCase):
         cert = self.generate_certificate(valid_before=time.time() - 60)
 
         with self.assertRaises(ValueError):
-            cert.validate([cert], None, None, None)
+            cert.validate([], [cert], None, None, None)
 
     def test_expired_intermediate(self):
         """Test failed validation of expired X.509 intermediate CA"""
@@ -193,7 +193,7 @@ class _TestX509(unittest.TestCase):
         cert = self.generate_certificate('OU=user', 'OU=int')
 
         with self.assertRaises(ValueError):
-            cert.validate([int_ca, root_ca], None, None, None)
+            cert.validate([int_ca], [root_ca], None, None, None)
 
     def test_purpose_mismatch(self):
         """Test failed validation due to purpose mismatch"""
@@ -201,14 +201,14 @@ class _TestX509(unittest.TestCase):
         cert = self.generate_certificate(purposes='secureShellClient')
 
         with self.assertRaises(ValueError):
-            cert.validate([cert], 'secureShellServer', None, None)
+            cert.validate([], [cert], 'secureShellServer', None, None)
 
     def test_user_principal_match(self):
         """Test validation of user principal"""
 
         cert = self.generate_certificate(user_principals='user')
 
-        self.assertIsNone(cert.validate([cert], None, 'user', None))
+        self.assertIsNone(cert.validate([], [cert], None, 'user', None))
 
     def test_user_principal_mismatch(self):
         """Test failed validation due to user principal mismatch"""
@@ -216,14 +216,14 @@ class _TestX509(unittest.TestCase):
         cert = self.generate_certificate(user_principals='user1,user2')
 
         with self.assertRaises(ValueError):
-            cert.validate([cert], None, 'user3', None)
+            cert.validate([], [cert], None, 'user3', None)
 
     def test_host_principal_match(self):
         """Test validation of host principal"""
 
         cert = self.generate_certificate(host_principals='host')
 
-        self.assertIsNone(cert.validate([cert], None, None, 'host'))
+        self.assertIsNone(cert.validate([], [cert], None, None, 'host'))
 
     def test_host_principal_mismatch(self):
         """Test failed validation due to host principal mismatch"""
@@ -231,7 +231,7 @@ class _TestX509(unittest.TestCase):
         cert = self.generate_certificate(host_principals='host1,host2')
 
         with self.assertRaises(ValueError):
-            cert.validate([cert], None, None, 'host3')
+            cert.validate([], [cert], None, None, 'host3')
 
     def test_name(self):
         """Test X.509 distinguished name generation"""
