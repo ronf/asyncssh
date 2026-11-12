@@ -202,6 +202,21 @@ class _TestConfig(TempDirTestCase):
         config = self._parse_config('Include config.d/*')
         self.assertEqual(config.get('Port'), 2222)
 
+    def test_glob_skips_hidden_and_sorts(self):
+        """Test that a glob skips hidden files and sorts the files it matches"""
+
+        os.mkdir('.ssh/hidden.d')
+
+        with open('.ssh/hidden.d/.DS_Store', 'wb') as f:
+            f.write(b'\x00\x80')
+
+        for name, port in (('b', 2223), ('a', 2222)):
+            with open(f'.ssh/hidden.d/{name}', 'w') as f:
+                f.write(f'Port {port}\n')
+
+        config = self._parse_config('Include hidden.d/*')
+        self.assertEqual(config.get('Port'), 2222)
+
     def test_match_all(self):
         """Test a match block which always matches"""
 
