@@ -20,6 +20,7 @@
 
 """Parser for OpenSSH config files"""
 
+import glob
 import os
 import re
 import shlex
@@ -168,7 +169,11 @@ class SSHConfig:
             else:
                 path = self._default_path
 
-            paths = list(p for p in path.glob(pattern) if p.is_file())
+            # Match files the way OpenSSH's glob(3) does: skip hidden
+            # files unless the pattern names them, and sort the result
+            paths = [path / name for name in
+                     sorted(glob.glob(pattern, root_dir=path))
+                     if (path / name).is_file()]
 
             if not paths:
                 logger.debug1(f'Config pattern "{pattern}" matched no files')
