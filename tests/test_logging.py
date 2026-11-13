@@ -80,13 +80,13 @@ class _TestSSHLogger(unittest.TestCase):
         item.__str__.return_value = 'item'
 
         with self.assertLogs(parent, level='INFO') as log:
-            ssh_logger.info('Test %s %s %s', [b'bytes', item],
+            ssh_logger.info('Test %s %s %s', [b'bytes', 'str', item],
                             ('localhost', 22), b'line\n')
 
         self.assertEqual(len(item.mock_calls), 1)
         self.assertEqual(log.records[0].getMessage(),
-                         '[test context] Test bytes,item localhost, port 22 '
-                         'line\\n')
+                         '[test context] Test bytes,str,item '
+                         'localhost, port 22 line\\n')
 
 
 class _TestLogging(ServerTestCase):
