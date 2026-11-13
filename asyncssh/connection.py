@@ -277,6 +277,7 @@ _DEFAULT_KEEPALIVE_COUNT_MAX = 3
 # Default channel parameters
 _DEFAULT_WINDOW = 2*1024*1024       # 2 MiB
 _DEFAULT_MAX_PKTSIZE = 32768        # 32 kiB
+_MIN_ACCEPTED_MAX_PKTSIZE = 1024    # 1 kiB
 
 # Default line editor parameters
 _DEFAULT_LINE_HISTORY = 1000        # 1000 lines
@@ -2761,7 +2762,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         if b'dropbear' in self._client_version and self._compressor:
             send_pktsize -= 1
 
-        if send_pktsize <= 0:
+        if send_pktsize < _MIN_ACCEPTED_MAX_PKTSIZE:
             raise ProtocolError('Invalid maximum packet size')
 
         try:
@@ -2801,7 +2802,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         if b'dropbear' in self._server_version and self._compressor:
             send_pktsize -= 1
 
-        if send_pktsize <= 0:
+        if send_pktsize < _MIN_ACCEPTED_MAX_PKTSIZE:
             raise ProtocolError('Invalid maximum packet size')
 
         chan = self._channels.get(recv_chan)

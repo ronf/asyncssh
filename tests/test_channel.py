@@ -388,7 +388,7 @@ class _ChannelServer(Server):
                 stdin.channel.exit(1)
         elif action == 'invalid_open_confirm':
             stdin.channel.send_packet(MSG_CHANNEL_OPEN_CONFIRMATION,
-                                      UInt32(0), UInt32(1), UInt32(1))
+                                      UInt32(0), UInt32(1), UInt32(32768))
         elif action == 'invalid_open_failure':
             stdin.channel.send_packet(MSG_CHANNEL_OPEN_FAILURE,
                                       UInt32(0), String(''), String(''))
