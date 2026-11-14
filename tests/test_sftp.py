@@ -5007,6 +5007,94 @@ class _TestSFTPOpenError(_CheckSFTP):
             await sftp.open('ENXIO')
 
 
+class _TestSFTPCancelParallelIO(_CheckSFTP):
+    """Unit tests for cancellation of parallel SFTP requests"""
+
+    @classmethod
+    async def start_server(cls):
+        """Start an SFTP server for the tests to use"""
+
+        return await cls.create_server(sftp_factory=True)
+
+    async def _check_cancel(self, sftp, operation):
+        """Cancel blocked requests, then reuse the file and connection"""
+
+        entered = asyncio.Event()
+        release = asyncio.Event()
+        pending = set()
+        data = b'0123456789abcdef'
+        method = 'write' if operation == 'write' else 'read'
+        original = getattr(SFTPServer, method)
+
+        async def delayed_io(server, *args):
+            """Hold the response until the client cancels its requests"""
+
+            entered.set()
+            await release.wait()
+            return original(server, *args)
+
+        self._create_file('file', data)
+
+        try:
+            async with sftp.open('file', 'r+b', block_size=4,
+                                 max_requests=4) as file:
+                with patch.object(SFTPServer, method, delayed_io):
+                    if operation == 'write':
+                        request = file.write(data)
+                    elif operation == 'read_parallel':
+                        reader = await file.read_parallel(len(data))
+                        request = reader.__anext__()
+                    else:
+                        request = file.read(len(data))
+
+                    try:
+                        task = asyncio.ensure_future(request)
+                        await asyncio.wait_for(entered.wait(), 5)
+                        pending = {task for task in asyncio.all_tasks()
+                                   if getattr(task.get_coro(), '__qualname__', '') ==
+                                   '_SFTPParallelIO._start_task'}
+                        self.assertEqual(len(pending), 4)
+                        task.cancel()
+
+                        with self.assertRaises(asyncio.CancelledError):
+                            await task
+
+                        completed = all(task.done() for task in pending)
+                        release.set()
+                        self.assertTrue(completed)
+                    finally:
+                        release.set()
+
+                await file.seek(0)
+                self.assertEqual(await file.read(), data)
+        finally:
+            release.set()
+
+            for task in pending:
+                task.cancel()
+
+            await asyncio.gather(*pending, return_exceptions=True)
+            remove('file')
+
+    @sftp_test
+    async def test_read_cancel(self, sftp):
+        """Test cancelling a parallel file read"""
+
+        await self._check_cancel(sftp, 'read')
+
+    @sftp_test
+    async def test_write_cancel(self, sftp):
+        """Test cancelling a parallel file write"""
+
+        await self._check_cancel(sftp, 'write')
+
+    @sftp_test
+    async def test_read_parallel_cancel(self, sftp):
+        """Test cancelling an asynchronous iterator of file reads"""
+
+        await self._check_cancel(sftp, 'read_parallel')
+
+
 class _TestSFTPIOError(_CheckSFTP):
     """Unit test for SFTP server returning file I/O error"""
 

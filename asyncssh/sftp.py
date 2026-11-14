@@ -753,33 +753,38 @@ class _SFTPParallelIO(Generic[_T]):
 
         self._start_tasks()
 
-        while self._pending:
-            done, self._pending = await asyncio.wait(
-                self._pending, return_when=asyncio.FIRST_COMPLETED)
+        try:
+            while self._pending:
+                done, _ = await asyncio.wait(
+                    self._pending, return_when=asyncio.FIRST_COMPLETED)
 
-            exceptions = []
+                exceptions = []
 
-            for task in done:
-                try:
-                    offset, size, count, result = task.result()
-                    yield offset, result
+                for task in done:
+                    self._pending.remove(task)
 
-                    if count and count < size:
-                        self._pending.add(asyncio.ensure_future(
-                            self._start_task(offset+count, size-count)))
-                except SFTPEOFError:
-                    self._bytes_left = 0
-                except (OSError, SFTPError) as exc:
-                    exceptions.append(exc)
+                    try:
+                        offset, size, count, result = task.result()
+                        yield offset, result
 
-            if exceptions:
-                for task in self._pending:
-                    task.cancel()
+                        if count and count < size:
+                            self._pending.add(asyncio.ensure_future(
+                                self._start_task(offset+count, size-count)))
+                    except SFTPEOFError:
+                        self._bytes_left = 0
+                    except (OSError, SFTPError) as exc:
+                        exceptions.append(exc)
 
-                await asyncio.gather(*self._pending, return_exceptions=True)
-                raise exceptions[0]
+                if exceptions:
+                    raise exceptions[0]
 
-            self._start_tasks()
+                self._start_tasks()
+        finally:
+            for task in self._pending:
+                task.cancel()
+
+            await asyncio.gather(*self._pending, return_exceptions=True)
+            self._pending.clear()
 
 
 class _SFTPFileReader(_SFTPParallelIO[bytes]):
