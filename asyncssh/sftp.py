@@ -582,6 +582,62 @@ def _from_local_path(path: _SFTPPath) -> bytes:
     return path
 
 
+def _check_local_containment(path: _LocalPath, dstroot: bytes,
+                             msg: str) -> None:
+    """Confirm a resolved local path is at or below dstroot"""
+
+    root = os.path.realpath(_to_local_path(dstroot))
+
+    if not (path == root or path.startswith(root + _LocalSep)):
+        raise SFTPBadMessage(msg)
+
+
+def _resolve_local_symlink(linkpath: bytes, target: bytes) -> _LocalPath:
+    """Resolve the target of a symlink about to be created locally
+
+       Components of the target are resolved one at a time, following
+       any links which already exist. A '..' after a component which
+       doesn't exist yet is rejected, since that component could later
+       be created as a symlink, changing where this link resolves.
+
+    """
+
+    if sys.platform == 'win32': # pragma: cover only win32
+        target = target.replace(b'\\', b'/')
+
+        # Reject drive-qualified targets like 'C:foo' on Windows
+        if b':' in target:
+            raise SFTPBadMessage('Symlink target is an absolute path')
+
+    # Check for a leading slash rather than calling os.path.isabs(), as
+    # Python 3.13 and later on Windows don't consider a rooted path with
+    # no drive to be absolute
+
+    if target.startswith(b'/'):
+        raise SFTPBadMessage('Symlink target is an absolute path')
+
+    path = os.path.realpath(os.path.dirname(_to_local_path(linkpath)))
+    exists = True
+
+    for comp in target.split(b'/'):
+        if comp in (b'', b'.'):
+            continue
+
+        if comp == b'..':
+            if not exists:
+                raise SFTPBadMessage('Symlink target is ambiguous')
+
+            path = os.path.dirname(path)
+        else:
+            path = os.path.join(path, _to_local_path(comp))
+            exists = os.path.lexists(path)
+
+            if exists:
+                path = os.path.realpath(path)
+
+    return path
+
+
 def _to_local_path(path: bytes) -> _LocalPath:
     """Convert SFTP path to local path"""
 
@@ -3987,6 +4043,11 @@ class SFTPClient:
                 self.logger.info('  Starting copy of directory %s to %s',
                                  srcpath, dstpath)
 
+                if isinstance(dstfs, LocalFS) and not follow_symlinks:
+                    _check_local_containment(
+                        os.path.realpath(_to_local_path(dstpath)), dstroot,
+                        'Destination path is outside download directory')
+
                 if not await dstfs.isdir(dstpath):
                     await dstfs.mkdir(dstpath)
 
@@ -4018,22 +4079,9 @@ class SFTPClient:
                 # tree must not point outside that tree, rooted at dstroot.
 
                 if isinstance(dstfs, LocalFS):
-                    local_target = _to_local_path(targetpath)
-
-                    if os.path.isabs(local_target):
-                        raise SFTPBadMessage('Symlink target is '
-                                             'an absolute path')
-
-                    parent = os.path.realpath(os.path.dirname(
-                        _to_local_path(dstpath)))
-                    resolved = os.path.normpath(os.path.join(
-                        parent, local_target))
-                    root = os.path.realpath(_to_local_path(dstroot))
-
-                    if not (resolved == root or
-                            resolved.startswith(root + _LocalSep)):
-                        raise SFTPBadMessage('Symlink target is outside '
-                                             'download directory')
+                    _check_local_containment(
+                        _resolve_local_symlink(dstpath, targetpath), dstroot,
+                        'Symlink target is outside download directory')
 
                 self.logger.info('  Copying symlink %s to %s', srcpath, dstpath)
                 self.logger.info('    Target path: %s', targetpath)
@@ -4044,6 +4092,11 @@ class SFTPClient:
 
                 if remote_only and not self.supports_remote_copy:
                     raise SFTPOpUnsupported('Remote copy not supported')
+
+                if isinstance(dstfs, LocalFS) and not follow_symlinks:
+                    _check_local_containment(
+                        os.path.realpath(_to_local_path(dstpath)), dstroot,
+                        'Destination path is outside download directory')
 
                 await _SFTPFileCopier(block_size, max_requests,
                                       srcattrs.size or 0, sparse,

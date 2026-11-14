@@ -531,6 +531,51 @@ class _DuplicateSymlinkSFTPServer(SFTPServer):
                                                size=0))
 
 
+class _ScriptedSymlinkSFTPServer(SFTPServer):
+    """Return a scripted tree of directories, files, and symlinks
+
+       The tree maps the basename of each directory to the list of
+       entries it contains, given as (name, type) tuples. Entries may
+       be duplicated or ordered arbitrarily. The links dict maps the
+       basename of each symlink to its target. All regular files
+       return the contents of the local file 'srcdata'.
+    """
+
+    tree = {}
+    links = {}
+
+    _perms = {FILEXFER_TYPE_DIRECTORY: stat.S_IFDIR | 0o755,
+              FILEXFER_TYPE_REGULAR: stat.S_IFREG | 0o644,
+              FILEXFER_TYPE_SYMLINK: stat.S_IFLNK | 0o777}
+
+    def _attrs(self, filetype):
+        """Return attributes for an entry of the specified type"""
+
+        return SFTPAttrs(type=filetype, permissions=self._perms[filetype],
+                         size=os.path.getsize('srcdata'))
+
+    async def lstat(self, path):
+        """Report every path as a directory"""
+
+        return self._attrs(FILEXFER_TYPE_DIRECTORY)
+
+    async def readlink(self, path):
+        """Return the scripted target of a symlink"""
+
+        return self.links[posixpath.basename(path)]
+
+    async def scandir(self, path):
+        """Return the scripted entries of a directory"""
+
+        for filename, filetype in self.tree.get(posixpath.basename(path), []):
+            yield SFTPName(filename, attrs=self._attrs(filetype))
+
+    def open(self, path, pflags, attrs):
+        """Return the contents of srcdata for all files"""
+
+        return super().open(b'srcdata', pflags, attrs)
+
+
 class _AsyncSFTPServer(SFTPServer):
     """Implement all SFTP callbacks as async methods"""
 
@@ -6850,3 +6895,239 @@ class _TestSFTPDuplicateSymlink(_CheckSFTP):
             self.assertTrue(os.path.exists('dst/file1'))
         finally:
             remove('src dst')
+
+
+class _TestSFTPChainedSymlink(_CheckSFTP):
+    """Tests for symlinks chained through other downloaded symlinks
+
+       A symlink target which looks contained when resolved lexically
+       may escape the download directory when resolved through another
+       symlink created earlier in the same download, or created later
+       in the download than the symlink which references it.
+    """
+
+    @classmethod
+    async def start_server(cls):
+        """Start a server which returns a scripted symlink tree"""
+
+        return await cls.create_server(
+            sftp_factory=_ScriptedSymlinkSFTPServer)
+
+    async def _get_scripted(self, sftp, tree, links, dst='dst', **kwargs):
+        """Download a scripted tree, checking that nothing escapes"""
+
+        _ScriptedSymlinkSFTPServer.tree = tree
+        _ScriptedSymlinkSFTPServer.links = links
+
+        self._create_file('srcdata', 'attack')
+
+        try:
+            await sftp.get('src', dst, recurse=True, **kwargs)
+        finally:
+            root = os.path.realpath(dst)
+
+            for dirpath, dirnames, filenames in os.walk(dst):
+                for name in dirnames + filenames:
+                    path = os.path.join(dirpath, name)
+
+                    if os.path.islink(path):
+                        target = os.path.realpath(path)
+
+                        self.assertTrue(target == root or
+                                        target.startswith(root + os.sep))
+
+    @sftp_test
+    async def test_chained_symlink_escape(self, sftp):
+        """A symlink escaping through an earlier symlink must be rejected"""
+
+        if not self._symlink_supported: # pragma: no cover
+            raise unittest.SkipTest('symlink not available')
+
+        tree = {b'src': [(b's', FILEXFER_TYPE_SYMLINK),
+                         (b'X', FILEXFER_TYPE_SYMLINK),
+                         (b'X', FILEXFER_TYPE_DIRECTORY)],
+                b'X': [(b'f', FILEXFER_TYPE_REGULAR)]}
+
+        links = {b's': b'.', b'X': b's/../X'}
+
+        try:
+            with self.assertRaises(SFTPBadMessage):
+                await self._get_scripted(sftp, tree, links)
+
+            self.assertTrue(os.path.islink('dst/s'))
+            self.assertFalse(os.path.lexists('dst/X'))
+            self.assertFalse(os.path.lexists('X'))
+        finally:
+            remove('srcdata dst X')
+
+    @sftp_test
+    async def test_chained_parent_symlink_escape(self, sftp):
+        """A symlink escaping through a link to the root must be rejected"""
+
+        if not self._symlink_supported: # pragma: no cover
+            raise unittest.SkipTest('symlink not available')
+
+        tree = {b'src': [(b'up', FILEXFER_TYPE_SYMLINK),
+                         (b'x', FILEXFER_TYPE_SYMLINK),
+                         (b'x', FILEXFER_TYPE_DIRECTORY)],
+                b'x': [(b'f', FILEXFER_TYPE_REGULAR)]}
+
+        links = {b'up': b'..', b'x': b'up/..'}
+
+        try:
+            # With dst already present, the download lands in dst/src,
+            # so 'up' points at the download root.
+
+            os.mkdir('dst')
+
+            with self.assertRaises(SFTPBadMessage):
+                await self._get_scripted(sftp, tree, links)
+
+            self.assertTrue(os.path.islink('dst/src/up'))
+            self.assertFalse(os.path.lexists('dst/src/x'))
+            self.assertFalse(os.path.lexists('f'))
+        finally:
+            remove('srcdata dst f')
+
+    @sftp_test
+    async def test_reordered_symlink_escape(self, sftp):
+        """A symlink escaping through a later symlink must be rejected"""
+
+        if not self._symlink_supported: # pragma: no cover
+            raise unittest.SkipTest('symlink not available')
+
+        tree = {b'src': [(b'X', FILEXFER_TYPE_SYMLINK),
+                         (b's', FILEXFER_TYPE_SYMLINK),
+                         (b'X', FILEXFER_TYPE_DIRECTORY)],
+                b'X': [(b'f', FILEXFER_TYPE_REGULAR)]}
+
+        links = {b's': b'.', b'X': b's/../X'}
+
+        try:
+            with self.assertRaises(SFTPBadMessage):
+                await self._get_scripted(sftp, tree, links)
+
+            self.assertFalse(os.path.lexists('dst/X'))
+            self.assertFalse(os.path.lexists('X'))
+        finally:
+            remove('srcdata dst X')
+
+    @sftp_test
+    async def test_multilevel_symlink_escape(self, sftp):
+        """A chain of symlinks climbing multiple levels must be rejected"""
+
+        if not self._symlink_supported: # pragma: no cover
+            raise unittest.SkipTest('symlink not available')
+
+        tree = {b'src': [(b'l0', FILEXFER_TYPE_SYMLINK),
+                         (b'l1', FILEXFER_TYPE_SYMLINK),
+                         (b'l2', FILEXFER_TYPE_SYMLINK),
+                         (b'l2', FILEXFER_TYPE_DIRECTORY)],
+                b'l2': [(b'f', FILEXFER_TYPE_REGULAR)]}
+
+        links = {b'l0': b'.', b'l1': b'l0/..', b'l2': b'l1/..'}
+
+        try:
+            os.makedirs('a/b')
+
+            with self.assertRaises(SFTPBadMessage):
+                await self._get_scripted(sftp, tree, links, 'a/b/dst')
+
+            self.assertTrue(os.path.islink('a/b/dst/l0'))
+            self.assertFalse(os.path.lexists('a/b/dst/l1'))
+            self.assertFalse(os.path.lexists('a/f'))
+        finally:
+            remove('srcdata a')
+
+    @sftp_test
+    async def test_chained_symlink_within_dir_allowed(self, sftp):
+        """Chained symlinks which stay within the download dir are allowed"""
+
+        if not self._symlink_supported: # pragma: no cover
+            raise unittest.SkipTest('symlink not available')
+
+        tree = {b'src': [(b'sub', FILEXFER_TYPE_DIRECTORY),
+                         (b's', FILEXFER_TYPE_SYMLINK),
+                         (b't', FILEXFER_TYPE_SYMLINK)],
+                b'sub': [(b'f', FILEXFER_TYPE_REGULAR)]}
+
+        links = {b's': b'./sub', b't': b's/..//sub/f'}
+
+        try:
+            await self._get_scripted(sftp, tree, links)
+
+            with open('dst/t') as f:
+                self.assertEqual(f.read(), 'attack')
+        finally:
+            remove('srcdata dst')
+
+
+class _TestSFTPPreexistingSymlink(_CheckSFTP):
+    """Tests for downloads into a tree containing existing symlinks
+
+       Symlinks already present under the download directory which
+       point outside of it should only be followed when follow_symlinks
+       is set.
+    """
+
+    @classmethod
+    async def start_server(cls):
+        """Start a standard SFTP server for the tests to use"""
+
+        return await cls.create_server(sftp_factory=True)
+
+    def _setup(self):
+        """Create a source tree and a destination with outside links"""
+
+        os.makedirs('src/dir')
+        self._create_file('src/file', 'attack')
+        self._create_file('src/dir/file', 'attack')
+
+        os.makedirs('dst/src')
+        os.mkdir('outdir')
+        self._create_file('outfile', 'orig')
+        os.symlink(os.path.join('..', '..', 'outdir'), 'dst/src/dir')
+        os.symlink(os.path.join('..', '..', 'outfile'), 'dst/src/file')
+
+    @sftp_test
+    async def test_preexisting_symlink_not_followed(self, sftp):
+        """Existing symlinks outside the download dir must not be followed"""
+
+        if not self._symlink_supported: # pragma: no cover
+            raise unittest.SkipTest('symlink not available')
+
+        try:
+            self._setup()
+
+            for name in ('file', 'dir'):
+                with self.subTest(name=name):
+                    with self.assertRaises(SFTPBadMessage):
+                        await sftp.get('src/' + name, 'dst/src',
+                                       recurse=True)
+
+            with open('outfile') as f:
+                self.assertEqual(f.read(), 'orig')
+
+            self.assertFalse(os.path.lexists('outdir/file'))
+        finally:
+            remove('src dst outdir outfile')
+
+    @sftp_test
+    async def test_preexisting_symlink_followed(self, sftp):
+        """Existing symlinks are followed when follow_symlinks is set"""
+
+        if not self._symlink_supported: # pragma: no cover
+            raise unittest.SkipTest('symlink not available')
+
+        try:
+            self._setup()
+
+            await sftp.get('src', 'dst', recurse=True, follow_symlinks=True)
+
+            with open('outfile') as f:
+                self.assertEqual(f.read(), 'attack')
+
+            with open('outdir/file') as f:
+                self.assertEqual(f.read(), 'attack')
+        finally:
+            remove('src dst outdir outfile')
