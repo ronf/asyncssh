@@ -27,11 +27,38 @@ from typing import TYPE_CHECKING, Callable, Optional
 
 
 if TYPE_CHECKING:
+    _GetMajor = Callable[[], ctypes.c_int]
+else:
+    # only required for Python < 3.14, because of eager evaluation there
+    _GetMajor = None
+
+
+for lib in ('nettle', 'libnettle', 'libnettle-6'):
+    _nettle_lib = ctypes.util.find_library(lib)
+
+    if _nettle_lib: # pragma: no branch
+        break
+else: # pragma: no cover
+    _nettle_lib = None
+    _major = 3
+
+if _nettle_lib: # pragma: no branch
+    _nettle = ctypes.cdll.LoadLibrary(_nettle_lib)
+    _get_major: _GetMajor = getattr(_nettle, 'nettle_version_major')
+    _major = _get_major()
+    if _major not in (3, 4):
+        _nettle_lib = None
+
+
+if TYPE_CHECKING:
     _ByteArray = ctypes.Array[ctypes.c_char]
     _SetKey = Callable[[_ByteArray, bytes], None]
     _SetNonce = Callable[[_ByteArray, ctypes.c_size_t, bytes], None]
     _Update = Callable[[_ByteArray, ctypes.c_size_t, bytes], None]
-    _Digest = Callable[[_ByteArray, ctypes.c_size_t, _ByteArray], None]
+    if _major == 3:
+        _Digest = Callable[[_ByteArray, ctypes.c_size_t, _ByteArray], None]
+    else:
+        _Digest = Callable[[_ByteArray, _ByteArray], None]
     _New = Callable[[bytes, Optional[bytes], Optional[bytes]], object]
 
 
@@ -113,7 +140,10 @@ def _build_umac(size: int) -> '_New':
             """
 
             result = ctypes.create_string_buffer(self.digest_size)
-            _digest(self._ctx, ctypes.c_size_t(self.digest_size), result)
+            if _major == 3:
+                _digest(self._ctx, ctypes.c_size_t(self.digest_size), result)
+            else:
+                _digest(self._ctx, result)
             return result.raw
 
         def hexdigest(self) -> str:
@@ -125,15 +155,5 @@ def _build_umac(size: int) -> '_New':
     return _UMAC.new
 
 
-for lib in ('nettle', 'libnettle', 'libnettle-6'):
-    _nettle_lib = ctypes.util.find_library(lib)
-
-    if _nettle_lib: # pragma: no branch
-        break
-else: # pragma: no cover
-    _nettle_lib = None
-
 if _nettle_lib: # pragma: no branch
-    _nettle = ctypes.cdll.LoadLibrary(_nettle_lib)
-
     umac32, umac64, umac96, umac128 = map(_build_umac, (32, 64, 96, 128))
