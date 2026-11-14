@@ -7180,6 +7180,47 @@ class SFTPServer:
 
         return os.path.relpath(abs_target, start=abs_newdir)
 
+    @staticmethod
+    def _read_local_symlink(local_path: _LocalPath) -> _LocalPath:
+        """Read the target of a local symlink"""
+
+        target = os.readlink(local_path)
+
+        if sys.platform == 'win32' and \
+                target.startswith('\\\\?\\'): # pragma: cover only win32
+            target = target[4:]
+
+        return target
+
+    @staticmethod
+    def _tmp_path(local_path: _LocalPath) -> _LocalPath:
+        """Return a unique temporary path beside a local path"""
+
+        suffix = f'.{os.urandom(6).hex()}.tmp'
+
+        return local_path + (suffix.encode()
+                             if isinstance(local_path, bytes) else suffix)
+
+    @staticmethod
+    def _replace_symlink(target: _LocalPath, local_path: _LocalPath) -> None:
+        """Replace an existing local path with a symlink
+
+           The new link is created beside the old path and then renamed
+           over the top, so replacing an existing path works like it
+           does for os.replace() and there is never a missing link.
+
+        """
+
+        tmp_path = SFTPServer._tmp_path(local_path)
+
+        os.symlink(target, tmp_path)
+
+        try:
+            os.replace(tmp_path, local_path)
+        except OSError:
+            os.remove(tmp_path)
+            raise
+
     def _move_symlink(self, oldpath: bytes, newpath: bytes,
                       replace: bool) -> None:
         """Move a symlink, keeping its target within the chroot"""
@@ -7187,11 +7228,7 @@ class SFTPServer:
         local_oldpath = _to_local_path(self.map_path(oldpath))
         local_newpath = _to_local_path(self.map_path(newpath))
 
-        target = os.readlink(local_oldpath)
-
-        if sys.platform == 'win32' and \
-                target.startswith('\\\\?\\'): # pragma: cover only win32
-            target = target[4:]
+        target = self._read_local_symlink(local_oldpath)
 
         target = _to_local_path(self._contain_symlink(
             _from_local_path(target), newpath, oldpath))
@@ -7204,23 +7241,133 @@ class SFTPServer:
                               os.lstat(local_newpath)):
             return
         else:
-            # Create the new link beside the old one and then rename it
-            # over the top, so replacing an existing path works like it
-            # does for os.replace() and there is never a missing link
-            suffix = f'.{os.urandom(6).hex()}.tmp'
-            tmp_path = local_newpath + (suffix.encode()
-                                        if isinstance(local_newpath, bytes)
-                                        else suffix)
-
-            os.symlink(target, tmp_path)
-
-            try:
-                os.replace(tmp_path, local_newpath)
-            except OSError:
-                os.remove(tmp_path)
-                raise
+            self._replace_symlink(target, local_newpath)
 
         os.remove(local_oldpath)
+
+    def _contain_dir_symlinks(self, local_oldpath: _LocalPath,
+                              local_newpath: _LocalPath) -> \
+            List[Tuple[_LocalPath, _LocalPath, _LocalPath]]:
+        """Return updates to symlinks in a directory about to be moved
+
+           Each symlink in the directory's subtree gets a new target
+           exactly as if it were being moved on its own, except that
+           targets inside the subtree are mapped to their new location.
+           Nothing changes if the directory stays in the same parent,
+           as relative targets then still resolve to the same place.
+
+           An error is raised before anything is changed if a target
+           is outside the chroot or a link can't be read or updated.
+           Otherwise, a list of (new link path, old target, new target)
+           tuples is returned for the links which need to change.
+
+        """
+
+        def _raise(exc: OSError) -> None:
+            raise exc
+
+        old_root = os.path.realpath(local_oldpath)
+        new_parent = os.path.realpath(os.path.dirname(local_newpath))
+
+        if new_parent == os.path.dirname(old_root):
+            return []
+
+        new_root = os.path.join(new_parent, os.path.basename(local_newpath))
+        updates: List[Tuple[_LocalPath, _LocalPath, _LocalPath]] = []
+
+        for dirpath, dirnames, filenames in os.walk(old_root, onerror=_raise):
+            new_dirpath = new_root + dirpath[len(old_root):]
+
+            for name in dirnames + filenames:
+                path = os.path.join(dirpath, name)
+
+                # Use lstat() rather than islink() so that errors are
+                # raised rather than treated as a non-link
+                if not stat.S_ISLNK(os.lstat(path).st_mode):
+                    continue
+
+                old_target = self._read_local_symlink(path)
+                abs_target = os.path.realpath(os.path.join(dirpath,
+                                                           old_target))
+
+                if abs_target == old_root or \
+                        abs_target.startswith(old_root + _LocalSep):
+                    abs_target = new_root + abs_target[len(old_root):]
+
+                # Make sure the symlink doesn't point outside the chroot
+                self.reverse_map_path(_from_local_path(abs_target))
+
+                if os.path.isabs(old_target):
+                    new_target = abs_target
+                else:
+                    new_target = os.path.relpath(abs_target,
+                                                 start=new_dirpath)
+
+                if new_target != old_target:
+                    if not os.access(dirpath, os.W_OK | os.X_OK):
+                        raise SFTPPermissionDenied('Permission denied')
+
+                    updates.append((os.path.join(new_dirpath, name),
+                                    old_target, new_target))
+
+        return updates
+
+    def _update_symlink(self, target: _LocalPath,
+                        local_path: _LocalPath) -> None:
+        """Update the target of an existing local symlink"""
+
+        if sys.platform == 'win32': # pragma: cover only win32
+            attrs = os.lstat(local_path).st_file_attributes
+
+            if attrs & stat.FILE_ATTRIBUTE_DIRECTORY:
+                # Windows can't replace a directory symlink, so move
+                # the old link aside, create the new one in its place,
+                # and then remove the old one
+                aside_path = self._tmp_path(local_path)
+
+                os.rename(local_path, aside_path)
+
+                try:
+                    os.symlink(target, local_path, target_is_directory=True)
+                except OSError:
+                    os.rename(aside_path, local_path)
+                    raise
+
+                os.remove(aside_path)
+                return
+
+        self._replace_symlink(target, local_path)
+
+    def _move_local_path(self, local_oldpath: _LocalPath,
+                         local_newpath: _LocalPath, replace: bool) -> None:
+        """Move a local path, keeping symlinks in it within the chroot"""
+
+        rename = os.replace if replace else os.rename
+
+        if not (self._chroot and os.path.isdir(local_oldpath)):
+            rename(local_oldpath, local_newpath)
+            return
+
+        updates = self._contain_dir_symlinks(local_oldpath, local_newpath)
+
+        rename(local_oldpath, local_newpath)
+
+        done: List[Tuple[_LocalPath, _LocalPath, _LocalPath]] = []
+
+        try:
+            for update in updates:
+                path, _, new_target = update
+                self._update_symlink(new_target, path)
+                done.append(update)
+        except OSError:
+            # Put back any links already updated and move the directory
+            # back to where it was, so no link is left pointing outside
+            # the chroot
+            for path, old_target, _ in reversed(done):
+                self._update_symlink(old_target, path)
+
+            os.rename(local_newpath, local_oldpath)
+            raise
 
     def format_user(self, uid: Optional[int]) -> str:
         """Return the user name associated with a uid
@@ -7899,8 +8046,8 @@ class SFTPServer:
             if os.path.exists(newpath):
                 raise SFTPFileAlreadyExists('File already exists')
 
-            os.rename(_to_local_path(mapped_oldpath),
-                      _to_local_path(newpath))
+            self._move_local_path(_to_local_path(mapped_oldpath),
+                                  _to_local_path(newpath), replace=False)
 
         return None
 
@@ -8005,8 +8152,8 @@ class SFTPServer:
             self._move_symlink(oldpath, newpath, replace=True)
         else:
             newpath = self.map_path(newpath)
-            os.replace(_to_local_path(mapped_oldpath),
-                      _to_local_path(newpath))
+            self._move_local_path(_to_local_path(mapped_oldpath),
+                                  _to_local_path(newpath), replace=True)
 
         return None
 
