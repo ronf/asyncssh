@@ -554,6 +554,14 @@ class _ScriptedSymlinkSFTPServer(SFTPServer):
         return SFTPAttrs(type=filetype, permissions=self._perms[filetype],
                          size=os.path.getsize('srcdata'))
 
+    async def stat(self, path):
+        """Keep reporting symlinks as symlinks, even when following them"""
+
+        if posixpath.basename(path) in self.links:
+            return self._attrs(FILEXFER_TYPE_SYMLINK)
+        else:
+            return self._attrs(FILEXFER_TYPE_DIRECTORY)
+
     async def lstat(self, path):
         """Report every path as a directory"""
 
@@ -7013,6 +7021,40 @@ class _TestSFTPChainedSymlink(_CheckSFTP):
             remove('srcdata dst X')
 
     @sftp_test
+    async def test_dangling_symlink_escape(self, sftp):
+        """A symlink escaping through a dangling symlink must be rejected"""
+
+        if not self._symlink_supported: # pragma: no cover
+            raise unittest.SkipTest('symlink not available')
+
+        # 'a' is dangling when 'X' is created, so a later link at 'b'
+        # can change where 'a/..' resolves
+        tree = {b'src': [(b'a', FILEXFER_TYPE_SYMLINK),
+                         (b'X', FILEXFER_TYPE_SYMLINK),
+                         (b'b', FILEXFER_TYPE_SYMLINK),
+                         (b'X', FILEXFER_TYPE_DIRECTORY)],
+                b'X': [(b'f', FILEXFER_TYPE_REGULAR)]}
+
+        links = {b'a': b'b', b'X': b'a/../X', b'b': b'.'}
+
+        # With follow_symlinks set, a malicious server can still report
+        # symlinks from stat, so they are created without the write-time
+        # check to fall back on
+        for follow_symlinks in (False, True):
+            with self.subTest(follow_symlinks=follow_symlinks):
+                try:
+                    with self.assertRaises(SFTPBadMessage):
+                        await self._get_scripted(
+                            sftp, tree, links,
+                            follow_symlinks=follow_symlinks)
+
+                    self.assertTrue(os.path.islink('dst/a'))
+                    self.assertFalse(os.path.lexists('dst/X'))
+                    self.assertFalse(os.path.lexists('X'))
+                finally:
+                    remove('srcdata dst X')
+
+    @sftp_test
     async def test_multilevel_symlink_escape(self, sftp):
         """A chain of symlinks climbing multiple levels must be rejected"""
 
@@ -7038,6 +7080,27 @@ class _TestSFTPChainedSymlink(_CheckSFTP):
             self.assertFalse(os.path.lexists('a/f'))
         finally:
             remove('srcdata a')
+
+    @unittest.skipUnless(sys.platform == 'win32',
+                         'drive letter names only apply on Windows')
+    @sftp_test
+    async def test_drive_letter_name(self, sftp): # pragma: cover only win32
+        """Names with a colon must be refused on Windows"""
+
+        tree = {b'src': [(b'C:x', FILEXFER_TYPE_REGULAR)]}
+
+        try:
+            # As a name inside a directory being downloaded
+            with self.assertRaises(SFTPBadMessage):
+                await self._get_scripted(sftp, tree, {})
+
+            self.assertEqual(os.listdir('dst'), [])
+
+            # As a top-level name used directly as the local path
+            with self.assertRaises(SFTPBadMessage):
+                await sftp.mget('src/*')
+        finally:
+            remove('srcdata dst')
 
     @sftp_test
     async def test_chained_symlink_within_dir_allowed(self, sftp):
