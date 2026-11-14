@@ -2837,7 +2837,7 @@ def _decode_public(data: bytes) -> Tuple[Optional[SSHKey], Optional[int]]:
         if fmt == 'pem' and key_info[0] == b'OPENSSH':
             key = _decode_openssh_public(key_info[2])
         else:
-            key, _ = _decode_private(data, None, False)
+            key, _ = _decode_private(data, None, True)
 
             if key:
                 key = key.convert_to_public()

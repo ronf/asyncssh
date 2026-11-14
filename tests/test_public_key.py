@@ -337,7 +337,8 @@ class _TestPublicKey(TempDirTestCase):
             self.assertEqual(keypair.public_data, chain.public_data)
             self.assertIsNotNone(keypair.get_agent_private_key())
 
-            newkey.write_private_key('new_bundle', format_name, passphrase)
+            newkey.write_private_key('new_bundle', format_name, passphrase,
+                                     rounds=1, ignore_few_rounds=True)
             cert.append_certificate('new_bundle', 'pem')
 
             keypair = asyncssh.load_keypairs('new_bundle', passphrase)[0]
