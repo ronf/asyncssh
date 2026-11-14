@@ -137,6 +137,27 @@ def remove(files):
             pass
 
 
+def canonical_path(path):
+    """Return a fully resolved path, even if it is missing components
+
+       On Windows, realpath() doesn't normalize the part of a path ahead
+       of a missing component, such as the target of a dangling symlink,
+       which can leave 8.3 short names in it. To allow such paths to be
+       compared, the deepest existing directory is resolved again and the
+       remaining components are appended to it.
+
+    """
+
+    head = os.path.realpath(path)
+    tail = []
+
+    while not os.path.isdir(head):
+        head, name = os.path.split(head)
+        tail.append(name)
+
+    return os.path.join(os.path.realpath(head), *reversed(tail))
+
+
 def sftp_test(func):
     """Decorator for running SFTP tests"""
 
@@ -4786,17 +4807,15 @@ class _TestSFTPChroot(_CheckSFTP):
         if not self._symlink_supported: # pragma: no cover
             raise unittest.SkipTest('symlink not available')
 
-        chroot = os.path.realpath('chroot')
+        chroot = canonical_path('chroot')
 
         try:
             self._create_file('escaped')
             os.makedirs('chroot/d1/d2')
 
-            # Create a matching target inside the chroot so the link
-            # isn't dangling -- on Windows, realpath() doesn't fully
-            # normalize a dangling link's target (e.g. 8.3 short names)
-            self._create_file('chroot/escaped')
-
+            # The link created below is dangling, which also checks that
+            # the server handles missing targets on Windows, where they
+            # can be left with 8.3 short names by realpath()
             for newdir in ('esc', 'd1/esc', 'd1/d2/esc'):
                 depth = newdir.count('/') + 1
                 await sftp.symlink('/', newdir)
@@ -4804,7 +4823,7 @@ class _TestSFTPChroot(_CheckSFTP):
 
                 # The link is really created in the chroot root, so its
                 # target must stay inside the chroot
-                resolved = os.path.realpath('chroot/pwn')
+                resolved = canonical_path('chroot/pwn')
 
                 self.assertTrue(resolved == chroot or
                                 resolved.startswith(chroot + os.sep),
@@ -4816,7 +4835,7 @@ class _TestSFTPChroot(_CheckSFTP):
                 remove('chroot/pwn')
                 remove(f'chroot/{newdir}')
         finally:
-            remove('escaped chroot/escaped chroot/d1 chroot/esc chroot/pwn')
+            remove('escaped chroot/d1 chroot/esc chroot/pwn')
 
     @sftp_test
     async def test_chroot_rename_symlink_failure(self, sftp):
@@ -4936,14 +4955,14 @@ class _TestSFTPChroot(_CheckSFTP):
     def _check_contained(self, root):
         """Check that all symlinks under root resolve within the chroot"""
 
-        chroot = os.path.realpath('chroot')
+        chroot = canonical_path('chroot')
 
         for dirpath, dirnames, filenames in os.walk(root):
             for name in dirnames + filenames:
                 path = os.path.join(dirpath, name)
 
                 if os.path.islink(path):
-                    resolved = os.path.realpath(path)
+                    resolved = canonical_path(path)
 
                     self.assertTrue(resolved == chroot or
                                     resolved.startswith(chroot + os.sep),
@@ -6932,14 +6951,14 @@ class _TestSFTPChainedSymlink(_CheckSFTP):
         try:
             await sftp.get('src', dst, recurse=True, **kwargs)
         finally:
-            root = os.path.realpath(dst)
+            root = canonical_path(dst)
 
             for dirpath, dirnames, filenames in os.walk(dst):
                 for name in dirnames + filenames:
                     path = os.path.join(dirpath, name)
 
                     if os.path.islink(path):
-                        target = os.path.realpath(path)
+                        target = canonical_path(path)
 
                         self.assertTrue(target == root or
                                         target.startswith(root + os.sep))
