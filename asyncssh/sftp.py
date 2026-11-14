@@ -23,6 +23,7 @@
 """SFTP handlers"""
 
 import asyncio
+from contextlib import aclosing
 import errno
 from fnmatch import fnmatch
 import inspect
@@ -34,7 +35,8 @@ import stat
 import sys
 import time
 from types import TracebackType
-from typing import TYPE_CHECKING, AnyStr, AsyncIterator, Awaitable, Callable
+from typing import TYPE_CHECKING, AnyStr, AsyncGenerator, AsyncIterator
+from typing import Awaitable, Callable
 from typing import Dict, Generic, IO, Iterable, List, Literal, Mapping
 from typing import Optional, Protocol, Sequence, Set, Tuple, Type, TypeVar
 from typing import Union, cast, overload
@@ -838,7 +840,7 @@ class _SFTPParallelIO(Generic[_T]):
 
         raise NotImplementedError
 
-    async def iter(self) -> AsyncIterator[Tuple[int, _T]]:
+    async def iter(self) -> AsyncGenerator[Tuple[int, _T], None]:
         """Perform file I/O and return async iterator of results"""
 
         self._start_tasks()
@@ -901,14 +903,15 @@ class _SFTPFileReader(_SFTPParallelIO[bytes]):
 
         result = bytearray()
 
-        async for offset, data in self.iter():
-            pos = offset - self._start
-            pad = pos - len(result)
+        async with aclosing(self.iter()) as results:
+            async for offset, data in results:
+                pos = offset - self._start
+                pad = pos - len(result)
 
-            if pad > 0:
-                result += pad * b'\0'
+                if pad > 0:
+                    result += pad * b'\0'
 
-            result[pos:pos+len(data)] = data
+                result[pos:pos+len(data)] = data
 
         return bytes(result)
 
@@ -937,8 +940,9 @@ class _SFTPFileWriter(_SFTPParallelIO[int]):
     async def run(self):
         """Perform parallel writes"""
 
-        async for _ in self.iter():
-            pass
+        async with aclosing(self.iter()) as results:
+            async for _ in results:
+                pass
 
 class _SFTPFileCopier(_SFTPParallelIO[int]):
     """SFTP file copier
@@ -1022,13 +1026,15 @@ class _SFTPFileCopier(_SFTPParallelIO[int]):
                                                self._total_bytes)
             else:
                 async for self._offset, self._bytes_left in ranges:
-                    async for _, datalen in self.iter():
-                        self._bytes_copied += datalen
+                    async with aclosing(self.iter()) as results:
+                        async for _, datalen in results:
+                            self._bytes_copied += datalen
 
-                        if self._progress_handler and datalen != 0:
-                            self._progress_handler(self._srcpath, self._dstpath,
-                                                   self._bytes_copied,
-                                                   self._total_bytes)
+                            if self._progress_handler and datalen != 0:
+                                self._progress_handler(self._srcpath,
+                                                       self._dstpath,
+                                                       self._bytes_copied,
+                                                       self._total_bytes)
 
                 if self._bytes_copied != self._total_bytes and not self._sparse:
                     exc = SFTPFailure('Unexpected EOF during file copy')

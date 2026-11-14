@@ -5435,6 +5435,92 @@ class _TestSFTPCancelParallelIO(_CheckSFTP):
 
         await self._check_cancel(sftp, 'read_parallel')
 
+    async def _check_progress_error(self, sftp, method):
+        """Raise from a progress handler while copy requests are blocked"""
+
+        class _ProgressError(Exception):
+            """Exception raised by the progress handler"""
+
+        release = asyncio.Event()
+        pending = set()
+        in_flight_at_close = []
+        src_class = LocalFile if method == 'put' else asyncssh.SFTPClientFile
+        original_read = src_class.read
+        original_close = asyncssh.SFTPClientFile.close
+
+        def _start_tasks():
+            """Return the parallel I/O tasks which are still running"""
+
+            return {task for task in asyncio.all_tasks()
+                    if not task.done() and
+                    getattr(task.get_coro(), '__qualname__', '') ==
+                    '_SFTPParallelIO._start_task'}
+
+        async def delayed_read(file, size, offset):
+            """Let only the first block complete until files are closed"""
+
+            if offset:
+                await release.wait()
+
+            return await original_read(file, size, offset)
+
+        async def checked_close(file):
+            """Record whether requests are still running at file close"""
+
+            in_flight_at_close.append(bool(_start_tasks()))
+            release.set()
+            await original_close(file)
+
+        def _fail_progress(*_):
+            """Fail on the first progress report"""
+
+            pending.update(_start_tasks())
+            raise _ProgressError
+
+        self._create_file('src', 64 * 'a')
+
+        try:
+            with patch.object(src_class, 'read', delayed_read), \
+                    patch.object(asyncssh.SFTPClientFile, 'close',
+                                 checked_close), \
+                    patch.object(asyncssh.SFTPClient, 'supports_remote_copy',
+                                 False):
+                with self.assertRaises(_ProgressError):
+                    await asyncio.wait_for(
+                        getattr(sftp, method)(
+                            'src', 'dst', block_size=4, max_requests=4,
+                            progress_handler=_fail_progress), 5)
+
+            self.assertTrue(pending)
+            self.assertTrue(in_flight_at_close)
+            self.assertFalse(any(in_flight_at_close))
+        finally:
+            release.set()
+
+            for task in pending:
+                task.cancel()
+
+            await asyncio.gather(*pending, return_exceptions=True)
+            remove('src dst')
+
+    @sftp_test
+    async def test_get_progress_error(self, sftp):
+        """Test a progress handler error during a parallel get"""
+
+        await self._check_progress_error(sftp, 'get')
+
+    @sftp_test
+    async def test_put_progress_error(self, sftp):
+        """Test a progress handler error during a parallel put"""
+
+        await self._check_progress_error(sftp, 'put')
+
+    @sftp_test
+    async def test_copy_progress_error(self, sftp):
+        """Test a progress handler error during a parallel remote copy"""
+
+        await self._check_progress_error(sftp, 'copy')
+
 
 class _TestSFTPIOError(_CheckSFTP):
     """Unit test for SFTP server returning file I/O error"""
