@@ -23,15 +23,17 @@
 
 import asyncio
 import codecs
+import errno
 import os
 import socket
 import sys
 import unittest
 
-from unittest.mock import Mock, patch
+from unittest.mock import DEFAULT, Mock, patch
 
 import asyncssh
 from asyncssh.forward import SSHLocalForwarder
+from asyncssh.listener import _bind_tcp_local_listeners
 from asyncssh.misc import maybe_wait_closed, write_file
 from asyncssh.packet import String, UInt32
 from asyncssh.public_key import CERT_TYPE_USER
@@ -665,6 +667,34 @@ class _TestTCPForwarding(_CheckForwarding):
             async with conn.forward_local_port('', 0, '', 7) as listener:
                 await self._check_local_connection(listener.get_port(),
                                                    delay=0.1)
+
+    @asynctest
+    async def test_forward_local_port_dynamic_retry(self):
+        """Test retrying when a dynamic port is only partially available"""
+
+        error = OSError(errno.EADDRINUSE, 'Address already in use')
+
+        async with self.connect() as conn:
+            with patch('asyncssh.listener._bind_tcp_local_listeners',
+                       side_effect=[error, DEFAULT],
+                       wraps=_bind_tcp_local_listeners) as mock_bind:
+                async with conn.forward_local_port('', 0, '', 7) as listener:
+                    await self._check_local_connection(listener.get_port())
+
+        self.assertEqual([call.args[-1] for call in mock_bind.call_args_list],
+                         [0, 0])
+
+    @asynctest
+    async def test_forward_local_port_dynamic_retry_exhausted(self):
+        """Test giving up after repeated dynamic port collisions"""
+
+        async def _bind(*_args):
+            raise OSError(errno.EADDRINUSE, 'Address already in use')
+
+        async with self.connect() as conn:
+            with patch('asyncssh.listener._bind_tcp_local_listeners', _bind):
+                with self.assertRaises(OSError):
+                    await conn.forward_local_port('', 0, '', 7)
 
     @asynctest
     async def test_forward_local_disconnect_while_opening(self):

@@ -35,6 +35,9 @@ from .session import SSHTCPSession, SSHUNIXSession
 from .socks import SSHSOCKSForwarder
 
 
+_DYNAMIC_PORT_RETRIES = 10
+
+
 if TYPE_CHECKING:
     # pylint: disable=cyclic-import
     from .channel import SSHTCPChannel, SSHUNIXChannel
@@ -271,19 +274,18 @@ class SSHForwardListener(SSHListener):
         self._servers = []
 
 
-async def create_tcp_local_listener(
+async def _bind_tcp_local_listeners(
         conn: 'SSHConnection', loop: asyncio.AbstractEventLoop,
-        protocol_factory: _LocalListenerFactory, listen_host: str,
-        listen_port: int) -> 'SSHForwardListener':
-    """Create a listener to forward traffic from a local TCP port over SSH"""
+        protocol_factory: _LocalListenerFactory, addrinfo: Sequence[Tuple],
+        listen_port: int) -> Tuple[List[asyncio.AbstractServer], int]:
+    """Bind a set of listening sockets for local TCP port forwarding"""
 
-    addrinfo = await loop.getaddrinfo(listen_host or None, listen_port,
-                                      family=socket.AF_UNSPEC,
-                                      type=socket.SOCK_STREAM,
-                                      flags=socket.AI_PASSIVE)
-
-    if not addrinfo: # pragma: no cover
-        raise OSError('getaddrinfo() returned empty list')
+    # When a dynamic port is requested, SO_REUSEADDR is not set. On
+    # some systems (such as macOS), it would allow a wildcard bind to
+    # succeed even when another socket is already listening on that
+    # port on a specific address, causing connections to that address
+    # to silently go to the other listener instead of this one.
+    reuse_addr = listen_port != 0
 
     seen_addrinfo: Set[Tuple] = set()
     servers: List[asyncio.AbstractServer] = []
@@ -303,7 +305,8 @@ async def create_tcp_local_listener(
         except OSError: # pragma: no cover
             continue
 
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, True)
+        if reuse_addr:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, True)
 
         if family == socket.AF_INET6:
             try:
@@ -338,6 +341,41 @@ async def create_tcp_local_listener(
         server = await loop.create_server(protocol_factory, sock=sock)
         servers.append(server)
 
+    return servers, listen_port
+
+
+async def create_tcp_local_listener(
+        conn: 'SSHConnection', loop: asyncio.AbstractEventLoop,
+        protocol_factory: _LocalListenerFactory, listen_host: str,
+        listen_port: int) -> 'SSHForwardListener':
+    """Create a listener to forward traffic from a local TCP port over SSH"""
+
+    addrinfo = await loop.getaddrinfo(listen_host or None, listen_port,
+                                      family=socket.AF_UNSPEC,
+                                      type=socket.SOCK_STREAM,
+                                      flags=socket.AI_PASSIVE)
+
+    if not addrinfo: # pragma: no cover
+        raise OSError('getaddrinfo() returned empty list')
+
+    # If a dynamic port was requested and it is available on some
+    # addresses but not others, retry with a new dynamic port.
+    retries = _DYNAMIC_PORT_RETRIES if listen_port == 0 else 0
+
+    while True:
+        try:
+            servers, bound_port = await _bind_tcp_local_listeners(
+                conn, loop, protocol_factory, addrinfo, listen_port)
+        except OSError as exc:
+            if exc.errno == errno.EADDRINUSE and retries > 0:
+                retries -= 1
+                continue
+
+            raise
+
+        break
+
+    listen_port = bound_port
     listen_key = listen_host or '', listen_port
     return SSHForwardListener(conn, servers, listen_key, listen_port)
 
