@@ -36,10 +36,10 @@ from datetime import datetime, timezone
 from pathlib import Path, PurePath
 from random import SystemRandom
 from types import TracebackType
-from typing import Any, AsyncContextManager, Awaitable, Callable, Dict
-from typing import Generator, Generic, IO, Iterator, List, Literal, Mapping
-from typing import Sequence, Optional, Protocol, Tuple, Type, TypeVar, Union
-from typing import cast, overload
+from typing import TYPE_CHECKING, Any, AsyncContextManager, Awaitable
+from typing import Callable, Dict, Generator, Generic, IO, Iterator, List
+from typing import Literal, Mapping, Sequence, Optional, Protocol, Tuple
+from typing import Type, TypeVar, Union, cast, overload
 
 from .constants import DEFAULT_LANG
 from .constants import DISC_COMPRESSION_ERROR, DISC_CONNECTION_LOST
@@ -629,14 +629,36 @@ class _RecordMeta(type):
 
     def __new__(mcs: Type['_RecordMeta'], name: str, bases: Tuple[type, ...],
                 ns: Dict[str, object]) -> '_RecordMeta':
-        cls = cast(_RecordMeta, super().__new__(mcs, name, bases, ns))
-
         if name != 'Record':
-            fields = cast(Mapping[str, str], cls.__annotations__.keys())
-            defaults = {k: ns.get(k) for k in fields}
-            cls.__slots__ = defaults
+            fields = cast(Optional[Mapping[str, object]],
+                          ns.get('__annotations__'))
 
-        return cls
+            if sys.version_info >= (3, 14) and '__annotate_func__' in ns:
+                # pylint: disable=import-outside-toplevel,import-error
+                import annotationlib
+
+                annotate = cast(Callable[[Any], Dict[str, Any]],
+                                ns['__annotate_func__'])
+
+                fields = annotationlib.call_annotate_function(
+                    annotate, annotationlib.Format.STRING)
+
+            slots = {k: ns.pop(k, None) for k in fields or ()}
+
+            ns['__slots__'] = slots
+
+            params = ''.join(f', {k}=_default_{i}'
+                             for i, k in enumerate(slots))
+            body = ''.join(f'    self.{k} = {k}\n' for k in slots) or \
+                '    pass\n'
+            env = {f'_default_{i}': v for i, v in enumerate(slots.values())}
+
+            exec(f'def __init__(self{params}):\n' # pylint: disable=exec-used
+                 f'{body}', env)
+
+            ns.setdefault('__init__', env['__init__'])
+
+        return cast(_RecordMeta, super().__new__(mcs, name, bases, ns))
 
 
 class Record(metaclass=_RecordMeta):
@@ -644,26 +666,21 @@ class Record(metaclass=_RecordMeta):
 
     __slots__: Mapping[str, object] = {}
 
-    def __init__(self, *args: object, **kwargs: object):
-        for k, v in self.__slots__.items():
-            setattr(self, k, v)
-
-        for k, v in zip(self.__slots__, args):
-            setattr(self, k, v)
-
-        for k, v in kwargs.items():
-            setattr(self, k, v)
+    if TYPE_CHECKING:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            """Declare the generated __init__ to type checkers"""
 
     def __repr__(self) -> str:
-        values = ', '.join(f'{k}={getattr(self, k)!r}' for k in self.__slots__)
+        values = ', '.join([f'{k}={getattr(self, k)!r}'
+                            for k in self.__slots__])
 
         return f'{type(self).__name__}({values})'
 
     def __str__(self) -> str:
-        values = ((k, self._format(k, getattr(self, k)))
-                  for k in self.__slots__)
+        values = [(k, self._format(k, getattr(self, k)))
+                  for k in self.__slots__]
 
-        return ', '.join(f'{k}: {v}' for k, v in values if v is not None)
+        return ', '.join([f'{k}: {v}' for k, v in values if v is not None])
 
     def _format(self, k: str, v: object) -> Optional[str]:
         """Format a field as a string"""
@@ -671,6 +688,7 @@ class Record(metaclass=_RecordMeta):
         # pylint: disable=no-self-use,unused-argument
 
         return str(v)
+
 
 class Error(Exception):
     """General SSH error"""
