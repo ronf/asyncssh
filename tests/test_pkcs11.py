@@ -20,6 +20,8 @@
 
 """Unit tests for AsyncSSH PKCS#11 security token support"""
 
+import copy
+import gc
 import unittest
 
 import asyncssh
@@ -149,6 +151,26 @@ class _TestPKCS11Auth(_CheckPKCS11Auth):
 
         keys = asyncssh.load_pkcs11_keys('xxx', key_id=b'\x02')
         self.assertEqual(len(keys), 2 if self._certs_available else 1)
+
+    def test_copy_keys(self):
+        """Test that copied keys hold their own session reference"""
+
+        # pylint: disable=import-outside-toplevel,protected-access
+        from asyncssh.pkcs11 import SSHPKCS11Session
+
+        gc.collect()
+        self.assertEqual(SSHPKCS11Session._sessions, {})
+
+        keys = asyncssh.load_pkcs11_keys('xxx')
+
+        copies = [copy.copy(key) for key in keys]
+        del copies
+
+        self.assertNotEqual(SSHPKCS11Session._sessions, {})
+
+        del keys
+        gc.collect()
+        self.assertEqual(SSHPKCS11Session._sessions, {})
 
     @asynctest
     async def test_pkcs11_auth(self):

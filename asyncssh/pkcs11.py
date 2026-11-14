@@ -20,6 +20,8 @@
 
 """PKCS#11 smart card handler"""
 
+import threading
+
 from types import TracebackType
 from typing import Dict, List, Optional, Sequence, Tuple, Type, Union, cast
 
@@ -77,6 +79,17 @@ if pkcs11_available:
             self._session = session
             self._privkey = privkey
 
+            session.add_ref()
+
+        def __copy__(self) -> 'SSHPKCS11KeyPair':
+            """Copy this keypair, taking a new reference to its session"""
+
+            result = type(self).__new__(type(self))
+            result.__dict__.update(self.__dict__)
+            self._session.add_ref()
+
+            return result
+
         def __del__(self) -> None:
             self._session.close()
 
@@ -103,6 +116,7 @@ if pkcs11_available:
         """Work around PKCS#11 sessions not supporting simultaneous opens"""
 
         _sessions: _SessionMap = {}
+        _lock = threading.RLock()
 
         def __init__(self, token_id: _TokenID, token: Token,
                      pin: Optional[str]):
@@ -128,23 +142,31 @@ if pkcs11_available:
 
             token_id = (token.manufacturer_id, token.serial)
 
-            try:
-                session = cls._sessions[token_id]
-            except KeyError:
-                session = cls(token_id, token, pin)
-                cls._sessions[token_id] = session
+            with cls._lock:
+                try:
+                    session = cls._sessions[token_id]
+                except KeyError:
+                    session = cls(token_id, token, pin)
+                    cls._sessions[token_id] = session
 
-            session._refcount += 1
-            return session
+                session._refcount += 1
+                return session
+
+        def add_ref(self) -> None:
+            """Add a reference to an open session"""
+
+            with self._lock:
+                self._refcount += 1
 
         def close(self) -> None:
             """Drop one reference to an open session"""
 
-            self._refcount -= 1
+            with self._lock:
+                self._refcount -= 1
 
-            if self._refcount == 0:
-                self._session.close()
-                del self._sessions[self._token_id]
+                if self._refcount == 0:
+                    self._session.close()
+                    del self._sessions[self._token_id]
 
         def get_keys(self, load_certs: bool, key_label: Optional[str],
                      key_id: Optional[BytesOrStr]) -> \
@@ -191,8 +213,6 @@ if pkcs11_available:
                                                      pubkey, cert))
 
                     keys.append(SSHPKCS11KeyPair(self, privkey, pubkey))
-
-            self._refcount += len(keys)
 
             return keys
 
