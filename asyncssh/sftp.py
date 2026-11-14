@@ -7147,6 +7147,13 @@ class SFTPServer:
         """
 
         if oldpath is None:
+            # On Windows, a drive letter in a relative target ends up as
+            # a component in the middle of the joined path, which relpath()
+            # turns back into a drive-qualified target outside the chroot
+            if sys.platform == 'win32' and \
+                    b':' in target: # pragma: cover only win32
+                raise SFTPInvalidFilename('Invalid symlink target')
+
             if posixpath.isabs(target):
                 local_target = _to_local_path(self.map_path(target))
                 return _from_local_path(os.path.realpath(local_target))

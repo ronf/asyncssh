@@ -5091,16 +5091,16 @@ class _TestSFTPChroot(_CheckSFTP):
         if not self._symlink_supported: # pragma: no cover
             raise unittest.SkipTest('symlink not available')
 
-        replace_symlink = SFTPServer._replace_symlink
+        symlink = os.symlink
         calls = []
 
-        def _fail_second(target, path):
-            calls.append(path)
+        def _fail_second(*args, **kwargs):
+            calls.append(args)
 
             if len(calls) == 2:
                 raise OSError(errno.EIO, 'Simulated failure')
 
-            replace_symlink(target, path)
+            symlink(*args, **kwargs)
 
         try:
             os.makedirs('chroot/a/b/c')
@@ -5109,16 +5109,20 @@ class _TestSFTPChroot(_CheckSFTP):
             await sftp.symlink('../../../file', 'a/b/c/rel1')
             await sftp.symlink('../../../file', 'a/b/c/rel2')
 
-            with patch('asyncssh.sftp.SFTPServer._replace_symlink',
-                       side_effect=_fail_second):
+            # Fail creating the second updated link, after the first
+            # has already been updated
+            with patch('os.symlink', side_effect=_fail_second):
                 with self.assertRaises(SFTPFailure):
                     await sftp.rename('a/b/c', 'c')
 
-            # The directory and both links are back as they were
+            # The directory and both links are back as they were, and
+            # no temporary links are left behind
             self.assertFalse(os.path.lexists('chroot/c'))
             self._check_link_text('chroot/a/b/c/rel1', '../../../file')
             self._check_link_text('chroot/a/b/c/rel2', '../../../file')
             self._check_contained('chroot')
+            self.assertEqual(sorted(os.listdir('chroot/a/b/c')),
+                             ['rel1', 'rel2'])
         finally:
             remove('chroot/a chroot/c chroot/file')
 
@@ -5183,6 +5187,28 @@ class _TestSFTPChroot(_CheckSFTP):
                 await sftp.open(rb'/..\secret', 'r')
         finally:
             remove('secret')
+
+    @unittest.skipUnless(sys.platform == 'win32',
+                         'drive letter escape only applies on Windows')
+    @sftp_test_v6
+    async def test_chroot_symlink_drive(self, sftp): # pragma: cover only win32
+        """Symlink targets with a drive letter must be refused on Windows"""
+
+        if not self._symlink_supported: # pragma: no cover
+            raise unittest.SkipTest('symlink not available')
+
+        try:
+            os.mkdir('chroot/sub')
+
+            for target in ('C:/Windows/win.ini', r'C:\Windows\win.ini',
+                           'C:x', 'x/C:/y'):
+                with self.subTest(target=target):
+                    with self.assertRaises(SFTPInvalidFilename):
+                        await sftp.symlink(target, 'sub/link')
+
+                    self.assertFalse(os.path.lexists('chroot/sub/link'))
+        finally:
+            remove('chroot/sub')
 
 
 class _TestSFTPReadEOFWithAttrs(_CheckSFTP):
