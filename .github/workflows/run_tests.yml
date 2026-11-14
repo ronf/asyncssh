@@ -12,8 +12,8 @@ jobs:
         python-version: ["3.10"]
     steps:
       - name: Checkout asyncssh
-        uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+        uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
       - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
@@ -39,19 +39,19 @@ jobs:
 
     steps:
       - name: Checkout asyncssh
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           path: asyncssh
 
       - name: Checkout liboqs
         if: ${{ runner.os != 'macOS' }}
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: open-quantum-safe/liboqs
           ref: ${{ env.liboqs_version }}
           path: liboqs
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
@@ -73,7 +73,7 @@ jobs:
           openssl list -provider default -provider legacy -providers
 
       - name: Set up ccache for liboqs (Linux)
-        uses: hendrikmuhs/ccache-action@v1.2
+        uses: hendrikmuhs/ccache-action@v1.2.25
         if: ${{ runner.os == 'Linux' }}
         with:
           key: liboqs-cache-${{ matrix.os }}
@@ -105,7 +105,21 @@ jobs:
           sudo cmake --install build
 
       - name: Initialize MSVC environment
-        uses: ilammy/msvc-dev-cmd@v1
+        if: ${{ runner.os == 'Windows' }}
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vspath = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $vspath) { throw "Visual Studio with C++ tools not found" }
+          $vcvars = Join-Path $vspath 'VC\Auxiliary\Build\vcvarsall.bat'
+          $before = @{}
+          Get-ChildItem env: | ForEach-Object { $before[$_.Name] = $_.Value }
+          cmd /c "`"$vcvars`" x64 >nul && set" | ForEach-Object {
+            if ($_ -match '^([^=]+)=(.*)$' -and $before[$matches[1]] -ne $matches[2]) {
+              "$($matches[1])=$($matches[2])" >> $env:GITHUB_ENV
+            }
+          }
+          if ($LASTEXITCODE -ne 0) { throw "vcvarsall.bat failed" }
 
       - name: Install liboqs (Windows)
         if: ${{ runner.os == 'Windows' }}
@@ -131,7 +145,7 @@ jobs:
               check=True)
 
       - name: Upload coverage data
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-${{ matrix.os }}-${{ matrix.python-version }}
           path: asyncssh/.coverage.*
@@ -146,7 +160,7 @@ jobs:
       actions: write
     steps:
       - name: Merge coverage
-        uses: actions/upload-artifact/merge@v4
+        uses: actions/upload-artifact/merge@v7
         with:
           name: coverage
           pattern: coverage-*
@@ -161,9 +175,9 @@ jobs:
       contents: read
       actions: read
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+      - uses: actions/download-artifact@v8
         with:
           name: coverage
       - name: Install dependencies
@@ -177,7 +191,7 @@ jobs:
             sqlite3 "$f" "update file set path = replace(path, '\\', '/');"
           done
           tox -e report
-      - uses: codecov/codecov-action@v5
+      - uses: codecov/codecov-action@v7
         with:
           files: coverage.xml
           token: ${{ secrets.CODECOV_TOKEN }}
