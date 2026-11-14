@@ -4739,6 +4739,11 @@ class _TestSFTPChroot(_CheckSFTP):
             self._create_file('escaped')
             os.makedirs('chroot/d1/d2')
 
+            # Create a matching target inside the chroot so the link
+            # isn't dangling -- on Windows, realpath() doesn't fully
+            # normalize a dangling link's target (e.g. 8.3 short names)
+            self._create_file('chroot/escaped')
+
             for newdir in ('esc', 'd1/esc', 'd1/d2/esc'):
                 depth = newdir.count('/') + 1
                 await sftp.symlink('/', newdir)
@@ -4758,7 +4763,7 @@ class _TestSFTPChroot(_CheckSFTP):
                 remove('chroot/pwn')
                 remove(f'chroot/{newdir}')
         finally:
-            remove('escaped chroot/d1 chroot/esc chroot/pwn')
+            remove('escaped chroot/escaped chroot/d1 chroot/esc chroot/pwn')
 
     @sftp_test
     async def test_chroot_rename_symlink_failure(self, sftp):
