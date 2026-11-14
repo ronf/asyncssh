@@ -2288,6 +2288,77 @@ class _TestSFTP(_CheckSFTP):
         finally:
             remove('file link')
 
+    @sftp_test
+    async def test_symlink_target_unchanged(self, sftp):
+        """Test a symlink target is stored as given when there is no root"""
+
+        if not self._symlink_supported: # pragma: no cover
+            raise unittest.SkipTest('symlink not available')
+
+        try:
+            os.mkdir('dir1')
+            os.mkdir('dir2')
+            os.symlink(os.path.join('..', 'dir1'), os.path.join('dir2', 'sub'))
+
+            # This target goes through a symlinked directory, so it would
+            # be rewritten if it were being resolved and made relative
+            await sftp.symlink('sub/file', 'dir2/link')
+
+            self.assertEqual(os.path.normpath(os.readlink('dir2/link')),
+                             os.path.normpath('sub/file'))
+        finally:
+            remove('dir1 dir2')
+
+    @sftp_test
+    async def test_symlink_absolute_target_unchanged(self, sftp):
+        """Test an absolute symlink target is stored as given with no root"""
+
+        if not self._symlink_supported: # pragma: no cover
+            raise unittest.SkipTest('symlink not available')
+
+        if sys.platform == 'win32': # pragma: no cover
+            raise unittest.SkipTest('absolute targets not checked on Windows')
+
+        try:
+            os.mkdir('dir1')
+            os.mkdir('dir2')
+            os.symlink(os.path.join('..', 'dir1'), os.path.join('dir2', 'sub'))
+
+            # This target goes through a symlinked directory, so it would
+            # be rewritten if it were being resolved
+            target = os.path.abspath('dir2/sub/file')
+            await sftp.symlink(target, 'dir2/link')
+
+            self.assertEqual(os.readlink('dir2/link'), target)
+        finally:
+            remove('dir1 dir2')
+
+    @sftp_test
+    async def test_rename_symlink_target_unchanged(self, sftp):
+        """Test renaming a symlink leaves its target alone with no root"""
+
+        if not self._symlink_supported: # pragma: no cover
+            raise unittest.SkipTest('symlink not available')
+
+        try:
+            os.mkdir('dir1')
+            os.mkdir('dir2')
+            os.symlink(os.path.join('..', 'dir1'), os.path.join('dir2', 'sub'))
+
+            for rename in (sftp.rename, sftp.posix_rename):
+                # Create the link directly, so only the rename is tested
+                os.symlink('sub/file', 'dir2/link')
+
+                await rename('dir2/link', 'link')
+
+                self.assertFalse(os.path.lexists('dir2/link'))
+                self.assertEqual(os.path.normpath(os.readlink('link')),
+                                 os.path.normpath('sub/file'))
+
+                remove('link')
+        finally:
+            remove('dir1 dir2 link')
+
     @sftp_test_v4
     async def test_symlink_v4(self, sftp):
         """Test creating a symlink with SFTPv4"""
@@ -4563,6 +4634,63 @@ class _TestSFTPChroot(_CheckSFTP):
             remove('chroot/link1 chroot/link2')
 
     @sftp_test
+    async def test_chroot_rename_symlink_outside(self, sftp):
+        """Test renaming a symlink pointing outside the root is refused"""
+
+        if not self._symlink_supported: # pragma: no cover
+            raise unittest.SkipTest('symlink not available')
+
+        try:
+            self._create_file('outside')
+            os.mkdir('chroot/dir1')
+
+            os.symlink('../../outside', 'chroot/dir1/rel')
+            os.symlink(os.path.abspath('outside'), 'chroot/dir1/abs')
+
+            for name in ('rel', 'abs'):
+                with self.assertRaises(SFTPNoSuchFile):
+                    await sftp.rename(f'dir1/{name}', name)
+
+                with self.assertRaises(SFTPNoSuchFile):
+                    await sftp.posix_rename(f'dir1/{name}', f'{name}2')
+
+                self.assertTrue(os.path.islink(f'chroot/dir1/{name}'))
+                self.assertFalse(os.path.lexists(f'chroot/{name}'))
+                self.assertFalse(os.path.lexists(f'chroot/{name}2'))
+        finally:
+            remove('outside chroot/dir1 chroot/rel chroot/abs '
+                   'chroot/rel2 chroot/abs2')
+
+    @sftp_test
+    async def test_chroot_rename_symlink_via_symlinked_dir(self, sftp):
+        """Test renaming a symlink into a symlinked directory in the root"""
+
+        if not self._symlink_supported: # pragma: no cover
+            raise unittest.SkipTest('symlink not available')
+
+        try:
+            os.makedirs('chroot/d1/d2')
+
+            # A link to the chroot root itself is allowed, so the client
+            # can name a directory which is lexically three levels deep
+            # but resolves to the root
+            await sftp.symlink('/', 'd1/d2/esc')
+
+            for rename in (sftp.rename, sftp.posix_rename):
+                await sftp.symlink('file', 'link')
+                await rename('link', 'd1/d2/esc/moved')
+
+                # The link is really created in the root, so its target
+                # must not contain any ".." components
+                self.assertTrue(os.path.islink('chroot/moved'))
+                self.assertEqual(os.readlink('chroot/moved'), 'file')
+                self.assertFalse(os.path.lexists('chroot/link'))
+
+                remove('chroot/moved')
+        finally:
+            remove('chroot/d1 chroot/link chroot/moved')
+
+    @sftp_test
     async def test_chroot_rename_symlink(self, sftp):
         """Test renaming a symlink on an SFTP server with a changed root"""
 
@@ -4581,9 +4709,171 @@ class _TestSFTPChroot(_CheckSFTP):
 
             await sftp.posix_rename('dir1/dir2/link2', 'dir1/link2')
             self._check_link('chroot/dir1/link2', '../file')
-        finally:
-            remove('chroot/dir1 chroot/link1 chroot/link2')
 
+            await sftp.symlink('/file', 'dir1/link3')
+            await sftp.symlink('/file', 'dir1/link4')
+
+            await sftp.rename('dir1/link3', 'link3')
+            self._check_link('chroot/link3', os.path.abspath('chroot/file'))
+
+            await sftp.posix_rename('dir1/link4', 'link4')
+            self._check_link('chroot/link4', os.path.abspath('chroot/file'))
+
+            await sftp.symlink('../file2', 'dir1/dir2/link5')
+            await sftp.rename('dir1/dir2/link5', 'link5')
+            self._check_link('chroot/link5', 'dir1/file2')
+        finally:
+            remove('chroot/dir1 chroot/link1 chroot/link2 chroot/link3 '
+                   'chroot/link4 chroot/link5')
+
+    @sftp_test
+    async def test_chroot_symlink_via_symlinked_dir(self, sftp):
+        """Test symlinks can't escape the chroot via a symlinked directory"""
+
+        if not self._symlink_supported: # pragma: no cover
+            raise unittest.SkipTest('symlink not available')
+
+        chroot = os.path.realpath('chroot')
+
+        try:
+            self._create_file('escaped')
+            os.makedirs('chroot/d1/d2')
+
+            for newdir in ('esc', 'd1/esc', 'd1/d2/esc'):
+                depth = newdir.count('/') + 1
+                await sftp.symlink('/', newdir)
+                await sftp.symlink('../' * depth + 'escaped', newdir + '/pwn')
+
+                # The link is really created in the chroot root, so its
+                # target must stay inside the chroot
+                resolved = os.path.realpath('chroot/pwn')
+
+                self.assertTrue(resolved == chroot or
+                                resolved.startswith(chroot + os.sep),
+                                f'{newdir}: link escapes chroot: '
+                                f'{os.readlink("chroot/pwn")}')
+
+                self.assertEqual(os.readlink('chroot/pwn'), 'escaped')
+
+                remove('chroot/pwn')
+                remove(f'chroot/{newdir}')
+        finally:
+            remove('escaped chroot/d1 chroot/esc chroot/pwn')
+
+    @sftp_test
+    async def test_chroot_rename_symlink_failure(self, sftp):
+        """Test a failed symlink rename leaves things alone with a root"""
+
+        if not self._symlink_supported: # pragma: no cover
+            raise unittest.SkipTest('symlink not available')
+
+        try:
+            self._create_file('chroot/exists')
+            await sftp.symlink('exists', 'link')
+
+            with self.assertRaises(SFTPNoSuchFile):
+                await sftp.rename('link', 'nodir/link')
+
+            with self.assertRaises(SFTPNoSuchFile):
+                await sftp.posix_rename('link', 'nodir/link')
+
+            with self.assertRaises(SFTPError):
+                await sftp.rename('link', 'exists')
+
+            # The original link is still in place and nothing else was
+            # created or changed
+            self._check_link('chroot/link', 'exists')
+            self.assertFalse(os.path.islink('chroot/exists'))
+            self.assertFalse(os.path.lexists('chroot/nodir'))
+        finally:
+            remove('chroot/link chroot/exists')
+
+    @sftp_test
+    async def test_chroot_rename_symlink_special(self, sftp):
+        """Test renaming dangling and directory symlinks with a root"""
+
+        if not self._symlink_supported: # pragma: no cover
+            raise unittest.SkipTest('symlink not available')
+
+        try:
+            os.makedirs('chroot/dir1')
+            os.makedirs('chroot/real/sub')
+
+            await sftp.symlink('nonexistent/file', 'dir1/dangling')
+            await sftp.symlink('real/sub', 'dirlink')
+
+            # A dangling link keeps pointing at the same (missing) path
+            await sftp.rename('dir1/dangling', 'dangling')
+            self.assertEqual(os.path.normpath(os.readlink('chroot/dangling')),
+                             os.path.normpath('dir1/nonexistent/file'))
+
+            # A link to a directory still resolves to that directory
+            await sftp.posix_rename('dirlink', 'dir1/dirlink')
+            self.assertEqual(os.path.normpath(os.readlink('chroot/dir1/dirlink')),
+                             os.path.normpath('../real/sub'))
+            self.assertTrue(os.path.samefile('chroot/dir1/dirlink',
+                                             'chroot/real/sub'))
+        finally:
+            remove('chroot/dir1 chroot/real chroot/dangling chroot/dirlink')
+
+    @sftp_test
+    async def test_chroot_rename_symlink_replace(self, sftp):
+        """Test renaming a symlink over an existing path with a root"""
+
+        if not self._symlink_supported: # pragma: no cover
+            raise unittest.SkipTest('symlink not available')
+
+        try:
+            os.mkdir('chroot/dir1')
+            self._create_file('chroot/file')
+            self._create_file('chroot/other')
+
+            # A plain rename won't replace an existing path
+            await sftp.symlink('file', 'link1')
+
+            with self.assertRaises(SFTPError):
+                await sftp.rename('link1', 'file')
+
+            self._check_link('chroot/link1', 'file')
+
+            # A POSIX rename replaces an existing file...
+            await sftp.posix_rename('link1', 'file')
+            self._check_link('chroot/file', 'file')
+            self.assertFalse(os.path.lexists('chroot/link1'))
+
+            # ...or an existing symlink to a file. (Windows can't replace
+            # a directory symlink with a file symlink, just like os.replace)
+            await sftp.symlink('file', 'link2')
+            await sftp.symlink('other', 'link3')
+            self._check_link('chroot/link3', 'other')
+
+            await sftp.posix_rename('link2', 'link3')
+
+            self._check_link('chroot/link3', 'file')
+            self.assertFalse(os.path.lexists('chroot/link2'))
+
+            # ...but not an existing directory, and then nothing changes
+            await sftp.symlink('file', 'link4')
+
+            with self.assertRaises(SFTPError):
+                await sftp.posix_rename('link4', 'dir1')
+
+            self._check_link('chroot/link4', 'file')
+            self.assertTrue(os.path.isdir('chroot/dir1'))
+            self.assertFalse(os.path.islink('chroot/dir1'))
+
+            # Renaming a symlink to itself through a link to the root
+            # does nothing, rather than removing it
+            await sftp.symlink('/', 'esc')
+            await sftp.posix_rename('link4', 'esc/link4')
+            self._check_link('chroot/link4', 'file')
+
+            # No temporary links are left behind
+            self.assertEqual([name for name in os.listdir('chroot')
+                              if name.endswith('.tmp')], [])
+        finally:
+            remove('chroot/dir1 chroot/file chroot/other chroot/link1 '
+                   'chroot/link2 chroot/link3 chroot/link4 chroot/esc')
     @sftp_test
     async def test_chroot_makedirs(self, sftp):
         """Test creating a directory path"""
