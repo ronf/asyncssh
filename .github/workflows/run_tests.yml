@@ -130,6 +130,14 @@ jobs:
           cmake --build build
           cp build\bin\oqs.dll "$env:Python_ROOT_DIR"
 
+      - name: Start OpenSSH agent service (Windows)
+        if: ${{ runner.os == 'Windows' }}
+        shell: pwsh
+        run: |
+          Set-Service ssh-agent -StartupType Manual
+          Start-Service ssh-agent
+          Get-Service ssh-agent
+
       - name: Install Python dependencies
         run: pip install tox
 

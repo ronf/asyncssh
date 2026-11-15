@@ -53,6 +53,9 @@ _AGENT_NAME = 'Pageant'
 
 _DEFAULT_OPENSSH_PATH = r'\\.\pipe\openssh-ssh-agent'
 
+_PIPE_OPEN_ATTEMPTS = 5
+_PIPE_WAIT_TIMEOUT = 2000 # milliseconds
+
 
 def _find_agent_window() -> 'win32ui.PyCWnd':
     """Find and return the Pageant window"""
@@ -64,6 +67,13 @@ def _find_agent_window() -> 'win32ui.PyCWnd':
             raise OSError(errno.ENOENT, 'Agent not found') from None
     else:
         raise OSError(errno.ENOENT, 'PyWin32 not installed') from None
+
+
+def _wait_named_pipe(path: str, timeout: int) -> bool:
+    """Wait for an instance of a named pipe to become available"""
+
+    kernel32 = ctypes.WinDLL('kernel32') # type: ignore[attr-defined]
+    return bool(kernel32.WaitNamedPipeW(path, timeout))
 
 
 class _CopyDataStruct(ctypes.Structure):
@@ -126,8 +136,7 @@ class _PageantTransport:
     def close(self) -> None:
         """Close the connection to Pageant"""
 
-        if self._mapfile:
-            self._mapfile.close()
+        self._mapfile.close()
 
     async def wait_closed(self) -> None:
         """Wait for the transport to close"""
@@ -137,7 +146,19 @@ class _W10OpenSSHTransport:
     """Transport to connect to OpenSSH agent on Windows 10"""
 
     def __init__(self, agent_path: str):
-        self._agentfile = open_file(agent_path, 'r+b')
+        # When all instances of the agent's named pipe are busy, open()
+        # fails with EINVAL, so wait for an instance to become available
+        # and try again
+
+        for attempt in range(_PIPE_OPEN_ATTEMPTS): # pragma: no branch
+            try:
+                self._agentfile = open_file(agent_path, 'r+b')
+                break
+            except OSError as exc:
+                if exc.errno != errno.EINVAL or \
+                        attempt == _PIPE_OPEN_ATTEMPTS - 1 or \
+                        not _wait_named_pipe(agent_path, _PIPE_WAIT_TIMEOUT):
+                    raise
 
     async def readexactly(self, n: int) -> bytes:
         """Read response data from OpenSSH agent"""
@@ -157,8 +178,7 @@ class _W10OpenSSHTransport:
     def close(self) -> None:
         """Close the connection to OpenSSH"""
 
-        if self._agentfile:
-            self._agentfile.close()
+        self._agentfile.close()
 
     async def wait_closed(self) -> None:
         """Wait for the transport to close"""
