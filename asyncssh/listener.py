@@ -22,7 +22,9 @@
 
 import asyncio
 import errno
+import os
 import socket
+import sys
 from types import TracebackType
 from typing import TYPE_CHECKING, AnyStr, Callable, Generic, List, Optional
 from typing import Sequence, Set, Tuple, Type, Union
@@ -285,7 +287,14 @@ async def _bind_tcp_local_listeners(
     # succeed even when another socket is already listening on that
     # port on a specific address, causing connections to that address
     # to silently go to the other listener instead of this one.
-    reuse_addr = listen_port != 0
+    #
+    # SO_REUSEADDR is also never set on Windows. There, it allows a bind
+    # to succeed on a port another socket is actively listening on, with
+    # incoming connections going to either listener. It isn't needed
+    # there to rebind a port with connections in TIME_WAIT. This matches
+    # the default asyncio uses for reuse_address in create_server().
+    reuse_addr = (listen_port != 0 and os.name == 'posix' and
+                  sys.platform != 'cygwin')
 
     seen_addrinfo: Set[Tuple] = set()
     servers: List[asyncio.AbstractServer] = []

@@ -827,8 +827,6 @@ class _TestTCPForwarding(_CheckForwarding):
                 writer.close()
                 await maybe_wait_closed(writer)
 
-    @unittest.skipIf(sys.platform == 'win32',
-                     'skip dual-stack tests on Windows')
     @asynctest
     async def test_forward_bind_error_ipv4(self):
         """Test error binding a local forwarding port"""
@@ -839,8 +837,6 @@ class _TestTCPForwarding(_CheckForwarding):
                     await conn.forward_local_port('', listener.get_port(),
                                                   '', 7)
 
-    @unittest.skipIf(sys.platform == 'win32',
-                     'skip dual-stack tests on Windows')
     @asynctest
     async def test_forward_bind_error_ipv6(self):
         """Test error binding a local forwarding port"""
@@ -850,6 +846,27 @@ class _TestTCPForwarding(_CheckForwarding):
                 with self.assertRaises(OSError):
                     await conn.forward_local_port('', listener.get_port(),
                                                   '', 7)
+
+    @asynctest
+    async def test_forward_bind_error_specific_port(self):
+        """Test error binding a specific local forwarding port twice"""
+
+        sock = socket.socket()
+        sock.bind(('', 0))
+        listen_port = sock.getsockname()[1]
+        sock.close()
+
+        async with self.connect() as conn:
+            async with conn.forward_local_port('', listen_port, '', 7):
+                try:
+                    listener = await conn.forward_local_port(
+                        '', listen_port, '', 7)
+                except OSError:
+                    pass
+                else: # pragma: no cover
+                    listener.close()
+                    await listener.wait_closed()
+                    self.fail('Second bind of specific port succeeded')
 
     @unittest.skipIf(sys.platform == 'win32',
                      'skip UNIX domain socket tests on Windows')
@@ -1542,8 +1559,6 @@ class _TestSOCKSForwarding(_CheckForwarding):
             async with conn.forward_socks('', listen_port):
                 pass
 
-    @unittest.skipIf(sys.platform == 'win32',
-                     'Avoid issue with SO_REUSEADDR on Windows')
     @asynctest
     async def test_forward_bind_error_socks(self):
         """Test error binding a local dynamic forwarding port"""
