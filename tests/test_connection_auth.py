@@ -1350,6 +1350,34 @@ class _TestPublicKeyAuth(ServerTestCase):
         async with self.connect(username='ckey', client_keys='ckey'):
             pass
 
+    @unittest.skipUnless(hasattr(asyncio, 'eager_task_factory'),
+                         'Eager task factory not available')
+    @asynctest
+    async def test_public_key_auth_after_disabled_gss_eager(self):
+        """Test eager public key authentication after skipping GSS methods"""
+
+        loop = asyncio.get_running_loop()
+        task_factory = loop.get_task_factory()
+
+        try:
+            for eager in (False, True):
+                loop.set_task_factory(asyncio.eager_task_factory
+                                      if eager else None)
+
+                for methods in ([], [b'gssapi-keyex'], [b'gssapi-with-mic'],
+                                [b'gssapi-keyex', b'gssapi-with-mic']):
+                    with self.subTest(eager=eager, methods=methods):
+                        with patch('asyncssh.connection.'
+                                   'get_supported_server_auth_methods',
+                                   return_value=methods + [b'publickey']):
+                            async with self.connect(
+                                    username='ckey', client_keys='ckey',
+                                    agent_path=None, gss_kex=False,
+                                    gss_auth=False, connect_timeout=1):
+                                pass
+        finally:
+            loop.set_task_factory(task_factory)
+
     @asynctest
     async def test_public_key_auth_disabled(self):
         """Test connecting with public key authentication disabled"""
