@@ -20,7 +20,10 @@
 
 """SSH authentication handlers"""
 
-from typing import TYPE_CHECKING, Awaitable, Dict, List, Optional
+import asyncio
+
+from functools import partial
+from typing import TYPE_CHECKING, Awaitable, Callable, Dict, List, Optional
 from typing import Sequence, Tuple, Type, Union, cast
 
 from .constants import DEFAULT_LANG
@@ -34,8 +37,6 @@ from .saslprep import saslprep, SASLPrepError
 
 
 if TYPE_CHECKING:
-    import asyncio
-
     # pylint: disable=cyclic-import
     from .connection import SSHConnection, SSHClientConnection
     from .connection import SSHServerConnection
@@ -75,10 +76,18 @@ _server_auth_handlers: Dict[bytes, Type['ServerAuth']] = {}
 class Auth(SSHPacketHandler):
     """Parent class for authentication"""
 
-    def __init__(self, conn: 'SSHConnection', coro: Awaitable[None]):
+    def __init__(self, conn: 'SSHConnection',
+                 start: Callable[[], Awaitable[None]]):
         self._conn = conn
         self._logger = conn.logger
-        self._task: Optional['asyncio.Task[None]'] = conn.create_task(coro)
+        self._task: Optional['asyncio.Task[None]'] = \
+            conn.create_task(self._start_deferred(start))
+
+    async def _start_deferred(self, start: Callable[[], Awaitable[None]]) -> None:
+        """Wait for the connection to record this handler before starting it"""
+
+        await asyncio.sleep(0)
+        await start()
 
     def send_packet(self, pkttype: int, *args: bytes,
                     trivial: bool = True) -> None:
@@ -121,7 +130,7 @@ class ClientAuth(Auth):
     def __init__(self, conn: 'SSHClientConnection', method: bytes):
         self._method = method
 
-        super().__init__(conn, self._start())
+        super().__init__(conn, self._start)
 
     async def _start(self) -> None:
         """Abstract method for starting client authentication"""
@@ -535,7 +544,7 @@ class ServerAuth(Auth):
         self._username = username
         self._method = method
 
-        super().__init__(conn, self._start(packet))
+        super().__init__(conn, partial(self._start, packet))
 
     @classmethod
     def supported(cls, conn: 'SSHServerConnection') -> bool:
