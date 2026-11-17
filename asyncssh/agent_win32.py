@@ -43,7 +43,7 @@ try:
     import win32con
     import win32ui
     _pywin32_available = True
-except ImportError:
+except ImportError: # pragma: no cover
     _pywin32_available = False
 
 
