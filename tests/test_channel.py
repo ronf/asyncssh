@@ -405,6 +405,14 @@ class _ChannelServer(Server):
             value1 = stdin.channel.get_environment().get('TEST', '')
             value2 = stdin.channel.get_environment().get('TEST', '')
             stdout.write(value1 + value2 + '\n')
+        elif action == 'env_key_opt':
+            env = stdin.channel.get_environment()
+            stdout.write(env.get('TEST', '') + ',' +
+                         env.get('TEST2', '') + '\n')
+        elif action == 'env_late':
+            await stdin.readline()
+            value = stdin.channel.get_environment().get('TEST', '')
+            stdout.write(value + '\n')
         elif action == 'env_non_string_key':
             value = stdin.channel.get_environment().get('1', '')
             stdout.write(value + '\n')
@@ -1938,6 +1946,66 @@ class _TestChannelNoPTY(ServerTestCase):
         async with self.connect() as conn:
             await conn.run('echo', term_type='ansi', request_pty='auto',
                            stdin=asyncssh.DEVNULL)
+
+
+class _TestChannelKeyOptEnv(ServerTestCase):
+    """Unit tests for environment options set in authorized_keys"""
+
+    @classmethod
+    async def start_server(cls):
+        """Start an SSH server with environment set in authorized_keys"""
+
+        auth_keys_str = ''
+
+        for pubkey in ('ckey.pub', 'ckey_ecdsa.pub'):
+            with open(pubkey) as f:
+                auth_keys_str += 'environment="TEST=keyopt" ' + f.read()
+
+        auth_keys = asyncssh.import_authorized_keys(auth_keys_str)
+        return await cls.create_server(_ChannelServer,
+                                       authorized_client_keys=auth_keys)
+
+    @asynctest
+    async def test_env_key_opt(self):
+        """Test environment set in authorized_keys"""
+
+        async with self.connect(username='ckey') as conn:
+            chan, session = await _create_session(conn, 'env_key_opt')
+
+            await chan.wait_closed()
+
+            result = ''.join(session.recv_buf[None])
+            self.assertEqual(result, 'keyopt,\n')
+
+    @asynctest
+    async def test_env_key_opt_override(self):
+        """Test authorized_keys environment overriding client env"""
+
+        async with self.connect(username='ckey') as conn:
+            chan, session = await _create_session(
+                conn, 'env_key_opt', env={'TEST': 'client', 'TEST2': 'client'})
+
+            await chan.wait_closed()
+
+            result = ''.join(session.recv_buf[None])
+            self.assertEqual(result, 'keyopt,client\n')
+
+    @asynctest
+    async def test_env_after_session_start(self):
+        """Test env request after session start being rejected"""
+
+        async with self.connect(username='ckey') as conn:
+            chan, session = await _create_session(conn, 'env_late')
+
+            result = await chan._make_request(b'env', String('TEST'),
+                                              String('late'))
+            self.assertFalse(result)
+
+            chan.write('\n')
+            await chan.wait_closed()
+
+            result = ''.join(session.recv_buf[None])
+            self.assertEqual(result, 'keyopt\n')
 
 
 class _TestChannelNoAgentForwarding(ServerTestCase):

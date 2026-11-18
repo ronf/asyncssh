@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2025 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2026 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -1511,9 +1511,6 @@ class SSHServerChannel(SSHChannel, Generic[AnyStr]):
 
         super().__init__(conn, loop, encoding, errors, window, max_pktsize)
 
-        env_opt = cast(EnvMap, conn.get_key_option('environment', {}))
-        self._env = dict(encode_env(env_opt))
-
         self._allow_pty = allow_pty
         self._line_editor = line_editor
         self._line_echo = line_echo
@@ -1681,6 +1678,11 @@ class SSHServerChannel(SSHChannel, Generic[AnyStr]):
         value = packet.get_string()
         packet.check_end()
 
+        if self._session_started:
+            self.logger.debug1('  Env request after session start '
+                               'ignored: %s=%s', key, value)
+            return False
+
         self.logger.debug1('  Env: %s=%s', key, value)
         self._env[key] = value
         return True
@@ -1705,6 +1707,12 @@ class SSHServerChannel(SSHChannel, Generic[AnyStr]):
             return False
 
         self._session_started = True
+
+        env_opt = cast(EnvMap, self._conn.get_key_option('environment', {}))
+
+        if env_opt:
+            self._env.update(encode_env(env_opt))
+            self._str_env = None
 
         if command is not None:
             self._command = command
