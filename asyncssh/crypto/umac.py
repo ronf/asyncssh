@@ -138,7 +138,7 @@ if sys.platform == 'win32':
         try:
             _nettle = ctypes.CDLL(lib)
             break
-        except OSError:
+        except OSError: # pragma: no cover
             pass
 
 if not _nettle:
