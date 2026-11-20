@@ -35,7 +35,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     env:
       liboqs_version: '0.10.1'
-      nettle_version: nettle_3.8.1_release_20220727
+      nettle_version: nettle_3.10.1_release_20241230
 
     steps:
       - name: Checkout asyncssh
@@ -86,7 +86,9 @@ jobs:
 
       - name: Install macOS dependencies
         if: ${{ runner.os == 'macOS' }}
-        run: brew install nettle liboqs
+        run: |
+          brew install nettle@3 liboqs
+          echo "DYLD_FALLBACK_LIBRARY_PATH=$(brew --prefix nettle@3)/lib:$(brew --prefix)/lib" >> $GITHUB_ENV
 
       - name: Install nettle (Windows)
         if: ${{ runner.os == 'Windows' }}
@@ -94,7 +96,7 @@ jobs:
         run: |
           curl -fLO https://github.com/ShiftMediaProject/nettle/releases/download/${{ env.nettle_version }}/libnettle_${{ env.nettle_version }}_msvc17.zip
           Expand-Archive libnettle_${{ env.nettle_version }}_msvc17.zip nettle
-          cp nettle\bin\x64\*.dll "$env:Python_ROOT_DIR"
+          cp nettle\bin\x64\nettle.dll "$env:Python_ROOT_DIR"
 
       - name: Install liboqs (Linux)
         if: ${{ runner.os == 'Linux' }}
