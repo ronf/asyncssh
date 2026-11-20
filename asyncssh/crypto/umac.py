@@ -23,6 +23,7 @@
 import binascii
 import ctypes
 import ctypes.util
+import sys
 from typing import TYPE_CHECKING, Callable, Optional
 
 
@@ -125,15 +126,32 @@ def _build_umac(size: int) -> '_New':
     return _UMAC.new
 
 
-for lib in ('nettle', 'libnettle', 'libnettle-6'):
-    _nettle_lib = ctypes.util.find_library(lib)
+_NETTLE_LIBS = ('nettle', 'nettle-8', 'libnettle', 'libnettle-8')
+
+_nettle: Optional[ctypes.CDLL] = None
+
+# On Windows, try loading nettle from the Python installation directory
+# first, since find_library() returns the first DLL found on PATH
+# without checking that its architecture matches the running Python
+if sys.platform == 'win32':
+    for lib in _NETTLE_LIBS: # pragma: no branch
+        try:
+            _nettle = ctypes.CDLL(lib)
+            break
+        except OSError:
+            pass
+
+if not _nettle:
+    for lib in _NETTLE_LIBS:
+        _nettle_lib = ctypes.util.find_library(lib)
+
+        if _nettle_lib: # pragma: no branch
+            break
+    else: # pragma: no cover
+        _nettle_lib = None
 
     if _nettle_lib: # pragma: no branch
-        break
-else: # pragma: no cover
-    _nettle_lib = None
+        _nettle = ctypes.cdll.LoadLibrary(_nettle_lib)
 
-if _nettle_lib: # pragma: no branch
-    _nettle = ctypes.cdll.LoadLibrary(_nettle_lib)
-
+if _nettle: # pragma: no branch
     umac32, umac64, umac96, umac128 = map(_build_umac, (32, 64, 96, 128))
