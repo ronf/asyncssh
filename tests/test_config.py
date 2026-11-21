@@ -336,6 +336,18 @@ class _TestClientConfig(_TestConfig):
         config = self._parse_config('SendEnv foo\nSendEnv bar baz')
         self.assertEqual(config.get('SendEnv'), ['foo', 'bar', 'baz'])
 
+    def test_append_string_list_none(self):
+        """Test appending a string list with a value of 'none'"""
+
+        config = self._parse_config('SendEnv None')
+        self.assertEqual(config.get('SendEnv'), [])
+
+        config = self._parse_config('SendEnv none\nSendEnv foo')
+        self.assertEqual(config.get('SendEnv'), ['foo'])
+
+        config = self._parse_config('SendEnv foo\nSendEnv none')
+        self.assertEqual(config.get('SendEnv'), ['foo'])
+
     def test_set_environment(self):
         """Test setting environment with equals-separated key/value pairs"""
 
@@ -606,6 +618,15 @@ class _TestServerConfig(_TestConfig):
 
         config = self._parse_config('Match address 127.0.0.0/8\nPermitTTY no')
         self.assertEqual(config.get('PermitTTY'), False)
+
+    def test_accept_env(self):
+        """Test appending multiple AcceptEnv options to a list"""
+
+        config = self._parse_config('AcceptEnv foo\nAcceptEnv bar baz')
+        self.assertEqual(config.get('AcceptEnv'), ['foo', 'bar', 'baz'])
+
+        config = self._parse_config('AcceptEnv none')
+        self.assertEqual(config.get('AcceptEnv'), [])
 
     def test_unsafe_user(self):
         """Test unsafe characters in username"""

@@ -117,8 +117,9 @@ from .misc import PasswordChangeRequired, PermissionDenied, ProtocolError
 from .misc import ProtocolNotSupported, ServiceNotAvailable
 from .misc import TermModesArg, TermSizeArg
 from .misc import async_context_manager, construct_disc_error, encode_env
-from .misc import get_symbol_names, ip_address, lookup_env, map_handler_name
-from .misc import parse_byte_count, parse_time_interval, split_args
+from .misc import encode_env_patterns, get_symbol_names, ip_address
+from .misc import lookup_env, map_handler_name, parse_byte_count
+from .misc import parse_time_interval, split_args
 
 from .packet import Boolean, Byte, NameList, String, UInt32, PacketDecodeError
 from .packet import SSHPacket, SSHPacketHandler, SSHPacketLogger
@@ -5902,6 +5903,7 @@ class SSHServerConnection(SSHConnection):
         self._trust_client_host = options.trust_client_host
         self._authorized_client_keys = options.authorized_client_keys
         self._allow_pty = options.allow_pty
+        self._accept_env = options.accept_env
         self._line_editor = options.line_editor
         self._line_echo = options.line_echo
         self._line_history = options.line_history
@@ -5981,6 +5983,7 @@ class SSHServerConnection(SSHConnection):
 
         self._authorized_client_keys = options.authorized_client_keys
         self._allow_pty = options.allow_pty
+        self._accept_env = options.accept_env
         self._x11_forwarding = options.x11_forwarding
         self._agent_forwarding = options.agent_forwarding
 
@@ -7062,7 +7065,7 @@ class SSHServerConnection(SSHConnection):
         self._update_recv_pktlen(max_pktsize)
 
         return SSHServerChannel(self, self._loop, self._allow_pty,
-                                self._line_editor, self._line_echo,
+                                self._accept_env, self._line_editor, self._line_echo,
                                 self._line_history, self._max_line_length,
                                 self._encoding if encoding == '' else encoding,
                                 self._errors if errors == '' else errors,
@@ -8628,6 +8631,26 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
        :param allow_pty: (optional)
            Whether or not to allow allocation of a pseudo-tty in sessions,
            defaulting to `True`
+       :param accept_env: (optional)
+           A list of environment variable names which the client is
+           allowed to set in sessions. Wildcard patterns using `'*'`
+           and `'?'` are allowed, and matching is case-sensitive.
+           Patterns specified as `str` are encoded as UTF-8 before
+           being matched against the client's variable names.
+           If not specified, the value of "AcceptEnv" in the server
+           config is used. If that is also not set, this defaults to
+           `'*'`, allowing clients to set any environment variable.
+           Setting this to `None` or an empty list will cause all
+           client environment variable requests to be rejected.
+
+               .. note:: This default differs from OpenSSH, which
+                         accepts no client environment variables
+                         unless AcceptEnv is set. It is set this way
+                         for backward compatibility with earlier
+                         AsyncSSH releases, which didn't support this
+                         filtering. To get the OpenSSH behavior of
+                         not accepting any environment variables from
+                         the client, pass in `None`.
        :param line_editor: (optional)
            Whether or not to enable input line editing on sessions which
            have a pseudo-tty allocated, defaulting to `True`
@@ -8829,6 +8852,7 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
        :type gss_kex: `bool`
        :type gss_auth: `bool`
        :type allow_pty: `bool`
+       :type accept_env: `list` of `bytes` or `str`
        :type line_editor: `bool`
        :type line_echo: `bool`
        :type line_history: `int`
@@ -8884,6 +8908,7 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
     gss_kex: bool
     gss_auth: bool
     allow_pty: bool
+    accept_env: Sequence[bytes]
     line_editor: bool
     line_echo: bool
     line_history: int
@@ -8950,6 +8975,7 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
                 gss_kex: DefTuple[bool] = (),
                 gss_auth: DefTuple[bool] = (),
                 allow_pty: DefTuple[bool] = (),
+                accept_env: DefTuple[Optional[EnvSeq]] = (),
                 line_editor: bool = True,
                 line_echo: bool = True,
                 line_history: int = _DEFAULT_LINE_HISTORY,
@@ -9071,6 +9097,13 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
 
         self.allow_pty = cast(bool, allow_pty if allow_pty != () else
             config.get('PermitTTY', True))
+
+        if accept_env == ():
+            accept_env = cast(EnvSeq, config.get('AcceptEnv', ['*']))
+
+        accept_env: Optional[EnvSeq]
+
+        self.accept_env = encode_env_patterns(accept_env or [])
 
         self.line_editor = line_editor
         self.line_echo = line_echo

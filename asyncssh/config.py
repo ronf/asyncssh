@@ -332,7 +332,10 @@ class SSHConfig:
     def _append_string_list(self, option: str, args: List[str]) -> None:
         """Append whitespace-separated string config options to a list"""
 
-        if option in self._options:
+        if len(args) == 1 and args[0].lower() == 'none':
+            if option not in self._options:
+                self._options[option] = []
+        elif option in self._options:
             cast(List[str], self._options[option]).extend(args)
         else:
             self._options[option] = args[:]
@@ -750,6 +753,7 @@ class SSHServerConfig(SSHConfig):
         ('Match',                           SSHConfig._match),
         ('Include',                         SSHConfig._include),
 
+        ('AcceptEnv',                       SSHConfig._append_string_list),
         ('AddressFamily',                   SSHConfig._set_address_family),
         ('AuthorizedKeysFile',              SSHConfig._set_string_list),
         ('AllowAgentForwarding',            SSHConfig._set_bool),

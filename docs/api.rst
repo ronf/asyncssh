@@ -1706,6 +1706,7 @@ Supported server config options
 
 The following OpenSSH server config options are currently supported:
 
+  | AcceptEnv
   | AddressFamily
   | AuthorizedKeysFile
   | AllowAgentForwarding
@@ -1738,6 +1739,17 @@ The following OpenSSH server config options are currently supported:
   | RekeyLimit
   | TCPKeepAlive
   | UseDNS
+
+  .. note:: Unlike OpenSSH, where AcceptEnv defaults to not accepting
+            any client environment variables, AsyncSSH defaults to
+            accepting all of them (equivalent to "AcceptEnv \*") when
+            neither AcceptEnv nor the `accept_env` argument in
+            :class:`SSHServerConnectionOptions` is set. This maintains
+            backward compatibility with earlier AsyncSSH releases, which
+            didn't support filtering of client environment variables.
+            To get the OpenSSH behavior of not accepting any environment
+            variables from the client, pass `None` as the `accept_env`
+            argument or set "AcceptEnv none" in the server config.
 
 For the "Match" conditional, the following criteria are currently supported:
 

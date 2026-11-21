@@ -30,7 +30,7 @@ import sys
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, AnyStr, Awaitable, Callable
 from typing import Dict, Generic, Iterable, List, Mapping, Optional
-from typing import Set, Tuple, Union, cast
+from typing import Sequence, Set, Tuple, Union, cast
 
 from . import constants
 from .constants import DEFAULT_LANG, EXTENDED_DATA_STDERR
@@ -49,6 +49,7 @@ from .logging import SSHLogger
 from .misc import ChannelOpenError, EnvMap, MaybeAwait, ProtocolError
 from .misc import TermModes, TermSize, TermSizeArg
 from .misc import decode_env, encode_env, get_symbol_names, map_handler_name
+from .misc import match_env
 
 from .packet import Boolean, Byte, String, UInt32, SSHPacket, SSHPacketHandler
 
@@ -1504,14 +1505,16 @@ class SSHServerChannel(SSHChannel, Generic[AnyStr]):
 
     def __init__(self, conn: 'SSHServerConnection',
                  loop: asyncio.AbstractEventLoop, allow_pty: bool,
-                 line_editor: bool, line_echo: bool, line_history: int,
-                 max_line_length: int, encoding: Optional[str], errors: str,
-                 window: int, max_pktsize: int):
+                 accept_env: Sequence[bytes], line_editor: bool,
+                 line_echo: bool, line_history: int, max_line_length: int,
+                 encoding: Optional[str], errors: str, window: int,
+                 max_pktsize: int):
         """Initialize an SSH server channel"""
 
         super().__init__(conn, loop, encoding, errors, window, max_pktsize)
 
         self._allow_pty = allow_pty
+        self._accept_env = accept_env
         self._line_editor = line_editor
         self._line_echo = line_echo
         self._line_history = line_history
@@ -1680,6 +1683,11 @@ class SSHServerChannel(SSHChannel, Generic[AnyStr]):
 
         if self._session_started:
             self.logger.debug1('  Env request after session start '
+                               'ignored: %s=%s', key, value)
+            return False
+
+        if not match_env(key, self._accept_env):
+            self.logger.debug1('  Env request not matching AcceptEnv '
                                'ignored: %s=%s', key, value)
             return False
 

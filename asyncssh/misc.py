@@ -197,6 +197,23 @@ def lookup_env(patterns: EnvSeq) -> Iterator[Tuple[bytes, bytes]]:
                     yield key_bytes, value_bytes
 
 
+def encode_env_patterns(patterns: EnvSeq) -> List[bytes]:
+    """Convert environment name patterns to UTF-8 encoded bytes"""
+
+    if isinstance(patterns, (bytes, str)):
+        patterns = [patterns]
+
+    return [pattern.encode('utf-8') if isinstance(pattern, str)
+            else pattern for pattern in patterns]
+
+
+def match_env(key: bytes, patterns: Sequence[bytes]) -> bool:
+    """Return if an environment variable name matches any of a list
+       of wildcard patterns, with case-sensitive matching"""
+
+    return any(fnmatch.fnmatchcase(key, pattern) for pattern in patterns)
+
+
 def decode_env(env: Dict[bytes, bytes]) -> Iterator[Tuple[str, str]]:
     """Convert bytes-based environment dict to Unicode strings"""
 
