@@ -354,6 +354,17 @@ class _TestClientConfig(_TestConfig):
         config = self._parse_config('SetEnv A=1 B= C=D=2\nSetEnv E=3')
         self.assertEqual(config.get('SetEnv'), ['A=1', 'B=', 'C=D=2'])
 
+        config = self._parse_config('SetEnv A=1 a=2 A=3 B=4 B=5')
+        self.assertEqual(config.get('SetEnv'), ['A=1', 'a=2', 'B=4'])
+
+    def test_set_environment_invalid(self):
+        """Test setting environment with a value missing an equals sign"""
+
+        for config in ('SetEnv A=1 B', 'SetEnv A=1\nSetEnv B', 'SetEnv none'):
+            with self.subTest(config=config):
+                with self.assertRaises(asyncssh.ConfigParseError):
+                    self._parse_config(config)
+
     def test_set_remote_command(self):
         """Test setting a remote command"""
 
@@ -628,6 +639,18 @@ class _TestServerConfig(_TestConfig):
         config = self._parse_config('AcceptEnv none')
         self.assertEqual(config.get('AcceptEnv'), [])
 
+    def test_server_set_environment(self):
+        """Test setting server environment with key/value pairs"""
+
+        config = self._parse_config('SetEnv A=1 "B=x y" C=D=2\nSetEnv E=3')
+        self.assertEqual(config.get('SetEnv'), ['A=1', 'B=x y', 'C=D=2'])
+
+        config = self._parse_config('SetEnv A=1 A=2 "B=x y" B=z')
+        self.assertEqual(config.get('SetEnv'), ['A=1', 'B=x y'])
+
+        with self.assertRaises(asyncssh.ConfigParseError):
+            self._parse_config('SetEnv A=1 B')
+
     def test_unsafe_user(self):
         """Test unsafe characters in username"""
 
@@ -678,6 +701,30 @@ class _TestOptions(TempDirTestCase):
 
         self.assertEqual(options.keepalive_interval, 1)
         self.assertEqual(options.keepalive_count_max, 3)
+
+    def test_server_env_options(self):
+        """Test server environment options"""
+
+        with open('config', 'w') as f:
+            f.write('SetEnv A=1 B=2\n')
+
+        options = asyncssh.SSHServerConnectionOptions(config='config')
+        self.assertEqual(options.env, {b'A': b'1', b'B': b'2'})
+
+        options = asyncssh.SSHServerConnectionOptions(
+            env={'A': 'x', b'B\xff': b'\xfe', 'a': '\xe9'}, config='config')
+        self.assertEqual(options.env, {b'A': b'x', b'B\xff': b'\xfe',
+                                       b'a': b'\xc3\xa9'})
+
+        options = asyncssh.SSHServerConnectionOptions(env=None,
+                                                      config='config')
+        self.assertEqual(options.env, {})
+
+        options = asyncssh.SSHServerConnectionOptions()
+        self.assertEqual(options.env, {})
+
+        with self.assertRaises(ValueError):
+            asyncssh.SSHServerConnectionOptions(env=['XXX'])
 
     def test_server_options(self):
         """Test server connection options"""

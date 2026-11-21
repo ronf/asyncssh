@@ -1,4 +1,4 @@
-# Copyright (c) 2016-2025 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2016-2026 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -888,7 +888,12 @@ class SSHProcess(SSHStreamSession, Generic[AnyStr]):
 
     @property
     def env(self) -> Mapping[str, str]:
-        """A mapping containing the environment set by the client"""
+        """A mapping containing the environment for this session
+
+           See :meth:`SSHServerChannel.get_environment` for details
+           on where these values come from on the server.
+
+        """
 
         assert self._chan is not None
         return self._chan.get_environment()

@@ -1737,6 +1737,7 @@ The following OpenSSH server config options are currently supported:
   | ProxyCommand
   | PubkeyAuthentication
   | RekeyLimit
+  | SetEnv
   | TCPKeepAlive
   | UseDNS
 

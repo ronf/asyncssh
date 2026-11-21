@@ -5904,6 +5904,7 @@ class SSHServerConnection(SSHConnection):
         self._authorized_client_keys = options.authorized_client_keys
         self._allow_pty = options.allow_pty
         self._accept_env = options.accept_env
+        self._set_env = options.env
         self._line_editor = options.line_editor
         self._line_echo = options.line_echo
         self._line_history = options.line_history
@@ -5984,6 +5985,7 @@ class SSHServerConnection(SSHConnection):
         self._authorized_client_keys = options.authorized_client_keys
         self._allow_pty = options.allow_pty
         self._accept_env = options.accept_env
+        self._set_env = options.env
         self._x11_forwarding = options.x11_forwarding
         self._agent_forwarding = options.agent_forwarding
 
@@ -7065,7 +7067,8 @@ class SSHServerConnection(SSHConnection):
         self._update_recv_pktlen(max_pktsize)
 
         return SSHServerChannel(self, self._loop, self._allow_pty,
-                                self._accept_env, self._line_editor, self._line_echo,
+                                self._accept_env, self._set_env,
+                                self._line_editor, self._line_echo,
                                 self._line_history, self._max_line_length,
                                 self._encoding if encoding == '' else encoding,
                                 self._errors if errors == '' else errors,
@@ -8651,6 +8654,14 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
                          filtering. To get the OpenSSH behavior of
                          not accepting any environment variables from
                          the client, pass in `None`.
+       :param env: (optional)
+           Environment variables to set in all sessions on this server.
+           Keys and values can be `bytes` or `str`, with `str` values
+           encoded as UTF-8. Variable names are case-sensitive. These
+           values take precedence over both environment variables sent
+           by the client and those set by "environment" options in
+           authorized_keys. If not specified, the value of "SetEnv" in
+           the server config is used.
        :param line_editor: (optional)
            Whether or not to enable input line editing on sessions which
            have a pseudo-tty allocated, defaulting to `True`
@@ -8853,6 +8864,7 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
        :type gss_auth: `bool`
        :type allow_pty: `bool`
        :type accept_env: `list` of `bytes` or `str`
+       :type env: `dict` with `bytes` or `str` keys and values
        :type line_editor: `bool`
        :type line_echo: `bool`
        :type line_history: `int`
@@ -8909,6 +8921,7 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
     gss_auth: bool
     allow_pty: bool
     accept_env: Sequence[bytes]
+    env: Mapping[bytes, bytes]
     line_editor: bool
     line_echo: bool
     line_history: int
@@ -8976,6 +8989,7 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
                 gss_auth: DefTuple[bool] = (),
                 allow_pty: DefTuple[bool] = (),
                 accept_env: DefTuple[Optional[EnvSeq]] = (),
+                env: DefTuple[Optional[Env]] = (),
                 line_editor: bool = True,
                 line_echo: bool = True,
                 line_history: int = _DEFAULT_LINE_HISTORY,
@@ -9104,6 +9118,13 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
         accept_env: Optional[EnvSeq]
 
         self.accept_env = encode_env_patterns(accept_env or [])
+
+        if env == ():
+            env = cast(Optional[Env], config.get('SetEnv'))
+
+        env: Optional[Env]
+
+        self.env = dict(encode_env(env)) if env else {}
 
         self.line_editor = line_editor
         self.line_echo = line_echo

@@ -7206,11 +7206,12 @@ class SFTPServer:
     def env(self) -> Mapping[str, str]:
         """The environment associated with this SFTP server session
 
-           This method returns the environment set by the client
-           when this SFTP session was opened.
+           This method returns the environment for this SFTP session.
+           See :meth:`SSHServerChannel.get_environment` for details on
+           where these values come from.
 
            :returns: A dictionary containing the environment variables
-                     set by the client
+                     for this session
 
         """
 

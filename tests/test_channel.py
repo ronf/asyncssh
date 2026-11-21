@@ -316,8 +316,8 @@ class _ChannelServer(Server):
                 stdout.channel.exit(1)
         elif action == 'rejected_session':
             chan = _ServerChannel(self._conn, asyncio.get_event_loop(),
-                                  False, [], False, False, 0, 1024, None,
-                                  'strict', 1, 32768)
+                                  False, [], {}, False, False, 0, 1024,
+                                  None, 'strict', 1, 32768)
 
             try:
                 await chan.open_session()
@@ -2171,6 +2171,70 @@ class _TestChannelAcceptEnvStr(ServerTestCase):
 
             result = ''.join(session.recv_buf[None])
             self.assertEqual(result, 'TEST=1,TEST2=2\n')
+
+
+class _TestChannelServerSetEnv(ServerTestCase):
+    """Unit tests for environment set by the server"""
+
+    @classmethod
+    async def start_server(cls):
+        """Start an SSH server which sets environment variables"""
+
+        auth_keys_str = ''
+
+        for pubkey in ('ckey.pub', 'ckey_ecdsa.pub'):
+            with open(pubkey) as f:
+                auth_keys_str += ('environment="TEST=keyopt",'
+                                  'environment="TEST2=keyopt" ' + f.read())
+
+        auth_keys = asyncssh.import_authorized_keys(auth_keys_str)
+
+        return await cls.create_server(
+            _ChannelServer, authorized_client_keys=auth_keys,
+            env={'TEST': 'server', 'test': 'lower', b'B\xff': b'\xfe'})
+
+    @asynctest
+    async def test_set_env(self):
+        """Test server environment taking precedence over other sources"""
+
+        async with self.connect(username='ckey') as conn:
+            chan, session = await _create_session(
+                conn, 'env_dump', env={'TEST': 'client', 'TEST2': 'client',
+                                       'TEST3': 'client'})
+
+            await chan.wait_closed()
+
+            result = ''.join(session.recv_buf[None])
+            self.assertEqual(result, 'B\\xff=\\xfe,TEST=server,'
+                             'TEST2=keyopt,TEST3=client,test=lower\n')
+
+
+class _TestChannelServerSetEnvConfig(ServerTestCase):
+    """Unit tests for environment set by SetEnv in the server config"""
+
+    @classmethod
+    async def start_server(cls):
+        """Start an SSH server with SetEnv in its config"""
+
+        with open('config_set_env', 'w') as f:
+            f.write('SetEnv TEST=config "TEST2=a b"\nSetEnv TEST3=ignored\n')
+
+        return await cls.create_server(
+            _ChannelServer, authorized_client_keys='authorized_keys',
+            config='config_set_env')
+
+    @asynctest
+    async def test_set_env_config(self):
+        """Test server environment set by SetEnv in the server config"""
+
+        async with self.connect() as conn:
+            chan, session = await _create_session(
+                conn, 'env_dump', env={'TEST': 'client'})
+
+            await chan.wait_closed()
+
+            result = ''.join(session.recv_buf[None])
+            self.assertEqual(result, 'TEST=config,TEST2=a b\n')
 
 
 class _TestChannelNoAgentForwarding(ServerTestCase):

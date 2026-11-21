@@ -342,6 +342,33 @@ class SSHConfig:
 
         args.clear()
 
+    def _set_env(self, option: str, args: List[str]) -> None:
+        """Set environment variables from equals-separated key/value pairs
+
+           As in OpenSSH, only the first setting of each variable name
+           is kept, and an error is reported for any value without an
+           equals sign, even when the option was already set.
+
+        """
+
+        env: List[str] = []
+        names: Set[str] = set()
+
+        for arg in args:
+            name, sep, _ = arg.partition('=')
+
+            if not sep:
+                self._error(f'Invalid {option} value: {arg}')
+
+            if name not in names:
+                names.add(name)
+                env.append(arg)
+
+        if option not in self._options:
+            self._options[option] = env
+
+        args.clear()
+
     def _set_address_family(self, option: str, args: List[str]) -> None:
         """Set an address family config option"""
 
@@ -686,7 +713,7 @@ class SSHClientConfig(SSHConfig):
         ('SendEnv',                         SSHConfig._append_string_list),
         ('ServerAliveCountMax',             SSHConfig._set_int),
         ('ServerAliveInterval',             SSHConfig._set_int),
-        ('SetEnv',                          SSHConfig._set_string_list),
+        ('SetEnv',                          SSHConfig._set_env),
         ('Tag',                             SSHConfig._set_string),
         ('TCPKeepAlive',                    SSHConfig._set_bool),
         ('User',                            SSHConfig._set_string),
@@ -783,6 +810,7 @@ class SSHServerConfig(SSHConfig):
         ('Port',                            SSHConfig._set_int),
         ('PubkeyAuthentication',            SSHConfig._set_bool),
         ('RekeyLimit',                      SSHConfig._set_rekey_limits),
+        ('SetEnv',                          SSHConfig._set_env),
         ('TCPKeepAlive',                    SSHConfig._set_bool),
         ('UseDNS',                          SSHConfig._set_bool)
     )}
