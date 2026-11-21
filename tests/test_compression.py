@@ -44,4 +44,17 @@ class TestCompression(unittest.TestCase):
 
                 if compressor:
                     cmpdata = compressor.compress(data)
-                    self.assertEqual(decompressor.decompress(cmpdata), data)
+                    self.assertEqual(decompressor.decompress(cmpdata, 256),
+                                     data)
+
+    def test_decompression_limit(self):
+        """Unit test decompression output length limit"""
+
+        for alg in get_compression_algs():
+            compressor = get_compressor(alg)
+            decompressor = get_decompressor(alg)
+
+            if compressor:
+                with self.subTest(alg=alg):
+                    cmpdata = compressor.compress(bytes(65537))
+                    self.assertIsNone(decompressor.decompress(cmpdata, 65536))

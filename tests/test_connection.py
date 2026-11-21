@@ -294,6 +294,18 @@ class _ClientCleanupError(asyncssh.SSHClient):
         raise RuntimeError('Exception in cleanup test')
 
 
+class _ExcRecordingClient(asyncssh.SSHClient):
+    """Client which records the exception which closed the connection"""
+
+    def __init__(self):
+        self.exc = None
+
+    def connection_lost(self, exc):
+        """Record the exception which closed the connection"""
+
+        self.exc = exc
+
+
 class _TunnelServer(Server):
     """Allow forwarding to test server host key request tunneling"""
 
@@ -1393,6 +1405,39 @@ class _TestConnection(ServerTestCase):
         with patch('asyncssh.connection.SSHServerConnection.send_packet',
                    send_packet):
             await self.connect(compression_algs=['zlib@openssh.com'])
+
+    @asynctest
+    async def test_client_decompression_too_large(self):
+        """Test client rejecting a packet which decompresses too large"""
+
+        def send_packet(self, pkttype, *args, **kwargs):
+            """Send an SSH packet"""
+
+            asyncssh.connection.SSHConnection.send_packet(
+                self, pkttype, *args, **kwargs)
+
+            if pkttype == MSG_USERAUTH_SUCCESS:
+                asyncio.get_running_loop().call_soon(
+                    self.send_packet, MSG_IGNORE, String(bytes(1024*1024)))
+
+        with patch('asyncssh.connection.SSHServerConnection.send_packet',
+                   send_packet):
+            conn, client = await self.create_connection(
+                _ExcRecordingClient, compression_algs=['zlib@openssh.com'])
+            await conn.wait_closed()
+
+        self.assertIsInstance(client.exc, asyncssh.CompressionError)
+
+    @asynctest
+    async def test_server_decompression_too_large(self):
+        """Test server rejecting a packet which decompresses too large"""
+
+        conn, client = await self.create_connection(
+            _ExcRecordingClient, compression_algs=['zlib@openssh.com'])
+        conn.send_packet(MSG_IGNORE, String(bytes(1024*1024)))
+        await conn.wait_closed()
+
+        self.assertIsInstance(client.exc, asyncssh.CompressionError)
 
     @asynctest
     async def test_packet_decode_error(self):

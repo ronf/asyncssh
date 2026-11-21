@@ -1679,7 +1679,8 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         if self._decompressor and (self._auth_complete or
                                    not self._decompress_after_auth):
-            payload = self._decompressor.decompress(orig_payload)
+            payload = self._decompressor.decompress(orig_payload,
+                                                    self._max_recv_pktlen)
 
             if payload is None:
                 raise CompressionError('Decompression failed')
