@@ -965,6 +965,8 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         self._kexinit_sent = False
         self._kex_complete = False
         self._ignore_first_kex = False
+        self._preferred_kex_alg: List[bytes] = []
+        self._preferred_host_key_alg: List[bytes] = []
         self._strict_kex = False
 
         self._gss: Optional[GSSBase] = None
@@ -1692,7 +1694,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         if MSG_KEX_FIRST <= pkttype <= MSG_KEX_LAST:
             if self._kex:
-                if self._ignore_first_kex: # pragma: no cover
+                if self._ignore_first_kex:
                     skip_reason = 'ignored first kex'
                     self._ignore_first_kex = False
                 else:
@@ -1890,6 +1892,10 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
                    self._get_extra_kex_algs()
 
         host_key_algs = self._server_host_key_algs or [b'null']
+
+        # Remember our preferred algorithms to check a peer's KEX guess
+        self._preferred_kex_alg = kex_algs[:1]
+        self._preferred_host_key_alg = list(host_key_algs[:1])
 
         self.logger.debug1('Requesting key exchange')
         self.logger.debug2('  Key exchange algs: %s', kex_algs)
@@ -2452,8 +2458,12 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         kex_alg = self._choose_alg('key exchange', kex_algs, peer_kex_algs)
         self._kex = get_kex(self, kex_alg)
+
+        # Per RFC 4253, section 7, the peer's guess is only correct if
+        # the first kex and host key algorithms on both sides match
         self._ignore_first_kex = (first_kex_follows and
-                                  self._kex.algorithm != peer_kex_algs[0])
+            (self._preferred_kex_alg != peer_kex_algs[:1] or
+             self._preferred_host_key_alg != peer_host_key_algs[:1]))
 
         if self.is_server():
             # This method is only in SSHServerConnection

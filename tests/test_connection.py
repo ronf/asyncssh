@@ -44,9 +44,10 @@ from asyncssh.compression import get_compression_algs
 from asyncssh.crypto.cipher import GCMCipher
 from asyncssh.encryption import get_encryption_algs
 from asyncssh.kex import get_kex_algs
-from asyncssh.kex_dh import MSG_KEX_ECDH_REPLY
+from asyncssh.kex_dh import MSG_KEX_ECDH_INIT, MSG_KEX_ECDH_REPLY
 from asyncssh.mac import _HMAC, _mac_handler, get_mac_algs
-from asyncssh.packet import SSHPacket, Boolean, NameList, String, UInt32
+from asyncssh.packet import SSHPacket, Boolean, Byte, NameList, String
+from asyncssh.packet import UInt32
 from asyncssh.public_key import get_default_public_key_algs
 from asyncssh.public_key import get_default_certificate_algs
 from asyncssh.public_key import get_default_x509_certificate_algs
@@ -960,6 +961,51 @@ class _TestConnection(ServerTestCase):
             with self.subTest(kex_alg=kex):
                 async with self.connect(kex_algs=[kex], gss_host='1'):
                     pass
+
+    async def _connect_with_wrong_guess(self, **kwargs):
+        """Connect with a client that sends a wrong first_kex_packet_follows
+           guess, which the server must ignore"""
+
+        def send_packet(self, pkttype, *args, **kwargs):
+            if pkttype == MSG_KEXINIT and not self._kex_complete:
+                # Set first_kex_packet_follows and send a bogus guess
+                packet = args[0][:-5] + Boolean(True) + args[0][-4:]
+                self._client_kexinit = Byte(MSG_KEXINIT) + packet
+
+                asyncssh.connection.SSHConnection.send_packet(
+                    self, MSG_KEXINIT, packet)
+                asyncssh.connection.SSHConnection.send_packet(
+                    self, MSG_KEX_ECDH_INIT, String(b'bogus guess'))
+            else:
+                asyncssh.connection.SSHConnection.send_packet(
+                    self, pkttype, *args, **kwargs)
+
+        with patch('asyncssh.connection.SSHClientConnection.send_packet',
+                   send_packet):
+            async with self.connect(**kwargs):
+                pass
+
+    @asynctest
+    async def test_wrong_guess_negotiated_kex_matches(self):
+        """Test ignoring a wrong guess when the negotiated kex matches it"""
+
+        # The client's only kex alg is negotiated, but it isn't the
+        # server's first choice, so the guess is wrong per RFC 4253
+        await self._connect_with_wrong_guess(kex_algs=['ecdh-sha2-nistp256'])
+
+    @asynctest
+    async def test_wrong_guess_host_key_alg(self):
+        """Test ignoring a wrong guess when only the host key alg differs"""
+
+        server_kex = [alg for alg in get_kex_algs()
+                      if not alg.startswith(b'gss-')][0].decode('ascii')
+
+        self._server.update(server_host_keys=['skey'])
+
+        # Same first kex alg on both sides, but the client's first host key
+        # alg isn't the server's first choice, so the guess is wrong
+        await self._connect_with_wrong_guess(
+            kex_algs=[server_kex], server_host_key_algs=['rsa-sha2-512'])
 
     @asynctest
     async def test_duplicate_encryption_algs(self):
