@@ -20,6 +20,7 @@
 
 """Parser for OpenSSH config files"""
 
+import fnmatch
 import os
 import re
 import shlex
@@ -329,17 +330,26 @@ class SSHConfig:
 
         args.clear()
 
-    def _append_string_list(self, option: str, args: List[str]) -> None:
-        """Append whitespace-separated string config options to a list"""
+    def _append_env_patterns(self, option: str, args: List[str]) -> None:
+        """Append environment variable name patterns to a list
 
-        if len(args) == 1 and args[0].lower() == 'none':
-            if option not in self._options:
-                self._options[option] = []
-        elif option in self._options:
-            cast(List[str], self._options[option]).extend(args)
-        else:
-            self._options[option] = args[:]
+           A pattern beginning with '-' removes any previously listed
+           patterns matching the rest of the value, so '-*' can be
+           used to clear the list. OpenSSH supports this in SendEnv,
+           and AsyncSSH extends it to AcceptEnv.
 
+        """
+
+        patterns = list(cast(List[str], self._options.get(option, [])))
+
+        for arg in args:
+            if arg.startswith('-'):
+                patterns = [pattern for pattern in patterns
+                            if not fnmatch.fnmatchcase(pattern, arg[1:])]
+            else:
+                patterns.append(arg)
+
+        self._options[option] = patterns
         args.clear()
 
     def _set_env(self, option: str, args: List[str]) -> None:
@@ -710,7 +720,7 @@ class SSHClientConfig(SSHConfig):
         ('RekeyLimit',                      SSHConfig._set_rekey_limits),
         ('RemoteCommand',                   SSHConfig._set_string),
         ('RequestTTY',                      _set_request_tty),
-        ('SendEnv',                         SSHConfig._append_string_list),
+        ('SendEnv',                         SSHConfig._append_env_patterns),
         ('ServerAliveCountMax',             SSHConfig._set_int),
         ('ServerAliveInterval',             SSHConfig._set_int),
         ('SetEnv',                          SSHConfig._set_env),
@@ -780,7 +790,7 @@ class SSHServerConfig(SSHConfig):
         ('Match',                           SSHConfig._match),
         ('Include',                         SSHConfig._include),
 
-        ('AcceptEnv',                       SSHConfig._append_string_list),
+        ('AcceptEnv',                       SSHConfig._append_env_patterns),
         ('AddressFamily',                   SSHConfig._set_address_family),
         ('AuthorizedKeysFile',              SSHConfig._set_string_list),
         ('AllowAgentForwarding',            SSHConfig._set_bool),

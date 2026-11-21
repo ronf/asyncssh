@@ -1750,7 +1750,13 @@ The following OpenSSH server config options are currently supported:
             didn't support filtering of client environment variables.
             To get the OpenSSH behavior of not accepting any environment
             variables from the client, pass `None` as the `accept_env`
-            argument or set "AcceptEnv none" in the server config.
+            argument or set "AcceptEnv -\*" in the server config.
+
+  .. note:: As with SendEnv in OpenSSH, AcceptEnv patterns beginning
+            with '-' remove any previously listed patterns matching
+            the rest of the value, so "AcceptEnv -\*" clears all
+            previously listed patterns. This is an AsyncSSH extension,
+            as OpenSSH doesn't support this in AcceptEnv.
 
 For the "Match" conditional, the following criteria are currently supported:
 

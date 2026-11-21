@@ -336,17 +336,38 @@ class _TestClientConfig(_TestConfig):
         config = self._parse_config('SendEnv foo\nSendEnv bar baz')
         self.assertEqual(config.get('SendEnv'), ['foo', 'bar', 'baz'])
 
-    def test_append_string_list_none(self):
-        """Test appending a string list with a value of 'none'"""
+    def test_send_env_remove(self):
+        """Test removing SendEnv patterns with a '-' prefix"""
 
-        config = self._parse_config('SendEnv None')
-        self.assertEqual(config.get('SendEnv'), [])
+        for config_data, result in (
+                ('SendEnv A B C\nSendEnv -B', ['A', 'C']),
+                ('SendEnv LANG LC_ALL LC_CTYPE\nSendEnv -LC_*', ['LANG']),
+                ('SendEnv LANG LC_*\nSendEnv -LC_*', ['LANG']),
+                ('SendEnv LC_*\nSendEnv -LC_ALL', ['LC_*']),
+                ('SendEnv foo\nSendEnv -FOO', ['foo']),
+                ('SendEnv A -A', []),
+                ('SendEnv -A A', ['A']),
+                ('SendEnv -A', []),
+                ('SendEnv A B\nSendEnv -*', []),
+                ('SendEnv A\nSendEnv -* B', ['B'])):
+            with self.subTest(config=config_data):
+                config = self._parse_config(config_data)
+                self.assertEqual(config.get('SendEnv'), result)
 
-        config = self._parse_config('SendEnv none\nSendEnv foo')
-        self.assertEqual(config.get('SendEnv'), ['foo'])
+    def test_send_env_last_config(self):
+        """Test SendEnv changes not modifying a previous config"""
 
-        config = self._parse_config('SendEnv foo\nSendEnv none')
-        self.assertEqual(config.get('SendEnv'), ['foo'])
+        config1 = self._parse_config('SendEnv A B')
+
+        for config_data, result in (('SendEnv C', ['A', 'B', 'C']),
+                                    ('SendEnv -A', ['B']),
+                                    ('SendEnv -*', [])):
+            with self.subTest(config=config_data):
+                config2 = self._parse_config(config_data,
+                                             last_config=config1)
+
+                self.assertEqual(config2.get('SendEnv'), result)
+                self.assertEqual(config1.get('SendEnv'), ['A', 'B'])
 
     def test_set_environment(self):
         """Test setting environment with equals-separated key/value pairs"""
@@ -636,8 +657,28 @@ class _TestServerConfig(_TestConfig):
         config = self._parse_config('AcceptEnv foo\nAcceptEnv bar baz')
         self.assertEqual(config.get('AcceptEnv'), ['foo', 'bar', 'baz'])
 
-        config = self._parse_config('AcceptEnv none')
-        self.assertEqual(config.get('AcceptEnv'), [])
+    def test_accept_env_remove(self):
+        """Test removing AcceptEnv patterns with a '-' prefix"""
+
+        for config_data, result in (
+                ('AcceptEnv -*', []),
+                ('AcceptEnv foo bar\nAcceptEnv -*', []),
+                ('AcceptEnv foo\nAcceptEnv -* bar', ['bar']),
+                ('AcceptEnv LANG LC_*\nAcceptEnv -LC_*', ['LANG']),
+                ('AcceptEnv foo -foo', []),
+                ('AcceptEnv foo\nAcceptEnv -FOO', ['foo'])):
+            with self.subTest(config=config_data):
+                config = self._parse_config(config_data)
+                self.assertEqual(config.get('AcceptEnv'), result)
+
+    def test_accept_env_last_config(self):
+        """Test AcceptEnv changes not modifying a previous config"""
+
+        config1 = self._parse_config('AcceptEnv A')
+        config2 = self._parse_config('AcceptEnv B', last_config=config1)
+
+        self.assertEqual(config2.get('AcceptEnv'), ['A', 'B'])
+        self.assertEqual(config1.get('AcceptEnv'), ['A'])
 
     def test_server_set_environment(self):
         """Test setting server environment with key/value pairs"""

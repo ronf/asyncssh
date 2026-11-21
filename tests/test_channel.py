@@ -2119,23 +2119,23 @@ class _TestChannelAcceptEnvNone(ServerTestCase):
             self.assertEqual(result, '\n')
 
 
-class _TestChannelAcceptEnvConfigNone(ServerTestCase):
+class _TestChannelAcceptEnvConfigClear(ServerTestCase):
     """Unit tests for rejecting all client environment via config"""
 
     @classmethod
     async def start_server(cls):
-        """Start an SSH server with "AcceptEnv none" in its config"""
+        """Start an SSH server with "AcceptEnv -*" in its config"""
 
-        with open('config_accept_env_none', 'w') as f:
-            f.write('AcceptEnv none\n')
+        with open('config_accept_env_clear', 'w') as f:
+            f.write('AcceptEnv -*\n')
 
         return await cls.create_server(
             _ChannelServer, authorized_client_keys='authorized_keys',
-            config='config_accept_env_none')
+            config='config_accept_env_clear')
 
     @asynctest
-    async def test_accept_env_config_none(self):
-        """Test all client environment rejected by AcceptEnv none"""
+    async def test_accept_env_config_clear(self):
+        """Test all client environment rejected by AcceptEnv -*"""
 
         async with self.connect() as conn:
             chan, session = await _create_session(
