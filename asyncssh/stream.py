@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2025 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2026 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -394,8 +394,13 @@ class SSHStreamSession(Generic[AnyStr]):
     async def aiter(self, datatype: DataType) -> AsyncIterator[AnyStr]:
         """Allow SSHReader to be an async iterator"""
 
-        while not self.at_eof(datatype):
-            yield await self.readline(datatype)
+        while True:
+            line = await self.readline(datatype)
+
+            if not line:
+                break
+
+            yield line
 
     async def _block_read(self, datatype: DataType) -> None:
         """Wait for more data to arrive on the stream"""

@@ -1,4 +1,4 @@
-# Copyright (c) 2016-2025 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2016-2026 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -225,6 +225,27 @@ class _TestStream(ServerTestCase):
                 self.assertEqual(line, data.pop(0))
 
             self.assertEqual(data, [])
+
+    @asynctest
+    async def test_async_iterator_late_eof(self):
+        """Test async iterator stopping when EOF arrives after last line"""
+
+        async with self.connect() as conn:
+            stdin, stdout, _ = await conn.open_session()
+
+            data = ['Line 1\n', 'Line 2\n']
+
+            stdin.writelines(data)
+
+            lines = aiter(stdout)
+
+            for line in data:
+                self.assertEqual(await anext(lines), line)
+
+            stdin.write_eof()
+
+            with self.assertRaises(StopAsyncIteration):
+                await anext(lines)
 
     @asynctest
     async def test_write_broken_pipe(self):

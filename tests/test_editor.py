@@ -1,4 +1,4 @@
-# Copyright (c) 2016-2022 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2016-2026 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -81,6 +81,18 @@ async def _handle_soft_eof(stdin, stdout, _stderr):
     while not stdin.at_eof():
         data = await stdin.read()
         stdout.write(data or 'EOF\n')
+
+    stdout.close()
+
+
+async def _handle_soft_eof_iter(stdin, stdout, _stderr):
+    """Accept soft EOF using an async iterator"""
+
+    while not stdin.at_eof():
+        async for line in stdin:
+            stdout.write(line)
+
+        stdout.write('EOF\n')
 
     stdout.close()
 
@@ -438,6 +450,35 @@ class _TestEditorOutputWrap(_CheckEditor):
             process = await conn.create_process(term_type='ansi')
             output_data = (await process.wait()).stdout
             self.assertEqual(output_data, 79*'*' + '\uff10')
+
+
+class _TestEditorSoftEOFIter(ServerTestCase):
+    """Unit tests for soft EOF ending an async iterator"""
+
+    @classmethod
+    async def start_server(cls):
+        """Start an SSH server for the tests to use"""
+
+        return await cls.create_server(session_factory=_handle_soft_eof_iter)
+
+    @asynctest
+    async def test_editor_soft_eof_iter(self):
+        """Test soft EOF ending an async iterator on stdin"""
+
+        async with self.connect() as conn:
+            process = await conn.create_process(term_type='ansi')
+
+            process.stdin.write('abc\n\x04')
+
+            self.assertEqual((await process.stdout.readline()), 'abc\r\n')
+            self.assertEqual((await process.stdout.readline()), 'abc\r\n')
+            self.assertEqual((await process.stdout.readline()), 'EOF\r\n')
+
+            process.stdin.write('def\n')
+            process.stdin.write_eof()
+
+            self.assertEqual((await process.stdout.read()),
+                             'def\r\ndef\r\nEOF\r\n')
 
 
 class _TestEditorSoftEOF(ServerTestCase):
