@@ -36,6 +36,8 @@ jobs:
     env:
       liboqs_version: '0.10.1'
       nettle_version: nettle_3.10.1_release_20241230
+      nettle4_version: '4.0'
+      nettle4_sha256: 3addbc00da01846b232fb3bc453538ea5468da43033f21bb345cb1e9073f5094
 
     steps:
       - name: Checkout asyncssh
@@ -84,19 +86,45 @@ jobs:
           sudo apt update
           sudo apt install -y --no-install-recommends libnettle8 libssl-dev libkrb5-dev ssh cmake ninja-build
 
+      - name: Install nettle 4 (Linux, Python 3.15)
+        if: ${{ runner.os == 'Linux' && matrix.python-version == '3.15' }}
+        run: |
+          sudo apt install -y --no-install-recommends m4
+          curl -fLO https://ftpmirror.gnu.org/nettle/nettle-${{ env.nettle4_version }}.tar.gz
+          echo "${{ env.nettle4_sha256 }}  nettle-${{ env.nettle4_version }}.tar.gz" | sha256sum -c
+          tar xzf nettle-${{ env.nettle4_version }}.tar.gz
+          cd nettle-${{ env.nettle4_version }}
+          ./configure --prefix="$RUNNER_TEMP/nettle4" --libdir="$RUNNER_TEMP/nettle4/lib" --disable-public-key --disable-openssl --disable-documentation --disable-static
+          make -j$(nproc)
+          make install
+          cp -L "$RUNNER_TEMP/nettle4/lib/libnettle.so.9" "$Python_ROOT_DIR/lib"
+
       - name: Install macOS dependencies
         if: ${{ runner.os == 'macOS' }}
         run: |
           brew install nettle@3 liboqs
           echo "DYLD_FALLBACK_LIBRARY_PATH=$(brew --prefix nettle@3)/lib:$(brew --prefix)/lib" >> $GITHUB_ENV
 
+      - name: Install nettle 4 (macOS, Python 3.15)
+        if: ${{ runner.os == 'macOS' && matrix.python-version == '3.15' }}
+        run: |
+          brew install nettle
+          cp -L "$(brew --prefix nettle)/lib/libnettle.9.dylib" "$Python_ROOT_DIR/lib"
+
       - name: Install nettle (Windows)
-        if: ${{ runner.os == 'Windows' }}
+        if: ${{ runner.os == 'Windows' && matrix.python-version != '3.15' }}
         shell: pwsh
         run: |
           curl -fLO https://github.com/ShiftMediaProject/nettle/releases/download/${{ env.nettle_version }}/libnettle_${{ env.nettle_version }}_msvc17.zip
           Expand-Archive libnettle_${{ env.nettle_version }}_msvc17.zip nettle
           cp nettle\bin\x64\nettle.dll "$env:Python_ROOT_DIR"
+
+      - name: Install nettle 4 (Windows, Python 3.15)
+        if: ${{ runner.os == 'Windows' && matrix.python-version == '3.15' }}
+        shell: pwsh
+        run: |
+          C:\msys64\usr\bin\pacman.exe -Sy --noconfirm --needed mingw-w64-ucrt-x86_64-nettle
+          cp C:\msys64\ucrt64\bin\libnettle-9.dll "$env:Python_ROOT_DIR"
 
       - name: Install liboqs (Linux)
         if: ${{ runner.os == 'Linux' }}
