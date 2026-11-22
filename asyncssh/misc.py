@@ -192,8 +192,10 @@ def lookup_env(patterns: EnvSeq) -> Iterator[Tuple[bytes, bytes]]:
                     yield key_bytes, value_bytes
         else: # pragma: no cover
             for key, value in os.environ.items():
-                key_bytes = key.encode('utf-8')
-                value_bytes = value.encode('utf-8')
+                # str() is a no-op here, but it keeps pylint from
+                # inferring bytes keys & values from posix.environ
+                key_bytes = str(key).encode('utf-8')
+                value_bytes = str(value).encode('utf-8')
                 if fnmatch.fnmatch(key_bytes, pattern):
                     yield key_bytes, value_bytes
 
