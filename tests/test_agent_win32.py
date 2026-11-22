@@ -47,6 +47,7 @@ if sys.platform == 'win32': # pragma: cover only win32
     import mmapfile
     import win32api
     import win32con
+    import win32event
     import win32gui
 
 
@@ -537,7 +538,15 @@ class _WindowsAgentTestCase(AsyncTestCase): # pragma: cover only win32
     _agent_path = agent_win32._DEFAULT_OPENSSH_PATH
 
     def setUp(self):
-        """Skip tests if the Windows OpenSSH agent isn't running"""
+        """Serialize use of the shared Windows OpenSSH agent across
+           processes and skip tests if the agent isn't running"""
+
+        # pylint: disable-next=used-before-assignment
+        lock = win32event.CreateMutex(None, False,
+                                      'Global\\asyncssh-test-agent')
+        self.addCleanup(lock.Close)
+        win32event.WaitForSingleObject(lock, win32event.INFINITE)
+        self.addCleanup(win32event.ReleaseMutex, lock)
 
         try:
             agent_win32._W10OpenSSHTransport(self._agent_path).close()
