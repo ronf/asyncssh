@@ -27,11 +27,10 @@ import asyncssh
 from asyncssh.asn1 import der_encode, der_decode
 from asyncssh.crypto import ECDSAPrivateKey, EdDSAPrivateKey
 from asyncssh.packet import Byte, UInt32
+from asyncssh.sk import SSH_SK_ECDSA, SSH_SK_ED25519, SSH_SK_USER_PRESENCE_REQD
 from asyncssh.sk import sk_available, sk_webauthn_prefix
 
 if sk_available: # pragma: no branch
-    from asyncssh.sk import SSH_SK_ECDSA, SSH_SK_ED25519
-    from asyncssh.sk import SSH_SK_USER_PRESENCE_REQD
     from asyncssh.sk import APDU, ApduError, CtapError
 
 
@@ -237,6 +236,7 @@ class Ctap2(_CtapStub):
         alg = key_params[0]['alg']
 
         if self.dev.error == 'err':
+            # pylint: disable-next=possibly-used-before-assignment
             raise CtapError(CtapError.ERR.INVALID_CREDENTIAL)
         elif self.dev.error == 'pinreq':
             raise CtapError(CtapError.ERR.PUAT_REQUIRED)
@@ -374,13 +374,10 @@ class ClientPin:
     """Stub for unit testing U2F security device PINs"""
 
     def __init__(self, ctap, protocol):
-        # pylint: disable=unused-argument
         pass
 
     def get_pin_token(self, pin):
         """Return a PIN token"""
-
-        # pylint: disable=no-self-use
 
         return pin
 

@@ -174,8 +174,6 @@ def select_passphrase(cipher, pbe_version=0):
 class _TestPublicKey(TempDirTestCase):
     """Unit tests for public key modules"""
 
-    # pylint: disable=too-many-public-methods
-
     keyclass = None
     base_format = None
     private_formats = ()

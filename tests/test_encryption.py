@@ -77,6 +77,4 @@ class _TestEncryption(unittest.TestCase):
     def test_unavailable_cipher(self):
         """Test registering encryption that uses an unavailable cipher"""
 
-        # pylint: disable=no-self-use
-
         register_encryption_alg('xxx', 'xxx', '', True)

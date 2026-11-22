@@ -52,7 +52,7 @@ from .stream import SSHReader, SSHWriter, SSHStreamSession
 from .stream import SSHClientStreamSession, SSHServerStreamSession
 from .stream import SFTPServerFactory
 
-_AnyStrContra = TypeVar('_AnyStrContra', bytes, str, contravariant=True)
+_AnyStr_contra = TypeVar('_AnyStr_contra', bytes, str, contravariant=True)
 
 _File = Union[IO[bytes], '_AsyncFileProtocol[bytes]']
 
@@ -96,10 +96,10 @@ class _ReaderProtocol(Protocol):
         """Stop forwarding data"""
 
 
-class _WriterProtocol(Protocol[_AnyStrContra]):
+class _WriterProtocol(Protocol[_AnyStr_contra]):
     """A class that can be used as a writer in SSHProcess"""
 
-    def write(self, data: _AnyStrContra) -> None:
+    def write(self, data: _AnyStr_contra) -> None:
         """Write data"""
 
     def write_exception(self, exc: Exception) -> None:

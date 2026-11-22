@@ -25,7 +25,6 @@ from typing import Dict, List, Mapping, Optional, Sequence
 from typing import Set, Tuple, Union, cast
 
 try:
-    # pylint: disable=unused-import
     from .crypto import X509Name, X509NamePattern
     _x509_available = True
 except ImportError: # pragma: no cover

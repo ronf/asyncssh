@@ -135,7 +135,5 @@ class SecurityContext:
     def verify_signature(self, _data, sig):
         """Verify a signature for a block of data"""
 
-        # pylint: disable=no-self-use
-
         if sig == b'fail':
             raise GSSError(99, 99)

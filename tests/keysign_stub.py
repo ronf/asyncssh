@@ -31,8 +31,6 @@ class SSHKeysignStub:
     async def communicate(self, request):
         """Process SSH key signing request"""
 
-        # pylint: disable=no-self-use
-
         packet = SSHPacket(request)
         request = packet.get_string()
         packet.check_end()

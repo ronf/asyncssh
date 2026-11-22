@@ -24,9 +24,6 @@ from typing import Dict, Tuple
 
 _curve_param_map: Dict[Tuple[int, int, int, bytes, int], bytes] = {}
 
-# Short variable names are used here, matching names in the spec
-# pylint: disable=invalid-name
-
 
 def register_prime_curve(curve_id: bytes, p: int, a: int, b: int,
                          point: bytes, n: int) -> None:

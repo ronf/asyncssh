@@ -154,8 +154,6 @@ class _StubPageant:
     def _mmapfile(self, file, name, size, offset, nbytes):
         """Create a stub shared memory mapping"""
 
-        # pylint: disable=too-many-arguments
-
         assert file == ''
         assert (offset, nbytes) == (0, 0)
 
@@ -459,6 +457,7 @@ class _PageantRelay: # pragma: cover only win32
 
     def __init__(self, agent_path):
         self._agent = agent_win32._W10OpenSSHTransport(agent_path)
+        # pylint: disable-next=used-before-assignment
         self._hinst = win32api.GetModuleHandle(None)
         self._atom = None
         self._hwnd = None
@@ -478,7 +477,7 @@ class _PageantRelay: # pragma: cover only win32
     def _on_copydata(self, hwnd, msg, wparam, lparam):
         """Handle a WM_COPYDATA agent request"""
 
-        # pylint: disable=unused-argument,broad-except
+        # pylint: disable=unused-argument,broad-exception-caught
 
         try:
             cds = agent_win32._CopyDataStruct.from_address(lparam)
@@ -487,6 +486,7 @@ class _PageantRelay: # pragma: cover only win32
                 raise ValueError('Unexpected copy data ID')
 
             mapname = cds.lpData.decode()
+            # pylint: disable-next=used-before-assignment
             mapfile = mmapfile.mmapfile('', mapname,
                                         agent_win32._AGENT_MAX_MSGLEN, 0, 0)
 
@@ -506,6 +506,8 @@ class _PageantRelay: # pragma: cover only win32
 
     def start(self):
         """Create the Pageant window"""
+
+        # pylint: disable=used-before-assignment
 
         wndclass = win32gui.WNDCLASS()
         wndclass.lpszClassName = agent_win32._AGENT_NAME
@@ -533,8 +535,6 @@ class _WindowsAgentTestCase(AsyncTestCase): # pragma: cover only win32
     """Base class for tests against the Windows OpenSSH agent service"""
 
     _agent_path = agent_win32._DEFAULT_OPENSSH_PATH
-
-    # pylint: disable=invalid-name
 
     def setUp(self):
         """Skip tests if the Windows OpenSSH agent isn't running"""
@@ -641,8 +641,6 @@ class _TestAgentWin32OpenSSH(_WindowsAgentTestCase): # pragma: cover only win32
 @unittest.skipUnless(sys.platform == 'win32', 'Windows only')
 class _TestAgentWin32Pageant(_WindowsAgentTestCase): # pragma: cover only win32
     """Unit tests against a Pageant window relaying to the OpenSSH agent"""
-
-    # pylint: disable=invalid-name
 
     def setUp(self):
         """Start a Pageant window which relays to the OpenSSH agent"""

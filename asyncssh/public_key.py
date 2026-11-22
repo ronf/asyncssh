@@ -37,7 +37,6 @@ from .encryption import Encryption
 from .sk import sk_available
 
 try:
-    # pylint: disable=unused-import
     from .crypto import X509Certificate
     from .crypto import generate_x509_certificate, import_x509_certificate
     _x509_available = True
@@ -593,37 +592,31 @@ class SSHKey:
     def encode_pkcs1_private(self) -> object:
         """Export parameters associated with a PKCS#1 private key"""
 
-        # pylint: disable=no-self-use
         raise KeyExportError('PKCS#1 private key export not supported')
 
     def encode_pkcs1_public(self) -> object:
         """Export parameters associated with a PKCS#1 public key"""
 
-        # pylint: disable=no-self-use
         raise KeyExportError('PKCS#1 public key export not supported')
 
     def encode_pkcs8_private(self) -> Tuple[object, object]:
         """Export parameters associated with a PKCS#8 private key"""
 
-        # pylint: disable=no-self-use
         raise KeyExportError('PKCS#8 private key export not supported')
 
     def encode_pkcs8_public(self) -> Tuple[object, object]:
         """Export parameters associated with a PKCS#8 public key"""
 
-        # pylint: disable=no-self-use
         raise KeyExportError('PKCS#8 public key export not supported')
 
     def encode_ssh_private(self) -> bytes:
         """Export parameters associated with an OpenSSH private key"""
 
-        # pylint: disable=no-self-use
         raise KeyExportError('OpenSSH private key export not supported')
 
     def encode_ssh_public(self) -> bytes:
         """Export parameters associated with an OpenSSH public key"""
 
-        # pylint: disable=no-self-use
         raise KeyExportError('OpenSSH public key export not supported')
 
     def encode_agent_cert_private(self) -> bytes:
@@ -1270,7 +1263,7 @@ class SSHKey:
                     comment + b'\n')
         elif format_name == 'rfc4716':
             if self._comment:
-                comment = (b'Comment: "' + self._comment + b'"\n')
+                comment = b'Comment: "' + self._comment + b'"\n'
             else:
                 comment = b''
 
@@ -1493,7 +1486,7 @@ class SSHCertificate:
                     comment + b'\n')
         elif format_name == 'rfc4716':
             if self._comment:
-                comment = (b'Comment: "' + self._comment + b'"\n')
+                comment = b'Comment: "' + self._comment + b'"\n'
             else:
                 comment = b''
 
@@ -2116,7 +2109,6 @@ class SSHKeyPair:
     def get_agent_private_key(self) -> bytes:
         """Return binary encoding of keypair for upload to SSH agent"""
 
-        # pylint: disable=no-self-use
         raise KeyImportError('Private key export to agent not supported')
 
     def get_comment_bytes(self) -> Optional[bytes]:
@@ -2217,7 +2209,6 @@ class SSHKeyPair:
     def sign(self, data: bytes) -> bytes:
         """Sign a block of data with this private key"""
 
-        # pylint: disable=no-self-use
         raise RuntimeError # pragma: no cover
 
 
@@ -3564,7 +3555,7 @@ def load_keypairs(
         elif certs_to_load:
             try:
                 certs = load_certificates(certs_to_load)
-            except (OSError, KeyImportError) as exc:
+            except (OSError, KeyImportError):
                 certs = None
         else:
             certs = None
@@ -3597,7 +3588,7 @@ def load_keypairs(
             pubkey = None
 
         if saved_exc:
-            raise saved_exc # pylint: disable=raising-bad-type
+            raise saved_exc
 
         if key_data is not None:
             try:

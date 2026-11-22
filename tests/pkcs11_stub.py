@@ -80,6 +80,7 @@ class _PKCS11Key:
     def sign(self, data, mechanism):
         """Sign a block of data with this key"""
 
+        # pylint: disable-next=possibly-used-before-assignment
         sig = self._priv.sign_raw(data, _hash_algs[mechanism])
 
         if self.key_type == KeyType.EC:
@@ -97,6 +98,7 @@ class _PKCS11Cert:
         self._cert = key.get_cert()
 
     def __getitem__(self, key):
+        # pylint: disable-next=possibly-used-before-assignment
         if key == Attribute.VALUE: # pragma: no branch
             return self._cert.export_certificate('der')
 
@@ -119,8 +121,9 @@ class _PKCS11Session:
         label = attrs.get(Attribute.LABEL)
         obj_id = attrs.get(Attribute.OBJECT_ID)
 
-        objs = self._keys if attrs[Attribute.CLASS] == \
-                   ObjectClass.PRIVATE_KEY else self._certs
+        # pylint: disable-next=possibly-used-before-assignment
+        is_key = attrs[Attribute.CLASS] == ObjectClass.PRIVATE_KEY
+        objs = self._keys if is_key else self._certs
 
         for obj in objs:
             if label is not None and obj.label != label:
@@ -148,6 +151,7 @@ class _PKCS11Token:
         self._certs = []
 
         for i, (alg, key_label) in enumerate(key_info, 1):
+            # pylint: disable-next=possibly-used-before-assignment
             self._add_key(alg, _key_types[alg], key_label, i)
 
     def _add_key(self, alg, key_type, key_label, key_id):
@@ -193,7 +197,6 @@ class PKCS11Lib:
         cls.certs = sum((token.get_certs() for token in cls.tokens), [])
 
     def __init__(self, provider):
-        # pylint: disable=unused-argument
 
         pass
 
@@ -224,6 +227,8 @@ def get_pkcs11_certs():
 
 def stub_pkcs11(token_info):
     """Stub out PKCS#11 security token functions for unit testing"""
+
+    # pylint: disable=possibly-used-before-assignment
 
     old_lib = pkcs11.lib
     old_encoders = asyncssh.pkcs11.encoders

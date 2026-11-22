@@ -101,8 +101,6 @@ class EdDSAPrivateKey(_EdDSAKey):
     def sign(self, data: bytes, hash_name: str = '') -> bytes:
         """Sign a block of data"""
 
-        # pylint: disable=unused-argument
-
         priv_key = cast('_EdPrivateKey', self.pyca_key)
         return priv_key.sign(data)
 
@@ -126,8 +124,6 @@ class EdDSAPublicKey(_EdDSAKey):
 
     def verify(self, data: bytes, sig: bytes, hash_name: str = '') -> bool:
         """Verify the signature on a block of data"""
-
-        # pylint: disable=unused-argument
 
         try:
             pub_key = cast('_EdPublicKey', self.pyca_key)

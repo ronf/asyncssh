@@ -174,11 +174,13 @@ if not _nettle:
     if _nettle_lib: # pragma: no branch
         _nettle = ctypes.cdll.LoadLibrary(_nettle_lib)
 
+_nettle_version = 3
+
 if _nettle: # pragma: no branch
     try:
-        _nettle_version: int = _nettle.nettle_version_major()
+        _nettle_version = _nettle.nettle_version_major()
     except AttributeError: # pragma: no cover
-        _nettle_version = 3
+        pass
 
     if _nettle_version <= 4: # pragma: no branch
         umac32, umac64, umac96, umac128 = map(_build_umac, (32, 64, 96, 128))

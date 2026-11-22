@@ -35,8 +35,6 @@ DataType = Optional[int]
 class SSHSession(Generic[AnyStr]):
     """SSH session handler"""
 
-    # pylint: disable=no-self-use,unused-argument
-
     def connection_made(self, chan: Any) -> None:
         """Called when a channel is opened successfully"""
 
@@ -140,8 +138,6 @@ class SSHClientSession(SSHSession[AnyStr]):
 
     """
 
-    # pylint: disable=no-self-use,unused-argument
-
     def connection_made(self, chan: 'SSHClientChannel[AnyStr]') -> None:
         """Called when a channel is opened successfully
 
@@ -240,7 +236,7 @@ class SSHServerSession(SSHSession[AnyStr]):
 
     """
 
-    # pylint: disable=no-self-use,unused-argument
+    # pylint: disable=unused-argument
 
     def connection_made(self, chan: 'SSHServerChannel[AnyStr]') -> None:
         """Called when a channel is opened successfully

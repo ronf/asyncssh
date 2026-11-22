@@ -227,7 +227,7 @@ class SSHChannel(Generic[AnyStr], SSHPacketHandler):
             self._request_waiters = []
 
         if self._session is not None:
-            # pylint: disable=broad-except
+            # pylint: disable=broad-exception-caught
             try:
                 self._session.connection_lost(exc)
             except Exception:
@@ -851,7 +851,6 @@ class SSHChannel(Generic[AnyStr], SSHPacketHandler):
 
         """
 
-        # pylint: disable=no-self-use
         return True
 
     def get_write_buffer_size(self) -> int:

@@ -20,9 +20,6 @@
 
 """SSH agent support code for Windows"""
 
-# Some of the imports below won't be found when running pylint on UNIX
-# pylint: disable=import-error
-
 import asyncio
 import ctypes
 import ctypes.wintypes

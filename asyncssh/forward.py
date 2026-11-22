@@ -135,8 +135,6 @@ class SSHForwarder(asyncio.BaseProtocol):
     def connection_lost(self, exc: Optional[Exception]) -> None:
         """Handle an incoming connection close"""
 
-        # pylint: disable=unused-argument
-
         self.close()
 
     def session_started(self) -> None:
@@ -243,8 +241,7 @@ class SSHLocalPortForwarder(SSHLocalForwarder):
 
         if peername: # pragma: no branch
             orig_host, orig_port = peername[:2]
-
-        self.forward(orig_host, orig_port)
+            self.forward(orig_host, orig_port)
 
 
 class SSHLocalPathForwarder(SSHLocalForwarder):

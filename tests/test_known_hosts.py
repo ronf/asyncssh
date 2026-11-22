@@ -97,11 +97,6 @@ class _TestKnownHosts(TempDirTestCase):
                     as_callable=False, as_tuple=False):
         """Check a known_hosts file built from the specified patterns"""
 
-        def call_match(host, addr, port):
-            """Test passing callable as known_hosts"""
-
-            return asyncssh.match_known_hosts(_known_hosts, host, addr, port)
-
         prefixes = ('', '@cert-authority ', '@revoked ',
                     '', '@revoked ', '', '@revoked ')
         known_hosts = '# Comment line\n   # Comment line with whitespace\n\n'
@@ -119,6 +114,13 @@ class _TestKnownHosts(TempDirTestCase):
             known_hosts = known_hosts.encode()
         elif as_callable:
             _known_hosts = asyncssh.import_known_hosts(known_hosts)
+
+            def call_match(host, addr, port):
+                """Test passing callable as known_hosts"""
+
+                return asyncssh.match_known_hosts(_known_hosts, host,
+                                                  addr, port)
+
             known_hosts = call_match
         elif as_tuple:
             known_hosts = asyncssh.import_known_hosts(known_hosts)

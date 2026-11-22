@@ -57,7 +57,7 @@ class _FailValidateHostSSHServerConnection(asyncssh.SSHServerConnection):
 class _AsyncGSSServer(asyncssh.SSHServer):
     """Server for testing async GSS authentication"""
 
-    # pylint: disable=useless-super-delegation
+    # pylint: disable=useless-parent-delegation
 
     async def validate_gss_principal(self, username, user_principal,
                                      host_principal):
@@ -99,21 +99,15 @@ class _HostBasedServer(Server):
                                  client_port, key):
         """Return whether key is an authorized key for this host"""
 
-        # pylint: disable=unused-argument
-
         return key == self._host_key
 
     def validate_host_ca_key(self, client_host, client_addr, client_port, key):
         """Return whether key is an authorized CA key for this host"""
 
-        # pylint: disable=unused-argument
-
         return key == self._ca_key
 
     def validate_host_based_user(self, username, client_host, client_username):
         """Return whether remote host and user is authorized for this user"""
-
-        # pylint: disable=unused-argument
 
         return client_username == 'user'
 
@@ -121,7 +115,7 @@ class _HostBasedServer(Server):
 class _AsyncHostBasedServer(Server):
     """Server for testing async host-based authentication"""
 
-    # pylint: disable=useless-super-delegation
+    # pylint: disable=useless-parent-delegation
 
     async def validate_host_based_user(self, username, client_host,
                                        client_username):
@@ -160,8 +154,6 @@ class _PublicKeyClient(asyncssh.SSHClient):
 
 class _AsyncPublicKeyClient(_PublicKeyClient):
     """Test async client public key authentication"""
-
-    # pylint: disable=useless-super-delegation
 
     async def public_key_auth_requested(self):
         """Return a public key to authenticate with"""
@@ -216,7 +208,7 @@ class _PublicKeyServer(Server):
 class _AsyncPublicKeyServer(_PublicKeyServer):
     """Server for testing async public key authentication"""
 
-    # pylint: disable=useless-super-delegation
+    # pylint: disable=useless-parent-delegation
 
     async def begin_auth(self, username):
         """Handle client authentication request"""
@@ -261,7 +253,7 @@ class _PasswordClient(asyncssh.SSHClient):
 class _AsyncPasswordClient(_PasswordClient):
     """Test async client password authentication"""
 
-    # pylint: disable=useless-super-delegation
+    # pylint: disable=useless-parent-delegation
 
     async def password_auth_requested(self):
         """Return a password to authenticate with"""
@@ -299,7 +291,7 @@ class _PasswordServer(Server):
 class _AsyncPasswordServer(_PasswordServer):
     """Server for testing async password authentication"""
 
-    # pylint: disable=useless-super-delegation
+    # pylint: disable=useless-parent-delegation
 
     async def validate_password(self, username, password):
         """Return whether password is valid for this user"""
@@ -326,8 +318,6 @@ class _KbdintClient(asyncssh.SSHClient):
     def kbdint_challenge_received(self, name, instructions, lang, prompts):
         """Return responses to a keyboard-interactive auth challenge"""
 
-        # pylint: disable=unused-argument
-
         if not prompts:
             return []
         elif self._responses:
@@ -341,7 +331,7 @@ class _KbdintClient(asyncssh.SSHClient):
 class _AsyncKbdintClient(_KbdintClient):
     """Test keyboard-interactive client auth"""
 
-    # pylint: disable=useless-super-delegation
+    # pylint: disable=useless-parent-delegation
 
     async def kbdint_auth_requested(self):
         """Return the list of supported keyboard-interactive auth methods"""
@@ -400,7 +390,7 @@ class _KbdintServer(Server):
 class _AsyncKbdintServer(_KbdintServer):
     """Server for testing async keyboard-interactive authentication"""
 
-    # pylint: disable=useless-super-delegation
+    # pylint: disable=useless-parent-delegation
 
     async def get_kbdint_challenge(self, username, lang, submethods):
         """Return a keyboard-interactive auth challenge"""

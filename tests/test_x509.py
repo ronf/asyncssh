@@ -53,6 +53,8 @@ class _TestX509(unittest.TestCase):
                              hash_alg='sha256', comment=None):
         """Generate and check an X.509 certificate"""
 
+        # pylint: disable=possibly-used-before-assignment
+
         cert = generate_x509_certificate(self._privkey.pyca_key,
                                          self._pubkey.pyca_key,
                                          subject, issuer, serial,
@@ -270,6 +272,7 @@ class _TestX509(unittest.TestCase):
     def test_exact_name_pattern(self):
         """Test X.509 distinguished name exact match"""
 
+        # pylint: disable-next=possibly-used-before-assignment
         pattern1 = X509NamePattern('O=Org,OU=Unit')
         pattern2 = X509NamePattern('O=Org, OU=Unit')
         self.assertEqual(pattern1, pattern2)

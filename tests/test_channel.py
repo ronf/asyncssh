@@ -120,14 +120,10 @@ class _ClientSession(asyncssh.SSHClientSession):
     def exit_status_received(self, status):
         """Handle remote exit status"""
 
-        # pylint: disable=unused-argument
-
         self.exit_status = status
 
     def exit_signal_received(self, signal, core_dumped, msg, lang):
         """Handle remote exit signal"""
-
-        # pylint: disable=unused-argument
 
         self.exit_signal_msg = msg
 
@@ -563,8 +559,6 @@ class _ChannelServer(Server):
 
 class _TestChannel(ServerTestCase):
     """Unit tests for AsyncSSH channel API"""
-
-    # pylint: disable=too-many-public-methods
 
     @classmethod
     async def start_server(cls):
@@ -2002,6 +1996,7 @@ class _TestChannelKeyOptEnv(ServerTestCase):
         async with self.connect(username='ckey') as conn:
             chan, session = await _create_session(conn, 'env_late')
 
+            # pylint: disable-next=protected-access
             result = await chan._make_request(b'env', String('TEST'),
                                               String('late'))
             self.assertFalse(result)

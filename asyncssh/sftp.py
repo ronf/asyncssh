@@ -1122,8 +1122,6 @@ class SFTPError(Error):
     def decode(self, packet: SSHPacket) -> None:
         """Decode error-specific data"""
 
-        # pylint: disable=no-self-use
-
         # By default, expect no error-specific data
 
 
@@ -2886,8 +2884,6 @@ class SFTPClientHandler(SFTPHandler):
     def _process_extended_reply(self, packet: SSHPacket) -> SSHPacket:
         """Process an incoming SFTP extended reply response"""
 
-        # pylint: disable=no-self-use
-
         # Let the caller do the decoding for extended replies
         return packet
 
@@ -2980,6 +2976,8 @@ class SFTPClientHandler(SFTPHandler):
 
     async def request_limits(self) -> None:
         """Request SFTP server limits"""
+
+        # pylint: disable=no-member
 
         if self._supports_limits:
             packet = cast(SSHPacket, await self._make_request(
@@ -6132,7 +6130,7 @@ class SFTPServerHandler(SFTPHandler):
                               packet: SSHPacket) -> None:
         """Process incoming SFTP requests"""
 
-        # pylint: disable=broad-except
+        # pylint: disable=broad-exception-caught
         try:
             if pkttype == FXP_EXTENDED:
                 handler_type: Union[int, bytes] = packet.get_string()
@@ -7176,9 +7174,6 @@ class SFTPServer:
 
     """
 
-    # The default implementation of a number of these methods don't need self
-    # pylint: disable=no-self-use
-
     def __init__(self, chan: 'SSHServerChannel',
                  chroot: Optional[_LocalPath] = None):
         self._chan = chan
@@ -7710,7 +7705,7 @@ class SFTPServer:
             flags |= os.O_EXCL
 
         if sys.platform == 'win32': # pragma: cover only win32
-            flags |= os.O_BINARY # pylint: disable=no-member
+            flags |= os.O_BINARY
 
         perms = 0o666 if attrs.permissions is None else attrs.permissions
 
@@ -7811,7 +7806,7 @@ class SFTPServer:
             mode += '+'
 
         if sys.platform == 'win32': # pragma: cover only win32
-            open_flags |= os.O_BINARY # pylint: disable=no-member
+            open_flags |= os.O_BINARY
 
         perms = 0o666 if attrs.permissions is None else attrs.permissions
 
@@ -8019,7 +8014,6 @@ class SFTPServer:
             # which case :meth:`lstat` is called to retrieve attribute
             # information.
 
-            # pylint: disable=no-member
             listdir_result = self.listdir(path)
 
             if inspect.isawaitable(listdir_result):
@@ -8397,8 +8391,6 @@ class LocalFS:
            This method has no effect if the path is already bytes.
 
         """
-
-        # pylint: disable=no-self-use
 
         return os.fsencode(path)
 

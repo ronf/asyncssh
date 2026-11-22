@@ -81,15 +81,11 @@ from .util import asynctest
 def _getpwuid_error(uid):
     """Simulate not being able to resolve user name"""
 
-    # pylint: disable=unused-argument
-
     raise KeyError
 
 
 def _getgrgid_error(gid):
     """Simulate not being able to resolve group name"""
-
-    # pylint: disable=unused-argument
 
     raise KeyError
 
@@ -389,8 +385,6 @@ class _LongnameSFTPServer(SFTPServer):
     def listdir(self, _path):
         """List the contents of a directory"""
 
-        # pylint: disable=no-self-use
-
         return list((b'.',
                      b'..',
                      SFTPName(b'.file'),
@@ -426,14 +420,10 @@ class _StatVFSSFTPServer(SFTPServer):
     def statvfs(self, path):
         """Get attributes of the file system containing a file"""
 
-        # pylint: disable=unused-argument
-
         return self.expected_statvfs
 
     def fstatvfs(self, file_obj):
         """Return attributes of the file system containing an open file"""
-
-        # pylint: disable=unused-argument
 
         return self.expected_statvfs
 
@@ -608,7 +598,7 @@ class _ScriptedSymlinkSFTPServer(SFTPServer):
 class _AsyncSFTPServer(SFTPServer):
     """Implement all SFTP callbacks as async methods"""
 
-    # pylint: disable=useless-super-delegation
+    # pylint: disable=useless-parent-delegation
 
     async def format_longname(self, name):
         """Format the long name associated with an SFTP name"""
@@ -4533,8 +4523,6 @@ class _TestSFTPCallable(_CheckSFTP):
     async def test_stat(self, sftp):
         """Test getting attributes on a file"""
 
-        # pylint: disable=no-self-use
-
         await sftp.stat('.')
 
 
@@ -4555,8 +4543,6 @@ class _TestSFTPCoroutine(_CheckSFTP):
     @sftp_test
     async def test_stat(self, sftp):
         """Test getting attributes on a file"""
-
-        # pylint: disable=no-self-use
 
         await sftp.stat('.')
 
@@ -5384,7 +5370,7 @@ class _TestSFTPCancelParallelIO(_CheckSFTP):
                         request = file.write(data)
                     elif operation == 'read_parallel':
                         reader = await file.read_parallel(len(data))
-                        request = reader.__anext__()
+                        request = anext(reader)
                     else:
                         request = file.read(len(data))
 

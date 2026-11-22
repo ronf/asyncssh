@@ -178,7 +178,6 @@ from .x11 import SSHX11ClientListener, SSHX11ServerListener
 from .x11 import create_x11_client_listener, create_x11_server_listener
 
 if TYPE_CHECKING:
-    # pylint: disable=unused-import
     from .crypto import X509NamePattern
 
 
@@ -385,15 +384,11 @@ async def _open_proxy(
         def pipe_data_received(self, fd: int, data: bytes) -> None:
             """Handle data received from this tunnel"""
 
-            # pylint: disable=unused-argument
-
             self._conn.data_received(data)
 
         def pipe_connection_lost(self, fd: int,
                                  exc: Optional[Exception]) -> None:
             """Handle when this tunnel is closed"""
-
-            # pylint: disable=unused-argument
 
             self._conn.connection_lost(exc)
 
@@ -509,7 +504,6 @@ async def _connect(options: _Options, config: DefTuple[ConfigPaths],
         elif new_tunnel:
             new_tunnel.logger.info('%s %s via %s', msg, (host, port), tunnel)
 
-            # pylint: disable=broad-except
             try:
                 _, tunnel_session = await new_tunnel.create_connection(
                     cast(SSHTCPSessionFactory[bytes], conn_factory),
@@ -586,7 +580,6 @@ async def _listen(options: _Options, config: DefTuple[ConfigPaths],
     elif new_tunnel:
         new_tunnel.logger.info('%s %s via %s', msg, (host, port), tunnel)
 
-        # pylint: disable=broad-except
         try:
             tunnel_server = await new_tunnel.create_server(
                 tunnel_factory, host, port)
@@ -1120,7 +1113,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
             self._wait = None
 
         if self._owner: # pragma: no branch
-            # pylint: disable=broad-except
+            # pylint: disable=broad-exception-caught
             try:
                 self._owner.connection_lost(exc)
             except Exception:
@@ -1215,7 +1208,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         self._tasks.discard(task)
 
-        # pylint: disable=broad-except
+        # pylint: disable=broad-exception-caught
         try:
             task.result()
         except asyncio.CancelledError:
@@ -1421,7 +1414,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         self._owner = self._protocol_factory()
 
-        # pylint: disable=broad-except
+        # pylint: disable=broad-exception-caught
         try:
             self._connection_made()
             self._owner.connection_made(self) # type: ignore
@@ -1453,7 +1446,6 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
     def session_started(self) -> None:
         """Handle session start when opening tunneled SSH connection"""
 
-    # pylint: disable=arguments-differ
     def data_received(self, data: bytes, datatype: DataType = None) -> None:
         """Handle incoming data on the connection"""
 
@@ -1462,7 +1454,6 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         self._inpbuf += data
 
         self._recv_data()
-    # pylint: enable=arguments-differ
 
     def eof_received(self) -> None:
         """Handle an incoming end of file on the connection"""
@@ -1572,7 +1563,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         self._reset_keepalive_timer()
 
-        # pylint: disable=broad-except
+        # pylint: disable=broad-exception-caught
         try:
             while self._inpbuf and self._recv_handler():
                 pass
@@ -2101,7 +2092,6 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
                 getattr(key, 'sign_async', None)
 
             if sign_async:
-                # pylint: disable=not-callable
                 sig = await sign_async(data)
             elif getattr(key, 'use_executor', False):
                 sig = await self._loop.run_in_executor(None, key.sign, data)
@@ -2271,8 +2261,6 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
     def _process_unimplemented(self, _pkttype: int, _pktid: int,
                                packet: SSHPacket) -> None:
         """Process an unimplemented message response"""
-
-        # pylint: disable=no-self-use
 
         _ = packet.get_uint32()     # seq
         packet.check_end()
@@ -2526,6 +2514,8 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
                                   packet: SSHPacket) -> MaybeAwait[None]:
         """Process a user authentication request"""
 
+        # pylint: disable=attribute-defined-outside-init,protected-access
+
         username_bytes = packet.get_string()
         service = packet.get_string()
         method = packet.get_string()
@@ -2562,8 +2552,6 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
             else:
                 begin_auth = False
 
-            # pylint: disable=attribute-defined-outside-init
-            # pylint: disable=protected-access
             conn = cast(SSHServerConnection, self)
             conn._key_options = {}
             conn._cert_options = None
@@ -3980,8 +3968,6 @@ class SSHClientConnection(SSHConnection):
 
         """
 
-        # pylint: disable=no-self-use
-
         raise ChannelOpenError(OPEN_ADMINISTRATIVELY_PROHIBITED,
                                'Session open forbidden on client')
 
@@ -3992,8 +3978,6 @@ class SSHClientConnection(SSHConnection):
            These requests are disallowed on an SSH client.
 
         """
-
-        # pylint: disable=no-self-use
 
         raise ChannelOpenError(OPEN_ADMINISTRATIVELY_PROHIBITED,
                                'Direct TCP/IP open forbidden on client')
@@ -4060,8 +4044,6 @@ class SSHClientConnection(SSHConnection):
 
         """
 
-        # pylint: disable=no-self-use
-
         raise ChannelOpenError(OPEN_ADMINISTRATIVELY_PROHIBITED,
                                'Direct UNIX domain socket open '
                                'forbidden on client')
@@ -4074,8 +4056,6 @@ class SSHClientConnection(SSHConnection):
            These requests are disallowed on an SSH client.
 
         """
-
-        # pylint: disable=no-self-use
 
         raise ChannelOpenError(OPEN_ADMINISTRATIVELY_PROHIBITED,
                                'TUN/TAP request forbidden on client')
@@ -8180,7 +8160,7 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
     window: int
     max_pktsize: int
 
-    # pylint: disable=arguments-differ
+    # pylint: disable=arguments-renamed
     def prepare(self, # type: ignore
                 loop: Optional[asyncio.AbstractEventLoop] = None,
                 last_config: Optional[SSHConfig] = None,
@@ -8940,7 +8920,7 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
     window: int
     max_pktsize: int
 
-    # pylint: disable=arguments-differ
+    # pylint: disable=arguments-renamed
     def prepare(self, # type: ignore
                 loop: Optional[asyncio.AbstractEventLoop] = None,
                 last_config: Optional[SSHConfig] = None,
@@ -9591,7 +9571,6 @@ async def listen(host = '', port: DefTuple[int] = (), *,
         options, config=config, host=host, port=port, tunnel=tunnel,
         family=family, **kwargs)
 
-    # pylint: disable=attribute-defined-outside-init
     new_options.proxy_command = None
 
     return await asyncio.wait_for(
@@ -9731,7 +9710,6 @@ async def listen_reverse(host = '', port: DefTuple[int] = (), *,
         options, config=config, host=host, port=port, tunnel=tunnel,
         family=family, **kwargs)
 
-    # pylint: disable=attribute-defined-outside-init
     new_options.proxy_command = None
 
     return await asyncio.wait_for(

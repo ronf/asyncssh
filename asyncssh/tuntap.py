@@ -166,6 +166,7 @@ class SSHTunTapOSXTransport(SSHTunTapTransport):
 
         try:
             ifr = struct.pack(IFF_FMT, name, 0)
+            # pylint: disable-next=possibly-used-before-assignment
             ifr = fcntl.ioctl(sock, DARWIN_SIOCGIFFLAGS, ifr)
 
             _, flags = struct.unpack(IFF_FMT, ifr)

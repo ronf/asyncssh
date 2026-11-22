@@ -35,8 +35,6 @@ class _StreamServer(Server):
     async def _begin_session(self, stdin, stdout, stderr):
         """Begin processing a new session"""
 
-        # pylint: disable=no-self-use
-
         action = stdin.channel.get_command()
         if not action:
             action = 'echo'

@@ -729,9 +729,6 @@ class SSHServerStreamSession(SSHStreamSession[AnyStr],
     def exec_requested(self, command: str) -> bool:
         """Return whether execution of a command can be requested"""
 
-        # Avoid incorrect pylint suggestion to use ternary
-        # pylint: disable=consider-using-ternary
-
         return ((self._allow_scp and command.startswith('scp ')) or
                 bool(self._session_factory))
 

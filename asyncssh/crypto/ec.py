@@ -30,9 +30,6 @@ from cryptography.hazmat.primitives.serialization import PublicFormat
 from .misc import CryptoKey, PyCAKey, hashes
 
 
-# Short variable names are used here, matching names in the spec
-# pylint: disable=invalid-name
-
 _curves: Mapping[bytes, Type[ec.EllipticCurve]] = {
     b'1.3.132.0.10': ec.SECP256K1,
     b'nistp256':     ec.SECP256R1,

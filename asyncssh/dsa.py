@@ -49,9 +49,6 @@ class _DSAKey(SSHKey):
     all_sig_algorithms = set(sig_algorithms)
 
     def __eq__(self, other: object) -> bool:
-        # This isn't protected access - both objects are _DSAKey instances
-        # pylint: disable=protected-access
-
         return (isinstance(other, type(self)) and
                 self._key.p == other._key.p and
                 self._key.q == other._key.q and
@@ -67,7 +64,7 @@ class _DSAKey(SSHKey):
     def generate(cls, algorithm: bytes) -> '_DSAKey': # type: ignore
         """Generate a new DSA private key"""
 
-        # pylint: disable=arguments-differ,unused-argument
+        # pylint: disable=arguments-differ
 
         return cls(DSAPrivateKey.generate(key_size=1024))
 
@@ -222,8 +219,6 @@ class _DSAKey(SSHKey):
     def sign_ssh(self, data: bytes, sig_algorithm: bytes) -> bytes:
         """Compute an SSH-encoded signature of the specified data"""
 
-        # pylint: disable=unused-argument
-
         if not self._key.x:
             raise ValueError('Private key needed for signing')
 
@@ -234,8 +229,6 @@ class _DSAKey(SSHKey):
     def verify_ssh(self, data: bytes, sig_algorithm: bytes,
                    packet: SSHPacket) -> bool:
         """Verify an SSH-encoded signature of the specified data"""
-
-        # pylint: disable=unused-argument
 
         sig = packet.get_string()
         packet.check_end()

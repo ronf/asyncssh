@@ -293,8 +293,6 @@ class _TestClientConfig(_TestConfig):
                      user=(), host='host', port=()):
         """Load a client configuration"""
 
-        # pylint: disable=arguments-differ
-
         return SSHClientConfig.load(last_config, config, reload, canonical,
                                     final, local_user, user, host, port)
 
@@ -619,8 +617,6 @@ class _TestServerConfig(_TestConfig):
                      local_addr='127.0.0.1', local_port=22,
                      user='user', host=None, addr='127.0.0.1'):
         """Load a server configuration"""
-
-        # pylint: disable=arguments-differ
 
         return SSHServerConfig.load(last_config, config, reload, canonical,
                                     final, local_addr, local_port, user,

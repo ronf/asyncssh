@@ -56,8 +56,6 @@ class _AuthConnectionStub(ConnectionStub):
     def _get_userauth_request_packet(self, method, args):
         """Get packet data for a user authentication request"""
 
-        # pylint: disable=no-self-use
-
         return b''.join((Byte(MSG_USERAUTH_REQUEST), String('user'),
                          String('service'), String(method)) + args)
 
@@ -734,11 +732,6 @@ class _TestAuth(AsyncTestCase):
 
 class TestAuthenticationGenerationRegression(unittest.IsolatedAsyncioTestCase):
     """Stale authentication handlers must have no protocol side effects."""
-
-    # Pylint doesn't like mixed case method names, but this was chosen to
-    # match the convention used in the unittest module.
-
-    # pylint: disable=invalid-name
 
     async def asyncSetUp(self):
         """Set up auth sessions for the tests to use"""

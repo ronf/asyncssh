@@ -30,10 +30,6 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from .misc import CryptoKey, PyCAKey, hashes
 
 
-# Short variable names are used here, matching names in the spec
-# pylint: disable=invalid-name
-
-
 class _RSAKey(CryptoKey):
     """Base class for shim around PyCA for RSA keys"""
 

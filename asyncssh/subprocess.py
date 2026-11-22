@@ -282,8 +282,6 @@ class SSHSubprocessTransport(SSHClientProcess[AnyStr]):
 
         """
 
-        # pylint: disable=no-self-use
-
         return None
 
     def get_pipe_transport(self, fd: int) -> \

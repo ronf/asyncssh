@@ -22,11 +22,7 @@
 
 from .version import __author__, __author_email__, __url__, __version__
 
-# pylint: disable=wildcard-import
-
 from .constants import *
-
-# pylint: enable=wildcard-import
 
 from .agent import SSHAgentClient, SSHAgentKeyPair, connect_agent
 

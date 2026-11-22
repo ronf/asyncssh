@@ -72,7 +72,7 @@ class SSHClient:
 
     """
 
-    # pylint: disable=no-self-use,unused-argument
+    # pylint: disable=unused-argument
 
     def connection_made(self, conn: 'SSHClientConnection') -> None:
         """Called when a connection is made

@@ -46,8 +46,6 @@ class SSPIContext:
     def QueryContextAttributes(self, attr): # pylint: disable=invalid-name
         """Return principal information associated with this context"""
 
-        # pylint: disable=no-self-use
-
         if attr == SECPKG_ATTR_NATIVE_NAMES:
             return ['user@TEST', 'host@TEST']
         else: # pragma: no cover
@@ -121,7 +119,7 @@ class SSPIAuth:
     def sign(self, data):
         """Sign a block of data"""
 
-        # pylint: disable=no-self-use,unused-argument
+        # pylint: disable=unused-argument
 
         if 'sign_error' in self._host:
             raise SSPIError('Signing error')
@@ -131,7 +129,7 @@ class SSPIAuth:
     def verify(self, data, sig):
         """Verify a signature for a block of data"""
 
-        # pylint: disable=no-self-use,unused-argument
+        # pylint: disable=unused-argument
 
         if sig == b'fail':
             raise SSPIError('Signature verification error')

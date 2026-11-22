@@ -304,10 +304,7 @@ class _CheckForwarding(ServerTestCase):
     async def _check_local_unix_connection(self, listen_path):
         """Open a local connection and test if an input line is echoed back"""
 
-        # pylint doesn't think open_unix_connection exists
-        # pylint: disable=no-member
         reader, writer = await asyncio.open_unix_connection(listen_path)
-        # pylint: enable=no-member
 
         await self._check_echo_line(reader, writer)
 
@@ -1298,10 +1295,7 @@ class _TestUNIXForwarding(_CheckForwarding):
     async def test_forward_remote_path(self):
         """Test forwarding of a remote UNIX domain path"""
 
-        # pylint doesn't think start_unix_server exists
-        # pylint: disable=no-member
         server = await asyncio.start_unix_server(echo, 'local')
-        # pylint: enable=no-member
 
         path = os.path.abspath('echo')
 

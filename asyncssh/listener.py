@@ -83,8 +83,6 @@ class SSHListener:
 
         """
 
-        # pylint: disable=no-self-use
-
         return 0
 
     def set_tunnel(self, tunnel: 'SSHConnection') -> None:
@@ -338,7 +336,6 @@ async def _bind_tcp_local_listeners(
                 exc.errno = errno.EOVERFLOW # type: ignore
                 exc.strerror = str(exc) # type: ignore
 
-            # pylint: disable=no-member
             raise OSError(exc.errno, f'error while attempting ' # type: ignore
                           f'to bind on address {sa!r}: '
                           f'{exc.strerror}') from None # type: ignore

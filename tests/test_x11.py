@@ -45,8 +45,6 @@ from .util import asynctest
 def _failing_bind(self, address):
     """Raise OSError to simulate a socket bind failure"""
 
-    # pylint: disable=unused-argument
-
     raise OSError
 
 
@@ -98,8 +96,6 @@ class _X11Peer:
 
     def was_eof_received(self):
         """Report that an incoming EOF has not been reeceived"""
-
-        # pylint: disable=no-self-use
 
         return False # pragma: no cover
 

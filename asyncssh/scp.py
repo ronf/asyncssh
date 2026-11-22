@@ -801,8 +801,6 @@ class _SCPCopier:
                                 dst: _SCPHandler) -> Optional[Exception]:
         """Forward an SCP response between two remote SCP servers"""
 
-        # pylint: disable=no-self-use
-
         try:
             exc = await src.await_response()
 

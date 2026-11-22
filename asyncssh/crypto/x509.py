@@ -211,9 +211,6 @@ class X509NamePattern:
             self._prefix_len = None
 
     def __eq__(self, other: object) -> bool:
-        # This isn't protected access - both objects are _RSAKey instances
-        # pylint: disable=protected-access
-
         if not isinstance(other, X509NamePattern): # pragma: no cover
             return NotImplemented
 

@@ -44,9 +44,6 @@ class _EdKey(SSHKey):
     algorithm = b''
 
     def __eq__(self, other: object) -> bool:
-        # This isn't protected access - both objects are _EdKey instances
-        # pylint: disable=protected-access
-
         return (isinstance(other, type(self)) and
                 self._key.public_value == other._key.public_value and
                 self._key.private_value == other._key.private_value)
@@ -92,8 +89,6 @@ class _EdKey(SSHKey):
                              data: bytes) -> Optional[_PrivateKeyArgs]:
         """Decode a PKCS#8 format EdDSA private key"""
 
-        # pylint: disable=unused-argument
-
         try:
             return (cast(bytes, der_decode(data)),)
         except ASN1DecodeError:
@@ -103,8 +98,6 @@ class _EdKey(SSHKey):
     def decode_pkcs8_public(cls, alg_params: object,
                             data: bytes) -> Optional[_PublicKeyArgs]:
         """Decode a PKCS#8 format EdDSA public key"""
-
-        # pylint: disable=unused-argument
 
         return (data,)
 
@@ -161,8 +154,6 @@ class _EdKey(SSHKey):
     def sign_ssh(self, data: bytes, sig_algorithm: bytes) -> bytes:
         """Compute an SSH-encoded signature of the specified data"""
 
-        # pylint: disable=unused-argument
-
         if not self._key.private_value:
             raise ValueError('Private key needed for signing')
 
@@ -171,8 +162,6 @@ class _EdKey(SSHKey):
     def verify_ssh(self, data: bytes, sig_algorithm: bytes,
                    packet: SSHPacket) -> bool:
         """Verify an SSH-encoded signature of the specified data"""
-
-        # pylint: disable=unused-argument
 
         sig = packet.get_string()
         packet.check_end()

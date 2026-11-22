@@ -108,8 +108,6 @@ def patch_getaddrinfo(cls):
     def getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
         """Mock DNS lookup of server hostname"""
 
-        # pylint: disable=unused-argument
-
         try:
             return [(socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP,
                      hosts[host], ('127.0.0.1', port))]
@@ -137,8 +135,6 @@ def patch_getnameinfo_error(cls):
 
     def getnameinfo_error(sockaddr, flags):
         """Mock failure of reverse DNS lookup of client address"""
-
-        # pylint: disable=unused-argument
 
         raise socket.gaierror()
 
@@ -269,7 +265,7 @@ def run(cmd):
         return subprocess.check_output(cmd, shell=True,
                                        stderr=subprocess.STDOUT)
     except subprocess.CalledProcessError as exc: # pragma: no cover
-        logger.error('Error running command: %s' % cmd)
+        logger.error('Error running command: %s', cmd)
         logger.error(exc.output.decode())
         raise
 
@@ -308,7 +304,7 @@ class ConnectionStub:
     async def _run_task(self, coro):
         """Run an asynchronous task"""
 
-        # pylint: disable=broad-except
+        # pylint: disable=broad-exception-caught
         try:
             await coro
         except Exception as exc:

@@ -97,7 +97,7 @@ class SSHServer:
 
     """
 
-    # pylint: disable=no-self-use,unused-argument
+    # pylint: disable=unused-argument
 
     def connection_made(self, conn: 'SSHServerConnection') -> None:
         """Called when a connection is made

@@ -49,14 +49,12 @@ class _TunTapSocketMock:
     def ioctl(self, request, arg):
         """Ignore ioctl requests to bring interface up"""
 
-        # pylint: disable=no-self-use,unused-argument
+        # pylint: disable=unused-argument
 
         return arg
 
     def close(self):
         """Close this mock"""
-
-        # pylint: disable=no-self-use
 
 
 class _TunTapMock:
@@ -156,7 +154,7 @@ class _DarwinUTunMock(_TunTapMock):
     def ioctl(self, request, arg):
         """Respond to DARWIN_CTLIOCGINFO request"""
 
-        # pylint: disable=no-self-use,unused-argument
+        # pylint: disable=unused-argument
 
         return arg
 

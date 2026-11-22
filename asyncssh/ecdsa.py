@@ -70,9 +70,6 @@ class _ECKey(SSHKey):
         self._hash_alg = _hash_algs[self._key.curve_id]
 
     def __eq__(self, other: object) -> bool:
-        # This isn't protected access - both objects are _ECKey instances
-        # pylint: disable=protected-access
-
         return (isinstance(other, type(self)) and
                 self._key.curve_id == other._key.curve_id and
                 self._key.x == other._key.x and
@@ -175,8 +172,6 @@ class _ECKey(SSHKey):
     def decode_pkcs1_public(cls, key_data: object) -> \
             Optional[_PublicKeyArgs]:
         """Decode a PKCS#1 format EC public key"""
-
-        # pylint: disable=unused-argument
 
         raise KeyImportError('PKCS#1 not supported for EC public keys')
 
@@ -297,8 +292,6 @@ class _ECKey(SSHKey):
     def sign_ssh(self, data: bytes, sig_algorithm: bytes) -> bytes:
         """Compute an SSH-encoded signature of the specified data"""
 
-        # pylint: disable=unused-argument
-
         if not self._key.private_value:
             raise ValueError('Private key needed for signing')
 
@@ -309,8 +302,6 @@ class _ECKey(SSHKey):
     def verify_ssh(self, data: bytes, sig_algorithm: bytes,
                    packet: SSHPacket) -> bool:
         """Verify an SSH-encoded signature of the specified data"""
-
-        # pylint: disable=unused-argument
 
         sig = packet.get_string()
         packet.check_end()

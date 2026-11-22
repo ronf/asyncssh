@@ -107,9 +107,6 @@ class RSAKey(SSHKey):
     all_sig_algorithms = set(x509_sig_algorithms + sig_algorithms)
 
     def __eq__(self, other: object) -> bool:
-        # This isn't protected access - both objects are RSAKey instances
-        # pylint: disable=protected-access
-
         if not isinstance(other, RSAKey):
             return NotImplemented
 
@@ -126,7 +123,7 @@ class RSAKey(SSHKey):
                  key_size: int = 2048, exponent: int = 65537) -> 'RSAKey':
         """Generate a new RSA private key"""
 
-        # pylint: disable=arguments-differ,unused-argument
+        # pylint: disable=arguments-differ
 
         return cls(RSAPrivateKey.generate(key_size, exponent))
 

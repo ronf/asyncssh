@@ -67,8 +67,6 @@ class _Agent:
 
         self._path = path
 
-        # pylint doesn't think start_unix_server exists
-        # pylint: disable=no-member
         self._server = \
             await asyncio.start_unix_server(self.process_request, path)
 

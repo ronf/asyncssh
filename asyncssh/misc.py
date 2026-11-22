@@ -460,19 +460,19 @@ def wrap_base64(data: bytes, block_type: bytes, headers: bytes = b'',
            last_hyphen + b'----\n'
 
 
-_ACM = TypeVar('_ACM', bound=AsyncContextManager, covariant=True)
+_ACM_co = TypeVar('_ACM_co', bound=AsyncContextManager, covariant=True)
 
-class _ACMWrapper(Generic[_ACM]):
+class _ACMWrapper(Generic[_ACM_co]):
     """Async context manager wrapper"""
 
-    def __init__(self, coro: Awaitable[_ACM]):
+    def __init__(self, coro: Awaitable[_ACM_co]):
         self._coro = coro
-        self._coro_result: Optional[_ACM] = None
+        self._coro_result: Optional[_ACM_co] = None
 
-    def __await__(self) -> Generator[Any, None, _ACM]:
+    def __await__(self) -> Generator[Any, None, _ACM_co]:
         return self._coro.__await__()
 
-    async def __aenter__(self) -> _ACM:
+    async def __aenter__(self) -> _ACM_co:
         self._coro_result = await self._coro
 
         return await self._coro_result.__aenter__()
@@ -490,10 +490,10 @@ class _ACMWrapper(Generic[_ACM]):
         return exit_result
 
 
-_ACMCoro = Callable[..., Awaitable[_ACM]]
-_ACMWrapperFunc = Callable[..., _ACMWrapper[_ACM]]
+_ACMCoro = Callable[..., Awaitable[_ACM_co]]
+_ACMWrapperFunc = Callable[..., _ACMWrapper[_ACM_co]]
 
-def async_context_manager(coro: _ACMCoro[_ACM]) -> _ACMWrapperFunc[_ACM]:
+def async_context_manager(coro: _ACMCoro[_ACM_co]) -> _ACMWrapperFunc[_ACM_co]:
     """Decorator for functions returning asynchronous context managers
 
        This decorator can be used on functions which return objects
@@ -507,7 +507,7 @@ def async_context_manager(coro: _ACMCoro[_ACM]) -> _ACMWrapperFunc[_ACM]:
     """
 
     @functools.wraps(coro)
-    def context_wrapper(*args, **kwargs) -> _ACMWrapper[_ACM]:
+    def context_wrapper(*args, **kwargs) -> _ACMWrapper[_ACM_co]:
         """Return an async context manager wrapper for this coroutine"""
 
         return _ACMWrapper(coro(*args, **kwargs))
@@ -652,7 +652,7 @@ class _RecordMeta(type):
                           ns.get('__annotations__'))
 
             if sys.version_info >= (3, 14) and '__annotate_func__' in ns:
-                # pylint: disable=import-outside-toplevel,import-error
+                # pylint: disable=import-outside-toplevel
                 import annotationlib
 
                 annotate = cast(Callable[[Any], Dict[str, Any]],
@@ -703,7 +703,7 @@ class Record(metaclass=_RecordMeta):
     def _format(self, k: str, v: object) -> Optional[str]:
         """Format a field as a string"""
 
-        # pylint: disable=no-self-use,unused-argument
+        # pylint: disable=unused-argument
 
         return str(v)
 

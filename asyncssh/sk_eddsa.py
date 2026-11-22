@@ -57,9 +57,6 @@ class _SKEd25519Key(SSHKey):
         self._reserved = reserved
 
     def __eq__(self, other: object) -> bool:
-        # This isn't protected access - both objects are _SKEd25519Key instances
-        # pylint: disable=protected-access
-
         return (isinstance(other, type(self)) and
                 self._key.public_value == other._key.public_value and
                 self._application == other._application and
@@ -149,8 +146,6 @@ class _SKEd25519Key(SSHKey):
     def sign_ssh(self, data: bytes, sig_algorithm: bytes) -> bytes:
         """Compute an SSH-encoded signature of the specified data"""
 
-        # pylint: disable=unused-argument
-
         if self._key_handle is None:
             raise ValueError('Key handle needed for signing')
 
@@ -162,8 +157,6 @@ class _SKEd25519Key(SSHKey):
     def verify_ssh(self, data: bytes, sig_algorithm: bytes,
                    packet: SSHPacket) -> bool:
         """Verify an SSH-encoded signature of the specified data"""
-
-        # pylint: disable=unused-argument
 
         sig = packet.get_string()
         flags = packet.get_byte()

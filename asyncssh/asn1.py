@@ -248,8 +248,6 @@ class _Null(DERType):
     def encode(value: object) -> bytes:
         """Encode a DER null value"""
 
-        # pylint: disable=unused-argument
-
         return b''
 
     @classmethod

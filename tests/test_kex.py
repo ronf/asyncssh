@@ -86,8 +86,6 @@ class _KexConnectionStub(ConnectionStub):
     def get_hash_prefix(self):
         """Return the bytes used in calculating unique connection hashes"""
 
-        # pylint: disable=no-self-use
-
         return b'prefix'
 
     def send_newkeys(self, k, h):
@@ -211,8 +209,6 @@ class _KexClientStub(_KexConnectionStub):
 
     def validate_server_host_key(self, host_key_data):
         """Validate and return the server's host key"""
-
-        # pylint: disable=no-self-use
 
         return decode_ssh_public_key(host_key_data)
 

@@ -124,6 +124,8 @@ async def _handle_client(process):
             process.exit_with_signal('ABRT', False,
                                      f'{exc.width}x{exc.height}')
     elif action == 'term_size_tty':
+        # pylint: disable=possibly-used-before-assignment
+
         master, slave = os.openpty()
         await process.redirect_stdin(master, recv_eof=False)
         process.stdout.write(b'\n')

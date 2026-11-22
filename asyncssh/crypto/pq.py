@@ -22,13 +22,15 @@
 
 import ctypes
 import ctypes.util
-from typing import Mapping, Protocol, Tuple, Type, Union
+from typing import Mapping, Optional, Protocol, Tuple, Type, Union
 
 from cryptography.hazmat.backends.openssl import backend
 from cryptography.hazmat.primitives.asymmetric import mlkem
 
 
 _OQS_SUCCESS = 0
+
+_oqs: Optional[ctypes.CDLL] = None
 
 
 class PQKey(Protocol):
@@ -39,7 +41,6 @@ class PQKey(Protocol):
     ciphertext_bytes: int
     secret_bytes: int
 
-    # pylint: disable=super-init-not-called
     def __init__(self, alg_name: bytes) -> None:
         """Construct a PQKey"""
 

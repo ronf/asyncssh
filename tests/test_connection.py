@@ -238,14 +238,10 @@ class _ValidateHostKeyClient(asyncssh.SSHClient):
     def validate_host_public_key(self, host, addr, port, key):
         """Return whether key is an authorized key for this host"""
 
-        # pylint: disable=unused-argument
-
         return key == self._host_key
 
     def validate_host_ca_key(self, host, addr, port, key):
         """Return whether key is an authorized CA key for this host"""
-
-        # pylint: disable=unused-argument
 
         return key == self._ca_key
 
@@ -278,8 +274,6 @@ class _InternalErrorClient(asyncssh.SSHClient):
     def connection_made(self, conn):
         """Raise an error when a new connection is opened"""
 
-        # pylint: disable=unused-argument
-
         raise RuntimeError('Exception handler test')
 
 
@@ -288,8 +282,6 @@ class _ClientCleanupError(asyncssh.SSHClient):
 
     def connection_lost(self, exc):
         """Raise an error when a client is cleaned up"""
-
-        # pylint: disable=unused-argument
 
         raise RuntimeError('Exception in cleanup test')
 
@@ -336,8 +328,6 @@ class _CloseDuringAuthServer(Server):
     async def validate_password(self, username, password):
         """Delay validating password"""
 
-        # pylint: disable=unused-argument
-
         await asyncio.sleep(1)
         return False # pragma: no cover - closed before we get here
 
@@ -347,8 +337,6 @@ class _InternalErrorServer(Server):
 
     def debug_msg_received(self, msg, lang, always_display):
         """Process a debug message"""
-
-        # pylint: disable=unused-argument
 
         raise RuntimeError('Exception handler test')
 
@@ -390,8 +378,6 @@ class _VersionReportingServer(Server):
 @patch('asyncssh.connection.SSHClientConnection', _CheckAlgsClientConnection)
 class _TestConnection(ServerTestCase):
     """Unit tests for AsyncSSH connection API"""
-
-    # pylint: disable=too-many-public-methods
 
     @classmethod
     async def start_server(cls):

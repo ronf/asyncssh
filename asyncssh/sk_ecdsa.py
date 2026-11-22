@@ -62,9 +62,6 @@ class _SKECDSAKey(SSHKey):
         self._reserved = reserved
 
     def __eq__(self, other: object) -> bool:
-        # This isn't protected access - both objects are _SKECDSAKey instances
-        # pylint: disable=protected-access
-
         return (isinstance(other, type(self)) and
                 self._key.curve_id == other._key.curve_id and
                 self._key.public_value == other._key.public_value and
