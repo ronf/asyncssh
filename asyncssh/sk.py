@@ -101,7 +101,8 @@ def _ctap2_enroll(dev: 'CtapHidDevice', alg: int, application: str,
 
     rp = {'id': application, 'name': application}
     user_cred = {'id': user.encode('utf-8'), 'name': user}
-    key_params = [{'type': 'public-key', 'alg': alg}]
+    key_params: List[Mapping[str, object]] = \
+        [{'type': 'public-key', 'alg': alg}]
     options = {'rk': resident}
 
     pin_protocol: Optional[PinProtocolV1]
@@ -120,6 +121,7 @@ def _ctap2_enroll(dev: 'CtapHidDevice', alg: int, application: str,
                                  options=options, pin_uv_param=pin_auth,
                                  pin_uv_protocol=pin_version)
     cdata = cred.auth_data.credential_data
+    assert cdata is not None
 
     # pylint: disable=no-member
     return _decode_public_key(alg, cdata.public_key), cdata.credential_id

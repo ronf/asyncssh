@@ -124,6 +124,7 @@ MaybeAwait = Union[_T, Awaitable[_T]]
 ExcInfo = Tuple[Type[BaseException], BaseException, TracebackType]
 OptExcInfo = Union[ExcInfo, Tuple[None, None, None]]
 
+AnyBytes = Union[bytes, bytearray, memoryview]
 BytesOrStr = Union[bytes, str]
 BytesOrStrDict = Dict[BytesOrStr, BytesOrStr]
 

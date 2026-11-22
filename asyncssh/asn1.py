@@ -504,7 +504,7 @@ class BitString(DERType):
 class IA5String(DERType):
     """An ASCII string value"""
 
-    def __init__(self, value: Union[bytes, bytearray]):
+    def __init__(self, value: bytes):
         self.value = value
 
     def __str__(self) -> str:

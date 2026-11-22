@@ -20,16 +20,11 @@
 
 """SSH compression handlers"""
 
-from typing import Callable, List, Optional
+from typing import Callable, Dict, List, Optional
 import zlib
 
 _cmp_algs: List[bytes] = []
 _default_cmp_algs: List[bytes] = []
-
-_cmp_params = {}
-
-_cmp_compressors = {}
-_cmp_decompressors = {}
 
 
 class Compressor:
@@ -91,6 +86,11 @@ class _ZLibDecompress(Decompressor):
             return None
 
         return None if len(result) > max_length else result
+
+
+_cmp_params: Dict[bytes, bool] = {}
+_cmp_compressors: Dict[bytes, _CompressorType] = {}
+_cmp_decompressors: Dict[bytes, _DecompressorType] = {}
 
 
 def register_compression_alg(alg: bytes, compressor: _CompressorType,

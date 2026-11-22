@@ -20,7 +20,9 @@
 
 """Functions for looking up named elliptic curves by their parameters"""
 
-_curve_param_map = {}
+from typing import Dict, Tuple
+
+_curve_param_map: Dict[Tuple[int, int, int, bytes, int], bytes] = {}
 
 # Short variable names are used here, matching names in the spec
 # pylint: disable=invalid-name

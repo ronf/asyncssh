@@ -65,7 +65,7 @@ def UInt64(value: int) -> bytes:
     return value.to_bytes(8, 'big')
 
 
-def String(value: Union[bytes, str]) -> bytes:
+def String(value: Union[bytes, bytearray, str]) -> bytes:
     """Encode a byte string or UTF-8 string value"""
 
     if isinstance(value, str):

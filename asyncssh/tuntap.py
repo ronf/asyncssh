@@ -30,6 +30,8 @@ import threading
 
 from typing import Callable, Optional, Tuple, cast
 
+from .misc import AnyBytes
+
 if sys.platform != 'win32': # pragma: no branch
     import fcntl
 
@@ -120,7 +122,7 @@ class SSHTunTapTransport(asyncio.Transport):
     def write_eof(self) -> None:
         """Ignore writing EOF on this transport"""
 
-    def write(self, data: bytes) -> None:
+    def write(self, data: AnyBytes) -> None:
         """Write a packet"""
 
         raise NotImplementedError
@@ -218,7 +220,7 @@ class SSHTunTapOSXTransport(SSHTunTapTransport):
                 self._loop.call_soon_threadsafe(
                     self._protocol.data_received, data)
 
-    def write(self, data: bytes) -> None:
+    def write(self, data: AnyBytes) -> None:
         """Write a packet"""
 
         self._file.write(data)
@@ -294,7 +296,7 @@ class SSHDarwinUTunTransport(SSHTunTapTransport):
             else:
                 self._protocol.data_received(data)
 
-    def write(self, data: bytes) -> None:
+    def write(self, data: AnyBytes) -> None:
         """Write a packet"""
 
         version = data[0] >> 4
@@ -381,7 +383,7 @@ class SSHLinuxTunTapTransport(SSHTunTapTransport):
 
                 self._protocol.data_received(data)
 
-    def write(self, data: bytes) -> None:
+    def write(self, data: AnyBytes) -> None:
         """Write a packet"""
 
         self._file.write(data)

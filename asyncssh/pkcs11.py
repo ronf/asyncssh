@@ -28,7 +28,8 @@ from typing import Dict, List, Optional, Sequence, Tuple, Type, Union, cast
 try:
     import pkcs11
     from pkcs11 import Attribute, KeyType, Mechanism, ObjectClass
-    from pkcs11 import PrivateKey, Token
+    from pkcs11 import PrivateKey, PublicKey, Token
+    from pkcs11.types import SignMixin
     from pkcs11.util.rsa import encode_rsa_public_key
     from pkcs11.util.ec import encode_ec_public_key
     pkcs11_available = True
@@ -101,7 +102,8 @@ if pkcs11_available:
             if sig_algorithm.startswith(b'x509v3-'):
                 sig_algorithm = sig_algorithm[7:]
 
-            sig = self._privkey.sign(data, mechanism=mechanisms[sig_algorithm])
+            privkey = cast(SignMixin, self._privkey)
+            sig = privkey.sign(data, mechanism=mechanisms[sig_algorithm])
 
             if self._privkey.key_type == KeyType.EC:
                 length = len(sig) // 2
@@ -204,7 +206,8 @@ if pkcs11_available:
                 encoder = encoders.get(privkey.key_type)
 
                 if encoder:
-                    pubkey = import_public_key(encoder(privkey))
+                    pubkey_data = encoder(cast(PublicKey, privkey))
+                    pubkey = import_public_key(pubkey_data)
 
                     cert = certdict.get(pubkey.public_data)
 
