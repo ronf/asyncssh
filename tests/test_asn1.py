@@ -90,9 +90,14 @@ class _TestASN1(unittest.TestCase):
         (ObjectIdentifier('1.2.840'),         '06032a8648'),
         (ObjectIdentifier('2.5'),             '060155'),
         (ObjectIdentifier('2.40'),            '060178'),
+        (ObjectIdentifier('2.999'),           '06028837'),
+        (ObjectIdentifier('2.25.' + str(2**128 - 1)),
+         '06146983ffffffffffffffffffffffffffffffffff7f'),
 
         (TaggedDERObject(0, None),            'a0020500'),
         (TaggedDERObject(1, None),            'a1020500'),
+        (TaggedDERObject(30, None),           'be020500'),
+        (TaggedDERObject(31, None),           'bf1f020500'),
         (TaggedDERObject(32, None),           'bf20020500'),
         (TaggedDERObject(128, None),          'bf8100020500'),
         (TaggedDERObject(0, None, PRIVATE),   'e0020500'),
@@ -134,8 +139,12 @@ class _TestASN1(unittest.TestCase):
         '1f0001',                             # Incomplete data
 
         '1f80',                               # Incomplete tag
+        '1f818181810100',                     # Tag too large
 
         '0180',                               # Indefinite length
+        '018201',                             # Incomplete length
+        '300202020000',                       # Element longer than parent
+        'a00405000500',                       # Extra data in tagged value
 
         '050001',                             # Unexpected bytes at end
 
@@ -157,14 +166,39 @@ class _TestASN1(unittest.TestCase):
 
         '2300',                               # Constructed bit string
         '03020800',                           # Invalid unused bit count
+        '030101',                             # Unused bits with empty value
+        '03020101',                           # Unused bits not zero
 
         '3600',                               # Constructed IA5 string
 
         '2600',                               # Constructed object identifier
         '0600',                               # Empty object identifier
         '06020080',                           # Invalid component
-        '06020081'                            # Incomplete component
+        '06020081',                           # Incomplete component
+        '0615' + 20*'81' + '01'               # Component too large
     ]
+
+    @staticmethod
+    def _nested_seq(depth):
+        """Return a value with SEQUENCE nested to the requested depth"""
+
+        value = None
+
+        for _ in range(depth):
+            value = (value,)
+
+        return value
+
+    @staticmethod
+    def _nested_tag(depth):
+        """Return a value with tagged values nested to the requested depth"""
+
+        value = None
+
+        for _ in range(depth):
+            value = TaggedDERObject(0, value)
+
+        return value
 
     def test_asn1(self):
         """Unit test ASN.1 module"""
@@ -191,3 +225,12 @@ class _TestASN1(unittest.TestCase):
             with self.subTest(msg='decode error', data=data):
                 with self.assertRaises(ASN1DecodeError):
                     der_decode(codecs.decode(data, 'hex'))
+
+        for nested in (self._nested_seq, self._nested_tag):
+            with self.subTest(msg='max nesting', type=nested.__name__):
+                value = nested(32)
+                self.assertEqual(der_decode(der_encode(value)), value)
+
+            with self.subTest(msg='nesting too deep', type=nested.__name__):
+                with self.assertRaises(ASN1DecodeError):
+                    der_decode(der_encode(nested(33)))
