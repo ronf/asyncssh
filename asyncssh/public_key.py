@@ -2366,7 +2366,7 @@ def _match_next(data: bytes, keytype: bytes, public: bool = False) -> \
         try:
             key_data, end = der_decode_partial(data)
             return 'der', (key_data,), end
-        except ASN1DecodeError:
+        except (ASN1DecodeError, UnicodeDecodeError):
             pass
 
     start = 0
@@ -2418,7 +2418,7 @@ def _decode_pkcs1_private(
     handler = _pem_map.get(pem_name)
     if handler is None:
         raise KeyImportError('Unknown PEM key type: ' +
-                             pem_name.decode('ascii'))
+                             pem_name.decode('ascii', errors='replace'))
 
     key_params = handler.decode_pkcs1_private(key_data)
     if key_params is None:
@@ -2438,7 +2438,7 @@ def _decode_pkcs1_public(pem_name: bytes, key_data: object) -> SSHKey:
     handler = _pem_map.get(pem_name)
     if handler is None:
         raise KeyImportError('Unknown PEM key type: ' +
-                             pem_name.decode('ascii'))
+                             pem_name.decode('ascii', errors='replace'))
 
     key_params = handler.decode_pkcs1_public(key_data)
     if key_params is None:
@@ -2537,11 +2537,13 @@ def _decode_openssh_private(
                 key_size, iv_size, _, _, _, _ = \
                     get_encryption_params(cipher_name)
             except KeyError:
-                raise KeyEncryptionError('Unknown cipher: ' +
-                                         cipher_name.decode('ascii')) from None
+                raise KeyEncryptionError(
+                    'Unknown cipher: ' +
+                    cipher_name.decode('ascii', errors='replace')) from None
 
             if kdf != b'bcrypt':
-                raise KeyEncryptionError('Unknown kdf: ' + kdf.decode('ascii'))
+                raise KeyEncryptionError(
+                    'Unknown kdf: ' + kdf.decode('ascii', errors='replace'))
 
             if not _bcrypt_available: # pragma: no cover
                 raise KeyEncryptionError('OpenSSH private key encryption '
@@ -2601,7 +2603,7 @@ def _decode_openssh_private(
         key = handler.make_private(key_params)
         key.set_comment(comment)
         return key
-    except PacketDecodeError:
+    except (PacketDecodeError, UnicodeDecodeError):
         raise KeyImportError('Invalid OpenSSH private key') from None
 
 
@@ -2722,7 +2724,7 @@ def _decode_pem_private(
 
     try:
         key_data = der_decode(data)
-    except ASN1DecodeError:
+    except (ASN1DecodeError, UnicodeDecodeError):
         raise KeyImportError('Invalid PEM private key') from None
 
     if pem_name == b'ENCRYPTED':
@@ -2750,7 +2752,7 @@ def _decode_pem_public(pem_name: bytes, data: bytes) -> SSHKey:
 
     try:
         key_data = der_decode(data)
-    except ASN1DecodeError:
+    except (ASN1DecodeError, UnicodeDecodeError):
         raise KeyImportError('Invalid PEM public key') from None
 
     if pem_name:
@@ -2767,7 +2769,7 @@ def _decode_pem_certificate(pem_name: bytes, data: bytes) -> SSHCertificate:
         try:
             _, end = der_decode_partial(data)
             data = data[:end]
-        except ASN1DecodeError:
+        except (ASN1DecodeError, UnicodeDecodeError):
             raise KeyImportError('Invalid PEM trusted certificate') from None
     elif pem_name:
         raise KeyImportError('Invalid PEM certificate')
@@ -3031,7 +3033,7 @@ def decode_ssh_public_key(data: bytes) -> SSHKey:
         else:
             raise KeyImportError('Unknown key algorithm: ' +
                                  alg.decode('ascii', errors='replace'))
-    except PacketDecodeError:
+    except (PacketDecodeError, UnicodeDecodeError):
         raise KeyImportError('Invalid public key') from None
 
 

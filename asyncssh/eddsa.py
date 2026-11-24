@@ -91,7 +91,7 @@ class _EdKey(SSHKey):
 
         try:
             return (cast(bytes, der_decode(data)),)
-        except ASN1DecodeError:
+        except (ASN1DecodeError, UnicodeDecodeError):
             return None
 
     @classmethod

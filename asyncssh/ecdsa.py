@@ -132,8 +132,11 @@ class _ECKey(SSHKey):
         if isinstance(private_value, bytes):
             private_value = int.from_bytes(private_value, 'big')
 
-        return cls(ECDSAPrivateKey.construct(curve_id, public_value,
-                                             private_value))
+        try:
+            return cls(ECDSAPrivateKey.construct(curve_id, public_value,
+                                                 private_value))
+        except ValueError:
+            raise KeyImportError('Invalid EC private key') from None
 
     @classmethod
     def make_public(cls, key_params: object) -> SSHKey:
@@ -141,7 +144,10 @@ class _ECKey(SSHKey):
 
         curve_id, public_value = cast(_PublicKeyArgs, key_params)
 
-        return cls(ECDSAPublicKey.construct(curve_id, public_value))
+        try:
+            return cls(ECDSAPublicKey.construct(curve_id, public_value))
+        except ValueError:
+            raise KeyImportError('Invalid EC public key') from None
 
     @classmethod
     def decode_pkcs1_private(cls, key_data: object) -> \
@@ -182,7 +188,7 @@ class _ECKey(SSHKey):
 
         try:
             key_data = der_decode(data)
-        except ASN1DecodeError:
+        except (ASN1DecodeError, UnicodeDecodeError):
             key_data = None
 
         if (isinstance(key_data, tuple) and len(key_data) > 1 and

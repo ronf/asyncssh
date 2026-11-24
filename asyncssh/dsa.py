@@ -26,7 +26,8 @@ from .asn1 import ASN1DecodeError, ObjectIdentifier, der_encode, der_decode
 from .crypto import DSAPrivateKey, DSAPublicKey
 from .misc import all_ints
 from .packet import MPInt, String, SSHPacket
-from .public_key import SSHKey, SSHOpenSSHCertificateV01, KeyExportError
+from .public_key import SSHKey, SSHOpenSSHCertificateV01
+from .public_key import KeyImportError, KeyExportError
 from .public_key import register_public_key_alg, register_certificate_alg
 from .public_key import register_x509_certificate_alg
 
@@ -74,7 +75,10 @@ class _DSAKey(SSHKey):
 
         p, q, g, y, x = cast(_PrivateKeyArgs, key_params)
 
-        return cls(DSAPrivateKey.construct(p, q, g, y, x))
+        try:
+            return cls(DSAPrivateKey.construct(p, q, g, y, x))
+        except ValueError:
+            raise KeyImportError('Invalid DSA private key') from None
 
     @classmethod
     def make_public(cls, key_params: object) -> SSHKey:
@@ -82,7 +86,10 @@ class _DSAKey(SSHKey):
 
         p, q, g, y = cast(_PublicKeyArgs, key_params)
 
-        return cls(DSAPublicKey.construct(p, q, g, y))
+        try:
+            return cls(DSAPublicKey.construct(p, q, g, y))
+        except ValueError:
+            raise KeyImportError('Invalid DSA public key') from None
 
     @classmethod
     def decode_pkcs1_private(cls, key_data: object) -> \
@@ -114,13 +121,18 @@ class _DSAKey(SSHKey):
 
         try:
             x = der_decode(data)
-        except ASN1DecodeError:
+        except (ASN1DecodeError, UnicodeDecodeError):
             return None
 
         if (isinstance(alg_params, tuple) and len(alg_params) == 3 and
                 all_ints(alg_params) and isinstance(x, int)):
             p, q, g = alg_params
-            y: int = pow(g, x, p)
+
+            try:
+                y: int = pow(g, x, p)
+            except ValueError:
+                return None
+
             return p, q, g, y, x
         else:
             return None
@@ -132,7 +144,7 @@ class _DSAKey(SSHKey):
 
         try:
             y = der_decode(data)
-        except ASN1DecodeError:
+        except (ASN1DecodeError, UnicodeDecodeError):
             return None
 
         if (isinstance(alg_params, tuple) and len(alg_params) == 3 and

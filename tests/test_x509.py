@@ -20,10 +20,15 @@
 
 """Unit tests for X.509 certificate handling"""
 
+from datetime import datetime, timedelta, timezone
 import time
 import unittest
 
 from cryptography import x509
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.serialization import Encoding
+
+from asyncssh.asn1 import der_encode
 
 from .util import get_test_key, x509_available
 
@@ -33,6 +38,7 @@ if x509_available: # pragma: no branch
     from asyncssh.crypto import import_x509_certificate
 
 _purpose_secureShellClient = x509.ObjectIdentifier('1.3.6.1.5.5.7.3.21')
+_nscomment_oid = x509.ObjectIdentifier('2.16.840.1.113730.1.13')
 
 
 @unittest.skipUnless(x509_available, 'X.509 not available')
@@ -120,6 +126,28 @@ class _TestX509(unittest.TestCase):
 
         self.generate_certificate(comment=b'comment')
         self.generate_certificate(comment='comment')
+
+    def test_invalid_comment(self):
+        """Test importing an X.509 certificate with an invalid comment"""
+
+        name = x509.Name([x509.NameAttribute(x509.NameOID.COMMON_NAME, 'x')])
+        now = datetime.now(timezone.utc)
+
+        for comment_der in (der_encode(0), b'\x16'):
+            with self.subTest(comment_der=comment_der):
+                cert = x509.CertificateBuilder(
+                    subject_name=name, issuer_name=name,
+                    public_key=self._pubkey.pyca_key, serial_number=1,
+                    not_valid_before=now,
+                    not_valid_after=now + timedelta(days=1),
+                    extensions=[x509.Extension(
+                        _nscomment_oid, False,
+                        x509.UnrecognizedExtension(_nscomment_oid,
+                                                   comment_der))]
+                ).sign(self._privkey.pyca_key, hashes.SHA256())
+
+                with self.assertRaises(ValueError):
+                    import_x509_certificate(cert.public_bytes(Encoding.DER))
 
     def test_unknown_hash(self):
         """Test X.509 certificate generation with unknown hash"""

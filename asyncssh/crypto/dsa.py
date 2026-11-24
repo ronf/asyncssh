@@ -113,7 +113,11 @@ class DSAPublicKey(_DSAKey):
 
         params = dsa.DSAParameterNumbers(p, q, g)
         pub = dsa.DSAPublicNumbers(y, params)
-        pub_key = pub.public_key()
+
+        try:
+            pub_key = pub.public_key()
+        except OverflowError as exc:
+            raise ValueError(str(exc)) from None
 
         return cls(pub_key, params, pub)
 

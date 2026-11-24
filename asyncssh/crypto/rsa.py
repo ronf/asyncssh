@@ -100,8 +100,12 @@ class RSAPrivateKey(_RSAKey):
 
         pub = rsa.RSAPublicNumbers(e, n)
         priv = rsa.RSAPrivateNumbers(p, q, d, dmp1, dmq1, iqmp, pub)
-        priv_key = priv.private_key(
-            unsafe_skip_rsa_key_validation=skip_validation)
+
+        try:
+            priv_key = priv.private_key(
+                unsafe_skip_rsa_key_validation=skip_validation)
+        except OverflowError as exc:
+            raise ValueError(str(exc)) from None
 
         return cls(priv_key, pub, priv)
 
@@ -140,7 +144,11 @@ class RSAPublicKey(_RSAKey):
         """Construct an RSA public key"""
 
         pub = rsa.RSAPublicNumbers(e, n)
-        pub_key = pub.public_key()
+
+        try:
+            pub_key = pub.public_key()
+        except OverflowError as exc:
+            raise ValueError(str(exc)) from None
 
         return cls(pub_key, pub)
 

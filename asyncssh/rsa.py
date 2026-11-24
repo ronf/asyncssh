@@ -26,7 +26,8 @@ from .asn1 import ASN1DecodeError, ObjectIdentifier, der_encode, der_decode
 from .crypto import RSAPrivateKey, RSAPublicKey
 from .misc import all_ints
 from .packet import MPInt, String, SSHPacket
-from .public_key import SSHKey, SSHOpenSSHCertificateV01, KeyExportError
+from .public_key import SSHKey, SSHOpenSSHCertificateV01
+from .public_key import KeyImportError, KeyExportError
 from .public_key import register_public_key_alg, register_certificate_alg
 from .public_key import register_x509_certificate_alg
 
@@ -137,8 +138,12 @@ class RSAKey(SSHKey):
         if unsafe_skip_rsa_key_validation is None:
             unsafe_skip_rsa_key_validation = _default_skip_rsa_key_validation
 
-        return cls(RSAPrivateKey.construct(n, e, d, p, q, dmp1, dmq1, iqmp,
-                                           unsafe_skip_rsa_key_validation))
+        try:
+            return cls(RSAPrivateKey.construct(
+                n, e, d, p, q, dmp1, dmq1, iqmp,
+                unsafe_skip_rsa_key_validation))
+        except ValueError:
+            raise KeyImportError('Invalid RSA private key') from None
 
     @classmethod
     def make_public(cls, key_params: object) -> SSHKey:
@@ -146,7 +151,10 @@ class RSAKey(SSHKey):
 
         n, e = cast(_PublicKeyArgs, key_params)
 
-        return cls(RSAPublicKey.construct(n, e))
+        try:
+            return cls(RSAPublicKey.construct(n, e))
+        except ValueError:
+            raise KeyImportError('Invalid RSA public key') from None
 
     @classmethod
     def decode_pkcs1_private(cls, key_data: object) -> \
@@ -180,7 +188,7 @@ class RSAKey(SSHKey):
 
         try:
             key_data = der_decode(data)
-        except ASN1DecodeError:
+        except (ASN1DecodeError, UnicodeDecodeError):
             return None
 
         return cls.decode_pkcs1_private(key_data)
@@ -195,7 +203,7 @@ class RSAKey(SSHKey):
 
         try:
             key_data = der_decode(data)
-        except ASN1DecodeError:
+        except (ASN1DecodeError, UnicodeDecodeError):
             return None
 
         return cls.decode_pkcs1_public(key_data)

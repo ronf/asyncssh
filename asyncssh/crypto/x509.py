@@ -265,10 +265,16 @@ class X509Certificate:
         try:
             comment = cert.extensions.get_extension_for_oid(_nscomment_oid)
             comment_der = cast(x509.UnrecognizedExtension, comment.value).value
-            self.comment: Optional[bytes] = \
-                cast(IA5String, der_decode(comment_der)).value
+            comment_value = der_decode(comment_der)
         except x509.ExtensionNotFound:
-            self.comment = None
+            comment_value = None
+
+        if comment_value is None:
+            self.comment: Optional[bytes] = None
+        elif isinstance(comment_value, IA5String):
+            self.comment = comment_value.value
+        else:
+            raise ValueError('Invalid X.509 certificate comment')
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, X509Certificate): # pragma: no cover
