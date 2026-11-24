@@ -76,10 +76,22 @@ class DSAPrivateKey(_DSAKey):
 
     @classmethod
     def construct(cls, p: int, q: int, g: int,
-                  y: int, x: int) -> 'DSAPrivateKey':
-        """Construct a DSA private key"""
+                  y: Optional[int], x: int) -> 'DSAPrivateKey':
+        """Construct a DSA private key, computing y if it isn't provided"""
 
         params = dsa.DSAParameterNumbers(p, q, g)
+
+        if y is None:
+            # Check the parameters before computing y, and reduce x
+            # mod q to bound the cost; an x >= q is rejected below
+
+            try:
+                params.parameters()
+            except OverflowError as exc:
+                raise ValueError(str(exc)) from None
+
+            y = pow(g, x % q, p)
+
         pub = dsa.DSAPublicNumbers(y, params)
         priv = dsa.DSAPrivateNumbers(x, pub)
         priv_key = priv.private_key()

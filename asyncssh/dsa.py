@@ -32,7 +32,7 @@ from .public_key import register_public_key_alg, register_certificate_alg
 from .public_key import register_x509_certificate_alg
 
 
-_PrivateKeyArgs = Tuple[int, int, int, int, int]
+_PrivateKeyArgs = Tuple[int, int, int, Optional[int], int]
 _PublicKeyArgs = Tuple[int, int, int, int]
 
 
@@ -127,13 +127,7 @@ class _DSAKey(SSHKey):
         if (isinstance(alg_params, tuple) and len(alg_params) == 3 and
                 all_ints(alg_params) and isinstance(x, int)):
             p, q, g = alg_params
-
-            try:
-                y: int = pow(g, x, p)
-            except ValueError:
-                return None
-
-            return p, q, g, y, x
+            return p, q, g, None, x
         else:
             return None
 

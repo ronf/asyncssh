@@ -2341,14 +2341,25 @@ class _TestPublicKeyTopLevel(TempDirTestCase):
         dsa_pub = list(der_decode(
             get_test_key('ssh-dss').export_public_key('pkcs1-der')))
         dsa_pub[0] = -1
+        dsa_p, dsa_q, dsa_g = dsa_pub[1:]
+
+        def dsa_pkcs8(p, q, g, x):
+            """Return a PKCS#8 DSA private key with the specified values"""
+
+            return der_encode((0, (dsa_oid, (p, q, g)), der_encode(x)))
 
         private_keys = [
             ('RSA', _pem(b'RSA PRIVATE KEY', der_encode(9*(0,)))),
             ('RSA negative private exponent',
              _pem(b'RSA PRIVATE KEY', der_encode(tuple(rsa_priv)))),
             ('DSA', _pem(b'DSA PRIVATE KEY', der_encode(6*(0,)))),
-            ('DSA zero modulus',
-             der_encode((0, (dsa_oid, (0, 1, 2)), der_encode(1)))),
+            ('DSA zero modulus', dsa_pkcs8(0, 1, 2, 1)),
+            ('DSA oversized modulus',
+             dsa_pkcs8((1 << 16384) - 1, dsa_q, dsa_g, (1 << 16384) - 1)),
+            ('DSA negative subgroup order',
+             dsa_pkcs8(dsa_p, -dsa_q, dsa_g, 1)),
+            ('DSA oversized private value',
+             dsa_pkcs8(dsa_p, dsa_q, dsa_g, 1 << 100000)),
             ('EC', _pem(b'EC PRIVATE KEY',
                         der_encode((1, b'\0', TaggedDERObject(0, curve_oid))))),
             ('U2F ECDSA',
