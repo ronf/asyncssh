@@ -202,6 +202,71 @@ class _TestConfig(TempDirTestCase):
         config = self._parse_config('Include config.d/*')
         self.assertEqual(config.get('Port'), 2222)
 
+    def test_glob_skips_hidden_and_sorts(self):
+        """Test that a glob skips hidden files and sorts the files it matches"""
+
+        os.mkdir('.ssh/hidden.d')
+
+        with open('.ssh/hidden.d/.DS_Store', 'wb') as f:
+            f.write(b'\x00\x80')
+
+        for name, port in (('b', 2223), ('a', 2222)):
+            with open(f'.ssh/hidden.d/{name}', 'w') as f:
+                f.write(f'Port {port}\n')
+
+        config = self._parse_config('Include hidden.d/*')
+        self.assertEqual(config.get('Port'), 2222)
+
+    def test_glob_skips_hidden_dir(self):
+        """Test that a glob skips files in a hidden directory"""
+
+        os.makedirs('.ssh/.git')
+        os.makedirs('.ssh/visible')
+
+        with open('.ssh/.git/config', 'w') as f:
+            f.write('Port 2223\nAddressFamily inet\n')
+
+        with open('.ssh/visible/config', 'w') as f:
+            f.write('Port 2222\n')
+
+        config = self._parse_config('Include */config')
+        self.assertEqual(config.get('Port'), 2222)
+        self.assertIsNone(config.get('AddressFamily'))
+
+    def test_include_hidden_explicit(self):
+        """Test including hidden files named explicitly in the pattern"""
+
+        os.makedirs('.ssh/.hidden.d')
+
+        with open('.ssh/.hidden', 'w') as f:
+            f.write('Port 2222\n')
+
+        with open('.ssh/.hidden.d/.conf', 'w') as f:
+            f.write('AddressFamily inet\n')
+
+        config = self._parse_config('Include .hidden .hidden.d/.*')
+        self.assertEqual(config.get('Port'), 2222)
+        self.assertEqual(config.get('AddressFamily'), socket.AF_INET)
+
+    def test_glob_recursive(self):
+        """Test a '**' glob matching files at any depth"""
+
+        os.makedirs('.ssh/recurse.d/sub1/sub2')
+        os.makedirs('.ssh/recurse.d/.hidden')
+
+        with open('.ssh/recurse.d/.hidden/conf', 'w') as f:
+            f.write('Port 2223\nAddressFamily inet6\n')
+
+        with open('.ssh/recurse.d/sub1/sub2/conf', 'w') as f:
+            f.write('Port 2222\n')
+
+        with open('.ssh/recurse.d/top', 'w') as f:
+            f.write('Port 2224\nAddressFamily inet\n')
+
+        config = self._parse_config('Include recurse.d/**')
+        self.assertEqual(config.get('Port'), 2222)
+        self.assertEqual(config.get('AddressFamily'), socket.AF_INET)
+
     def test_match_all(self):
         """Test a match block which always matches"""
 

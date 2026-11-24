@@ -1590,7 +1590,12 @@ the config options themselves, not all match criteria  are supported,
 but the supported criteria should function similar to OpenSSH.
 
 AsyncSSH also supports the "Include" directive, to allow one config
-file trigger the loading of others.
+file trigger the loading of others. As in OpenSSH, wildcards in
+included paths don't match hidden files or directories unless the
+pattern explicitly begins with a '.', and matching files are loaded
+in sorted order. As an extension, AsyncSSH also allows a path
+component of '**' to match zero or more levels of directories,
+loading files at any depth below that point.
 
 .. index:: Supported client config options
 .. _SupportedClientConfigOptions:
