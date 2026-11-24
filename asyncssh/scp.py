@@ -24,9 +24,11 @@
 
 import argparse
 import asyncio
+from fnmatch import fnmatchcase
 import inspect
 from pathlib import PurePath
 import posixpath
+import re
 import shlex
 import string
 import sys
@@ -58,6 +60,24 @@ _SCPConnPath = Union[Tuple[_SCPConn, _SCPPath], _SCPConn, _SCPPath]
 
 
 _SCP_BLOCK_SIZE = 256*1024    # 256 KiB
+
+# Characters with a special meaning to the shell when not quoted
+_SHELL_SPECIAL = '*?[]{},$`;|&<>()#~'
+
+# Placeholders for quoted special characters and simple variables, using
+# code points which can't result from decoding a path as UTF-8
+_SHELL_PROTECT = {ord(c): 0xd800 + ord(c) for c in _SHELL_SPECIAL}
+_SHELL_RESTORE = {0xd800 + ord(c): f'[{c}]' if c in '*?[' else c
+                  for c in _SHELL_SPECIAL}
+_SHELL_VAR = '\ud8ff'
+
+_SHELL_VAR_RE = r'\$(?:[A-Za-z_]\w*|\{[A-Za-z_]\w*\})'
+_SHELL_TOKEN = re.compile(r"""\\.?|'[^']*'|"(?:\\.|[^"\\])*"|""" +
+                          _SHELL_VAR_RE, re.DOTALL)
+_SHELL_DQ_TOKEN = re.compile(r'\\.|' + _SHELL_VAR_RE + r'|[^$`]', re.DOTALL)
+_SHELL_UNKNOWN = re.compile(r'[$`;|&<>()\n]|(?:^|\s)#|\{[^{},]*\.\.[^{},]*\}')
+_SHELL_BRACES = re.compile(r'\{([^{}]*,[^{}]*)\}')
+_SHELL_PLACEHOLDER = re.compile('[\ud800-\ud8ff]')
 
 
 class _SCPFileProtocol(Protocol):
@@ -154,6 +174,144 @@ def _parse_t_args(args: bytes) -> Tuple[int, int]:
         return int(atime), int(mtime)
     except ValueError:
         raise _scp_error(SFTPBadMessage, 'Invalid time request') from None
+
+
+def _protect_double_quoted(match: 're.Match[str]') -> str:
+    """Protect part of a double-quoted string from shell interpretation"""
+
+    text = match[0]
+
+    if text[0] == '$':
+        return _SHELL_VAR
+    elif text[0] == '\\':
+        protected = text[1].translate(_SHELL_PROTECT)
+        return protected if text[1] in '$`' else text[0] + protected
+    else:
+        return text.translate(_SHELL_PROTECT)
+
+
+def _protect_shell_token(match: 're.Match[str]') -> str:
+    """Protect quoted text and replace simple variables in a shell token"""
+
+    text = match[0]
+
+    if text[0] == '$':
+        return _SHELL_VAR
+    elif text[0] == '"':
+        return '"' + _SHELL_DQ_TOKEN.sub(_protect_double_quoted,
+                                         text[1:-1]) + '"'
+    elif text[0] == '\\':
+        # A trailing backslash has nothing to escape
+        return text[0] + text[1].translate(_SHELL_PROTECT) \
+            if len(text) > 1 else ''
+    else:
+        return text.translate(_SHELL_PROTECT)
+
+
+def _expand_braces(word: str) -> List[str]:
+    """Expand brace lists in a shell word"""
+
+    match = _SHELL_BRACES.search(word)
+
+    if not match:
+        return [word]
+
+    return [result for part in match[1].split(',')
+            for result in _expand_braces(word[:match.start()] + part +
+                                         word[match.end():])]
+
+
+def _word_to_pattern(word: str) -> Optional[bytes]:
+    """Return a pattern for the final path component of a shell word
+
+       `None` is returned if the name sent by the server for this
+       component can't be determined from the request.
+
+    """
+
+    word = word.rstrip('/')
+    name = word.rpartition('/')[2]
+
+    if name in ('', '.', '..') or _SHELL_VAR in name or \
+            (name == word and name.startswith('~')):
+        return None
+
+    if '[' in name and ('[^' in name or '[[' in name or
+                        _SHELL_PLACEHOLDER.search(name)):
+        return None
+
+    return name.translate(_SHELL_RESTORE).encode('utf-8', 'surrogateescape')
+
+
+def _parse_name_patterns(path: bytes) -> Optional[List[bytes]]:
+    """Parse a remote path into patterns for the names it can match
+
+       Remote paths are interpreted by the remote shell. Quoted special
+       characters are protected before splitting the path into words,
+       so they remain literal. `None` is returned if the final name in
+       any of the words depends on an expansion done by the shell.
+       Backslashes could either be shell escapes or Windows path
+       separators, so patterns for both are returned.
+
+    """
+
+    text = path.decode('utf-8', 'surrogateescape')
+    protected = _SHELL_TOKEN.sub(_protect_shell_token, text)
+
+    if _SHELL_UNKNOWN.search(protected):
+        return None
+
+    try:
+        words = shlex.split(protected)
+    except ValueError:
+        return None
+
+    if not words:
+        return None
+
+    # Keep the unexpanded word for shells without brace expansion
+    candidates = [candidate for word in words
+                  for candidate in [word] + _expand_braces(word)]
+
+    if '\\' in text:
+        if text.count('%') >= 2:
+            return None
+
+        candidates.append(text.strip('"').replace('\\', '/'))
+
+    patterns = [_word_to_pattern(candidate) for candidate in candidates]
+
+    return None if None in patterns else cast(List[bytes], patterns)
+
+
+def _get_name_patterns(path: _SCPPath,
+                       recurse: bool) -> Optional[List[bytes]]:
+    """Return patterns for top-level names expected from a remote source
+
+       If the expected names can't be determined, a recursive copy
+       doesn't check them (`None`), but any other copy rejects all
+       names (an empty list).
+
+    """
+
+    if isinstance(path, PurePath):
+        path = str(path)
+
+    if isinstance(path, str):
+        path = path.encode('utf-8')
+
+    patterns = _parse_name_patterns(path)
+
+    return [] if patterns is None and not recurse else patterns
+
+
+def _check_name(name: bytes, patterns: Optional[Sequence[bytes]]) -> None:
+    """Confirm a top-level name from a remote source was requested"""
+
+    if patterns is not None and \
+            not any(fnmatchcase(name, pattern) for pattern in patterns):
+        raise _scp_error(SFTPBadMessage, 'Unexpected filename', name,
+                         fatal=True)
 
 
 async def _parse_path(path: _SCPConnPath, **kwargs) -> \
@@ -600,10 +758,12 @@ class _SCPSink(_SCPHandler):
                  writer: 'SSHWriter[bytes]', must_be_dir: bool, preserve: bool,
                  recurse: bool, block_size: int = _SCP_BLOCK_SIZE,
                  progress_handler: SFTPProgressHandler = None,
-                 error_handler: SFTPErrorHandler = None, server: bool = False):
+                 error_handler: SFTPErrorHandler = None, server: bool = False,
+                 name_patterns: Optional[Sequence[bytes]] = None):
         super().__init__(reader, writer, error_handler, server)
 
         self._fs = fs
+        self._name_patterns = name_patterns
         self._must_be_dir = must_be_dir
         self._preserve = preserve
         self._recurse = recurse
@@ -711,6 +871,9 @@ class _SCPSink(_SCPHandler):
                     try:
                         attrs.permissions, size, name = _parse_cd_args(args)
 
+                        if not srcpath:
+                            _check_name(name, self._name_patterns)
+
                         new_srcpath = posixpath.join(srcpath, name)
 
                         if await self._fs.isdir(dstpath):
@@ -769,9 +932,11 @@ class _SCPCopier:
                  dst_writer: 'SSHWriter[bytes]',
                  block_size: int = _SCP_BLOCK_SIZE,
                  progress_handler: SFTPProgressHandler = None,
-                 error_handler: SFTPErrorHandler = None):
+                 error_handler: SFTPErrorHandler = None,
+                 name_patterns: Optional[Sequence[bytes]] = None):
         self._source = _SCPHandler(src_reader, src_writer)
         self._sink = _SCPHandler(dst_reader, dst_writer)
+        self._name_patterns = name_patterns
         self._logger = self._source.logger
         self._block_size = block_size
         self._progress_handler = progress_handler
@@ -865,6 +1030,9 @@ class _SCPCopier:
 
             assert args is not None
 
+            if action in b'CD' and not pathlist:
+                _check_name(_parse_cd_args(args)[2], self._name_patterns)
+
             self._sink.send_request(action, args)
 
             if action in b'\x01\x02':
@@ -928,7 +1096,8 @@ class _SCPCopier:
 
 async def scp(srcpaths: Union[_SCPConnPath, Sequence[_SCPConnPath]],
               dstpath: _SCPConnPath = None, *, preserve: bool = False,
-              recurse: bool = False, block_size: int = _SCP_BLOCK_SIZE,
+              recurse: bool = False, check_names: bool = True,
+              block_size: int = _SCP_BLOCK_SIZE,
               progress_handler: SFTPProgressHandler = None,
               error_handler: SFTPErrorHandler = None, **kwargs) -> None:
     """Copy files using SCP
@@ -977,6 +1146,17 @@ async def scp(srcpaths: Union[_SCPConnPath, Sequence[_SCPConnPath]],
        If recurse is `True` and the source path points at a directory,
        the entire subtree under that directory is copied.
 
+       If check_names is `True` (the default), the top-level names sent
+       by a remote source must match the requested path, including any
+       wildcards, and the copy is aborted if they don't. This prevents
+       a malicious server from writing files which weren't requested
+       into the destination directory. Names below a requested directory
+       can't be checked. If the final name in a path depends on an
+       expansion by the remote shell, such as '~' or a variable, a
+       recursive copy doesn't check names and any other copy is aborted.
+       This option can be set to `False` to allow such a copy or if a
+       remote system returns names which differ from the request.
+
        Symbolic links found on the source will have the contents of their
        target copied rather than creating a destination symbolic link.
        When using this option during a recursive copy, one needs to watch
@@ -1016,6 +1196,8 @@ async def scp(srcpaths: Union[_SCPConnPath, Sequence[_SCPConnPath]],
            Whether or not to preserve the original file attributes
        :param recurse: (optional)
            Whether or not to recursively copy directories
+       :param check_names: (optional)
+           Whether or not to check names sent by a remote source
        :param block_size: (optional)
            The block size to use for file reads and writes
        :param progress_handler: (optional)
@@ -1024,6 +1206,7 @@ async def scp(srcpaths: Union[_SCPConnPath, Sequence[_SCPConnPath]],
            The function to call when an error occurs
        :type preserve: `bool`
        :type recurse: `bool`
+       :type check_names: `bool`
        :type block_size: `int`
        :type progress_handler: `callable`
        :type error_handler: `callable`
@@ -1048,6 +1231,9 @@ async def scp(srcpaths: Union[_SCPConnPath, Sequence[_SCPConnPath]],
         for srcpath in srcpaths:
             srcconn, srcpath, close_src = await _parse_path(srcpath, **kwargs)
 
+            name_patterns = _get_name_patterns(srcpath, recurse) \
+                if srcconn and check_names else None
+
             try:
                 if srcconn and dstconn:
                     src_reader, src_writer = await _start_remote(
@@ -1058,7 +1244,8 @@ async def scp(srcpaths: Union[_SCPConnPath, Sequence[_SCPConnPath]],
 
                     copier = _SCPCopier(src_reader, src_writer, dst_reader,
                                         dst_writer, block_size,
-                                        progress_handler, error_handler)
+                                        progress_handler, error_handler,
+                                        name_patterns)
 
                     await copier.run()
                 elif srcconn:
@@ -1067,7 +1254,8 @@ async def scp(srcpaths: Union[_SCPConnPath, Sequence[_SCPConnPath]],
 
                     sink = _SCPSink(local_fs, reader, writer, must_be_dir,
                                     preserve, recurse, block_size,
-                                    progress_handler, error_handler)
+                                    progress_handler, error_handler,
+                                    name_patterns=name_patterns)
 
                     await sink.run(dstpath)
                 elif dstconn:

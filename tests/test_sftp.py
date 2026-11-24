@@ -22,9 +22,10 @@
 
 import asyncio
 import errno
+from fnmatch import fnmatchcase
 import functools
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import posixpath
 import shutil
 import stat
@@ -70,6 +71,8 @@ from asyncssh import FX_OK, scp
 from asyncssh.misc import make_sparse_file
 
 from asyncssh.packet import SSHPacket, String, UInt32
+
+from asyncssh.scp import _get_name_patterns
 
 from asyncssh.sftp import SAFE_SFTP_READ_LEN, SAFE_SFTP_WRITE_LEN
 from asyncssh.sftp import LocalFile, SFTPHandler, SFTPLimits, SFTPServerHandler
@@ -6734,6 +6737,90 @@ class _TestSCPIOError(_CheckSCP):
             remove('src dst')
 
 
+class _TestSCPNamePatterns(unittest.TestCase):
+    """Unit tests for matching names against a requested SCP path"""
+
+    def _matches(self, path, name):
+        """Return whether a name is accepted for a requested path"""
+
+        patterns = _get_name_patterns(path, False)
+
+        return any(fnmatchcase(name, pattern) for pattern in patterns)
+
+    def test_accepted(self):
+        """Test names which should be accepted"""
+
+        for path, name in ((b'report.txt', b'report.txt'),
+                           ('dir/report.txt', b'report.txt'),
+                           (PurePosixPath('dir/report.txt'), b'report.txt'),
+                           (b'dir/', b'dir'),
+                           (b'~/report.txt', b'report.txt'),
+                           (b'report*.txt', b'report1.txt'),
+                           (b'report?.txt', b'report1.txt'),
+                           (b'report[0-9].txt', b'report1.txt'),
+                           (b'{a,b}.txt', b'b.txt'),
+                           (b'{a,b{c,d}}.txt', b'bd.txt'),
+                           (b'{a,b}.txt', b'{a,b}.txt'),
+                           (b'{x}.txt', b'{x}.txt'),
+                           (b'{a.txt', b'{a.txt'),
+                           (b'a.txt b.txt', b'b.txt'),
+                           (b'a.txt  b.txt ', b'b.txt'),
+                           (b'report\\', b'report'),
+                           (b'C:\\dir\\*.txt', b'report.txt'),
+                           (b'my\\ file.txt', b'my file.txt'),
+                           (b'"my file.txt"', b'my file.txt'),
+                           (b"'my file.txt'", b'my file.txt'),
+                           (b'"a\\"b"', b'a"b'),
+                           (b"'a*b'", b'a*b'),
+                           (b'a\\*b', b'a*b'),
+                           (b'"a*b"', b'a*b'),
+                           (b"[a'b']", b'b'),
+                           (b'$HOME/report.txt', b'report.txt'),
+                           (b'${HOME}/report.txt', b'report.txt'),
+                           (b'"$HOME/report.txt"', b'report.txt'),
+                           (b'"${HOME}/my file.txt"', b'my file.txt'),
+                           (b"'a$b'", b'a$b'),
+                           (b'a\\$b', b'a$b'),
+                           (b'"a\\$b"', b'a$b'),
+                           (b'"a (1).txt"', b'a (1).txt'),
+                           (b'C:\\Users\\me\\report.txt', b'report.txt'),
+                           (b'"C:\\My Files\\report.txt"', b'report.txt')):
+            with self.subTest(path=path, name=name):
+                self.assertTrue(self._matches(path, name))
+
+    def test_rejected(self):
+        """Test names which should be rejected"""
+
+        for path, name in ((b'report.txt', b'.bashrc'),
+                           (b'dir/report.txt', b'dir'),
+                           (b'reports', b'.ssh'),
+                           (b'report*.txt', b'.bashrc'),
+                           (b'{a,b}.txt', b'c.txt'),
+                           (b"'a*b'", b'axb'),
+                           (b'"a*b"', b'axb'),
+                           (b'$HOME/report.txt', b'.bashrc'),
+                           (b'"$HOME/report.txt"', b'.bashrc'),
+                           (b'a\\*b', b'axc'),
+                           (b'a.txt b.txt', b'c.txt'),
+                           (b'C:\\Users\\report.txt', b'.bashrc')):
+            with self.subTest(path=path, name=name):
+                self.assertFalse(self._matches(path, name))
+
+    def test_undetermined(self):
+        """Test paths whose final name can't be determined"""
+
+        for path in (b'', b'.', b'..', b'/', b'dir/.', b'dir/..', b'~',
+                     b'~user', b'$HOME', b'"$HOME"', b'report$N.txt',
+                     b'${HOME}', b'`pwd`', b'"`pwd`"', b'`pwd`/a',
+                     b'$(pwd)/a', b'"$(pwd)/a"', b'${X:-a}/b', b'$1/a',
+                     b'a;b', b'#a', b'"a', b'{1..3}.txt', b'{a,{1..3}}',
+                     b'[^a]', b'[[:alpha:]]', b"[a'*']", b'a\\\nb',
+                     b'dir\\%NAME%', b'{a,~}'):
+            with self.subTest(path=path):
+                self.assertIsNone(_get_name_patterns(path, True))
+                self.assertEqual(_get_name_patterns(path, False), [])
+
+
 class _TestSCPErrors(_CheckSCP):
     """Unit test for SCP returning error on startup"""
 
@@ -6757,10 +6844,21 @@ class _TestSCPErrors(_CheckSCP):
                     process.stdout.write('C0644 0 .\n')
                 elif command.endswith('get_dir_no_recurse'):
                     await process.stdin.read(1)
-                    process.stdout.write('D0755 0 src\n')
+                    process.stdout.write('D0755 0 get_dir_no_recurse\n')
+                elif command.endswith('get_unrequested_file'):
+                    await process.stdin.read(1)
+                    process.stdout.write('C0644 5 .bashrc\n')
+
+                    if await process.stdin.read(1) == '\0':
+                        process.stdout.write('data\n\0')
+                        await process.stdin.read(1)
+                elif command.endswith('get_unrequested_dir'):
+                    await process.stdin.read(1)
+                    process.stdout.write('D0755 0 .ssh\n')
+                    await process.stdin.read(1)
                 elif command.endswith('get_early_eof'):
                     await process.stdin.read(1)
-                    process.stdout.write('C0644 10 src\n')
+                    process.stdout.write('C0644 10 get_early_eof\n')
                     await process.stdin.read(1)
                 elif command.endswith('get_extra_e'):
                     await process.stdin.read(1)
@@ -6821,6 +6919,66 @@ class _TestSCPErrors(_CheckSCP):
                 await scp((self._scp_server, 'get_dir_no_recurse'), 'dst')
         finally:
             remove('dst')
+
+    @asynctest
+    async def test_get_unrequested_name(self):
+        """Test receiving top-level names which weren't requested"""
+
+        for name, kwargs in (('get_unrequested_file', {}),
+                             ('get_unrequested_dir', {'recurse': True})):
+            with self.subTest(name=name):
+                try:
+                    os.mkdir('dst')
+
+                    with self.assertRaises(SFTPBadMessage):
+                        await scp((self._scp_server, name), 'dst',
+                                  error_handler=lambda exc: None, **kwargs)
+
+                    self.assertEqual(os.listdir('dst'), [])
+                finally:
+                    remove('dst')
+
+    @asynctest
+    async def test_get_expanded_name(self):
+        """Test names which depend on an expansion by the remote shell"""
+
+        path = '$get_unrequested_file'
+
+        try:
+            os.mkdir('dst')
+
+            with self.assertRaises(SFTPBadMessage):
+                await scp((self._scp_server, path), 'dst')
+
+            self.assertEqual(os.listdir('dst'), [])
+
+            await scp((self._scp_server, path), 'dst', recurse=True)
+
+            self.assertTrue(os.path.exists('dst/.bashrc'))
+        finally:
+            remove('dst')
+
+    @asynctest
+    async def test_get_unrequested_name_unchecked(self):
+        """Test disabling the check of names sent by the server"""
+
+        try:
+            os.mkdir('dst')
+
+            await scp((self._scp_server, 'get_unrequested_file'), 'dst',
+                      check_names=False)
+
+            self.assertTrue(os.path.exists('dst/.bashrc'))
+        finally:
+            remove('dst')
+
+    @asynctest
+    async def test_copy_unrequested_name(self):
+        """Test remote copy of a top-level name which wasn't requested"""
+
+        with self.assertRaises(SFTPBadMessage):
+            await scp((self._scp_server, 'get_unrequested_file'),
+                      (self._scp_server, 'recv_early_eof'))
 
     @asynctest
     async def test_get_early_eof(self):
