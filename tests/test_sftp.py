@@ -7217,8 +7217,7 @@ class _TestSFTPChainedSymlink(_CheckSFTP):
         links = {b'a': b'b', b'X': b'a/../X', b'b': b'.'}
 
         # With follow_symlinks set, a malicious server can still report
-        # symlinks from stat, so they are created without the write-time
-        # check to fall back on
+        # symlinks from stat, so they must be checked here as well
         for follow_symlinks in (False, True):
             with self.subTest(follow_symlinks=follow_symlinks):
                 try:
@@ -7308,8 +7307,9 @@ class _TestSFTPPreexistingSymlink(_CheckSFTP):
     """Tests for downloads into a tree containing existing symlinks
 
        Symlinks already present under the download directory which
-       point outside of it should only be followed when follow_symlinks
-       is set.
+       point outside of it should never be followed for names chosen
+       by the server. They should only be followed for a path the
+       caller explicitly requested when follow_symlinks is set.
     """
 
     @classmethod
@@ -7354,9 +7354,26 @@ class _TestSFTPPreexistingSymlink(_CheckSFTP):
         finally:
             remove('src dst outdir outfile')
 
+    def _check_not_written(self):
+        """Confirm nothing was written through the outside links"""
+
+        with open('outfile') as f:
+            self.assertEqual(f.read(), 'orig')
+
+        self.assertFalse(os.path.lexists('outdir/file'))
+
+    def _check_written(self):
+        """Confirm files were written through the outside links"""
+
+        with open('outfile') as f:
+            self.assertEqual(f.read(), 'attack')
+
+        with open('outdir/file') as f:
+            self.assertEqual(f.read(), 'attack')
+
     @sftp_test
-    async def test_preexisting_symlink_followed(self, sftp):
-        """Existing symlinks are followed when follow_symlinks is set"""
+    async def test_server_name_not_followed(self, sftp):
+        """Names from a recursive get aren't followed outside download dir"""
 
         if not self._symlink_supported: # pragma: no cover
             raise unittest.SkipTest('symlink not available')
@@ -7364,12 +7381,52 @@ class _TestSFTPPreexistingSymlink(_CheckSFTP):
         try:
             self._setup()
 
-            await sftp.get('src', 'dst', recurse=True, follow_symlinks=True)
+            with self.assertRaises(SFTPBadMessage):
+                await sftp.get('src', 'dst', recurse=True,
+                               follow_symlinks=True)
 
-            with open('outfile') as f:
-                self.assertEqual(f.read(), 'attack')
-
-            with open('outdir/file') as f:
-                self.assertEqual(f.read(), 'attack')
+            self._check_not_written()
         finally:
             remove('src dst outdir outfile')
+
+    @sftp_test
+    async def test_glob_match_not_followed(self, sftp):
+        """Names matched by a wildcard aren't followed outside download dir"""
+
+        if not self._symlink_supported: # pragma: no cover
+            raise unittest.SkipTest('symlink not available')
+
+        try:
+            self._setup()
+
+            for pattern in ('src/fil*', 'src/di*'):
+                with self.subTest(pattern=pattern):
+                    with self.assertRaises(SFTPBadMessage):
+                        await sftp.mget(pattern, 'dst/src', recurse=True,
+                                        follow_symlinks=True)
+
+            self._check_not_written()
+        finally:
+            remove('src dst outdir outfile')
+
+    @sftp_test
+    async def test_requested_path_followed(self, sftp):
+        """Explicitly requested paths are followed with follow_symlinks"""
+
+        if not self._symlink_supported: # pragma: no cover
+            raise unittest.SkipTest('symlink not available')
+
+        for method in ('get', 'mget'):
+            with self.subTest(method=method):
+                try:
+                    self._setup()
+
+                    copy = getattr(sftp, method)
+
+                    await copy('src/file', 'dst/src', follow_symlinks=True)
+                    await copy('src/dir', 'dst/src', recurse=True,
+                               follow_symlinks=True)
+
+                    self._check_written()
+                finally:
+                    remove('src dst outdir outfile')

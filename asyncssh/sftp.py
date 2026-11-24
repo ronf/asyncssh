@@ -4086,7 +4086,7 @@ class SFTPClient:
                 self.logger.info('  Starting copy of directory %s to %s',
                                  srcpath, dstpath)
 
-                if isinstance(dstfs, LocalFS) and not follow_symlinks:
+                if isinstance(dstfs, LocalFS):
                     _check_local_containment(
                         _local_realpath(_to_local_path(dstpath)), dstroot,
                         'Destination path is outside download directory')
@@ -4143,7 +4143,7 @@ class SFTPClient:
                 if remote_only and not self.supports_remote_copy:
                     raise SFTPOpUnsupported('Remote copy not supported')
 
-                if isinstance(dstfs, LocalFS) and not follow_symlinks:
+                if isinstance(dstfs, LocalFS):
                     _check_local_containment(
                         _local_realpath(_to_local_path(dstpath)), dstroot,
                         'Destination path is outside download directory')
@@ -4205,19 +4205,25 @@ class SFTPClient:
                          copy_type, srcpaths, dstpath)
 
         srcnames: List[SFTPName] = []
+        exact_paths: Set[bytes] = set()
 
         if expand_glob:
             glob = SFTPGlob(srcfs, len(srcpaths) > 1)
 
             for srcpath in srcpaths:
-                srcnames.extend(await glob.match(srcfs.encode(srcpath),
-                                                 error_handler, self.version))
+                srcpath = srcfs.encode(srcpath)
+                srcnames.extend(await glob.match(srcpath, error_handler,
+                                                 self.version))
+
+                if not any(c in srcpath for c in b'*?[]'):
+                    exact_paths.add(srcpath)
         else:
             for srcpath in srcpaths:
                 srcpath = srcfs.encode(srcpath)
                 srcattrs = await srcfs.stat(srcpath,
                                             follow_symlinks=follow_symlinks)
                 srcnames.append(SFTPName(srcpath, attrs=srcattrs))
+                exact_paths.add(srcpath)
 
         if dstpath:
             dstpath = dstfs.encode(dstpath)
@@ -4254,7 +4260,13 @@ class SFTPClient:
             else:
                 dstfile = dstpath
 
-            await self._copy(srcfs, dstfs, srcfile, dstfile, dstroot,
+            # When following symlinks, a destination for a path the caller
+            # explicitly requested may be a local symlink, so it becomes
+            # the root for names chosen by the server below it
+            copyroot = dstfile if follow_symlinks and \
+                srcfile in exact_paths else dstroot
+
+            await self._copy(srcfs, dstfs, srcfile, dstfile, copyroot,
                              srcname.attrs, preserve, recurse, follow_symlinks,
                              sparse, block_size, max_requests, progress_handler,
                              error_handler, remote_only)
@@ -4296,7 +4308,10 @@ class SFTPClient:
            on the remote system will have the contents of their target
            downloaded rather than creating a local symbolic link. When
            using this option during a recursive download, one needs to
-           watch out for links that result in loops.
+           watch out for links that result in loops. This option does
+           not allow names chosen by the server to be written through
+           existing local symbolic links which lead outside of the
+           download directory.
 
            The block_size argument specifies the size of read and write
            requests issued when downloading the files, defaulting to
