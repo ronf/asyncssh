@@ -35,6 +35,7 @@ import shutil
 import subprocess
 import sys
 import unittest
+from unittest.mock import patch
 
 from cryptography.exceptions import UnsupportedAlgorithm
 
@@ -2504,10 +2505,9 @@ class _TestPublicKeyTopLevel(TempDirTestCase):
                                                   valid_after='now',
                                                   valid_before='-1m')
 
-        privca.x509_algorithms = None
-
-        with self.assertRaises(asyncssh.KeyGenerationError):
-            privca.generate_x509_user_certificate(pubkey, 'OU=user')
+        with patch.object(privca, 'x509_algorithms', None):
+            with self.assertRaises(asyncssh.KeyGenerationError):
+                privca.generate_x509_user_certificate(pubkey, 'OU=user')
 
     def test_rsa_encrypt_error(self):
         """Test RSA encryption error"""
