@@ -54,8 +54,8 @@ from asyncssh.public_key import get_default_x509_certificate_algs
 
 from .server import Server, ServerTestCase
 
-from .util import asynctest, patch_extra_kex, patch_getaddrinfo
-from .util import patch_getnameinfo, patch_gss
+from .util import AsyncTestCase, asynctest, patch_extra_kex, patch_getaddrinfo
+from .util import patch_getnameinfo, patch_gss, patch_rdns
 from .util import gss_available, nc_available, x509_available
 
 
@@ -2830,6 +2830,174 @@ class _TestReverseDNS(ServerTestCase):
 
         with self.assertRaises(asyncssh.PermissionDenied):
             await self.connect(username='ckey')
+
+
+class _TestVerifiedReverseDNS(ServerTestCase):
+    """Unit tests for verification of reverse DNS lookups"""
+
+    @classmethod
+    async def start_server(cls):
+        """Start an SSH server which restricts the client's location"""
+
+        with open('ckey.pub') as ckey_pub:
+            ckey_pub_data = ckey_pub.read()
+
+        with open('authorized_keys_from', 'w') as auth_keys:
+            auth_keys.write('from="*.corp.test,10.1.2.*" ' + ckey_pub_data)
+
+        return await cls.create_server(
+            authorized_client_keys='authorized_keys_from', rdns_lookup=True)
+
+    @patch_rdns('good.corp.test', ['127.0.0.1'])
+    @asynctest
+    async def test_verified_rdns(self):
+        """Test reverse DNS name which maps back to the client address"""
+
+        async with self.connect(username='ckey', client_keys='ckey'):
+            pass
+
+    @patch_rdns('GOOD.Corp.Test', ['127.0.0.1'])
+    @asynctest
+    async def test_verified_rdns_mixed_case(self):
+        """Test reverse DNS name with mixed case"""
+
+        async with self.connect(username='ckey', client_keys='ckey'):
+            pass
+
+    @patch_rdns('bad.corp.test', ['10.9.9.9'])
+    @asynctest
+    async def test_unverified_rdns(self):
+        """Test reverse DNS name which doesn't map back"""
+
+        with self.assertRaises(asyncssh.PermissionDenied):
+            await self.connect(username='ckey', client_keys='ckey')
+
+    @patch_rdns('bad.corp.test')
+    @asynctest
+    async def test_unresolvable_rdns(self):
+        """Test reverse DNS name which doesn't resolve"""
+
+        with self.assertRaises(asyncssh.PermissionDenied):
+            await self.connect(username='ckey', client_keys='ckey')
+
+    @patch_rdns('10.1.2.3')
+    @asynctest
+    async def test_numeric_rdns(self):
+        """Test reverse DNS name which looks like an IP address"""
+
+        with self.assertRaises(asyncssh.PermissionDenied):
+            await self.connect(username='ckey', client_keys='ckey')
+
+    @patch_rdns(None)
+    @asynctest
+    async def test_rdns_error(self):
+        """Test reverse DNS lookup failure"""
+
+        with self.assertRaises(asyncssh.PermissionDenied):
+            await self.connect(username='ckey', client_keys='ckey')
+
+
+class _StubServerConnection:
+    """Stub connection for testing reverse DNS verification directly"""
+
+    # pylint: disable=protected-access
+
+    _resolve_peer_host = \
+        asyncssh.connection.SSHServerConnection._resolve_peer_host
+
+    def __init__(self, peer_addr):
+        self._loop = asyncio.get_event_loop()
+        self._peer_addr = peer_addr
+        self._peer_port = 22
+        self._verified_peer_host = None
+        self.logger = asyncssh.logging.logger
+
+    def get_extra_info(self, name):
+        """Return the peer address"""
+
+        # pylint: disable=unused-argument
+
+        return (self._peer_addr, self._peer_port)
+
+
+_STUB_PTR_NAMES = {'10.1.2.3': 'host.corp.test',
+                   '2001:db8::5': 'host6.corp.test'}
+
+_STUB_FORWARD_ADDRS = {('host.corp.test', socket.AF_INET): '10.1.2.3',
+                       ('host6.corp.test', socket.AF_INET6): '2001:db8::5'}
+
+
+def _stub_getnameinfo(sockaddr, flags):
+    """Return a name only for addresses with a stub PTR record"""
+
+    # pylint: disable=unused-argument
+
+    try:
+        return (_STUB_PTR_NAMES[sockaddr[0]], str(sockaddr[1]))
+    except KeyError:
+        raise socket.gaierror() from None
+
+
+def _stub_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
+    """Return an address only for names with a stub forward record"""
+
+    # pylint: disable=redefined-builtin,unused-argument
+
+    try:
+        addr = _STUB_FORWARD_ADDRS[host, family]
+    except KeyError:
+        raise socket.gaierror() from None
+
+    sockaddr = (addr, port) if family == socket.AF_INET else (addr, port, 0, 0)
+
+    return [(family, socket.SOCK_STREAM, socket.IPPROTO_TCP, '', sockaddr)]
+
+
+@patch('socket.getnameinfo', _stub_getnameinfo)
+@patch('socket.getaddrinfo', _stub_getaddrinfo)
+class _TestResolvePeerHost(AsyncTestCase):
+    """Unit tests for reverse DNS verification of unusual peer addresses"""
+
+    # pylint: disable=protected-access
+
+    @asynctest
+    async def test_ipv4_mapped_peer(self):
+        """Test reverse DNS verification of an IPv4-mapped peer address"""
+
+        conn = _StubServerConnection('::ffff:10.1.2.3')
+        self.assertEqual(await conn._resolve_peer_host(), 'host.corp.test')
+
+    @asynctest
+    async def test_ipv6_peer(self):
+        """Test reverse DNS verification of an IPv6 peer address"""
+
+        conn = _StubServerConnection('2001:db8::5')
+        self.assertEqual(await conn._resolve_peer_host(), 'host6.corp.test')
+
+    @asynctest
+    async def test_peer_without_ptr(self):
+        """Test reverse DNS verification of a peer with no PTR record"""
+
+        conn = _StubServerConnection('10.9.9.9')
+        self.assertEqual(await conn._resolve_peer_host(), '')
+
+    @asynctest
+    async def test_cached_result(self):
+        """Test that the result of reverse DNS verification is cached"""
+
+        conn = _StubServerConnection('10.1.2.3')
+        self.assertEqual(await conn._resolve_peer_host(), 'host.corp.test')
+
+        with patch('socket.getnameinfo', side_effect=socket.gaierror):
+            self.assertEqual(await conn._resolve_peer_host(),
+                             'host.corp.test')
+
+    @asynctest
+    async def test_non_ip_peer(self):
+        """Test reverse DNS verification with a non-IP peer address"""
+
+        conn = _StubServerConnection('')
+        self.assertEqual(await conn._resolve_peer_host(), '')
 
 
 class _TestListenerContextManager(ServerTestCase):

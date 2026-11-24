@@ -5890,6 +5890,7 @@ class SSHServerConnection(SSHConnection):
         self._line_history = options.line_history
         self._max_line_length = options.max_line_length
         self._rdns_lookup = options.rdns_lookup
+        self._verified_peer_host: Optional[str] = None
         self._x11_forwarding = options.x11_forwarding
         self._x11_auth_path = options.x11_auth_path
         self._agent_forwarding = options.agent_forwarding
@@ -5943,12 +5944,76 @@ class SSHServerConnection(SSHConnection):
             self.logger.info('  Peer address: %s',
                              (self._peer_addr, self._peer_port))
 
+    async def _resolve_peer_host(self) -> str:
+        """Return a forward-confirmed host name for the peer
+
+           This method performs a reverse DNS lookup on the peer's
+           address and then confirms that the resulting name maps
+           back to that same address. If the lookup fails, the name
+           looks like an IP address, or the name doesn't map back to
+           the peer's address, an empty string is returned, causing
+           the peer to be matched by address only. The result is
+           cached, since the peer address doesn't change.
+
+        """
+
+        if self._verified_peer_host is not None:
+            return self._verified_peer_host
+
+        host = ''
+
+        try:
+            peer_ip = ip_address(self._peer_addr)
+        except ValueError:
+            pass
+        else:
+            if isinstance(peer_ip, ipaddress.IPv6Address) and \
+                    peer_ip.ipv4_mapped:
+                peer_ip = peer_ip.ipv4_mapped
+                sockaddr: SockAddr = (str(peer_ip), self._peer_port)
+            else:
+                sockaddr = cast(SockAddr, self.get_extra_info('peername'))
+
+            family = socket.AF_INET if peer_ip.version == 4 else \
+                socket.AF_INET6
+
+            try:
+                name, _ = await self._loop.getnameinfo(
+                    sockaddr, socket.NI_NUMERICSERV | socket.NI_NAMEREQD)
+
+                try:
+                    ip_address(name)
+                except ValueError:
+                    pass
+                else:
+                    self.logger.info('Ignoring numeric PTR record %s '
+                                     'for address %s', name,
+                                     self._peer_addr)
+                    name = ''
+
+                if name:
+                    addrinfo = await self._loop.getaddrinfo(
+                        name, None, family=family, type=socket.SOCK_STREAM)
+
+                    for _, _, _, _, addr in addrinfo:
+                        if ip_address(cast(str, addr[0])) == peer_ip:
+                            host = name.lower()
+                            break
+                    else:
+                        self.logger.info('Address %s maps to %s, but this '
+                                         'does not map back to the address',
+                                         self._peer_addr, name)
+            except (OSError, UnicodeError, ValueError):
+                pass
+
+        self._verified_peer_host = host
+        return host
+
     async def reload_config(self) -> None:
         """Re-evaluate config with updated match options"""
 
         if self._rdns_lookup:
-            self._peer_host, _ = await self._loop.getnameinfo(
-                (self._peer_addr, self._peer_port), socket.NI_NUMERICSERV)
+            self._peer_host = await self._resolve_peer_host()
 
         options = await SSHServerConnectionOptions.construct(
             options=self._options, reload=True, accept_addr=self._local_addr,
@@ -6071,13 +6136,13 @@ class SSHServerConnection(SSHConnection):
         if self._trust_client_host:
             resolved_host = client_host
         else:
-            peername = cast(SockAddr, self.get_extra_info('peername'))
+            if self._rdns_lookup:
+                resolved_host = await self._resolve_peer_host()
+            else:
+                resolved_host = ''
 
-            try:
-                resolved_host, _ = await self._loop.getnameinfo(
-                    peername, socket.NI_NUMERICSERV)
-            except socket.gaierror:
-                resolved_host = peername[0]
+            if not resolved_host:
+                resolved_host = self._peer_addr
 
             if resolved_host != client_host:
                 self.logger.info('Client host mismatch: received %s, '
@@ -6098,7 +6163,7 @@ class SSHServerConnection(SSHConnection):
             self.logger.debug1('Invalid host-based auth signature')
             return False
 
-        result = self._owner.validate_host_based_user(username, client_host,
+        result = self._owner.validate_host_based_user(username, resolved_host,
                                                       client_username)
 
         if inspect.isawaitable(result):
@@ -8546,9 +8611,10 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
        :param trust_client_host: (optional)
            Whether or not to use the hostname provided by the client
            when performing host-based authentication. By default, the
-           client-provided hostname is not trusted and is instead
-           determined by doing a reverse lookup of the IP address the
-           client connected from.
+           client-provided hostname is not trusted. Instead, if
+           `rdns_lookup` is enabled, the hostname is determined by doing
+           a verified reverse lookup of the IP address the client
+           connected from. Otherwise, the client's IP address is used.
        :param authorized_client_keys: (optional)
            A list of authorized user and CA public keys which should be
            trusted for certificate-based client public key authentication.
@@ -8660,8 +8726,11 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
        :param rdns_lookup: (optional)
            Whether or not to perform reverse DNS lookups on the client's
            IP address to enable hostname-based matches in authorized key
-           file "from" options and "Match Host" config options, defaulting
-           to `False`.
+           file "from" options, "Match Host" config options, and
+           host-based authentication, defaulting to `False`. The
+           hostname returned by the reverse lookup is only used if it
+           maps back to the client's IP address. Otherwise, matching
+           is done using only the client's IP address.
        :param x11_forwarding: (optional)
            Whether or not to allow forwarding of X11 connections back
            to the client when the client supports it, defaulting to `False`

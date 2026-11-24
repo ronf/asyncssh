@@ -354,7 +354,11 @@ class SSHServer:
            :param username:
                The user being authenticated
            :param client_host:
-               The hostname of the client host making the request
+               The hostname of the client host making the request. If
+               `trust_client_host` is set, this is the hostname provided
+               by the client. Otherwise, it is the verified hostname of
+               the client's IP address if `rdns_lookup` is set and such
+               a hostname is available, or the client's IP address.
            :param client_username:
                The username of the user on the client host
            :type username: `str`

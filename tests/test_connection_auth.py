@@ -37,7 +37,7 @@ from asyncssh.public_key import CERT_TYPE_USER, CERT_TYPE_HOST
 from .keysign_stub import create_subprocess_exec_stub
 from .server import Server, ServerTestCase
 from .util import asynctest, gss_available, patch_getnameinfo
-from .util import patch_getnameinfo_error, patch_gss
+from .util import patch_getnameinfo_error, patch_gss, patch_rdns
 from .util import make_certificate, nc_available, x509_available
 
 
@@ -696,7 +696,8 @@ class _TestHostBasedAuth(ServerTestCase):
         """Start an SSH server which supports host-based authentication"""
 
         return await cls.create_server(
-            _HostBasedServer, known_client_hosts='known_hosts')
+            _HostBasedServer, known_client_hosts='known_hosts',
+            rdns_lookup=True)
 
     @asynctest
     async def test_get_server_auth_methods(self):
@@ -916,7 +917,8 @@ class _TestHostBasedAuthNoRDNS(ServerTestCase):
         """Start an SSH server which supports host-based authentication"""
 
         return await cls.create_server(
-            _HostBasedServer, known_client_hosts='known_hosts')
+            _HostBasedServer, known_client_hosts='known_hosts',
+            rdns_lookup=True)
 
     @patch_getnameinfo_error
     @asynctest
@@ -926,6 +928,68 @@ class _TestHostBasedAuthNoRDNS(ServerTestCase):
         async with self.connect(username='user', client_host_keys='skey',
                                 client_username='user'):
             pass
+
+
+class _ResolvedHostBasedServer(_HostBasedServer):
+    """Server for testing the client host passed to host-based auth"""
+
+    def validate_host_based_user(self, username, client_host, client_username):
+        """Return whether remote host and user is authorized for this user"""
+
+        return client_host == 'localhost' and client_username == 'user'
+
+
+class _TestHostBasedAuthVerifiedRDNS(ServerTestCase):
+    """Unit tests for host-based authentication with verified reverse DNS"""
+
+    @classmethod
+    async def start_server(cls):
+        """Start an SSH server which supports host-based authentication"""
+
+        return await cls.create_server(
+            _ResolvedHostBasedServer, known_client_hosts='known_hosts',
+            rdns_lookup=True)
+
+    @patch_rdns('localhost', ['127.0.0.1'])
+    @asynctest
+    async def test_verified_rdns(self):
+        """Test reverse DNS name which maps back to the client address"""
+
+        async with self.connect(username='user',
+                                client_host_keys=[('skey', None)],
+                                client_host='xxx', client_username='user'):
+            pass
+
+    @patch_rdns('localhost', ['10.9.9.9'])
+    @asynctest
+    async def test_unverified_rdns(self):
+        """Test reverse DNS name which doesn't map back"""
+
+        with self.assertRaises(asyncssh.PermissionDenied):
+            await self.connect(username='user',
+                               client_host_keys=[('skey', None)],
+                               client_host='localhost', client_username='user')
+
+
+@patch_getnameinfo
+class _TestHostBasedAuthRDNSDisabled(ServerTestCase):
+    """Unit tests for host-based authentication with reverse DNS disabled"""
+
+    @classmethod
+    async def start_server(cls):
+        """Start an SSH server which supports host-based authentication"""
+
+        return await cls.create_server(
+            _HostBasedServer, known_client_hosts='known_hosts')
+
+    @asynctest
+    async def test_client_host_name_ignored(self):
+        """Test that client host name isn't used without rdns_lookup"""
+
+        with self.assertRaises(asyncssh.PermissionDenied):
+            await self.connect(username='user',
+                               client_host_keys=[('skey', None)],
+                               client_host='localhost', client_username='user')
 
 
 @patch_getnameinfo
@@ -1104,7 +1168,7 @@ class _TestLimitedHostBasedSignatureAlgs(ServerTestCase):
 
         return await cls.create_server(
             _HostBasedServer, known_client_hosts='known_hosts',
-            signature_algs=['ssh-rsa', 'rsa-sha2-512'])
+            signature_algs=['ssh-rsa', 'rsa-sha2-512'], rdns_lookup=True)
 
     @asynctest
     async def test_mismatched_host_signature_algs(self):
