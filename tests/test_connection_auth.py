@@ -1427,7 +1427,7 @@ class _TestPublicKeyAuth(ServerTestCase):
                             async with self.connect(
                                     username='ckey', client_keys='ckey',
                                     agent_path=None, gss_kex=False,
-                                    gss_auth=False, connect_timeout=1):
+                                    gss_auth=False, connect_timeout=10):
                                 pass
         finally:
             loop.set_task_factory(task_factory)

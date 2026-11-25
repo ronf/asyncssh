@@ -32,7 +32,7 @@ from .logging import SSHLogger
 from .misc import ProtocolError, PasswordChangeRequired, get_symbol_names
 from .misc import run_in_executor
 from .packet import Boolean, String, UInt32, SSHPacket, SSHPacketHandler
-from .public_key import SigningKey
+from .public_key import SigningKey, SSHKeyPair
 from .saslprep import saslprep, SASLPrepError
 
 
@@ -331,6 +331,11 @@ class _ClientPublicKeyAuth(ClientAuth):
     """Client side implementation of public key auth"""
 
     _handler_names = get_symbol_names(globals(), 'MSG_USERAUTH_PK_')
+
+    def __init__(self, conn: 'SSHClientConnection', method: bytes):
+        super().__init__(conn, method)
+
+        self._keypair: Optional[SSHKeyPair] = None
 
     async def _start(self) -> None:
         """Start client public key authentication"""
