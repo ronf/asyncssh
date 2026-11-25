@@ -284,13 +284,11 @@ def _parse_name_patterns(path: bytes) -> Optional[List[bytes]]:
     return None if None in patterns else cast(List[bytes], patterns)
 
 
-def _get_name_patterns(path: _SCPPath,
-                       recurse: bool) -> Optional[List[bytes]]:
+def _get_name_patterns(path: _SCPPath) -> List[bytes]:
     """Return patterns for top-level names expected from a remote source
 
-       If the expected names can't be determined, a recursive copy
-       doesn't check them (`None`), but any other copy rejects all
-       names (an empty list).
+       If the expected names can't be determined, an empty list is
+       returned, causing all names to be rejected.
 
     """
 
@@ -302,7 +300,7 @@ def _get_name_patterns(path: _SCPPath,
 
     patterns = _parse_name_patterns(path)
 
-    return [] if patterns is None and not recurse else patterns
+    return [] if patterns is None else patterns
 
 
 def _check_name(name: bytes, patterns: Optional[Sequence[bytes]]) -> None:
@@ -1152,8 +1150,8 @@ async def scp(srcpaths: Union[_SCPConnPath, Sequence[_SCPConnPath]],
        a malicious server from writing files which weren't requested
        into the destination directory. Names below a requested directory
        can't be checked. If the final name in a path depends on an
-       expansion by the remote shell, such as '~' or a variable, a
-       recursive copy doesn't check names and any other copy is aborted.
+       expansion by the remote shell, such as '~' or a variable, the
+       copy is aborted.
        This option can be set to `False` to allow such a copy or if a
        remote system returns names which differ from the request.
 
@@ -1231,7 +1229,7 @@ async def scp(srcpaths: Union[_SCPConnPath, Sequence[_SCPConnPath]],
         for srcpath in srcpaths:
             srcconn, srcpath, close_src = await _parse_path(srcpath, **kwargs)
 
-            name_patterns = _get_name_patterns(srcpath, recurse) \
+            name_patterns = _get_name_patterns(srcpath) \
                 if srcconn and check_names else None
 
             try:

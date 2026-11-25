@@ -6743,7 +6743,7 @@ class _TestSCPNamePatterns(unittest.TestCase):
     def _matches(self, path, name):
         """Return whether a name is accepted for a requested path"""
 
-        patterns = _get_name_patterns(path, False)
+        patterns = _get_name_patterns(path)
 
         return any(fnmatchcase(name, pattern) for pattern in patterns)
 
@@ -6817,8 +6817,7 @@ class _TestSCPNamePatterns(unittest.TestCase):
                      b'[^a]', b'[[:alpha:]]', b"[a'*']", b'a\\\nb',
                      b'dir\\%NAME%', b'{a,~}'):
             with self.subTest(path=path):
-                self.assertIsNone(_get_name_patterns(path, True))
-                self.assertEqual(_get_name_patterns(path, False), [])
+                self.assertEqual(_get_name_patterns(path), [])
 
 
 class _TestSCPErrors(_CheckSCP):
@@ -6947,12 +6946,15 @@ class _TestSCPErrors(_CheckSCP):
         try:
             os.mkdir('dst')
 
-            with self.assertRaises(SFTPBadMessage):
-                await scp((self._scp_server, path), 'dst')
+            for kwargs in ({}, {'recurse': True}):
+                with self.subTest(**kwargs):
+                    with self.assertRaises(SFTPBadMessage):
+                        await scp((self._scp_server, path), 'dst', **kwargs)
 
-            self.assertEqual(os.listdir('dst'), [])
+                    self.assertEqual(os.listdir('dst'), [])
 
-            await scp((self._scp_server, path), 'dst', recurse=True)
+            await scp((self._scp_server, path), 'dst', recurse=True,
+                      check_names=False)
 
             self.assertTrue(os.path.exists('dst/.bashrc'))
         finally:
