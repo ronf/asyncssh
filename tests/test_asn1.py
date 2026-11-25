@@ -93,6 +93,10 @@ class _TestASN1(unittest.TestCase):
         (ObjectIdentifier('2.999'),           '06028837'),
         (ObjectIdentifier('2.25.' + str(2**128 - 1)),
          '06146983ffffffffffffffffffffffffffffffffff7f'),
+        (ObjectIdentifier('2.25.' + str(2**140 - 1)),
+         '061569' + 19*'ff' + '7f'),
+        (ObjectIdentifier('2.' + str(2**140 - 81)),
+         '0614' + 19*'ff' + '7f'),
 
         (TaggedDERObject(0, None),            'a0020500'),
         (TaggedDERObject(1, None),            'a1020500'),
@@ -100,6 +104,7 @@ class _TestASN1(unittest.TestCase):
         (TaggedDERObject(31, None),           'bf1f020500'),
         (TaggedDERObject(32, None),           'bf20020500'),
         (TaggedDERObject(128, None),          'bf8100020500'),
+        (TaggedDERObject(2**28 - 1, None),    'bfffffff7f020500'),
         (TaggedDERObject(0, None, PRIVATE),   'e0020500'),
 
         (RawDERObject(0, b'', PRIVATE),       'c000')
@@ -114,20 +119,36 @@ class _TestASN1(unittest.TestCase):
         (BitString, [b'0c0', 7]),             # Unused bits not zero
         (BitString, ['', 1]),                 # Unused bits with string
         (BitString, [0]),                     # Invalid type
+        (BitString, ['1x']),                  # Invalid character in string
 
-        (ObjectIdentifier, ['']),             # Too few components
+        (ObjectIdentifier, ['']),             # Empty component
         (ObjectIdentifier, ['1']),            # Too few components
-        (ObjectIdentifier, ['-1.1']),         # First component out of range
+        (ObjectIdentifier, ['-1.1']),         # Negative component
         (ObjectIdentifier, ['3.1']),          # First component out of range
-        (ObjectIdentifier, ['0.-1']),         # Second component out of range
+        (ObjectIdentifier, ['0.-1']),         # Negative component
         (ObjectIdentifier, ['0.40']),         # Second component out of range
-        (ObjectIdentifier, ['1.-1']),         # Second component out of range
+        (ObjectIdentifier, ['1.-1']),         # Negative component
         (ObjectIdentifier, ['1.40']),         # Second component out of range
-        (ObjectIdentifier, ['1.1.-1']),       # Later component out of range
+        (ObjectIdentifier, ['1.1.-1']),       # Negative component
+        (ObjectIdentifier, ['1.2.']),         # Empty component
+        (ObjectIdentifier, ['1.2.+3']),       # Sign in component
+        (ObjectIdentifier, ['1.2. 3']),       # Space in component
+        (ObjectIdentifier, ['1.2.3_4']),      # Underscore in component
+        (ObjectIdentifier, ['1.2.٣']),   # Non-ASCII digit
+        (ObjectIdentifier, ['1.02']),         # Leading zero in component
+        (ObjectIdentifier, ['2.25.' + str(2**140)]),
+                                              # Component too large
+        (ObjectIdentifier, ['2.25.' + 50*'9']),
+                                              # Component too large
+        (ObjectIdentifier, ['2.' + str(2**140 - 80)]),
+                                              # First component too large
 
         (TaggedDERObject, [0, None, 99]),     # Invalid ASN.1 class
+        (TaggedDERObject, [-1, None]),        # Negative tag
+        (TaggedDERObject, [2**28, None]),     # Tag too large
 
         (RawDERObject, [0, None, 99]),        # Invalid ASN.1 class
+        (RawDERObject, [-1, b'', PRIVATE]),   # Negative tag
     ]
 
     decode_errors = [
@@ -143,6 +164,7 @@ class _TestASN1(unittest.TestCase):
 
         '0180',                               # Indefinite length
         '018201',                             # Incomplete length
+        '05ff' + 127*'00',                    # Reserved length byte
         '300202020000',                       # Element longer than parent
         'a00405000500',                       # Extra data in tagged value
 
@@ -155,6 +177,7 @@ class _TestASN1(unittest.TestCase):
         '010102',                             # Boolean value not 0x00/0xff
 
         '2200',                               # Constructed integer
+        '0200',                               # Empty integer
 
         '2400',                               # Constructed octet string
 
@@ -226,11 +249,38 @@ class _TestASN1(unittest.TestCase):
                 with self.assertRaises(ASN1DecodeError):
                     der_decode(codecs.decode(data, 'hex'))
 
-        for nested in (self._nested_seq, self._nested_tag):
+        for nested, identifier in ((self._nested_seq, b'\x30'),
+                                   (self._nested_tag, b'\xa0')):
             with self.subTest(msg='max nesting', type=nested.__name__):
                 value = nested(32)
                 self.assertEqual(der_decode(der_encode(value)), value)
 
-            with self.subTest(msg='nesting too deep', type=nested.__name__):
+            with self.subTest(msg='encode nesting too deep',
+                              type=nested.__name__):
+                with self.assertRaises(ASN1EncodeError):
+                    der_encode(nested(33))
+
+            with self.subTest(msg='decode nesting too deep',
+                              type=nested.__name__):
+                # Wrap one more level around the deepest encodable value,
+                # reusing an OCTET STRING's length encoding
+                data = identifier + der_encode(der_encode(nested(32)))[1:]
+
                 with self.assertRaises(ASN1DecodeError):
-                    der_decode(der_encode(nested(33)))
+                    der_decode(data)
+
+        with self.subTest(msg='encode self-referential value'):
+            value = []
+            value.append(value)
+
+            with self.assertRaises(ASN1EncodeError):
+                der_encode(value)
+
+        with self.subTest(msg='encode deeply nested set'):
+            value = frozenset()
+
+            for _ in range(33):
+                value = frozenset({value})
+
+            with self.assertRaises(ASN1EncodeError):
+                der_encode(value)
