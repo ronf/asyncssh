@@ -932,6 +932,13 @@ class _TestPublicKey(TempDirTestCase):
              b'-----BEGIN \xff PRIVATE KEY-----\n' +
              binascii.b2a_base64(der_encode(None)) +
              b'-----END \xff PRIVATE KEY-----'),
+            ('Regex metacharacters in PEM key type',
+             b'-----BEGIN ((( PRIVATE KEY-----\n' +
+             binascii.b2a_base64(der_encode(None)) +
+             b'-----END ((( PRIVATE KEY-----'),
+            ('Regex backtracking in PEM key type',
+             b'-----BEGIN ' + 22 * b'(a|a)*' + b'X PRIVATE KEY-----\n' +
+             b'-----END ' + 43 * b'a' + b' PRIVATE KEY-----'),
             ('Invalid PEM Base64',
              b'-----BEGIN PRIVATE KEY-----\n'
              b'X\n'
@@ -1183,6 +1190,13 @@ class _TestPublicKey(TempDirTestCase):
              b'-----BEGIN \xff PUBLIC KEY-----\n' +
              binascii.b2a_base64(der_encode(None)) +
              b'-----END \xff PUBLIC KEY-----'),
+            ('Regex metacharacters in PEM key type',
+             b'-----BEGIN ((( PUBLIC KEY-----\n' +
+             binascii.b2a_base64(der_encode(None)) +
+             b'-----END ((( PUBLIC KEY-----'),
+            ('Regex backtracking in PEM key type',
+             b'-----BEGIN ' + 22 * b'(a|a)*' + b'X PUBLIC KEY-----\n' +
+             b'-----END ' + 43 * b'a' + b' PUBLIC KEY-----'),
             ('Invalid PEM Base64',
              b'-----BEGIN PUBLIC KEY-----\n'
              b'X\n'

@@ -438,8 +438,10 @@ def split_args(command: str) -> Sequence[str]:
 def match_base64(data: bytes, start: int, header: bytes) -> Tuple[bytes, int]:
     """Match a block of base64 data wrapped in a header/footer"""
 
-    match = re.compile(b'^' + header[:5] + b'END' + header[10:] +
-                       rb'[ \t\n\r\f\v]*$', re.M).search(data, start)
+    footer = re.escape(header[:5] + b'END' + header[10:])
+
+    match = re.compile(b'^' + footer + rb'[ \t\n\r\f\v]*$',
+                       re.M).search(data, start)
 
     if not match:
         raise ValueError('Missing' + header[10:-5].decode('ascii') + ' footer')
