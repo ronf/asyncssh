@@ -90,9 +90,12 @@ jobs:
         if: ${{ runner.os == 'Linux' && matrix.python-version == '3.15' }}
         run: |
           sudo apt install -y --no-install-recommends m4
-          curl -fLO https://ftpmirror.gnu.org/nettle/nettle-${{ env.nettle4_version }}.tar.gz
-          echo "${{ env.nettle4_sha256 }}  nettle-${{ env.nettle4_version }}.tar.gz" | sha256sum -c
-          tar xzf nettle-${{ env.nettle4_version }}.tar.gz
+          tarball=nettle-${{ env.nettle4_version }}.tar.gz
+          for site in https://ftp.gnu.org/gnu https://ftpmirror.gnu.org; do
+            curl -fL --retry 3 -o "$tarball" "$site/nettle/$tarball" && break
+          done
+          echo "${{ env.nettle4_sha256 }}  $tarball" | sha256sum -c
+          tar xzf "$tarball"
           cd nettle-${{ env.nettle4_version }}
           ./configure --prefix="$RUNNER_TEMP/nettle4" --libdir="$RUNNER_TEMP/nettle4/lib" --disable-public-key --disable-openssl --disable-documentation --disable-static
           make -j$(nproc)
