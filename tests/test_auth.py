@@ -427,11 +427,16 @@ class _AuthServerStub(_AuthConnectionStub):
 class _SuspendedServerAuth(ServerAuth):
     """Keep an authentication handler alive until its request is replaced"""
 
+    def __init__(self, conn, username, method, packet):
+        self.started = asyncio.Event()
+        super().__init__(conn, username, method, packet)
+
     @classmethod
     def supported(cls, conn):
         return True # pragma: no cover
 
     async def _start(self, packet):
+        self.started.set()
         await asyncio.Future()
 
 
@@ -748,7 +753,7 @@ class TestAuthenticationGenerationRegression(unittest.IsolatedAsyncioTestCase):
         self.stale = _SuspendedServerAuth(self.conn, 'alice', b'publickey',
                                           SSHPacket(b''))
         self.conn.auth = self.stale
-        await asyncio.sleep(0)
+        await asyncio.wait_for(self.stale.started.wait(), 1)
 
         self.stale.cancel()
         self.conn.auth = object()
