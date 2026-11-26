@@ -214,7 +214,11 @@ class _X11Server(Server):
             await asyncio.sleep(0.1)
 
         writer.close()
-        await maybe_wait_closed(writer)
+
+        try:
+            await maybe_wait_closed(writer)
+        except ConnectionError:
+            pass
         return result[0]
 
     async def _begin_session(self, stdin, _stdout, _stderr):
