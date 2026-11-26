@@ -900,6 +900,21 @@ class _TestConnection(ServerTestCase):
             await self.connect(known_hosts=(['ckey.pub'], [], ['skey.pub']))
 
     @asynctest
+    async def test_revoked_known_hosts_port(self):
+        """Test server host key revoked for a specific port"""
+
+        self._server.update(server_host_keys=['skey'])
+
+        with open('skey.pub') as f:
+            skey_pub = f.read()
+
+        known_hosts = (f'@revoked [{self._server_addr}]:{self._server_port} '
+                       f'{skey_pub}{self._server_addr} {skey_pub}')
+
+        with self.assertRaises(asyncssh.HostKeyNotVerifiable):
+            await self.connect(known_hosts=known_hosts.encode())
+
+    @asynctest
     async def test_revoked_known_hosts_ca(self):
         """Test revoked server CA key"""
 

@@ -200,6 +200,41 @@ class _TestKnownHosts(TempDirTestCase):
         self.check_hosts((['[host]:22'], [], [], [], [], [], []),
                          ([], [], [], [], [], [], []), port=None)
 
+    def test_port_revoked(self):
+        """Test revocations specific to a non-default port"""
+
+        matches = (
+            ('Port revoked, host trusted',
+             (['host'], [], ['[host]:2222'], [], [], [], []),
+             ([0], [], [0], [], [], [], [])),
+            ('Port revoked, host CA trusted',
+             ([], ['host'], ['[host]:2222'], [], [], [], []),
+             ([], [0], [0], [], [], [], [])),
+            ('Port revoked only',
+             ([], [], ['[host]:2222'], [], [], [], []),
+             ([], [], [0], [], [], [], [])),
+            ('Port and host revoked',
+             (['host'], [], ['[host]:2222', 'host'], [], [], [], []),
+             ([0], [], [0, 1], [], [], [], [])),
+            ('Host revoked, port trusted',
+             (['[host]:2222'], [], ['host'], [], [], [], []),
+             ([0], [], [], [], [], [], []))
+        )
+
+        if x509_available: # pragma: no branch
+            matches += (
+                ('Port X.509 revoked, host trusted',
+                 ([], [], [], ['host'], ['[host]:2222'], [], []),
+                 ([], [], [], [0], [0], [], [])),
+                ('Port subject revoked, host trusted',
+                 ([], [], [], [], [], ['host'], ['[host]:2222']),
+                 ([], [], [], [], [], [0], [0])),
+            )
+
+        for testname, patlists, result in matches:
+            with self.subTest(testname):
+                self.check_hosts(patlists, result, port=2222)
+
     def test_no_match(self):
         """Test for cases where no match is found"""
 

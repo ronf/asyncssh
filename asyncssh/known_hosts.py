@@ -253,8 +253,10 @@ class SSHKnownHosts:
               port: Optional[int]) -> _KnownHostsResult:
         """Match a host, IP address, and port against known_hosts patterns
 
-           If the port is not the default port and no match is found
-           for it, the lookup is attempted again without a port number.
+           If the port is not the default port and no trusted keys or
+           certificates are found for it, the lookup is attempted again
+           without a port number. Any revocations found for the port
+           are kept and combined with the results of the second lookup.
 
            :param host:
                The hostname of the target host
@@ -275,8 +277,17 @@ class SSHKnownHosts:
             x509_subjects, revoked_subjects = self._match(host, addr, port)
 
         if port and not (host_keys or ca_keys or x509_certs or x509_subjects):
+            port_revoked_keys = revoked_keys
+            port_revoked_certs = revoked_certs
+            port_revoked_subjects = revoked_subjects
+
             host_keys, ca_keys, revoked_keys, x509_certs, revoked_certs, \
                 x509_subjects, revoked_subjects = self._match(host, addr)
+
+            # Keep any revocations which were specific to this port
+            revoked_keys = [*port_revoked_keys, *revoked_keys]
+            revoked_certs = [*port_revoked_certs, *revoked_certs]
+            revoked_subjects = [*port_revoked_subjects, *revoked_subjects]
 
         return (host_keys, ca_keys, revoked_keys, x509_certs, revoked_certs,
                 x509_subjects, revoked_subjects)
