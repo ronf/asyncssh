@@ -45,6 +45,8 @@ SSHAllowedSignersArg = Union[bytes, str, Sequence[str], 'SSHAllowedSigners']
 
 _hashes = {b'sha256': sha256, b'sha512': sha512}
 
+_rsa_sig_algorithms = (b'rsa-sha2-256', b'rsa-sha2-512')
+
 
 class SSHAllowedSignersEntry(OptionsParser):
     """An entry in an SSH allowed_senders list"""
@@ -151,6 +153,20 @@ class SSHAllowedSigners:
                 return True
 
         return False
+
+
+def _valid_sig_algorithm(key: SSHKey, sig: bytes) -> bool:
+    """Return whether a signature uses an algorithm allowed in SSHSIG"""
+
+    if key.algorithm != b'ssh-rsa':
+        return True
+
+    try:
+        sig_algorithm = SSHPacket(sig).get_string()
+    except PacketDecodeError:
+        return False
+
+    return sig_algorithm in _rsa_sig_algorithms
 
 
 def _signed_data(data: BytesOrFilePath, is_hashed: bool,
@@ -312,7 +328,8 @@ def validate_sshsig(data: BytesOrFilePath, sig: BytesOrFilePath,
        data is valid and that the signing key used matches an entry in the
        allowed signers associated with the requested principal. If present,
        namespace and validity period restrictions on the allowed signers
-       entry are also enforced.
+       entry are also enforced. RSA signatures must use either the
+       `rsa-sha2-256` or `rsa-sha2-512` signature algorithm.
 
        In the case where an SSH certificate is used to sign the block, it
        must be a user certificate with a non-empty list of principals, the
@@ -412,7 +429,8 @@ def validate_sshsig(data: BytesOrFilePath, sig: BytesOrFilePath,
 
     data_to_verify = _signed_data(data, is_hashed, hash_name, namespace)
 
-    if not key.verify(data_to_verify, sig):
+    if not _valid_sig_algorithm(key, sig) or \
+            not key.verify(data_to_verify, sig):
         return False
 
     if isinstance(allowed_signers, bytes):

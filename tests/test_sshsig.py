@@ -260,6 +260,29 @@ class _TestSSHSIG(TempDirTestCase):
                 self.assertFalse(asyncssh.validate_sshsig(
                     data, sig, principal, allowed_signers.encode()))
 
+    def test_sshsig_rsa_sig_algorithms(self):
+        """Test SSHSIG validation of RSA signature algorithms"""
+
+        data = os.urandom(256)
+
+        data_to_sign = (b'SSHSIG' + String('file') + String(b'') +
+                        String(b'sha512') + String(hashlib.sha512(data).digest()))
+
+        allowed_signers = self._build_signers(
+            (('principal', None, self._rsa_keypair),))
+
+        for sig_alg in sorted(self._rsa_keypair.all_sig_algorithms):
+            with self.subTest(sig_alg=sig_alg):
+                sig = (b'SSHSIG' + UInt32(1) +
+                       String(self._rsa_keypair.public_data) +
+                       String('file') + String(b'') + String(b'sha512') +
+                       String(self._rsa_keypair.sign(data_to_sign, sig_alg)))
+
+                self.assertEqual(
+                    asyncssh.validate_sshsig(data, sig, 'principal',
+                                             allowed_signers.encode()),
+                    sig_alg in (b'rsa-sha2-256', b'rsa-sha2-512'))
+
     def test_sshsig_host_cert(self):
         """Test SSHSIG validation rejecting a host certificate"""
 
