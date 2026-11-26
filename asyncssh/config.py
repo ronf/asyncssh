@@ -495,7 +495,7 @@ class SSHConfig:
                     continue
 
                 try:
-                    split_args = shlex.split(line)
+                    line_args = shlex.split(line)
                 except ValueError as exc:
                     self._error(str(exc))
 
@@ -503,12 +503,12 @@ class SSHConfig:
                 loption = ''
                 allow_equal = True
 
-                for i, arg in enumerate(split_args, 1):
+                for i, arg in enumerate(line_args, 1):
                     if arg.startswith('='):
                         if len(arg) > 1:
                             args.append(arg[1:])
                     elif not allow_equal:
-                        args.extend(split_args[i-1:])
+                        args.extend(line_args[i-1:])
                         break
                     elif arg.endswith('='):
                         args.append(arg[:-1])
