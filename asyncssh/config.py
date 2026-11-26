@@ -53,6 +53,13 @@ ConfigPaths = Union[None, FilePath, Sequence[FilePath]]
 _expand_pattern = re.compile(r'%(.)|\${(.*?)}')
 _unsafe_user_pattern = re.compile(r'^\.\.$|^~|^[A-Za-z]:|[/\\]|\$\{.*?\}')
 
+# Host and user names which aren't safe to substitute into a shell
+# command: a leading '-', shell metacharacters, or control characters,
+# plus any whitespace in host names or whitespace before a '-' in user names
+_shell_metachars = r'\'`"$\\;&<>|(){}\x00-\x1f\x7f'
+_unsafe_shell_host_pattern = re.compile(rf'^-|[{_shell_metachars}\s]')
+_unsafe_shell_user_pattern = re.compile(rf'^-|[{_shell_metachars}]|\s-')
+
 
 def _exec(cmd: str) -> bool:
     """Execute a command and return if exit status is 0"""
@@ -83,6 +90,8 @@ class SSHConfig:
     _conditionals = {'match'}
     _no_split: Set[str] = set()
     _percent_expand = {'AuthorizedKeysFile'}
+    _shell_expand: Set[str] = set()
+    _shell_unsafe: Dict[str, 're.Pattern[str]'] = {}
     _handlers: Dict[str, Tuple[str, Callable]] = {}
 
     def __init__(self, last_config: Optional['SSHConfig'], reload: bool,
@@ -145,11 +154,14 @@ class SSHConfig:
             raise ConfigParseError('Invalid environment expansion: ' +
                                    var) from None
 
-    def _expand_val(self, value: str) -> str:
+    def _expand_val(self, value: str, shell: bool = False) -> str:
         """Perform percent token and environment expansion on a string
 
            Both kinds of expansion are done in a single pass, so values
            which are substituted in are never expanded again.
+
+           If shell is set, the result will be parsed by a shell, and
+           token values containing shell metacharacters are rejected.
 
         """
 
@@ -157,7 +169,16 @@ class SSHConfig:
             token, var = match.groups()
 
             if token is not None:
-                return self._expand_token(token)
+                result = self._expand_token(token)
+
+                if shell:
+                    pattern = self._shell_unsafe.get(token)
+
+                    if pattern and pattern.search(result):
+                        raise ConfigParseError(
+                            f'Unsafe %{token} substitution in shell command')
+
+                return result
             else:
                 return self._expand_env(var)
 
@@ -535,10 +556,12 @@ class SSHConfig:
             except KeyError:
                 pass
             else:
+                shell = option in self._shell_expand
+
                 if isinstance(value, list):
-                    value = [self._expand_val(item) for item in value]
+                    value = [self._expand_val(item, shell) for item in value]
                 elif isinstance(value, str):
-                    value = self._expand_val(value)
+                    value = self._expand_val(value, shell)
 
                 self._options[option] = value
 
@@ -593,6 +616,10 @@ class SSHClientConfig(SSHConfig):
     _no_split = {'proxycommand', 'remotecommand'}
     _percent_expand = {'CertificateFile', 'ForwardAgent', 'IdentityAgent',
                        'IdentityFile', 'ProxyCommand', 'RemoteCommand'}
+    _shell_expand = {'RemoteCommand'}
+    _shell_unsafe = {'h': _unsafe_shell_host_pattern,
+                     'n': _unsafe_shell_host_pattern,
+                     'r': _unsafe_shell_user_pattern}
 
     def __init__(self, last_config: 'SSHConfig', reload: bool,
                  canonical: bool, final: bool, local_user: str,

@@ -673,11 +673,50 @@ class _TestClientConfig(_TestConfig):
 
         try:
             config = self._parse_config(
-                'RemoteCommand %h ${ASYNCSSH_TEST_TOKEN}', host='${HOME}%p')
+                'IdentityAgent %h${ASYNCSSH_TEST_TOKEN}', host='${HOME}%p')
         finally:
             del os.environ['ASYNCSSH_TEST_TOKEN']
 
-        self.assertEqual(config.get('RemoteCommand'), '${HOME}%p %h')
+        self.assertEqual(config.get('IdentityAgent'), '${HOME}%p%h')
+
+    def test_remote_command_unsafe_tokens(self):
+        """Test unsafe host and user names in remote command expansion"""
+
+        for desc, config_data, kwargs in (
+                ('Shell metacharacter in host', 'RemoteCommand echo %h',
+                 {'host': 'x;id'}),
+                ('Whitespace in host', 'RemoteCommand echo %n',
+                 {'host': 'x y'}),
+                ('Leading dash in host', 'RemoteCommand echo %n',
+                 {'host': '-oX'}),
+                ('Command substitution in hostname option',
+                 'Hostname x$(id)\nRemoteCommand echo %h', {}),
+                ('Shell metacharacter in user', 'RemoteCommand echo %r',
+                 {'user': 'u|id'}),
+                ('Newline in user', 'RemoteCommand echo %r',
+                 {'user': 'u\nid'}),
+                ('Option after whitespace in user', 'RemoteCommand echo %r',
+                 {'user': 'u -x'})):
+            with self.subTest(desc):
+                with self.assertRaises(asyncssh.ConfigParseError):
+                    self._parse_config(config_data, **kwargs)
+
+    def test_remote_command_safe_tokens(self):
+        """Test host and user names allowed in remote command expansion"""
+
+        config = self._parse_config('RemoteCommand echo %h %n %r',
+                                    host='fe80::1%en0', user='First Last')
+
+        self.assertEqual(config.get('RemoteCommand'),
+                         'echo fe80::1%en0 fe80::1%en0 First Last')
+
+    def test_unsafe_tokens_outside_remote_command(self):
+        """Test unsafe host and user names allowed outside remote command"""
+
+        config = self._parse_config('ProxyCommand prog %h %r',
+                                    host='x;id', user='u -x')
+
+        self.assertEqual(config.get('ProxyCommand'), ['prog', 'x;id', 'u -x'])
 
     def test_proxy_command(self):
         """Test proxy command being split before expansion"""

@@ -708,6 +708,16 @@ class _TestConnection(ServerTestCase):
         async with self.connect(config='config'):
             pass
 
+    @asynctest
+    async def test_unsafe_remote_command_in_config(self):
+        """Test unsafe user name substituted into remote command in config"""
+
+        with open('config', 'w') as f:
+            f.write('RemoteCommand echo %r')
+
+        with self.assertRaises(asyncssh.ConfigParseError):
+            await self.connect(username='u;id', config='config')
+
     @unittest.skipUnless(nc_available, 'Netcat not available')
     @asynctest
     async def test_get_server_host_key_proxy_failure(self):
