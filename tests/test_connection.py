@@ -211,6 +211,17 @@ def _failing_get_mac(alg, key):
     return _FailingMAC(key, hash_size, *args)
 
 
+def _feed_packet_data(conn, data):
+    """Feed data directly into a connection's packet receive handlers"""
+
+    # pylint: disable=protected-access
+
+    conn._inpbuf += data
+
+    while conn._inpbuf and conn._recv_handler():
+        pass
+
+
 async def _slow_connect(*_args, **_kwargs):
     """Simulate a really slow connect that ends up timing out"""
 
@@ -1234,11 +1245,114 @@ class _TestConnection(ServerTestCase):
         """Test MAC validation failure"""
 
         with patch('asyncssh.encryption.get_mac', _failing_get_mac):
-            for mac in ('hmac-sha2-256-etm@openssh.com', 'hmac-sha2-256'):
-                with self.subTest(mac_alg=mac):
-                    with self.assertRaises(asyncssh.MACError):
-                        await self.connect(encryption_algs=['aes128-ctr'],
-                                           mac_algs=[mac])
+            with self.assertRaises(asyncssh.MACError):
+                await self.connect(
+                    encryption_algs=['aes128-ctr'],
+                    mac_algs=['hmac-sha2-256-etm@openssh.com'])
+
+    async def _check_discard(self, enc_alg, pktlen, mac_already):
+        """Check that a corrupt packet consumes a fixed amount of data"""
+
+        # pylint: disable=protected-access
+
+        async with self.connect(encryption_algs=[enc_alg],
+                                mac_algs=['hmac-sha2-256']) as conn:
+            enc = conn._recv_encryption
+            blocksize = conn._recv_blocksize
+            total = 4 + conn._max_recv_pktlen + conn._recv_macsize
+
+            conn._inpbuf = b''
+            conn._recv_handler = conn._recv_pkthdr
+
+            header = os.urandom(blocksize)
+
+            with patch.object(enc, 'decrypt_header',
+                              return_value=(header, UInt32(pktlen))), \
+                 patch.object(enc, 'compute_discard_mac',
+                              wraps=enc.compute_discard_mac) as discard_mac:
+                _feed_packet_data(conn, header)
+                _feed_packet_data(conn, os.urandom(total - blocksize - 1))
+                discard_mac.assert_not_called()
+
+                with self.assertRaises(asyncssh.MACError):
+                    _feed_packet_data(conn, b'\0')
+
+                discard_mac.assert_called_once_with(
+                    conn._recv_seq, 4 + conn._max_recv_pktlen - mac_already)
+
+            conn.abort()
+
+    @asynctest
+    async def test_unauthenticated_length_discard(self):
+        """Test discarding a packet with a bad unauthenticated length"""
+
+        for enc_alg in ('aes128-cbc', '3des-cbc', 'aes128-ctr'):
+            for pktlen in (0, 4, 29, 0x40001, 0xffffffff):
+                with self.subTest(encryption_alg=enc_alg, pktlen=pktlen):
+                    await self._check_discard(enc_alg, pktlen, 0)
+
+    @asynctest
+    async def test_unauthenticated_length_mac_discard(self):
+        """Test discarding a packet with a bad MAC after its length"""
+
+        for enc_alg in ('aes128-cbc', '3des-cbc', 'aes128-ctr'):
+            for pktlen in (28, 0x3fffc):
+                with self.subTest(encryption_alg=enc_alg, pktlen=pktlen):
+                    await self._check_discard(enc_alg, pktlen, 4 + pktlen)
+
+    @asynctest
+    async def test_unauthenticated_length_mac_no_discard(self):
+        """Test a bad MAC on a max size packet with nothing to discard"""
+
+        # pylint: disable=protected-access
+
+        async with self.connect(encryption_algs=['aes128-cbc'],
+                                mac_algs=['hmac-sha2-256']) as conn:
+            conn._max_recv_pktlen = 0x3fffc
+
+            enc = conn._recv_encryption
+            blocksize = conn._recv_blocksize
+            total = 4 + conn._max_recv_pktlen + conn._recv_macsize
+
+            conn._inpbuf = b''
+            conn._recv_handler = conn._recv_pkthdr
+
+            header = os.urandom(blocksize)
+
+            with patch.object(enc, 'decrypt_header',
+                              return_value=(header, UInt32(0x3fffc))):
+                _feed_packet_data(conn, header)
+                _feed_packet_data(conn, os.urandom(total - blocksize - 1))
+
+                with self.assertRaises(asyncssh.MACError):
+                    _feed_packet_data(conn, b'\0')
+
+                self.assertEqual(conn._inpbuf, b'')
+
+            conn.abort()
+
+    @asynctest
+    async def test_authenticated_length_max_exceeded(self):
+        """Test immediately rejecting a large authenticated length"""
+
+        # pylint: disable=protected-access
+
+        async with self.connect(
+                encryption_algs=['aes128-ctr'],
+                mac_algs=['hmac-sha2-256-etm@openssh.com']) as conn:
+            enc = conn._recv_encryption
+
+            conn._inpbuf = b''
+            conn._recv_handler = conn._recv_pkthdr
+
+            header = os.urandom(conn._recv_blocksize)
+
+            with patch.object(enc, 'decrypt_header',
+                              return_value=(header, UInt32(0xffffffff))):
+                with self.assertRaises(asyncssh.ProtocolError):
+                    _feed_packet_data(conn, header)
+
+            conn.abort()
 
     @asynctest
     async def test_gcm_verify_error(self):

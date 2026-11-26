@@ -902,6 +902,8 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         self._inpbuf = b''
         self._packet = b''
         self._pktlen = 0
+        self._discard_len = 0
+        self._discard_mac_len = 0
         self._banner_lines = 0
 
         self._version = options.version
@@ -1642,11 +1644,57 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         self._pktlen = int.from_bytes(pktlen, 'big')
 
-        if self._pktlen > self._max_recv_pktlen:
+        if self._recv_encryption and \
+                self._recv_encryption.length_unauthenticated:
+            if self._pktlen < 5 or self._pktlen > self._max_recv_pktlen or \
+                    (4 + self._pktlen) % self._recv_blocksize:
+                self._packet = b''
+                return self._start_discard(0, 0)
+        elif self._pktlen > self._max_recv_pktlen:
             raise ProtocolError('Max packet size exceeded')
 
         self._recv_handler = self._recv_packet
         return True
+
+    def _start_discard(self, consumed: int, mac_already: int) -> bool:
+        """Start discarding input after receiving a corrupt packet
+
+           When the packet length is decrypted before it can be
+           authenticated, reporting an error as soon as a bad length
+           or MAC is detected can reveal information about the
+           decrypted length. To avoid this, a fixed amount of data is
+           consumed after the first block of a corrupt packet and a
+           MAC is computed over a fixed amount of data before a MAC
+           error is reported, regardless of where the corruption was
+           detected. This parallels the countermeasure in OpenSSH.
+
+        """
+
+        max_pktlen = 4 + self._max_recv_pktlen
+
+        self._discard_len = \
+            max_pktlen + self._recv_macsize - self._recv_blocksize - consumed
+        self._discard_mac_len = max_pktlen - mac_already
+
+        self._recv_handler = self._recv_discard
+        return self._recv_discard()
+
+    def _recv_discard(self) -> bool:
+        """Discard input after receiving a corrupt packet"""
+
+        discard_len = min(len(self._inpbuf), self._discard_len)
+
+        self._inpbuf = self._inpbuf[discard_len:]
+        self._discard_len -= discard_len
+
+        if self._discard_len:
+            return False
+
+        assert self._recv_encryption is not None
+        self._recv_encryption.compute_discard_mac(self._recv_seq,
+                                                  self._discard_mac_len)
+
+        raise MACError('MAC verification failed')
 
     def _recv_packet(self) -> bool:
         """Receive the remainder of an SSH packet and process it"""
@@ -1664,6 +1712,11 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
                 seq, self._packet, rest, 4, mac)
 
             if not packet_data:
+                if self._recv_encryption.length_unauthenticated:
+                    self._inpbuf = self._inpbuf[rem:]
+                    self._packet = b''
+                    return self._start_discard(rem, 4 + self._pktlen)
+
                 raise MACError('MAC verification failed')
         else:
             packet_data = self._packet[4:] + rest

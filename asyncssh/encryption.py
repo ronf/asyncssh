@@ -39,6 +39,9 @@ _enc_params: _EncParamsMap = {}
 class Encryption:
     """Parent class for SSH packet encryption objects"""
 
+    # Whether the packet length is decrypted before it can be authenticated
+    length_unauthenticated = False
+
     @classmethod
     def new(cls, cipher_name: str, key: bytes, iv: bytes, mac_alg: bytes = b'',
             mac_key: bytes = b'', etm: bool = False) -> 'Encryption':
@@ -76,9 +79,14 @@ class Encryption:
 
         raise NotImplementedError
 
+    def compute_discard_mac(self, seq: int, datalen: int) -> None:
+        """Compute a MAC over dummy data while discarding a bad packet"""
+
 
 class BasicEncryption(Encryption):
     """Shim for basic encryption"""
+
+    length_unauthenticated = True
 
     def __init__(self, cipher: BasicCipher, mac: MAC):
         self._cipher = cipher
@@ -125,9 +133,22 @@ class BasicEncryption(Encryption):
         else:
             return None
 
+    def compute_discard_mac(self, seq: int, datalen: int) -> None:
+        """Compute a MAC over dummy data while discarding a bad packet
+
+           This keeps the amount of MAC work done before reporting a
+           corrupt packet independent of where the corruption was
+           detected, matching what OpenSSH does.
+
+        """
+
+        self._mac.sign(seq, datalen * b'a')
+
 
 class ETMEncryption(BasicEncryption):
     """Shim for encrypt-then-mac encryption"""
+
+    length_unauthenticated = False
 
     def encrypt_packet(self, seq: int, header: bytes,
                        packet: bytes) -> Tuple[bytes, bytes]:
