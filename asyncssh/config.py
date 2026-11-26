@@ -37,6 +37,7 @@ from typing import Sequence, Set, Tuple, Union, cast
 from .constants import DEFAULT_PORT
 from .logging import logger
 from .misc import DefTuple, FilePath, IllegalUserName, ip_address
+from .misc import split_args
 from .pattern import HostPatternList, WildcardPatternList
 
 try:
@@ -49,8 +50,7 @@ except ImportError: # pragma: no cover
 ConfigPaths = Union[None, FilePath, Sequence[FilePath]]
 
 
-_token_pattern = re.compile(r'%(.)')
-_env_pattern = re.compile(r'\${(.*?)}')
+_expand_pattern = re.compile(r'%(.)|\${(.*?)}')
 _unsafe_user_pattern = re.compile(r'^\.\.$|^~|^[A-Za-z]:|[/\\]|\$\{.*?\}')
 
 
@@ -118,11 +118,10 @@ class SSHConfig:
 
         raise NotImplementedError
 
-    def _expand_token(self, match):
+    def _expand_token(self, token: str) -> str:
         """Expand a percent token reference"""
 
         try:
-            token = match.group(1)
             return self._tokens[token]
         except KeyError:
             if token == 'd':
@@ -137,21 +136,32 @@ class SSHConfig:
                                        token) from None
 
     @staticmethod
-    def _expand_env(match):
+    def _expand_env(var: str) -> str:
         """Expand an environment variable reference"""
 
         try:
-            var = match.group(1)
             return os.environ[var]
         except KeyError:
             raise ConfigParseError('Invalid environment expansion: ' +
                                    var) from None
 
     def _expand_val(self, value: str) -> str:
-        """Perform percent token and environment expansion on a string"""
+        """Perform percent token and environment expansion on a string
 
-        return _env_pattern.sub(self._expand_env,
-                                _token_pattern.sub(self._expand_token, value))
+           Both kinds of expansion are done in a single pass, so values
+           which are substituted in are never expanded again.
+
+        """
+
+        def _expand(match: 're.Match[str]') -> str:
+            token, var = match.groups()
+
+            if token is not None:
+                return self._expand_token(token)
+            else:
+                return self._expand_env(var)
+
+        return _expand_pattern.sub(_expand, value)
 
     def _include(self, option: str, args: List[str]) -> None:
         """Read config from a list of other config files"""
@@ -652,6 +662,24 @@ class SSHClientConfig(SSHConfig):
         if option not in self._options:
             self._options[option] = value
 
+    def _set_command(self, option: str, args: List[str]) -> None:
+        """Set a local command option, split into arguments
+
+           The command is split before percent and environment expansion
+           are performed, so values substituted in can't add arguments.
+
+        """
+
+        value_str = args.pop(0)
+
+        if value_str.lower() == 'none':
+            value: Optional[List[str]] = None
+        else:
+            value = list(split_args(value_str))
+
+        if option not in self._options:
+            self._options[option] = value
+
     def _set_tokens(self) -> None:
         """Set the tokens available for percent expansion"""
 
@@ -722,7 +750,7 @@ class SSHClientConfig(SSHConfig):
         ('PKCS11Provider',                  SSHConfig._set_string),
         ('PreferredAuthentications',        SSHConfig._set_string),
         ('Port',                            SSHConfig._set_int),
-        ('ProxyCommand',                    SSHConfig._set_string),
+        ('ProxyCommand',                    _set_command),
         ('ProxyJump',                       SSHConfig._set_string),
         ('PubkeyAuthentication',            SSHConfig._set_bool),
         ('RekeyLimit',                      SSHConfig._set_rekey_limits),

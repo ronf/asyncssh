@@ -699,6 +699,17 @@ class _TestConnection(ServerTestCase):
 
     @unittest.skipUnless(nc_available, 'Netcat not available')
     @asynctest
+    async def test_proxy_command_in_config(self):
+        """Test connecting using a proxy command from a config file"""
+
+        with open('config', 'w') as f:
+            f.write('ProxyCommand nc %h %p')
+
+        async with self.connect(config='config'):
+            pass
+
+    @unittest.skipUnless(nc_available, 'Netcat not available')
+    @asynctest
     async def test_get_server_host_key_proxy_failure(self):
         """Test failure retrieving a server host key using proxy command"""
 

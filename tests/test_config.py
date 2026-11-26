@@ -666,12 +666,45 @@ class _TestClientConfig(_TestConfig):
         with self.assertRaises(asyncssh.ConfigParseError):
             self._parse_config('RemoteCommand ${XXX}')
 
+    def test_expanded_value_not_reexpanded(self):
+        """Test substituted values aren't expanded a second time"""
+
+        os.environ['ASYNCSSH_TEST_TOKEN'] = '%h'
+
+        try:
+            config = self._parse_config(
+                'RemoteCommand %h ${ASYNCSSH_TEST_TOKEN}', host='${HOME}%p')
+        finally:
+            del os.environ['ASYNCSSH_TEST_TOKEN']
+
+        self.assertEqual(config.get('RemoteCommand'), '${HOME}%p %h')
+
+    def test_proxy_command(self):
+        """Test proxy command being split before expansion"""
+
+        config = self._parse_config(
+            'ProxyCommand prog --target %h --login %r "a b"',
+            host='x --opt y', user='u "v w"')
+
+        self.assertEqual(config.get('ProxyCommand'),
+                         ['prog', '--target', 'x --opt y',
+                          '--login', 'u "v w"', 'a b'])
+
+    def test_proxy_command_none(self):
+        """Test proxy command set to none"""
+
+        config = self._parse_config('ProxyCommand none\nProxyCommand cmd')
+        self.assertIsNone(config.get('ProxyCommand', ()))
+
     def test_equals_no_split(self):
         """Test no-split config option with equals instead of space"""
 
         for delimiter in ('=', ' =', '= ', ' = '):
-            config = self._parse_config(f'ProxyCommand{delimiter}cmd')
-            self.assertEqual(config.get('ProxyCommand'), 'cmd')
+            config = self._parse_config(f'ProxyCommand{delimiter}cmd arg')
+            self.assertEqual(config.get('ProxyCommand'), ['cmd', 'arg'])
+
+            config = self._parse_config(f'RemoteCommand{delimiter}cmd arg')
+            self.assertEqual(config.get('RemoteCommand'), 'cmd arg')
 
 
 class _TestServerConfig(_TestConfig):

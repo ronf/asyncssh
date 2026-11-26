@@ -7528,7 +7528,8 @@ class SSHConnectionOptions(Options, Generic[_Options]):
         self.passphrase = passphrase
 
         if proxy_command == ():
-            proxy_command = cast(Optional[str], config.get('ProxyCommand'))
+            proxy_command = cast(Optional[Sequence[str]],
+                                 config.get('ProxyCommand'))
 
         if isinstance(proxy_command, str):
             proxy_command = split_args(proxy_command)
