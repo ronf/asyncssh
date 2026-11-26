@@ -60,6 +60,7 @@ class _X11Peer:
     """Peer representing X server to forward connections to"""
 
     expected_auth = b''
+    received = []
 
     @classmethod
     async def connect(cls, session_factory, host, port):
@@ -83,6 +84,8 @@ class _X11Peer:
 
     def write(self, data):
         """Consume data from the peer"""
+
+        self.received.append(data)
 
         if self._check_auth:
             match = data[32:48] == self.expected_auth
@@ -204,6 +207,11 @@ class _X11Server(Server):
             result = b'\x02'
         if result == b'\x01':
             writer.write(b'\x00')
+        elif bad:
+            # Send data after a rejected cookie, which should never
+            # be forwarded to the X server
+            writer.write(request)
+            await asyncio.sleep(0.1)
 
         writer.close()
         await maybe_wait_closed(writer)
@@ -403,17 +411,26 @@ class _TestX11(ServerTestCase):
 
         await self._check_x11('connect l', exit_status=2, x11_display='test:1')
 
+    async def _check_bad_auth(self, endian):
+        """Check that nothing is forwarded after a rejected cookie"""
+
+        _X11Peer.received = []
+
+        await self._check_x11(f'connect {endian}X', exit_status=0)
+
+        self.assertEqual(_X11Peer.received, [])
+
     @asynctest
     async def test_bad_auth_big(self):
         """Test sending bad auth data with big-endian connect"""
 
-        await self._check_x11('connect BX', exit_status=0)
+        await self._check_bad_auth('B')
 
     @asynctest
     async def test_bad_auth_little(self):
         """Test sending bad auth data with little-endian connect"""
 
-        await self._check_x11('connect lX', exit_status=0)
+        await self._check_bad_auth('l')
 
     @asynctest
     async def test_ipv4_address(self):

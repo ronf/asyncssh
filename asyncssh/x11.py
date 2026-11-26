@@ -228,6 +228,7 @@ class SSHX11ClientForwarder(SSHForwarder):
                 pass
 
             self._inpbuf = b''
+            self.close()
         else:
             self._inpbuf = (self._prefix + self._auth_proto +
                             self._auth_proto_pad + self._auth_data +
