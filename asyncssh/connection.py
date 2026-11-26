@@ -938,6 +938,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         self._revoked_host_keys: Set[SSHKey] = set()
 
         self._x509_trusted_certs = options.x509_trusted_certs
+        self._x509_known_host_certs: List[SSHX509Certificate] = []
         self._x509_trusted_cert_paths = options.x509_trusted_cert_paths
         self._x509_revoked_certs: Set[SSHX509Certificate] = set()
         self._x509_trusted_subjects: Sequence['X509NamePattern'] = []
@@ -1278,11 +1279,12 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
             trusted_x509_subjects, revoked_x509_subjects = \
                 match_known_hosts(known_hosts, host, addr, port)
 
-        assert self._trusted_host_keys is not None
+        # Replace the results of any earlier match, so that trust from
+        # one host-based auth attempt doesn't carry over to the next
+        self._trusted_host_keys = set(trusted_host_keys)
+        self._trusted_host_key_algs = []
 
         for key in trusted_host_keys:
-            self._trusted_host_keys.add(key)
-
             if key.algorithm not in self._trusted_host_key_algs:
                 self._trusted_host_key_algs.extend(key.sig_algorithms)
 
@@ -1290,8 +1292,9 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         self._revoked_host_keys = set(revoked_host_keys)
 
         if self._x509_trusted_certs is not None:
-            self._x509_trusted_certs = list(self._x509_trusted_certs)
-            self._x509_trusted_certs.extend(trusted_x509_certs)
+            # Keep these separate from x509_trusted_certs, so they're
+            # only trusted when validating host certificates
+            self._x509_known_host_certs = list(trusted_x509_certs)
             self._x509_revoked_certs = set(revoked_x509_certs)
 
             self._x509_trusted_subjects = trusted_x509_subjects
@@ -1343,7 +1346,8 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         assert self._x509_trusted_certs is not None
 
-        cert.validate_chain(self._x509_trusted_certs,
+        cert.validate_chain([*self._x509_trusted_certs,
+                             *self._x509_known_host_certs],
                             self._x509_trusted_cert_paths,
                             self._x509_revoked_certs,
                             self._x509_purposes,
@@ -3588,7 +3592,8 @@ class SSHClientConnection(SSHConnection):
                 get_default_certificate_algs() + get_default_public_key_algs()
 
         if self._x509_trusted_certs is not None:
-            if self._x509_trusted_certs or self._x509_trusted_cert_paths:
+            if self._x509_trusted_certs or self._x509_known_host_certs or \
+                    self._x509_trusted_cert_paths:
                 default_host_key_algs = \
                     get_default_x509_certificate_algs() + default_host_key_algs
 

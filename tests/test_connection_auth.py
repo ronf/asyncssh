@@ -136,6 +136,29 @@ class _InvalidUsernameClientConnection(asyncssh.connection.SSHClientConnection):
         return keypair, host, b'\xff'
 
 
+class _ChangingClientHostConnection(asyncssh.connection.SSHClientConnection):
+    """Test claiming a different client host on each host-based attempt"""
+
+    _host_attempt = 0
+
+    async def host_based_auth_requested(self):
+        """Return a host key pair, host, and user to authenticate with"""
+
+        keypair, _, user = await super().host_based_auth_requested()
+
+        self._host_attempt += 1
+        return keypair, f'host{self._host_attempt}', user
+
+
+class _HostBasedPublicKeyServer(_HostBasedServer):
+    """Server for testing host-based and public key authentication"""
+
+    def public_key_auth_supported(self):
+        """Return whether or not public key authentication is supported"""
+
+        return True
+
+
 class _PublicKeyClient(asyncssh.SSHClient):
     """Test client public key authentication"""
 
@@ -1158,6 +1181,58 @@ class _TestHostBasedAsyncServerAuth(_TestHostBasedAuth):
                                client_host='xxx', client_username='user')
 
 
+class _TrustedHostServer(_HostBasedServer):
+    """Server for testing which trusted client host is authorized"""
+
+    def validate_host_based_user(self, username, client_host, client_username):
+        """Return whether remote host and user is authorized for this user"""
+
+        return client_host == 'host2' and client_username == 'user'
+
+
+class _TestHostBasedAuthTrustedHostChange(ServerTestCase):
+    """Unit tests for changing the trusted client host between attempts"""
+
+    @classmethod
+    async def start_server(cls):
+        """Start an SSH server which trusts client-provided host names"""
+
+        with open('skey.pub') as f:
+            skey_pub = f.read()
+
+        with open('ckey.pub') as f:
+            ckey_pub = f.read()
+
+        known_client_hosts = asyncssh.import_known_hosts(
+            f'host1 {skey_pub}host2 {ckey_pub}')
+
+        return await cls.create_server(_TrustedHostServer,
+                                       known_client_hosts=known_client_hosts,
+                                       trust_client_host=True)
+
+    @asynctest
+    async def test_trusted_host(self):
+        """Test authenticating with the key of the authorized host"""
+
+        async with self.connect(username='user', client_host_keys='ckey',
+                                client_host='host2', client_username='user'):
+            pass
+
+    @asynctest
+    async def test_trusted_host_change(self):
+        """Test trust in one host's key not carrying over to another host"""
+
+        skey = asyncssh.read_private_key('skey')
+
+        with patch('asyncssh.connection.SSHClientConnection',
+                   _ChangingClientHostConnection):
+            with self.assertRaises(asyncssh.PermissionDenied):
+                async with self.connect(username='user',
+                                        client_host_keys=[skey, skey],
+                                        client_username='user'):
+                    pass # pragma: no cover
+
+
 @patch_getnameinfo
 class _TestLimitedHostBasedSignatureAlgs(ServerTestCase):
     """Unit tests for limited host key signature algorithms"""
@@ -1967,6 +2042,35 @@ class _TestX509Untrusted(ServerTestCase):
 
         with self.assertRaises(asyncssh.PermissionDenied):
             await self.connect(username='ckey', client_keys=['ckey_x509_self'])
+
+
+@unittest.skipUnless(x509_available, 'X.509 not available')
+class _TestX509KnownClientHosts(ServerTestCase):
+    """Unit tests for X.509 certificates trusted in known client hosts"""
+
+    @classmethod
+    async def start_server(cls):
+        """Start an SSH server which supports host-based and X.509 auth"""
+
+        with open('ckey_x509_self.pub') as f:
+            known_client_hosts = asyncssh.import_known_hosts('* ' + f.read())
+
+        authorized_keys = asyncssh.import_authorized_keys(
+            'x509v3-ssh-rsa subject=OU=name\n')
+
+        return await cls.create_server(
+            _HostBasedPublicKeyServer, known_client_hosts=known_client_hosts,
+            authorized_client_keys=authorized_keys, x509_trusted_certs=[])
+
+    @asynctest
+    async def test_known_client_host_cert_not_trusted_for_user(self):
+        """Test known client host X.509 cert isn't trusted for user auth"""
+
+        with self.assertRaises(asyncssh.PermissionDenied):
+            async with self.connect(username='ckey', client_host_keys='skey',
+                                    client_username='user',
+                                    client_keys=['ckey_x509_self']):
+                pass # pragma: no cover
 
 
 @unittest.skipUnless(x509_available, 'X.509 not available')
