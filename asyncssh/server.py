@@ -845,6 +845,10 @@ class SSHServer:
 
            By default, this method rejects all server requests.
 
+           Each listener uses a file descriptor while open, so servers
+           accepting requests from untrusted clients may want to limit
+           how many they allow, returning `False` once a limit is reached.
+
            :param listen_host:
                The address the server should listen on
            :param listen_port:
@@ -958,6 +962,10 @@ class SSHServer:
            To reject this request, this method should return `False`.
 
            By default, this method rejects all server requests.
+
+           Each listener uses a file descriptor while open, so servers
+           accepting requests from untrusted clients may want to limit
+           how many they allow, returning `False` once a limit is reached.
 
            :param listen_path:
                The path the server should listen on
