@@ -32,7 +32,7 @@ from .misc import BytesOrFilePath, FilePath, OptionsParser
 from .misc import open_file, read_file, match_base64, wrap_base64, parse_time
 from .packet import String, UInt32, PacketDecodeError, SSHPacket
 from .pattern import WildcardPatternList
-from .public_key import CERT_TYPE_ANY, KeyImportError, KeyPairListArg
+from .public_key import CERT_TYPE_USER, KeyImportError, KeyPairListArg
 from .public_key import SSHKey, SSHOpenSSHCertificate
 from .public_key import decode_ssh_public_key, decode_ssh_certificate
 from .public_key import import_public_key, load_keypairs
@@ -233,7 +233,8 @@ def create_sshsig(key: KeyPairListArg, data: BytesOrFilePath, *,
     """Create an SSHSIG signature
 
        This function creates and returns an SSHSIG for a block of data signed
-       with the requested private key.
+       with the requested private key. If the key has an associated SSH
+       certificate, it must be a user certificate.
 
        :param key:
            The signing key to use. If this corresponds to multiple keys, the
@@ -278,6 +279,13 @@ def create_sshsig(key: KeyPairListArg, data: BytesOrFilePath, *,
     if keypair.has_x509_chain: # pragma: no cover
         raise ValueError('X.509 certificates not supported')
 
+    if keypair.has_cert:
+        cert = cast(SSHOpenSSHCertificate,
+                    decode_ssh_certificate(keypair.public_data))
+
+        if cert.cert_type != CERT_TYPE_USER:
+            raise ValueError('Only user certificates are supported')
+
     hash_name = hash_name.encode('utf-8')
 
     if keypair.sig_algorithm == b'ssh-rsa':
@@ -306,9 +314,10 @@ def validate_sshsig(data: BytesOrFilePath, sig: BytesOrFilePath,
        namespace and validity period restrictions on the allowed signers
        entry are also enforced.
 
-       In the case where an SSH certificate is used to sign the block, the
-       specified principal must also match the certificate principals and
-       the validity period of the certificate is also enforced.
+       In the case where an SSH certificate is used to sign the block, it
+       must be a user certificate with a non-empty list of principals, the
+       specified principal must match one of the certificate principals,
+       and the validity period of the certificate is also enforced.
 
        The `allowed_signers` argument can be any of the following:
 
@@ -415,13 +424,13 @@ def validate_sshsig(data: BytesOrFilePath, sig: BytesOrFilePath,
 
     result = allowed_signers.validate(key, principal, namespace)
 
-    if cert and not result:
+    if cert and cert.principals and not result:
         result = allowed_signers.validate(cert.signing_key, principal,
                                           namespace, ca=True)
 
         if result:
             try:
-                cert.validate(CERT_TYPE_ANY, principal)
+                cert.validate(CERT_TYPE_USER, principal)
             except ValueError:
                 return False
 

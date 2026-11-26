@@ -44,16 +44,28 @@ class _TestSSHSIG(TempDirTestCase):
         missing_key = get_test_key('ssh-rsa', 1)
         ca_key = get_test_key('ecdsa-sha2-nistp256', 1)
 
-        good_cert = ca_key.generate_user_certificate(rsa_key, 'id')
+        good_cert = ca_key.generate_user_certificate(
+            rsa_key, 'id', principals=['principal'])
 
-        bad_cert = ca_key.generate_user_certificate(ecdsa_key, 'id',
-                                                    valid_before='-1d')
+        bad_cert = ca_key.generate_user_certificate(
+            ecdsa_key, 'id', principals=['principal'], valid_before='-1d')
+
+        empty_cert = ca_key.generate_user_certificate(ecdsa_key, 'id')
+
+        user_cert = ca_key.generate_user_certificate(
+            ecdsa_key, 'id', principals=['principal'])
+
+        host_cert = ca_key.generate_host_certificate(
+            ecdsa_key, 'id', principals=['principal'])
 
         cls._rsa_keypair = rsa_key
         cls._ecdsa_keypair = ecdsa_key
         cls._missing_keypair = missing_key
         cls._good_cert_keypair = (rsa_key, good_cert)
         cls._bad_cert_keypair = (ecdsa_key, bad_cert)
+        cls._empty_cert_keypair = (ecdsa_key, empty_cert)
+        cls._user_cert_keypair = (ecdsa_key, user_cert)
+        cls._host_cert_keypair = (ecdsa_key, host_cert)
 
     @staticmethod
     def _build_signers(signers):
@@ -187,7 +199,8 @@ class _TestSSHSIG(TempDirTestCase):
             ('Unsupported hash', {'hash_name': 'xxx'}),
             ('Empty namespace value', {'namespace': ''}),
             ('Incorrect hash size', {'is_hashed': True}),
-            ('No signing key specified', {'key': []})
+            ('No signing key specified', {'key': []}),
+            ('Host certificate', {'key': self._host_cert_keypair})
         )
 
         for msg, kwargs in tests:
@@ -230,7 +243,9 @@ class _TestSSHSIG(TempDirTestCase):
         tests = (
             ('Mismatched principal', 'xxx', self._rsa_keypair),
             ('Mismatched CA principal', 'xxx', self._good_cert_keypair),
-            ('Expired certificate', 'principal', self._bad_cert_keypair)
+            ('Expired certificate', 'principal', self._bad_cert_keypair),
+            ('Empty certificate principals', 'principal',
+             self._empty_cert_keypair)
         )
 
         data = os.urandom(256)
@@ -244,6 +259,30 @@ class _TestSSHSIG(TempDirTestCase):
                 sig = asyncssh.create_sshsig(keypair, data)
                 self.assertFalse(asyncssh.validate_sshsig(
                     data, sig, principal, allowed_signers.encode()))
+
+    def test_sshsig_host_cert(self):
+        """Test SSHSIG validation rejecting a host certificate"""
+
+        data = os.urandom(256)
+
+        _, user_cert = self._user_cert_keypair
+        _, host_cert = self._host_cert_keypair
+
+        allowed_signers = self._build_signers(
+            (('principal', 'cert-authority', self._user_cert_keypair),))
+
+        sig = asyncssh.create_sshsig(self._user_cert_keypair, data, raw=True)
+
+        self.assertTrue(asyncssh.validate_sshsig(
+            data, sig, 'principal', allowed_signers.encode()))
+
+        # The signed data doesn't cover the certificate, so swapping in a
+        # host certificate for the same key leaves the signature valid
+        sig = sig.replace(String(user_cert.public_data),
+                          String(host_cert.public_data))
+
+        self.assertFalse(asyncssh.validate_sshsig(
+            data, sig, 'principal', allowed_signers.encode()))
 
     def test_sshsig(self):
         """Test creating and verifying SSHSIG signatures"""

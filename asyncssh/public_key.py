@@ -140,7 +140,6 @@ _subject_pattern = re.compile(r'(?:Distinguished[ -_]?Name|Subject|DN)[=:]?\s?',
                               re.IGNORECASE)
 
 # SSH certificate types
-CERT_TYPE_ANY  = 0
 CERT_TYPE_USER = 1
 CERT_TYPE_HOST = 2
 
@@ -1557,9 +1556,9 @@ class SSHOpenSSHCertificate(SSHCertificate):
         self.principals = principals
         self.options = options
         self.signing_key = signing_key
+        self.cert_type = cert_type
 
         self._serial = serial
-        self._cert_type = cert_type
         self._key_id = key_id
         self._valid_after = valid_after
         self._valid_before = valid_before
@@ -1758,7 +1757,7 @@ class SSHOpenSSHCertificate(SSHCertificate):
     def validate(self, cert_type: int, principal: Optional[str]) -> None:
         """Validate an OpenSSH certificate"""
 
-        if cert_type not in (CERT_TYPE_ANY, self._cert_type):
+        if cert_type != self.cert_type:
             raise ValueError('Invalid certificate type')
 
         now = time.time()
