@@ -1882,6 +1882,15 @@ class _TestPublicKey(TempDirTestCase):
                                          extensions={b'xxx': b''})
             self.assertIsNotNone(asyncssh.import_certificate(cert))
 
+        with self.subTest('Ignored certificate extension value'):
+            cert = self.make_certificate(cert_type, self.pubkey,
+                                         self.privca, ('name',),
+                                         extensions={
+                                             b'xxx': b'permit-pty',
+                                             b'': b''})
+            cert = asyncssh.import_certificate(cert)
+            self.assertNotIn('permit-pty', cert.options)
+
         with self.subTest('Invalid certificate signature'):
             with self.assertRaises(asyncssh.KeyImportError):
                 cert = self.make_certificate(cert_type, self.pubkey,

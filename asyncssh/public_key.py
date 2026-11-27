@@ -1742,10 +1742,11 @@ class SSHOpenSSHCertificate(SSHCertificate):
 
         while packet:
             name = packet.get_string()
+            data = packet.get_string()
 
             decoder = decoders.get(name)
             if decoder:
-                data_packet = SSHPacket(packet.get_string())
+                data_packet = SSHPacket(data)
                 result[name.decode('ascii')] = decoder(data_packet)
                 data_packet.check_end()
             elif critical:
