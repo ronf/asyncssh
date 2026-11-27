@@ -153,6 +153,10 @@ class SSHServer:
            succeed. Otherwise, it should return `True` to indicate that
            authentication should proceed.
 
+           Any false value is treated as `False`, including the `None`
+           returned when this method doesn't explicitly return a value,
+           so be sure to return `True` when authentication is required.
+
            If blocking operations need to be performed to prepare the
            state needed to complete the authentication, this method may
            be defined as a coroutine.
