@@ -3,6 +3,207 @@
 Change Log
 ==========
 
+Release 2.24.2 (27 Nov 2026)
+----------------------------
+
+* Added support for Python 3.15.
+
+* Added support for the AcceptEnv server config option and a new
+  accept_env argument in SSHServerConnectionOptions, allowing a server
+  to filter which environment variables a client is allowed to set.
+  Patterns can include '*' and '?' wildcards. For backward
+  compatibility, the default remains to accept all variables.
+
+* Added support for the SetEnv server config option and a new env
+  argument in SSHServerConnectionOptions, allowing a server to set
+  environment variables in all sessions. These take precedence over
+  both client-provided environment variables and environment options
+  in authorized_keys. SetEnv parsing on both the client and server
+  now matches OpenSSH.
+
+* Added support for '-' prefixed patterns in SendEnv, matching OpenSSH,
+  to remove previously listed patterns, with "-*" clearing the list.
+  As an AsyncSSH extension, this is also supported in AcceptEnv.
+
+* Changed environment options in authorized_keys to take precedence
+  over environment variables sent by the client, matching OpenSSH.
+  Requests from clients to set environment variables after a session
+  is started are now ignored. Thanks go to Hemanth Kumar M J for
+  reporting this issue and suggesting a fix.
+
+* Changed config file parsing to split lines into arguments the same
+  way OpenSSH does. Comments are now allowed at the end of a line,
+  and a backslash is kept unless it escapes a quote, backslash, or
+  space, so Windows paths no longer need to be quoted.
+
+* Changed config file Include patterns to skip hidden files and
+  directories unless they are explicitly named, and to load matching
+  files in sorted order, matching OpenSSH. Thanks go to Piotr Czapla
+  for reporting this and suggesting a fix.
+
+* Added support for the nettle 4 UMAC API, and improved loading of
+  the nettle library on Windows to pick a version matching the
+  architecture of the running Python. Thanks go to Georg Sauthoff for
+  reporting the nettle 4 incompatibility and suggesting a fix.
+
+* Improved the performance of the ChaCha20-Poly1305 cipher by about
+  1.2-1.5x for small packets. Thanks go to Israel Fruchter for
+  pointing out the performance concern and providing initial
+  benchmarks.
+
+* Improved the performance of SFTP attribute and other record
+  handling. Thanks go to Dex Hünter for pointing out this issue.
+
+* Improved the performance of logging by skipping argument conversion
+  for log messages which aren't enabled. Thanks go to Israel Fruchter
+  for reporting this issue and Muhammad Osama Amin for contributing
+  this improvement.
+
+* Disabled the rsa2048-sha256 key exchange algorithm by default, as it
+  requires a server to generate a new RSA key for every connection
+  before authentication, allowing an unauthenticated client to consume
+  significant CPU time. It can still be enabled via kex_algs. Thanks
+  go to Kiseob Hong for reporting this issue and providing detailed
+  analysis and measurements.
+
+* Increased the minimum max packet size accepted from a peer when a
+  channel is opened to 1024 bytes, avoiding a potential denial of
+  service attack. Thanks go to Telmo Xavier for reporting this issue
+  and providing detailed analysis.
+
+* Added a limit on the size of decompressed packets, avoiding a
+  potential denial of service attack where a small compressed packet
+  could expand to consume a large amount of memory. Thanks go to
+  Dickson Wu and Gavin Blacklock for independently reporting this
+  issue, and to Dickson Wu for suggesting a fix.
+
+* Changed handling of corrupt packets when using CBC and other ciphers
+  with a non-ETM MAC to always consume a fixed amount of data and MAC
+  work before reporting an error, as in OpenSSH. This prevents an
+  attacker in the middle from recovering bits of plaintext, a variant
+  of CVE-2008-5161. Thanks go to Fabian Bäumer for reporting this
+  issue and providing proof of concept code.
+
+* Fixed multiple additional SFTP chroot escape issues, including
+  ones involving symlinks and renames, where a client could access
+  files outside of a chroot'd AsyncSSH SFTP server. Thanks go to
+  Eurico Nicacio, Tan Jun Wei, and GitHub users hnwg and hgrgr for
+  reporting these issues and providing detailed analysis and proof
+  of concept code.
+
+* Fixed multiple additional SFTP "path traversal" issues in recursive
+  and wildcard downloads, where a malicious SFTP server could use
+  symlinks in the files it returned, or existing local symlinks, to
+  write outside of the requested target directory. Thanks go to Jan
+  Mrowiec and Adrian Korwel for reporting these issues and providing
+  detailed analysis and proof of concept code.
+
+* Added checks on the names sent by a remote SCP source, preventing a
+  malicious SCP server from writing files which weren't requested
+  into the destination directory. A new check_names option can be
+  set to False to disable this check. Thanks go to Adrian Korwel and
+  Zachariah Mithani for reporting this issue and providing proof of
+  concept code.
+
+* Fixed an issue with X.509 certificate chain validation where a peer
+  could add its own trusted root CA, overriding the intended trust
+  anchors. Thanks go to GitHub Security Lab for reporting this issue,
+  and to GitHub user anticomputer (Bas) for manually verifying it.
+
+* Fixed a server with rdns_lookup or UseDNS enabled to verify that a
+  client's reverse DNS name resolves back to the client's address
+  before using it to match "from" options in authorized_keys or
+  "Match Host" config options, as in OpenSSH. Host-based
+  authentication now also uses this verified name, and host key
+  trust from one host-based authentication attempt no longer carries
+  over to later attempts. Thanks go to GitHub user yutljp and Chris
+  Purcell (L3Digital LLC) for reporting these issues.
+
+* Fixed host and user names substituted into ProxyCommand from an
+  OpenSSH config file to no longer be able to add arguments to the
+  proxy command, and to reject unsafe host and user names substituted
+  into RemoteCommand. Thanks go to Chris Purcell (L3Digital LLC) and
+  Liam Dowd for reporting the ProxyCommand issue.
+
+* Fixed parsing of the '=' form of ProxyCommand and RemoteCommand
+  config options. Thanks go to Steve Newcomb for reporting this issue
+  and suggesting a fix.
+
+* Fixed host key revocations in known_hosts for a specific host and
+  port to be honored when there's also a matching entry for the host
+  without a port. Thanks go to Liam Dowd for reporting this issue.
+
+* Fixed handling of unrecognized OpenSSH certificate extensions to
+  skip their values, matching OpenSSH, so a crafted value can no
+  longer be treated as granting a permission. Thanks go to Liam Dowd
+  for reporting this issue and providing proof of concept code.
+
+* Changed SSHSIG signatures to require user certificates with at
+  least one principal, and to accept only SHA-2 based RSA signatures,
+  matching OpenSSH and the SSHSIG specification. Thanks go to Liam
+  Dowd for reporting these issues and providing proof of concept code.
+
+* Fixed X11 forwarding to close a connection which fails cookie
+  validation, rather than leaving the connection to the local X
+  server open. Thanks go to Liam Dowd for reporting this issue and
+  providing proof of concept code.
+
+* Hardened the import of keys and certificates against malformed
+  input, reporting all such errors as KeyImportError and avoiding
+  cases where crafted input could take a very long time to process,
+  blocking the event loop. Thanks go to bl4ckw4t3r (aka Manyo) for
+  reporting these issues and providing proof of concept code.
+
+* Added error checking on calls into liboqs for post-quantum key
+  exchange. Thanks go to Zhang Jianhui (Jack) for reporting this
+  issue and providing feedback on the fix.
+
+* Fixed handling of a peer's first_kex_packet_follows guess to match
+  RFC 4253, avoiding key exchange failures with clients such as
+  Dropbear's. Thanks go to GitHub user angelusbr (Capivariano) for
+  reporting this issue, providing detailed analysis, and suggesting a
+  fix and unit tests.
+
+* Fixed an issue where concurrent server connections sharing an RSA
+  host key could sign with the wrong signature algorithm. Thanks go
+  to Zoltan Csizmadia for reporting this issue and contributing a fix.
+
+* Fixed authentication startup when an eager task factory is in use,
+  which could cause public key authentication to hang. Thanks go to
+  Joshua Brooks for reporting this issue and Muhammad Osama Amin for
+  contributing a fix.
+
+* Fixed an issue where a server whose config file used %u, such as
+  in AuthorizedKeysFile, failed to start in 2.24.1.
+
+* Suppressed deprecation warnings from newer versions of the
+  cryptography package for finite field Diffie-Hellman, falling back
+  to its "decrepit" module when needed. Thanks go to M. Burak YIKILMAZ
+  for reporting this issue and Sarthak Shubham for contributing a fix.
+
+* Fixed cleanup of outstanding parallel SFTP requests on cancellation
+  or when an exception is raised while consuming results, such as
+  from a progress handler. Thanks go to GitHub user GrzesCz for
+  reporting this issue and GitHub user omrzk for contributing a fix.
+
+* Fixed an issue where iterating over an SSHReader with "async for"
+  could return an extra empty string at EOF. A soft EOF received
+  when line editing is enabled now also ends an "async for" loop.
+
+* Fixed cleanup of local port forwarding when a client disconnects
+  during connection setup, and an exception when a new connection's
+  peer address is unavailable. Thanks go to Sean Li for contributing
+  the cleanup fix.
+
+* Fixed a PKCS#11 session reference counting issue when key pairs
+  are copied, which could close a session while keys still referred
+  to it.
+
+* Fixed forwarding and X11 listeners on Windows to fail when a port
+  is already in use, rather than sharing it with another program.
+  Also fixed an issue opening the Windows OpenSSH agent pipe while it
+  is busy.
+
 Release 2.24.1 (3 Oct 2026)
 ---------------------------
 
