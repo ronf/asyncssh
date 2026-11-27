@@ -2153,7 +2153,6 @@ by AsyncSSH:
   | diffie-hellman-group18-sha512
   | diffie-hellman-group14-sha256\@ssh.com
   | diffie-hellman-group14-sha1
-  | rsa2048-sha256
 
 The following key exchange algorithms are supported by AsyncSSH, but
 disabled by default:
@@ -2171,6 +2170,7 @@ disabled by default:
   | diffie-hellman-group16-sha512\@ssh.com
   | diffie-hellman-group18-sha512\@ssh.com
   | diffie-hellman-group1-sha1
+  | rsa2048-sha256
   | rsa1024-sha1
 
 GSS authentication support is only available when the gssapi package is
