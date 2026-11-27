@@ -791,9 +791,19 @@ class _TestChannel(ServerTestCase):
     async def test_invalid_open_max_pktsize(self):
         """Test sending an open with invalid max packet size"""
 
+        for max_pktsize in (0, 1, 1023):
+            with self.subTest(max_pktsize=max_pktsize):
+                async with self.connect() as conn:
+                    with self.assertRaises(asyncssh.ChannelOpenError):
+                        await _create_session(conn, 'echo',
+                                              max_pktsize=max_pktsize)
+
+    @asynctest
+    async def test_min_open_max_pktsize(self):
+        """Test sending an open with the minimum accepted max packet size"""
+
         async with self.connect() as conn:
-            with self.assertRaises(asyncssh.ChannelOpenError):
-                await _create_session(conn, 'echo', max_pktsize=0)
+            await self._check_session(conn, 'echo', max_pktsize=1024)
 
     @asynctest
     async def test_invalid_open_confirmation(self):
@@ -1879,21 +1889,61 @@ class _TestChannel(ServerTestCase):
 
 
 class _TestInvalidMaxPktsizeServer(ServerTestCase):
-    """Unit tests for testing a server responding with max_pktsuze of 0"""
+    """Unit tests for testing a server responding with max_pktsize of 0"""
+
+    max_pktsize = 0
 
     @classmethod
     async def start_server(cls):
         """Start an SSH server to connect to"""
 
-        return await cls.create_server(_ChannelServer, max_pktsize=0)
+        return await cls.create_server(_ChannelServer,
+                                       max_pktsize=cls.max_pktsize)
 
     @asynctest
     async def test_invalid_max_pktsize_server(self):
-        """Test connecting to a server which sends max_pktsize of 0"""
+        """Test connecting to a server which sends an invalid max_pktsize"""
 
         async with self.connect() as conn:
             with self.assertRaises(asyncssh.ChannelOpenError):
                 await _create_session(conn, 'echo')
+
+
+class _TestTinyMaxPktsizeServer(_TestInvalidMaxPktsizeServer):
+    """Unit tests for testing a server responding with max_pktsize of 1"""
+
+    max_pktsize = 1
+
+
+class _TestSmallMaxPktsizeServer(_TestInvalidMaxPktsizeServer):
+    """Unit tests for testing a server responding with max_pktsize of 1023"""
+
+    max_pktsize = 1023
+
+
+class _TestMinMaxPktsizeServer(ServerTestCase):
+    """Unit tests for testing a server responding with max_pktsize of 1024"""
+
+    @classmethod
+    async def start_server(cls):
+        """Start an SSH server to connect to"""
+
+        return await cls.create_server(_ChannelServer, max_pktsize=1024)
+
+    @asynctest
+    async def test_min_max_pktsize_server(self):
+        """Test connecting to a server which sends the minimum max_pktsize"""
+
+        async with self.connect() as conn:
+            chan, session = await _create_session(conn, 'echo')
+
+            chan.write('test')
+            chan.write_eof()
+
+            await chan.wait_closed()
+
+            for buf in session.recv_buf.values():
+                self.assertEqual(''.join(buf), 'test')
 
 
 class _TestChannelNoPTY(ServerTestCase):

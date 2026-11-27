@@ -8137,6 +8137,9 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
            The default receive window size to set for client sessions.
        :param max_pktsize: (optional)
            The default maximum packet size to set for client sessions.
+           Some SSH implementations won't accept a maximum packet size
+           below a minimum of their own and may close the connection,
+           so values much smaller than the default should be avoided.
        :param config: (optional)
            Paths to OpenSSH client configuration files to load. This
            configuration will be used as a fallback to override the
@@ -8838,11 +8841,13 @@ class SSHServerConnectionOptions(SSHConnectionOptions):
            This option can only be used in conjunction with `sftp_factory`.
            If not specified, scp requests will be passed as regular
            commands to the `process_factory` or `session_factory`.
-           to the client when the client supports it, defaulting to `True`
        :param window: (optional)
            The receive window size for sessions on this server
        :param max_pktsize: (optional)
-           The maximum packet size for sessions on this server
+           The maximum packet size for sessions on this server. Some
+           SSH implementations won't accept a maximum packet size below
+           a minimum of their own and may close the connection, so
+           values much smaller than the default should be avoided.
        :param server_version: (optional)
            An ASCII string to advertise to SSH clients as the version of
            this server, defaulting to `'AsyncSSH'` and its version number.
