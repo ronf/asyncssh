@@ -867,9 +867,21 @@ class _TestServerConfig(_TestConfig):
         for user in ('xxx..yyy', 'xxx~yyy', 'Cxxx:'):
             self._parse_config('AuthorizedKeysFile %u', user=user)
 
-        for user in ('', '..', '~xxx', 'C:xxx', '/xxx', '\\xxx', '${xxx}'):
+        for user in ('..', '~xxx', 'C:xxx', '/xxx', '\\xxx', '${xxx}'):
             with self.assertRaises(asyncssh.IllegalUserName):
                 self._parse_config('AuthorizedKeysFile %u', user=user)
+
+    def test_empty_user(self):
+        """Test empty username on initial load and reload"""
+
+        config = self._parse_config('AuthorizedKeysFile %u', user='')
+        self.assertEqual(config.get('AuthorizedKeysFile'), [''])
+
+        config = self._parse_config('AuthorizedKeysFile %u', reload=True)
+        self.assertEqual(config.get('AuthorizedKeysFile'), ['user'])
+
+        with self.assertRaises(asyncssh.IllegalUserName):
+            self._parse_config('AuthorizedKeysFile %u', reload=True, user='')
 
     def test_reload(self):
         """Test update of match options"""

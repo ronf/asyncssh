@@ -864,6 +864,7 @@ class SSHServerConfig(SSHConfig):
                  local_port: int, user: str, host: str, addr: str) -> None:
         super().__init__(last_config, reload, canonical, final)
 
+        self._reload = reload
         self._local_addr = local_addr
         self._local_port = local_port
         self._user = user
@@ -897,8 +898,10 @@ class SSHServerConfig(SSHConfig):
                - a username containing forward or backward slashes
                - a username containing an env substitution like "${...}"
 
-           A username of empty string is allowed here, but will later be
-           rejected if used as a substitution value.
+           A username of empty string is allowed when a server first loads
+           its config, before a username is known. When the config is
+           reloaded for a user, an empty username is allowed here, but will
+           later be rejected if used as a substitution value.
 
            Note: this code assumes that saslprep has already been performed
            on the username before it is accessed here.
@@ -908,7 +911,7 @@ class SSHServerConfig(SSHConfig):
         if _unsafe_user_pattern.search(self._user):
             raise IllegalUserName('Unsafe username substitution')
 
-        if self._user:
+        if self._user or not self._reload:
             self._tokens.update({'u': self._user})
 
     _handlers = {option.lower(): (option, handler) for option, handler in (

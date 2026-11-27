@@ -22,9 +22,11 @@
 
 import asyncio
 import os
+import shutil
 import sys
 import unittest
 
+from pathlib import Path
 from unittest.mock import patch
 
 from cryptography.exceptions import UnsupportedAlgorithm
@@ -1891,6 +1893,33 @@ class _TestPreloadedAuthorizedKeysFileList(ServerTestCase):
     @asynctest
     async def test_pre_loaded_authorized_keys(self):
         """Test pre-loaded authorized keys file list"""
+
+        async with self.connect(username='ckey', client_keys='ckey'):
+            pass
+
+
+class _TestAuthorizedKeysFileUserToken(ServerTestCase):
+    """Unit tests for a server config AuthorizedKeysFile with %u"""
+
+    @classmethod
+    async def start_server(cls):
+        """Start an SSH server with a per-user AuthorizedKeysFile"""
+
+        os.mkdir('user_keys')
+        os.mkdir(os.path.join('user_keys', 'ckey'))
+        shutil.copy('authorized_keys',
+                    os.path.join('user_keys', 'ckey', 'authorized_keys'))
+
+        keys_path = Path('user_keys').resolve().as_posix()
+
+        with open('server_config', 'w') as f:
+            f.write(f'AuthorizedKeysFile {keys_path}/%u/authorized_keys\n')
+
+        return await cls.create_server(Server, config='server_config')
+
+    @asynctest
+    async def test_user_token(self):
+        """Test public key auth with a per-user AuthorizedKeysFile"""
 
         async with self.connect(username='ckey', client_keys='ckey'):
             pass
