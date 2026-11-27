@@ -66,6 +66,34 @@ class _TestConfig(TempDirTestCase):
         config = self._parse_config('\n#Port 22')
         self.assertIsNone(config.get('Port'))
 
+    def test_tokenize(self):
+        """Test splitting config lines into arguments"""
+
+        for line, result in (
+                ('a b\tc', ['a', 'b', 'c']),
+                ('a #b c', ['a']),
+                ('a#b', ['a#b']),
+                ('a"b c"d', ['ab cd']),
+                ("'a b' \"c d\"", ['a b', 'c d']),
+                ('"" x', ['', 'x']),
+                ('C:\\Users\\me', ['C:\\Users\\me']),
+                ('a\\\\b', ['a\\b']),
+                ('a\\ b', ['a b']),
+                ('"a\\ b"', ['a\\ b']),
+                ('"a\\"b"', ['a"b']),
+                ('"a\\\'b"', ["a'b"]),
+                ("'a\\'b'", ["a'b"]),
+                ('a\\', ['a\\'])):
+            with self.subTest(line=line):
+                config = self._parse_config(f'CanonicalDomains {line}')
+                self.assertEqual(config.get('CanonicalDomains'), result)
+
+    def test_trailing_comment(self):
+        """Test comment at the end of a config line"""
+
+        config = self._parse_config('Port 22 # comment')
+        self.assertEqual(config.get('Port'), 22)
+
     def test_set_bool(self):
         """Test boolean config option"""
 
@@ -338,6 +366,8 @@ class _TestConfig(TempDirTestCase):
         for desc, config_data in (
                 ('Missing value', 'AddressFamily'),
                 ('Unbalanced quotes', 'BindAddress "foo'),
+                ('Unbalanced single quotes', "BindAddress 'foo"),
+                ('Missing value before comment', 'Port # 22'),
                 ('Extra data at end', 'BindAddress foo bar'),
                 ('Invalid address family', 'AddressFamily xxx'),
                 ('Invalid canonicalization option',
@@ -728,6 +758,12 @@ class _TestClientConfig(_TestConfig):
         self.assertEqual(config.get('ProxyCommand'),
                          ['prog', '--target', 'x --opt y',
                           '--login', 'u "v w"', 'a b'])
+
+    def test_proxy_command_invalid_quotes(self):
+        """Test proxy command with invalid quoting"""
+
+        with self.assertRaises(asyncssh.ConfigParseError):
+            self._parse_config("ProxyCommand prog 'a\\'b'")
 
     def test_proxy_command_none(self):
         """Test proxy command set to none"""

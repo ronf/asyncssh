@@ -24,7 +24,6 @@ import fnmatch
 import glob
 import os
 import re
-import shlex
 import socket
 import subprocess
 
@@ -59,6 +58,66 @@ _unsafe_user_pattern = re.compile(r'^\.\.$|^~|^[A-Za-z]:|[/\\]|\$\{.*?\}')
 _shell_metachars = r'\'`"$\\;&<>|(){}\x00-\x1f\x7f'
 _unsafe_shell_host_pattern = re.compile(rf'^-|[{_shell_metachars}\s]')
 _unsafe_shell_user_pattern = re.compile(rf'^-|[{_shell_metachars}]|\s-')
+
+
+def _split_config_line(line: str) -> List[str]:
+    """Split a config file line into arguments
+
+       This follows the rules OpenSSH uses when parsing config files.
+       Arguments are separated by spaces or tabs, and a '#' at the
+       start of an argument begins a comment. Single or double quotes
+       can appear anywhere in an argument to include whitespace. A
+       backslash escapes a following quote or backslash, or a space
+       outside of quotes, and is otherwise kept as is, so Windows
+       paths don't need to be quoted.
+
+    """
+
+    args: List[str] = []
+    linelen = len(line)
+    i = 0
+
+    while i < linelen:
+        ch = line[i]
+
+        if ch in ' \t':
+            i += 1
+            continue
+
+        if ch == '#':
+            break
+
+        arg: List[str] = []
+        quote = ''
+
+        while i < linelen:
+            ch = line[i]
+
+            if ch == '\\':
+                next_ch = line[i+1:i+2]
+
+                if next_ch in ('"', "'", '\\') or \
+                        (next_ch == ' ' and not quote):
+                    i += 1
+
+                arg.append(line[i])
+            elif not quote and ch in ' \t':
+                break
+            elif not quote and ch in '"\'':
+                quote = ch
+            elif ch == quote:
+                quote = ''
+            else:
+                arg.append(ch)
+
+            i += 1
+
+        if quote:
+            raise ValueError('Invalid quotes')
+
+        args.append(''.join(arg))
+
+    return args
 
 
 def _exec(cmd: str) -> bool:
@@ -495,7 +554,7 @@ class SSHConfig:
                     continue
 
                 try:
-                    line_args = shlex.split(line)
+                    line_args = _split_config_line(line)
                 except ValueError as exc:
                     self._error(str(exc))
 
@@ -702,7 +761,10 @@ class SSHClientConfig(SSHConfig):
         if value_str.lower() == 'none':
             value: Optional[List[str]] = None
         else:
-            value = list(split_args(value_str))
+            try:
+                value = list(split_args(value_str))
+            except ValueError as exc:
+                self._error(str(exc))
 
         if option not in self._options:
             self._options[option] = value
