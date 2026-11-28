@@ -2006,6 +2006,26 @@ class _TestConnection(ServerTestCase):
             await self.create_connection(_InternalErrorClient)
 
     @asynctest
+    async def test_disconnect_error_in_task(self):
+        """Test disconnect error raised in a connection task"""
+
+        # pylint: disable=protected-access
+
+        async def _fail_task():
+            raise asyncssh.ProtocolError('Task error')
+
+        async with self.connect() as conn:
+            await conn.create_task(_fail_task())
+
+            # Connection should be closed as soon as the task fails
+            self.assertIsNone(conn._transport)
+
+            # Data received after the connection is closed is ignored
+            with patch.object(conn, '_recv_handler') as recv_handler:
+                conn.data_received(b'\0')
+                recv_handler.assert_not_called()
+
+    @asynctest
     async def test_client_cleanup_error(self):
         """Test error in client cleanup"""
 

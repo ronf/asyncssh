@@ -1216,18 +1216,30 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
             task.result()
         except asyncio.CancelledError:
             pass
+        except Exception:
+            self.internal_error(error_logger=task_logger)
+
+    async def _run_task(self, coro: Awaitable[None]) -> None:
+        """Run an asynchronous task, closing on disconnect errors
+
+           Disconnect errors are handled here rather than when the
+           task is reaped, so that the connection is closed before
+           any further incoming packets can be processed.
+
+        """
+
+        try:
+            await coro
         except DisconnectError as exc:
             self._send_disconnect(exc.code, exc.reason, exc.lang)
             self._force_close(exc)
-        except Exception:
-            self.internal_error(error_logger=task_logger)
 
     def create_task(self, coro: Awaitable[None],
                     task_logger: Optional[SSHLogger] = None) -> \
             'asyncio.Task[None]':
         """Create an asynchronous task which catches and reports errors"""
 
-        task = asyncio.ensure_future(coro)
+        task = asyncio.ensure_future(self._run_task(coro))
         task.add_done_callback(partial(self._reap_task, task_logger))
         self._tasks.add(task)
 
@@ -1571,7 +1583,8 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         # pylint: disable=broad-exception-caught
         try:
-            while self._inpbuf and self._recv_handler():
+            while self._inpbuf and self._transport and \
+                    self._recv_handler():
                 pass
         except DisconnectError as exc:
             self._send_disconnect(exc.code, exc.reason, exc.lang)
