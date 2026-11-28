@@ -1,10 +1,11 @@
 [build-system]
-requires = ['setuptools']
+requires = ['setuptools >= 77.0.3']
 build-backend = 'setuptools.build_meta'
 
 [project]
 name        = 'asyncssh'
-license     = {text = 'EPL-2.0 OR GPL-2.0-or-later'}
+license     = 'EPL-2.0 OR GPL-2.0-or-later'
+license-files = ['LICENSE', 'COPYRIGHT']
 description = 'AsyncSSH: Asynchronous SSHv2 client and server library'
 readme      = 'README.rst'
 authors     = [{name = 'Ron Frederick', email = 'ronf@timeheart.net'}]
@@ -12,7 +13,6 @@ classifiers = [
     'Development Status :: 5 - Production/Stable',
     'Environment :: Console',
     'Intended Audience :: Developers',
-    'License :: OSI Approved',
     'Operating System :: MacOS :: MacOS X',
     'Operating System :: POSIX',
     'Programming Language :: Python :: 3.10',
