@@ -28,9 +28,11 @@ from typing import TYPE_CHECKING, List, Optional, Protocol, Sequence, Tuple
 from typing import Type, Union
 from typing_extensions import Self
 
+from .forward import SSHForwarder
 from .listener import SSHForwardListener
 from .misc import async_context_manager, maybe_wait_closed
-from .packet import Byte, String, UInt32, PacketDecodeError, SSHPacket
+from .packet import Boolean, Byte, String, UInt32
+from .packet import PacketDecodeError, SSHPacket
 from .public_key import KeyPairListArg, SSHCertificate, SSHKeyPair
 from .public_key import load_default_keypairs, load_keypairs
 
@@ -590,6 +592,51 @@ class SSHAgentClient:
         else:
             raise ValueError(f'Unknown SSH agent response: {resptype}')
 
+    async def bind_session(self, host_key_data: bytes, session_id: bytes,
+                           signature: bytes,
+                           is_forwarding: bool = False) -> None:
+        """Bind this agent connection to an SSH session
+
+           This method sends an OpenSSH session-bind extension request
+           to the agent, binding this agent connection to the SSH
+           session identified by `session_id`. The agent uses this to
+           enforce any destination constraints placed on its keys.
+
+           :param host_key_data:
+               The server host key blob received in the initial key
+               exchange of the SSH session
+           :param session_id:
+               The session identifier (the exchange hash of the initial
+               key exchange) of the SSH session
+           :param signature:
+               The server's signature of the session identifier from
+               the initial key exchange
+           :param is_forwarding: (optional)
+               Whether this agent connection is being forwarded to the
+               server, defaulting to `False`
+           :type host_key_data: `bytes`
+           :type session_id: `bytes`
+           :type signature: `bytes`
+           :type is_forwarding: `bool`
+
+           :raises: :exc:`ValueError` if the agent rejects the request
+
+        """
+
+        resptype, resp = \
+            await self._make_request(SSH_AGENTC_EXTENSION,
+                                     String('session-bind@openssh.com'),
+                                     encode_session_bind(host_key_data,
+                                                         session_id, signature,
+                                                         is_forwarding))
+
+        if resptype == SSH_AGENT_SUCCESS:
+            resp.check_end()
+        elif resptype in (SSH_AGENT_FAILURE, SSH_AGENT_EXTENSION_FAILURE):
+            raise ValueError('Unable to bind SSH agent session')
+        else:
+            raise ValueError(f'Unknown SSH agent response: {resptype}')
+
     def close(self) -> None:
         """Close the SSH agent connection
 
@@ -615,6 +662,67 @@ class SSHAgentClient:
 
             self._reader = None
             self._writer = None
+
+
+class SSHAgentBindForwarder(SSHForwarder):
+    """Forwarder which binds a forwarded agent connection to a session
+
+       When a connection to the local agent is opened on behalf of
+       an agent forwarding request, this forwarder sends a session-bind
+       request to the agent with is_forwarding set before relaying any
+       other data. The agent's response to this request is consumed
+       here rather than being passed on to the server.
+
+    """
+
+    def __init__(self, bind_request: bytes):
+        super().__init__()
+
+        self._bind_request = bind_request
+        self._resp_buf = b''
+        self._bind_pending = True
+
+    def connection_made(self, transport: asyncio.BaseTransport) -> None:
+        """Send a session-bind request when the agent connection opens"""
+
+        super().connection_made(transport)
+
+        payload = Byte(SSH_AGENTC_EXTENSION) + \
+            String('session-bind@openssh.com') + self._bind_request
+
+        self.write(UInt32(len(payload)) + payload)
+
+    def data_received(self, data: bytes,
+                      datatype: Optional[int] = None) -> None:
+        """Discard the agent's response to the session-bind request"""
+
+        if self._bind_pending:
+            self._resp_buf += data
+
+            if len(self._resp_buf) < 4:
+                return
+
+            resplen = 4 + int.from_bytes(self._resp_buf[:4], 'big')
+
+            if len(self._resp_buf) < resplen:
+                return
+
+            data = self._resp_buf[resplen:]
+            self._resp_buf = b''
+            self._bind_pending = False
+
+            if not data:
+                return
+
+        super().data_received(data, datatype)
+
+
+def encode_session_bind(host_key_data: bytes, session_id: bytes,
+                        signature: bytes, is_forwarding: bool) -> bytes:
+    """Encode the arguments of an agent session-bind request"""
+
+    return String(host_key_data) + String(session_id) + \
+        String(signature) + Boolean(is_forwarding)
 
 
 class SSHAgentListener:

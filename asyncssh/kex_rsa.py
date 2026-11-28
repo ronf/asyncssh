@@ -1,4 +1,4 @@
-# Copyright (c) 2018-2024 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2018-2026 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -161,6 +161,7 @@ class _KexRSA(Kex):
         if not host_key.verify(h, sig):
             raise KeyExchangeFailed('Key exchange hash mismatch')
 
+        client_conn.set_initial_host_key_sig(self._host_key_data, sig)
         self._conn.send_newkeys(MPInt(self._k), h)
 
     _packet_handlers = {

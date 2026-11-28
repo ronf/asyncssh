@@ -22,6 +22,7 @@
 
 import asyncio
 import os
+import sys
 import tempfile
 import unittest
 from signal import SIGINT
@@ -947,6 +948,20 @@ class _TestChannel(ServerTestCase):
 
             result = ''.join(session.recv_buf[None])
             self.assertEqual(result, '3\n')
+
+    @unittest.skipIf(sys.platform == 'win32',
+                     'skip UNIX domain socket tests on Windows')
+    @asynctest
+    async def test_agent_forwarding_connect_failure(self):
+        """Test failure to connect to the agent being forwarded"""
+
+        async with self.connect(username='ckey',
+                                agent_forwarding='xxx') as conn:
+            chan, session = await _create_session(conn, 'agent')
+
+            await chan.wait_closed()
+
+            self.assertEqual(session.exit_status, 1)
 
     @asynctest
     async def test_agent_forwarding_sock(self):

@@ -73,6 +73,9 @@ class _AuthConnectionStub(ConnectionStub):
         self.send_packet(pkttype, *args, handler=handler)
 
 
+_HOSTBOUND_KEY = b'hostkey'
+
+
 class _AuthClientStub(_AuthConnectionStub):
     """Stub class for client connection"""
 
@@ -86,7 +89,8 @@ class _AuthClientStub(_AuthConnectionStub):
     def __init__(self, method, gss_host=None, override_gss_mech=False,
                  host_based_auth=False, client_host_key=None,
                  client_host_cert=None, public_key_auth=False, client_key=None,
-                 client_cert=None, override_pk_ok=False, password_auth=False,
+                 client_cert=None, hostbound_key=None, override_pk_ok=False,
+                 password_auth=False,
                  password=None, password_change=NotImplemented,
                  password_change_prompt=None, kbdint_auth=False,
                  kbdint_submethods=None, kbdint_challenge=None,
@@ -104,6 +108,7 @@ class _AuthClientStub(_AuthConnectionStub):
 
         self._client_key = client_key
         self._client_cert = client_cert
+        self._hostbound_key = hostbound_key
 
         self._password = password
         self._password_change = password_change
@@ -216,6 +221,11 @@ class _AuthClientStub(_AuthConnectionStub):
                                            self._client_cert))[0]
         else:
             return None
+
+    def get_pubkey_hostbound_key(self):
+        """Return host key to use for host-bound public key auth"""
+
+        return self._hostbound_key
 
     async def password_auth_requested(self):
         """Return password to send for password authentication"""
@@ -378,6 +388,11 @@ class _AuthServerStub(_AuthConnectionStub):
         """Return whether or not public key authentication is supported"""
 
         return self._public_key_auth
+
+    def check_hostbound_host_key(self, key_data):
+        """Check the host key in a host-bound public key auth request"""
+
+        return key_data == _HOSTBOUND_KEY
 
     async def validate_public_key(self, _username, _key_data, _msg, _signature):
         """Validate public key"""
@@ -625,6 +640,17 @@ class _TestAuth(AsyncTestCase):
             await self.check_auth(b'publickey', (True, None), client_key=ckey,
                                   client_cert=cert, public_key_auth=True,
                                   success=True)
+
+        with self.subTest('Host-bound request'):
+            await self.check_auth(b'publickey', (True, None), client_key=ckey,
+                                  hostbound_key=_HOSTBOUND_KEY,
+                                  public_key_auth=True, success=True)
+
+        with self.subTest('Host-bound request with wrong host key'):
+            with self.assertRaises(asyncssh.ProtocolError):
+                await self.check_auth(b'publickey', (False, None),
+                                      client_key=ckey, hostbound_key=b'xxx',
+                                      public_key_auth=True, success=True)
 
         with self.subTest('Invalid PK_OK message'):
             with self.assertRaises(asyncssh.ProtocolError):

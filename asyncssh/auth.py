@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2025 by Ron Frederick <ronf@timeheart.net> and others.
+# Copyright (c) 2013-2026 by Ron Frederick <ronf@timeheart.net> and others.
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License v2.0 which accompanies this
@@ -327,6 +327,9 @@ class _ClientHostBasedAuth(ClientAuth):
             self._conn.try_next_auth()
 
 
+_PUBKEY_HOSTBOUND_METHOD = b'publickey-hostbound-v00@openssh.com'
+
+
 class _ClientPublicKeyAuth(ClientAuth):
     """Client side implementation of public key auth"""
 
@@ -358,14 +361,24 @@ class _ClientPublicKeyAuth(ClientAuth):
 
         assert self._keypair is not None
 
-        self.logger.debug1('Signing request with %s key',
+        hostbound_key = self._conn.get_pubkey_hostbound_key()
+
+        self.logger.debug1('Signing %srequest with %s key',
+                           'host-bound ' if hostbound_key else '',
                            self._keypair.algorithm)
 
         try:
-            await self.send_request(Boolean(True),
-                                    String(self._keypair.algorithm),
-                                    String(self._keypair.public_data),
-                                    key=self._keypair, trivial=False)
+            if hostbound_key:
+                await self._conn.send_userauth_request(
+                    _PUBKEY_HOSTBOUND_METHOD, Boolean(True),
+                    String(self._keypair.algorithm),
+                    String(self._keypair.public_data),
+                    String(hostbound_key), key=self._keypair, trivial=False)
+            else:
+                await self.send_request(Boolean(True),
+                                        String(self._keypair.algorithm),
+                                        String(self._keypair.public_data),
+                                        key=self._keypair, trivial=False)
         except ValueError as exc:
             self.logger.debug1('Public key auth failed: %s', str(exc))
             self._conn.try_next_auth()
@@ -807,6 +820,13 @@ class _ServerPublicKeyAuth(ServerAuth):
         algorithm = packet.get_string()
         key_data = packet.get_string()
 
+        if self._method == _PUBKEY_HOSTBOUND_METHOD:
+            host_key_data = packet.get_string()
+
+            if not self._conn.check_hostbound_host_key(host_key_data):
+                raise ProtocolError('Host key mismatch in host-bound '
+                                    'public key auth')
+
         if sig_present:
             msg = packet.get_consumed_payload()
             signature = packet.get_string()
@@ -1024,3 +1044,9 @@ _auth_method_list = (
 
 for _args in _auth_method_list:
     register_auth_method(*_args)
+
+# Host-bound public key auth is accepted by the server, but isn't
+# advertised as a separate auth method. Clients enable it when the
+# server reports support for it in its extension info and send it as
+# part of regular public key auth.
+_server_auth_handlers[_PUBKEY_HOSTBOUND_METHOD] = _ServerPublicKeyAuth

@@ -273,6 +273,7 @@ class _KexDHBase(Kex):
 
         client_conn = cast('SSHClientConnection', self._conn)
         host_key = client_conn.validate_server_host_key(host_key_data)
+        client_conn.set_initial_host_key_sig(host_key_data, sig)
         self._verify_reply(host_key, host_key_data, sig)
 
     async def start(self) -> None:

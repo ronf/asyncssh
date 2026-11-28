@@ -1556,6 +1556,7 @@ socket are forwarded over the SSH connection to the client's ssh-agent.
    .. automethod:: lock
    .. automethod:: unlock
    .. automethod:: query_extensions
+   .. automethod:: bind_session
    .. automethod:: close
    .. automethod:: wait_closed
    ===================================== =

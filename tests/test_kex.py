@@ -212,6 +212,11 @@ class _KexClientStub(_KexConnectionStub):
 
         return decode_ssh_public_key(host_key_data)
 
+    def set_initial_host_key_sig(self, key_data, sig):
+        """Record the server host key and signature from the initial kex"""
+
+        # pylint: disable=unused-argument
+
 
 class _KexServerStub(_KexConnectionStub):
     """Stub class for server connection"""

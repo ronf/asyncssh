@@ -30,10 +30,14 @@ import unittest
 
 import asyncssh
 
+from asyncssh.agent import SSHAgentBindForwarder, encode_session_bind
+from asyncssh.agent import SSH_AGENTC_EXTENSION
 from asyncssh.agent import SSH_AGENT_SUCCESS, SSH_AGENT_FAILURE
 from asyncssh.agent import SSH_AGENT_IDENTITIES_ANSWER
+from asyncssh.agent import SSH_AGENT_EXTENSION_FAILURE
 from asyncssh.agent import SSH_AGENT_EXTENSION_RESPONSE
 from asyncssh.crypto import ed25519_available
+from asyncssh.forward import SSHForwarder
 from asyncssh.packet import Byte, String, UInt32
 
 from .sk_stub import sk_available, patch_sk
@@ -470,6 +474,99 @@ class _TestAgent(AsyncTestCase):
                 await agent.query_extensions()
 
         await mock_agent.stop()
+
+    @agent_test
+    async def test_bind_session(self, agent):
+        """Test binding an agent connection to a session"""
+
+        if 'session-bind@openssh.com' not in \
+                await agent.query_extensions(): # pragma: no cover
+            self.skipTest('ssh-agent does not support session binding')
+
+        host_key = get_test_key('ssh-ed25519')
+        session_id = os.urandom(32)
+        sig = host_key.sign(session_id, b'ssh-ed25519')
+
+        await agent.bind_session(host_key.public_data, session_id, sig)
+
+        with self.assertRaises(ValueError):
+            await agent.bind_session(host_key.public_data,
+                                     os.urandom(32), sig)
+
+    @asynctest
+    async def test_bind_session_errors(self):
+        """Test session bind error responses"""
+
+        for response in (Byte(SSH_AGENT_FAILURE),
+                         Byte(SSH_AGENT_EXTENSION_FAILURE), b'\xff'):
+            with self.subTest(response=response):
+                mock_agent = _Agent(response)
+                await mock_agent.start('mock_agent')
+
+                async with asyncssh.connect_agent('mock_agent') as agent:
+                    with self.assertRaises(ValueError):
+                        await agent.bind_session(b'', b'', b'')
+
+                await mock_agent.stop()
+
+    def test_bind_forwarder(self):
+        """Test session-bind response handling on forwarded connections"""
+
+        class _Transport:
+            """Stub transport which records data written to it"""
+
+            def __init__(self):
+                self.data = b''
+
+            def write(self, data):
+                """Record data written to the agent"""
+
+                self.data += data
+
+            def get_extra_info(self, name, default=None):
+                """Return extra info about this transport"""
+
+                # pylint: disable=unused-argument
+
+                return default
+
+        class _Peer(SSHForwarder):
+            """Stub peer which records data forwarded to it"""
+
+            def __init__(self):
+                super().__init__()
+                self.data = b''
+
+            def write(self, data):
+                """Record data forwarded to the peer"""
+
+                self.data += data
+
+        bind_request = encode_session_bind(b'key', b'sid', b'sig', True)
+        bind_response = String(Byte(SSH_AGENT_SUCCESS))
+
+        for chunks in ((bind_response,),
+                       (bind_response[:2], bind_response[2:]),
+                       (bind_response[:4], bind_response[4:] + b'abc'),
+                       (bind_response, b'abc')):
+            with self.subTest(chunks=chunks):
+                transport = _Transport()
+                forwarder = SSHAgentBindForwarder(bind_request)
+                peer = _Peer()
+                forwarder.set_peer(peer)
+                forwarder.connection_made(transport)
+
+                self.assertEqual(transport.data,
+                                 String(Byte(SSH_AGENTC_EXTENSION) +
+                                        String('session-bind@openssh.com') +
+                                        bind_request))
+
+                for chunk in chunks:
+                    forwarder.data_received(chunk)
+
+                self.assertEqual(peer.data,
+                                 b'abc' if len(b''.join(chunks)) >
+                                 len(bind_response) else b'')
 
     @agent_test
     async def test_unknown_key(self, agent):

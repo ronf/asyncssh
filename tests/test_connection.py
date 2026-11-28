@@ -1143,6 +1143,45 @@ class _TestConnection(ServerTestCase):
                 pass
 
     @asynctest
+    async def test_ext_info_after_auth(self):
+        """Test extension info after auth doesn't disable host-bound auth"""
+
+        debug_received = asyncio.Event()
+
+        class _DebugClient(asyncssh.SSHClient):
+            """Client which reports when a debug message arrives"""
+
+            def debug_msg_received(self, msg, lang, always_display):
+                """Process a debug message"""
+
+                debug_received.set()
+
+        def send_newkeys(self, k, h):
+            """Send empty extension info and a debug message on rekey"""
+
+            first_kex = not self._session_id
+
+            asyncssh.connection.SSHConnection.send_newkeys(self, k, h)
+
+            if not first_kex:
+                self._extensions_to_send.clear()
+                self._send_ext_info()
+                self.send_debug('ext info sent')
+
+        with patch('asyncssh.connection.SSHServerConnection.send_newkeys',
+                   send_newkeys):
+            conn, _ = await self.create_connection(_DebugClient,
+                                                   rekey_bytes=1)
+
+            async with conn:
+                self.assertIsNotNone(conn.get_pubkey_hostbound_key())
+
+                conn.send_debug('trigger rekey')
+                await asyncio.wait_for(debug_received.wait(), 5)
+
+                self.assertIsNotNone(conn.get_pubkey_hostbound_key())
+
+    @asynctest
     async def test_server_ext_info(self):
         """Test receiving unsolicited extension information on server"""
 
@@ -2670,6 +2709,48 @@ class _TestServerNoHostKey(ServerTestCase):
 
         with self.assertRaises(asyncssh.KeyExchangeFailed):
             await self.connect()
+
+
+@unittest.skipUnless(gss_available, 'GSS not available')
+@patch_gss
+class _TestServerNoHostKeyAgent(ServerTestCase):
+    """Unit tests for ssh-agent use when server has no host key"""
+
+    @classmethod
+    async def start_server(cls):
+        """Start an SSH server with no host key which allows agent use"""
+
+        async def process_handler(process):
+            """Report the number of keys in the forwarded agent"""
+
+            conn = process.channel.get_connection()
+
+            async with asyncssh.connect_agent(conn) as agent:
+                process.stdout.write(f'{len(await agent.get_keys())}\n')
+
+            process.exit(0)
+
+        return await cls.create_server(
+            server_host_keys=None, gss_host='1',
+            authorized_client_keys='authorized_keys',
+            process_factory=process_handler)
+
+    @asynctest
+    async def test_agent_with_no_host_key(self):
+        """Test agent auth and forwarding with no server host key"""
+
+        if not self.agent_available(): # pragma: no cover
+            self.skipTest('ssh-agent not available')
+
+        async with self.connect(known_hosts=b'\n', gss_host='1',
+                                x509_trusted_certs=None,
+                                x509_trusted_cert_paths=None,
+                                username='ckey', preferred_auth='publickey',
+                                agent_forwarding=True) as conn:
+            self.assertIsNone(conn.get_pubkey_hostbound_key())
+
+            result = await conn.run()
+            self.assertEqual(result.stdout, '3\n')
 
 
 @patch('asyncssh.connection.SSHClientConnection', _CheckAlgsClientConnection)

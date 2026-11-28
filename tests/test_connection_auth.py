@@ -1395,6 +1395,46 @@ class _TestPublicKeyAuth(ServerTestCase):
             pass
 
     @asynctest
+    async def test_agent_auth_pubkey_settings(self):
+        """Test ssh-agent auth with unbound and host-bound settings"""
+
+        if not self.agent_available(): # pragma: no cover
+            self.skipTest('ssh-agent not available')
+
+        for setting in ('unbound', 'host-bound'):
+            with self.subTest(setting=setting):
+                async with self.connect(username='ckey',
+                                        public_key_auth=setting):
+                    pass
+
+        with self.assertRaises(ValueError):
+            await self.connect(username='ckey', public_key_auth='xxx')
+
+    @asynctest
+    async def test_hostbound_auth(self):
+        """Test host-bound public key auth settings"""
+
+        for setting, hostbound in ((True, True), ('host-bound', True),
+                                   ('unbound', False)):
+            with self.subTest(setting=setting):
+                async with self.connect(username='ckey', client_keys='ckey',
+                                        agent_path=None,
+                                        public_key_auth=setting) as conn:
+                    self.assertEqual(
+                        conn.get_pubkey_hostbound_key() is not None,
+                        hostbound)
+
+    @asynctest
+    async def test_hostbound_auth_wrong_host_key(self):
+        """Test host-bound public key auth with the wrong host key"""
+
+        with patch('asyncssh.connection.SSHClientConnection.'
+                   'get_pubkey_hostbound_key', return_value=b'xxx'):
+            with self.assertRaises(asyncssh.ProtocolError):
+                await self.connect(username='ckey', client_keys='ckey',
+                                   agent_path=None)
+
+    @asynctest
     async def test_agent_identities(self):
         """Test connecting with ssh-agent auth with specific identities"""
 

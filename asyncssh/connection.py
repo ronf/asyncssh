@@ -43,7 +43,8 @@ from typing import Generic, List, Mapping, Optional, Protocol, Sequence
 from typing import Set, Tuple, Type, TypeVar, Union, cast
 from typing_extensions import Self
 
-from .agent import SSHAgentClient, SSHAgentListener
+from .agent import SSHAgentBindForwarder, SSHAgentClient, SSHAgentListener
+from .agent import encode_session_bind
 
 from .auth import Auth, ClientAuth, KbdIntChallenge, KbdIntPrompts
 from .auth import KbdIntResponse, PasswordChangeResponse
@@ -1002,6 +1003,8 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         self._can_recv_ext_info = False
 
         self._server_sig_algs: Set[bytes] = set()
+        self._server_pubkey_hostbound = False
+        self._initial_host_key_data = b''
 
         self._next_service: Optional[bytes] = None
 
@@ -1987,6 +1990,12 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
 
         self.send_packet(MSG_KEXINIT, packet[1:])
 
+    def _get_kex_host_key_data(self) -> bytes:
+        """Return the host key data sent in the current key exchange"""
+
+        # Overridden by server connections
+        return b'' # pragma: no cover
+
     def _send_ext_info(self) -> None:
         """Send extension information"""
 
@@ -2007,6 +2016,9 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         if not self._session_id:
             first_kex = True
             self._session_id = h
+
+            if self.is_server():
+                self._initial_host_key_data = self._get_kex_host_key_data()
         else:
             first_kex = False
 
@@ -2085,6 +2097,7 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         else:
             self._extensions_to_send[b'server-sig-algs'] = \
                 b','.join(self._sig_algs)
+            self._extensions_to_send[b'publickey-hostbound@openssh.com'] = b'0'
 
             self._send_encryption = next_enc_sc
             self._send_enchdrlen = 1 if etm_sc else 5
@@ -2440,6 +2453,10 @@ class SSHConnection(SSHPacketHandler, asyncio.Protocol):
         if self.is_client():
             self._server_sig_algs = \
                 set(extensions.get(b'server-sig-algs', b'').split(b','))
+
+            if not self._auth_complete:
+                self._server_pubkey_hostbound = \
+                    extensions.get(b'publickey-hostbound@openssh.com') == b'0'
 
     async def _process_kexinit(self, _pkttype: int, _pktid: int,
                                packet: SSHPacket) -> None:
@@ -3549,6 +3566,8 @@ class SSHClientConnection(SSHConnection):
         self._server_host_key_algs: Optional[Sequence[bytes]] = None
         self._server_host_key: Optional[SSHKey] = None
 
+        self._initial_host_key_sig = b''
+
         self._server_host_keys_handler = options.server_host_keys_handler
 
         self._username = options.username
@@ -3567,6 +3586,7 @@ class SSHClientConnection(SSHConnection):
             self._preferred_auth = get_supported_client_auth_methods()
 
         self._disable_trivial_auth = options.disable_trivial_auth
+        self._public_key_hostbound = options.public_key_hostbound
 
         if options.agent_path is not None:
             self._agent = SSHAgentClient(options.agent_path)
@@ -3739,6 +3759,68 @@ class SSHClientConnection(SSHConnection):
         self._server_host_key = host_key
         return host_key
 
+    def set_initial_host_key_sig(self, key_data: bytes, sig: bytes) -> None:
+        """Record the server host key and signature from the initial kex
+
+           These are needed to bind ssh-agent connections to this
+           session and to perform host-bound public key auth.
+
+        """
+
+        if not self._session_id:
+            self._initial_host_key_data = key_data
+            self._initial_host_key_sig = sig
+
+    def get_pubkey_hostbound_key(self) -> Optional[bytes]:
+        """Return host key to use for host-bound public key auth
+
+           If host-bound public key auth is enabled and supported by
+           the server, return the server host key blob to include in
+           the request. Otherwise, return `None`.
+
+        """
+
+        if (self._public_key_hostbound and self._server_pubkey_hostbound and
+                self._initial_host_key_data):
+            return self._initial_host_key_data
+        else:
+            return None
+
+    async def _bind_agent(self, agent: SSHAgentClient) -> None:
+        """Bind an ssh-agent connection to this session"""
+
+        if not self._initial_host_key_data:
+            return
+
+        try:
+            await agent.bind_session(self._initial_host_key_data,
+                                     self._session_id,
+                                     self._initial_host_key_sig)
+            self.logger.debug1('Bound SSH agent to host key')
+        except ValueError as exc:
+            self.logger.debug2('Unable to bind SSH agent: %s', exc)
+
+    async def _forward_agent_connection(self, dest_path: str) -> SSHForwarder:
+        """Forward an agent connection, binding it to this session"""
+
+        if not self._initial_host_key_data:
+            return await self.forward_unix_connection(dest_path)
+
+        bind_request = encode_session_bind(self._initial_host_key_data,
+                                           self._session_id,
+                                           self._initial_host_key_sig, True)
+
+        try:
+            _, peer = await self._loop.create_unix_connection(
+                lambda: SSHAgentBindForwarder(bind_request), dest_path)
+
+            self.logger.info('  Forwarding SSH agent connection to %s',
+                             dest_path)
+        except OSError as exc:
+            raise ChannelOpenError(OPEN_CONNECT_FAILED, str(exc)) from None
+
+        return SSHForwarder(cast(SSHForwarder, peer))
+
     def get_server_host_key(self) -> Optional[SSHKey]:
         """Return the server host key used in the key exchange
 
@@ -3866,6 +3948,8 @@ class SSHClientConnection(SSHConnection):
 
         if self._get_agent_keys:
             assert self._agent is not None
+
+            await self._bind_agent(self._agent)
 
             try:
                 agent_keys = await self._agent.get_keys(self._agent_identities)
@@ -4209,7 +4293,7 @@ class SSHClientConnection(SSHConnection):
             self.logger.info('Accepted SSH agent connection')
 
             return (self.create_unix_channel(),
-                    self.forward_unix_connection(self._agent_forward_path))
+                    self._forward_agent_connection(self._agent_forward_path))
         else:
             raise ChannelOpenError(OPEN_CONNECT_FAILED,
                                    'Auth agent forwarding disabled')
@@ -6374,6 +6458,24 @@ class SSHServerConnection(SSHConnection):
 
         return key
 
+    def _get_kex_host_key_data(self) -> bytes:
+        """Return the host key data sent in the current key exchange"""
+
+        host_key = self._server_host_key
+        return host_key.public_data if host_key else b''
+
+    def check_hostbound_host_key(self, key_data: bytes) -> bool:
+        """Check the host key in a host-bound public key auth request
+
+           Host-bound public key auth requests include the server
+           host key used in the initial key exchange. This method
+           returns whether the host key in the request matches it.
+
+        """
+
+        return bool(self._initial_host_key_data) and \
+            key_data == self._initial_host_key_data
+
     def public_key_auth_supported(self) -> bool:
         """Return whether or not public key authentication is supported"""
 
@@ -7908,7 +8010,11 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
        :param public_key_auth: (optional)
            Whether or not to allow public key authentication. By default,
            public key authentication is enabled if client keys are made
-           available.
+           available. In addition to `True` and `False`, this can be set
+           to `'unbound'` or `'host-bound'` to enable public key auth
+           while disabling or enabling the OpenSSH host-bound public
+           key authentication extension. Setting this to `True` enables
+           host-bound authentication when the server supports it.
        :param kbdint_auth: (optional)
            Whether or not to allow keyboard-interactive authentication. By
            default, keyboard-interactive authentication is enabled if a
@@ -8198,7 +8304,7 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
        :type passphrase: `str` or `bytes`
        :type ignore_encrypted: `bool`
        :type host_based_auth: `bool`
-       :type public_key_auth: `bool`
+       :type public_key_auth: `bool` or `str`
        :type kbdint_auth: `bool`
        :type password_auth: `bool`
        :type gss_host: `str`
@@ -8279,6 +8385,7 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
     gss_delegate_creds: bool
     preferred_auth: Sequence[str]
     disable_trivial_auth: bool
+    public_key_hostbound: bool
     agent_path: Optional[str]
     agent_identities: Optional[Sequence[bytes]]
     agent_forward_path: Optional[str]
@@ -8323,8 +8430,8 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
                 kex_algs: _AlgsArg = (), encryption_algs: _AlgsArg = (),
                 mac_algs: _AlgsArg = (), compression_algs: _AlgsArg = (),
                 signature_algs: _AlgsArg = (), host_based_auth: _AuthArg = (),
-                public_key_auth: _AuthArg = (), kbdint_auth: _AuthArg = (),
-                password_auth: _AuthArg = (),
+                public_key_auth: DefTuple[Union[bool, str]] = (),
+                kbdint_auth: _AuthArg = (), password_auth: _AuthArg = (),
                 x509_trusted_certs: CertListArg = (),
                 x509_trusted_cert_paths: Sequence[FilePath] = (),
                 x509_purposes: X509CertPurposes = 'secureShellServer',
@@ -8423,6 +8530,21 @@ class SSHClientConnectionOptions(SSHConnectionOptions):
                                      _DEFAULT_KEEPALIVE_COUNT_MAX))
 
         keepalive_count_max: int
+
+        if public_key_auth == ():
+            public_key_auth = cast(Union[bool, str],
+                                   config.get('PubkeyAuthentication', True))
+
+        if public_key_auth in ('unbound', 'host-bound'):
+            self.public_key_hostbound = public_key_auth == 'host-bound'
+            public_key_auth = True
+        elif isinstance(public_key_auth, str):
+            raise ValueError('Invalid public key auth setting: '
+                             f'{public_key_auth}')
+        else:
+            self.public_key_hostbound = True
+
+        public_key_auth: bool
 
         super().prepare(config, client_factory or SSHClient, client_version,
                         host, port, tunnel, passphrase, proxy_command, family,

@@ -748,6 +748,23 @@ class SSHClientConfig(SSHConfig):
         if option not in self._options:
             self._options[option] = value
 
+    def _set_pubkey_auth(self, option: str, args: List[str]) -> None:
+        """Set a public key authentication config option"""
+
+        value_str = args.pop(0).lower()
+
+        if value_str in ('yes', 'true'):
+            value: Union[bool, str] = True
+        elif value_str in ('no', 'false'):
+            value = False
+        elif value_str in ('unbound', 'host-bound'):
+            value = value_str
+        else:
+            self._error(f'Invalid {option} value: {value_str}')
+
+        if option not in self._options:
+            self._options[option] = value
+
     def _set_command(self, option: str, args: List[str]) -> None:
         """Set a local command option, split into arguments
 
@@ -841,7 +858,7 @@ class SSHClientConfig(SSHConfig):
         ('Port',                            SSHConfig._set_int),
         ('ProxyCommand',                    _set_command),
         ('ProxyJump',                       SSHConfig._set_string),
-        ('PubkeyAuthentication',            SSHConfig._set_bool),
+        ('PubkeyAuthentication',            _set_pubkey_auth),
         ('RekeyLimit',                      SSHConfig._set_rekey_limits),
         ('RemoteCommand',                   SSHConfig._set_string),
         ('RequestTTY',                      _set_request_tty),

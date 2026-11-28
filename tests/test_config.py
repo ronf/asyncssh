@@ -509,6 +509,20 @@ class _TestClientConfig(_TestConfig):
         config = self._parse_config('RequestTTY yes\nRequestTTY no')
         self.assertEqual(config.get('RequestTTY'), True)
 
+    def test_set_pubkey_auth(self):
+        """Test public key authentication config option"""
+
+        for value, result in (('yes', True), ('true', True),
+                              ('no', False), ('false', False),
+                              ('unbound', 'unbound'),
+                              ('host-bound', 'host-bound')):
+            config = self._parse_config(f'PubkeyAuthentication {value}')
+            self.assertEqual(config.get('PubkeyAuthentication'), result)
+
+        config = self._parse_config('PubkeyAuthentication unbound\n'
+                                    'PubkeyAuthentication no')
+        self.assertEqual(config.get('PubkeyAuthentication'), 'unbound')
+
     def test_set_and_match_hostname(self):
         """Test setting and matching hostname"""
 
@@ -594,6 +608,7 @@ class _TestClientConfig(_TestConfig):
 
         for desc, config_data in (
                 ('Invalid pseudo-terminal request', 'RequestTTY xxx'),
+                ('Invalid public key auth', 'PubkeyAuthentication xxx'),
                 ('Missing match host', 'Match host')):
             with self.subTest(desc):
                 with self.assertRaises(asyncssh.ConfigParseError):
