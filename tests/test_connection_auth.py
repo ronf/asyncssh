@@ -152,15 +152,6 @@ class _ChangingClientHostConnection(asyncssh.connection.SSHClientConnection):
         return keypair, f'host{self._host_attempt}', user
 
 
-class _HostBasedPublicKeyServer(_HostBasedServer):
-    """Server for testing host-based and public key authentication"""
-
-    def public_key_auth_supported(self):
-        """Return whether or not public key authentication is supported"""
-
-        return True
-
-
 class _PublicKeyClient(asyncssh.SSHClient):
     """Test client public key authentication"""
 
@@ -2128,7 +2119,7 @@ class _TestX509KnownClientHosts(ServerTestCase):
             'x509v3-ssh-rsa subject=OU=name\n')
 
         return await cls.create_server(
-            _HostBasedPublicKeyServer, known_client_hosts=known_client_hosts,
+            _HostBasedServer, known_client_hosts=known_client_hosts,
             authorized_client_keys=authorized_keys, x509_trusted_certs=[])
 
     @asynctest
