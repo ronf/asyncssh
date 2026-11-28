@@ -233,6 +233,7 @@ class SigningKey(Protocol):
 
     def sign(self, data: bytes) -> bytes:
         """Sign a block of data with a private key"""
+        ...
 
 
 class VerifyingKey(Protocol):
@@ -240,6 +241,7 @@ class VerifyingKey(Protocol):
 
     def verify(self, data: bytes, sig: bytes) -> bool:
         """Verify a signature on a block of data with a public key"""
+        ...
 
 
 class SSHKey:

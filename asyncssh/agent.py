@@ -45,6 +45,7 @@ class AgentReader(Protocol):
 
     async def readexactly(self, n: int) -> bytes:
         """Read exactly n bytes from the SSH agent"""
+        ...
 
 
 class AgentWriter(Protocol):
@@ -52,12 +53,15 @@ class AgentWriter(Protocol):
 
     def write(self, data: bytes) -> None:
         """Write bytes to the SSH agent"""
+        ...
 
     def close(self) -> None:
         """Close connection to the SSH agent"""
+        ...
 
     async def wait_closed(self) -> None:
         """Wait for the connection to the SSH agent to close"""
+        ...
 
 
 if sys.platform == 'win32': # pragma: cover only win32
@@ -71,6 +75,7 @@ class _SupportsOpenAgentConnection(Protocol):
 
     async def open_agent_connection(self) -> Tuple[AgentReader, AgentWriter]:
         """Open a forwarded ssh-agent connection back to the client"""
+        ...
 
 
 _AgentPath = Union[str, _SupportsOpenAgentConnection]

@@ -18,6 +18,7 @@ exclude_lines =
     if TYPE_CHECKING:
     pragma: no cover
     raise NotImplementedError
+    ^\s*\.\.\.\s*$
 partial_branches =
     pragma: no branch
     for .*

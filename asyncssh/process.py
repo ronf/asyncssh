@@ -75,12 +75,15 @@ class _AsyncFileProtocol(Protocol[AnyStr]):
 
     async def read(self, n: int = -1) -> AnyStr:
         """Read from an async file"""
+        ...
 
     async def write(self, data: AnyStr) -> None:
         """Write to an async file"""
+        ...
 
     async def close(self) -> None:
         """Close an async file"""
+        ...
 
 
 class _ReaderProtocol(Protocol):
@@ -88,12 +91,15 @@ class _ReaderProtocol(Protocol):
 
     def pause_reading(self) -> None:
         """Pause reading"""
+        ...
 
     def resume_reading(self) -> None:
         """Resume reading"""
+        ...
 
     def close(self) -> None:
         """Stop forwarding data"""
+        ...
 
 
 class _WriterProtocol(Protocol[_AnyStr_contra]):
@@ -101,6 +107,7 @@ class _WriterProtocol(Protocol[_AnyStr_contra]):
 
     def write(self, data: _AnyStr_contra) -> None:
         """Write data"""
+        ...
 
     def write_exception(self, exc: Exception) -> None:
         """Write exception (break, signal, terminal size change)"""
@@ -109,9 +116,11 @@ class _WriterProtocol(Protocol[_AnyStr_contra]):
 
     def write_eof(self) -> None:
         """Close output when end of file is received"""
+        ...
 
     def close(self) -> None:
         """Stop forwarding data"""
+        ...
 
 
 def _is_regular_file(file: IO[bytes]) -> bool:

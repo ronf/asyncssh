@@ -43,15 +43,19 @@ class PQKey(Protocol):
 
     def __init__(self, alg_name: bytes) -> None:
         """Construct a PQKey"""
+        ...
 
     def get_public(self) -> bytes:
         """Return the public key to send in the handshake"""
+        ...
 
     def encaps(self, peer_public: bytes) -> Tuple[bytes, bytes]:
         """Generate a random secret and encrypt it with a public key"""
+        ...
 
     def decaps(self, ciphertext: bytes) -> bytes:
         """Decrypt an encrypted secret using a private key"""
+        ...
 
 PQClass = Type[PQKey]
 

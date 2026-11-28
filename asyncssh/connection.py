@@ -198,9 +198,11 @@ class _TunnelProtocol(Protocol):
 
     def close(self) -> None:
         """Close this tunnel"""
+        ...
 
-    async def wait_closed(self):
+    async def wait_closed(self) -> None:
         """Wait for this tunnel to close"""
+        ...
 
 class _TunnelConnectorProtocol(_TunnelProtocol, Protocol):
     """Protocol to open a connection to tunnel an SSH connection over"""
@@ -210,6 +212,7 @@ class _TunnelConnectorProtocol(_TunnelProtocol, Protocol):
             remote_host: str, remote_port: int) -> \
                 Tuple[SSHTCPChannel[bytes], SSHTCPSession[bytes]]:
         """Create an outbound tunnel connection"""
+        ...
 
 class _TunnelListenerProtocol(_TunnelProtocol, Protocol):
     """Protocol to open a listener to tunnel SSH connections over"""
@@ -218,6 +221,7 @@ class _TunnelListenerProtocol(_TunnelProtocol, Protocol):
                       listen_host: str,
                       listen_port: int) -> Awaitable[SSHListener]:
         """Create an inbound tunnel listener"""
+        ...
 
 _AcceptHandler = Optional[Callable[['SSHConnection'], MaybeAwait[None]]]
 _ErrorHandler = Optional[Callable[['SSHConnection',
@@ -417,7 +421,7 @@ async def _open_proxy(
                 self._transport.close()
                 self._transport = None
 
-        async def wait_closed(self):
+        async def wait_closed(self) -> None:
             """Wait for this subprocess to exit"""
 
             await self._close_event.wait()

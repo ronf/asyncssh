@@ -85,20 +85,25 @@ class _SCPFileProtocol(Protocol):
 
     async def __aenter__(self) -> Self:
         """Allow _SCPFileProtocol to be used as an async context manager"""
+        ...
 
     async def __aexit__(self, _exc_type: Optional[Type[BaseException]],
                         _exc_value: Optional[BaseException],
                         _traceback: Optional[TracebackType]) -> bool:
         """Wait for file close when used as an async context manager"""
+        ...
 
     async def read(self, size: int, offset: int) -> bytes:
         """Read data from the local file"""
+        ...
 
     async def write(self, data: bytes, offset: int) -> int:
         """Write data to the local file"""
+        ...
 
     async def close(self) -> None:
         """Close the local file"""
+        ...
 
 
 class _SCPFSProtocol(Protocol):
@@ -107,28 +112,36 @@ class _SCPFSProtocol(Protocol):
     @staticmethod
     def basename(path: bytes) -> bytes:
         """Return the final component of a POSIX-style path"""
+        ...
 
     async def stat(self, path: bytes) -> 'SFTPAttrs':
         """Get attributes of a file or directory, following symlinks"""
+        ...
 
     async def setstat(self, path: bytes, attrs: 'SFTPAttrs') -> None:
         """Set attributes of a file or directory"""
+        ...
 
     async def exists(self, path: bytes) -> bool:
         """Return if a path exists"""
+        ...
 
     async def isdir(self, path: bytes) -> bool:
         """Return if the path refers to a directory"""
+        ...
 
     def scandir(self, path: bytes) -> AsyncIterator[SFTPName]:
         """Read the names and attributes of files in a directory"""
+        ...
 
     async def mkdir(self, path: bytes) -> None:
         """Create a directory"""
+        ...
 
     @async_context_manager
     async def open(self, path: bytes, mode: str) -> _SCPFileProtocol:
         """Open a file"""
+        ...
 
 
 def _scp_error(exc_class: Type[Exception], reason: BytesOrStr,

@@ -47,12 +47,15 @@ class _ECDHKey(Protocol):
 
     def get_public(self) -> bytes:
         """Return the public key to send to the peer"""
+        ...
 
     def get_shared_bytes(self, peer_public: bytes) -> bytes:
         """Return the shared key from the peer's public key in bytes"""
+        ...
 
     def get_shared(self, peer_public: bytes) -> int:
         """Return the shared key from the peer's public key"""
+        ...
 
 
 _ECDHClass = Type[_ECDHKey]

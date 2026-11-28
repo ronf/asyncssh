@@ -222,6 +222,7 @@ class _SupportsEncode(Protocol):
 
     def encode(self, sftp_version: int) -> bytes:
         """Encode result as bytes in an SSH packet"""
+        ...
 
 
 class _SFTPGlobProtocol(Protocol):
@@ -229,9 +230,11 @@ class _SFTPGlobProtocol(Protocol):
 
     async def stat(self, path: bytes) -> 'SFTPAttrs':
         """Get attributes of a file"""
+        ...
 
     def scandir(self, path: bytes) -> AsyncIterator['SFTPName']:
         """Return names and attributes of the files in a directory"""
+        ...
 
 
 class SFTPFileProtocol(Protocol):
@@ -239,24 +242,30 @@ class SFTPFileProtocol(Protocol):
 
     async def __aenter__(self) -> Self:
         """Allow SFTPFileProtocol to be used as an async context manager"""
+        ...
 
     async def __aexit__(self, _exc_type: Optional[Type[BaseException]],
                         _exc_value: Optional[BaseException],
                         _traceback: Optional[TracebackType]) -> bool:
         """Wait for file close when used as an async context manager"""
+        ...
 
     def request_ranges(self, offset: int, length: int) -> \
             AsyncIterator[Tuple[int, int]]:
         """Return file ranges containing data"""
+        ...
 
     async def read(self, size: int, offset: int) -> bytes:
         """Read data from the local file"""
+        ...
 
     async def write(self, data: bytes, offset: int) -> int:
         """Write data to the local file"""
+        ...
 
     async def close(self) -> None:
         """Close the local file"""
+        ...
 
 
 class _SFTPFSProtocol(Protocol):
@@ -265,45 +274,57 @@ class _SFTPFSProtocol(Protocol):
     @property
     def limits(self) -> 'SFTPLimits':
         """SFTP server limits associated with this SFTP session"""
+        ...
 
     @staticmethod
     def basename(path: bytes) -> bytes:
         """Return the final component of a POSIX-style path"""
+        ...
 
     def encode(self, path: _SFTPPath) -> bytes:
         """Encode path name using configured path encoding"""
+        ...
 
     def compose_path(self, path: bytes,
                      parent: Optional[bytes] = None) -> bytes:
         """Compose a path"""
+        ...
 
     async def stat(self, path: bytes, *,
                    follow_symlinks: bool = True) -> 'SFTPAttrs':
         """Get attributes of a file, directory, or symlink"""
+        ...
 
     async def setstat(self, path: bytes, attrs: 'SFTPAttrs', *,
                       follow_symlinks: bool = True) -> None:
         """Set attributes of a file, directory, or symlink"""
+        ...
 
     async def isdir(self, path: bytes) -> bool:
         """Return if the path refers to a directory"""
+        ...
 
     def scandir(self, path: bytes) -> AsyncIterator['SFTPName']:
         """Return names and attributes of the files in a directory"""
+        ...
 
     async def mkdir(self, path: bytes) -> None:
         """Create a directory"""
+        ...
 
     async def readlink(self, path: bytes) -> bytes:
         """Return the target of a symbolic link"""
+        ...
 
     async def symlink(self, oldpath: bytes, newpath: bytes) -> None:
         """Create a symbolic link"""
+        ...
 
     @async_context_manager
     async def open(self, path: bytes, mode: str, /, *,
                    block_size: int = -1) -> SFTPFileProtocol:
         """Open a file"""
+        ...
 
 
 def _parse_acl_supported(data: bytes) -> int:
