@@ -32,6 +32,7 @@ import asyncssh
 
 from asyncssh.agent import SSH_AGENT_SUCCESS, SSH_AGENT_FAILURE
 from asyncssh.agent import SSH_AGENT_IDENTITIES_ANSWER
+from asyncssh.agent import SSH_AGENT_EXTENSION_RESPONSE
 from asyncssh.crypto import ed25519_available
 from asyncssh.packet import Byte, String, UInt32
 
@@ -420,6 +421,26 @@ class _TestAgent(AsyncTestCase):
         async with asyncssh.connect_agent('mock_agent') as agent:
             extensions = await agent.query_extensions()
             self.assertEqual(extensions, ['xxx'])
+
+        await mock_agent.stop()
+
+        mock_agent = _Agent(Byte(SSH_AGENT_EXTENSION_RESPONSE) +
+                            String('query') + String('xxx'))
+        await mock_agent.start('mock_agent')
+
+        async with asyncssh.connect_agent('mock_agent') as agent:
+            extensions = await agent.query_extensions()
+            self.assertEqual(extensions, ['xxx'])
+
+        await mock_agent.stop()
+
+        mock_agent = _Agent(Byte(SSH_AGENT_EXTENSION_RESPONSE) +
+                            String('xxx'))
+        await mock_agent.start('mock_agent')
+
+        async with asyncssh.connect_agent('mock_agent') as agent:
+            with self.assertRaises(ValueError):
+                await agent.query_extensions()
 
         await mock_agent.stop()
 

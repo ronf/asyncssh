@@ -94,6 +94,7 @@ SSH_AGENT_SUCCESS                        = 6
 SSH_AGENT_IDENTITIES_ANSWER              = 12
 SSH_AGENT_SIGN_RESPONSE                  = 14
 SSH_AGENT_EXTENSION_FAILURE              = 28
+SSH_AGENT_EXTENSION_RESPONSE             = 29
 
 # SSH agent constraint numbers
 SSH_AGENT_CONSTRAIN_LIFETIME             = 1
@@ -563,8 +564,15 @@ class SSHAgentClient:
         resptype, resp = await self._make_request(SSH_AGENTC_EXTENSION,
                                                   String('query'))
 
-        if resptype == SSH_AGENT_SUCCESS:
+        if resptype in (SSH_AGENT_SUCCESS, SSH_AGENT_EXTENSION_RESPONSE):
             result = []
+
+            # Newer agents return an extension response which echoes
+            # the "query" request name before the list of extensions
+
+            if resptype == SSH_AGENT_EXTENSION_RESPONSE and \
+                    resp.get_string() != b'query':
+                raise ValueError('Invalid extension query response')
 
             while resp:
                 exttype = resp.get_string()
@@ -577,7 +585,7 @@ class SSHAgentClient:
                 result.append(exttype_str)
 
             return result
-        elif resptype == SSH_AGENT_FAILURE:
+        elif resptype in (SSH_AGENT_FAILURE, SSH_AGENT_EXTENSION_FAILURE):
             return []
         else:
             raise ValueError(f'Unknown SSH agent response: {resptype}')
