@@ -1073,7 +1073,7 @@ class SSHProcess(SSHStreamSession, Generic[AnyStr]):
     def connection_lost(self, exc: Optional[Exception]) -> None:
         """Handle a close of the SSH channel"""
 
-        super().connection_lost(exc) # type: ignore
+        super().connection_lost(exc)
 
         for reader in list(self._readers.values()):
             reader.close()

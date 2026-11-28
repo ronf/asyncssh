@@ -322,7 +322,7 @@ async def _bind_tcp_local_listeners(
                 pass
 
         if sa[1] == 0:
-            sa = sa[:1] + (listen_port,) + sa[2:] # type: ignore
+            sa = sa[:1] + (listen_port,) + sa[2:]
 
         try:
             sock.bind(sa)

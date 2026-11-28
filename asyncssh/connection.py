@@ -213,8 +213,9 @@ class _TunnelConnectorProtocol(_TunnelProtocol, Protocol):
 class _TunnelListenerProtocol(_TunnelProtocol, Protocol):
     """Protocol to open a listener to tunnel SSH connections over"""
 
-    async def create_server(self, session_factory: TCPListenerFactory,
-                            listen_host: str, listen_port: int) -> SSHListener:
+    def create_server(self, session_factory: TCPListenerFactory,
+                      listen_host: str,
+                      listen_port: int) -> Awaitable[SSHListener]:
         """Create an inbound tunnel listener"""
 
 _AcceptHandler = Optional[Callable[['SSHConnection'], MaybeAwait[None]]]
@@ -4559,7 +4560,7 @@ class SSHClientConnection(SSHConnection):
                 SSHReader(session, chan, EXTENDED_DATA_STDERR))
 
     # pylint: disable=redefined-builtin
-    @async_context_manager # type: ignore
+    @async_context_manager
     async def create_process(self, *args: object,
                              input: Optional[AnyStr] = None,
                              stdin: ProcessSource = PIPE,
@@ -5206,7 +5207,7 @@ class SSHClientConnection(SSHConnection):
         """
 
         return await create_connection(client_factory, host, port,
-                                       tunnel=self, **kwargs) # type: ignore
+                                       tunnel=self, **kwargs)
 
     @async_context_manager
     async def connect_ssh(self, host: str, port: DefTuple[int] = (),
@@ -5657,10 +5658,10 @@ class SSHClientConnection(SSHConnection):
         """
 
         def session_factory(_orig_host: str,
-                            _orig_port: int) -> Awaitable[SSHUNIXSession]:
+                            _orig_port: int) -> Awaitable[SSHTCPSession]:
             """Return an SSHTCPSession used to do remote port forwarding"""
 
-            return cast(Awaitable[SSHUNIXSession],
+            return cast(Awaitable[SSHTCPSession],
                         self.forward_unix_connection(dest_path))
 
         self.logger.info('Creating remote TCP forwarder from %s to %s',
@@ -5698,10 +5699,10 @@ class SSHClientConnection(SSHConnection):
 
         """
 
-        def session_factory() -> Awaitable[SSHTCPSession[bytes]]:
+        def session_factory() -> Awaitable[SSHUNIXSession[bytes]]:
             """Return an SSHUNIXSession used to do remote path forwarding"""
 
-            return cast(Awaitable[SSHTCPSession[bytes]],
+            return cast(Awaitable[SSHUNIXSession[bytes]],
                         self.forward_connection(dest_host, dest_port))
 
         self.logger.info('Creating remote UNIX forwarder from %s to %s',

@@ -301,7 +301,7 @@ class _SFTPFSProtocol(Protocol):
         """Create a symbolic link"""
 
     @async_context_manager
-    async def open(self, path: bytes, mode: str,
+    async def open(self, path: bytes, mode: str, /, *,
                    block_size: int = -1) -> SFTPFileProtocol:
         """Open a file"""
 
