@@ -4790,6 +4790,31 @@ class _TestSFTPChroot(_CheckSFTP):
                    'chroot/link4 chroot/link5')
 
     @sftp_test
+    async def test_chroot_link_symlink(self, sftp):
+        """Test hard linking a symlink on an SFTP server with a changed root"""
+
+        if not self._symlink_supported: # pragma: no cover
+            raise unittest.SkipTest('symlink not available')
+
+        try:
+            os.makedirs('chroot/dir1/dir2')
+
+            await sftp.symlink('../..', 'dir1/dir2/link1')
+            await sftp.link('dir1/dir2/link1', 'link2')
+
+            self.assertEqual(os.path.realpath('chroot/link2'),
+                             canonical_path('chroot'))
+
+            await sftp.symlink('/file', 'dir1/link3')
+            await sftp.link('dir1/link3', 'link4')
+            self._check_link('chroot/link4', os.path.abspath('chroot/file'))
+
+            with self.assertRaises(SFTPFailure):
+                await sftp.link('dir1/link3', 'link4')
+        finally:
+            remove('chroot/dir1 chroot/link2 chroot/link4')
+
+    @sftp_test
     async def test_chroot_symlink_via_symlinked_dir(self, sftp):
         """Test symlinks can't escape the chroot via a symlinked directory"""
 

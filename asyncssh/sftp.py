@@ -7351,9 +7351,15 @@ class SFTPServer:
             os.remove(tmp_path)
             raise
 
-    def _move_symlink(self, oldpath: bytes, newpath: bytes,
-                      replace: bool) -> None:
-        """Move a symlink, keeping its target within the chroot"""
+    def _copy_symlink(self, oldpath: bytes, newpath: bytes,
+                      replace: bool) -> bool:
+        """Copy a symlink, keeping its target within the chroot
+
+           The new link points to the same place as the old one. False
+           is returned if the new path is already the same link as the
+           old path, leaving it unchanged.
+
+        """
 
         local_oldpath = _to_local_path(self.map_path(oldpath))
         local_newpath = _to_local_path(self.map_path(newpath))
@@ -7369,11 +7375,18 @@ class SFTPServer:
             raise SFTPFileAlreadyExists('File already exists')
         elif os.path.samestat(os.lstat(local_oldpath),
                               os.lstat(local_newpath)):
-            return
+            return False
         else:
             self._replace_symlink(target, local_newpath)
 
-        os.remove(local_oldpath)
+        return True
+
+    def _move_symlink(self, oldpath: bytes, newpath: bytes,
+                      replace: bool) -> None:
+        """Move a symlink, keeping its target within the chroot"""
+
+        if self._copy_symlink(oldpath, newpath, replace):
+            os.remove(_to_local_path(self.map_path(oldpath)))
 
     def _contain_dir_symlinks(self, local_oldpath: _LocalPath,
                               local_newpath: _LocalPath) -> \
@@ -8239,10 +8252,16 @@ class SFTPServer:
 
         """
 
-        oldpath = _to_local_path(self.map_path(oldpath))
-        newpath = _to_local_path(self.map_path(newpath))
+        local_oldpath = _to_local_path(self.map_path(oldpath))
 
-        os.link(oldpath, newpath)
+        # Some platforms hard link a symlink itself rather than its
+        # target, so copy the link instead, keeping its target within
+        # the chroot from the new link's directory
+        if self._chroot and os.path.islink(local_oldpath):
+            self._copy_symlink(oldpath, newpath, replace=False)
+        else:
+            os.link(local_oldpath, _to_local_path(self.map_path(newpath)))
+
         return None
 
     def lock(self, file_obj: object, offset: int, length: int,
