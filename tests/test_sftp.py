@@ -2100,6 +2100,44 @@ class _TestSFTP(_CheckSFTP):
         finally:
             remove('dir')
 
+    @sftp_test
+    async def test_readdir_name_types(self, sftp):
+        """Test file and long name types when reading a directory"""
+
+        try:
+            os.mkdir('dir')
+            self._create_file('dir/file1')
+
+            for name in await sftp.readdir('dir'):
+                self.assertIsInstance(name.filename, str)
+                self.assertIsInstance(name.longname, str)
+                self.assertTrue(name.longname.endswith(name.filename))
+
+            for name in await sftp.readdir(b'dir'):
+                self.assertIsInstance(name.filename, bytes)
+                self.assertIsInstance(name.longname, bytes)
+                self.assertTrue(name.longname.endswith(name.filename))
+        finally:
+            remove('dir')
+
+    @sftp_test_v4
+    async def test_readdir_name_types_v4(self, sftp):
+        """Test file and long name types when reading a directory"""
+
+        try:
+            os.mkdir('dir')
+            self._create_file('dir/file1')
+
+            for name in await sftp.readdir('dir'):
+                self.assertIsInstance(name.filename, str)
+                self.assertEqual(name.longname, '')
+
+            for name in await sftp.readdir(b'dir'):
+                self.assertIsInstance(name.filename, bytes)
+                self.assertEqual(name.longname, b'')
+        finally:
+            remove('dir')
+
     @sftp_test_v4
     async def test_listdir_error_v4(self, sftp):
         """Test error while listing contents of a directory"""
@@ -4613,6 +4651,13 @@ class _TestSFTPChroot(_CheckSFTP):
         name = await sftp.realpath('/dir/..', 'file1',
                                    check=FXRP_STAT_IF_EXISTS)
 
+        self.assertEqual(name.filename, '/file1')
+        self.assertEqual(name.attrs.type, FILEXFER_TYPE_REGULAR)
+
+        name = await sftp.realpath(b'/dir/..', b'file1',
+                                   check=FXRP_STAT_IF_EXISTS)
+
+        self.assertEqual(name.filename, b'/file1')
         self.assertEqual(name.attrs.type, FILEXFER_TYPE_REGULAR)
 
         name = await sftp.realpath('/dir/..', 'file2', FXRP_STAT_IF_EXISTS)

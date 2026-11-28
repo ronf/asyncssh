@@ -130,7 +130,7 @@ class _SCPFSProtocol(Protocol):
         """Return if the path refers to a directory"""
         ...
 
-    def scandir(self, path: bytes) -> AsyncIterator[SFTPName]:
+    def scandir(self, path: bytes) -> AsyncIterator[SFTPName[bytes]]:
         """Read the names and attributes of files in a directory"""
         ...
 
